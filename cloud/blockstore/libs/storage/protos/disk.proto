@@ -171,6 +171,8 @@ message TDeviceConfig
 
     // Physical offset in bytes.
     uint64 PhysicalOffset = 19;
+
+    optional bool IsLostDevice = 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

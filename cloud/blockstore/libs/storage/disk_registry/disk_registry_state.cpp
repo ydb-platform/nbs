@@ -1032,6 +1032,13 @@ auto TDiskRegistryState::RegisterAgent(
             }
         }
 
+        for (const auto& lostDevice: r.LostDeviceEvents) {
+            if (auto diskId = DeviceList.FindDiskId(lostDevice)) {
+                AddReallocateRequest(db, diskId);
+                disksToReallocate.emplace_back(diskId);
+            }
+        }
+
         THashSet<TDiskId> diskIds;
 
         for (const auto& d: agent.GetDevices()) {
@@ -1100,6 +1107,16 @@ auto TDiskRegistryState::RegisterAgent(
     } catch (...) {
         return MakeError(E_FAIL, CurrentExceptionMessage());
     }
+
+    TStringBuilder log;
+    log << "disk to reallocate after agent " << config.GetAgentId() <<  " registration: [";
+
+    for (auto& diskId: disksToReallocate) {
+        log << diskId << ", ";
+    }
+    log << "]";
+
+    Cerr << log << Endl;
 
     return TAgentRegistrationResult{
         .AffectedDisks = std::move(affectedDisks),

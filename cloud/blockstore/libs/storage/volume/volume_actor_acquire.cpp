@@ -357,7 +357,9 @@ void TVolumeActor::SendAcquireDevicesToAgents(
     ui64 mountSeqNumber,
     const TActorContext& ctx)
 {
-    auto devices = State->GetAllDevicesForAcquireRelease();
+    auto devices =
+        State->GetAllDevicesForAcquireRelease(true   // filterErrorDevices
+        );
 
     auto actor = NCloud::Register<TAcquireDevicesActor>(
         ctx,

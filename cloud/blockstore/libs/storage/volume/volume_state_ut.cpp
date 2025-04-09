@@ -1972,9 +1972,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         const THashSet<TString>
             deviceUUIDSExpected{"d1", "d2", "d3", "d4", "d5", "d6", "d7"};
 
-        auto devices = volumeState.GetAllDevicesForAcquireRelease();
         THashSet<TString> devicesUUIDSActual;
-        for (const auto& d: volumeState.GetAllDevicesForAcquireRelease()) {
+        for (const auto& d: volumeState.GetAllDevicesForAcquireRelease(false)) {
             devicesUUIDSActual.insert(d.GetDeviceUUID());
         }
 

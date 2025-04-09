@@ -60,6 +60,8 @@ private:
 
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
 
+    THashSet<TString> LostDevices;
+
     TLog Log;
 
 public:
@@ -89,6 +91,7 @@ public:
         THashSet<TDeviceId> NewDevices;
         TNodeId PrevNodeId = 0;
         THashMap<TDeviceId, NProto::TDeviceConfig> OldConfigs;
+        TVector<TString> LostDeviceEvents;
     };
 
     TAgentRegistrationResult RegisterAgent(
