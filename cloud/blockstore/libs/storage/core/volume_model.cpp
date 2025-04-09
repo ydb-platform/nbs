@@ -475,26 +475,31 @@ ui32 ComputeAllocationUnitCount(
     return unitCount;
 }
 
+ui32 ComputeExistingMergedChannelCount(
+    const TVolumeParams& volumeParams)
+{
+    ui32 existingMergedChannelCount = 0;
+    for (const auto& dc: volumeParams.DataChannels) {
+        if (dc.DataKind == EChannelDataKind::Merged) {
+            ++existingMergedChannelCount;
+        }
+    }
+    return existingMergedChannelCount;
+}
+
 ui32 ComputeMergedChannelCount(
     const ui32 allocationUnitCount,
+    const ui32 existingMergedChannelCount,
     const TStorageConfig& config,
     const TVolumeParams& volumeParams)
 {
-    ui32 mergedChannelCount = 0;
-    for (const auto& dc: volumeParams.DataChannels) {
-        if (dc.DataKind == EChannelDataKind::Merged) {
-            ++mergedChannelCount;
-        }
-    }
-
+    const ui32 calculatedMergedChannelCount = static_cast<ui32>(
+        ceil(allocationUnitCount / volumeParams.PartitionsCount));
     return Min(
-        Max(
-            static_cast<ui32>(ceil(allocationUnitCount / volumeParams.PartitionsCount)),
-            mergedChannelCount,
-            config.GetMinChannelCount()
-        ),
-        MaxChannelsCount
-    );
+        Max(calculatedMergedChannelCount,
+            existingMergedChannelCount,
+            config.GetMinChannelCount()),
+        MaxMergedChannelCount);
 }
 
 void SetupChannels(
@@ -504,26 +509,41 @@ void SetupChannels(
     const NProto::TResizeVolumeRequestFlags& flags,
     NKikimrBlockStore::TVolumeConfig& volumeConfig)
 {
-    const auto mergedChannelCount =
-        ComputeMergedChannelCount(allocationUnitCount, config, volumeParams);
+    const auto existingMergedChannelCount =
+        ComputeExistingMergedChannelCount(volumeParams);
+    auto mergedChannelCount = ComputeMergedChannelCount(
+        allocationUnitCount,
+        existingMergedChannelCount,
+        config,
+        volumeParams);
     ui32 mixedChannelCount = 0;
 
-    if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_HYBRID
-            && !flags.GetNoSeparateMixedChannelAllocation()
-            && config.GetAllocateSeparateMixedChannels())
+    if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_HYBRID &&
+        !flags.GetNoSeparateMixedChannelAllocation() &&
+        config.GetAllocateSeparateMixedChannels())
     {
-        auto iopsFactor =
-            volumeConfig.GetPerformanceProfileMaxWriteIops()
-            / double(config.GetSSDUnitWriteIops())
-            / double(volumeParams.PartitionsCount);
-        auto bandwidthFactor =
-            volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
-            / double(config.GetSSDUnitWriteBandwidth() * 1_MB)
-            / double(volumeParams.PartitionsCount);
+        if (const auto mixedPercentage = config.GetMixedChannelsPercentageFromMerged();
+            mixedPercentage == 0)
+        {
+            auto iopsFactor = volumeConfig.GetPerformanceProfileMaxWriteIops() /
+                              double(config.GetSSDUnitWriteIops()) /
+                              double(volumeParams.PartitionsCount);
+            auto bandwidthFactor =
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth() /
+                double(config.GetSSDUnitWriteBandwidth() * 1_MB) /
+                double(volumeParams.PartitionsCount);
 
-        mixedChannelCount = ceil(Max(iopsFactor, bandwidthFactor));
-        if (!mixedChannelCount) {
-            mixedChannelCount = 1;
+            mixedChannelCount = ceil(Max(iopsFactor, bandwidthFactor));
+            if (!mixedChannelCount) {
+                mixedChannelCount = 1;
+            }
+        } else {
+            mixedChannelCount =
+                ceil((mergedChannelCount * mixedPercentage) / 100.f);
+            if ((mixedChannelCount + mergedChannelCount) > MaxDataChannelCount) {
+                mergedChannelCount = Max((MaxDataChannelCount * 100) / (100 + mixedPercentage), existingMergedChannelCount);
+                mixedChannelCount = MaxDataChannelCount - mergedChannelCount;
+            }
         }
     }
 

@@ -431,7 +431,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         for (auto kind: {EChannelDataKind::Mixed, EChannelDataKind::Merged}) {
             TPartitionState state(
-                DefaultConfig(MaxChannelsCount, DefaultBlockCount),
+                DefaultConfig(MaxMergedChannelCount, DefaultBlockCount),
                 0,  // generation
                 BuildDefaultCompactionPolicy(5),
                 0,  // compactionScoreHistorySize
@@ -441,7 +441,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 Max(),  // maxIORequestsInFlight
                 0,  // reassignChannelsPercentageThreshold
                 0,  // lastCommitId
-                MaxChannelsCount + 4,  // channelCount
+                MaxDataChannelCount + 1,  // channelCount
                 0,  // mixedIndexCacheSize
                 10000,  // allocationUnit
                 100,  // maxBlobsPerUnit
