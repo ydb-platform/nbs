@@ -110,7 +110,7 @@ void TDrainActorCompanion::AddDrainRangeRequest(
     TBlockRange64 range)
 {
     DrainRangeRequests.emplace_back(std::move(reqInfo), range);
-    ProcessDrainRangeRequests(ctx);
+    DoProcessDrainRangeRequests(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -120,11 +120,11 @@ void TDrainActorCompanion::ProcessDrainRequests(
 {
     DoProcessDrainRequests(ctx);
     DoProcessWaitForInFlightWritesRequests(ctx);
+    DoProcessDrainRangeRequests(ctx);
 }
 
 void TDrainActorCompanion::DoProcessDrainRequests(const TActorContext& ctx)
 {
-    ProcessDrainRangeRequests(ctx);
     if (DrainRequests.empty() || RequestsInProgress.WriteRequestInProgress()) {
         return;
     }
@@ -172,31 +172,6 @@ void TDrainActorCompanion::DoProcessWaitForInFlightWritesRequests(
     WaitForInFlightWritesRequest.Reset();
 }
 
-void TDrainActorCompanion::ProcessDrainRangeRequests(
-    const NActors::TActorContext& ctx)
-{
-    TVector<ui64> reqsToErase;
-
-    for (size_t i = 0; i < DrainRangeRequests.size(); ++i) {
-        auto& drainReq = DrainRangeRequests[i];
-
-        if (RequestsInProgress.HasWriteRequestInRange(drainReq.RangeToDrain)) {
-            continue;
-        }
-
-        NCloud::Reply(
-            ctx,
-            *drainReq.RequestInfo,
-            std::make_unique<
-                NPartition::TEvPartition::TEvBlockAndDrainRangeResponse>());
-        reqsToErase.emplace_back(i);
-    }
-    for (auto i: reqsToErase | std::views::reverse) {
-        std::swap(DrainRangeRequests.back(), DrainRangeRequests[i]);
-        DrainRangeRequests.pop_back();
-    }
-}
-
 void TDrainActorCompanion::RemoveDrainRangeRequest(
     const NActors::TActorContext& ctx,
     TBlockRange64 range)
@@ -218,6 +193,31 @@ void TDrainActorCompanion::RemoveDrainRangeRequest(
         reqsToErase.emplace_back(i);
     }
 
+    for (auto i: reqsToErase | std::views::reverse) {
+        std::swap(DrainRangeRequests.back(), DrainRangeRequests[i]);
+        DrainRangeRequests.pop_back();
+    }
+}
+
+void TDrainActorCompanion::DoProcessDrainRangeRequests(
+    const NActors::TActorContext& ctx)
+{
+    TVector<ui64> reqsToErase;
+
+    for (size_t i = 0; i < DrainRangeRequests.size(); ++i) {
+        auto& drainReq = DrainRangeRequests[i];
+
+        if (RequestsInProgress.HasWriteRequestInRange(drainReq.RangeToDrain)) {
+            continue;
+        }
+
+        NCloud::Reply(
+            ctx,
+            *drainReq.RequestInfo,
+            std::make_unique<
+                NPartition::TEvPartition::TEvBlockAndDrainRangeResponse>());
+        reqsToErase.emplace_back(i);
+    }
     for (auto i: reqsToErase | std::views::reverse) {
         std::swap(DrainRangeRequests.back(), DrainRangeRequests[i]);
         DrainRangeRequests.pop_back();

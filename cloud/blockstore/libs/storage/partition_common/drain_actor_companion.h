@@ -45,8 +45,6 @@ public:
         TRequestInfoPtr reqInfo,
         TBlockRange64 range);
 
-    void ProcessDrainRangeRequests(const NActors::TActorContext& ctx);
-
     void RemoveDrainRangeRequest(
         const NActors::TActorContext& ctx,
         TBlockRange64 range);
@@ -54,6 +52,7 @@ public:
 private:
     void DoProcessDrainRequests(const NActors::TActorContext& ctx);
     void DoProcessWaitForInFlightWritesRequests(const NActors::TActorContext& ctx);
+    void DoProcessDrainRangeRequests(const NActors::TActorContext& ctx);
 };
 
 }  // namespace NCloud::NBlockStore::NStorage

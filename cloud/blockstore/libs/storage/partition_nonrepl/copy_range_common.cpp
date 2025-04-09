@@ -9,6 +9,7 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+using namespace NPartition;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -30,8 +31,7 @@ void TCopyRangeActorCommon::BlockAndDrainRange(
     NCloud::Send(
         ctx,
         ActorToBlockAndDrainRange,
-        std::make_unique<
-            NPartition::TEvPartition::TEvBlockAndDrainRangeRequest>(Range));
+        std::make_unique<TEvPartition::TEvBlockAndDrainRangeRequest>(Range));
 }
 
 void TCopyRangeActorCommon::Done(
@@ -42,7 +42,7 @@ void TCopyRangeActorCommon::Done(
         NCloud::Send(
             ctx,
             ActorToBlockAndDrainRange,
-            std::make_unique<NPartition::TEvPartition::TEvReleaseRange>(Range));
+            std::make_unique<TEvPartition::TEvReleaseRange>(Range));
     }
 
     Owner->BeforeDie(ctx, std::move(error));
@@ -59,7 +59,7 @@ void TCopyRangeActorCommon::HandlePoisonPill(
 }
 
 void TCopyRangeActorCommon::HandleBlockAndDrainRange(
-    const NPartition::TEvPartition::TEvBlockAndDrainRangeResponse::TPtr& ev,
+    const TEvPartition::TEvBlockAndDrainRangeResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
@@ -77,7 +77,7 @@ STFUNC(TCopyRangeActorCommon::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(
-            NPartition::TEvPartition::TEvBlockAndDrainRangeResponse,
+            TEvPartition::TEvBlockAndDrainRangeResponse,
             HandleBlockAndDrainRange);
 
         default:

@@ -2,6 +2,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+///////////////////////////////////////////////////////////////////////////////
+
 TRequestBoundsTracker::TRequestBoundsTracker(ui64 blockSize)
     : BlockCountPerRange(MigrationRangeSize / blockSize)
 {}

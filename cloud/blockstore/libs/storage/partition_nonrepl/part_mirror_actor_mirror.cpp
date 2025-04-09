@@ -101,7 +101,7 @@ void TMirrorPartitionActor::MirrorRequest(
             *requestInfo,
             std::make_unique<typename TMethod::TResponse>(MakeError(
                 E_REJECTED,
-                "range is blocked for writing because of migration")));
+                "range is blocked for writing")));
         return;
     }
 
