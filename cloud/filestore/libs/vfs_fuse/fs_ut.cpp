@@ -430,7 +430,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const TString sessionId = CreateGuidAsString();
 
         std::atomic_bool recovered = false;
-        bootstrap.Service->CreateSessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.Service->CreateSessionHandler = [sessionId, &recovered] (auto callContext, auto request) {
             Y_UNUSED(callContext);
 
             NProto::TCreateSessionResponse result;
@@ -561,6 +561,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(future.GetValue(WaitTimeout), handle);
+
+        bootstrap.Stop();
     }
 
     Y_UNIT_TEST(ShouldPingSession)
