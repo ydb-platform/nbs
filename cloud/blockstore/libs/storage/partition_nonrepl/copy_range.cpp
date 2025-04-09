@@ -25,7 +25,7 @@ TCopyRangeActor::TCopyRangeActor(
         TActorId target,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId actorToBlockAndDrainRange)
+        TActorId actorToBlockAndDrainRange)
     : TCopyRangeActorCommon(this, actorToBlockAndDrainRange, range)
     , RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
@@ -38,7 +38,7 @@ TCopyRangeActor::TCopyRangeActor(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCopyRangeActor::ReadyToCopy(const NActors::TActorContext& ctx)
+void TCopyRangeActor::ReadyToCopy(const TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
 
@@ -52,8 +52,8 @@ void TCopyRangeActor::ReadyToCopy(const NActors::TActorContext& ctx)
 }
 
 bool TCopyRangeActor::OnMessage(
-    const NActors::TActorContext& ctx,
-    TAutoPtr<NActors::IEventHandle>& ev)
+    const TActorContext& ctx,
+    TAutoPtr<IEventHandle>& ev)
 {
     Y_UNUSED(ctx);
     TRequestScope timer(*RequestInfo);
@@ -72,9 +72,7 @@ bool TCopyRangeActor::OnMessage(
     return true;
 }
 
-void TCopyRangeActor::BeforeDie(
-    const NActors::TActorContext& ctx,
-    NProto::TError error)
+void TCopyRangeActor::BeforeDie(const TActorContext& ctx, NProto::TError error)
 {
     using EExecutionSide =
         TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
@@ -262,7 +260,7 @@ void TCopyRangeActor::HandleWriteResponse(
 
 void TCopyRangeActor::HandleZeroUndelivery(
     const TEvService::TEvZeroBlocksRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     WriteDuration = ctx.Now() - WriteStartTs;
 
@@ -273,7 +271,7 @@ void TCopyRangeActor::HandleZeroUndelivery(
 
 void TCopyRangeActor::HandleZeroResponse(
     const TEvService::TEvZeroBlocksResponse::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     WriteDuration = ctx.Now() - WriteStartTs;
 

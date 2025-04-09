@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/copy_range.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_common.h>
+
 #include <cloud/storage/core/libs/common/sglist.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -35,7 +36,7 @@ TDirectCopyRangeActor::TDirectCopyRangeActor(
         TActorId target,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId actorToBlockAndDrainRange)
+        TActorId actorToBlockAndDrainRange)
     : TCopyRangeActorCommon(this, actorToBlockAndDrainRange, range)
     , BlockSize(blockSize)
     , SourceActor(source)
@@ -60,8 +61,8 @@ void TDirectCopyRangeActor::ReadyToCopy(const TActorContext& ctx)
 }
 
 bool TDirectCopyRangeActor::OnMessage(
-    const NActors::TActorContext& ctx,
-    TAutoPtr<NActors::IEventHandle>& ev)
+    const TActorContext& ctx,
+    TAutoPtr<IEventHandle>& ev)
 {
     Y_UNUSED(ctx);
     TRequestScope timer(*RequestInfo);
@@ -86,7 +87,7 @@ bool TDirectCopyRangeActor::OnMessage(
 }
 
 void TDirectCopyRangeActor::BeforeDie(
-    const NActors::TActorContext& ctx,
+    const TActorContext& ctx,
     NProto::TError error)
 {
     if (!NeedToReply) {
@@ -96,10 +97,7 @@ void TDirectCopyRangeActor::BeforeDie(
     using EExecutionSide =
         TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
 
-    ProcessError(
-        *NActors::TActorContext::ActorSystem(),
-        *TargetInfo->PartConfig,
-        error);
+    ProcessError(*TActorContext::ActorSystem(), *TargetInfo->PartConfig, error);
 
     const auto writeTs = StartTs + ReadDuration;
     auto response =
@@ -148,7 +146,7 @@ void TDirectCopyRangeActor::GetDevicesInfo(const TActorContext& ctx)
         TargetPartitionTag);
 }
 
-void TDirectCopyRangeActor::DirectCopy(const NActors::TActorContext& ctx)
+void TDirectCopyRangeActor::DirectCopy(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksRequest>();
     auto& rec = request->Record;
@@ -200,7 +198,7 @@ void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
 
 void TDirectCopyRangeActor::HandleGetDeviceForRange(
     const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     if (ev->Cookie == SourcePartitionTag) {
         SourceInfo.reset(ev->Release().Release());
@@ -224,7 +222,7 @@ void TDirectCopyRangeActor::HandleGetDeviceForRange(
 
 void TDirectCopyRangeActor::HandleDirectCopyUndelivered(
     const TEvDiskAgent::TEvDirectCopyBlocksRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
@@ -235,7 +233,7 @@ void TDirectCopyRangeActor::HandleDirectCopyUndelivered(
 
 void TDirectCopyRangeActor::HandleDirectCopyBlocksResponse(
     const TEvDiskAgent::TEvDirectCopyBlocksResponse::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
@@ -250,8 +248,8 @@ void TDirectCopyRangeActor::HandleDirectCopyBlocksResponse(
 }
 
 void TDirectCopyRangeActor::HandleRangeMigrationTimeout(
-    const NActors::TEvents::TEvWakeup::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 

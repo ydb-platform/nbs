@@ -13,7 +13,7 @@ using namespace NPartition;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCopyRangeActorCommon::Bootstrap(const NActors::TActorContext& ctx)
+void TCopyRangeActorCommon::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
@@ -25,8 +25,7 @@ void TCopyRangeActorCommon::Bootstrap(const NActors::TActorContext& ctx)
     Owner->ReadyToCopy(ctx);
 }
 
-void TCopyRangeActorCommon::BlockAndDrainRange(
-    const NActors::TActorContext& ctx)
+void TCopyRangeActorCommon::BlockAndDrainRange(const TActorContext& ctx)
 {
     NCloud::Send(
         ctx,
@@ -34,9 +33,7 @@ void TCopyRangeActorCommon::BlockAndDrainRange(
         std::make_unique<TEvPartition::TEvBlockAndDrainRangeRequest>(Range));
 }
 
-void TCopyRangeActorCommon::Done(
-    const NActors::TActorContext& ctx,
-    NProto::TError error)
+void TCopyRangeActorCommon::Done(const TActorContext& ctx, NProto::TError error)
 {
     if (NeedToReleaseRange && ActorToBlockAndDrainRange) {
         NCloud::Send(
@@ -51,8 +48,8 @@ void TCopyRangeActorCommon::Done(
 }
 
 void TCopyRangeActorCommon::HandlePoisonPill(
-    const NActors::TEvents::TEvPoisonPill::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     Done(ctx, MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
@@ -60,7 +57,7 @@ void TCopyRangeActorCommon::HandlePoisonPill(
 
 void TCopyRangeActorCommon::HandleBlockAndDrainRange(
     const TEvPartition::TEvBlockAndDrainRangeResponse::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     auto* msg = ev->Get();

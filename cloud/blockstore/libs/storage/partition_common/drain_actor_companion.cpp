@@ -105,7 +105,7 @@ void TDrainActorCompanion::HandleWaitForInFlightWrites(
 }
 
 void TDrainActorCompanion::AddDrainRangeRequest(
-    const NActors::TActorContext& ctx,
+    const TActorContext& ctx,
     TRequestInfoPtr reqInfo,
     TBlockRange64 range)
 {
@@ -173,7 +173,7 @@ void TDrainActorCompanion::DoProcessWaitForInFlightWritesRequests(
 }
 
 void TDrainActorCompanion::RemoveDrainRangeRequest(
-    const NActors::TActorContext& ctx,
+    const TActorContext& ctx,
     TBlockRange64 range)
 {
     TVector<ui64> reqsToErase;
@@ -199,8 +199,7 @@ void TDrainActorCompanion::RemoveDrainRangeRequest(
     }
 }
 
-void TDrainActorCompanion::DoProcessDrainRangeRequests(
-    const NActors::TActorContext& ctx)
+void TDrainActorCompanion::DoProcessDrainRangeRequests(const TActorContext& ctx)
 {
     TVector<ui64> reqsToErase;
 
