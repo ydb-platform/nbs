@@ -96,6 +96,8 @@ class NbsCsiDriverRunner:
             "--version",
             "v1",
             "--node-id=localhost",
+            "--csi-controller=true",
+            "--csi-node=true",
             "--nbs-socket", self._grpc_unix_socket_path,
             f"--sockets-dir={self._sockets_dir}",
             f"--endpoint={str(self._endpoint)}",
