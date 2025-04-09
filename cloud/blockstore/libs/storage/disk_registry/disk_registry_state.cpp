@@ -1108,16 +1108,6 @@ auto TDiskRegistryState::RegisterAgent(
         return MakeError(E_FAIL, CurrentExceptionMessage());
     }
 
-    TStringBuilder log;
-    log << "disk to reallocate after agent " << config.GetAgentId() <<  " registration: [";
-
-    for (auto& diskId: disksToReallocate) {
-        log << diskId << ", ";
-    }
-    log << "]";
-
-    Cerr << log << Endl;
-
     return TAgentRegistrationResult{
         .AffectedDisks = std::move(affectedDisks),
         .DisksToReallocate = std::move(disksToReallocate),
