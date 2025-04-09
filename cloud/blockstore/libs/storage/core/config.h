@@ -674,6 +674,8 @@ public:
 
     [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
     GetLinkedDiskFillBandwidth() const;
+
+    [[nodiscard]] ui32 GetMixedChannelsPercentage() const;
 };
 
 ui64 GetAllocationUnit(
