@@ -100,7 +100,11 @@ public:
                 if (isAllZeroes) {
                     isAllZeroes = IsAllZeroes(src, bytes);
                 }
-                memcpy(dst, src, bytes);
+
+                // may be nullptr for overlay disks
+                if (dst) {
+                    memcpy(dst, src, bytes);
+                }
 
                 offset += bytes;
                 ++b;
