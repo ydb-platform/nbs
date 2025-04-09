@@ -180,7 +180,7 @@ runs:
         echo "::endgroup::"
         date
         echo "::group::ya-make-test"
-        sudo -E -H -u github ./ya test -k --build "${build_type}" \
+        choom -n 1 -- sudo -E -H -u github  ./ya test -k --build "${build_type}" \
           "${test_size[@]/#/--test-size=}" "${test_type[@]/#/--test-type=}" \
           --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
           --cache-size 512G --do-not-output-stderrs -T \
@@ -249,6 +249,7 @@ runs:
         sudo dmesg -T > "$LOG_DIR/dmesg.log" || true
         sudo cp /var/log/atop/atop_* "$LOG_DIR/" || true
         sudo cp /var/log/syslog "$LOG_DIR/syslog.log" || true
+        # shellcheck disable=SC2024
         sudo ps aux > "$LOG_DIR/ps.log" || true
         sudo chown -R github:github "$LOG_DIR/dmesg.log" "$LOG_DIR/atop_*" "$LOG_DIR/syslog.log" "$LOG_DIR/ps.log" || true
         echo "::endgroup::"

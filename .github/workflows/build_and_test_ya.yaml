@@ -149,16 +149,18 @@ jobs:
         echo "vm.swappiness=5" | sudo tee -a /etc/sysctl.conf
         sudo sysctl -p
   
-    - name: Create background process that will adjust oom_score_adj for ya-bin processes
+    - name: Create background process that will adjust oom_score_adj for selection of processes
       shell: bash
       run: |
         set -x
-        # set oom_score_adj to 0 for all other processes
         while true; do
-          for pid in $(pgrep -f ya-bin); do
-            echo "-1000" | sudo tee /proc/$pid/oom_score_adj
+          for pid in $(pgrep -f ydbd) $(pgrep -f qemu-system-x86_64); do
+            # check if process is already having oom_score_adj set to 500 if not then set it
+            if [ "$(cat /proc/$pid/oom_score_adj)" != "1000" ]; then
+              echo 1000 | sudo tee /proc/$pid/oom_score_adj
+            fi
           done
-          sleep 60
+          sleep 30
         done &
 
     - name: Build
@@ -169,7 +171,6 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
         cache_update: ${{ inputs.cache_update_build }}
         bazel_remote_uri: ${{ inputs.nebius == 'yes' && vars.NEBIUS_BAZEL_REMOTE_CACHE_URL || vars.REMOTE_CACHE_URL_YA }}
-        bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
         build_threads: ${{ inputs.build_threads }}
         link_threads: ${{ inputs.link_threads }}
