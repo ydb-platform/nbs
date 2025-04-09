@@ -324,7 +324,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
     const auto compactionInfo = GetCompactionInfo();
     const auto cleanupInfo = GetCleanupInfo();
     const bool shouldCleanup = cleanupInfo.ShouldCleanup &&
-        (cleanupInfo.IsPriority || !ShouldThrottleCleanup(ctx));
+        (cleanupInfo.IsPriority || !ShouldThrottleCleanup(ctx, cleanupInfo));
 
     if (IsBlobIndexOpsQueueEmpty()) {
         auto blobIndexOpsPriority = Config->GetBlobIndexOpsPriority();
