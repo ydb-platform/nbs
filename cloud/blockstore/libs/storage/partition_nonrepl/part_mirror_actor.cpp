@@ -547,12 +547,14 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
     if (!State.IsLaggingProxySet(replicaIndex)) {
         Y_ABORT_UNLESS(replicaIndex < State.GetReplicaInfos().size());
 
+        const auto& replicaInfo = State.GetReplicaInfos()[replicaIndex];
         auto proxyActorId = NCloud::Register(
             ctx,
             std::make_unique<TLaggingAgentsReplicaProxyActor>(
                 Config,
                 DiagnosticsConfig,
-                State.GetReplicaInfos()[replicaIndex].Config,
+                replicaInfo.Config,
+                replicaInfo.Migrations,
                 ProfileLog,
                 BlockDigestGenerator,
                 State.GetRWClientId(),
