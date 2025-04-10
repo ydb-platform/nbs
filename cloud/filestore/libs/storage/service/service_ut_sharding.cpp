@@ -90,12 +90,14 @@ NProto::TStorageConfig MakeStorageConfigWithShardIdSelectionInLeader()
 
 Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 {
+    const auto StartupEventType =
+        TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest;
+
     void WaitForTabletStart(TServiceClient& service)
     {
         TDispatchOptions options;
         options.FinalEvents = {
-            TDispatchOptions::TFinalEventCondition(
-                TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
+            TDispatchOptions::TFinalEventCondition(StartupEventType)};
         service.AccessRuntime().DispatchEvents(options);
     }
 
@@ -111,12 +113,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     struct TFileSystemConfig
     {
-        TString FsId = "test";
-        TString Shard1Id = "test-f1";
-        TString Shard2Id = "test-f2";
-        ui64 MainTabletBlockCount = 1'000;
-        ui64 Shard1BlockCount = 1'000;
-        ui64 Shard2BlockCount = 1'000;
+        const TString FsId = "test";
+        const TString Shard1Id = FsId + "_s1";
+        const TString Shard2Id = FsId + "_s2";
+        const ui64 ShardBlockCount = 1'000;
+
         bool DirectoryCreationInShardsEnabled = false;
 
         TVector<TString> ShardIds() const
@@ -129,9 +130,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             return {FsId, Shard1Id, Shard2Id};
         }
     };
-
-    const auto StartupEventType =
-        TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest;
 
     void CatchActorIds(TServiceClient& service, TVector<TActorId>& ids)
     {
@@ -152,14 +150,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             });
     }
 
-    // This function mocks the behavior of the TCreateFileStoreActor
-    // TODO(debnatkh): use single service.CreateFileStore request with
-    // AutomaticShardCreationEnabled
     static TFileSystemInfo CreateFileSystem(
         TServiceClient& service,
         const TFileSystemConfig& fsConfig)
     {
         TFileSystemInfo info;
+        bool configureShardsRequestObserved = false;
         auto prevFilter = service.AccessRuntime().SetEventFilter(
             [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
                 Y_UNUSED(runtime);
@@ -169,15 +165,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                         const auto* msg = event->Get<TDesc>();
                         const auto& desc =
                             msg->PathDescription.GetFileStoreDescription();
-                        if (desc.GetConfig().GetFileSystemId()
-                                == fsConfig.Shard1Id)
+                        if (desc.GetConfig().GetFileSystemId() == fsConfig.FsId)
                         {
+                            info.MainTabletId = desc.GetIndexTabletId();
+                        }
+                        if (desc.GetConfig().GetFileSystemId() ==
+                            fsConfig.Shard1Id) {
                             info.Shard1TabletId = desc.GetIndexTabletId();
                         }
-
-                        if (desc.GetConfig().GetFileSystemId()
-                                == fsConfig.Shard2Id)
-                        {
+                        if (desc.GetConfig().GetFileSystemId() ==
+                            fsConfig.Shard2Id) {
                             info.Shard2TabletId = desc.GetIndexTabletId();
                         }
 
@@ -191,12 +188,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                         {
                             info.Shard1ActorId = event->Recipient;
                         }
-
                         if (fsConfig.Shard2Id == msg->Record.GetFileSystemId())
                         {
                             info.Shard2ActorId = event->Recipient;
                         }
+                        break;
+                    }
 
+                    case TEvIndexTablet::EvConfigureShardsRequest: {
+                        configureShardsRequestObserved = true;
+                        break;
+                    }
+
+                    case TEvIndexTabletPrivate::
+                        EvLoadCompactionMapChunkRequest: {
+                        // The first tablet to start after ConfigureShards
+                        // request is sent is the main tablet (after suiciding)
+                        if (configureShardsRequestObserved) {
+                            info.MainTabletActorId = event->Recipient;
+                        }
                         break;
                     }
                 }
@@ -204,96 +214,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 return false;
             });
 
-        service.CreateFileStore(fsConfig.FsId, fsConfig.MainTabletBlockCount);
-        service.CreateFileStore(fsConfig.Shard1Id, fsConfig.Shard1BlockCount);
-        service.CreateFileStore(fsConfig.Shard2Id, fsConfig.Shard2BlockCount);
+        service.CreateFileStore(fsConfig.FsId, fsConfig.ShardBlockCount * 2);
 
-        {
-            NProtoPrivate::TConfigureAsShardRequest request;
-            request.SetFileSystemId(fsConfig.Shard1Id);
-            request.SetShardNo(1);
-            if (fsConfig.DirectoryCreationInShardsEnabled) {
-                *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
-                *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
-                request.SetDirectoryCreationInShardsEnabled(true);
-            }
+        service.AccessRuntime().DispatchEvents(
+            {.CustomFinalCondition = [&]() -> bool
+             {
+                 return static_cast<bool>(info.MainTabletActorId);
+             }});
 
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configureasshard", buf);
-            NProtoPrivate::TConfigureAsShardResponse response;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
-        }
-
-        {
-            NProtoPrivate::TConfigureAsShardRequest request;
-            request.SetFileSystemId(fsConfig.Shard2Id);
-            request.SetShardNo(2);
-            if (fsConfig.DirectoryCreationInShardsEnabled) {
-                *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
-                *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
-                request.SetDirectoryCreationInShardsEnabled(true);
-            }
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configureasshard", buf);
-            NProtoPrivate::TConfigureAsShardResponse response;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
-        }
-
-        // doing this right before ConfigureShardsRequest because it triggers
-        // main tablet restart
-        service.AccessRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case StartupEventType: {
-                        if (!info.MainTabletActorId) {
-                            info.MainTabletActorId = event->Sender;
-                        }
-
-                        break;
-                    }
-
-                    case TEvSSProxy::EvDescribeFileStoreResponse: {
-                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
-                        const auto* msg = event->Get<TDesc>();
-                        const auto& desc =
-                            msg->PathDescription.GetFileStoreDescription();
-                        if (desc.GetConfig().GetFileSystemId() == fsConfig.FsId)
-                        {
-                            info.MainTabletId = desc.GetIndexTabletId();
-                        }
-
-                        break;
-                    }
-                }
-
-                return false;
-            });
-
-        {
-            NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
-            *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
-            request.SetDirectoryCreationInShardsEnabled(
-                fsConfig.DirectoryCreationInShardsEnabled);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("configureshards", buf);
-            NProtoPrivate::TConfigureShardsResponse response;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
-        }
-
-        // waiting for IndexTablet start after the restart triggered by
-        // configureshards
-        WaitForTabletStart(service);
         service.AccessRuntime().SetEventFilter(prevFilter);
 
         UNIT_ASSERT_VALUES_UNEQUAL(-1, info.MainTabletId);
@@ -306,16 +234,26 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         return info;
     }
 
+#define CREATE_ENV_AND_SHARDED_FILESYSTEM()                                   \
+    /* Enable automatic shard creation */                                     \
+    config.SetAutomaticShardCreationEnabled(true);                            \
+    config.SetAutomaticallyCreatedShardSize(fsConfig.ShardBlockCount * 4_KB); \
+    config.SetShardAllocationUnit(fsConfig.ShardBlockCount * 4_KB);           \
+                                                                              \
+    TTestEnv env({}, config);                                                 \
+    env.CreateSubDomain("nfs");                                               \
+                                                                              \
+    ui32 nodeIdx = env.CreateNode("nfs");                                     \
+                                                                              \
+    TServiceClient service(env.GetRuntime(), nodeIdx);                        \
+    auto fsInfo = CreateFileSystem(service, fsConfig);                        \
+    Y_UNUSED(fsInfo);                                                         \
+    // CREATE_ENV_AND_SHARDED_FILESYSTEM
+
     SERVICE_TEST_SIMPLE(ShouldCreateSessionInShards)
     {
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
         auto headers1 = headers;
@@ -456,14 +394,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         const auto idleSessionTimeout = TDuration::Minutes(2);
         config.SetIdleSessionTimeout(idleSessionTimeout.MilliSeconds());
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        const auto fsInfo = CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
         auto headers1 = headers;
@@ -631,14 +564,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldCreateNodeInShardViaLeader)
     {
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -700,14 +627,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST_SIMPLE(ShouldCheckAttrForNodeCreatedInShardViaLeader)
     {
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -780,14 +701,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER(
         ShouldCreateNodeInShardByCreateHandleViaLeader)
     {
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -882,14 +797,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldForwardRequestsToShard)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -1095,14 +1005,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldCreateDirectoryStructureInLeader)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -1234,14 +1139,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ShouldHandleCreateNodeErrorFromShardUponCreateHandleViaLeader)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -1302,14 +1202,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldNotFailListNodesUponGetAttrENOENT)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -1429,14 +1324,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetGetNodeAttrBatchEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
         auto headers1 = headers;
@@ -1507,14 +1396,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldValidateRequestsWithShardId)
     {
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -1545,14 +1428,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST_SIMPLE(ShouldValidateShardConfiguration)
     {
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         const auto shard3Id = fsConfig.FsId + "-f3";
         service.CreateFileStore(shard3Id, 1'000);
@@ -1642,14 +1519,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldRenameExternalNodes)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -1884,14 +1755,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldPerformLocksForExternalNodes)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -2014,14 +1879,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldLinkExternalNodes)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -2149,14 +2008,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldAggregateFileSystemMetrics)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -2201,7 +2054,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             service.StatFileStore(headers, fsConfig.FsId)->Record;
         const auto& fileStore = fsStat.GetFileStore();
         UNIT_ASSERT_VALUES_EQUAL(fsConfig.FsId, fileStore.GetFileSystemId());
-        UNIT_ASSERT_VALUES_EQUAL(1'000, fileStore.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(2'000, fileStore.GetBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(4_KB, fileStore.GetBlockSize());
 
         const auto& fileStoreStats = fsStat.GetStats();
@@ -2259,14 +2112,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldAggregateFileSystemMetricsInBackground)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        const auto fsInfo = CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -2482,14 +2329,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldRetryUnlinkingInShard)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -2589,14 +2430,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ShouldRetryUnlinkingInShardUponLeaderRestart)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        const auto fsInfo = CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -2684,14 +2519,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ShouldRetryUnlinkingInShardUponLeaderRestartForRenameNode)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        const auto fsInfo = CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -2795,14 +2624,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldRetryNodeCreationInShard)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -2890,14 +2713,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ShouldRetryNodeCreationInShardUponLeaderRestart)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        const auto fsInfo = CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -3006,14 +2823,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ShouldRetryNodeCreationInShardUponCreateHandle)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -3109,14 +2920,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ShouldRetryNodeCreationInShardUponCreateHandleUponLeaderRestart)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        const auto fsInfo = CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -4133,14 +3938,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     void CheckPendingCreateNodeInShards(bool withCreateHandle, bool withTabletReboot)
     {
         NProto::TStorageConfig config;
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
         TFileSystemConfig fsConfig;
-        const auto fsInfo = CreateFileSystem(service, fsConfig);
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -4454,15 +4253,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        TFileSystemConfig fsConfig;
-        fsConfig.DirectoryCreationInShardsEnabled = true;
-        CreateFileSystem(service, fsConfig);
+        TFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -4568,15 +4361,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        TFileSystemConfig fsConfig;
-        fsConfig.DirectoryCreationInShardsEnabled = true;
-        CreateFileSystem(service, fsConfig);
+        TFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -4602,15 +4389,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        TFileSystemConfig fsConfig;
-        fsConfig.DirectoryCreationInShardsEnabled = true;
-        CreateFileSystem(service, fsConfig);
+        TFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -4725,15 +4506,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        TFileSystemConfig fsConfig;
-        fsConfig.DirectoryCreationInShardsEnabled = true;
-        const auto fsInfo = CreateFileSystem(service, fsConfig);
+        TFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -4874,16 +4649,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        TFileSystemConfig fsConfig{
-            .DirectoryCreationInShardsEnabled = true,
-        };
-        CreateFileSystem(service, fsConfig);
+        TFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -4949,15 +4717,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        TFileSystemConfig fsConfig;
-        fsConfig.DirectoryCreationInShardsEnabled = true;
-        const auto fsInfo = CreateFileSystem(service, fsConfig);
+        TFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -5085,15 +4847,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        TFileSystemConfig fsConfig;
-        fsConfig.DirectoryCreationInShardsEnabled = true;
-        CreateFileSystem(service, fsConfig);
+        TFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -5298,15 +5054,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        TFileSystemConfig fsConfig;
-        fsConfig.DirectoryCreationInShardsEnabled = true;
-        const auto fsInfo = CreateFileSystem(service, fsConfig);
+        TFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
@@ -5410,15 +5160,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        TFileSystemConfig fsConfig;
-        fsConfig.DirectoryCreationInShardsEnabled = true;
-        CreateFileSystem(service, fsConfig);
+        TFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
