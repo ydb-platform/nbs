@@ -678,7 +678,7 @@ message TAllocateDiskResponse
     repeated TLaggingDevice RemovedLaggingDevices = 9;
 
     // Devices that had been lost by disk agent.
-    repeated string LostDevices = 10;
+    repeated string LostDeviceUUIDs = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

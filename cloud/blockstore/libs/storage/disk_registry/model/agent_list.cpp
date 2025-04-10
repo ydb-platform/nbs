@@ -434,12 +434,12 @@ auto TAgentList::RegisterAgent(
     int i = 0;
     int j = 0;
 
-    TVector<TString> lostDevicesEvent;
+    TVector<TString> lostOrFoundDeviceUUIDs;
 
-    auto addLoseDeviceEventIfNeeded = [&](const auto& uuid)
+    auto addLostDeviceEventIfNeeded = [&](const auto& uuid)
     {
         if (!LostDevices.contains(uuid)) {
-            lostDevicesEvent.emplace_back(uuid);
+            lostOrFoundDeviceUUIDs.emplace_back(uuid);
         }
     };
 
@@ -453,7 +453,7 @@ auto TAgentList::RegisterAgent(
         if (cmp == 0) {
             auto it = LostDevices.find(oldDevice.GetDeviceUUID());
             if (it != LostDevices.end()) {
-                lostDevicesEvent.emplace_back(newDevice.GetDeviceUUID());
+                lostOrFoundDeviceUUIDs.emplace_back(newDevice.GetDeviceUUID());
                 LostDevices.erase(it);
             }
 
@@ -483,7 +483,7 @@ auto TAgentList::RegisterAgent(
         }
 
         if (IsAllowedDevice(*agent, oldDevice)) {
-            addLoseDeviceEventIfNeeded(oldDevice.GetDeviceUUID());
+            addLostDeviceEventIfNeeded(oldDevice.GetDeviceUUID());
             AddLostDevice(*agent, timestamp, std::move(oldDevice));
         }
 
@@ -500,7 +500,7 @@ auto TAgentList::RegisterAgent(
     for (; j < oldList.size(); ++j) {
         auto& oldDevice = oldList[j];
         if (IsAllowedDevice(*agent, oldDevice)) {
-            addLoseDeviceEventIfNeeded(oldDevice.GetDeviceUUID());
+            addLostDeviceEventIfNeeded(oldDevice.GetDeviceUUID());
             AddLostDevice(*agent, timestamp, std::move(oldDevice));
         }
     }
@@ -515,7 +515,7 @@ auto TAgentList::RegisterAgent(
         .NewDevices = std::move(newDeviceIds),
         .PrevNodeId = prevNodeId,
         .OldConfigs = std::move(oldConfigs),
-        .LostDeviceEvents = std::move(lostDevicesEvent)};
+        .LostDeviceEvents = std::move(lostOrFoundDeviceUUIDs)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

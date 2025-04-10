@@ -133,7 +133,7 @@ void TReallocateActor::HandleAllocateDiskResponse(
 
     TVector<TString> lostDevices;
     std::ranges::move(
-        *record.MutableLostDevices(),
+        *record.MutableLostDeviceUUIDs(),
         std::back_inserter(lostDevices));
 
     auto request = std::make_unique<TEvVolumePrivate::TEvUpdateDevicesRequest>(

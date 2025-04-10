@@ -934,8 +934,12 @@ TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForAcquireRelease(
 
     auto addDeviceIfNeeded = [&](const auto& d)
     {
-        if (filterErrorDevices && LostDevices.contains(d.GetDeviceUUID())) {
-            return;
+        if (filterErrorDevices) {
+            for (const auto& lostDevice: Meta.GetLostDevicesUUIDs()) {
+                if (d.GetDeviceUUID() == lostDevice) {
+                    return;
+                }
+            }
         }
         resultDevices.emplace_back(d);
     };
@@ -953,14 +957,6 @@ TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForAcquireRelease(
     }
 
     return resultDevices;
-}
-
-void TVolumeState::UpdateLostDevices(TVector<TString> lostDevices)
-{
-    LostDevices.clear();
-    for (auto& d: lostDevices) {
-        LostDevices.emplace(std::move(d));
-    }
 }
 
 void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)

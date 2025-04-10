@@ -252,8 +252,6 @@ private:
     THashMap<TString, TLaggingAgentMigrationInfo>
         CurrentlyMigratingLaggingAgents;
 
-    THashSet<TString> LostDevices;
-
 public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
@@ -768,8 +766,6 @@ public:
 
     TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease(
         bool filterErrorDevices) const;
-
-    void UpdateLostDevices(TVector<TString> lostDevices);
 
     //
     // Followers
