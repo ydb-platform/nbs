@@ -90,18 +90,32 @@ void TLaggingAgentMigrationActor::HandleStartLaggingAgentMigration(
     StartWork(ctx);
 }
 
+void TLaggingAgentMigrationActor::OnRangeMigrated(
+    const NActors::TActorContext& ctx,
+    TBlockRange64 blockRange)
+{
+    BlocksMigratedSinceLastReport += blockRange.Size();
+    if (Config->GetMigrationIndexCachingInterval() <=
+        BlocksMigratedSinceLastReport)
+    {
+        ctx.Send(
+            PartConfig->GetParentActorId(),
+            std::make_unique<
+                TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
+                AgentId,
+                GetProcessedBlockCount(),
+                GetBlockCountNeedToBeProcessed()));
+
+        BlocksMigratedSinceLastReport = 0;
+    }
+}
+
 void TLaggingAgentMigrationActor::OnMigrationProgress(
     const TActorContext& ctx,
     ui64 migrationIndex)
 {
     Y_UNUSED(migrationIndex);
-
-    ctx.Send(
-        PartConfig->GetParentActorId(),
-        std::make_unique<TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
-            AgentId,
-            GetProcessedBlockCount(),
-            GetBlockCountNeedToBeProcessed()));
+    Y_UNUSED(ctx);
 }
 
 void TLaggingAgentMigrationActor::OnMigrationFinished(const TActorContext& ctx)

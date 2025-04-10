@@ -47,6 +47,10 @@ public:
         const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev) = 0;
 
+    virtual void OnRangeMigrated(
+        const NActors::TActorContext& ctx,
+        TBlockRange64 migratedRange) = 0;
+
     // Notifies that a sufficiently large block of data has been migrated. The
     // size is determined by the settings.
     virtual void OnMigrationProgress(

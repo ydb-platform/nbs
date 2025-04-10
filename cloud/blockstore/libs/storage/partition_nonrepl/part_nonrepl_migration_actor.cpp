@@ -101,6 +101,14 @@ void TNonreplicatedPartitionMigrationActor::OnMigrationError(
         SrcConfig->GetName().c_str());
 }
 
+void TNonreplicatedPartitionMigrationActor::OnRangeMigrated(
+    const NActors::TActorContext& ctx,
+    TBlockRange64 range)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(range);
+}
+
 void TNonreplicatedPartitionMigrationActor::OnMigrationProgress(
     const NActors::TActorContext& ctx,
     ui64 migrationIndex)
