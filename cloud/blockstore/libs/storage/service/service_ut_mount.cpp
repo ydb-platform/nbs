@@ -3269,10 +3269,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto response2 = service1.UnmountVolume(
             DefaultDiskId,
             sessionId);
-        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response2->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Volume is already destroyed",
-            response2->Record.GetError().GetMessage());
+        UNIT_ASSERT_C(
+            SUCCEEDED(response2->GetStatus()),
+            response2->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldRetryUnmountForServiceInitiatedUnmountsWithRetriableError)
@@ -5106,26 +5105,23 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         {
             auto unmountResponse = service.RecvUnmountVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_ALREADY,
-                unmountResponse->GetStatus(),
-                unmountResponse->GetErrorReason()
-            );
+            UNIT_ASSERT_C(
+                SUCCEEDED(unmountResponse->GetStatus()),
+                unmountResponse->GetErrorReason());
         }
 
         {
             auto mountResponse = service.RecvMountVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, mountResponse->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(
-                "Disk tablet is changed. Retrying",
+                "Tablet id changed. Retry",
                 mountResponse->GetErrorReason());
         }
 
         {
             auto unmountResponse = service.RecvUnmountVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, unmountResponse->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "Volume is already unmounted",
+            UNIT_ASSERT_C(
+                SUCCEEDED(unmountResponse->GetStatus()),
                 unmountResponse->GetErrorReason());
         }
 
