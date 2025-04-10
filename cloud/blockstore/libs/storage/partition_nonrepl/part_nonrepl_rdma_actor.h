@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "part_nonrepl_events_private.h"
+#include "rdma_device_request_handler.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
@@ -15,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -27,7 +29,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceReadRequestContext: public NRdma::TNullContext
+struct TDeviceReadRequestContext: public TDeviceRequestContext
 {
     ui64 StartIndexOffset = 0;
     ui64 BlockCount = 0;
@@ -67,6 +69,12 @@ private:
 
     TRequestInfoPtr Poisoner;
 
+    struct TTimedOutDeviceCtx
+    {
+        TInstant FirstErrorTs;
+        bool VolumeWasNotified = false;
+    };
+    THashMap<TString, TTimedOutDeviceCtx> TimedOutDeviceCtxByDeviceUUID;
     bool SentRdmaUnavailableNotification = false;
 
     const bool AssignIdToWriteAndZeroRequestsEnabled{
@@ -89,6 +97,12 @@ private:
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
+    void NotifyDeviceTimedOutIfNeeded(
+        const NActors::TActorContext& ctx,
+        const TString& deviceUUID);
+    void ProcessOperationCompleted(
+        const NActors::TActorContext& ctx,
+        const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted);
     void SendRdmaUnavailableIfNeeded(const NActors::TActorContext& ctx);
     void UpdateStats(const NProto::TPartitionStats& update);
 
@@ -139,6 +153,14 @@ private:
 
     void HandleChecksumBlocksCompleted(
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAgentIsUnavailable(
+        const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAgentIsBackOnline(
+        const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
