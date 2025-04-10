@@ -332,7 +332,7 @@ private:
             }
 
             if (belongsToDisk) {
-                response->Record.AddLostDevices(lostDevice);
+                response->Record.AddLostDeviceUUIDs(lostDevice);
             }
         }
 
