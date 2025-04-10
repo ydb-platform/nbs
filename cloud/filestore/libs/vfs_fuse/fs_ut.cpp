@@ -439,7 +439,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const TString sessionId = CreateGuidAsString();
 
         std::atomic_bool recovered = false;
-        bootstrap.Service->CreateSessionHandler = [sessionId, &recovered] (auto callContext, auto request) {
+        bootstrap.Service->CreateSessionHandler =
+            [sessionId, &recovered](auto callContext, auto request)
+        {
             Y_UNUSED(callContext);
 
             NProto::TCreateSessionResponse result;
