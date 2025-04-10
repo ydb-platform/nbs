@@ -362,6 +362,7 @@ private:
     bool UpdateLeakyBucketCountersScheduled = false;
     bool SyncSessionsScheduled = false;
     bool CleanupSessionsScheduled = false;
+    bool EnqueueBlobIndexOpIfNeededScheduled = false;
 
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
 
@@ -490,6 +491,7 @@ private:
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
+    void ScheduleEnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
 
@@ -770,6 +772,10 @@ private:
 
     void HandleLoadCompactionMapChunkResponse(
         const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleEnqueueBlobIndexOpIfNeeded(
+        const TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);

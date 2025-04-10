@@ -323,8 +323,17 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
 {
     const auto compactionInfo = GetCompactionInfo();
     const auto cleanupInfo = GetCleanupInfo();
-    const bool shouldCleanup = cleanupInfo.ShouldCleanup &&
-        (cleanupInfo.IsPriority || !ShouldThrottleCleanup(ctx, cleanupInfo));
+
+    const bool shouldThrottleCleanup = ShouldThrottleCleanup(ctx, cleanupInfo);
+    if (shouldThrottleCleanup) {
+        // Without user operations, EnqueueBlobIndexOpIfNeeded will not be
+        // called and cleanup will not resume after throttling.
+        // Therefore we reschedule calling EnqueueBlobIndexOpIfNeeded.
+        ScheduleEnqueueBlobIndexOpIfNeeded(ctx);
+    }
+
+    const bool shouldCleanup =
+        cleanupInfo.ShouldCleanup && !shouldThrottleCleanup;
 
     if (IsBlobIndexOpsQueueEmpty()) {
         auto blobIndexOpsPriority = Config->GetBlobIndexOpsPriority();
@@ -424,6 +433,30 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
         default:
             TABLET_VERIFY(0);
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::ScheduleEnqueueBlobIndexOpIfNeeded(
+    const NActors::TActorContext& ctx)
+{
+    if (!EnqueueBlobIndexOpIfNeededScheduled) {
+        ctx.Schedule(EnqueueBlobIndexOpIfNeededInterval,
+            new TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded());
+            EnqueueBlobIndexOpIfNeededScheduled = true;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleEnqueueBlobIndexOpIfNeeded(
+    const TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    EnqueueBlobIndexOpIfNeededScheduled = false;
+    EnqueueBlobIndexOpIfNeeded(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

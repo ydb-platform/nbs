@@ -729,9 +729,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             UNIT_ASSERT_GT(2 * blockCount - 1, deletionMarkersCount);
         }
 
-        // Advance time and trigger cleanup again by calling a user operation
+        // Advance time - cleanup should be rescheduled and process more blocks
         tablet.AdvanceTime(TDuration::Minutes(10));
-        tablet.SetNodeAttr(args);
+        // TODO: not working as expected in unit test
+        //tablet.DispatchEvents();
+        //tablet.SetNodeAttr(args);
 
         // Cleanup is expected to process a bit more blocks
         {

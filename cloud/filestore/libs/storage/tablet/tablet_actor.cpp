@@ -589,6 +589,10 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
     const NActors::TActorContext& ctx,
     const TCleanupInfo& cleanupInfo) const
 {
+    if (!cleanupInfo.ShouldCleanup || cleanupInfo.IsPriority) {
+        return false;
+    }
+
     if (Config->GetCleanupCpuThrottlingThresholdPercentage() == 0) {
         return false;
     }
@@ -969,6 +973,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -1017,6 +1022,9 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(
             TEvIndexTabletPrivate::TEvLoadNodesRequest,
             HandleLoadNodesRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
+            HandleEnqueueBlobIndexOpIfNeeded);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -1073,6 +1081,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvLoadNodesRequest,
             HandleLoadNodesRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
+            HandleEnqueueBlobIndexOpIfNeeded);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -1124,6 +1135,8 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
+        IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
+
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
@@ -1172,6 +1185,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
