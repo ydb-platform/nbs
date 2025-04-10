@@ -314,6 +314,8 @@ public:
     bool GetServerWriteBackCacheEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;
+    NProto::EGuestCachingType GetGuestCachingType() const;
+    ui64 GetSessionHandleOffloadedStatsCapacity() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

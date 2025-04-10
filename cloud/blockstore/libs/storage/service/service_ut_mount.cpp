@@ -2925,6 +2925,87 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, startVolumeSeen);
     }
 
+    Y_UNIT_TEST(ShouldNotLockVolumeOnRemount)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        ui64 lockTabletRequestCount = 0;
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+        service.AssignVolume();
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvLockTabletRequest: {
+                        ++lockTabletRequestCount;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.MountVolume();
+        UNIT_ASSERT_VALUES_EQUAL(1, lockTabletRequestCount);
+
+        service.MountVolume();
+        UNIT_ASSERT_VALUES_EQUAL(1, lockTabletRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldLockVolumeOnRemountAfterLockLost)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TActorId startVolumeActorId;
+        ui64 volumeTabletId = 0;
+        ui64 lockTabletRequestCount = 0;
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+        service.AssignVolume();
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvLockTabletRequest: {
+                        startVolumeActorId = event->Sender;
+                        ++lockTabletRequestCount;
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.MountVolume();
+        UNIT_ASSERT_VALUES_EQUAL(1, lockTabletRequestCount);
+
+        service.SendRequest(
+            startVolumeActorId,
+            std::make_unique<TEvHiveProxy::TEvTabletLockLost>(volumeTabletId));
+
+        // Mount volume fails with error because Hive does not lost locks in
+        // reality.
+        service.SendMountVolumeRequest();
+        auto response = service.RecvMountVolumeResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+        UNIT_ASSERT(response->GetErrorReason().Contains(
+            "Concurrent lock requests detected"));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, lockTabletRequestCount);
+    }
+
     Y_UNIT_TEST(ShouldNotSendVolumeMountedForPingMounts)
     {
         TTestEnv env;
@@ -3188,10 +3269,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto response2 = service1.UnmountVolume(
             DefaultDiskId,
             sessionId);
-        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response2->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Volume is already destroyed",
-            response2->Record.GetError().GetMessage());
+        UNIT_ASSERT_C(
+            SUCCEEDED(response2->GetStatus()),
+            response2->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldRetryUnmountForServiceInitiatedUnmountsWithRetriableError)
@@ -5025,26 +5105,23 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         {
             auto unmountResponse = service.RecvUnmountVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_ALREADY,
-                unmountResponse->GetStatus(),
-                unmountResponse->GetErrorReason()
-            );
+            UNIT_ASSERT_C(
+                SUCCEEDED(unmountResponse->GetStatus()),
+                unmountResponse->GetErrorReason());
         }
 
         {
             auto mountResponse = service.RecvMountVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, mountResponse->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(
-                "Disk tablet is changed. Retrying",
+                "Tablet id changed. Retry",
                 mountResponse->GetErrorReason());
         }
 
         {
             auto unmountResponse = service.RecvUnmountVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, unmountResponse->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "Volume is already unmounted",
+            UNIT_ASSERT_C(
+                SUCCEEDED(unmountResponse->GetStatus()),
                 unmountResponse->GetErrorReason());
         }
 

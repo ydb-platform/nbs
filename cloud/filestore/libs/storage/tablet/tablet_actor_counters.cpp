@@ -614,6 +614,7 @@ void TIndexTabletActor::TMetrics::Update(
     RenameNode.UpdatePrev(now);
     UnlinkNode.UpdatePrev(now);
     StatFileStore.UpdatePrev(now);
+    GetNodeXAttr.UpdatePrev(now);
 
     Cleanup.UpdatePrev(now);
     Flush.UpdatePrev(now);

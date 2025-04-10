@@ -283,9 +283,7 @@ jobs:
       build_preset: "relwithdebinfo"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
-      run_tests: true
-      cache_update_build: false
-      cache_update_tests: false
+      cache_update: false
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_asan:
@@ -302,9 +300,7 @@ jobs:
       vm_name_suffix: "-asan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
-      cache_update_build: false
-      cache_update_tests: false
+      cache_update: false
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_tsan:
@@ -321,9 +317,7 @@ jobs:
       vm_name_suffix: "-tsan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
-      cache_update_build: false
-      cache_update_tests: false
+      cache_update: false
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_msan:
@@ -340,9 +334,7 @@ jobs:
       vm_name_suffix: "-msan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
-      cache_update_build: false
-      cache_update_tests: false
+      cache_update: false
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_ubsan:
@@ -359,8 +351,6 @@ jobs:
       vm_name_suffix: "-ubsan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
-      cache_update_build: false
-      cache_update_tests: false
+      cache_update: false
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit

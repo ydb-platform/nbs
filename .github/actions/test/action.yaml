@@ -52,10 +52,6 @@ inputs:
     required: false
     default: 'yes'
     description: 'Use network cache'
-  nebius:
-    required: false
-    default: 'no'
-    description: 'Use nebius'
   truncate_enabled:
     required: false
     default: 'yes'
@@ -180,13 +176,13 @@ runs:
         echo "::endgroup::"
         date
         echo "::group::ya-make-test"
-        sudo -E -H -u github ./ya test -k --build "${build_type}" \
+        choom -n 1 -- sudo -E -H -u github  ./ya test -k --build "${build_type}" \
           "${test_size[@]/#/--test-size=}" "${test_type[@]/#/--test-type=}" \
           --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
           --cache-size 512G --do-not-output-stderrs -T \
           --stat --log-file "$LOG_DIR/ya_log.txt" --evlog-file "$LOG_DIR/ya_evlog.jsonl" \
           --canonization-backend=ydb-canondata.storage.yandexcloud.net \
-          --junit "$JUNIT_REPORT_XML" --output "$OUT_DIR" "${extra_params[@]}" || (
+          --junit "$JUNIT_REPORT_XML" --output "$OUT_DIR" "${extra_params[@]}" --nice 0 || (
             RC=$?
             if [ $RC -ne 0 ]; then
               echo "ya test returned $RC, check existence $JUNIT_REPORT_XML"
@@ -223,10 +219,7 @@ runs:
       run: |
         echo "::group::muted-tests"
         cat .github/config/muted_ya.txt
-        cat .github/config/muted_ya_nebius.txt
         MUTED_CONFIG=".github/config/muted_ya.txt"
-        # shellcheck disable=SC2193
-        [ "${{ inputs.nebius }}" == "yes" ] && MUTED_CONFIG=".github/config/muted_ya_nebius.txt"
         echo "::endgroup::"
         echo "::group::postprocess-junit"
         sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
@@ -249,6 +242,7 @@ runs:
         sudo dmesg -T > "$LOG_DIR/dmesg.log" || true
         sudo cp /var/log/atop/atop_* "$LOG_DIR/" || true
         sudo cp /var/log/syslog "$LOG_DIR/syslog.log" || true
+        # shellcheck disable=SC2024
         sudo ps aux > "$LOG_DIR/ps.log" || true
         sudo chown -R github:github "$LOG_DIR/dmesg.log" "$LOG_DIR/atop_*" "$LOG_DIR/syslog.log" "$LOG_DIR/ps.log" || true
         echo "::endgroup::"

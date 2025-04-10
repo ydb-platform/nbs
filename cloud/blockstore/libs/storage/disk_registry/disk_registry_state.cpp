@@ -3463,18 +3463,42 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     return error;
 }
 
-bool TDiskRegistryState::FilterDevicesAtUnavailableAgents(TDiskInfo& diskInfo) const
+bool TDiskRegistryState::FilterDevicesForAcquire(TDiskInfo& diskInfo) const
 {
-    auto isUnavailable = [&] (const auto& d) {
+    auto isUnavailableOrBroken = [&](const auto& d)
+    {
+        const auto* agent = AgentList.FindAgent(d.GetAgentId());
+
+        const bool agentUnavailable =
+            !agent || agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE;
+
+        const bool brokenDevice = d.GetState() == NProto::DEVICE_STATE_ERROR;
+
+        return agentUnavailable || brokenDevice;
+    };
+
+    EraseIf(diskInfo.Devices, isUnavailableOrBroken);
+    EraseIf(
+        diskInfo.Migrations,
+        [&](const auto& d)
+        { return isUnavailableOrBroken(d.GetTargetDevice()); });
+
+    return diskInfo.Devices.size() || diskInfo.Migrations.size();
+}
+
+bool TDiskRegistryState::FilterDevicesForRelease(TDiskInfo& diskInfo) const
+{
+    auto isUnavailable = [&](const auto& d)
+    {
         const auto* agent = AgentList.FindAgent(d.GetAgentId());
 
         return !agent || agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE;
     };
 
     EraseIf(diskInfo.Devices, isUnavailable);
-    EraseIf(diskInfo.Migrations, [&] (const auto& d) {
-        return isUnavailable(d.GetTargetDevice());
-    });
+    EraseIf(
+        diskInfo.Migrations,
+        [&](const auto& d) { return isUnavailable(d.GetTargetDevice()); });
 
     return diskInfo.Devices.size() || diskInfo.Migrations.size();
 }
