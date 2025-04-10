@@ -117,10 +117,10 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
-        deviceRequests.size(),
-        msg->Record.GetBlocksCount(),
+        requestId,
         SelfId(),
-        requestId);
+        msg->Record.GetBlocksCount(),
+        deviceRequests.size());
 
     struct TDeviceRequestInfo
     {
