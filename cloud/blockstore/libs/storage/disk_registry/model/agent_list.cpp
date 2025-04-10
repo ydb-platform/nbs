@@ -515,7 +515,7 @@ auto TAgentList::RegisterAgent(
         .NewDevices = std::move(newDeviceIds),
         .PrevNodeId = prevNodeId,
         .OldConfigs = std::move(oldConfigs),
-        .LostDeviceEvents = std::move(lostOrFoundDeviceUUIDs)};
+        .LostOrFoundDeviceUUIDs = std::move(lostOrFoundDeviceUUIDs)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

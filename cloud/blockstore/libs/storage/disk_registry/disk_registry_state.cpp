@@ -1032,7 +1032,7 @@ auto TDiskRegistryState::RegisterAgent(
             }
         }
 
-        for (const auto& lostDevice: r.LostDeviceEvents) {
+        for (const auto& lostDevice: r.LostOrFoundDeviceUUIDs) {
             if (auto diskId = DeviceList.FindDiskId(lostDevice)) {
                 AddReallocateRequest(db, diskId);
                 disksToReallocate.emplace_back(diskId);
