@@ -730,10 +730,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         }
 
         // Advance time - cleanup should be rescheduled and process more blocks
-        tablet.AdvanceTime(TDuration::Minutes(10));
-        // TODO: not working as expected in unit test
-        //tablet.DispatchEvents();
-        //tablet.SetNodeAttr(args);
+        tablet.AdvanceTime(TDuration::Minutes(1));
+        env.GetRuntime().DispatchEvents({}, TDuration::Minutes(1));
 
         // Cleanup is expected to process a bit more blocks
         {

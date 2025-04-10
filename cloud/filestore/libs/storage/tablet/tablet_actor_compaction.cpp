@@ -444,6 +444,10 @@ void TIndexTabletActor::ScheduleEnqueueBlobIndexOpIfNeeded(
         ctx.Schedule(EnqueueBlobIndexOpIfNeededInterval,
             new TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded());
             EnqueueBlobIndexOpIfNeededScheduled = true;
+
+        LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+            "%s TEvEnqueueBlobIndexOpIfNeeded scheduled",
+            LogTag.c_str());
     }
 }
 
@@ -454,6 +458,10 @@ void TIndexTabletActor::HandleEnqueueBlobIndexOpIfNeeded(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
+
+    LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+        "%s TEvEnqueueBlobIndexOpIfNeeded received",
+        LogTag.c_str());
 
     EnqueueBlobIndexOpIfNeededScheduled = false;
     EnqueueBlobIndexOpIfNeeded(ctx);
