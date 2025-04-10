@@ -63,7 +63,7 @@ jobs:
     needs: 
       - dummy
       - get
-    runs-on: [ self-hosted, "self-hosted", "runner_${{ inputs.flavor }}" ]
+    runs-on: [ self-hosted, "self-hosted", "${{ needs.get.outputs.label }}", "runner_${{ needs.get.outputs.runner_flavor }}" ]
     if: ${{ needs.get.outputs.instance-id != '' && always() }}
     steps:
     - name: Checkout

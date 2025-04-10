@@ -232,7 +232,7 @@ jobs:
     needs:
       - provide-runner # required to get output from the start-runner job
       - build-and-test # required to wait when the main job is done
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "self-hosted", "${{ needs.provide-runner.outputs.label }}", "runner_${{ needs.provide-runner.outputs.label }}" ]
     steps:
       - name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests  || '0' }}s if build failed
         shell: bash
@@ -249,7 +249,7 @@ jobs:
       - provide-runner  # required to get output from the start-runner job
       - build-and-test  # required to wait when the main job is done
       - sleep-if-needed # required to wait until all debug is done
-    runs-on: [ self-hosted, "self-hosted", "runner_light"]
+    runs-on: [ self-hosted, "self-hosted", "${{ needs.provide-runner.outputs.label }}", "runner_${{ needs.provide-runner.outputs.label }}" ]
     if: always()
     steps:
       - name: checkout PR

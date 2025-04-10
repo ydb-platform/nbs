@@ -163,7 +163,7 @@ jobs:
     needs:
       - provide-runner  # required to get output from the start-runner job
       - build-and-test
-    runs-on: [ self-hosted, "self-hosted", "runner_light"]
+    runs-on: [ self-hosted, "self-hosted", "${{ needs.provide-runner.outputs.label }}", "runner_${{ needs.provide-runner.outputs.label }}" ]
     if: always()
     steps:
       - name: checkout PR
