@@ -376,7 +376,7 @@ void TLaggingAgentsReplicaProxyActor::ReadBlocks(
         const auto& agentId = deviceRequest.Device.GetAgentId();
         const TActorId recipient = GetRecipientActorId(
             deviceRequest.BlockRange,
-            true   // read
+            true   // forRead
         );
         if (recipient != NonreplPartitionActorId) {
             TString message = TStringBuilder()
@@ -475,8 +475,8 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::SplitRequest(
         msg->CallContext,
         GetRecipientActorId(
             deviceRequests[0].BlockRange,
-            false   // read
-            ),
+            false),   // forRead
+
         deviceRequests[0].Device.GetDeviceUUID());
 
     return result;
@@ -491,8 +491,7 @@ bool TLaggingAgentsReplicaProxyActor::ShouldSplitWriteRequest(
     for (const auto& deviceRequest: deviceRequests) {
         recipientActors.insert(GetRecipientActorId(
             deviceRequest.BlockRange,
-            false   // read
-            ));
+            false));   // forRead
     }
     return recipientActors.size() > 1;
 }
@@ -522,8 +521,8 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
             forkedCallContext,
             GetRecipientActorId(
                 deviceRequest.BlockRange,
-                false   // read
-                ),
+                false),   // forRead
+
             deviceRequest.Device.GetDeviceUUID());
     }
 
@@ -563,8 +562,8 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
             forkedCallContext,
             GetRecipientActorId(
                 deviceRequest.BlockRange,
-                false   // read
-                ),
+                false),   // forRead
+
             deviceRequest.Device.GetDeviceUUID());
     }
 
@@ -589,8 +588,8 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
             forkedCallContext,
             GetRecipientActorId(
                 deviceRequest.BlockRange,
-                false   // read
-                ),
+                false),   // forRead
+
             deviceRequest.Device.GetDeviceUUID());
     }
 
@@ -598,13 +597,14 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
 }
 
 NActors::TActorId TLaggingAgentsReplicaProxyActor::GetRecipientActorId(
-    const TBlockRange64& requestBlockRange, bool read) const
+    const TBlockRange64& requestBlockRange,
+    bool forRead) const
 {
     const auto& blockRangeData =
         GetBlockRangeDataByBlockRange(requestBlockRange);
     const auto& agentId = blockRangeData.LaggingAgentId;
-    // Lagging target migration reads can always be sent direcrtly to partition.
-    if (agentId.empty() || (blockRangeData.IsTargetMigration && read)) {
+    // Lagging target migration reads can always be sent directly to partition.
+    if (agentId.empty() || (blockRangeData.IsTargetMigration && forRead)) {
         return NonreplPartitionActorId;
     }
 

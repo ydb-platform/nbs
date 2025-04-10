@@ -101,8 +101,6 @@ struct TTestEnv
         int deviceCountPerReplica = 3)
     {
         TVector<TDevices> replicasDevices;
-
-        constexpr int ReplicaCount = 2;
         TDevices devices;
         for (int i = 0; i < deviceCountPerReplica; i++) {
             TTestEnv::AddDevice(
@@ -114,6 +112,7 @@ struct TTestEnv
         }
         replicasDevices.push_back(std::move(devices));
 
+        constexpr int ReplicaCount = 2;
         for (int i = 0; i < ReplicaCount; i++) {
             replicasDevices.push_back(TDevices());
             for (int j = 0; j < deviceCountPerReplica; j++) {

@@ -123,7 +123,8 @@ private:
     [[nodiscard]] bool ShouldSplitWriteRequest(
         const TVector<TDeviceRequest>& deviceRequests) const;
     [[nodiscard]] NActors::TActorId GetRecipientActorId(
-        const TBlockRange64& requestBlockRange, bool read) const;
+        const TBlockRange64& requestBlockRange,
+        bool read) const;
 
     [[nodiscard]] const TBlockRangeData& GetBlockRangeDataByBlockRange(
         const TBlockRange64& requestBlockRange) const;
