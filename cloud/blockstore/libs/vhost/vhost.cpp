@@ -155,7 +155,7 @@ public:
         VhdBdevInfo.map_cb = callbacks.MapMemory;
         VhdBdevInfo.unmap_cb = callbacks.UnmapMemory;
         if (enableDiscard) {
-            VhdBdevInfo.features |= VHD_BDEV_F_WRITE_ZEROES;
+            VhdBdevInfo.features |= VHD_BDEV_F_DISCARD | VHD_BDEV_F_WRITE_ZEROES;
         }
     }
 
@@ -301,6 +301,7 @@ private:
             case VHD_BDEV_WRITE:
                 type = EBlockStoreRequest::WriteBlocks;
                 break;
+            case VHD_BDEV_DISCARD:
             case VHD_BDEV_WRITE_ZEROES:
                 type = EBlockStoreRequest::ZeroBlocks;
                 break;
