@@ -367,9 +367,11 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
             }
         }
 
+
+
         if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()
-                || GetDeletedFreshBytesCount()
-                >= Config->GetFlushBytesThreshold())
+            || GetDeletedFreshBytesCount() >= Config->GetFlushBytesThreshold()
+            || GetFreshBytesSize() >= Config->GetFlushBytesEntriesThreshold())
         {
             AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
         }

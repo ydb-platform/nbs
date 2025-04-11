@@ -462,6 +462,11 @@ TFlushBytesStats TIndexTabletState::FinishFlushBytes(
     return {sz + deletedSz, completed};
 }
 
+ui32 TIndexTabletState::GetFreshBytesDbRowsCount() const
+{
+    Impl->FreshBytes.GetTotalBytes
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // FreshBlocks
 
