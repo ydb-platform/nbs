@@ -95,6 +95,9 @@ message TStartEndpointRequest
         // Use any free nbd device file which nbd-client will connect to.
         bool UseFreeNbdDeviceFile = 26;
     }
+
+    // enable Discard/ZeroBlocks features for vhost device
+    bool VhostEnableDiscard = 27;
 }
 
 message TStartEndpointResponse

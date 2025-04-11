@@ -46,6 +46,7 @@ public:
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.IsReliableMediaKind =
             IsReliableMediaKind(volume.GetStorageMediaKind());
+        options.EnableDiscard = request.GetVhostEnableDiscard();
 
         return Server->StartEndpoint(
             request.GetUnixSocketPath(),
