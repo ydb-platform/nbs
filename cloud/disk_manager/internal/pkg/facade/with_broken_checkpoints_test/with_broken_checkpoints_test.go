@@ -18,12 +18,12 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func startCreateSnapshotFromDiskOperation(
+func startCreateSnapshotOrImageFromDiskOperation(
 	t *testing.T,
 	ctx context.Context,
 	client sdk_client.Client,
 	srcDiskID string,
-	dstSnapshotID string,
+	dstSnapshotOrImageID string,
 	isImage bool,
 ) *disk_manager.Operation {
 
@@ -40,7 +40,7 @@ func startCreateSnapshotFromDiskOperation(
 					DiskId: srcDiskID,
 				},
 			},
-			DstImageId: dstSnapshotID,
+			DstImageId: dstSnapshotOrImageID,
 			FolderId:   "folder",
 			Pooled:     true,
 		})
@@ -50,7 +50,7 @@ func startCreateSnapshotFromDiskOperation(
 				ZoneId: "zone-a",
 				DiskId: srcDiskID,
 			},
-			SnapshotId: dstSnapshotID,
+			SnapshotId: dstSnapshotOrImageID,
 			FolderId:   "folder",
 		})
 	}
@@ -60,11 +60,11 @@ func startCreateSnapshotFromDiskOperation(
 	return operation
 }
 
-func startCreateDiskFromSnapshotOperation(
+func startCreateDiskFromSnapshotOrImageOperation(
 	t *testing.T,
 	ctx context.Context,
 	client sdk_client.Client,
-	srcSnapshotID string,
+	srcSnapshotOrImageID string,
 	dstDiskID string,
 	dstDiskSize int64,
 	isImage bool,
@@ -78,7 +78,7 @@ func startCreateDiskFromSnapshotOperation(
 	if isImage {
 		operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 			Src: &disk_manager.CreateDiskRequest_SrcImageId{
-				SrcImageId: srcSnapshotID,
+				SrcImageId: srcSnapshotOrImageID,
 			},
 			Size: int64(dstDiskSize),
 			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
@@ -90,7 +90,7 @@ func startCreateDiskFromSnapshotOperation(
 	} else {
 		operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 			Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
-				SrcSnapshotId: srcSnapshotID,
+				SrcSnapshotId: srcSnapshotOrImageID,
 			},
 			Size: int64(dstDiskSize),
 			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
@@ -146,7 +146,7 @@ func getProgress(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func testCreateSnapshotFromDiskWithFailedShadowDisk(
+func testCreateSnapshotOrImageFromDiskWithFailedShadowDisk(
 	t *testing.T,
 	diskKind disk_manager.DiskKind,
 	diskSize uint64,
@@ -189,14 +189,13 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	diskContentInfo, err := nbsClient.CalculateCrc32(diskID, diskSize)
 	require.NoError(t, err)
 
-	// We use word 'snapshot' in names that may relate to either snapshot or image.
-	snapshotID := t.Name()
-	operation = startCreateSnapshotFromDiskOperation(
+	snapshotOrImageID := t.Name()
+	operation = startCreateSnapshotOrImageFromDiskOperation(
 		t,
 		ctx,
 		client,
 		diskID,
-		snapshotID,
+		snapshotOrImageID,
 		isImage,
 	)
 
@@ -282,14 +281,15 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	progress := getProgress(t, ctx, client, operation, isImage)
 	require.Equal(t, float64(1), progress)
 
-	// If snapshot was created successfully, should create disk from this snapshot.
+	// If snapshot/image was created successfully, should create disk from this
+	// snapshot/image.
 	diskID2 := t.Name() + "2"
 
-	operation = startCreateDiskFromSnapshotOperation(
+	operation = startCreateDiskFromSnapshotOrImageOperation(
 		t,
 		ctx,
 		client,
-		snapshotID,
+		snapshotOrImageID,
 		diskID2,
 		int64(diskSize),
 		isImage,
@@ -308,7 +308,7 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDisk(
 	t *testing.T,
 ) {
 
-	testCreateSnapshotFromDiskWithFailedShadowDisk(
+	testCreateSnapshotOrImageFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		262144*4096, // diskSize
@@ -323,7 +323,7 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskAndOperationCa
 	t *testing.T,
 ) {
 
-	testCreateSnapshotFromDiskWithFailedShadowDisk(
+	testCreateSnapshotOrImageFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		262144*4096, // diskSize
@@ -338,7 +338,7 @@ func TestImageServiceCreateImageFromDiskWithFailedShadowDisk(
 	t *testing.T,
 ) {
 
-	testCreateSnapshotFromDiskWithFailedShadowDisk(
+	testCreateSnapshotOrImageFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		262144*4096, // diskSize
@@ -353,7 +353,7 @@ func TestImageServiceCreateImageFromDiskWithFailedShadowDiskAndOperationCancel(
 	t *testing.T,
 ) {
 
-	testCreateSnapshotFromDiskWithFailedShadowDisk(
+	testCreateSnapshotOrImageFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		262144*4096, // diskSize
