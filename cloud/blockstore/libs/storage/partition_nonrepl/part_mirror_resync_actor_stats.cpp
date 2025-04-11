@@ -1,6 +1,7 @@
 #include "part_mirror_resync_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -41,6 +42,13 @@ void TMirrorPartitionResyncActor::HandlePartCounters(
     MirrorCounters->AggregateWith(*msg->DiskCounters);
     NetworkBytes += msg->NetworkBytes;
     CpuUsage += msg->CpuUsage;
+}
+
+void TMirrorPartitionResyncActor::HandleScrubberCounters(
+    const TEvVolume::TEvScrubberCounters::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    ForwardMessageToActor(ev, ctx, StatActorId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

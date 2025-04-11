@@ -1,5 +1,7 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(part_nonrepl_events_private.h)
+
 SRCS(
     agent_availability_monitoring_actor.cpp
     checksum_range.cpp

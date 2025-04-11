@@ -141,6 +141,7 @@ private:
             HFunc(
                 TEvVolume::TEvDiskRegistryBasedPartitionCounters,
                 HandleVolumePartCounters);
+            HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
 
             HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
 
@@ -188,6 +189,15 @@ private:
             ev->Cookie);
         ctx.Send(event.release());
     }
+
+    void HandleScrubberCounters(
+        const TEvVolume::TEvScrubberCounters::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+        Y_UNUSED(ctx);
+    }
+
 
     void HandleRdmaUnavailable(
         const TEvVolume::TEvRdmaUnavailable::TPtr& ev,

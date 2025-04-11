@@ -1378,13 +1378,17 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         bool addTagRequest = false;
         bool addTagResponse = false;
+        TBlockRangeSet64 minors;
+        TBlockRangeSet64 majors;
+        TBlockRangeSet64 fixed;
+        TBlockRangeSet64 fixedPartial;
         runtime.SetEventFilter(
-            [&](auto& runtime, auto& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() == TEvService::EvAddTagsRequest) {
                     using TRequest = TEvService::TEvAddTagsRequest;
-                    const auto& tags = event->template Get<TRequest>()->Tags;
+                    const auto& tags = event->Get<TRequest>()->Tags;
                     UNIT_ASSERT_VALUES_EQUAL(1, tags.size());
                     UNIT_ASSERT_VALUES_EQUAL(
                         IntermediateWriteBufferTagName,
@@ -1392,10 +1396,20 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     addTagRequest = true;
                 }
 
-                if (event->GetTypeRewrite() ==
-                    TEvService::EvAddTagsResponse) {
+                if (event->GetTypeRewrite() == TEvService::EvAddTagsResponse) {
                     UNIT_ASSERT(addTagRequest);
                     addTagResponse = true;
+                }
+
+                if (event->GetTypeRewrite() == TEvVolume::EvScrubberCounters) {
+                    auto* msg = event->Get<TEvVolume::TEvScrubberCounters>();
+                    UNIT_ASSERT_VALUES_EQUAL(true, msg->Running);
+                    minors.insert(msg->Minors.begin(), msg->Minors.end());
+                    majors.insert(msg->Majors.begin(), msg->Majors.end());
+                    fixed.insert(msg->Fixed.begin(), msg->Fixed.end());
+                    fixedPartial.insert(
+                        msg->FixedPartial.begin(),
+                        msg->FixedPartial.end());
                 }
 
                 return false;
@@ -1443,6 +1457,21 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // check that all ranges was resynced and there is no more mismatches
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskMinorityChecksumMismatch->Val());
+
+        // check scrubbing online stat
+        UNIT_ASSERT_VALUES_EQUAL(3, minors.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, majors.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, fixed.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, fixedPartial.size());
+        const auto resyncedRange1 = TBlockRange64::WithLength(0, 1024);
+        const auto resyncedRange2 = TBlockRange64::WithLength(1024, 1024);
+        const auto resyncedRange3 = TBlockRange64::WithLength(4096, 1024);
+        UNIT_ASSERT(minors.contains(resyncedRange1));
+        UNIT_ASSERT(minors.contains(resyncedRange2));
+        UNIT_ASSERT(minors.contains(resyncedRange3));
+        UNIT_ASSERT(fixed.contains(resyncedRange1));
+        UNIT_ASSERT(fixed.contains(resyncedRange2));
+        UNIT_ASSERT(fixed.contains(resyncedRange3));
     }
 
     Y_UNIT_TEST(ShouldReportAddTagFailedCritEvent)

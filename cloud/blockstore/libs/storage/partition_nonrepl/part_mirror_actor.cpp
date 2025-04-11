@@ -261,6 +261,12 @@ void TMirrorPartitionActor::StartResyncRange(
         DescribeRange(GetScrubbingRange()).c_str());
     ResyncRangeStarted = true;
 
+    if (isMinor) {
+        Minors.insert(GetScrubbingRange());
+    } else {
+        Majors.insert(GetScrubbingRange());
+    }
+
     auto requestInfo = CreateRequestInfo(
         SelfId(),
         0,  // cookie
@@ -518,13 +524,24 @@ void TMirrorPartitionActor::HandleRangeResynced(
     const TEvNonreplPartitionPrivate::TEvRangeResynced::TPtr& ev,
     const TActorContext& ctx)
 {
+    using EStatus = TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus;
+
     const auto* msg = ev->Get();
 
+    if (!HasError(msg->Error)) {
+        if (msg->Status == EStatus::HealedAll) {
+            Fixed.insert(msg->Range);
+        } else if (msg->Status == EStatus::HealedPartial) {
+            FixedPartial.insert(msg->Range);
+        }
+    }
+
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Range %s resync finished: %s",
+        "[%s] Range %s resync finished: %s %s",
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str(),
-        FormatError(msg->GetError()).c_str());
+        FormatError(msg->GetError()).c_str(),
+        ToString(msg->Status).c_str());
 
     ResyncRangeStarted = false;
     StartScrubbingRange(ctx, ScrubbingRangeId + 1);

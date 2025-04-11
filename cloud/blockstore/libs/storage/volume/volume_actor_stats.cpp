@@ -99,6 +99,24 @@ void TVolumeActor::HandlePartStatsSaved(
     Y_UNUSED(ctx);
 }
 
+void TVolumeActor::HandleScrubberCounters(
+    const TEvVolume::TEvScrubberCounters::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    auto* msg = ev->Get();
+
+    TScrubbingInfo scrubbingInfo{
+        .Running = msg->Running,
+        .CurrentRange = msg->CurrentRange,
+        .Minors = std::move(msg->Minors),
+        .Majors = std::move(msg->Majors),
+        .Fixed = std::move(msg->Fixed),
+        .FixedPartial = std::move(msg->FixedPartial)};
+    State->UpdateScrubberCounters(std::move(scrubbingInfo));
+}
+
 void TVolumeActor::HandleDiskRegistryBasedPartCounters(
     const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
     const TActorContext& ctx)

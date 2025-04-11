@@ -1051,6 +1051,7 @@ STFUNC(TVolumeActor::StateWork)
             HandleDiskRegistryBasedPartCounters);
         HFunc(TEvStatsService::TEvVolumePartCounters, HandlePartCounters);
         HFunc(TEvVolumePrivate::TEvPartStatsSaved, HandlePartStatsSaved);
+        HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
         HFunc(
             TEvVolumePrivate::TEvWriteOrZeroCompleted,
             HandleWriteOrZeroCompleted);

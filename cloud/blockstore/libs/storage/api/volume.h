@@ -2,13 +2,13 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/public/api/protos/volume.pb.h>
-
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -243,6 +243,35 @@ struct TEvVolume
     };
 
     //
+    // DiskRegistryBasedPartitionCounters
+    //
+
+    struct TScrubberCounters
+    {
+        bool Running = false;
+        TBlockRange64 CurrentRange;
+        TBlockRangeSet64 Minors;
+        TBlockRangeSet64 Majors;
+        TBlockRangeSet64 Fixed;
+        TBlockRangeSet64 FixedPartial;
+
+        TScrubberCounters(
+                bool running,
+                TBlockRange64 currentRange,
+                TBlockRangeSet64 minors,
+                TBlockRangeSet64 majors,
+                TBlockRangeSet64 fixed,
+                TBlockRangeSet64 fixedPartial)
+            : Running(running)
+            , CurrentRange(currentRange)
+            , Minors(std::move(minors))
+            , Majors(std::move(majors))
+            , Fixed(std::move(fixed))
+            , FixedPartial(std::move(fixedPartial))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -348,6 +377,8 @@ struct TEvVolume
         EvUnlinkLeaderVolumeFromFollowerRequest = EvBegin + 66,
         EvUnlinkLeaderVolumeFromFollowerResponse = EvBegin + 67,
 
+        EvScrubberCounters = EvBegin + 68,
+
         EvEnd
     };
 
@@ -419,6 +450,11 @@ struct TEvVolume
     using TEvPreparePartitionMigrationResponse = TRequestEvent<
         TPreparePartitionMigrationResponse,
         EvPreparePartitionMigrationResponse
+    >;
+
+    using TEvScrubberCounters =
+        TRequestEvent<TScrubberCounters,
+        EvScrubberCounters
     >;
 };
 

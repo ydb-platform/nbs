@@ -1,6 +1,7 @@
 #include "part_mirror_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -82,6 +83,18 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
         ctx,
         StatActorId,
         std::move(request));
+
+    const bool scrubbingEnabled =
+        Config->GetDataScrubbingEnabled() && !ResyncActorId;
+    auto scrubberCounters = std::make_unique<TEvVolume::TEvScrubberCounters>(
+        MakeIntrusive<TCallContext>(),
+        scrubbingEnabled,
+        GetScrubbingRange(),
+        std::move(Minors),
+        std::move(Majors),
+        std::move(Fixed),
+        std::move(FixedPartial));
+    NCloud::Send(ctx, StatActorId, std::move(scrubberCounters));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

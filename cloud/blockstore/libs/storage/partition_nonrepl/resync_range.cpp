@@ -15,7 +15,23 @@ using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus GetResyncStatus(
+    bool errorFixed,
+    bool errorFound)
+{
+    using EStatus = TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus;
+
+    if (!errorFound) {
+        return EStatus::Healthy;
+    }
+    return errorFixed ? EStatus::HealedAll : EStatus::HealedNone;
+}
+
+}   // namespace
 
 TResyncRangeActor::TResyncRangeActor(
         TRequestInfoPtr requestInfo,
@@ -76,6 +92,8 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         Done(ctx);
         return;
     }
+
+    ErrorFound = true;
 
     if (ResyncPolicy == NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB &&
         majorCount == 1)
@@ -216,7 +234,8 @@ void TResyncRangeActor::Done(const TActorContext& ctx)
             ReadDuration,
             WriteStartTs,
             WriteDuration,
-            std::move(AffectedBlockInfos));
+            std::move(AffectedBlockInfos),
+            GetResyncStatus(ErrorFixed, ErrorFound));
 
     LWTRACK(
         ResponseSent_PartitionWorker,
@@ -320,6 +339,7 @@ void TResyncRangeActor::HandleWriteResponse(
     }
 
     if (++ResyncedCount == ActorsToResync.size()) {
+        ErrorFixed = true;
         Done(ctx);
     }
 }

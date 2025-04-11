@@ -44,6 +44,9 @@ private:
 
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion{Replicas};
 
+    size_t FixedBlockCount = 0;
+    size_t FoundErrorCount = 0;
+
 public:
     TResyncRangeBlockByBlockActor(
         TRequestInfoPtr requestInfo,

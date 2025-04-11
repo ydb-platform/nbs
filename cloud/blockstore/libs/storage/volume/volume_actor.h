@@ -428,6 +428,7 @@ private:
 
     void RenderConfig(IOutputStream& out) const;
     void RenderStatus(IOutputStream& out) const;
+    void RenderScrubbingStatus(IOutputStream& out) const;
     void RenderMigrationStatus(IOutputStream& out) const;
     void RenderResyncStatus(IOutputStream& out) const;
     void RenderLaggingStatus(IOutputStream& out) const;
@@ -664,6 +665,10 @@ private:
 
     void HandlePartStatsSaved(
         const TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleScrubberCounters(
+        const TEvVolume::TEvScrubberCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteOrZeroCompleted(
