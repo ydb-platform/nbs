@@ -662,7 +662,7 @@ func newUnassignDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command
 type migrateDisk struct {
 	clientConfig      *client_config.ClientConfig
 	zoneID            string
-	dstZoneID       string
+	dstZoneID         string
 	diskID            string
 }
 
@@ -693,7 +693,7 @@ func (c *migrateDisk) run() error {
 }
 
 func newMigrateDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
-	c := &unassignDisk{
+	c := &migrateDisk{
 		clientConfig: clientConfig,
 	}
 
