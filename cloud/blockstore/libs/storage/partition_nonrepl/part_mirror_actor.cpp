@@ -22,6 +22,8 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+using namespace NPartition;
+
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -641,6 +643,58 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TMirrorPartitionActor::HandleBlockAndDrainRange(
+    const TEvPartition::TEvBlockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (BlockRangeRequests.OverlapsWithRequest(msg->Range)) {
+        auto response =
+            std::make_unique<TEvPartition::TEvBlockAndDrainRangeResponse>(
+                MakeError(
+                    E_REJECTED,
+                    "request overlaps with other block range request"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+    BlockRangeRequests.AddRequest(msg->Range);
+
+    auto reqInfo = CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    DrainActorCompanion.AddDrainRangeRequest(
+        ctx,
+        std::move(reqInfo),
+        msg->Range);
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Range %s is blocked for writing requests",
+        DiskId.c_str(),
+        DescribeRange(msg->Range).c_str());
+}
+
+void TMirrorPartitionActor::HandleReleaseRange(
+    const TEvPartition::TEvReleaseRange::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    auto* msg = ev->Get();
+
+    BlockRangeRequests.RemoveRequest(msg->Range);
+
+    DrainActorCompanion.RemoveDrainRangeRequest(ctx, msg->Range);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Releasing range %s for writing requests",
+        DiskId.c_str(),
+        DescribeRange(msg->Range).c_str());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
     void TMirrorPartitionActor::Handle##name(                                  \
         const ns::TEv##name##Request::TPtr& ev,                                \
@@ -692,9 +746,9 @@ STFUNC(TMirrorPartitionActor::StateWork)
 
         HFunc(TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest, HandleAddLaggingAgent);
         HFunc(TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest, HandleRemoveLaggingAgent);
-        HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
+        HFunc(TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
         HFunc(
-            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            TEvPartition::TEvWaitForInFlightWritesRequest,
             DrainActorCompanion.HandleWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
@@ -729,6 +783,12 @@ STFUNC(TMirrorPartitionActor::StateWork)
             TEvService::TEvAddTagsResponse,
             HandleAddTagsResponse);
 
+        HFunc(
+            TEvPartition::TEvBlockAndDrainRangeRequest,
+            HandleBlockAndDrainRange);
+
+        HFunc(TEvPartition::TEvReleaseRange, HandleReleaseRange);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         IgnoreFunc(TEvents::TEvPoisonTaken);
 
@@ -754,9 +814,9 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
-        HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(TEvPartition::TEvDrainRequest, RejectDrain);
         HFunc(
-            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            TEvPartition::TEvWaitForInFlightWritesRequest,
             RejectWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
@@ -778,6 +838,10 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 
         IgnoreFunc(TEvService::TEvAddTagsResponse);
+
+        IgnoreFunc(TEvPartition::TEvBlockAndDrainRangeRequest);
+
+        IgnoreFunc(TEvPartition::TEvReleaseRange);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

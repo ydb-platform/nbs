@@ -69,7 +69,8 @@ private:
 
     THashSet<ui64> DirtyReadRequestIds;
     TRequestsInProgress<ui64, TRequestCtx> RequestsInProgress{
-        EAllowedRequests::ReadWrite};
+        EAllowedRequests::ReadWrite,
+        State.GetBlockSize()};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         DiskId};
@@ -91,6 +92,8 @@ private:
     bool ResyncRangeStarted = false;
     ui32 ChecksumMismatches = 0;
     ui64 RequestIdentifierCounter = 0;
+
+    TRequestBoundsTracker BlockRangeRequests{State.GetBlockSize()};
 
 public:
     TMirrorPartitionActor(
@@ -181,6 +184,14 @@ private:
     void HandleRemoveLaggingAgent(
         const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr&
             ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleBlockAndDrainRange(
+        const NPartition::TEvPartition::TEvBlockAndDrainRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReleaseRange(
+        const NPartition::TEvPartition::TEvReleaseRange::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

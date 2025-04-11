@@ -128,7 +128,7 @@ ui64 TProcessingBlocks::CalculateNextProcessingIndex() const
 {
     return Min(
         BlockCount,
-        CurrentProcessingIndex + ProcessingRangeSize / BlockSize);
+        CurrentProcessingIndex + MigrationRangeSize / BlockSize);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

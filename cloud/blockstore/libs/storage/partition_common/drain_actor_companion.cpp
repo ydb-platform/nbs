@@ -10,6 +10,8 @@
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 
+#include <ranges>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -102,6 +104,15 @@ void TDrainActorCompanion::HandleWaitForInFlightWrites(
     DoProcessWaitForInFlightWritesRequests(ctx);
 }
 
+void TDrainActorCompanion::AddDrainRangeRequest(
+    const TActorContext& ctx,
+    TRequestInfoPtr reqInfo,
+    TBlockRange64 range)
+{
+    DrainRangeRequests.emplace_back(std::move(reqInfo), range);
+    DoProcessDrainRangeRequests(ctx);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDrainActorCompanion::ProcessDrainRequests(
@@ -109,6 +120,7 @@ void TDrainActorCompanion::ProcessDrainRequests(
 {
     DoProcessDrainRequests(ctx);
     DoProcessWaitForInFlightWritesRequests(ctx);
+    DoProcessDrainRangeRequests(ctx);
 }
 
 void TDrainActorCompanion::DoProcessDrainRequests(const TActorContext& ctx)
@@ -158,6 +170,57 @@ void TDrainActorCompanion::DoProcessWaitForInFlightWritesRequests(
         NPartition::TEvPartition::TEvWaitForInFlightWritesResponse>();
     NCloud::Reply(ctx, *WaitForInFlightWritesRequest, std::move(response));
     WaitForInFlightWritesRequest.Reset();
+}
+
+void TDrainActorCompanion::RemoveDrainRangeRequest(
+    const TActorContext& ctx,
+    TBlockRange64 range)
+{
+    TVector<ui64> reqsToErase;
+    for (size_t i = 0; i < DrainRangeRequests.size(); ++i) {
+        auto& drainReq = DrainRangeRequests[i];
+
+        if (DrainRangeRequests[i].RangeToDrain != range) {
+            continue;
+        }
+
+        NCloud::Reply(
+            ctx,
+            *drainReq.RequestInfo,
+            std::make_unique<
+                NPartition::TEvPartition::TEvBlockAndDrainRangeResponse>(
+                MakeError(E_CANCELLED)));
+        reqsToErase.emplace_back(i);
+    }
+
+    for (auto i: reqsToErase | std::views::reverse) {
+        std::swap(DrainRangeRequests.back(), DrainRangeRequests[i]);
+        DrainRangeRequests.pop_back();
+    }
+}
+
+void TDrainActorCompanion::DoProcessDrainRangeRequests(const TActorContext& ctx)
+{
+    TVector<ui64> reqsToErase;
+
+    for (size_t i = 0; i < DrainRangeRequests.size(); ++i) {
+        auto& drainReq = DrainRangeRequests[i];
+
+        if (RequestsInProgress.HasWriteRequestInRange(drainReq.RangeToDrain)) {
+            continue;
+        }
+
+        NCloud::Reply(
+            ctx,
+            *drainReq.RequestInfo,
+            std::make_unique<
+                NPartition::TEvPartition::TEvBlockAndDrainRangeResponse>());
+        reqsToErase.emplace_back(i);
+    }
+    for (auto i: reqsToErase | std::views::reverse) {
+        std::swap(DrainRangeRequests.back(), DrainRangeRequests[i]);
+        DrainRangeRequests.pop_back();
+    }
 }
 
 }  // namespace NCloud::NBlockStore::NStorage

@@ -238,6 +238,12 @@ private:
         Y_ABORT("Unimplemented");
     }
 
+    bool HasWriteRequestInRange(TBlockRange64 r) const override
+    {
+        Y_UNUSED(r);
+        Y_ABORT("Unimplemented");
+    }
+
     template <typename TMethod>
     void HandleWriteBlocksRequest(
         const typename TMethod::TRequest::TPtr& ev,

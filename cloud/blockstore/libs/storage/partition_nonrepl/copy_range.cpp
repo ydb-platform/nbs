@@ -24,10 +24,11 @@ TCopyRangeActor::TCopyRangeActor(
         TActorId source,
         TActorId target,
         TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator)
-    : RequestInfo(std::move(requestInfo))
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        TActorId actorToBlockAndDrainRange)
+    : TCopyRangeActorCommon(this, actorToBlockAndDrainRange, range)
+    , RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
-    , Range(range)
     , Source(source)
     , Target(target)
     , WriterClientId(std::move(writerClientId))
@@ -35,11 +36,11 @@ TCopyRangeActor::TCopyRangeActor(
 {
 }
 
-void TCopyRangeActor::Bootstrap(const TActorContext& ctx)
+////////////////////////////////////////////////////////////////////////////////
+
+void TCopyRangeActor::ReadyToCopy(const TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
-
-    Become(&TThis::StateWork);
 
     LWTRACK(
         RequestReceived_PartitionWorker,
@@ -49,6 +50,57 @@ void TCopyRangeActor::Bootstrap(const TActorContext& ctx)
 
     ReadBlocks(ctx);
 }
+
+bool TCopyRangeActor::OnMessage(
+    const TActorContext& ctx,
+    TAutoPtr<IEventHandle>& ev)
+{
+    Y_UNUSED(ctx);
+    TRequestScope timer(*RequestInfo);
+
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvService::TEvReadBlocksRequest, HandleReadUndelivery);
+        HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteUndelivery);
+        HFunc(TEvService::TEvZeroBlocksRequest, HandleZeroUndelivery);
+        HFunc(TEvService::TEvReadBlocksResponse, HandleReadResponse);
+        HFunc(TEvService::TEvWriteBlocksResponse, HandleWriteResponse);
+        HFunc(TEvService::TEvZeroBlocksResponse, HandleZeroResponse);
+        default:
+            return false;
+    }
+
+    return true;
+}
+
+void TCopyRangeActor::BeforeDie(const TActorContext& ctx, NProto::TError error)
+{
+    using EExecutionSide =
+        TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
+
+    auto response =
+        std::make_unique<TEvNonreplPartitionPrivate::TEvRangeMigrated>(
+            std::move(error),
+            EExecutionSide::Local,
+            Range,
+            ReadStartTs,
+            ReadDuration,
+            WriteStartTs,
+            WriteDuration,
+            std::move(AffectedBlockInfos),
+            0,   // RecommendedBandwidth,
+            AllZeroes,
+            RequestInfo->GetExecCycles());
+
+    LWTRACK(
+        ResponseSent_PartitionWorker,
+        RequestInfo->CallContext->LWOrbit,
+        "CopyRange",
+        RequestInfo->CallContext->RequestId);
+
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
 {
@@ -150,36 +202,6 @@ void TCopyRangeActor::ZeroBlocks(const TActorContext& ctx)
     WriteStartTs = ctx.Now();
 }
 
-void TCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
-{
-    using EExecutionSide =
-        TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
-
-    auto response =
-        std::make_unique<TEvNonreplPartitionPrivate::TEvRangeMigrated>(
-            std::move(error),
-            EExecutionSide::Local,
-            Range,
-            ReadStartTs,
-            ReadDuration,
-            WriteStartTs,
-            WriteDuration,
-            std::move(AffectedBlockInfos),
-            0,   // RecommendedBandwidth,
-            AllZeroes,
-            RequestInfo->GetExecCycles());
-
-    LWTRACK(
-        ResponseSent_PartitionWorker,
-        RequestInfo->CallContext->LWOrbit,
-        "CopyRange",
-        RequestInfo->CallContext->RequestId);
-
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-    Die(ctx);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCopyRangeActor::HandleReadUndelivery(
@@ -238,7 +260,7 @@ void TCopyRangeActor::HandleWriteResponse(
 
 void TCopyRangeActor::HandleZeroUndelivery(
     const TEvService::TEvZeroBlocksRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     WriteDuration = ctx.Now() - WriteStartTs;
 
@@ -249,44 +271,13 @@ void TCopyRangeActor::HandleZeroUndelivery(
 
 void TCopyRangeActor::HandleZeroResponse(
     const TEvService::TEvZeroBlocksResponse::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     WriteDuration = ctx.Now() - WriteStartTs;
 
     auto* msg = ev->Get();
 
     Done(ctx, msg->Record.GetError());
-}
-
-void TCopyRangeActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    Done(ctx, MakeError(E_REJECTED, "Dead"));
-}
-
-STFUNC(TCopyRangeActor::StateWork)
-{
-    TRequestScope timer(*RequestInfo);
-
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(TEvService::TEvReadBlocksRequest, HandleReadUndelivery);
-        HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteUndelivery);
-        HFunc(TEvService::TEvZeroBlocksRequest, HandleZeroUndelivery);
-        HFunc(TEvService::TEvReadBlocksResponse, HandleReadResponse);
-        HFunc(TEvService::TEvWriteBlocksResponse, HandleWriteResponse);
-        HFunc(TEvService::TEvZeroBlocksResponse, HandleZeroResponse);
-
-        default:
-            HandleUnexpectedEvent(
-                ev,
-                TBlockStoreComponents::PARTITION_WORKER);
-            break;
-    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

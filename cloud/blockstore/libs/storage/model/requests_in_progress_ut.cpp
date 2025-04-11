@@ -94,10 +94,10 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
         using TRequests = TRequestsInProgress<ui32, TString>;
 
         TMap<ui32, TRequests::TRequest> testData{
-            {0, {"Read Request 1", false}},
-            {1, {"Write Request 1", true}},
-            {10, {"Read Request 2", false}},
-            {20, {"Write Request 2", true}},
+            {0, {.Value="Read Request 1", .Write=false}},
+            {1, {.Value="Write Request 1", .Write=true}},
+            {10, {.Value="Read Request 2", .Write=false}},
+            {20, {.Value="Write Request 2", .Write=true}},
         };
 
         TRequests requestsInProgress{EAllowedRequests::ReadWrite};
@@ -125,10 +125,10 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
         using TRequests = TRequestsInProgress<ui32, TString>;
 
         TMap<ui32, TRequests::TRequest> testData{
-            {0, {"Read Request 1", false}},
-            {1, {"Write Request 1", true}},
-            {10, {"Read Request 2", false}},
-            {20, {"Write Request 2", true}},
+            {0, {.Value = "Read Request 1", .Write = false}},
+            {1, {.Value = "Write Request 1", .Write = true}},
+            {10, {.Value = "Read Request 2", .Write = false}},
+            {20, {.Value = "Write Request 2", .Write = true}},
         };
 
         // When there is no in-flight requests waiting does nothing.
@@ -155,6 +155,56 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
         UNIT_ASSERT(requestsInProgress.IsWaitingForInFlightWrites());
         requestsInProgress.RemoveRequest(20);
         UNIT_ASSERT(!requestsInProgress.IsWaitingForInFlightWrites());
+    }
+
+    Y_UNIT_TEST(ShouldTrackRequestsWithBlockRange)
+    {
+        auto blockSize = 4_KB;
+        TRequestsInProgress<ui32, TString> requestsInProgress{
+            EAllowedRequests::ReadWrite,
+            blockSize};
+
+        auto blocksPerTrackingRange = MigrationRangeSize / 4_KB;
+
+        {
+            auto id1 = requestsInProgress.GenerateRequestId();
+
+            requestsInProgress.AddWriteRequestWithBlockRangeTracking(
+                id1,
+                TBlockRange64::WithLength(0, 10));
+
+            UNIT_ASSERT(requestsInProgress.HasWriteRequestInRange(
+                TBlockRange64::WithLength(0, blocksPerTrackingRange)));
+
+            auto id2 = requestsInProgress.GenerateRequestId();
+            requestsInProgress.AddWriteRequestWithBlockRangeTracking(
+                id2,
+                TBlockRange64::WithLength(10, 10));
+            requestsInProgress.ExtractRequest(id1);
+
+            UNIT_ASSERT(requestsInProgress.HasWriteRequestInRange(
+                TBlockRange64::WithLength(0, blocksPerTrackingRange)));
+
+            requestsInProgress.ExtractRequest(id2);
+            UNIT_ASSERT(!requestsInProgress.HasWriteRequestInRange(
+                TBlockRange64::WithLength(0, blocksPerTrackingRange)));
+        }
+
+        // should mark several tracking ranges if it lays at the border;
+        {
+            auto id1 = requestsInProgress.GenerateRequestId();
+
+            requestsInProgress.AddWriteRequestWithBlockRangeTracking(
+                id1,
+                TBlockRange64::WithLength(blocksPerTrackingRange - 1, 2));
+
+            UNIT_ASSERT(requestsInProgress.HasWriteRequestInRange(
+                TBlockRange64::WithLength(0, blocksPerTrackingRange)));
+            UNIT_ASSERT(requestsInProgress.HasWriteRequestInRange(
+                TBlockRange64::WithLength(
+                    blocksPerTrackingRange,
+                    2 * blocksPerTrackingRange)));
+        }
     }
 }
 

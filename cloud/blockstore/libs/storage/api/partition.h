@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 
@@ -17,6 +18,10 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     /* Waits for current in-flight writes to finish and does not affect any    \
      * requests that come after. */                                            \
     xxx(WaitForInFlightWrites,                                     __VA_ARGS__)\
+    /*Block range for writing requests. Wait for current in-flight writes      \
+     * which overlap that range to finish and reply. You can release the range \
+     * block by sending a TEvReleaseRange message.*/                           \
+    xxx(BlockAndDrainRange,                                        __VA_ARGS__)\
 // BLOCKSTORE_PARTITION_REQUESTS
 
 // requests forwarded from service to partition
@@ -100,6 +105,34 @@ struct TEvPartition
     };
 
     //
+    // BlockAndDrainRange
+    //
+
+    struct TBlockAndDrainRangeRequest
+    {
+        TBlockRange64 Range;
+        explicit TBlockAndDrainRangeRequest(TBlockRange64 range)
+            : Range(range)
+        {}
+    };
+
+    struct TBlockAndDrainRangeResponse
+    {
+    };
+
+    //
+    // ReleaseRange
+    //
+
+    struct TReleaseRange
+    {
+        TBlockRange64 Range;
+        explicit TReleaseRange(TBlockRange64 range)
+            : Range(range)
+        {}
+    };
+
+    //
     // Garbage collector finish report
     //
 
@@ -138,6 +171,11 @@ struct TEvPartition
         EvWaitForInFlightWritesRequest = EvBegin + 11,
         EvWaitForInFlightWritesResponse = EvBegin + 12,
 
+        EvBlockAndDrainRangeRequest = EvBegin + 13,
+        EvBlockAndDrainRangeResponse = EvBegin + 14,
+
+        EvReleaseRange = EvBegin + 15,
+
         EvEnd
     };
 
@@ -145,6 +183,8 @@ struct TEvPartition
         "EvEnd expected to be < TBlockStoreEvents::PARTITION_END");
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
+
+    using TEvReleaseRange = TRequestEvent<TReleaseRange, EvReleaseRange>;
 
     using TEvBackpressureReport = TRequestEvent<
         TBackpressureReport,
