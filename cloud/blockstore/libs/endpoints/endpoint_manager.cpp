@@ -115,7 +115,7 @@ bool CompareRequests(
     const NProto::TStartEndpointRequest& left,
     const NProto::TStartEndpointRequest& right)
 {
-    Y_DEBUG_ABORT_UNLESS(26 == GetFieldCount<NProto::TStartEndpointRequest>());
+    Y_DEBUG_ABORT_UNLESS(27 == GetFieldCount<NProto::TStartEndpointRequest>());
     return left.GetUnixSocketPath() == right.GetUnixSocketPath()
         && left.GetDiskId() == right.GetDiskId()
         && left.GetInstanceId() == right.GetInstanceId()
@@ -144,7 +144,8 @@ bool CompareRequests(
             right.GetClientCGroups().end())
         && left.GetPersistent() == right.GetPersistent()
         && left.GetNbdDeviceFile() == right.GetNbdDeviceFile()
-        && left.GetUseFreeNbdDeviceFile() == right.GetUseFreeNbdDeviceFile();
+        && left.GetUseFreeNbdDeviceFile() == right.GetUseFreeNbdDeviceFile()
+        && left.GetVhostEnableDiscard() == right.GetVhostEnableDiscard();
 }
 
 bool CompareRequests(
