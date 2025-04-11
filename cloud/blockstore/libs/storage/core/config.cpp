@@ -590,7 +590,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(DisableZeroBlocksThrottlingForYDBBasedDisks,       bool,   false      )\
                                                                                \
-    xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )
+    xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )\
+                                                                               \
+    xxx(MixedChannelsPercentage,                   ui32,      0               )
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

@@ -1204,4 +1204,7 @@ message TStorageServiceConfig
     // migration. Resync is started with a special flag and will emit critical
     // events for any mismatch it finds.
     optional bool ResyncAfterLaggingAgentMigration = 422;
+
+    // Percentage of mixed channels from the merged total
+    optional uint32 MixedChannelsPercentage = 423;
 }
