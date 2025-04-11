@@ -550,6 +550,35 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
             UNIT_ASSERT(acquiredDevices.contains(device));
         }
     }
+
+    Y_UNIT_TEST_F(ShouldMountVolumeWithOnlyLostDevices, TFixture)
+    {
+        SetupTest();
+
+        auto volume = GetVolumeClient();
+
+        auto response = volume.GetVolumeInfo();
+        auto diskInfo = response->Record.GetVolume();
+
+        // Mark all devices as lost.
+        for (const auto& d: diskInfo.GetDevices()) {
+            State->LostDevices.emplace_back(d.GetDeviceUUID());
+        }
+
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+
+        auto writerClient = GetVolumeClient();
+
+        auto writer = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        // Successful mount and unmount.
+        writerClient.AddClient(writer);
+        writerClient.RemoveClient(writer.GetClientId());
+    }
 }
 
 Y_UNIT_TEST_SUITE(TVolumeAcquireReleaseTest)

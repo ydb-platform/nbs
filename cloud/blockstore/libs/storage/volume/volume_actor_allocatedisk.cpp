@@ -312,6 +312,9 @@ void TVolumeActor::HandleAllocateDiskError(
         UnfinishedUpdateVolumeConfig.FreshDeviceIds.assign(
             State->GetMeta().GetFreshDeviceIds().begin(),
             State->GetMeta().GetFreshDeviceIds().end());
+        UnfinishedUpdateVolumeConfig.LostDeviceUUIDs.assign(
+            State->GetMeta().GetLostDevicesUUIDs().begin(),
+            State->GetMeta().GetLostDevicesUUIDs().end());
     }
 
     if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
