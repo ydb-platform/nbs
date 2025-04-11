@@ -194,6 +194,7 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	if err != nil {
 		return err
 	}
+
 	selfTaskID := execCtx.GetTaskID()
 
 	checkpointID, err := common.CancelCheckpointCreation(

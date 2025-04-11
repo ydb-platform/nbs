@@ -200,6 +200,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		isImage,
 	)
 
+	// Wait before disable device of the shadow disk.
 	time.Sleep(waitDuration)
 
 	// Disabling device of the shadow disk to enforce checkpoint status ERROR.
@@ -229,6 +230,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	}
 
 	if shouldCancelOperation {
+		// Wait before cancel the create snapshot/image from disk operation.
 		time.Sleep(waitDuration)
 
 		_, err = client.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
