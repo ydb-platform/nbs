@@ -285,6 +285,33 @@ struct TTestEnv
     }
 };
 
+ui64 GetVolumeRequestId(const TAutoPtr<IEventHandle>& event)
+{
+    switch (event->GetTypeRewrite()) {
+        case TEvDiskAgent::EvDirectCopyBlocksRequest: {
+            auto* ev =
+                static_cast<TEvDiskAgent::TEvDirectCopyBlocksRequest*>(
+                    event->GetBase());
+
+            return ev->Record.GetHeaders().GetVolumeRequestId();
+        }
+        case TEvService::EvWriteBlocksRequest: {
+            auto* ev = static_cast<TEvService::TEvWriteBlocksRequest*>(
+                event->GetBase());
+
+            return ev->Record.GetHeaders().GetVolumeRequestId();
+        }
+        case TEvService::EvZeroBlocksRequest: {
+            auto* ev = static_cast<TEvService::TEvZeroBlocksRequest*>(
+                event->GetBase());
+
+            return ev->Record.GetHeaders().GetVolumeRequestId();
+        }
+        default:
+            return 0;
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1241,33 +1268,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
                     TBlockRange64::WithLength(2040, 16)));
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
-        }
-    }
-
-    ui64 GetVolumeRequestId(const TAutoPtr<IEventHandle>& event)
-    {
-        switch (event->GetTypeRewrite()) {
-            case TEvDiskAgent::EvDirectCopyBlocksRequest: {
-                auto* ev =
-                    static_cast<TEvDiskAgent::TEvDirectCopyBlocksRequest*>(
-                        event->GetBase());
-
-                return ev->Record.GetHeaders().GetVolumeRequestId();
-            }
-            case TEvService::EvWriteBlocksRequest: {
-                auto* ev = static_cast<TEvService::TEvWriteBlocksRequest*>(
-                    event->GetBase());
-
-                return ev->Record.GetHeaders().GetVolumeRequestId();
-            }
-            case TEvService::EvZeroBlocksRequest: {
-                auto* ev = static_cast<TEvService::TEvZeroBlocksRequest*>(
-                    event->GetBase());
-
-                return ev->Record.GetHeaders().GetVolumeRequestId();
-            }
-            default:
-                return 0;
         }
     }
 

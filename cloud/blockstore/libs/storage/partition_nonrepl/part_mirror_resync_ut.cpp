@@ -507,6 +507,14 @@ struct TTestEnv
     }
 };
 
+template <typename TEv>
+ui64 GetVolumeRequestId(const TAutoPtr<IEventHandle>& event)
+{
+    auto* ev = static_cast<TEv*>(event->GetBase());
+
+    return ev->Record.GetHeaders().GetVolumeRequestId();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1758,14 +1766,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
         }
-    }
-
-    template <typename TEv>
-    ui64 GetVolumeRequestId(const TAutoPtr<IEventHandle>& event)
-    {
-        auto* ev = static_cast<TEv*>(event->GetBase());
-
-        return ev->Record.GetHeaders().GetVolumeRequestId();
     }
 
     void DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
