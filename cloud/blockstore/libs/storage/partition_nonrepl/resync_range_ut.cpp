@@ -229,7 +229,9 @@ struct TTestEnv
             "",   // rwClientId
             BlockDigestGenerator,
             resyncPolicy,
-            EBlockRangeChecksumStatus::Unknown);
+            EBlockRangeChecksumStatus::Unknown,
+            VolumeActorId,
+            false);
 
         Runtime.Register(actor.release(), 0);
 

@@ -13,6 +13,7 @@ namespace {
 template <typename T>
 auto PrepareRequest(
     const NProto::TDirectCopyBlocksRequest& copyBlocks,
+    const ui64 volumeRequestId,
     T* request)
 {
     auto& rec = request->Record;
@@ -20,6 +21,7 @@ auto PrepareRequest(
     headers->SetIsBackgroundRequest(
         copyBlocks.GetHeaders().GetIsBackgroundRequest());
     headers->SetClientId(TString(copyBlocks.GetTargetClientId()));
+    headers->SetVolumeRequestId(volumeRequestId);
 
     rec.SetDeviceUUID(copyBlocks.GetTargetDeviceUUID());
     rec.SetStartIndex(copyBlocks.GetTargetStartIndex());
@@ -115,13 +117,19 @@ void TDirectCopyActor::HandleReadBlocksResponse(
     if (AllZeroes) {
         auto zeroRequest =
             std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
-        PrepareRequest(Request, zeroRequest.get());
+        PrepareRequest(
+            Request,
+            Request.GetHeaders().GetVolumeRequestId(),
+            zeroRequest.get());
         zeroRequest->Record.SetBlocksCount(Request.GetBlockCount());
         request = std::move(zeroRequest);
     } else {
         auto writeRequest =
             std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
-        PrepareRequest(Request, writeRequest.get());
+        PrepareRequest(
+            Request,
+            Request.GetHeaders().GetVolumeRequestId(),
+            writeRequest.get());
         writeRequest->Record.MutableBlocks()->Swap(msg->Record.MutableBlocks());
         request = std::move(writeRequest);
     }

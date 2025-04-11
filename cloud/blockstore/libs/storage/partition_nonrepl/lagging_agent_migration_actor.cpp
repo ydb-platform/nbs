@@ -37,7 +37,8 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
           // Since this actor doesn't own source or destination actors, it won't
           // receive any stats and shouldn't send any either.
           TActorId(),   //  statActorId
-          config->GetMaxMigrationIoDepth())
+          config->GetMaxMigrationIoDepth(),
+          partConfig->GetParentActorId())
     , Config(std::move(config))
     , PartConfig(std::move(partConfig))
     , ParentActorId(parentActorId)

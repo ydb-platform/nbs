@@ -774,12 +774,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(10, writeRequestId);
         }
 
-        {   // background WriteBlocksLocal should NOT pass volume request id.
+        {   // background WriteBlocksLocal should pass volume request id.
             TString data(DefaultBlockSize, 'A');
             auto request =
                 client.CreateWriteBlocksLocalRequest(blockRange, data);
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
-            request->Record.MutableHeaders()->SetVolumeRequestId(10);
+            request->Record.MutableHeaders()->SetVolumeRequestId(11);
             client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
@@ -787,7 +787,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL(0, writeRequestId);
+            UNIT_ASSERT_VALUES_EQUAL(11, writeRequestId);
         }
 
         {   // non-background WriteBlocks should pass volume request id.
@@ -806,10 +806,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(20, writeRequestId);
         }
 
-        {   // background WriteBlocks should NOT pass volume request id.
+        {   // background WriteBlocks should pass volume request id.
             auto request = client.CreateWriteBlocksRequest(blockRange, 'A');
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
-            request->Record.MutableHeaders()->SetVolumeRequestId(20);
+            request->Record.MutableHeaders()->SetVolumeRequestId(21);
             client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
@@ -817,7 +817,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL(0, writeRequestId);
+            UNIT_ASSERT_VALUES_EQUAL(21, writeRequestId);
         }
 
         {   // non-background ZeroBlocks should pass volume request id.
@@ -834,10 +834,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(30, zeroRequestId);
         }
 
-        {   // background ZeroBlocks should NOT pass volume request id.
+        {   // background ZeroBlocks should pass volume request id.
             auto request = client.CreateZeroBlocksRequest(blockRange);
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
-            request->Record.MutableHeaders()->SetVolumeRequestId(30);
+            request->Record.MutableHeaders()->SetVolumeRequestId(31);
             client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
@@ -845,7 +845,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL(0, zeroRequestId);
+            UNIT_ASSERT_VALUES_EQUAL(31, zeroRequestId);
         }
     }
 
