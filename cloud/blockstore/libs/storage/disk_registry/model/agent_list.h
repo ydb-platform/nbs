@@ -60,6 +60,8 @@ private:
 
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
 
+    THashSet<TString> LostDevices;
+
     TLog Log;
 
 public:
@@ -89,6 +91,7 @@ public:
         THashSet<TDeviceId> NewDevices;
         TNodeId PrevNodeId = 0;
         THashMap<TDeviceId, NProto::TDeviceConfig> OldConfigs;
+        TVector<TString> LostOrFoundDeviceUUIDs;
     };
 
     TAgentRegistrationResult RegisterAgent(
@@ -132,6 +135,10 @@ public:
         const TString& agentId, const NProto::TDiskRegistryAgentParams& params);
     TVector<TString> CleanupExpiredAgentListParams(TInstant now);
     TVector<TString> GetAgentIdsWithOverriddenListParams() const;
+    const THashSet<TString>& GetLostDevices() const
+    {
+        return LostDevices;
+    }
 
 private:
     NProto::TAgentConfig& AddAgent(NProto::TAgentConfig config);

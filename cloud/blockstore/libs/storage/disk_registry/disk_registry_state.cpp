@@ -1032,6 +1032,13 @@ auto TDiskRegistryState::RegisterAgent(
             }
         }
 
+        for (const auto& lostDevice: r.LostOrFoundDeviceUUIDs) {
+            if (auto diskId = DeviceList.FindDiskId(lostDevice)) {
+                AddReallocateRequest(db, diskId);
+                disksToReallocate.emplace_back(diskId);
+            }
+        }
+
         THashSet<TDiskId> diskIds;
 
         for (const auto& d: agent.GetDevices()) {
@@ -1105,6 +1112,21 @@ auto TDiskRegistryState::RegisterAgent(
         .AffectedDisks = std::move(affectedDisks),
         .DisksToReallocate = std::move(disksToReallocate),
         .DevicesToDisableIO = std::move(devicesToDisableIO)};
+}
+
+TVector<TString> TDiskRegistryState::GetLostDevicesForDisk(
+    const TString& diskId)
+{
+    const auto& allLostDevices = AgentList.GetLostDevices();
+
+    TVector<TString> lostDevicesForDisk;
+    for (const auto& d: allLostDevices) {
+        if (DeviceList.FindDiskId(d) == diskId) {
+            lostDevicesForDisk.emplace_back(d);
+        }
+    }
+
+    return lostDevicesForDisk;
 }
 
 NProto::TError TDiskRegistryState::UnregisterAgent(

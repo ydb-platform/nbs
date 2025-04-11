@@ -764,7 +764,8 @@ public:
         return ForceMirrorResync;
     }
 
-    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
+    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease(
+        bool filterErrorDevices) const;
 
     //
     // Followers
