@@ -171,10 +171,10 @@ struct TEvPartition
         EvWaitForInFlightWritesRequest = EvBegin + 11,
         EvWaitForInFlightWritesResponse = EvBegin + 12,
 
-        EvBlockAndDrainRangeRequest = EvBegin + 12,
-        EvBlockAndDrainRangeResponse = EvBegin + 13,
+        EvBlockAndDrainRangeRequest = EvBegin + 13,
+        EvBlockAndDrainRangeResponse = EvBegin + 14,
 
-        EvReleaseRange = EvBegin + 14,
+        EvReleaseRange = EvBegin + 15,
 
         EvEnd
     };
