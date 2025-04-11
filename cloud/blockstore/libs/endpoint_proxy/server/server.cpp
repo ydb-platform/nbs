@@ -480,14 +480,13 @@ struct TServer: IEndpointProxyServer
 
                 try {
                     DoProcessRequest(request, *ep, response);
+                    Socket2Endpoint[ep->UnixSocketPath] = std::move(ep);
                 } catch (...) {
                     STORAGE_ERROR("Couldn't restore endpoint "
                         << e.GetUnixSocketPath()
                         << ", error: " << CurrentExceptionMessage());
                     continue;
                 }
-
-                Socket2Endpoint[ep->UnixSocketPath] = std::move(ep);
 
                 STORAGE_INFO("Restored endpoint from " << f.GetPath());
             }
