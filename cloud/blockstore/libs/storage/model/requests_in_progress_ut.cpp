@@ -125,10 +125,10 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
         using TRequests = TRequestsInProgress<ui32, TString>;
 
         TMap<ui32, TRequests::TRequest> testData{
-            {0, {"Read Request 1", false}},
-            {1, {"Write Request 1", true}},
-            {10, {"Read Request 2", false}},
-            {20, {"Write Request 2", true}},
+            {0, {.Value = "Read Request 1", .Write = false}},
+            {1, {.Value = "Write Request 1", .Write = true}},
+            {10, {.Value = "Read Request 2", .Write = false}},
+            {20, {.Value = "Write Request 2", .Write = true}},
         };
 
         // When there is no in-flight requests waiting does nothing.
