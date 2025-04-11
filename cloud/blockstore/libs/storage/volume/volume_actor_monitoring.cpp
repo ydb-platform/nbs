@@ -1602,8 +1602,13 @@ void TVolumeActor::RenderScrubbingStatus(IOutputStream& out) const
 
     auto outputRanges = [&](const TBlockRangeSet64& ranges)
     {
+        size_t count = 0;
         for (auto range: ranges) {
             out << range.Print();
+            if (++count > 1000) {
+                out << "...truncated";
+                break;
+            }
         }
     };
 
