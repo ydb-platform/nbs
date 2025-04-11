@@ -22,4 +22,8 @@ message ImagesConfig {
     repeated string UseS3ForFolder = 6;
     optional uint32 UseS3Percentage = 7;
     optional bool ConfigurePoolsByDefault = 8;
+    // Temporary solution for backwards compatibility. See
+    // https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2757498035
+    // TODO: remove it later.
+    optional bool RetryBrokenDRBasedDiskCheckpoint = 9;
 }

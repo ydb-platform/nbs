@@ -16,4 +16,8 @@ message SnapshotsConfig {
     repeated string UseS3ForFolder = 5;
     optional uint32 UseS3Percentage = 6;
     optional bool UseProxyOverlayDisk = 7;
+    // Temporary solution for backwards compatibility. See
+    // https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2757498035
+    // TODO: remove it later.
+    optional bool RetryBrokenDRBasedDiskCheckpoint = 8;
 }
