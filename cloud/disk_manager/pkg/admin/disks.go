@@ -698,7 +698,7 @@ func newMigrateDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command 
 	}
 
 	cmd := &cobra.Command{
-		Use: "unassign",
+		Use: "migrate",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -743,6 +743,7 @@ func newDisksCmd(
 		newAlterDiskCmd(clientConfig),
 		newAssignDiskCmd(clientConfig),
 		newUnassignDiskCmd(clientConfig),
+		newMigrateDiskCmd(clientConfig),
 	)
 
 	return cmd
