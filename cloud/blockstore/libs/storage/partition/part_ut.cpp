@@ -11757,6 +11757,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             {},
             {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
 
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
         // all data should be written to a merged channel directly because data
         // size is less than threshold
         for (int i = 0; i < 4; ++i) {
