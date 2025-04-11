@@ -12364,7 +12364,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         TestForcedCompaction(10);
     }
-      Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
+
+    Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(100_KB);
