@@ -659,6 +659,71 @@ func newUnassignDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type migrateDisk struct {
+	clientConfig      *client_config.ClientConfig
+	zoneID            string
+	dstZoneID       string
+	diskID            string
+}
+
+func (c *migrateDisk) run() error {
+	ctx := newContext(c.clientConfig)
+
+	client, err := internal_client.NewClient(ctx, c.clientConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer client.Close()
+
+	resp, err := client.MigrateDisk(getRequestContext(ctx), &disk_manager.MigrateDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			ZoneId: c.zoneID,
+			DiskId: c.diskID,
+		},
+		DstZoneId: c.dstZoneID,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Operation: %v\n", resp.Id)
+
+	return internal_client.WaitOperation(ctx, client, resp.Id)
+}
+
+func newMigrateDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
+	c := &unassignDisk{
+		clientConfig: clientConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use: "unassign",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(&c.zoneID, "zone-id", "", "zone ID where disk is located; required")
+	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
+		log.Fatalf("Error setting flag zone-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(&c.dstZoneID, "dst-zone-id", "", "destination zone ID; required")
+	if err := cmd.MarkFlagRequired("dst-zone-id"); err != nil {
+		log.Fatalf("Error setting flag dst-zone-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(&c.diskID, "id", "", "disk ID; required")
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newDisksCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
