@@ -374,10 +374,8 @@ void TLaggingAgentsReplicaProxyActor::ReadBlocks(
     const auto deviceRequests = PartConfig->ToDeviceRequests(blockRange);
     for (const auto& deviceRequest: deviceRequests) {
         const auto& agentId = deviceRequest.Device.GetAgentId();
-        const TActorId recipient = GetRecipientActorId(
-            deviceRequest.BlockRange,
-            true   // forRead
-        );
+        const TActorId recipient =
+            GetRecipientActorId(deviceRequest.BlockRange, ERequestKind::Read);
         if (recipient != NonreplPartitionActorId) {
             TString message = TStringBuilder()
                               << "Desired recipient actor is not "
@@ -417,7 +415,7 @@ void TLaggingAgentsReplicaProxyActor::WriteBlocks(
     auto deviceRequests = PartConfig->ToDeviceRequests(blockRange);
     for (const auto& deviceRequest: deviceRequests) {
         const auto& blockRangeData =
-            GetBlockRangeDataByBlockRange(deviceRequest.BlockRange);
+            GetBlockRangeData(deviceRequest.BlockRange);
         if (AgentIsUnavailable(blockRangeData.LaggingAgentId)) {
             MarkBlocksAsDirty(
                 ctx,
@@ -473,10 +471,7 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::SplitRequest(
     result.emplace_back(
         std::move(request),
         msg->CallContext,
-        GetRecipientActorId(
-            deviceRequests[0].BlockRange,
-            false),   // forRead
-
+        GetRecipientActorId(deviceRequests[0].BlockRange, ERequestKind::Write),
         deviceRequests[0].Device.GetDeviceUUID());
 
     return result;
@@ -489,9 +484,8 @@ bool TLaggingAgentsReplicaProxyActor::ShouldSplitWriteRequest(
 
     THashSet<NActors::TActorId> recipientActors;
     for (const auto& deviceRequest: deviceRequests) {
-        recipientActors.insert(GetRecipientActorId(
-            deviceRequest.BlockRange,
-            false));   // forRead
+        recipientActors.insert(
+            GetRecipientActorId(deviceRequest.BlockRange, ERequestKind::Write));
     }
     return recipientActors.size() > 1;
 }
@@ -519,10 +513,7 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
         result.emplace_back(
             std::move(request),
             forkedCallContext,
-            GetRecipientActorId(
-                deviceRequest.BlockRange,
-                false),   // forRead
-
+            GetRecipientActorId(deviceRequest.BlockRange, ERequestKind::Write),
             deviceRequest.Device.GetDeviceUUID());
     }
 
@@ -560,10 +551,7 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
         result.emplace_back(
             std::move(request),
             forkedCallContext,
-            GetRecipientActorId(
-                deviceRequest.BlockRange,
-                false),   // forRead
-
+            GetRecipientActorId(deviceRequest.BlockRange, ERequestKind::Write),
             deviceRequest.Device.GetDeviceUUID());
     }
 
@@ -586,10 +574,7 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
         result.emplace_back(
             std::move(request),
             forkedCallContext,
-            GetRecipientActorId(
-                deviceRequest.BlockRange,
-                false),   // forRead
-
+            GetRecipientActorId(deviceRequest.BlockRange, ERequestKind::Write),
             deviceRequest.Device.GetDeviceUUID());
     }
 
@@ -598,13 +583,14 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
 
 NActors::TActorId TLaggingAgentsReplicaProxyActor::GetRecipientActorId(
     const TBlockRange64& requestBlockRange,
-    bool forRead) const
+    ERequestKind kind) const
 {
-    const auto& blockRangeData =
-        GetBlockRangeDataByBlockRange(requestBlockRange);
+    const auto& blockRangeData = GetBlockRangeData(requestBlockRange);
     const auto& agentId = blockRangeData.LaggingAgentId;
     // Lagging target migration reads can always be sent directly to partition.
-    if (agentId.empty() || (blockRangeData.IsTargetMigration && forRead)) {
+    if (agentId.empty() ||
+        (blockRangeData.IsTargetMigration && kind == ERequestKind::Read))
+    {
         return NonreplPartitionActorId;
     }
 
@@ -627,26 +613,26 @@ NActors::TActorId TLaggingAgentsReplicaProxyActor::GetRecipientActorId(
     Y_ABORT("Unknown enum value: %u", static_cast<ui8>(agentState->State));
 }
 
-auto TLaggingAgentsReplicaProxyActor::GetBlockRangeDataByBlockRange(
+auto TLaggingAgentsReplicaProxyActor::GetBlockRangeData(
     const TBlockRange64& requestBlockRange) const -> const TBlockRangeData&
 {
     const auto it =
-        LaggingAgentIdByBlockRangeEnd.lower_bound(requestBlockRange.End);
-    Y_ABORT_UNLESS(it != LaggingAgentIdByBlockRangeEnd.end());
+        BlockRangeDataByBlockRangeEnd.lower_bound(requestBlockRange.End);
+    Y_ABORT_UNLESS(it != BlockRangeDataByBlockRangeEnd.end());
     Y_DEBUG_ABORT_UNLESS(
-        LaggingAgentIdByBlockRangeEnd.lower_bound(requestBlockRange.Start) ==
+        BlockRangeDataByBlockRangeEnd.lower_bound(requestBlockRange.Start) ==
         it);
     return it->second;
 }
 
-void TLaggingAgentsReplicaProxyActor::RecalculateLaggingAgentIdByBlockRangeEnd()
+void TLaggingAgentsReplicaProxyActor::RecalculateBlockRangeDataByBlockRangeEnd()
 {
     ui64 blockIndex = 0;
     for (const auto& device: PartConfig->GetDevices()) {
         blockIndex += device.GetBlocksCount();
 
         if (AgentState.contains(device.GetAgentId())) {
-            LaggingAgentIdByBlockRangeEnd[blockIndex - 1] = {
+            BlockRangeDataByBlockRangeEnd[blockIndex - 1] = {
                 .LaggingAgentId = device.GetAgentId(),
                 .IsTargetMigration = false};
             // There can be only one lagging device per disk "row". So it is
@@ -665,14 +651,14 @@ void TLaggingAgentsReplicaProxyActor::RecalculateLaggingAgentIdByBlockRangeEnd()
             const auto& targetAgentId =
                 migration->GetTargetDevice().GetAgentId();
             if (AgentState.contains(targetAgentId)) {
-                LaggingAgentIdByBlockRangeEnd[blockIndex - 1] = {
+                BlockRangeDataByBlockRangeEnd[blockIndex - 1] = {
                     .LaggingAgentId = targetAgentId,
                     .IsTargetMigration = true};
                 continue;
             }
         }
 
-        LaggingAgentIdByBlockRangeEnd[blockIndex - 1] = {};
+        BlockRangeDataByBlockRangeEnd[blockIndex - 1] = {};
     }
 }
 
@@ -706,7 +692,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     state.State = EAgentState::Unavailable;
     state.LaggingAgent = msg->LaggingAgent;
 
-    RecalculateLaggingAgentIdByBlockRangeEnd();
+    RecalculateBlockRangeDataByBlockRangeEnd();
 
     if (state.MigrationActorId) {
         Y_DEBUG_ABORT_UNLESS(state.CleanBlocksMap);
@@ -850,7 +836,7 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingAgentMigrationFinished(
     Y_DEBUG_ABORT_UNLESS(!state.AvailabilityMonitoringActorId);
     DestroyChildActor(ctx, &state.MigrationActorId);
     AgentState.erase(it);
-    RecalculateLaggingAgentIdByBlockRangeEnd();
+    RecalculateBlockRangeDataByBlockRangeEnd();
 
     ctx.Send(std::make_unique<NActors::IEventHandle>(
         PartConfig->GetParentActorId(),
@@ -907,8 +893,8 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
         return;
     }
 
-    state->DrainIsFinished = true;
-    if (state->MigrationIsDisabled) {
+    state->DrainFinished = true;
+    if (state->MigrationDisabled) {
         return;
     }
 
@@ -942,7 +928,7 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingMigrationDisabled(
         PartConfig->GetName().c_str(),
         msg->AgentId.Quote().c_str());
 
-    state->MigrationIsDisabled = true;
+    state->MigrationDisabled = true;
 }
 
 void TLaggingAgentsReplicaProxyActor::HandleLaggingMigrationEnabled(
@@ -951,7 +937,7 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingMigrationEnabled(
 {
     const auto* msg = ev->Get();
     auto* state = AgentState.FindPtr(msg->AgentId);
-    if (!state || !state->MigrationIsDisabled) {
+    if (!state || !state->MigrationDisabled) {
         return;
     }
 
@@ -962,8 +948,8 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingMigrationEnabled(
         PartConfig->GetName().c_str(),
         msg->AgentId.Quote().c_str());
 
-    state->MigrationIsDisabled = false;
-    if (!state->DrainIsFinished) {
+    state->MigrationDisabled = false;
+    if (!state->DrainFinished) {
         return;
     }
 
@@ -984,7 +970,7 @@ void TLaggingAgentsReplicaProxyActor::StartLaggingResync(
     const TString& agentId,
     TAgentState* state)
 {
-    Y_ABORT_UNLESS(state->DrainIsFinished && !state->MigrationIsDisabled);
+    Y_ABORT_UNLESS(state->DrainFinished && !state->MigrationDisabled);
 
     state->State = EAgentState::Resyncing;
     LOG_DEBUG(
@@ -1066,7 +1052,7 @@ void TLaggingAgentsReplicaProxyActor::HandlePoisonPill(
 {
     Become(&TThis::StateZombie);
     AgentState.clear();
-    RecalculateLaggingAgentIdByBlockRangeEnd();
+    RecalculateBlockRangeDataByBlockRangeEnd();
     PoisonPillHelper.HandlePoisonPill(ev, ctx);
 }
 

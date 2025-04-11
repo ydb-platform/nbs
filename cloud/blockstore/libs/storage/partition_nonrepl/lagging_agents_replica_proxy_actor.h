@@ -33,6 +33,12 @@ class TLaggingAgentsReplicaProxyActor final
     : public NActors::TActorBootstrapped<TLaggingAgentsReplicaProxyActor>
     , public IPoisonPillHelperOwner
 {
+    enum class ERequestKind
+    {
+        Read,
+        Write,
+    };
+
 private:
     using TBase = NActors::TActorBootstrapped<TLaggingAgentsReplicaProxyActor>;
 
@@ -60,8 +66,8 @@ private:
         NActors::TActorId AvailabilityMonitoringActorId;
         NActors::TActorId MigrationActorId;
         std::unique_ptr<TCompressedBitmap> CleanBlocksMap;
-        bool MigrationIsDisabled = false;
-        bool DrainIsFinished = false;
+        bool MigrationDisabled = false;
+        bool DrainFinished = false;
     };
     THashMap<TString, TAgentState> AgentState;
 
@@ -69,7 +75,7 @@ private:
         TString LaggingAgentId;
         bool IsTargetMigration = false;
     };
-    TMap<ui64, TBlockRangeData> LaggingAgentIdByBlockRangeEnd;
+    TMap<ui64, TBlockRangeData> BlockRangeDataByBlockRangeEnd;
 
     ui64 DrainRequestCounter = 0;
     // To determine which agent has drained in-flight writes by cookie in the
@@ -124,12 +130,12 @@ private:
         const TVector<TDeviceRequest>& deviceRequests) const;
     [[nodiscard]] NActors::TActorId GetRecipientActorId(
         const TBlockRange64& requestBlockRange,
-        bool read) const;
+        ERequestKind kind) const;
 
-    [[nodiscard]] const TBlockRangeData& GetBlockRangeDataByBlockRange(
+    [[nodiscard]] const TBlockRangeData& GetBlockRangeData(
         const TBlockRange64& requestBlockRange) const;
 
-    void RecalculateLaggingAgentIdByBlockRangeEnd();
+    void RecalculateBlockRangeDataByBlockRangeEnd();
 
     void MarkBlocksAsDirty(
         const NActors::TActorContext& ctx,
