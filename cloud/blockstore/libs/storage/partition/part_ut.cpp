@@ -11570,8 +11570,21 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
-                case TEvPartitionCommonPrivate::TEvReadBlobRequest: {
+                case TEvPartitionCommonPrivate::EvReadBlobRequest: {
+                    auto response = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobResponse>(
+                        MakeError(E_IO, "Simulated blob read failure"));
+
+                    runtime->Send(new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0, // flags
+                        event->Cookie
+                    ), 0);
+
                     return TTestActorRuntime::EEventAction::DROP;
+
+                    break;
                 }
             }
             return TTestActorRuntime::DefaultObserverFunc(event);
@@ -11587,8 +11600,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.SendToPipe(std::move(request));
 
         auto response = partition.RecvReadBlocksResponse();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(response->Record.GetFailedBlobs().size(), 2);
+        UNIT_ASSERT_VALUES_UNEQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(response->Record.GetScanDiskResults().size(), 2);
     }
 }
 

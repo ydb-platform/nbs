@@ -327,6 +327,10 @@ private:
         const NProto::TError& error,
         const TBatchRequest& batch);
 
+    bool HandleErrorFromDescribeVolume(
+        const TActorContext& ctx,
+        const NProto::TError& error);
+
     void ReplyAndDie(
         const TActorContext& ctx,
         IEventBasePtr response,
@@ -506,22 +510,37 @@ bool TReadBlocksActor::HandleError(
     const TBatchRequest& batch)
 {
     if (FAILED(error.GetCode())) {
-        if (ReportBlobIdsOnFailure && batch.BlobId) {
-            if (batch.BlobId) {
-                FailedBlobs.emplace_back(batch.BlobId.ToString());
-            } else {
-                FailedBlobs.emplace_back("base disk describe");
-            }
+        if (ReportBlobIdsOnFailure) {
+            FailedBlobs.emplace_back(batch.BlobId.ToString());
+
             // scan disk should try to read all the data and report broken blobs
             if (RequestsCompleted < RequestsScheduled || WaitBaseDiskRequests) {
                 return false;
             }
         }
-        auto response = CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
+
+        auto response =
+            CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
         ReplyAndDie(ctx, std::move(response), error);
         return true;
     }
 
+    return false;
+}
+
+bool TReadBlocksActor::HandleErrorFromDescribeVolume(
+    const TActorContext& ctx,
+    const NProto::TError& error)
+{
+    if (FAILED(error.GetCode())) {
+        if (ReportBlobIdsOnFailure) {
+            FailedBlobs.emplace_back("base disk describe");
+        }
+        auto response =
+            CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
+        ReplyAndDie(ctx, std::move(response), error);
+        return true;
+    }
     return false;
 }
 
@@ -625,7 +644,7 @@ void TReadBlocksActor::HandleDescribeBlocksCompleted(
 
     WaitBaseDiskRequests = false;
 
-    if (HandleError(ctx, error, {})) {
+    if (HandleErrorFromDescribeVolume(ctx, error)) {
         return;
     }
 
@@ -1175,7 +1194,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReadRange,
             args.ReplyLocal,
             args.ChecksumsEnabled,
-            false,
+            args.IsCheckRange,
             args.CommitId,
             std::move(requests),
             std::move(args.BlockInfos),
