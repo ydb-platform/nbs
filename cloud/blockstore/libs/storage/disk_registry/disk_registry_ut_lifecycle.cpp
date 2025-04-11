@@ -2,7 +2,6 @@
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
@@ -11,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_logbroker.h>
+#include <cloud/blockstore/libs/storage/disk_registry/testlib/test_state.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_client.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -210,6 +210,116 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         UNIT_ASSERT(diskRegistry.Exists("mirrored-vol"));
         UNIT_ASSERT(!diskRegistry.Exists("mirrored-garbage"));
+    }
+
+    Y_UNIT_TEST(ShouldReplaceLaggingDevices)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        const auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {
+                Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                Device("dev-2", "uuid-4", "rack-2", 10_GB),
+            });
+
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1, agent2}));
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+        WaitForSecureErase(*runtime, {agent1, agent2});
+
+        TSSProxyClient ss(*runtime);
+        ss.CreateVolume("mirrored-vol");
+        diskRegistry.AllocateDisk(
+            "mirrored-vol",
+            10_GB,
+            DefaultLogicalBlockSize,
+            "",   // placementGroupId
+            0,    // placementPartitionIndex
+            "",   // cloudId
+            "",   // folderId
+            1,    // replicaCount
+            NProto::STORAGE_MEDIA_SSD_MIRROR2);
+
+        // Send volume reallocations.
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
+
+        {
+            auto response = diskRegistry.DescribeDisk("mirrored-vol");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            auto& r = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", r.GetDevices(0).GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetReplicas(0).DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-3",
+                r.GetReplicas(0).GetDevices(0).GetDeviceUUID());
+        }
+
+        TVector<TString> notifiedDiskIds;
+        runtime->SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvVolume::EvReallocateDiskRequest &&
+                    event->Recipient == MakeVolumeProxyServiceId())
+                {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvReallocateDiskRequest>();
+                    notifiedDiskIds.push_back(msg->Record.GetDiskId());
+                }
+
+                return false;
+            });
+
+        // Add lagging device.
+        TVector<NProto::TLaggingDevice> laggingDevices;
+        NProto::TLaggingDevice laggingDevice;
+        laggingDevice.SetDeviceUUID("uuid-3");
+        laggingDevice.SetRowIndex(0);
+        laggingDevices.push_back(std::move(laggingDevice));
+        auto response = diskRegistry.AddLaggingDevices(
+            "mirrored-vol",
+            std::move(laggingDevices));
+        UNIT_ASSERT_SUCCESS(response->GetError());
+
+        // We should send a reallocate request.
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(1, notifiedDiskIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("mirrored-vol", notifiedDiskIds[0]);
+
+        {
+            auto response = diskRegistry.DescribeDisk("mirrored-vol");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            auto& r = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", r.GetDevices(0).GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetReplicas(0).DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-3",
+                r.GetReplicas(0).GetDevices(0).GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetDeviceReplacementUUIDs().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-3",
+                r.GetDeviceReplacementUUIDs()[0]);
+        }
     }
 
     Y_UNIT_TEST(ShouldRepairVolume)

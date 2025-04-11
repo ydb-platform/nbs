@@ -700,6 +700,21 @@ struct TTestEnv
         return *msg;
     }
 
+    TEvHiveProxy::TListTabletBootInfoBackupsResponse
+    SendListTabletBootInfoBackups(const TActorId& sender, ui32 errorCode)
+    {
+        Runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvListTabletBootInfoBackupsRequest()));
+        auto ev = Runtime.GrabEdgeEvent<
+            TEvHiveProxy::TEvListTabletBootInfoBackupsResponse>(sender);
+        UNIT_ASSERT(ev);
+        const auto* msg = ev->Get();
+        UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
+        return *msg;
+    }
+
     void SendCreateTabletRequestAsync(
         const TActorId& sender,
         ui64 hiveId,
@@ -879,7 +894,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         }
 
         // Virtual lock owner should receive a lost notification
-        env.WaitLockLost(sender, FakeTablet2);
+        env.WaitLockLost(sender, FakeTablet2, E_REJECTED);
 
         // New lock request should succeed, stealing the lock back
         env.SendLockRequest(sender, FakeTablet2);
@@ -1105,15 +1120,27 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         UNIT_ASSERT(env.HiveState->DownNodeIds.contains(sender.NodeId()));
     }
 
+    Y_UNIT_TEST(DontBackupWithEmptyBootInfoFilePath)
+    {
+        TString backupFilePath = "";
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        env.SendBackupTabletBootInfos(sender, S_FALSE);
+    }
+
     Y_UNIT_TEST(BootExternalInFallbackMode)
     {
-        TString cacheFilePath =
-            "BootExternalInFallbackMode.tablet_boot_info_cache.txt";;
+        TString backupFilePath =
+            "BootExternalInFallbackMode.tablet_boot_info_backup.txt";
         bool fallbackMode = false;
 
         {
             TTestBasicRuntime runtime;
-            TTestEnv env(runtime, cacheFilePath, fallbackMode);
+            TTestEnv env(runtime, backupFilePath, fallbackMode);
 
             TTabletStorageInfoPtr expected = CreateTestTabletInfo(
                 FakeTablet2,
@@ -1139,7 +1166,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         fallbackMode = true;
         {
             TTestBasicRuntime runtime;
-            TTestEnv env(runtime, cacheFilePath, fallbackMode);
+            TTestEnv env(runtime, backupFilePath, fallbackMode);
 
             auto sender = runtime.AllocateEdgeActor();
 
@@ -1422,6 +1449,48 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         TTestEnv env(runtime, EExternalBootOptions::IGNORE);
         TActorId sender = runtime.AllocateEdgeActor();
 
+        ui64 lookupCount = 0;
+        ui64 hiveLookupCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvHive::EvLookupTablet: {
+                        ++hiveLookupCount;
+                        return true;
+                    }
+                    case TEvHiveProxy::EvLookupTabletRequest: {
+                        ++lookupCount;
+                        return false;
+                    }
+                }
+
+                return false;
+            });
+
+        for (ui32 i = 0; i < LookupCount; ++i) {
+            env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 1);
+        }
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return hiveLookupCount && lookupCount == LookupCount;
+            }});
+
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveLookupCount);
+
+        env.EnableTabletResolverScheduling();
+        env.RebootHive();
+
+        for (ui32 i = 0; i < LookupCount; ++i) {
+            auto ev =
+                runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
+                    sender);
+            UNIT_ASSERT(ev);
+            const auto* msg = ev->Get();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, msg->GetStatus());
+        }
+
         auto sendReply =
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
         {
@@ -1438,16 +1507,12 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 ev->Cookie));
         };
 
-        ui32 receivedlookupCount = 0;
         runtime.SetEventFilter(
             [&](auto&, TAutoPtr<IEventHandle>& ev)
             {
                 switch (ev->GetTypeRewrite()) {
                     case TEvHive::EvLookupTablet: {
-                        if (++receivedlookupCount == 2) {
-                            sendReply(runtime, ev);
-                        }
-
+                        sendReply(runtime, ev);
                         return true;
                     }
                 }
@@ -1456,35 +1521,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             });
 
         for (ui32 i = 0; i < LookupCount; ++i) {
-            env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 1);
-        }
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(receivedlookupCount, 1);
-
-        runtime.Register(CreateTabletKiller(FakeHiveTablet));
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
-        for (ui32 i = 0; i < LookupCount; ++i) {
-            auto ev =
-                runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
-                    sender);
-            UNIT_ASSERT(ev);
-            const auto* msg = ev->Get();
-            UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), E_REJECTED);
-        }
-
-        for (ui32 i = 0; i < LookupCount; ++i) {
-            env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 1);
-        }
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(receivedlookupCount, 2);
-        for (ui32 i = 0; i < LookupCount; ++i) {
-            auto ev =
-                runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
-                    sender);
-            UNIT_ASSERT(ev);
-            const auto* msg = ev->Get();
-            UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), S_OK);
-            UNIT_ASSERT_VALUES_EQUAL(msg->TabletId, FakeTablet2);
+            const auto& response =
+                env.SendLookupTabletRequest(sender, FakeHiveTablet, 0, 1, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, response.TabletId);
         }
     }
 
@@ -1581,6 +1620,70 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         // Rebooting hive should reconnect the lock
         UNIT_ASSERT_GT(counter->Val(), oldVal);
+    }
+
+    Y_UNIT_TEST(ShouldLoadTabletBootInfoAtStartup)
+    {
+        TString backupFilePath =
+            "BootExternal.tablet_boot_info_backup.txt";
+
+        NKikimr::TTabletStorageInfoPtr storageInfo;
+
+        TVector<TVector<ui64>> expectedGroupIds;
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, false);
+
+            TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+                FakeTablet2,
+                TTabletTypes::BlockStorePartition);
+            env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+            auto sender = runtime.AllocateEdgeActor();
+
+            auto result =
+                env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            UNIT_ASSERT(result.StorageInfo);
+            UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, result.StorageInfo->TabletID);
+            UNIT_ASSERT_VALUES_EQUAL(1u, result.SuggestedGeneration);
+
+            // Smoke check for background sync (15 seconds should be enough).
+            runtime.AdvanceCurrentTime(TDuration::Seconds(15));
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(15));
+
+            for (auto& channel: result.StorageInfo->Channels) {
+                expectedGroupIds.emplace_back();
+                for (auto& historyEntry: channel.History) {
+                    expectedGroupIds.back().emplace_back(
+                        historyEntry.GroupID);
+                }
+            }
+            storageInfo = result.StorageInfo;
+            env.SendBackupTabletBootInfos(sender, S_OK);
+        }
+
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, false);
+
+            auto sender = runtime.AllocateEdgeActor();
+
+            auto result = env.SendListTabletBootInfoBackups(sender, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(1, result.TabletBootInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                FakeTablet2,
+                result.TabletBootInfos[0].StorageInfo->TabletID);
+            TVector<TVector<ui64>> actualGroupIds;
+            for (auto& channel: result.TabletBootInfos[0].StorageInfo->Channels)
+            {
+                actualGroupIds.emplace_back();
+                for (auto& historyEntry: channel.History) {
+                    actualGroupIds.back().emplace_back(historyEntry.GroupID);
+                }
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedGroupIds, actualGroupIds);
+        }
     }
 }
 

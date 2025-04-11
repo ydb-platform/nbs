@@ -41,6 +41,8 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const NProto::EResyncPolicy ResyncPolicy;
+    const bool CritOnChecksumMismatch;
     TString RWClientId;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TMigrations Migrations;
@@ -99,7 +101,9 @@ public:
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
-        ui64 initialResyncIndex);
+        ui64 initialResyncIndex,
+        NProto::EResyncPolicy resyncPolicy,
+        bool critOnChecksumMismatch);
 
     ~TMirrorPartitionResyncActor();
 
@@ -219,6 +223,9 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocksLocal, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(
+        WaitForInFlightWrites,
+        NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);

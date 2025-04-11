@@ -167,21 +167,26 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     const bool useSimpleMigrationBandwidthLimiter =
         IsReliableDiskRegistryMediaKind(mediaKind);
 
-    auto nonreplicatedConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-        State->GetMeta().GetDevices(),
-        State->GetMeta().GetIOMode(),
-        State->GetDiskId(),
-        State->GetMeta().GetConfig().GetBlockSize(),
-        TNonreplicatedPartitionConfig::TVolumeInfo{
-            State->GetCreationTs(),
-            mediaKind},
-        SelfId(),
-        State->GetMeta().GetMuteIOErrors(),
-        State->GetFilteredFreshDevices(),
-        State->GetLaggingDevices(),
-        maxTimedOutDeviceStateDuration,
-        maxTimedOutDeviceStateDurationOverridden,
-        useSimpleMigrationBandwidthLimiter);
+    TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+        params{
+            State->GetMeta().GetDevices(),
+            TNonreplicatedPartitionConfig::TVolumeInfo{
+                State->GetCreationTs(),
+                mediaKind},
+            State->GetDiskId(),
+            State->GetMeta().GetConfig().GetBlockSize(),
+            SelfId(),
+            State->GetMeta().GetIOMode(),
+            State->GetMeta().GetMuteIOErrors(),
+            State->GetFilteredFreshDevices(),
+            State->GetLaggingDevices(),
+            LaggingDevicesAreAllowed(),
+            maxTimedOutDeviceStateDuration,
+            maxTimedOutDeviceStateDurationOverridden,
+            useSimpleMigrationBandwidthLimiter,
+        };
+    auto nonreplicatedConfig =
+        std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
     TActorId nonreplicatedActorId;
 
@@ -225,6 +230,9 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         // XXX naming (nonreplicated)
         if (State->IsMirrorResyncNeeded()) {
             // mirrored disk in resync state
+            auto resyncPolicy = State->IsForceMirrorResync()
+                                    ? Config->GetForceResyncPolicy()
+                                    : Config->GetAutoResyncPolicy();
             nonreplicatedActorId = NCloud::Register(
                 ctx,
                 CreateMirrorPartitionResync(
@@ -238,7 +246,9 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     std::move(replicas),
                     GetRdmaClient(),
                     SelfId(),
-                    State->GetMeta().GetResyncIndex()));
+                    State->GetMeta().GetResyncIndex(),
+                    resyncPolicy,
+                    State->GetMeta().GetAlertResyncChecksumMismatch()));
         } else {
             // mirrored disk (may be in migration state)
             nonreplicatedActorId = NCloud::Register(
@@ -298,7 +308,7 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
     return nonreplicatedActorId;
 }
 
-void TVolumeActor::RestartDiskRegistryBasedPartition(
+void TVolumeActor::RestartPartition(
     const TActorContext& ctx,
     TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)
 {

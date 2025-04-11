@@ -312,7 +312,8 @@ struct TTxPartition
         // compaction
         const TAffectedBlobs AffectedBlobs;
         const TAffectedBlocks AffectedBlocks;
-        const TVector<TMergedBlobCompactionInfo> MergedBlobCompactionInfos;
+        const TVector<TBlobCompactionInfo> MixedBlobCompactionInfos;
+        const TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
 
         ui64 DeletionCommitId = 0;
 
@@ -325,7 +326,8 @@ struct TTxPartition
                 EAddBlobMode mode,
                 TAffectedBlobs affectedBlobs,
                 TAffectedBlocks affectedBlocks,
-                TVector<TMergedBlobCompactionInfo> mergedBlobCompactionInfos)
+                TVector<TBlobCompactionInfo> mixedBlobCompactionInfos,
+                TVector<TBlobCompactionInfo> mergedBlobCompactionInfos)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , MixedBlobs(std::move(mixedBlobs))
@@ -334,6 +336,7 @@ struct TTxPartition
             , Mode(mode)
             , AffectedBlobs(std::move(affectedBlobs))
             , AffectedBlocks(std::move(affectedBlocks))
+            , MixedBlobCompactionInfos(std::move(mixedBlobCompactionInfos))
             , MergedBlobCompactionInfos(std::move(mergedBlobCompactionInfos))
         {}
 
@@ -365,7 +368,6 @@ struct TTxPartition
         TAffectedBlocks AffectedBlocks;
         ui32 BlobsSkipped = 0;
         ui32 BlocksSkipped = 0;
-        bool Discarded = false;
         bool ChecksumsEnabled = false;
 
         TRangeCompaction(ui32 rangeIdx, const TBlockRange32& blockRange)
@@ -381,7 +383,6 @@ struct TTxPartition
             AffectedBlocks.clear();
             BlobsSkipped = 0;
             BlocksSkipped = 0;
-            Discarded = false;
             ChecksumsEnabled = false;
         }
 

@@ -28,34 +28,6 @@ var nbsServerControllerServiceCapabilities = []*csi.ControllerServiceCapability{
 	},
 }
 
-func getStorageMediaKind(parameters map[string]string) storagecoreapi.EStorageMediaKind {
-	kind, ok := parameters["storage-media-kind"]
-	if ok {
-		switch kind {
-		case "hdd":
-			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_HDD
-		case "hybrid":
-			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_HDD
-		case "ssd":
-			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD
-		case "ssd_nonrepl":
-			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD_NONREPLICATED
-		case "ssd_mirror2":
-			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR2
-		case "ssd_mirror3":
-			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR3
-		case "ssd_local":
-			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL
-		case "hdd_local":
-			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_HDD_LOCAL
-		case "hdd_nonrepl":
-			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED
-		}
-	}
-
-	return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 type nbsServerControllerService struct {
@@ -126,7 +98,7 @@ func (c *nbsServerControllerService) CreateVolume(
 
 	var err error
 	if parameters["backend"] == "nfs" {
-		err = c.createFileStore(ctx, req.Name, requiredBytes)
+		err = c.createFileStore(ctx, req.Name, requiredBytes, parameters)
 		// TODO (issues/464): return codes.AlreadyExists if volume exists
 	} else {
 		err = c.createDisk(ctx, req.Name, requiredBytes, parameters)
@@ -168,6 +140,8 @@ func (c *nbsServerControllerService) createDisk(
 		BlockSize:            diskBlockSize,
 		BlocksCount:          uint64(requiredBytes) / uint64(diskBlockSize),
 		StorageMediaKind:     getStorageMediaKind(parameters),
+		FolderId:             parameters["csi.storage.k8s.io/pvc/namespace"],
+		CloudId:              parameters["csi.storage.k8s.io/pvc/namespace"],
 		BaseDiskId:           parameters["base-disk-id"],
 		BaseDiskCheckpointId: parameters["base-disk-checkpoint-id"],
 	})
@@ -186,7 +160,8 @@ func (c *nbsServerControllerService) getNfsClient(fileSystemId string) nfsclient
 func (c *nbsServerControllerService) createFileStore(
 	ctx context.Context,
 	fileSystemId string,
-	requiredBytes int64) error {
+	requiredBytes int64,
+	parameters map[string]string) error {
 
 	nfsClient := c.getNfsClient(fileSystemId)
 	if nfsClient == nil {
@@ -195,8 +170,8 @@ func (c *nbsServerControllerService) createFileStore(
 
 	_, err := nfsClient.CreateFileStore(ctx, &nfsapi.TCreateFileStoreRequest{
 		FileSystemId:     fileSystemId,
-		CloudId:          "fakeCloud",
-		FolderId:         "fakeFolder",
+		CloudId:          parameters["csi.storage.k8s.io/pvc/namespace"],
+		FolderId:         parameters["csi.storage.k8s.io/pvc/namespace"],
 		BlockSize:        diskBlockSize,
 		BlocksCount:      uint64(requiredBytes) / uint64(diskBlockSize),
 		StorageMediaKind: storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,

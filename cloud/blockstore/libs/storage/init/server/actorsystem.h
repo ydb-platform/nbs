@@ -71,6 +71,7 @@ struct TServerActorSystemArgs
     TVector<NCloud::NStorage::IUserMetricsSupplierPtr> UserCounterProviders;
 
     bool IsDiskRegistrySpareNode = false;
+    bool TemporaryServer = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

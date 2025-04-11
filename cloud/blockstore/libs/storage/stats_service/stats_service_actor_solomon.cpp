@@ -40,7 +40,9 @@ void RegisterVolumeSelfCounters(
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "service_volume")
             ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", volume.VolumeInfo.GetDiskId());
+            ->GetSubgroup("volume", volume.VolumeInfo.GetDiskId())
+            ->GetSubgroup("cloud", volume.VolumeInfo.GetCloudId())
+            ->GetSubgroup("folder", volume.VolumeInfo.GetFolderId());
 
         volume.PerfCounters.DiskCounters.Register(volumeCounters, false);
         volume.PerfCounters.VolumeSelfCounters.Register(volumeCounters, false);
@@ -221,6 +223,7 @@ void TStatsServiceActor::HandleRegisterVolume(
     const auto* msg = ev->Get();
 
     auto volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
+    volume->VolumeTabletId = msg->TabletId;
 
     if (volume->IsDiskRegistryBased()) {
         volume->PerfCounters = TDiskPerfData(

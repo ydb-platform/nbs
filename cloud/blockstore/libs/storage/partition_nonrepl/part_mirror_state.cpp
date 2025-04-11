@@ -7,7 +7,9 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/hash.h>
 #include <util/string/builder.h>
+#include <util/string/printf.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -26,9 +28,11 @@ TMirrorPartitionState::TMirrorPartitionState(
     , RWClientId(std::move(rwClientId))
     , Migrations(std::move(migrations))
 {
-    ReplicaInfos.push_back({PartConfig->Fork(PartConfig->GetDevices()), {}});
+    ReplicaInfos.push_back(
+        TReplicaInfo{.Config = PartConfig->Fork(PartConfig->GetDevices())});
     for (auto& devices: replicaDevices) {
-        ReplicaInfos.push_back({PartConfig->Fork(std::move(devices)), {}});
+        ReplicaInfos.push_back(
+            TReplicaInfo{.Config = PartConfig->Fork(std::move(devices))});
     }
 
     ui32 freshDeviceCount = 0;
@@ -42,6 +46,16 @@ TMirrorPartitionState::TMirrorPartitionState(
             << " != " << PartConfig->GetFreshDeviceIds().size()
             << " for disk " << PartConfig->GetName());
     }
+}
+
+ui32 TMirrorPartitionState::GetReplicaIndex(NActors::TActorId actorId) const
+{
+    return ReplicaActors.GetReplicaIndex(actorId);
+}
+
+bool TMirrorPartitionState::IsReplicaActor(NActors::TActorId actorId) const
+{
+    return ReplicaActors.IsReplicaActor(actorId);
 }
 
 NProto::TError TMirrorPartitionState::Validate()
@@ -186,20 +200,90 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
 
 NProto::TError TMirrorPartitionState::NextReadReplica(
     const TBlockRange64 readRange,
-    NActors::TActorId* actorId)
+    ui32& replicaIndex)
 {
-    ui32 replicaIndex = 0;
-    for (ui32 i = 0; i < ReplicaActors.size(); ++i) {
-        replicaIndex = ReadReplicaIndex++ % ReplicaActors.size();
-        const auto& replicaInfo = ReplicaInfos[replicaIndex];
-        if (replicaInfo.Config->DevicesReadyForReading(readRange)) {
-            *actorId = ReplicaActors[replicaIndex];
+    replicaIndex = 0;
+    for (ui32 i = 0; i < ReplicaActors.Size(); ++i) {
+        replicaIndex = ReadReplicaIndex++ % ReplicaActors.Size();
+        if (DevicesReadyForReading(replicaIndex, readRange)) {
             return {};
         }
     }
 
-    return MakeError(E_INVALID_STATE, TStringBuilder() << "range "
-        << DescribeRange(readRange) << " targets only fresh/dummy devices");
+    return MakeError(
+        E_INVALID_STATE,
+        TStringBuilder() << "range " << DescribeRange(readRange)
+                         << " targets only fresh/dummy devices");
+}
+
+bool TMirrorPartitionState::DevicesReadyForReading(
+    ui32 replicaIndex,
+    const TBlockRange64 blockRange) const
+{
+    Y_ABORT_UNLESS(replicaIndex < ReplicaInfos.size());
+    const auto& replicaInfo = ReplicaInfos[replicaIndex];
+    THashSet<TString> laggingAgents;
+    for (const auto& [_, laggingAgent]: replicaInfo.LaggingAgents) {
+        const auto [it, inserted] =
+            laggingAgents.insert(laggingAgent.GetAgentId());
+        STORAGE_CHECK_PRECONDITION_C(
+            inserted,
+            TStringBuilder() << "Duplicate lagging agent: "
+                             << laggingAgent.GetAgentId().Quote());
+    }
+    return replicaInfo.Config->DevicesReadyForReading(
+        blockRange,
+        laggingAgents);
+}
+
+void TMirrorPartitionState::AddLaggingAgent(NProto::TLaggingAgent laggingAgent)
+{
+    Y_ABORT_UNLESS(laggingAgent.GetReplicaIndex() < ReplicaInfos.size());
+    auto& replicaInfo = ReplicaInfos[laggingAgent.GetReplicaIndex()];
+    replicaInfo.LaggingAgents[laggingAgent.GetAgentId()] =
+        std::move(laggingAgent);
+}
+
+void TMirrorPartitionState::RemoveLaggingAgent(
+    const NProto::TLaggingAgent& laggingAgent)
+{
+    Y_ABORT_UNLESS(laggingAgent.GetReplicaIndex() < ReplicaInfos.size());
+    auto& replicaInfo = ReplicaInfos[laggingAgent.GetReplicaIndex()];
+    replicaInfo.LaggingAgents.erase(laggingAgent.GetAgentId());
+}
+
+bool TMirrorPartitionState::HasLaggingAgents(ui32 replicaIndex) const
+{
+    Y_ABORT_UNLESS(replicaIndex < ReplicaInfos.size());
+    return !ReplicaInfos[replicaIndex].LaggingAgents.empty();
+}
+
+void TMirrorPartitionState::ResetLaggingReplicaProxy(ui32 replicaIndex)
+{
+    ReplicaActors.ResetLaggingReplicaProxy(replicaIndex);
+}
+
+void TMirrorPartitionState::SetLaggingReplicaProxy(
+    ui32 replicaIndex,
+    const NActors::TActorId& actorId)
+{
+    ReplicaActors.SetLaggingReplicaProxy(replicaIndex, actorId);
+}
+
+bool TMirrorPartitionState::IsLaggingProxySet(ui32 replicaIndex) const
+{
+    return ReplicaActors.IsLaggingProxySet(replicaIndex);
+}
+
+size_t TMirrorPartitionState::LaggingReplicaCount() const
+{
+    return ReplicaActors.LaggingReplicaCount();
+}
+
+auto TMirrorPartitionState::SplitRangeByDeviceBorders(
+    const TBlockRange64 readRange) const -> TVector<TBlockRange64>
+{
+    return PartConfig->SplitBlockRangeByDevicesBorder(readRange);
 }
 
 ui32 TMirrorPartitionState::GetBlockSize() const

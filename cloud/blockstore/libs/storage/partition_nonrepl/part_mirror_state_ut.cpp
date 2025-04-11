@@ -53,20 +53,16 @@ struct TEnv
             device->SetDeviceUUID("1_3");
         }
 
-        Config = std::make_shared<TNonreplicatedPartitionConfig>(
-            Devices,
-            NProto::VOLUME_IO_OK,
-            "vol0",
-            4_KB,
-            volumeInfo,
-            NActors::TActorId(),
-            false,   // muteIOErrors
-            FreshDeviceIds,
-            THashSet<TString>(),   // laggingDeviceIds
-            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-            false,                 // maxTimedOutDeviceStateDurationOverridden
-            true                   // useSimpleMigrationBandwidthLimiter
-        );
+        TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+            params{
+                Devices,
+                volumeInfo,
+                "vol0",
+                DefaultBlockSize,
+                NActors::TActorId()};
+        params.FreshDeviceIds = FreshDeviceIds;
+        Config =
+            std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
         {
             auto* device = ReplicaDevices.Add();
@@ -106,11 +102,13 @@ struct TEnv
 Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 {
 #define TEST_READ_REPLICA(expected, state, startIndex, blockCount) {           \
-    NActors::TActorId actorId;                                                 \
-    const auto blockRange = TBlockRange64::WithLength(startIndex, blockCount); \
-    const auto error = state.NextReadReplica(blockRange, &actorId);            \
-    UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());     \
-    UNIT_ASSERT_VALUES_EQUAL(expected, actorId);                               \
+        ui32 actorIndex;                                                       \
+        const auto blockRange =                                                \
+            TBlockRange64::WithLength(startIndex, blockCount);                 \
+        const auto error = state.NextReadReplica(blockRange, actorIndex);      \
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage()); \
+        NActors::TActorId actorId = state.GetReplicaActor(actorIndex);         \
+        UNIT_ASSERT_VALUES_EQUAL(expected, actorId);                           \
 }                                                                              \
 // TEST_READ_REPLICA
 

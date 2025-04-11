@@ -376,7 +376,10 @@ void THiveProxyActor::HandleLockTabletExecutionLost(
         state->Phase == PHASE_LOCKED,
         TWellKnownEntityTypes::TABLET,
         tabletId);
-    SendLockLostNotification(ctx, state);
+    SendLockLostNotification(
+        ctx,
+        state,
+        MakeError(E_REJECTED, "Lock lost upon HIVE notification"));
     states->LockStates.erase(tabletId);
 }
 
@@ -558,6 +561,20 @@ void THiveProxyActor::HandleBackupTabletBootInfos(
         auto response =
             std::make_unique<TEvHiveProxy::TEvBackupTabletBootInfosResponse>(
                 MakeError(S_FALSE));
+        NCloud::Reply(ctx, *ev, std::move(response));
+    }
+}
+
+void THiveProxyActor::HandleListTabletBootInfoBackups(
+    const TEvHiveProxy::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (TabletBootInfoBackup) {
+        ctx.Send(ev->Forward(TabletBootInfoBackup));
+    } else {
+        auto response = std::make_unique<
+            TEvHiveProxy::TEvListTabletBootInfoBackupsResponse>(
+            MakeError(S_FALSE));
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 }

@@ -1,48 +1,97 @@
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <netlink/genl/ctrl.h>
-#include <netlink/genl/genl.h>
+#include <linux/genetlink.h>
 
 namespace NCloud::NNetlink {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNestedAttribute
-{
-private:
-    nl_msg* Message;
-    nlattr* Attribute;
-
-public:
-    TNestedAttribute(nl_msg* message, int attribute);
-    ~TNestedAttribute();
-};
+void ValidateAttribute(const ::nlattr& attribute, ui16 expectedAttribute);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMessage
+#pragma pack(push, NLMSG_ALIGNTO)
+
+struct TNetlinkError
 {
-private:
-    nl_msg* Message;
+    ::nlmsghdr MessageHeader;
+    ::nlmsgerr MessageError;
+};
 
-public:
-    TMessage(int family, int command);
-    ~TMessage();
+struct TNetlinkHeader
+{
+    ::nlmsghdr MessageHeader;
+    ::genlmsghdr GenericHeader;
 
-    operator nl_msg*() const
+    TNetlinkHeader() = default;
+
+    TNetlinkHeader(ui32 len, ui16 type, ui8 cmd)
+        : MessageHeader{len, type, NLM_F_REQUEST | NLM_F_ACK, 0, 0}
+        , GenericHeader{cmd, 1, 0}
     {
-        return Message;
-    }
-
-    TNestedAttribute Nest(int attribute);
-
-    void Put(int attribute, void* data, size_t size);
-
-    template <typename T>
-    void Put(int attribute, T data)
-    {
-        Put(attribute, &data, sizeof(T));
     }
 };
+
+struct TNetlinkMessage
+{
+    TNetlinkHeader Headers;
+
+    void Validate()
+    {}
+};
+
+template <typename TMessage = TNetlinkMessage, size_t MaxMsgSize = 1024>
+union TNetlinkResponse {
+    TMessage Msg;
+    TNetlinkError NetlinkError;
+    ui8 Buffer[MaxMsgSize];
+
+    TNetlinkResponse()
+    {
+        static_assert(sizeof(TMessage) < MaxMsgSize);
+    }
+};
+
+template <size_t FamilyNameLength>
+struct TNetlinkFamilyIdRequest
+{
+    TNetlinkHeader Headers;
+    ::nlattr FamilyNameAttr;
+    std::array<char, FamilyNameLength> FamilyName;
+
+    TNetlinkFamilyIdRequest(const char (&familyName)[FamilyNameLength])
+    {
+        // Use memset to resolve the "uninitialized bytes" memory sanitizer
+        // warning, as this structure is transmitted via a socket, and padding
+        // may be present depending on the length of the family name.
+        memset(this, 0, sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>));
+        Headers = {
+            sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>),
+            GENL_ID_CTRL,
+            CTRL_CMD_GETFAMILY};
+        FamilyNameAttr = {
+            sizeof(FamilyName) + NLA_HDRLEN,
+            CTRL_ATTR_FAMILY_NAME};
+        memcpy(&FamilyName[0], familyName, FamilyNameLength);
+    }
+};
+
+template<size_t FamilyNameLength>
+struct TNetlinkFamilyIdResponse
+{
+    TNetlinkHeader Headers;
+    ::nlattr FamilyNameAttr;
+    std::array<char, FamilyNameLength> FamilyName;
+    alignas(NLMSG_ALIGNTO)::nlattr FamilyIdAttr;
+    ui16 FamilyId;
+
+    void Validate()
+    {
+        ValidateAttribute(FamilyNameAttr, CTRL_ATTR_FAMILY_NAME);
+        ValidateAttribute(FamilyIdAttr, CTRL_ATTR_FAMILY_ID);
+    }
+};
+
+#pragma pack(pop)
 
 }   // namespace NCloud::NNetlink

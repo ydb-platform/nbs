@@ -12,6 +12,7 @@ import (
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
@@ -263,6 +264,10 @@ func (s *Session) BlockCount() uint64 {
 
 func (s *Session) IsOverlayDisk() bool {
 	return len(s.volume.BaseDiskId) != 0
+}
+
+func (s *Session) EncryptionDesc() (*types.EncryptionDesc, error) {
+	return getEncryptionDesc(s.volume.EncryptionDesc)
 }
 
 func (s *Session) IsDiskRegistryBasedDisk() bool {

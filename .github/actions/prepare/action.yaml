@@ -1,4 +1,4 @@
-name: Prepare VM for build (used only in act)
+name: Prepare VM for build (used only in act or on github runners)
 description: Install required packages
 runs:
   using: composite
@@ -11,11 +11,10 @@ runs:
           tzdata python3-dev python3-pip antlr3 libidn11-dev file distcc strace qemu-kvm \
           qemu-utils dpkg-dev atop pigz pbzip2 xz-utils pixz gdb unzip
         sudo apt-get remove -y unattended-upgrades
-        sudo pip install https://github.com/librarian/python-sdk/releases/download/v0.1.1/nebiusai-0.1.1-py3-none-any.whl
         # shellcheck disable=SC2102
         sudo pip3 install pytest pytest-timeout pytest-xdist setproctitle grpcio grpcio-tools \
-             PyHamcrest tornado xmltodict pyarrow boto3 psutil yandexcloud==0.330.0 PyGithub==2.5.0 pyinstaller \
-             cryptography packaging six pyyaml rapidgzip pyOpenSSL typing-extensions==4.10.0
+             PyHamcrest tornado xmltodict pyarrow boto3 psutil PyGithub==2.5.0 pyinstaller \
+             cryptography protobuf packaging six pyyaml rapidgzip pyOpenSSL typing-extensions nebius
     - name: add user github to kvm group if exists
       shell: bash
       run: |

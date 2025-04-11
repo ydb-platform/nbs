@@ -44,6 +44,12 @@ TDuration CalculateScrubbingInterval(
 class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
+    struct TRequestCtx
+    {
+        TBlockRange64 BlockRange;
+        ui64 VolumeRequestId = 0;
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -62,7 +68,7 @@ private:
     TDuration CpuUsage;
 
     THashSet<ui64> DirtyReadRequestIds;
-    TRequestsInProgress<ui64, TBlockRange64> RequestsInProgress{
+    TRequestsInProgress<ui64, TRequestCtx> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
@@ -84,6 +90,7 @@ private:
     bool ScrubbingRangeRescheduled  = false;
     bool ResyncRangeStarted = false;
     ui32 ChecksumMismatches = 0;
+    ui64 RequestIdentifierCounter = 0;
 
 public:
     TMirrorPartitionActor(
@@ -99,7 +106,7 @@ public:
         NActors::TActorId statActorId,
         NActors::TActorId resyncActorId);
 
-    ~TMirrorPartitionActor();
+    ~TMirrorPartitionActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -115,8 +122,9 @@ private:
     void StartScrubbingRange(
         const NActors::TActorContext& ctx,
         ui64 scrubbingRangeId);
-    void StartResyncRange(const NActors::TActorContext& ctx);
+    void StartResyncRange(const NActors::TActorContext& ctx, bool isMinor);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
+    ui64 TakeNextRequestIdentifier();
 
 private:
     STFUNC(StateWork);
@@ -162,6 +170,19 @@ private:
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleAddTagsResponse(
+        const TEvService::TEvAddTagsResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAddLaggingAgent(
+        const TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRemoveLaggingAgent(
+        const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr&
+            ev,
+        const NActors::TActorContext& ctx);
+
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -180,17 +201,27 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    TResultOrError<TSet<NActors::TActorId>> SelectReplicasToReadFrom(
-        ui32 replicaIndex,
+    template <typename TMethod>
+    NProto::TError SplitReadBlocks(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    TResultOrError<TVector<NActors::TActorId>> SelectReplicasToReadFrom(
+        std::optional<ui32> replicaIndex,
+        std::optional<ui32> replicaCount,
         TBlockRange64 blockRange,
-        const TStringBuf& methodName);
+        const TStringBuf methodName);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocksLocal, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocksLocal, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
+    BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(
+        WaitForInFlightWrites,
+        NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);

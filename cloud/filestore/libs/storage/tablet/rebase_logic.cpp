@@ -34,7 +34,7 @@ TRebaseResult RebaseBlocks(
 
                 if (minCommitId < maxCommitId) {
                     // this version still referenced by checkpoint
-                    ++result.CheckpointBlocks;
+                    ++result.CheckpointBlocksCount;
 
                     referencedByCheckpoint = true;
                     result.UsedCheckpoints.insert(minCommitId);
@@ -43,7 +43,7 @@ TRebaseResult RebaseBlocks(
         }
 
         if (maxCommitId == InvalidCommitId || referencedByCheckpoint) {
-            ++result.LiveBlocks;
+            ++result.LiveBlocksCount;
 
             // we should not change relative order of the block versions
             if (!findBlock(block.NodeId, block.BlockIndex)) {
@@ -51,7 +51,7 @@ TRebaseResult RebaseBlocks(
                 block.MaxCommitId = maxCommitId;
             }
         } else {
-            ++result.GarbageBlocks;
+            ++result.GarbageBlocksCount;
 
             // block is not visible anymore and could be safely deleted
             block.MinCommitId = 0;

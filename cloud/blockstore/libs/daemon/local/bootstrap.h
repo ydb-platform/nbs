@@ -43,6 +43,8 @@ protected:
     void InitRdmaServer() override;
     void InitKikimrService() override;
     void InitAuthService() override;
+
+    void WarmupBSGroupConnections() override;
 };
 
 }   // namespace NCloud::NBlockStore::NServer

@@ -278,7 +278,8 @@ func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
 	logging.Info(ctx, "Creating task scheduler")
 	taskRegistry := tasks.NewRegistry()
 
-	*(c.serverConfig.TasksConfig).RegularSystemTasksEnabled = false
+	regularSystemTasksEnabled := false
+	c.serverConfig.TasksConfig.RegularSystemTasksEnabled = &regularSystemTasksEnabled
 	taskScheduler, err := tasks.NewScheduler(
 		ctx,
 		taskRegistry,
@@ -344,6 +345,89 @@ func newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type scheduleMigrateSnapshotTaskCmd struct {
+	clientConfig *client_config.ClientConfig
+	serverConfig *server_config.ServerConfig
+	snapshotID   string
+}
+
+func (c *scheduleMigrateSnapshotTaskCmd) run() error {
+	ctx := newContext(c.clientConfig)
+
+	taskStorage, db, err := newTaskStorage(ctx, c.serverConfig)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	logging.Info(ctx, "Creating task scheduler")
+	taskRegistry := tasks.NewRegistry()
+
+	regularSystemTasksEnabled := false
+	c.serverConfig.TasksConfig.RegularSystemTasksEnabled = &regularSystemTasksEnabled
+	taskScheduler, err := tasks.NewScheduler(
+		ctx,
+		taskRegistry,
+		taskStorage,
+		c.serverConfig.TasksConfig,
+		metrics.NewEmptyRegistry(),
+	)
+	if err != nil {
+		logging.Error(ctx, "Failed to create task scheduler: %v", err)
+		return err
+	}
+
+	taskID, err := taskScheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			"dataplane.MigrateSnapshotTask_"+c.snapshotID+"_"+generateID(),
+		),
+		"dataplane.MigrateSnapshotTask",
+		"",
+		&dataplane_protos.MigrateSnapshotRequest{
+			SrcSnapshotId: c.snapshotID,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newScheduleMigrateSnapshotTaskCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &scheduleMigrateSnapshotTaskCmd{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use: "schedule_migrate_snapshot_task",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to migrate data to another database; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newSnapshotsCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -361,6 +445,10 @@ func newSnapshotsCmd(
 		newDeleteSnapshotCmd(clientConfig),
 		// TODO: Remove this command after getting rid of legacy snapshot storage.
 		newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
+			clientConfig,
+			serverConfig,
+		),
+		newScheduleMigrateSnapshotTaskCmd(
 			clientConfig,
 			serverConfig,
 		),

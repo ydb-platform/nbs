@@ -1,0 +1,11 @@
+# Client-side read/writes
+TwoStageReadEnabled: true
+ThreeStageWriteEnabled: true
+UnalignedThreeStageWriteEnabled: true
+# Caches
+ReadAheadCacheRangeSize: 1048576
+# Sharding
+MultiTabletForwardingEnabled: true
+GetNodeAttrBatchEnabled: true
+DirectoryCreationInShardsEnabled: true
+

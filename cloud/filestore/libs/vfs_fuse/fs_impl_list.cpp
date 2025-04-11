@@ -339,8 +339,8 @@ void TFileSystem::ReadDir(
 
                 fuse_entry_param entry = {
                     .ino = attr.GetId(),
-                    .attr_timeout = (double)Config->GetAttrTimeout().Seconds(),
-                    .entry_timeout = (double)Config->GetEntryTimeout().Seconds(),
+                    .attr_timeout = Config->GetAttrTimeout().SecondsFloat(),
+                    .entry_timeout = Config->GetEntryTimeout().SecondsFloat(),
                 };
 
                 ConvertAttr(Config->GetPreferredBlockSize(), attr, entry.attr);

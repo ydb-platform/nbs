@@ -12,6 +12,16 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 logger = logging.getLogger()
 
+CLIENT_CONFIG_TEMPLATE = """
+Host: "{hostname}"
+Port: {port}
+ServerCertFile: "{cert_file}"
+LoggingConfig: <
+    LoggingStderr: <>
+    Level: LEVEL_ERROR
+>
+"""
+
 CONTROLPLANE_CONFIG_TEMPLATE = """
 GrpcConfig: <
     Port: {port}
@@ -117,6 +127,7 @@ DisksConfig: <
     DisableDiskRegistryBasedDisks: {disable_disk_registry_based_disks}
     DiskRegistryBasedDisksFolderIdAllowList: "folder"
     DiskRegistryBasedDisksFolderIdAllowList: "another-folder"
+    DiskRegistryBasedDisksFolderIdAllowList: "encrypted-folder"
 >
 PoolsConfig: <
     MaxActiveSlots: 10
@@ -159,7 +170,7 @@ ImagesConfig: <
 SnapshotsConfig: <
     DeletedSnapshotExpirationTimeout: "1s"
     ClearDeletedSnapshotsTaskScheduleInterval: "2s"
-    UseS3Percentage: 100
+    UseS3Percentage: {use_s3_percentage}
     UseProxyOverlayDisk: true
 >
 LoggingConfig: <
@@ -191,6 +202,13 @@ PlacementGroupConfig: <
 >
 """
 
+S3_CONFIG_TEMPLATE = """
+S3Config: <
+    Endpoint: "http://localhost:{s3_port}"
+    Region: "test"
+    CredentialsFilePath: "{s3_credentials_file}"
+>
+"""
 
 DATAPLANE_CONFIG_TEMPLATE = """
 TasksConfig: <
@@ -268,13 +286,9 @@ DataplaneConfig: <
     SnapshotConfig: <
         LegacyStorageFolder: "legacy_snapshot"
         PersistenceConfig: <
-            Endpoint: "localhost:{ydb_port}"
+            Endpoint: "localhost:{dataplane_ydb_port}"
             Database: "/Root"
-            S3Config: <
-                Endpoint: "http://localhost:{s3_port}"
-                Region: "test"
-                CredentialsFilePath: "{s3_credentials_file}"
-            >
+            {s3_config}
         >
         ChunkBlobsTableShardCount: 1
         ChunkMapTableShardCount: 1
@@ -293,7 +307,27 @@ DataplaneConfig: <
     CollectSnapshotsTaskScheduleInterval: "2s"
     SnapshotCollectionInflightLimit: 10
     ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
+{migration_config}
 >
+"""
+
+MIGRATION_CONFIG_TEMPLATE = """
+    MigrationDstSnapshotConfig: <
+        PersistenceConfig: <
+            Endpoint: "localhost:{migration_dst_ydb_port}"
+            Database: "/Root"
+            {s3_config}
+        >
+        ChunkBlobsTableShardCount: 1
+        ChunkMapTableShardCount: 1
+        ExternalBlobsMediaKind: "ssd"
+        DeleteWorkerCount: 10
+        ShallowCopyWorkerCount: 10
+        ShallowCopyInflightLimit: 100
+        ChunkCompression: "lz4"
+        S3Bucket: "snapshot"
+        ChunkBlobsS3KeyPrefix: "snapshot/chunks"
+    >
 """
 
 SERVICE_NAME = "disk_manager"
@@ -309,11 +343,11 @@ class DiskManagerServer(Daemon):
                  restart_timings_file,
                  min_restart_period_sec: int = 5,
                  max_restart_period_sec: int = 30):
-        nemesis_binary_path = yatest_common.binary_path(
-            "cloud/tasks/test/nemesis/nemesis"
-        )
 
         if with_nemesis:
+            nemesis_binary_path = yatest_common.binary_path(
+                "cloud/tasks/test/nemesis/nemesis"
+            )
             internal_command = disk_manager_binary_path + " --config " + config_file
             command = [nemesis_binary_path]
             command += [
@@ -363,6 +397,10 @@ class DiskManagerLauncher:
         proxy_overlay_disk_id_prefix="",
         creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
         disable_disk_registry_based_disks=False,
+        dataplane_ydb_port=None,
+        migration_dst_ydb_port=None,
+        migration_dst_s3_port=None,
+        migration_dst_s3_credentials_file=None,
     ):
         self.__idx = idx
 
@@ -385,14 +423,18 @@ class DiskManagerLauncher:
                 # test empty restarts count file
                 pass
 
-        config_file = os.path.join(
+        config_file_suffix = "dataplane" if is_dataplane else "controlplane"
+        self.config_file = os.path.join(
             working_dir,
-            'disk_manager_config_{}.txt'.format(idx)
+            'disk_manager_config_{}_{}.txt'.format(config_file_suffix, idx)
         )
-
+        self.client_config_file = os.path.join(
+            working_dir,
+            'disk_manager_client_config_{}.txt'.format(idx)
+        )
         self.__server_config = None
         if is_dataplane:
-            with open(config_file, "w") as f:
+            with open(self.config_file, "w") as f:
                 f.write(DATAPLANE_CONFIG_TEMPLATE.format(
                     root_certs_file=root_certs_file,
                     nbs_port=nbs_port,
@@ -402,12 +444,30 @@ class DiskManagerLauncher:
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
                     ydb_port=ydb_port,
-                    s3_port=s3_port,
-                    s3_credentials_file=s3_credentials_file,
+                    s3_config="" if s3_port is None else S3_CONFIG_TEMPLATE.format(
+                        s3_port=s3_port,
+                        s3_credentials_file=s3_credentials_file,
+                    ),
                     proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
+                    dataplane_ydb_port=dataplane_ydb_port if dataplane_ydb_port is not None else ydb_port,
+                    migration_config="" if migration_dst_ydb_port is None else MIGRATION_CONFIG_TEMPLATE.format(
+                        migration_dst_ydb_port=migration_dst_ydb_port,
+                        s3_config="" if migration_dst_s3_port is None else S3_CONFIG_TEMPLATE.format(
+                            s3_port=migration_dst_s3_port,
+                            s3_credentials_file=migration_dst_s3_credentials_file,
+                        )
+                    ),
                 ))
         else:
-            with open(config_file, "w") as f:
+            with open(self.client_config_file, "w") as f:
+                f.write(
+                    CLIENT_CONFIG_TEMPLATE.format(
+                        hostname="localhost",
+                        port=self.__port,
+                        cert_file=cert_file,
+                    )
+                )
+            with open(self.config_file, "w") as f:
                 self.__server_config = CONTROLPLANE_CONFIG_TEMPLATE.format(
                     port=self.__port,
                     hostname=hostname,
@@ -426,6 +486,7 @@ class DiskManagerLauncher:
                     base_disk_id_prefix=base_disk_id_prefix,
                     creation_and_deletion_allowed_only_for_disks_with_id_prefix=creation_and_deletion_allowed_only_for_disks_with_id_prefix,
                     disable_disk_registry_based_disks="true" if disable_disk_registry_based_disks else "false",
+                    use_s3_percentage="0" if s3_port is None else "100",
                 )
                 f.write(self.__server_config)
 
@@ -434,7 +495,7 @@ class DiskManagerLauncher:
                 "cloud/disk_manager/cmd/disk-manager-init-db/disk-manager-init-db"
             ),
             "--config",
-            config_file,
+            self.config_file,
         ]
 
         attempts_left = 20
@@ -453,7 +514,7 @@ class DiskManagerLauncher:
                 continue
 
         self.__daemon = DiskManagerServer(
-            config_file,
+            self.config_file,
             working_dir,
             disk_manager_binary_path,
             with_nemesis,
@@ -465,6 +526,9 @@ class DiskManagerLauncher:
     def start(self):
         self.__daemon.start()
         register_process(SERVICE_NAME, self.__daemon.pid)
+
+    def stop_daemon(self):
+        self.__daemon.stop()
 
     @staticmethod
     def stop():
@@ -481,3 +545,7 @@ class DiskManagerLauncher:
     @property
     def monitoring_port(self):
         return self.__monitoring_port
+
+    @property
+    def pid(self) -> int:
+        return self.__daemon.pid

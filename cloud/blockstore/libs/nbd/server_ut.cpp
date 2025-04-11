@@ -828,7 +828,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto clientEndpoint = CreateDurableClient(
             config,
             bootstrap->GetClientEndpoint(),
-            CreateRetryPolicy(config),
+            CreateRetryPolicy(config, std::nullopt),
             bootstrap->GetLogging(),
             bootstrap->GetTimer(),
             bootstrap->GetScheduler(),

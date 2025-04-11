@@ -3,14 +3,15 @@
 #include "encryption_client.h"
 #include "encryption_key.h"
 
-#include <cloud/blockstore/public/api/protos/io.pb.h>
-#include <cloud/blockstore/public/api/protos/encryption.pb.h>
-
 #include <cloud/blockstore/libs/service/service_test.h>
+#include <cloud/blockstore/public/api/protos/encryption.pb.h>
+#include <cloud/blockstore/public/api/protos/io.pb.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/threading/future/future.h>
+#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/threading/future/future.h>
 
 #include <google/protobuf/util/message_differencer.h>
 
@@ -373,7 +374,7 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
             NProto::TKmsKey& key =
                 *volume.MutableEncryptionDesc()->MutableEncryptionKey();
             key.SetKekId(kekId);
-            key.SetEncryptedDEK(encryptedDEK);
+            key.SetEncryptedDEK(Base64Encode(encryptedDEK));
 
             return MakeFuture(response);
         };

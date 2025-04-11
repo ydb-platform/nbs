@@ -42,19 +42,31 @@ TTabletBootInfoBackup::TTabletBootInfoBackup(
 void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
+    InitialBackupProto = NHiveProxy::NProto::TTabletBootInfoBackup();
+    try {
+        TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
+        TUnbufferedFileInput input(file);
+        MergeFromTextFormat(input, InitialBackupProto.value());
+        LOG_INFO_S(
+            ctx,
+            LogComponent,
+            "TabletBootInfoBackup: loaded " << file.GetLength() << " bytes");
+    } catch (...) {
+        if (ReadOnlyMode) {
+            ReportLoadTabletBootInfoBackupFailure();
+        }
+        LOG_WARN_S(
+            ctx,
+            LogComponent,
+            "TabletBootInfoBackup: can't load from file: "
+                << CurrentExceptionMessage());
+        InitialBackupProto.reset();
+    }
 
     if (ReadOnlyMode) {
-        try {
-            TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
-            TUnbufferedFileInput input(file);
-            MergeFromTextFormat(input, BackupProto);
-            LOG_INFO_S(ctx, LogComponent,
-                "TabletBootInfoBackup: loaded " << file.GetLength() << " bytes");
-        } catch (...) {
-            ReportLoadTabletBootInfoBackupFailure();
-            LOG_WARN_S(ctx, LogComponent,
-                "TabletBootInfoBackup: can't load from file: "
-                << CurrentExceptionMessage());
+        if (InitialBackupProto) {
+            BackupProto = std::move(InitialBackupProto.value());
+            InitialBackupProto.reset();
         }
     } else {
         ScheduleBackup(ctx);
@@ -71,12 +83,20 @@ void TTabletBootInfoBackup::ScheduleBackup(const TActorContext& ctx)
 
 NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(!ReadOnlyMode);
+
     NProto::TError error;
+
+    // We don't need this anymore, because backup file will be overwritten.
+    InitialBackupProto.reset();
 
     try {
         TFileLock lock(TmpBackupFilePath);
 
         if (lock.TryAcquire()) {
+            Y_DEFER {
+                lock.Release();
+            };
             TFileOutput output(TmpBackupFilePath);
             SerializeToTextFormat(BackupProto, output);
             TmpBackupFilePath.RenameTo(BackupFilePath);
@@ -132,8 +152,9 @@ void TTabletBootInfoBackup::HandleReadTabletBootInfoBackup(
 
     std::unique_ptr<TResponse> response;
 
-    auto it = BackupProto.GetData().find(msg->TabletId);
-    if (it == BackupProto.GetData().end()) {
+    const auto& backupProto = InitialBackupProto.value_or(BackupProto);
+    auto it = backupProto.GetData().find(msg->TabletId);
+    if (it == backupProto.GetData().end()) {
         LOG_DEBUG_S(ctx, LogComponent,
             "TabletBootInfoBackup: no data for tablet " << msg->TabletId);
         response = std::make_unique<TResponse>(MakeError(E_NOT_FOUND));
@@ -188,18 +209,20 @@ void TTabletBootInfoBackup::HandleBackupTabletBootInfos(
 }
 
 void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
-    const TEvHiveProxyPrivate::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
+    const TEvHiveProxy::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     TVector<TTabletBootInfo> infos;
-    for (const auto& [_, info]: BackupProto.GetData()) {
+    const auto& backupProto =
+        InitialBackupProto.value_or(BackupProto);
+    for (const auto& [_, info]: backupProto.GetData()) {
         infos.emplace_back(
             NKikimr::TabletStorageInfoFromProto(info.GetStorageInfo()),
             info.GetSuggestedGeneration());
     }
 
     auto response =
-        std::make_unique<TEvHiveProxyPrivate::TEvListTabletBootInfoBackupsResponse>(
+        std::make_unique<TEvHiveProxy::TEvListTabletBootInfoBackupsResponse>(
             std::move(infos));
     NCloud::Reply(ctx, *ev, std::move(response));
 }
@@ -213,7 +236,7 @@ STFUNC(TTabletBootInfoBackup::StateWork)
         HFunc(TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest, HandleReadTabletBootInfoBackup);
         HFunc(TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest, HandleUpdateTabletBootInfoBackup);
         HFunc(TEvHiveProxy::TEvBackupTabletBootInfosRequest, HandleBackupTabletBootInfos);
-        HFunc(TEvHiveProxyPrivate::TEvListTabletBootInfoBackupsRequest, HandleListTabletBootInfoBackups);
+        HFunc(TEvHiveProxy::TEvListTabletBootInfoBackupsRequest, HandleListTabletBootInfoBackups);
         default:
             HandleUnexpectedEvent(ev, LogComponent);
             break;

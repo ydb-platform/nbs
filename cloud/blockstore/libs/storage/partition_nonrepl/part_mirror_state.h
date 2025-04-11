@@ -6,8 +6,7 @@
 #include "replica_info.h"
 
 #include <cloud/blockstore/libs/storage/core/public.h>
-
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/replica_actors.h>
 
 #include <util/generic/vector.h>
 
@@ -24,7 +23,7 @@ private:
 
     TMigrations Migrations;
     TVector<TReplicaInfo> ReplicaInfos;
-    TVector<NActors::TActorId> ReplicaActors;
+    TReplicaActors ReplicaActors;
 
     ui32 ReadReplicaIndex = 0;
 
@@ -39,30 +38,71 @@ public:
         TVector<TDevices> replicas);
 
 public:
-    const TVector<TReplicaInfo>& GetReplicaInfos() const
+    [[nodiscard]] const TVector<TReplicaInfo>& GetReplicaInfos() const
     {
         return ReplicaInfos;
     }
 
     void AddReplicaActor(const NActors::TActorId& actorId)
     {
-        ReplicaActors.push_back(actorId);
+        ReplicaActors.AddReplicaActor(actorId);
     }
 
-    const TVector<NActors::TActorId>& GetReplicaActors() const
+    [[nodiscard]] auto GetReplicaActors() const
     {
-        return ReplicaActors;
+        return ReplicaActors.GetReplicaActors();
     }
+
+    [[nodiscard]] const NActors::TActorId& GetReplicaActor(ui32 index) const
+    {
+        return ReplicaActors.GetReplicaActor(index);
+    }
+
+    [[nodiscard]] auto GetReplicaActorsBypassingProxies() const
+    {
+        return ReplicaActors.GetReplicaActorsBypassingProxies();
+    }
+
+    [[nodiscard]] TVector<NActors::TActorId> GetAllActors() const
+    {
+        return ReplicaActors.GetAllActors();
+    }
+
+    [[nodiscard]] ui32 GetReplicaIndex(NActors::TActorId actorId) const;
+    [[nodiscard]] bool IsReplicaActor(NActors::TActorId actorId) const;
 
     void SetRWClientId(TString rwClientId)
     {
         RWClientId = std::move(rwClientId);
     }
 
-    const TString& GetRWClientId() const
+    [[nodiscard]] const TString& GetRWClientId() const
     {
         return RWClientId;
     }
+
+    void SetReadReplicaIndex(ui32 readReplicaIndex)
+    {
+        if (readReplicaIndex < 0 || readReplicaIndex >= ReplicaActors.Size()) {
+            return;
+        }
+        ReadReplicaIndex = readReplicaIndex;
+    }
+
+    [[nodiscard]] bool DevicesReadyForReading(
+        ui32 replicaIndex,
+        const TBlockRange64 blockRange) const;
+
+    void AddLaggingAgent(NProto::TLaggingAgent laggingAgent);
+    void RemoveLaggingAgent(const NProto::TLaggingAgent& laggingAgent);
+    [[nodiscard]] bool HasLaggingAgents(ui32 replicaIndex) const;
+
+    void SetLaggingReplicaProxy(
+        ui32 replicaIndex,
+        const NActors::TActorId& actorId);
+    void ResetLaggingReplicaProxy(ui32 replicaIndex);
+    [[nodiscard]] bool IsLaggingProxySet(ui32 replicaIndex) const;
+    [[nodiscard]] size_t LaggingReplicaCount() const;
 
     [[nodiscard]] NProto::TError Validate();
     void PrepareMigrationConfig();
@@ -71,11 +111,14 @@ public:
 
     [[nodiscard]] NProto::TError NextReadReplica(
         const TBlockRange64 readRange,
-        NActors::TActorId* actorId);
+        ui32& replicaIndex);
 
     ui32 GetBlockSize() const;
 
     ui64 GetBlockCount() const;
+
+    TVector<TBlockRange64> SplitRangeByDeviceBorders(
+        const TBlockRange64 readRange) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

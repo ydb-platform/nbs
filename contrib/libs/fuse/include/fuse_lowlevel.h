@@ -1508,6 +1508,16 @@ void fuse_req_interrupt_func(fuse_req_t req, fuse_interrupt_func_t func,
  */
 int fuse_req_interrupted(fuse_req_t req);
 
+/**
+ * Get fuse request output iovec
+ *
+ * @param req request handle
+ * @param iov buffer iovec (output)
+ * @param count iovec size (output)
+ * @return 0 on success, -1 on failure.
+ */
+int fuse_out_buf(fuse_req_t req, struct iovec **iov, int *count);
+
 /* ----------------------------------------------------------- *
  * Filesystem setup					       *
  * ----------------------------------------------------------- */

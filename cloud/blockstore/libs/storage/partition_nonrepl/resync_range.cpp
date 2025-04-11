@@ -23,14 +23,21 @@ TResyncRangeActor::TResyncRangeActor(
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator)
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        NProto::EResyncPolicy resyncPolicy)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
-{}
+    , ResyncPolicy(resyncPolicy)
+{
+    using EResyncPolicy = NProto::EResyncPolicy;
+    Y_DEBUG_ABORT_UNLESS(
+        ResyncPolicy == EResyncPolicy::RESYNC_POLICY_MINOR_4MB ||
+        ResyncPolicy == EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+}
 
 void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
 {
@@ -70,9 +77,23 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         return;
     }
 
+    if (ResyncPolicy == NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB &&
+        majorCount == 1)
+    {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Can't resync range %s with major error due to policy "
+            "restrictions",
+            Replicas[0].ReplicaId.c_str(),
+            DescribeRange(Range).c_str());
+        Done(ctx);
+        return;
+    }
+
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Resync range %s: majority replica %lu, checksum %lu, count %u of %u",
-        Replicas[0].Name.c_str(),
+        Replicas[0].ReplicaId.c_str(),
         DescribeRange(Range).c_str(),
         majorIdx,
         majorChecksum,
@@ -84,7 +105,7 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         if (checksum != majorChecksum) {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
                 "[%s] Replica %lu block range %s checksum %lu differs from majority checksum %lu",
-                Replicas[0].Name.c_str(),
+                Replicas[0].ReplicaId.c_str(),
                 Replicas[i].ReplicaIndex,
                 DescribeRange(Range).c_str(),
                 checksum,
@@ -176,7 +197,7 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Replica %lu Overwrite block range %s during resync",
-        Replicas[0].Name.c_str(),
+        Replicas[idx].ReplicaId.c_str(),
         Replicas[idx].ReplicaIndex,
         DescribeRange(Range).c_str());
 
@@ -185,17 +206,17 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 
 void TResyncRangeActor::Done(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvNonreplPartitionPrivate::TEvRangeResynced>(
-        std::move(Error),
-        Range,
-        ChecksumRangeActorCompanion.GetChecksumStartTs(),
-        ChecksumRangeActorCompanion.GetChecksumDuration(),
-        ReadStartTs,
-        ReadDuration,
-        WriteStartTs,
-        WriteDuration,
-        std::move(AffectedBlockInfos)
-    );
+    auto response =
+        std::make_unique<TEvNonreplPartitionPrivate::TEvRangeResynced>(
+            std::move(Error),
+            Range,
+            ChecksumRangeActorCompanion.GetChecksumStartTs(),
+            ChecksumRangeActorCompanion.GetChecksumDuration(),
+            ReadStartTs,
+            ReadDuration,
+            WriteStartTs,
+            WriteDuration,
+            std::move(AffectedBlockInfos));
 
     LWTRACK(
         ResponseSent_PartitionWorker,

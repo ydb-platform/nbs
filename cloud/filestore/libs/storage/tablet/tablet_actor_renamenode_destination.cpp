@@ -139,7 +139,7 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
             return true;
         }
 
-        if (args.NewChildRef->ShardId.empty()) {
+        if (!args.NewChildRef->IsExternal()) {
             auto message = ReportRenameNodeRequestForLocalNode(TStringBuilder()
                 << "RenameNodeInDestination: "
                 << args.Request.ShortDebugString());
@@ -208,7 +208,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             args.Response.SetOldTargetNodeShardId(args.NewChildRef->ShardId);
             args.Response.SetOldTargetNodeShardNodeName(
                 args.NewChildRef->ShardNodeName);
-        } else if (args.NewChildRef->ShardId.empty()) {
+        } else if (!args.NewChildRef->IsExternal()) {
             auto message = ReportUnexpectedLocalNode(TStringBuilder()
                 << "RenameNodeInDestination: "
                 << args.Request.ShortDebugString());
@@ -231,7 +231,8 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             // to use CommitId here in order not to generate some other unique
             // ui64
             args.OpLogEntry.SetEntryId(args.CommitId);
-            auto* shardRequest = args.OpLogEntry.MutableUnlinkNodeRequest();
+            auto* shardRequest =
+                args.OpLogEntry.MutableUnlinkNodeInShardRequest();
             shardRequest->MutableHeaders()->CopyFrom(
                 args.Request.GetHeaders());
             shardRequest->SetFileSystemId(args.NewChildRef->ShardId);
@@ -296,21 +297,24 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
 
     if (!HasError(args.Error)) {
         auto& op = args.OpLogEntry;
-        if (op.HasUnlinkNodeRequest()) {
+        if (op.HasUnlinkNodeInShardRequest()) {
             // rename + unlink is pretty rare so let's keep INFO level here
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon RenameNode: %s, %s",
                 LogTag.c_str(),
-                op.GetUnlinkNodeRequest().GetFileSystemId().c_str(),
-                op.GetUnlinkNodeRequest().GetName().c_str());
+                op.GetUnlinkNodeInShardRequest().GetFileSystemId().c_str(),
+                op.GetUnlinkNodeInShardRequest().GetName().c_str());
 
             RegisterUnlinkNodeInShardActor(
                 ctx,
                 args.RequestInfo,
-                std::move(*op.MutableUnlinkNodeRequest()),
+                std::move(*op.MutableUnlinkNodeInShardRequest()),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
-                std::move(args.Response));
+                std::move(args.Response),
+                false);
 
             return;
         }

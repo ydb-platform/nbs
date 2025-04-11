@@ -118,6 +118,26 @@ def storage_config_with_adding_unconfirmed_blobs_enabled():
     return storage
 
 
+def ordinary_prod_storage_config():
+    storage = default_storage_config()
+    storage.WriteRequestBatchingEnabled = True
+    storage.IncrementalCompactionEnabled = True
+    storage.FreshChannelCount = 1
+    storage.FreshChannelWriteRequestsEnabled = True
+    storage.BatchCompactionEnabled = True
+    storage.HDDMaxBlobsPerRange = 5
+
+    return storage
+
+
+def storage_config_with_compaction_merged_blob_threshold_hdd():
+    storage = ordinary_prod_storage_config()
+    storage.HDDMaxBlobsPerRange = 5
+    storage.CompactionMergedBlobThresholdHDD = 1025 * 4096
+
+    return storage
+
+
 class TestCase(object):
 
     def __init__(
@@ -246,6 +266,16 @@ TESTS = [
         [
             storage_config_with_adding_unconfirmed_blobs_enabled(),
             default_storage_config(),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-compaction-to-mixed-channel",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-compaction-to-mixed-channel.txt",
+        [
+            ordinary_prod_storage_config(),
+            storage_config_with_compaction_merged_blob_threshold_hdd(),
+            ordinary_prod_storage_config(),
         ],
         None,
     ),

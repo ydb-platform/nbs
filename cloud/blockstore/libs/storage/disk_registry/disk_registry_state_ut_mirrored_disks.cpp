@@ -2378,7 +2378,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(0, migrations.size());
             ASSERT_VECTORS_EQUAL(TVector<TString>(), deviceReplacementIds);
 
-            state.DeleteDiskToReallocate(db, "disk-1", 3);
+            state.DeleteDiskToReallocate(db, "disk-1", 4);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {

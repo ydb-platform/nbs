@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -97,6 +98,18 @@ TThrottlingRequestInfo BuildThrottlingRequestInfo(
     };
 }
 
+template <typename TMethod>
+bool GetThrottlingEnabled(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig)
+{
+    if constexpr (IsZeroMethod<TMethod>) {
+        return GetThrottlingEnabledZeroBlocks(config, partitionConfig);
+    }
+
+    return GetThrottlingEnabled(config, partitionConfig);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -169,7 +182,7 @@ NProto::TError TVolumeActor::Throttle(
 
     if (!RequiresThrottling<TMethod>
             || throttlingDisabled
-            || !GetThrottlingEnabled(*Config, State->GetConfig()))
+            || !GetThrottlingEnabled<TMethod>(*Config, State->GetConfig()))
     {
         return ok;
     }
@@ -245,5 +258,6 @@ GENERATE_IMPL(RebuildMetadata,          TEvVolume)
 GENERATE_IMPL(GetRebuildMetadataStatus, TEvVolume)
 GENERATE_IMPL(ScanDisk,                 TEvVolume)
 GENERATE_IMPL(GetScanDiskStatus,        TEvVolume)
+GENERATE_IMPL(CheckRange,               TEvVolume)
 
 }   // namespace NCloud::NBlockStore::NStorage

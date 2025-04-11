@@ -24,7 +24,12 @@ class TEmptyType
 class IRequestsInProgress
 {
 public:
-    virtual bool WriteRequestInProgress() const = 0;
+    virtual ~IRequestsInProgress() = default;
+
+    [[nodiscard]] virtual bool WriteRequestInProgress() const = 0;
+
+    virtual void WaitForInFlightWrites() = 0;
+    [[nodiscard]] virtual bool IsWaitingForInFlightWrites() const = 0;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,8 +51,10 @@ private:
     size_t WriteRequestCount = 0;
     TKey RequestIdentityKeyCounter = {};
 
+    THashSet<TKey> WaitingForWriteRequests;
+
 public:
-    TRequestsInProgress(EAllowedRequests allowedRequests)
+    explicit TRequestsInProgress(EAllowedRequests allowedRequests)
         : AllowedRequests(allowedRequests)
     {}
 
@@ -108,25 +115,25 @@ public:
 
     bool RemoveRequest(const TKey& key)
     {
-        TValue v;
-        return ExtractRequest(key, &v);
+        return ExtractRequest(key).has_value();
     }
 
-    bool ExtractRequest(const TKey& key, TValue* value)
+    std::optional<TValue> ExtractRequest(const TKey& key)
     {
         auto it = RequestsInProgress.find(key);
 
         if (it == RequestsInProgress.end()) {
             Y_DEBUG_ABORT_UNLESS(0);
-            return false;
+            return std::nullopt;
         }
 
         if (it->second.Write) {
+            WaitingForWriteRequests.erase(key);
             --WriteRequestCount;
         }
-        *value = std::move(it->second.Value);
+        TValue res = std::move(it->second.Value);
         RequestsInProgress.erase(it);
-        return true;
+        return res;
     }
 
     const TRequests& AllRequests() const
@@ -147,6 +154,20 @@ public:
     bool WriteRequestInProgress() const override
     {
         return WriteRequestCount != 0;
+    }
+
+    void WaitForInFlightWrites() override
+    {
+        for (const auto& [key, value]: RequestsInProgress) {
+            if (value.Write) {
+                WaitingForWriteRequests.insert(key);
+            }
+        }
+    }
+
+    [[nodiscard]] bool IsWaitingForInFlightWrites() const override
+    {
+        return !WaitingForWriteRequests.empty();
     }
 };
 

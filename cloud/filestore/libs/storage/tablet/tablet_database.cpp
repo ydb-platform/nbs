@@ -188,7 +188,7 @@ bool TIndexTabletDatabase::ReadNodes(
     ui64 startNodeId,
     ui64 maxNodes,
     ui64& nextNodeId,
-    TVector<IIndexTabletDatabase::TNode>& nodes)
+    TVector<TNode>& nodes)
 {
     using TTable = TIndexTabletSchema::Nodes;
 
@@ -637,7 +637,7 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     ui64 startNodeId,
     const TString& startCookie,
     ui64 maxCount,
-    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    TVector<TNodeRef>& refs,
     ui64& nextNodeId,
     TString& nextCookie)
 {
@@ -1313,12 +1313,11 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
 
         TBlockList blockList { std::move(blocks), std::move(deletionMarkers) };
 
-        blob = TMixedBlob {
+        blob = TMixedBlob{
             blobId,
             std::move(blockList),
             it.GetValue<TTable::GarbageBlocksCount>(),
-            it.GetValue<TTable::CheckpointBlocksCount>()
-        };
+            it.GetValue<TTable::CheckpointBlocksCount>()};
     }
 
     return true;
@@ -1354,12 +1353,12 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
 
         TBlockList blockList { std::move(blocks), std::move(deletionMarkers) };
 
-        blobs.emplace_back(TMixedBlob {
-            blobId,
-            std::move(blockList),
-            it.GetValue<TTable::GarbageBlocksCount>(),
-            it.GetValue<TTable::CheckpointBlocksCount>()
-        });
+        blobs.emplace_back(
+            TMixedBlob{
+                blobId,
+                std::move(blockList),
+                it.GetValue<TTable::GarbageBlocksCount>(),
+                it.GetValue<TTable::CheckpointBlocksCount>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -1990,7 +1989,7 @@ TIndexTabletDatabaseProxy::TIndexTabletDatabaseProxy(
 bool TIndexTabletDatabaseProxy::ReadNode(
     ui64 nodeId,
     ui64 commitId,
-    TMaybe<IIndexTabletDatabase::TNode>& node)
+    TMaybe<TNode>& node)
 {
     auto result = TIndexTabletDatabase::ReadNode(nodeId, commitId, node);
     if (result && node) {
@@ -2007,7 +2006,7 @@ bool TIndexTabletDatabaseProxy::ReadNodes(
     ui64 startNodeId,
     ui64 maxNodes,
     ui64& nextNodeId,
-    TVector<IIndexTabletDatabase::TNode>& nodes)
+    TVector<TNode>& nodes)
 {
     auto result = TIndexTabletDatabase::ReadNodes(
         startNodeId,
@@ -2133,7 +2132,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRef(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
-    TMaybe<IIndexTabletDatabase::TNodeRef>& ref)
+    TMaybe<TNodeRef>& ref)
 {
     auto result =
         TIndexTabletDatabase::ReadNodeRef(nodeId, commitId, name, ref);
@@ -2149,7 +2148,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     ui64 nodeId,
     ui64 commitId,
     const TString& cookie,
-    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    TVector<TNodeRef>& refs,
     ui32 maxBytes,
     TString* next)
 {
@@ -2169,7 +2168,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     ui64 startNodeId,
     const TString& startCookie,
     ui64 maxCount,
-    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    TVector<TNodeRef>& refs,
     ui64& nextNodeId,
     TString& nextCookie)
 {

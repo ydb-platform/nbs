@@ -2246,6 +2246,12 @@ int fuse_req_interrupted(fuse_req_t req)
 	return interrupted;
 }
 
+int fuse_out_buf(fuse_req_t req, struct iovec **iov, int *count)
+{
+    // not implemented
+    return -1;
+}
+
 static struct {
 	void (*func)(fuse_req_t, fuse_ino_t, const void *);
 	const char *name;

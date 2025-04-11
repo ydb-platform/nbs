@@ -137,14 +137,6 @@ NProto::TError ErrorNameTooLong(const TString& name)
             << "name too long " << MessageSafeStr(name));
 }
 
-NProto::TError ErrorSymlinkTooLong(const TString& link)
-{
-    return MakeError(
-        MAKE_FILESTORE_ERROR(NProto::E_FS_NAMETOOLONG),
-        TStringBuilder()
-            << "link too long " << MessageSafeStr(link));
-}
-
 NProto::TError ErrorMaxLink(ui64 nodeId)
 {
     return MakeError(

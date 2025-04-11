@@ -33,14 +33,53 @@ void TIndexTabletActor::ReplayOpLog(
                 {} // response
             );
         } else if (op.HasUnlinkNodeRequest()) {
+            // This case is kept for backward compatibility with old oplog
+            // entries
+            NProtoPrivate::TUnlinkNodeInShardRequest request;
+            request.MutableHeaders()->CopyFrom(
+                op.GetUnlinkNodeRequest().GetHeaders());
+            request.SetFileSystemId(
+                op.GetUnlinkNodeRequest().GetFileSystemId());
+            request.SetNodeId(op.GetUnlinkNodeRequest().GetNodeId());
+            request.SetName(op.GetUnlinkNodeRequest().GetName());
+            request.SetUnlinkDirectory(
+                op.GetUnlinkNodeRequest().GetUnlinkDirectory());
+
             RegisterUnlinkNodeInShardActor(
                 ctx,
-                nullptr, // requestInfo
-                op.GetUnlinkNodeRequest(),
-                0, // requestId
+                nullptr,   // requestInfo
+                std::move(request),
+                0,   // requestId
                 op.GetEntryId(),
-                {} // result
+                {},     // result
+                false   // shouldUnlockUponCompletion
             );
+        } else if (op.HasUnlinkNodeInShardRequest()) {
+            bool shouldUnlockUponCompletion =
+                op.GetUnlinkNodeInShardRequest().GetUnlinkDirectory() &&
+                GetFileSystem().GetDirectoryCreationInShardsEnabled();
+            if (shouldUnlockUponCompletion) {
+                // There is a need to unlock the node ref after the operation is
+                // completed, because the node ref should have been locked
+                const auto& originalRequest =
+                    op.GetUnlinkNodeInShardRequest().GetOriginalRequest();
+                const bool locked = TryLockNodeRef(
+                    {originalRequest.GetNodeId(), originalRequest.GetName()});
+                if (!locked) {
+                    ReportFailedToLockNodeRef(
+                        TStringBuilder()
+                        << "Request: " << op.ShortUtf8DebugString());
+                }
+            }
+
+            RegisterUnlinkNodeInShardActor(
+                ctx,
+                nullptr,   // requestInfo
+                op.GetUnlinkNodeInShardRequest(),
+                0,   // requestId
+                op.GetEntryId(),
+                {},   // result
+                shouldUnlockUponCompletion);
         } else if (op.HasRenameNodeInDestinationRequest()) {
             const auto& request = op.GetRenameNodeInDestinationRequest();
             const bool locked = TryLockNodeRef({
@@ -58,9 +97,15 @@ void TIndexTabletActor::ReplayOpLog(
                    // requestId)
                 op.GetEntryId());
         } else {
-            TABLET_VERIFY_C(
-                0,
-                "Unexpected OpLog entry: " << op.DebugString().Quote());
+            const TString message = ReportUnknownOpLogEntry(
+                TStringBuilder() << "OpLogEntry: " << op.DebugString().Quote());
+
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::TABLET,
+                "%s %s",
+                LogTag.c_str(),
+                message.c_str());
         }
     }
 }

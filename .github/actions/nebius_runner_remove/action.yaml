@@ -34,8 +34,7 @@ runs:
     - name: install dependencies
       shell: bash
       run: |
-        pip install https://github.com/librarian/python-sdk/releases/download/v0.1.1/nebiusai-0.1.1-py3-none-any.whl
-        pip install PyGithub==2.2.0
+        pip install PyGithub==2.5.0 nebius==0.2.6
     - name: remove vm
       id: remove-vm
       shell: bash

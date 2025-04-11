@@ -120,23 +120,20 @@ struct TTestEnv
             )
         );
 
-        auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(devices, DefaultBlockSize),
-            ioMode,
-            "test",
-            DefaultBlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{
-                Now(),
-                // only SSD/HDD distinction matters
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
-            VolumeActorId,
-            false,                 // muteIOErrors
-            THashSet<TString>(),   // freshDeviceIds
-            THashSet<TString>(),   // laggingDeviceIds
-            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-            false,                 // maxTimedOutDeviceStateDurationOverridden
-            false                  // useSimpleMigrationBandwidthLimiter
-        );
+        TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+            params{
+                ToLogicalBlocks(devices, DefaultBlockSize),
+                TNonreplicatedPartitionConfig::TVolumeInfo{
+                    Now(),
+                    // only SSD/HDD distinction matters
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+                "test",
+                DefaultBlockSize,
+                VolumeActorId};
+        params.IOMode = ioMode;
+        params.UseSimpleMigrationBandwidthLimiter = false;
+        auto partConfig =
+            std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
         auto part = std::make_unique<TNonreplicatedPartitionRdmaActor>(
             std::move(config),
@@ -764,10 +761,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         {   // non-background WriteBlocksLocal should pass volume request id.
             TString data(DefaultBlockSize, 'A');
-            client.SendRequest(
-                client.GetActorId(),
-                client.CreateWriteBlocksLocalRequest(blockRange, data),
-                10);
+
+            auto request = client.CreateWriteBlocksLocalRequest(blockRange, data);
+            request->Record.MutableHeaders()->SetVolumeRequestId(10);
+            client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
                 client.RecvResponse<TEvService::TEvWriteBlocksLocalResponse>();
@@ -782,7 +779,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             auto request =
                 client.CreateWriteBlocksLocalRequest(blockRange, data);
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
-            client.SendRequest(client.GetActorId(), std::move(request), 10);
+            request->Record.MutableHeaders()->SetVolumeRequestId(10);
+            client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
                 client.RecvResponse<TEvService::TEvWriteBlocksLocalResponse>();
@@ -793,10 +791,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         }
 
         {   // non-background WriteBlocks should pass volume request id.
+            auto request =
+                client.CreateWriteBlocksRequest(blockRange, 'A');
+            request->Record.MutableHeaders()->SetVolumeRequestId(20);
             client.SendRequest(
                 client.GetActorId(),
-                client.CreateWriteBlocksRequest(blockRange, 'A'),
-                20);
+                std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
                 client.RecvResponse<TEvService::TEvWriteBlocksResponse>();
@@ -809,7 +809,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         {   // background WriteBlocks should NOT pass volume request id.
             auto request = client.CreateWriteBlocksRequest(blockRange, 'A');
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
-            client.SendRequest(client.GetActorId(), std::move(request), 20);
+            request->Record.MutableHeaders()->SetVolumeRequestId(20);
+            client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
                 client.RecvResponse<TEvService::TEvWriteBlocksResponse>();
@@ -820,10 +821,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         }
 
         {   // non-background ZeroBlocks should pass volume request id.
-            client.SendRequest(
-                client.GetActorId(),
-                client.CreateZeroBlocksRequest(blockRange),
-                30);
+            auto request = client.CreateZeroBlocksRequest(blockRange);
+            request->Record.MutableHeaders()->SetVolumeRequestId(30);
+
+            client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
                 client.RecvResponse<TEvService::TEvZeroBlocksResponse>();
@@ -836,7 +837,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         {   // background ZeroBlocks should NOT pass volume request id.
             auto request = client.CreateZeroBlocksRequest(blockRange);
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
-            client.SendRequest(client.GetActorId(), std::move(request), 30);
+            request->Record.MutableHeaders()->SetVolumeRequestId(30);
+            client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
                 client.RecvResponse<TEvService::TEvZeroBlocksResponse>();

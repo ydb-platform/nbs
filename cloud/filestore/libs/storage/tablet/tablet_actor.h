@@ -123,6 +123,10 @@ private:
         std::atomic<i64> InMemoryIndexStateNodeAttrsCapacity;
         std::atomic<i64> InMemoryIndexStateIsExhaustive;
 
+        // Mixed index in-memory stats
+        std::atomic<i64> MixedIndexLoadedRanges{0};
+        std::atomic<i64> MixedIndexOffloadedRanges{0};
+
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
         std::atomic<i64> DeletedFreshBytesCount{0};
@@ -136,6 +140,9 @@ private:
         std::atomic<i64> CMMixedBlobsCount{0};
         std::atomic<i64> CMDeletionMarkersCount{0};
         std::atomic<i64> CMGarbageBlocksCount{0};
+
+        // Write throttling
+        std::atomic<i64> IsWriteAllowed{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
@@ -280,6 +287,7 @@ private:
         TRequestMetrics RenameNode;
         TRequestMetrics UnlinkNode;
         TRequestMetrics StatFileStore;
+        TRequestMetrics GetNodeXAttr;
 
         // background requests
         TCompactionMetrics Compaction;
@@ -323,7 +331,11 @@ private:
             const TNodeIndexCacheStats& nodeIndexCacheStats,
             const TNodeToSessionCounters& nodeToSessionCounters,
             const TMiscNodeStats& miscNodeStats,
-            const TInMemoryIndexStateStats& inMemoryIndexStateStats);
+            const TInMemoryIndexStateStats& inMemoryIndexStateStats,
+            const TBlobMetaMapStats& blobMetaMapStats,
+            const TIndexTabletState::TBackpressureThresholds&
+                backpressureThresholds,
+            const TIndexTabletState::TBackpressureValues& backpressureValues);
         void UpdatePerformanceMetrics(
             TInstant now,
             const TDiagnosticsConfig& diagConfig,
@@ -596,10 +608,11 @@ private:
     void RegisterUnlinkNodeInShardActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        NProto::TUnlinkNodeRequest request,
+        NProtoPrivate::TUnlinkNodeInShardRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result);
+        TUnlinkNodeInShardResult result,
+        bool shouldUnlockUponCompletion);
 
     void RegisterRenameNodeInDestinationActor(
         const NActors::TActorContext& ctx,
@@ -623,7 +636,8 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
         const std::function<NProto::TError(
-            const typename TMethod::TRequest::ProtoRecordType&)>& validator = {});
+            const typename TMethod::TRequest::ProtoRecordType&)>& validator = {},
+        bool validateSession = true);
 
     template <typename TMethod>
     void CompleteResponse(

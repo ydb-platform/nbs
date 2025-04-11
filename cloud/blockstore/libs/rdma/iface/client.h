@@ -103,9 +103,12 @@ struct IClientEndpoint
         size_t requestBytes,
         size_t responseBytes) = 0;
 
-    virtual void SendRequest(
+    // Returns id of sent request. It can be used to cancel this request.
+    virtual ui64 SendRequest(
         TClientRequestPtr req,
         TCallContextPtr callContext) = 0;
+
+    virtual void CancelRequest(ui64 reqId) = 0;
 
     virtual NThreading::TFuture<void> Stop() = 0;
 };

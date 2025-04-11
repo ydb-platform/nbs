@@ -97,8 +97,10 @@ private:
     NClient::IRetryPolicyPtr Impl;
 
 public:
-    TRetryPolicy(NClient::TClientAppConfigPtr config)
-        : Impl(NClient::CreateRetryPolicy(std::move(config)))
+    TRetryPolicy(
+            NClient::TClientAppConfigPtr config,
+            NProto::EStorageMediaKind mediaKind)
+        : Impl(NClient::CreateRetryPolicy(std::move(config), mediaKind))
     {}
 
     NClient::TRetrySpec ShouldRetry(
@@ -262,7 +264,9 @@ IBlockStorePtr TRdmaBackend::CreateDataClient(IStoragePtr storage)
     auto clientConfig =
         std::make_shared<NClient::TClientAppConfig>(std::move(config));
 
-    auto retryPolicy = std::make_shared<TRetryPolicy>(clientConfig);
+    auto retryPolicy = std::make_shared<TRetryPolicy>(
+        clientConfig,
+        Volume.GetStorageMediaKind());
 
     auto client = std::make_shared<TStorageDataClient>(std::move(storage));
 

@@ -31,6 +31,9 @@ void DeleteList(T* node)
 template <typename T>
 class TSimpleList
 {
+public:
+    class TIterator;
+
 private:
     T* Head;
     T* Tail;
@@ -62,8 +65,38 @@ public:
                 // list is empty now
                 Head = Tail = nullptr;
             }
+            node->Next = nullptr;
         }
         return node;
+    }
+
+    template <typename TPred>
+    TSimpleList<T> DequeueIf(TPred c)
+    {
+        TSimpleList<T> filtered;
+        TSimpleList<T> nonFiltered;
+
+        while (auto ptr = Dequeue()) {
+            if (c(*ptr)) {
+                filtered.Enqueue(std::move(ptr));
+            } else {
+                nonFiltered.Enqueue(std::move(ptr));
+            }
+        }
+
+        Append(std::move(nonFiltered));
+
+        return filtered;
+    }
+
+    auto begin()
+    {
+        return TIterator(Head);
+    }
+
+    auto end()
+    {
+        return TIterator(nullptr);
     }
 
     void Enqueue(std::unique_ptr<T> node)
@@ -92,6 +125,41 @@ private:
             Head = head;
             Tail = tail;
         }
+    }
+};
+
+template <typename T>
+class TSimpleList<T>::TIterator
+{
+private:
+    T* Node = nullptr;
+
+public:
+    explicit TIterator(T* node)
+        : Node(node)
+    {}
+
+    bool operator==(const TIterator& rhs) const = default;
+
+    TIterator& operator++()
+    {
+        if (!Node) {
+            return *this;
+        }
+
+        Node = Node->Next;
+
+        return *this;
+    }
+
+    T& operator*()
+    {
+        return *Node;
+    }
+
+    T* operator->()
+    {
+        return Node;
     }
 };
 

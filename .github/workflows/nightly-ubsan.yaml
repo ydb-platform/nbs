@@ -6,7 +6,7 @@ run-name: |
     }}
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 2 * * *"
   workflow_dispatch:
 
 jobs:
@@ -19,8 +19,5 @@ jobs:
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/storage/'
       build_preset: release-ubsan
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      cache_update_build: true
-      cache_update_tests: false
+      cache_update: true
       sleep_after_tests: 1
-      test_threads: 32
-      nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}

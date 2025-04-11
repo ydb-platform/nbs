@@ -29,6 +29,10 @@ private:
     const TFsPath BackupFilePath;
     const bool ReadOnlyMode = false;
 
+    // Proto from BackupFilePath is loaded into this variable.
+    // Tablet boot info backups are served from this variable until
+    // the first scheduled backup happens.
+    std::optional<NHiveProxy::NProto::TTabletBootInfoBackup> InitialBackupProto;
     NHiveProxy::NProto::TTabletBootInfoBackup BackupProto;
     const TFsPath TmpBackupFilePath;
 
@@ -63,7 +67,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleListTabletBootInfoBackups(
-        const TEvHiveProxyPrivate::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
+        const TEvHiveProxy::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

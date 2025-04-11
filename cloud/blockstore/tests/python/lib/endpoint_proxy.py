@@ -11,12 +11,13 @@ class EndpointProxy(Daemon):
             with_netlink,
             stored_endpoints_path,
             nbd_request_timeout,
-            nbd_reconnect_delay
+            nbd_reconnect_delay,
+            restart_events,
     ):
         command = [yatest_common.binary_path(
             "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")]
         command += [
-            "--unix-socket-path", unix_socket_path, "--verbose"
+            "--unix-socket-path", unix_socket_path, "--verbose", "--without-libnl",
         ]
         if stored_endpoints_path:
             command += ["--stored-endpoints-path", stored_endpoints_path]
@@ -25,10 +26,13 @@ class EndpointProxy(Daemon):
             command += ["--netlink"]
 
         if nbd_request_timeout:
-            command += ["--nbd-request-timeout", nbd_request_timeout]
+            command += ["--nbd-request-timeout", str(nbd_request_timeout)]
 
         if nbd_reconnect_delay:
-            command += ["--nbd-reconnect-delay", nbd_reconnect_delay]
+            command += ["--nbd-reconnect-delay", str(nbd_reconnect_delay)]
+
+        if restart_events:
+            command += ["--debug-restart-events-count", str(restart_events)]
 
         super(EndpointProxy, self).__init__(
             commands=[command],

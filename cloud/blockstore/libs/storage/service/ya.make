@@ -9,6 +9,7 @@ SRCS(
     service_actor_actions_change_disk_device.cpp
     service_actor_actions_change_storage_config.cpp
     service_actor_actions_check_blob.cpp
+    service_actor_actions_check_range.cpp
     service_actor_actions_cms.cpp
     service_actor_actions_compact_range.cpp
     service_actor_actions_configure_volume_balancer.cpp
@@ -20,8 +21,8 @@ SRCS(
     service_actor_actions_drain_node.cpp
     service_actor_actions_finish_fill_disk.cpp
     service_actor_actions_flush_profile_log.cpp
-    service_actor_actions_get_dependent_disks.cpp
     service_actor_actions_get_compaction_status.cpp
+    service_actor_actions_get_dependent_disks.cpp
     service_actor_actions_get_disk_agent_node_id.cpp
     service_actor_actions_get_diskregistry_tablet_info.cpp
     service_actor_actions_get_nameservice_config.cpp
@@ -59,6 +60,8 @@ SRCS(
     service_actor_client_stats.cpp
     service_actor_create.cpp
     service_actor_create_from_device.cpp
+    service_actor_create_volume_link.cpp
+    service_actor_destroy_volume_link.cpp
     service_actor_describe.cpp
     service_actor_describe_disk_registry_config.cpp
     service_actor_describe_model.cpp

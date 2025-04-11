@@ -22,7 +22,7 @@ PEERDIR(
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test/nfs-storage.txt
+    cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)

@@ -512,7 +512,7 @@ void TCommand::Init()
 
         auto endpoint = Client->CreateEndpoint();
 
-        auto retryPolicy = CreateRetryPolicy(ClientConfig);
+        auto retryPolicy = CreateRetryPolicy(ClientConfig, std::nullopt);
 
         ClientEndpoint = CreateDurableClient(
             ClientConfig,

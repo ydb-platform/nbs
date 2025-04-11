@@ -20,7 +20,50 @@
 #include <cloud/storage/core/protos/media.pb.h>
 #include <cloud/storage/core/protos/request_source.pb.h>
 
+#include <util/generic/array_ref.h>
+#include <util/generic/vector.h>
+
 namespace NCloud::NFileStore {
+
+namespace NProto {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TReadDataLocalRequest
+    : public TReadDataRequest
+{
+    TVector<TArrayRef<char>> Buffers;
+};
+
+struct TReadDataLocalResponse
+    : public TReadDataResponse
+{
+    TReadDataLocalResponse() = default;
+
+    TReadDataLocalResponse(const TReadDataResponse& base)
+        : TReadDataResponse(base)
+    {}
+
+    TReadDataLocalResponse(TReadDataResponse&& base)
+        : TReadDataResponse(std::move(base))
+    {}
+
+    // number of bytes read
+    ui64 BytesRead = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TWriteDataLocalRequest
+    : public TWriteDataRequest
+{
+    TVector<TArrayRef<const char>> Buffers;
+    ui64 BytesToWrite = 0;
+};
+
+using TWriteDataLocalResponse = TWriteDataResponse;
+
+}   // namespace NProto
 
 namespace NImpl {
 
@@ -64,6 +107,18 @@ struct TFileStoreRequest {};
 FILESTORE_PROTO_REQUESTS(FILESTORE_DECLARE_REQUEST)
 
 #undef FILESTORE_DECLARE_REQUEST
+
+    template <>
+    struct TFileStoreRequest<NProto::TReadDataLocalRequest>
+    {
+        static constexpr EFileStoreRequest Request = EFileStoreRequest::ReadData;
+    };
+
+    template <>
+    struct TFileStoreRequest<NProto::TWriteDataLocalRequest>
+    {
+        static constexpr EFileStoreRequest Request = EFileStoreRequest::WriteData;
+    };
 
 }    // namespace NImpl
 

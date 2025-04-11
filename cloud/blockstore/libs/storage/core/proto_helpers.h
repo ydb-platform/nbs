@@ -144,6 +144,10 @@ bool GetThrottlingEnabled(
     const TStorageConfig& config,
     const NProto::TPartitionConfig& partitionConfig);
 
+bool GetThrottlingEnabledZeroBlocks(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig);
+
 bool CompareVolumeConfigs(
     const NKikimrBlockStore::TVolumeConfig& prevConfig,
     const NKikimrBlockStore::TVolumeConfig& newConfig);
@@ -228,4 +232,7 @@ ui64 GetVolumeRequestId(const NProto::TWriteDeviceBlocksRequest& request);
 ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
 
 TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
+
+NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
+    const NKikimrBlockStore::TVolumeConfig& volumeConfig);
 }   // namespace NCloud::NBlockStore::NStorage

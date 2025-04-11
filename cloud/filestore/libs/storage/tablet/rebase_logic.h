@@ -15,9 +15,9 @@ namespace NCloud::NFileStore::NStorage {
 
 struct TRebaseResult
 {
-    ui32 LiveBlocks = 0;
-    ui32 GarbageBlocks = 0;
-    ui32 CheckpointBlocks = 0;
+    ui32 LiveBlocksCount = 0;
+    ui32 GarbageBlocksCount = 0;
+    ui32 CheckpointBlocksCount = 0;
 
     TSet<ui64> UsedCheckpoints;
 };

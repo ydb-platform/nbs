@@ -200,7 +200,8 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         deviceRequest.SetBlocksCount(r.DeviceBlockRange.Size());
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
         if (assignVolumeRequestId) {
-            deviceRequest.SetVolumeRequestId(requestInfo->Cookie);
+            deviceRequest.SetVolumeRequestId(
+                msg->Record.GetHeaders().GetVolumeRequestId());
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
 

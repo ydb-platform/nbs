@@ -394,13 +394,14 @@ void TIndexTabletActor::HandleCreateNode(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    auto* session = AcceptRequest<TEvService::TCreateNodeMethod>(
+        ev,
+        ctx,
+        ValidateRequest,
+        !BehaveAsShard(msg->Record.GetHeaders()) /* validateSession */);
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
     if (!BehaveAsShard(msg->Record.GetHeaders())) {
-        auto* session = AcceptRequest<TEvService::TCreateNodeMethod>(
-            ev,
-            ctx,
-            ValidateRequest);
         if (!session) {
             return;
         }
@@ -468,7 +469,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
             && Config->GetShardIdSelectionInLeaderEnabled()
             && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
-                || Config->GetDirectoryCreationInShardsEnabled()
+                || GetFileSystem().GetDirectoryCreationInShardsEnabled()
                 // otherwise there might be some local nodes which breaks
                 // current cross-shard RenameNode implementation
                 && !isMainWithLocalNodes))

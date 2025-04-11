@@ -169,6 +169,32 @@ public:
         Submit(std::move(req));
     }
 
+    void AsyncReadV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        auto req = std::make_unique<iocb>();
+
+        TVector<iovec> iov(buffers.size());
+        for (ui32 i = 0; i < buffers.size(); ++i) {
+            iov[i].iov_base = static_cast<void*>(buffers[i].data());
+            iov[i].iov_len = buffers[i].size();
+        }
+
+        io_prep_preadv(
+            req.get(),
+            file,
+            iov.data(),
+            iov.size(),
+            offset);
+
+        req->data = completion;
+
+        Submit(std::move(req));
+    }
+
     void AsyncWrite(
         TFileHandle& file,
         i64 offset,
@@ -182,6 +208,33 @@ public:
             file,
             const_cast<char*>(buffer.data()),
             buffer.size(),
+            offset);
+
+        req->data = completion;
+
+        Submit(std::move(req));
+    }
+
+    void AsyncWriteV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<const char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        auto req = std::make_unique<iocb>();
+
+        TVector<iovec> iov(buffers.size());
+        for (ui32 i = 0; i < buffers.size(); ++i) {
+            iov[i].iov_base =
+                static_cast<void*>(const_cast<char*>(buffers[i].data()));
+            iov[i].iov_len = buffers[i].size();
+        }
+
+        io_prep_pwritev(
+            req.get(),
+            file,
+            iov.data(),
+            iov.size(),
             offset);
 
         req->data = completion;
@@ -281,6 +334,17 @@ public:
             ->AsyncRead(file, offset, buffer, completion);
     }
 
+    void AsyncReadV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        auto index = NextService++;
+        IoServices[index % IoServices.size()]
+            ->AsyncReadV(file, offset, buffers, completion);
+    }
+
     void AsyncWrite(
         TFileHandle& file,
         i64 offset,
@@ -290,6 +354,17 @@ public:
         auto index = NextService++;
         IoServices[index % IoServices.size()]
             ->AsyncWrite(file, offset, buffer, completion);
+    }
+
+    void AsyncWriteV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<const char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        auto index = NextService++;
+        IoServices[index % IoServices.size()]
+            ->AsyncWriteV(file, offset, buffers, completion);
     }
 
     void Start() override

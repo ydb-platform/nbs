@@ -149,6 +149,11 @@ void TFileSystem::SetXAttr(
         << ", value:" << value.Quote()
         << ", flags:" << xflags);
 
+    if (Config->GetExtendedAttributesDisabled()) {
+        ReplyError(*callContext, MakeError(E_FS_NOTSUPP), req, ENOSYS);
+        return;
+    }
+
     if (UnsupportedXAttrs.count(name)) {
         ReplyError(*callContext, ErrorInvalidAttribute(name), req, ENOTSUP);
         return;
@@ -205,6 +210,11 @@ void TFileSystem::GetXAttr(
     size_t size)
 {
     STORAGE_DEBUG("GetXAttr #" << ino << " " << name.Quote());
+
+    if (Config->GetExtendedAttributesDisabled()) {
+        ReplyError(*callContext, MakeError(E_FS_NOTSUPP), req, ENOSYS);
+        return;
+    }
 
     if (UnsupportedXAttrs.count(name)) {
         ReplyError(*callContext, ErrorInvalidAttribute(name), req, ENOTSUP);
@@ -267,6 +277,11 @@ void TFileSystem::ListXAttr(
 {
     STORAGE_DEBUG("ListXAttr #" << ino);
 
+    if (Config->GetExtendedAttributesDisabled()) {
+        ReplyError(*callContext, MakeError(E_FS_NOTSUPP), req, ENOSYS);
+        return;
+    }
+
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
@@ -299,6 +314,11 @@ void TFileSystem::RemoveXAttr(
     TString name)
 {
     STORAGE_DEBUG("RemoveXAttr #" << ino << " " << name.Quote());
+
+    if (Config->GetExtendedAttributesDisabled()) {
+        ReplyError(*callContext, MakeError(E_FS_NOTSUPP), req, ENOSYS);
+        return;
+    }
 
     if (UnsupportedXAttrs.count(name)) {
         ReplyError(*callContext, ErrorInvalidAttribute(name), req, ENOTSUP);

@@ -113,10 +113,7 @@ func (s *rootKmsService) Decrypt(
 		)
 	}
 
-	symmetricKey, err := decryptDEK(
-		req.Ciphertext,
-		privateKey,
-	)
+	symmetricKey, err := decryptDEK(req.Ciphertext, privateKey)
 	if err != nil {
 		return nil, grpc_status.Error(
 			grpc_codes.Internal,

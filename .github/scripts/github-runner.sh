@@ -69,15 +69,15 @@ xmltodict
 pyarrow
 boto3
 psutil
-yandexcloud==0.330.0
 PyGithub==2.5.0
 cryptography
-pyOpenSSL==24.2.1
+protobuf
+pyOpenSSL
 packaging
 rapidgzip
-typing-extensions==4.10.0
+typing-extensions
+nebius==0.2.6
 EOF
-sudo pip3 install https://github.com/librarian/python-sdk/releases/download/v0.1.1/nebiusai-0.1.1-py3-none-any.whl
 sudo pip3 install -r /tmp/requirements.txt
 curl -L "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-${OS_ARCH}.tar.xz" | sudo tar -xJ -C /usr/local/bin/ --strip-components=1 --no-same-owner "ccache-${CCACHE_VERSION}-linux-${OS_ARCH}/ccache"
 sudo apt-get remove -y unattended-upgrades

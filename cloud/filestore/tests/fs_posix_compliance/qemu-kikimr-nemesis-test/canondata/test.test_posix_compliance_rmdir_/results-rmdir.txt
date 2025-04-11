@@ -28,7 +28,7 @@ TEST SUITE[rmdir, 02.t] 1..4
 ok 1
 ok 2
 ok 3
-not ok 4
+ok 4
 TEST SUITE[rmdir, 03.t] 1..12
 ok 1
 ok 2

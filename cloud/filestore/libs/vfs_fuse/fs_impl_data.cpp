@@ -1,5 +1,7 @@
 #include "fs_impl.h"
 
+#include "fuse.h"
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -60,11 +62,11 @@ void TFileSystem::Create(
     auto request = StartRequest<NProto::TCreateHandleRequest>(parent);
     request->SetName(std::move(name));
     request->SetMode(mode & ~(S_IFMT));
-    // Kernel read requests can occur even on write-only files when writeback
+    // Kernel read requests can occur even on write-only files when write-back
     // caching is enabled (read-modify-write non page aligned range). Open
     // files with read/write access to support this.
     const auto overrideRead =
-        Config->GetGuestWritebackCacheEnabled()
+        Config->GetGuestWriteBackCacheEnabled()
             ? ProtoFlag(NProto::TCreateHandleRequest::E_READ)
             : 0;
     request->SetFlags(flags | overrideRead);
@@ -113,11 +115,11 @@ void TFileSystem::Open(
     }
 
     auto request = StartRequest<NProto::TCreateHandleRequest>(ino);
-    // Kernel read requests can occur even on write-only files when writeback
+    // Kernel read requests can occur even on write-only files when write-back
     // caching is enabled (read-modify-write non page aligned range). Open
     // files with read/write access to support this.
     const auto overrideRead =
-        Config->GetGuestWritebackCacheEnabled()
+        Config->GetGuestWriteBackCacheEnabled()
             ? ProtoFlag(NProto::TCreateHandleRequest::E_READ)
             : 0;
     request->SetFlags(flags | overrideRead);
@@ -130,6 +132,14 @@ void TFileSystem::Open(
 
                 fuse_file_info fi = {};
                 fi.fh = response.GetHandle();
+                if (self->Config->GetGuestPageCacheDisabled()) {
+                    fi.direct_io = 1;
+                }
+                if (response.GetGuestKeepCache() &&
+                    self->Config->GetGuestKeepCacheAllowed())
+                {
+                    fi.keep_cache = 1;
+                }
 
                 self->ReplyOpen(*callContext, response.GetError(), req, &fi);
             }
@@ -202,6 +212,77 @@ void TFileSystem::Release(
         });
 }
 
+void TFileSystem::ReadLocal(
+    TCallContextPtr callContext,
+    fuse_req_t req,
+    fuse_ino_t ino,
+    size_t size,
+    off_t offset,
+    fuse_file_info* fi)
+{
+    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
+        || !IsAligned(size, Config->GetBlockSize());
+
+    auto request = StartRequest<NProto::TReadDataLocalRequest>(ino);
+    request->SetHandle(fi->fh);
+    request->SetOffset(offset);
+    request->SetLength(size);
+
+    struct iovec *iov = NULL;
+    int count = 0;
+    int ret = fuse_out_buf(req, &iov, &count);
+    if (ret == -1  || count <= 1) {
+        STORAGE_ERROR("Invalid fuse out buffers, ret=%d, count=%d", ret, count);
+        ReplyError(
+            *callContext,
+            MakeError(E_FS_INVAL, "Invalid fuse out buffers"),
+            req,
+            EINVAL);
+        return;
+    }
+
+    request->Buffers.reserve(count);
+
+    size_t remainingSize = request->GetLength();
+    // skip first fuse out iovec where headers are kept rest of the iovecs
+    // contain pointers to data buffers
+    for (int index = 1; index < count; index++) {
+        if (remainingSize == 0) {
+            break;
+        }
+        auto dataSize = std::min(remainingSize, iov[index].iov_len);
+        request->Buffers.emplace_back(
+            static_cast<char*>(iov[index].iov_base),
+            dataSize);
+        remainingSize -= dataSize;
+    }
+
+    if (remainingSize != 0) {
+        STORAGE_WARN(
+            "Read request length exceeds fuse buffer space, remainingSize="
+            << remainingSize);
+        ReplyError(
+            *callContext,
+            MakeError(E_FS_INVAL, "request length exceeds fuse buffer space"),
+            req,
+            EINVAL);
+        return;
+    }
+
+    Session->ReadDataLocal(callContext, std::move(request))
+        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
+            const auto& response = future.GetValue();
+            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
+                self->ReplyBuf(
+                    *callContext,
+                    response.GetError(),
+                    req,
+                    nullptr,
+                    response.BytesRead);
+            }
+        });
+}
+
 void TFileSystem::Read(
     TCallContextPtr callContext,
     fuse_req_t req,
@@ -227,6 +308,11 @@ void TFileSystem::Read(
     }
 
     if (!ValidateNodeId(*callContext, req, ino)) {
+        return;
+    }
+
+    if (Config->GetZeroCopyEnabled()) {
+        ReadLocal(callContext, req, ino, size, offset, fi);
         return;
     }
 
@@ -307,7 +393,7 @@ void TFileSystem::Write(
         });
 }
 
-void TFileSystem::WriteBuf(
+void TFileSystem::WriteBufLocal(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
@@ -316,13 +402,73 @@ void TFileSystem::WriteBuf(
     fuse_file_info* fi)
 {
     size_t size = fuse_buf_size(bufv);
-    STORAGE_DEBUG("WriteBuf #" << ino << " @" << fi->fh
+
+    STORAGE_DEBUG("WriteBufLocal #" << ino << " @" << fi->fh
         << " offset:" << offset
         << " size:" << size);
 
+    auto request = StartRequest<NProto::TWriteDataLocalRequest>(ino);
+    request->SetHandle(fi->fh);
+    request->SetOffset(offset);
+    request->BytesToWrite = size;
+    request->Buffers.reserve(bufv->count);
+
+    for (size_t index = 0; index < bufv->count; ++index) {
+        const auto *srcFuseBuf = &bufv->buf[index];
+        if (srcFuseBuf->size == 0) {
+            continue;
+        }
+
+        request->Buffers.emplace_back(
+            static_cast<char*>(srcFuseBuf->mem),
+            srcFuseBuf->size);
+    }
+
+    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
+        || !IsAligned(size, Config->GetBlockSize());
+
+    const auto handle = fi->fh;
+    const auto reqId = callContext->RequestId;
+    FSyncQueue.Enqueue(reqId, TNodeId {ino}, THandle {handle});
+
+    Session->WriteDataLocal(callContext, std::move(request))
+        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
+            auto self = ptr.lock();
+            if (!self) {
+                return;
+            }
+
+            const auto& response = future.GetValue();
+            const auto& error = response.GetError();
+            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+
+            if (CheckResponse(self, *callContext, req, response)) {
+                self->ReplyWrite(*callContext, error, req, size);
+            }
+        });
+}
+
+void TFileSystem::WriteBuf(
+    TCallContextPtr callContext,
+    fuse_req_t req,
+    fuse_ino_t ino,
+    fuse_bufvec* bufv,
+    off_t offset,
+    fuse_file_info* fi)
+{
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
+
+    if (Config->GetZeroCopyEnabled()) {
+        WriteBufLocal(callContext, req, ino, bufv, offset, fi);
+        return;
+    }
+
+    size_t size = fuse_buf_size(bufv);
+    STORAGE_DEBUG("WriteBuf #" << ino << " @" << fi->fh
+        << " offset:" << offset
+        << " size:" << size);
 
     auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
     TAlignedBuffer alignedBuffer(size, align);

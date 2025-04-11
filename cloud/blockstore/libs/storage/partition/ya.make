@@ -9,6 +9,7 @@ SRCS(
     part_actor_addunconfirmedblobs.cpp
     part_actor_changedblocks.cpp
     part_actor_checkpoint.cpp
+    part_actor_checkrange.cpp
     part_actor_cleanup.cpp
     part_actor_collectgarbage.cpp
     part_actor_compaction.cpp

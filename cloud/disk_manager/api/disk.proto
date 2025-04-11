@@ -47,7 +47,12 @@ message DiskModel {
 
 enum EncryptionMode {
     NO_ENCRYPTION = 0;
+
+    // Encryption with a user provided key.
     ENCRYPTION_AES_XTS = 1;
+
+    // Encryption with a Root KMS provided key.
+    ENCRYPTION_AT_REST = 2;
 }
 
 message KmsKey {

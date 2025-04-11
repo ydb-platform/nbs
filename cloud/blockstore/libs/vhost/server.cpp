@@ -346,6 +346,8 @@ private:
             return TVhostRequest::SUCCESS;
         }
 
+        // Keep the logic synchronized with
+        // TAlignedDeviceHandler::ReportCriticalError().
         bool cancelError =
             error.GetCode() == E_CANCELLED ||
             GetErrorKind(error) == EErrorKind::ErrorRetriable;
@@ -423,7 +425,8 @@ public:
             options.ClientId,
             options.BlockSize,
             options.UnalignedRequestsDisabled,
-            options.CheckBufferModificationDuringWriting);
+            options.CheckBufferModificationDuringWriting,
+            options.IsReliableMediaKind);
 
         auto endpoint = std::make_shared<TEndpoint>(
             AppCtx,

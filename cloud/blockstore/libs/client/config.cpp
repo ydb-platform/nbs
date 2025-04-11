@@ -42,6 +42,8 @@ TDuration MSeconds(ui64 x)
     xxx(RetryTimeoutIncrement,          TDuration,      MSeconds(500)         )\
     xxx(ConnectionErrorMaxRetryTimeout, TDuration,      MSeconds(100)         )\
     xxx(GrpcReconnectBackoff,           TDuration,      MSeconds(100)         )\
+    xxx(DiskRegistryBasedDiskInitialRetryTimeout,  TDuration,  MSeconds(500)  )\
+    xxx(YDBBasedDiskInitialRetryTimeout,           TDuration,  MSeconds(500)  )\
                                                                                \
     xxx(MemoryQuotaBytes,       ui32,             0                           )\
     xxx(SecurePort,             ui32,             0                           )\

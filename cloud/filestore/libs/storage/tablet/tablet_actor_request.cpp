@@ -17,7 +17,9 @@ template <typename TMethod>
 TSession* TIndexTabletActor::AcceptRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx,
-    const std::function<NProto::TError(const typename TMethod::TRequest::ProtoRecordType&)>& validator)
+    const std::function<NProto::TError(
+        const typename TMethod::TRequest::ProtoRecordType&)>& validator,
+    bool validateSession)
 {
     auto* msg = ev->Get();
     auto& request = msg->Record;
@@ -53,6 +55,10 @@ TSession* TIndexTabletActor::AcceptRequest(
     if (FAILED(error.GetCode())) {
         auto response = std::make_unique<typename TMethod::TResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
+        return nullptr;
+    }
+
+    if (!validateSession) {
         return nullptr;
     }
 
@@ -109,7 +115,8 @@ template TSession* TIndexTabletActor::AcceptRequest<ns::T##name##Method>(       
     const ns::T##name##Method::TRequest::TPtr& ev,                                    \
     const TActorContext& ctx,                                                         \
     const std::function<NProto::TError(                                               \
-        const typename ns::T##name##Method::TRequest::ProtoRecordType&)>& validator); \
+        const typename ns::T##name##Method::TRequest::ProtoRecordType&)>& validator,  \
+    bool validateSession);                                                            \
                                                                                       \
 template void TIndexTabletActor::CompleteResponse<ns::T##name##Method>(               \
     ns::TEv##name##Response::ProtoRecordType& response,                               \

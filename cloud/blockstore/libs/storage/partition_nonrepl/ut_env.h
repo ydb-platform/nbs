@@ -9,11 +9,14 @@
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -28,10 +31,12 @@ const ui64 DefaultDeviceBlockSize = 512;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStorageStatsServiceState
-    : TAtomicRefCount<TStorageStatsServiceState>
+struct TStorageStatsServiceState: TAtomicRefCount<TStorageStatsServiceState>
 {
     TPartitionDiskCounters Counters{
+        EPublishingPolicy::DiskRegistryBased,
+        EHistogramCounterOption::ReportMultipleCounters};
+    TPartitionDiskCounters AggregatedCounters{
         EPublishingPolicy::DiskRegistryBased,
         EHistogramCounterOption::ReportMultipleCounters};
 };
@@ -86,6 +91,7 @@ private:
         Y_UNUSED(ctx);
 
         State->Counters = *ev->Get()->DiskCounters;
+        State->AggregatedCounters.AggregateWith(*ev->Get()->DiskCounters);
     }
 
     void HandleRegisterTrafficSource(
@@ -146,6 +152,9 @@ private:
 
             HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
             HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
+
+            IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
+            IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
 
             default:
                 Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
@@ -270,8 +279,15 @@ private:
         const TEvService::TEvAddTagsRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        Y_UNUSED(ev);
-        Y_UNUSED(ctx);
+        auto* msg = ev->Get();
+
+        auto requestInfo =
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+        auto response =
+            std::make_unique<TEvService::TEvAddTagsResponse>();
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
     }
 };
 
@@ -335,13 +351,17 @@ public:
 
     auto CreateReadBlocksRequest(
         const TBlockRange64& blockRange,
-        ui32 replicaIndex = 0)
+        ui32 replicaIndex = 0,
+        ui32 replicaCount = 0)
     {
         auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
         request->Record.SetStartIndex(blockRange.Start);
         request->Record.SetBlocksCount(blockRange.Size());
         if (replicaIndex) {
             request->Record.MutableHeaders()->SetReplicaIndex(replicaIndex);
+        }
+        if (replicaCount) {
+            request->Record.MutableHeaders()->SetReplicaCount(replicaCount);
         }
 
         return request;
@@ -410,6 +430,29 @@ public:
         return request;
     }
 
+    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool calculateChecksums = false)
+    {
+        auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
+        request->Record.SetDiskId(id);
+        request->Record.SetStartIndex(startIndex);
+        request->Record.SetBlocksCount(size);
+        request->Record.SetCalculateChecksums(calculateChecksums);
+        return request;
+    }
+
+    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, ui32 replicaCount, bool calculateChecksums = false)
+    {
+        auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
+        request->Record.SetDiskId(id);
+        request->Record.SetStartIndex(startIndex);
+        request->Record.SetBlocksCount(size);
+        request->Record.SetCalculateChecksums(calculateChecksums);
+        request->Record.mutable_headers()->SetReplicaCount(replicaCount);
+        return request;
+    }
+
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
@@ -443,6 +486,7 @@ public:
     BLOCKSTORE_DECLARE_METHOD(ReadBlocksLocal, TEvService);
     BLOCKSTORE_DECLARE_METHOD(WriteBlocksLocal, TEvService);
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks, TEvService);
+    BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvVolume);
     BLOCKSTORE_DECLARE_METHOD(ChecksumBlocks, TEvNonreplPartitionPrivate);
 
 #undef BLOCKSTORE_DECLARE_METHOD

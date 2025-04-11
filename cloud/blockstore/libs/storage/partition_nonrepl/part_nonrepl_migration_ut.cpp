@@ -160,6 +160,7 @@ struct TTestEnv
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
         storageConfig.SetMaxMigrationBandwidth(500);
         storageConfig.SetUseDirectCopyRange(useDirectCopy);
+        storageConfig.SetMigrationIndexCachingInterval(1024);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -194,23 +195,20 @@ struct TTestEnv
             )
         );
 
-        auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(devices, DefaultBlockSize),
-            ioMode,
-            "test",
-            DefaultBlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{
-                Now(),
-                // only SSD/HDD distinction matters
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
-            VolumeActorId,
-            false,                 // muteIOErrors
-            THashSet<TString>(),   // freshDeviceIds
-            THashSet<TString>(),   // laggingDeviceIds
-            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-            false,                 // maxTimedOutDeviceStateDurationOverridden
-            false                  // useSimpleMigrationBandwidthLimiter
-        );
+        TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+            params{
+                ToLogicalBlocks(devices, DefaultBlockSize),
+                TNonreplicatedPartitionConfig::TVolumeInfo{
+                    Now(),
+                    // only SSD/HDD distinction matters
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+                "test",
+                DefaultBlockSize,
+                VolumeActorId};
+        params.IOMode = ioMode;
+        params.UseSimpleMigrationBandwidthLimiter = false;
+        auto partConfig =
+            std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
         auto part = std::make_unique<TNonreplicatedPartitionMigrationActor>(
             std::move(config),
@@ -331,12 +329,173 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             counters.WriteBlocks.RequestBytes);
     }
 
-    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigrated) {
+    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigrated)
+    {
         DoShouldMirrorRequestsAfterAllDataIsMigrated(false);
     }
 
-    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigratedDirectCopy) {
+    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigratedDirectCopy)
+    {
         DoShouldMirrorRequestsAfterAllDataIsMigrated(true);
+    }
+
+    void DoShouldMirrorRequestsDuringMigration(bool useDirectCopy)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            nullptr,   // no migration state
+            useDirectCopy);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        // petya should be migrated => 3 ranges
+        WaitForMigrations(runtime, 3);
+
+        const auto blockRange = TBlockRange64::WithLength(2047, 2);
+        const auto buffer1 = TString(DefaultBlockSize, 'A');
+        const auto buffer2 = TString(DefaultBlockSize, 'B');
+
+        size_t writeDeviceRequestCount = 0;
+        auto checkWriteDeviceRequest =
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                auto* msg =
+                    event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+
+                writeDeviceRequestCount++;
+
+                if (msg->Record.GetStartIndex() == 2047) {
+                    const auto& blocks = msg->Record.GetBlocks().GetBuffers();
+                    TBlockDataRef src{buffer1.data(), buffer1.size()};
+                    TBlockDataRef dst{blocks[0].data(), DefaultBlockSize};
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        src.AsStringBuf(),
+                        dst.AsStringBuf());
+                } else if (msg->Record.GetStartIndex() == 0) {
+                    const auto& blocks = msg->Record.GetBlocks().GetBuffers();
+                    TBlockDataRef src{buffer2.data(), buffer2.size()};
+                    TBlockDataRef dst{blocks[0].data(), DefaultBlockSize};
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        src.AsStringBuf(),
+                        dst.AsStringBuf());
+                } else {
+                    UNIT_ASSERT(false);
+                }
+            }
+            return false;
+        };
+
+        runtime.SetEventFilter(checkWriteDeviceRequest);
+
+        auto writeRequest =
+            std::make_unique<TEvService::TEvWriteBlocksRequest>();
+        writeRequest->Record.SetStartIndex(blockRange.Start);
+        writeRequest->Record.MutableBlocks()->AddBuffers(buffer1);
+        writeRequest->Record.MutableBlocks()->AddBuffers(buffer2);
+        client.SendRequest(client.GetActorId(), std::move(writeRequest));
+        auto response = client.RecvWriteBlocksResponse();
+        UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDeviceRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldMirrorRequestsDuringMigration)
+    {
+        DoShouldMirrorRequestsDuringMigration(false);
+    }
+
+    Y_UNIT_TEST(ShouldMirrorRequestsDuringMigrationDirectCopy)
+    {
+        DoShouldMirrorRequestsDuringMigration(true);
+    }
+
+    void DoShouldUpdateMigrationState(bool useDirectCopy)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            nullptr,   // no migration state
+            useDirectCopy);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        ui32 migrationUpdates = 0;
+        ui64 lastMigrationIndex = 0;
+        ui32 lastBlockCountToMigrate = 0;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event) -> bool
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvUpdateMigrationState) {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvUpdateMigrationState>();
+                    migrationUpdates++;
+                    lastMigrationIndex = msg->MigrationIndex;
+                    lastBlockCountToMigrate = msg->BlockCountToMigrate;
+                }
+                return false;
+            });
+
+        // Migrate the first range.
+        {
+            WaitForMigrations(runtime, 1);
+            if (migrationUpdates != 1) {
+                NActors::TDispatchOptions options;
+                options.CustomFinalCondition = [&]()
+                {
+                    return migrationUpdates == 1;
+                };
+                runtime.DispatchEvents(options);
+            }
+        }
+
+        // We should see "lastMigrationIndex" equal to 3072, because the first
+        // device has 2048 blocks and is not migrating.
+        UNIT_ASSERT_VALUES_EQUAL(1, migrationUpdates);
+        UNIT_ASSERT_VALUES_EQUAL(3072, lastMigrationIndex);
+        UNIT_ASSERT_VALUES_EQUAL(2048, lastBlockCountToMigrate);
+
+        {
+            NActors::TDispatchOptions options;
+            options.CustomFinalCondition = [&]()
+            {
+                return migrationUpdates == 2;
+            };
+            runtime.DispatchEvents(options);
+        }
+
+        // The migration of the second range increases the index by 1024 blocks.
+        UNIT_ASSERT_VALUES_EQUAL(2, migrationUpdates);
+        UNIT_ASSERT_VALUES_EQUAL(4096, lastMigrationIndex);
+        UNIT_ASSERT_VALUES_EQUAL(1024, lastBlockCountToMigrate);
+    }
+
+    Y_UNIT_TEST(ShouldUpdateMigrationState)
+    {
+        DoShouldUpdateMigrationState(false);
+    }
+
+    Y_UNIT_TEST(ShouldUpdateMigrationStateDirectCopy)
+    {
+        DoShouldUpdateMigrationState(true);
     }
 
     void DoShouldDoMigrationViaRdma(bool useDirectCopy)
@@ -358,11 +517,13 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         WaitForMigrations(runtime, 3);
     }
 
-    Y_UNIT_TEST(DoShouldDoMigrationViaRdma) {
+    Y_UNIT_TEST(ShouldDoMigrationViaRdma)
+    {
         DoShouldDoMigrationViaRdma(false);
     }
 
-    Y_UNIT_TEST(DoShouldDoMigrationViaRdmaDirectCopy) {
+    Y_UNIT_TEST(ShouldDoMigrationViaRdmaDirectCopy)
+    {
         DoShouldDoMigrationViaRdma(true);
     }
 

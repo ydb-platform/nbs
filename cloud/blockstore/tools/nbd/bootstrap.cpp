@@ -426,7 +426,7 @@ void TBootstrap::InitControlClient()
 
     ClientEndpoint = Client->CreateEndpoint();
 
-    auto retryPolicy = CreateRetryPolicy(ClientConfig);
+    auto retryPolicy = CreateRetryPolicy(ClientConfig, std::nullopt);
 
     ClientEndpoint = CreateDurableClient(
         ClientConfig,

@@ -140,7 +140,7 @@ using TAffectedBlocks = TVector<TAffectedBlock>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TMergedBlobCompactionInfo
+struct TBlobCompactionInfo
 {
     const ui32 BlobsSkippedByCompaction = 0;
     const ui32 BlocksSkippedByCompaction = 0;
@@ -361,7 +361,8 @@ struct TEvPartitionPrivate
         // compaction
         TAffectedBlobs AffectedBlobs;
         TAffectedBlocks AffectedBlocks;
-        TVector<TMergedBlobCompactionInfo> MergedBlobCompactionInfos;
+        TVector<TBlobCompactionInfo> MixedBlobCompactionInfos;
+        TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
 
         TAddBlobsRequest() = default;
 
@@ -373,7 +374,8 @@ struct TEvPartitionPrivate
                 EAddBlobMode mode,
                 TAffectedBlobs affectedBlobs = {},
                 TAffectedBlocks affectedBlocks = {},
-                TVector<TMergedBlobCompactionInfo> mergedBlobCompactionInfos = {})
+                TVector<TBlobCompactionInfo> mixedBlobCompactionInfos = {},
+                TVector<TBlobCompactionInfo> mergedBlobCompactionInfos = {})
             : CommitId(commitId)
             , MixedBlobs(std::move(mixedBlobs))
             , MergedBlobs(std::move(mergedBlobs))
@@ -381,6 +383,7 @@ struct TEvPartitionPrivate
             , Mode(mode)
             , AffectedBlobs(std::move(affectedBlobs))
             , AffectedBlocks(std::move(affectedBlocks))
+            , MixedBlobCompactionInfos(std::move(mixedBlobCompactionInfos))
             , MergedBlobCompactionInfos(std::move(mergedBlobCompactionInfos))
         {}
     };
@@ -442,20 +445,30 @@ struct TEvPartitionPrivate
     struct TCompactionRequest
     {
         ECompactionMode Mode = RangeCompaction;
-        TMaybe<ui32> BlockIndex;
+        TVector<ui32> RangeBlockIndices;
         TCompactionOptions CompactionOptions;
 
         TCompactionRequest() = default;
 
         TCompactionRequest(
-                ui32 blockIndex,
+                TVector<ui32> rangeBlockIndices,
                 TCompactionOptions compactionOptions)
-            : BlockIndex(blockIndex)
+            : RangeBlockIndices(std::move(rangeBlockIndices))
             , CompactionOptions(compactionOptions)
         {}
 
+        TCompactionRequest(
+                ui32 blockIndex,
+                TCompactionOptions compactionOptions)
+            : TCompactionRequest(TVector<ui32>{blockIndex}, compactionOptions)
+        {}
+
         TCompactionRequest(ui32 blockIndex)
-            : TCompactionRequest(blockIndex, {})
+            : TCompactionRequest(TVector<ui32>{blockIndex}, {})
+        {}
+
+        TCompactionRequest(TVector<ui32> rangeBlockIndices)
+            : TCompactionRequest(std::move(rangeBlockIndices), {})
         {}
 
         TCompactionRequest(ECompactionMode mode)

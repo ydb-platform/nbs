@@ -35,6 +35,7 @@ namespace NCloud::NBlockStore {
     xxx(MirroredDiskMajorityChecksumMismatch)                                  \
     xxx(MirroredDiskChecksumMismatchUponRead)                                  \
     xxx(MirroredDiskChecksumMismatchUponWrite)                                 \
+    xxx(MirroredDiskAddTagFailed)                                              \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
     xxx(ResyncFailed)                                                          \
@@ -68,6 +69,9 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
     xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
+    xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
+    xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
+    xxx(MirroredDiskResyncChecksumMismatch)                                    \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \
@@ -89,6 +93,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryDeviceNotFound)                                            \
     xxx(DiskRegistryNoScheduledNotification)                                   \
     xxx(DiskRegistryDeviceDoesNotBelongToDisk)                                 \
+    xxx(DiskRegistryCouldNotAddLaggingDevice)                                  \
     xxx(ResyncUnexpectedWriteOrZeroCounter)                                    \
     xxx(MonitoringSvgTemplatesNotFound)                                        \
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
@@ -99,6 +104,8 @@ namespace NCloud::NBlockStore {
     xxx(OverlappingRangesDuringMigrationDetected)                              \
     xxx(StartExternalEndpointError)                                            \
     xxx(EmptyRequestSgList)                                                    \
+    xxx(LaggingAgentsProxyWrongRecipientActor)                                 \
+    xxx(UnexpectedCookie)                                                      \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

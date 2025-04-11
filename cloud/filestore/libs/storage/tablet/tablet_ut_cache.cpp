@@ -1,5 +1,6 @@
 #include "tablet.h"
 
+#include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -26,6 +27,32 @@ struct TTxStats
     i64 NodeAttrsCount;
     bool IsExhaustive;
 };
+
+TBlobMetaMapStats GetBlobMetaMapStats(TTestEnv& env, TIndexTabletClient& tablet)
+{
+    TBlobMetaMapStats stats;
+    TTestRegistryVisitor visitor;
+
+    tablet.SendRequest(tablet.CreateUpdateCounters());
+    env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+    env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+
+    visitor.ValidateExpectedCountersWithPredicate({
+        {{{"filesystem", "test"}, {"sensor", "MixedIndexLoadedRanges"}},
+         [&stats](i64 value)
+         {
+             stats.LoadedRanges = value;
+             return true;
+         }},
+        {{{"filesystem", "test"}, {"sensor", "MixedIndexOffloadedRanges"}},
+         [&stats](i64 value)
+         {
+             stats.OffloadedRanges = value;
+             return true;
+         }},
+    });
+    return stats;
+}
 
 TTxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
 {
@@ -1071,6 +1098,120 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
               {"sensor", "InMemoryIndexStateNodeAttrsCapacity"}},
              128},
         });
+    }
+
+    Y_UNIT_TEST(ShouldUseInMemoryCacheAndMixedBlocksCacheForReads)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(2);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(1);
+        storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(2);
+        storageConfig.SetMixedBlocksOffloadedRangesCapacity(1024);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // RW transaction, populates the cache
+        auto id = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test"))
+                      ->Record.GetNode()
+                      .GetId();
+
+        // RW transaction, updates cache
+        auto handle = tablet.CreateHandle(id, TCreateHandleArgs::RDWR)
+                          ->Record.GetHandle();
+
+        // RW transaction
+        tablet.WriteData(handle, 0, 1_MB, '0');
+
+        // RO transaction, cache miss
+        tablet.ReadData(handle, 0, 1_MB);
+        // RO transaction, cache hit
+        tablet.ReadData(handle, 0, 1_MB);
+
+        auto statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotLeakMixedIndex)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(2);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(1);
+        storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(2);
+        storageConfig.SetMixedBlocksOffloadedRangesCapacity(1024);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test"))
+                      ->Record.GetNode()
+                      .GetId();
+        auto handle = tablet.CreateHandle(id, TCreateHandleArgs::RDWR)
+                          ->Record.GetHandle();
+        tablet.WriteData(handle, 0, 1_MB, '0');
+
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        // Now no data is present in the mixed index cache
+        tablet.ReadData(handle, 0, 256_KB);
+        {
+            auto statsBeforeTx = GetTxStats(env, tablet);
+            // Reading the same data again should be a cache hit
+            tablet.ReadData(handle, 0, 256_KB);
+            // Not enough data is present in the mixed index cache to satisfy
+            // the request, thus it should be a cache miss
+            tablet.ReadData(handle, 0, 1_MB);
+            auto statsAfterTx = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfterTx.ROCacheHitCount - statsBeforeTx.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfterTx.ROCacheMissCount - statsBeforeTx.ROCacheMissCount);
+        }
+
+        // All 4 ranges (1MB / 256KB) should have been offloaded to the mixed
+        // index cache
+        auto stats = GetBlobMetaMapStats(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.LoadedRanges);
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.OffloadedRanges);
+
+        // Describe data should not leak mixed index as well
+        tablet.DescribeData(handle, 0, 1_MB);
+        stats = GetBlobMetaMapStats(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.LoadedRanges);
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.OffloadedRanges);
+
+        // Reloading the tablet to drop the mixed index
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        // Simple describe should populate the cache
+        tablet.DescribeData(handle, 0, 1_MB);
+        stats = GetBlobMetaMapStats(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.LoadedRanges);
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.OffloadedRanges);
     }
 }
 

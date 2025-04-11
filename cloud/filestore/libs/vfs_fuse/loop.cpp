@@ -5,6 +5,7 @@
 #include "fuse.h"
 #include "handle_ops_queue.h"
 #include "log.h"
+#include "write_back_cache.h"
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -51,6 +52,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
+static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -515,6 +517,7 @@ private:
     TFileSystemConfigPtr FileSystemConfig;
 
     bool HandleOpsQueueInitialized = false;
+    bool WriteBackCacheInitialized = false;
 
 public:
     TFileSystemLoop(
@@ -625,6 +628,22 @@ public:
                             ReportHandleOpsQueueCreatingOrDeletingError(
                                 TStringBuilder()
                                 << "Failed to remove session's HandleOpsQueue"
+                                << ", reason: " << err.AsStrBuf());
+                        }
+                    }
+
+                    // We need to cleanup WriteBackCache file and directories
+                    if (p->WriteBackCacheInitialized) {
+                        auto fsPath =
+                            TFsPath(p->Config->GetWriteBackCachePath()) /
+                            p->Config->GetFileSystemId();
+                        TString sessionDir = fsPath / p->SessionId;
+                        try {
+                            NFs::RemoveRecursive(sessionDir);
+                        } catch (const TSystemError& err) {
+                            ReportWriteBackCacheCreatingOrDeletingError(
+                                TStringBuilder()
+                                << "Failed to remove session's WriteBackCache"
                                 << ", reason: " << err.AsStrBuf());
                         }
                     }
@@ -791,31 +810,53 @@ private:
                 Log,
                 StorageMediaKind);
             FileSystemConfig = MakeFileSystemConfig(filestore);
-            std::unique_ptr<THandleOpsQueue> handleOpsQueue;
 
+            SessionId = response.GetSession().GetSessionId();
+
+            THandleOpsQueuePtr handleOpsQueue;
             if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
                 TString path =
                     TFsPath(Config->GetHandleOpsQueuePath()) /
                     FileSystemConfig->GetFileSystemId() /
-                    response.GetSession().GetSessionId();
+                    SessionId;
                 if (!NFs::MakeDirectoryRecursive(path)) {
                     TString msg = TStringBuilder()
                                   << "Failed to create directories for "
                                      "HandleOpsQueue, path: "
                                   << path;
                     ReportHandleOpsQueueCreatingOrDeletingError(msg);
-                    return MakeError(
-                        E_FAIL,
-                        msg);
+                    return MakeError(E_FAIL, msg);
                 }
                 auto file = TFsPath(path) / HandleOpsQueueFileName;
                 file.Touch();
                 handleOpsQueue = CreateHandleOpsQueue(
                     file.GetPath(),
                     Config->GetHandleOpsQueueSize());
-                SessionId = response.GetSession().GetSessionId();
                 HandleOpsQueueInitialized = true;
             }
+
+            TWriteBackCachePtr writeBackCache;
+            if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
+                TString path =
+                    TFsPath(Config->GetWriteBackCachePath()) /
+                    FileSystemConfig->GetFileSystemId() /
+                    SessionId;
+                if (!NFs::MakeDirectoryRecursive(path)) {
+                    TString msg = TStringBuilder()
+                                  << "Failed to create directories for "
+                                     "WriteBackCache, path: "
+                                  << path;
+                    ReportWriteBackCacheCreatingOrDeletingError(msg);
+                    return MakeError(E_FAIL, msg);
+                }
+                auto file = TFsPath(path) / WriteBackCacheFileName;
+                file.Touch();
+                writeBackCache = CreateWriteBackCache(
+                    file.GetPath(),
+                    Config->GetWriteBackCacheSize());
+                WriteBackCacheInitialized = true;
+            }
+
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
@@ -825,7 +866,8 @@ private:
                 Session,
                 RequestStats,
                 CompletionQueue,
-                std::move(handleOpsQueue));
+                std::move(handleOpsQueue),
+                std::move(writeBackCache));
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 
@@ -905,8 +947,19 @@ private:
         config.SetDirectIoEnabled(features.GetDirectIoEnabled());
         config.SetDirectIoAlign(features.GetDirectIoAlign());
 
-        config.SetGuestWritebackCacheEnabled(
-            features.GetGuestWritebackCacheEnabled());
+        config.SetGuestWriteBackCacheEnabled(
+            features.GetGuestWriteBackCacheEnabled());
+
+        config.SetServerWriteBackCacheEnabled(
+            features.GetServerWriteBackCacheEnabled());
+
+        config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
+
+        config.SetGuestPageCacheDisabled(features.GetGuestPageCacheDisabled());
+        config.SetExtendedAttributesDisabled(
+            features.GetExtendedAttributesDisabled());
+
+        config.SetGuestKeepCacheAllowed(features.GetGuestKeepCacheAllowed());
 
         return std::make_shared<TFileSystemConfig>(config);
     }
@@ -939,7 +992,7 @@ private:
         // e.g. left from a crash or smth, paranoid mode
         ResetSessionState(SessionThread->GetSession().Dump());
 
-        if (FileSystemConfig->GetGuestWritebackCacheEnabled()) {
+        if (FileSystemConfig->GetGuestWriteBackCacheEnabled()) {
             conn->want |= FUSE_CAP_WRITEBACK_CACHE;
         }
 

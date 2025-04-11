@@ -5,7 +5,6 @@ RECURSE(
     csi_driver
     debug
     fs
-    http_proxy
     nbd
     testing
 )

@@ -23,6 +23,7 @@
 #include <util/string/builder.h>
 #include <util/string/join.h>
 
+#include <algorithm>
 #include <tuple>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -423,21 +424,18 @@ void TDiskRegistryState::AllowNotifications(
     const TDiskId& diskId,
     const TDiskState& disk)
 {
-    // currently we don't want to notify users about mirrored disks since they are not
-    // supposed to break
-    if (disk.MasterDiskId) {
-        return;
-    }
-
     // We do not want to notify the user about the breakdowns of the shadow disks.
     if (disk.CheckpointReplica.GetCheckpointId()) {
         return;
     }
 
-
     Y_DEBUG_ABORT_UNLESS(IsDiskRegistryMediaKind(disk.MediaKind));
     if (!IsReliableDiskRegistryMediaKind(disk.MediaKind)) {
         NotificationSystem.AllowNotifications(diskId);
+    }
+
+    if (disk.MasterDiskId) {
+        NotificationSystem.AllowNotifications(disk.MasterDiskId);
     }
 }
 
@@ -546,28 +544,37 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
             disk.MigrationStartTs = {};
         }
 
-        if (!config.GetFinishedMigrations().empty()) {
-            const auto notifiedDiskId = GetDiskIdToNotify(diskId);
-
-            ui64 seqNo = NotificationSystem.GetDiskSeqNo(notifiedDiskId);
-
+        auto getSeqNo = [this](const TDiskId& diskId)
+        {
+            const TString diskIdToNotify = GetDiskIdToNotify(diskId);
+            ui64 seqNo = NotificationSystem.GetDiskSeqNo(diskIdToNotify);
             if (!seqNo) {
                 ReportDiskRegistryNoScheduledNotification(
                     TStringBuilder() << "No scheduled notification for disk "
-                                     << notifiedDiskId.Quote());
-
-                seqNo = NotificationSystem.AddReallocateRequest(notifiedDiskId);
+                                     << diskIdToNotify.Quote());
+                seqNo = NotificationSystem.AddReallocateRequest(diskIdToNotify);
             }
+
+            return seqNo;
+        };
+
+        if (!config.GetFinishedMigrations().empty()) {
+            const ui64 seqNo = getSeqNo(diskId);
 
             for (const auto& m: config.GetFinishedMigrations()) {
                 const auto& uuid = m.GetDeviceId();
 
                 DeviceList.MarkDeviceAllocated(diskId, uuid);
 
-                disk.FinishedMigrations.push_back({
-                    .DeviceId = uuid,
-                    .SeqNo = seqNo
-                });
+                disk.FinishedMigrations.push_back(
+                    {.DeviceId = uuid, .SeqNo = seqNo});
+            }
+        }
+
+        if (!config.GetLaggingDevices().empty()) {
+            const ui64 seqNo = getSeqNo(diskId);
+            for (const auto& laggingDevice: config.GetLaggingDevices()) {
+                disk.LaggingDevices.emplace_back(laggingDevice, seqNo);
             }
         }
     }
@@ -2529,6 +2536,7 @@ NProto::TError TDiskRegistryState::AllocateMirroredDisk(
     }
 
     result->DeviceReplacementIds = disk.DeviceReplacementIds;
+    result->LaggingDevices = disk.LaggingDevices;
 
     disk.CloudId = params.CloudId;
     disk.FolderId = params.FolderId;
@@ -2642,6 +2650,50 @@ auto TDiskRegistryState::CreateDiskPlacementInfo(
             ? disk.PlacementPartitionIndex
             : params.PlacementPartitionIndex
     };
+}
+
+bool TDiskRegistryState::CanAllocateLocalDiskAfterSecureErase(
+    const TVector<TString>& agentIds,
+    const TString& poolName,
+    const ui64 totalByteCount) const
+{
+    bool canAllocate = false;
+    for (const TString& agentId: agentIds) {
+        auto [infos, error] = QueryAvailableStorage(
+            agentId,
+            poolName,
+            NProto::DEVICE_POOL_KIND_LOCAL);
+
+        if (HasError(error)) {
+            continue;
+        }
+
+        ui64 totalSize = totalByteCount;
+        for (const auto& chunks: infos) {
+            const ui64 chunksSize =
+                (chunks.FreeChunks + chunks.DirtyChunks) * chunks.ChunkSize;
+            STORAGE_DEBUG(
+                "AgentId=%s TAgentStorageInfo={.ChunkSize=%lu .ChunkCount=%u "
+                ".DirtyChunks=%u .FreeChunks=%u}",
+                agentId.Quote().c_str(),
+                chunks.ChunkSize,
+                chunks.ChunkCount,
+                chunks.DirtyChunks,
+                chunks.FreeChunks);
+            if (totalSize <= chunksSize) {
+                STORAGE_DEBUG(
+                    "Agent %s is suitable for allocation after SecureErase. "
+                    "Got requested %lu bytes",
+                    agentId.Quote().c_str(),
+                    totalByteCount);
+                canAllocate = true;
+                break;
+            }
+            totalSize -= chunksSize;
+        }
+    }
+
+    return canAllocate;
 }
 
 NProto::TError TDiskRegistryState::AllocateSimpleDisk(
@@ -3393,6 +3445,7 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     diskInfo.PlacementGroupId = disk.PlacementGroupId;
     diskInfo.PlacementPartitionIndex = disk.PlacementPartitionIndex;
     diskInfo.FinishedMigrations = disk.FinishedMigrations;
+    diskInfo.LaggingDevices = disk.LaggingDevices;
     diskInfo.DeviceReplacementIds = disk.DeviceReplacementIds;
     diskInfo.MediaKind = disk.MediaKind;
     diskInfo.MasterDiskId = disk.MasterDiskId;
@@ -3410,18 +3463,42 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     return error;
 }
 
-bool TDiskRegistryState::FilterDevicesAtUnavailableAgents(TDiskInfo& diskInfo) const
+bool TDiskRegistryState::FilterDevicesForAcquire(TDiskInfo& diskInfo) const
 {
-    auto isUnavailable = [&] (const auto& d) {
+    auto isUnavailableOrBroken = [&](const auto& d)
+    {
+        const auto* agent = AgentList.FindAgent(d.GetAgentId());
+
+        const bool agentUnavailable =
+            !agent || agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE;
+
+        const bool brokenDevice = d.GetState() == NProto::DEVICE_STATE_ERROR;
+
+        return agentUnavailable || brokenDevice;
+    };
+
+    EraseIf(diskInfo.Devices, isUnavailableOrBroken);
+    EraseIf(
+        diskInfo.Migrations,
+        [&](const auto& d)
+        { return isUnavailableOrBroken(d.GetTargetDevice()); });
+
+    return diskInfo.Devices.size() || diskInfo.Migrations.size();
+}
+
+bool TDiskRegistryState::FilterDevicesForRelease(TDiskInfo& diskInfo) const
+{
+    auto isUnavailable = [&](const auto& d)
+    {
         const auto* agent = AgentList.FindAgent(d.GetAgentId());
 
         return !agent || agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE;
     };
 
     EraseIf(diskInfo.Devices, isUnavailable);
-    EraseIf(diskInfo.Migrations, [&] (const auto& d) {
-        return isUnavailable(d.GetTargetDevice());
-    });
+    EraseIf(
+        diskInfo.Migrations,
+        [&](const auto& d) { return isUnavailable(d.GetTargetDevice()); });
 
     return diskInfo.Devices.size() || diskInfo.Migrations.size();
 }
@@ -4825,6 +4902,30 @@ void TDiskRegistryState::RemoveFinishedMigrations(
     }
 }
 
+void TDiskRegistryState::RemoveLaggingDevices(
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    ui64 seqNo)
+{
+    auto* disk = AccessDiskState(diskId);
+    if (!disk) {
+        return;
+    }
+
+    if (disk->MasterDiskId) {
+        RemoveLaggingDevices(db, disk->MasterDiskId, seqNo);
+        return;
+    }
+
+    const size_t removedCount = std::erase_if(
+        disk->LaggingDevices,
+        [&](const TLaggingDevice& laggingDevice)
+        { return laggingDevice.SeqNo <= seqNo; });
+    if (removedCount) {
+        db.UpdateDisk(BuildDiskConfig(diskId, *disk));
+    }
+}
+
 void TDiskRegistryState::DeleteDiskToReallocate(
     TDiskRegistryDatabase& db,
     const TString& diskId,
@@ -4832,6 +4933,7 @@ void TDiskRegistryState::DeleteDiskToReallocate(
 {
     NotificationSystem.DeleteDiskToReallocate(db, diskId, seqNo);
     RemoveFinishedMigrations(db, diskId, seqNo);
+    RemoveLaggingDevices(db, diskId, seqNo);
 }
 
 void TDiskRegistryState::AddUserNotification(
@@ -4882,6 +4984,10 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
 
     for (const auto& id: diskState.DeviceReplacementIds) {
         *config.AddDeviceReplacementUUIDs() = id;
+    }
+
+    for (const auto& laggingDevice: diskState.LaggingDevices) {
+        *config.AddLaggingDevices() = laggingDevice.Device;
     }
 
     for (const auto& uuid: diskState.Devices) {
@@ -5480,7 +5586,37 @@ bool TDiskRegistryState::TryUpdateDiskState(
     TDiskState& disk,
     TInstant timestamp)
 {
-    const auto newState = CalculateDiskState(disk);
+    Y_DEBUG_ABORT_UNLESS(!IsMasterDisk(diskId));
+
+    const bool updated = TryUpdateDiskStateImpl(db, diskId, disk, timestamp);
+
+    if (disk.MasterDiskId) {
+        auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
+
+        if (masterDisk) {
+            TryUpdateDiskStateImpl(
+                db,
+                disk.MasterDiskId,
+                *masterDisk,
+                timestamp);
+        } else {
+            Y_DEBUG_ABORT_UNLESS(masterDisk);
+            ReportDiskRegistryDiskNotFound(
+                TStringBuilder()
+                << "TryUpdateDiskState: DiskId: " << disk.MasterDiskId);
+        }
+    }
+
+    return updated;
+}
+
+bool TDiskRegistryState::TryUpdateDiskStateImpl(
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    TDiskState& disk,
+    TInstant timestamp)
+{
+    const auto newState = CalculateDiskState(diskId, disk);
     const auto oldState = disk.State;
 
     if (oldState == newState) {
@@ -5561,8 +5697,19 @@ void TDiskRegistryState::DeleteDiskStateUpdate(
 }
 
 NProto::EDiskState TDiskRegistryState::CalculateDiskState(
+    const TString& diskId,
     const TDiskState& disk) const
 {
+    if (disk.ReplicaCount != 0) {
+        for (ui32 i = 0; i < disk.ReplicaCount + 1; ++i) {
+            auto replicaId = GetReplicaDiskId(diskId, i);
+            if (GetDiskState(replicaId) == NProto::DISK_STATE_WARNING) {
+                return NProto::DISK_STATE_WARNING;
+            }
+        }
+        return NProto::DISK_STATE_ONLINE;
+    }
+
     NProto::EDiskState state = NProto::DISK_STATE_ONLINE;
 
     for (const auto& uuid: disk.Devices) {
@@ -6106,6 +6253,96 @@ void TDiskRegistryState::CancelDeviceMigration(
     UpdatePlacementGroup(db, diskId, disk, "CancelDeviceMigration");
 }
 
+NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    TDiskState& disk,
+    const TDeviceId& sourceId)
+{
+    Y_DEBUG_ABORT_UNLESS(!disk.MasterDiskId.empty());
+
+    Migrations.erase(TDeviceMigration(diskId, sourceId));
+    auto migrationsIt = disk.MigrationSource2Target.find(sourceId);
+
+    // If a device migration is planned, basic device replacement is done.
+    // Otherwise, if the migration is already underway, the target device will
+    // become "fresh" to the volume and the source will be released and marked
+    // as dirty.
+    if (migrationsIt == disk.MigrationSource2Target.end()) {
+        return ReplaceDeviceWithoutDiskStateUpdate(
+            db,
+            disk,
+            diskId,
+            sourceId,
+            TString(),   //  deviceReplacementId
+            now,
+            MakeMirroredDiskDeviceReplacementMessage(
+                disk.MasterDiskId,
+                "AbortMigrationAndReplaceDevice"),
+            false   // manual
+        );
+    }
+
+    const TDeviceId targetId = migrationsIt->second;
+    disk.MigrationTarget2Source.erase(targetId);
+    disk.MigrationSource2Target.erase(migrationsIt);
+
+    auto sourceDeviceIt = Find(disk.Devices, sourceId);
+    Y_DEBUG_ABORT_UNLESS(sourceDeviceIt != disk.Devices.end());
+    if (sourceDeviceIt == disk.Devices.end()) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Disk " << diskId << " does not contain device " << sourceId
+                << ". Failed to abort migration and replace device.");
+    }
+    *sourceDeviceIt = targetId;
+
+    auto* masterDiskState = Disks.FindPtr(disk.MasterDiskId);
+    Y_DEBUG_ABORT_UNLESS(masterDiskState);
+    if (masterDiskState) {
+        Y_DEBUG_ABORT_UNLESS(
+            !FindPtr(masterDiskState->DeviceReplacementIds, targetId));
+        masterDiskState->DeviceReplacementIds.push_back(targetId);
+    }
+
+    ResetMigrationStartTsIfNeeded(disk);
+
+    // Searching in all pools - in theory pool name might change between
+    // the start/cancel/finish events
+    for (auto& x: SourceDeviceMigrationsInProgress) {
+        x.second.erase(sourceId);
+    }
+
+    const bool replaced =
+        ReplicaTable.ReplaceDevice(disk.MasterDiskId, sourceId, targetId);
+    Y_DEBUG_ABORT_UNLESS(replaced);
+
+    DeviceList.ReleaseDevice(sourceId);
+    db.UpdateDirtyDevice(sourceId, diskId);
+
+    auto error = AddDevicesToPendingCleanup(disk.MasterDiskId, {sourceId});
+    if (HasError(error)) {
+        ReportDiskRegistryInsertToPendingCleanupFailed(
+            TStringBuilder()
+            << "An error occurred while aborting migration: "
+            << FormatError(error));
+    }
+
+    NProto::TDiskHistoryItem historyItem;
+    historyItem.SetTimestamp(now.MicroSeconds());
+    historyItem.SetMessage(
+        TStringBuilder() << "Migration was aborted. Device " << sourceId
+                         << " was replaced by " << targetId);
+    masterDiskState->History.push_back(std::move(historyItem));
+
+    db.UpdateDisk(BuildDiskConfig(diskId, disk));
+    db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDiskState));
+    UpdatePlacementGroup(db, diskId, disk, "AbortMigrationAndReplaceDevice");
+    return {};
+}
+
 void TDiskRegistryState::ResetMigrationStartTsIfNeeded(TDiskState& disk)
 {
     if (disk.MigrationSource2Target.empty()) {
@@ -6180,6 +6417,136 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
 
     UpdatePlacementGroup(db, diskId, disk, "FinishDeviceMigration");
+
+    return {};
+}
+
+NProto::TError TDiskRegistryState::AddLaggingDevices(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    TVector<NProto::TLaggingDevice> laggingDevices)
+{
+    if (!Disks.contains(diskId)) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "No such disk " << diskId);
+    }
+
+    TDiskState& diskState = Disks[diskId];
+    if (!IsReliableDiskRegistryMediaKind(diskState.MediaKind) ||
+        diskState.ReplicaCount == 0)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Disk " << diskId << " is not master replica. Kind = "
+                << static_cast<int>(diskState.MediaKind));
+    }
+
+    // Erase devices that are already known to be lagging.
+    EraseIf(
+        laggingDevices,
+        [&](const auto& device)
+        {
+            const auto& uuid = device.GetDeviceUUID();
+            return AnyOf(
+                diskState.LaggingDevices,
+                [&uuid](const TLaggingDevice& laggingDevice)
+                { return laggingDevice.Device.GetDeviceUUID() == uuid; });
+        });
+
+    if (laggingDevices.empty()) {
+        return MakeError(S_FALSE, "Lagging devices list is empty");
+    }
+
+    TVector<TDeviceId> addedLaggingDevices;
+    addedLaggingDevices.reserve(laggingDevices.size());
+    THashSet<std::pair<TString, TDiskState*>> replicasToUpdate;
+    const ui64 reallocateSeqNo = AddReallocateRequest(db, diskId);
+    for (const auto& laggingDevice: laggingDevices) {
+        const auto& laggingDeviceUUID = laggingDevice.GetDeviceUUID();
+        diskState.LaggingDevices.emplace_back(laggingDevice, reallocateSeqNo);
+
+        auto replicaId = FindDisk(laggingDeviceUUID);
+        if (replicaId.empty()) {
+            // The device is already released.
+            continue;
+        }
+        TDiskState* replicaState = Disks.FindPtr(replicaId);
+        if (!replicaState) {
+            ReportDiskRegistryDiskNotFound(
+                TStringBuilder()
+                << "AddLaggingDevices:ReplicaId: " << replicaId);
+            continue;
+        }
+        if (replicaState->MasterDiskId != diskId) {
+            // The device is a part of another disk.
+            ReportDiskRegistryDeviceDoesNotBelongToDisk(
+                TStringBuilder()
+                << "AddLaggingDevices:ReplicaId: " << replicaId
+                << ", DeviceId: " << laggingDeviceUUID
+                << ", MasterDiskId: " << replicaState->MasterDiskId);
+            continue;
+        }
+
+        // The device can be either a migration source, a target of migration or
+        // a regular replica device.
+        const bool isMigrationSource =
+            replicaState->MigrationSource2Target.contains(laggingDeviceUUID) ||
+            Migrations.contains(TDeviceMigration{replicaId, laggingDeviceUUID});
+        const bool isMigrationTarget =
+            replicaState->MigrationTarget2Source.contains(laggingDeviceUUID);
+        if (isMigrationSource) {
+            // Just snap a target device into the disk and discard the lagging
+            // one.
+            auto error = AbortMigrationAndReplaceDevice(
+                now,
+                db,
+                replicaId,
+                *replicaState,
+                laggingDeviceUUID);
+            if (HasError(error)) {
+                ReportDiskRegistryCouldNotAddLaggingDevice(FormatError(error));
+            }
+        } else if (isMigrationTarget) {
+            // Restart the migration with a new device.
+            const bool success = RestartDeviceMigration(
+                now,
+                db,
+                replicaId,
+                *replicaState,
+                laggingDeviceUUID);
+            Y_DEBUG_ABORT_UNLESS(success);
+        } else {
+            // Add the lagging device to the fresh devices list.
+            auto it = Find(diskState.DeviceReplacementIds, laggingDeviceUUID);
+            if (it == diskState.DeviceReplacementIds.end()) {
+                diskState.DeviceReplacementIds.push_back(laggingDeviceUUID);
+            }
+            ReplicaTable.MarkReplacementDevice(diskId, laggingDeviceUUID, true);
+            addedLaggingDevices.push_back(laggingDeviceUUID);
+        }
+
+        replicasToUpdate.emplace(replicaId, replicaState);
+    }
+
+    if (!addedLaggingDevices.empty()) {
+        NProto::TDiskHistoryItem historyItem;
+        historyItem.SetTimestamp(now.MicroSeconds());
+        historyItem.SetMessage(
+            TStringBuilder()
+            << "Devices [" << JoinSeq(", ", addedLaggingDevices)
+            << "] marked as replacements by volume request.");
+        diskState.History.push_back(std::move(historyItem));
+    }
+
+    db.UpdateDisk(BuildDiskConfig(diskId, diskState));
+    for (const auto& [replicaId, replicaState]: replicasToUpdate) {
+        if (!TryUpdateDiskState(db, replicaId, *replicaState, now)) {
+            db.UpdateDisk(BuildDiskConfig(replicaId, *replicaState));
+        }
+    }
 
     return {};
 }
@@ -6676,7 +7043,7 @@ auto TDiskRegistryState::QueryAvailableStorage(
         return TVector<TAgentStorageInfo>{};
     }
 
-    THashMap<ui64, ui32> chunks;
+    THashMap<ui64, TAgentStorageInfo> chunks;
 
     for (const auto& device: agent->GetDevices()) {
         if (device.GetPoolKind() != poolKind) {
@@ -6696,15 +7063,22 @@ auto TDiskRegistryState::QueryAvailableStorage(
         }
 
         const ui64 au = GetAllocationUnit(device.GetPoolName());
+        auto& auChunks = chunks[au];
+        auChunks.ChunkSize = au;
 
-        ++chunks[au];
+        if (DeviceList.IsDirtyDevice(device.GetDeviceUUID())) {
+            auChunks.DirtyChunks++;
+        } else if (!DeviceList.IsAllocatedDevice(device.GetDeviceUUID())) {
+            auChunks.FreeChunks++;
+        }
+        auChunks.ChunkCount++;
     }
 
     TVector<TAgentStorageInfo> infos;
     infos.reserve(chunks.size());
 
-    for (auto [size, count]: chunks) {
-        infos.push_back({ size, count });
+    for (auto [size, info]: chunks) {
+        infos.push_back(info);
     }
 
     return infos;
@@ -6958,6 +7332,7 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
             E_NOT_FOUND,
             TStringBuilder() << "Disk " << diskId << " not found");
     }
+    Y_DEBUG_ABORT_UNLESS(disk->MasterDiskId.empty());
 
     auto it = Find(disk->DeviceReplacementIds, deviceId);
 
@@ -7263,7 +7638,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     disk.Devices = deviceIds;
     disk.LogicalBlockSize = blockSize;
     disk.StateTs = now;
-    disk.State = CalculateDiskState(disk);
+    disk.State = CalculateDiskState(diskId, disk);
     disk.MediaKind = mediaKind;
 
     for (auto& uuid: deviceIds) {
@@ -7345,7 +7720,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
 
     *sourceDevicePtr = targetDeviceId;
     diskState->StateTs = now;
-    diskState->State = CalculateDiskState(*diskState);
+    diskState->State = CalculateDiskState(diskId, *diskState);
 
     DeviceList.MarkDeviceAllocated(diskId, targetDeviceId);
     DeviceList.MarkDeviceAsClean(targetDeviceId);
@@ -7379,7 +7754,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
     DeviceList.UpdateDevices(*sourceAgent, DevicePoolConfigs);
     UpdateAgent(db, *sourceAgent);
 
-    diskState->State = CalculateDiskState(*diskState);
+    diskState->State = CalculateDiskState(diskId, *diskState);
     db.UpdateDisk(BuildDiskConfig(diskId, *diskState));
 
     AddReallocateRequest(db, diskId);

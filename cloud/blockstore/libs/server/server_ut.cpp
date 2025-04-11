@@ -29,6 +29,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
@@ -41,10 +42,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -75,6 +78,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
+        ui16 secureEndpointPort = portManager.GetPort(9003);
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
@@ -90,17 +95,21 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetSecureEndpoint(
-                port,
+                secureEndpointPort,
                 "certs/server.crt",
                 "certs/server.crt",
                 "certs/server.key")
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetSecureEndpoint(
-                port,
+                secureEndpointPort,
                 "certs/server.crt",
                 "test")
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -191,6 +200,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
+        ui16 secureEndpointPort = portManager.GetPort(9003);
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
@@ -206,7 +217,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetSecureEndpoint(
-                port,
+                secureEndpointPort,
                 "certs/server.crt",
                 {},
                 {})
@@ -216,13 +227,17 @@ Y_UNIT_TEST_SUITE(TServerTest)
             .AddCert(
                 "certs/server.crt",
                 "certs/server.key")
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetSecureEndpoint(
-                port,
+                secureEndpointPort,
                 "certs/server.crt",
                 "test")
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -254,6 +269,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TPortManager portManager;
         ui16 securePort = portManager.GetPort(9001);
         ui16 insecurePort = portManager.GetPort(9002);
+        ui16 dataPort = portManager.GetPort(9003);
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
@@ -271,6 +287,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 "certs/server.crt",
                 "certs/server.crt",
                 "certs/server.key")
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto secureClient = testFactory.CreateClientBuilder()
@@ -278,10 +295,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 securePort,
                 "certs/server.crt",
                 "test")
+            .SetDataPort(dataPort)
             .BuildClient();
 
         auto insecureClient = testFactory.CreateClientBuilder()
             .SetPort(insecurePort)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -326,6 +345,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
@@ -341,10 +361,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -378,6 +400,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TString clientId = "testClientId";
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
@@ -391,10 +414,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .SetClientId(clientId)
             .BuildClient();
 
@@ -474,6 +499,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->WriteBlocksHandler =
@@ -486,6 +512,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         // mismatched Client/DataClient
@@ -522,6 +549,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto writePromise = NewPromise<NProto::TWriteBlocksResponse>();
 
@@ -541,10 +569,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -595,6 +625,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto writePromise = NewPromise<NProto::TWriteBlocksResponse>();
 
@@ -614,10 +645,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -664,6 +697,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
@@ -679,10 +713,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -713,6 +749,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
+        ui16 securePort = portManager.GetPort(9003);
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
@@ -728,17 +766,21 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetSecureEndpoint(
-                port,
+                securePort,
                 "certs/server.crt",
                 "certs/server.crt",
                 "certs/server.key")
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetSecureEndpoint(
-                port,
+                securePort,
                 "certs/server.crt",
                 "test")
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -817,6 +859,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
     Y_UNIT_TEST(ShouldIdentifyFdControlChannelSource)
     {
         TFsPath unixSocket(CreateGuidAsString() + ".sock");
+        TPortManager portManager;
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
@@ -832,10 +876,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetUnixSocketPath(unixSocket.GetPath())
+            .SetDataPort(dataPort)
             .BuildServer(nullptr, service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetUnixSocketPath(unixSocket.GetPath())
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -946,6 +992,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
@@ -957,11 +1004,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TTestFactory testFactory;
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .SetUnixSocketPath(unixSocket.GetPath())
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*errorCounter));
@@ -995,6 +1044,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
         TString diskId = "testDiskId";
 
         auto service = std::make_shared<TTestService>();
@@ -1017,11 +1067,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .SetVolumeStats(serverVolumeStats)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .SetVolumeStats(clientVolumeStats)
             .BuildClient();
 
@@ -1155,6 +1207,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
@@ -1194,10 +1247,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();

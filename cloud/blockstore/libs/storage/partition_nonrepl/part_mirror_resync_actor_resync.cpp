@@ -108,22 +108,22 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
     TVector<TReplicaDescriptor> replicas;
     // filtering out replicas with fresh devices
     for (ui32 i = 0; i < Replicas.size(); ++i) {
-        if (State.GetReplicaInfos()[i].Config->DevicesReadyForReading(
-                resyncRange))
+        if (State.DevicesReadyForReading(i, resyncRange))
         {
             replicas.push_back(Replicas[i]);
         }
     }
 
-    NCloud::Register<TResyncRangeActor>(
-        ctx,
+    auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
         PartConfig->GetBlockSize(),
         resyncRange,
         std::move(replicas),
         State.GetRWClientId(),
-        BlockDigestGenerator
-    );
+        BlockDigestGenerator,
+        ResyncPolicy,
+        EBlockRangeChecksumStatus::Unknown);
+    ctx.Register(resyncActor.release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -227,6 +227,13 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         "[%s] Range %s resynced",
         PartConfig->GetName().c_str(),
         DescribeRange(range).c_str());
+
+    if (CritOnChecksumMismatch && msg->WriteStartTs > TInstant()) {
+        ReportMirroredDiskResyncChecksumMismatch(
+            TStringBuilder()
+            << '[' << PartConfig->GetName()
+            << "] Checksum mismatch during resync in range " << msg->Range);
+    }
 
     auto resyncRange = State.BuildResyncRange();
     const auto currentIndex = State.GetLastReportedResyncIndex();

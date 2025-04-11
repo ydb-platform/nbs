@@ -57,6 +57,7 @@
 #include <util/generic/map.h>
 #include <util/stream/file.h>
 #include <util/system/fs.h>
+#include <util/system/sysstat.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -209,6 +210,11 @@ TConfigInitializerCommonPtr TBootstrapVhost::InitConfigs(int argc, char** argv)
 void TBootstrapVhost::InitComponents()
 {
     InitConfig();
+
+    if (Configs->Options->Service == NDaemon::EServiceKind::Local) {
+        // clean umask to allow passing permissions to local file system
+        Umask(0);
+    }
 
     NVhost::InitLog(Logging);
     switch (Configs->VhostServiceConfig->GetEndpointStorageType()) {

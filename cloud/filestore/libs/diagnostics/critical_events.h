@@ -34,6 +34,7 @@ namespace NCloud::NFileStore{
     xxx(RenameNodeRequestSentToWrongShard)                                     \
     xxx(RenameNodeRequestForLocalNode)                                         \
     xxx(InvalidShardNo)                                                        \
+    xxx(WriteBackCacheCreatingOrDeletingError)                                 \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \
@@ -54,6 +55,8 @@ namespace NCloud::NFileStore{
     xxx(NoRenameNodeInDestinationRequest)                                      \
     xxx(BadChildRefUponCommitRenameNodeInSource)                               \
     xxx(FailedToLockNodeRef)                                                   \
+    xxx(InvalidNodeRefUponCompleteUnlinkNode)                                  \
+    xxx(UnknownOpLogEntry)                                                     \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

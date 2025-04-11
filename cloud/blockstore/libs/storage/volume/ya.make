@@ -6,8 +6,8 @@ SRCS(
     tracing.cpp
 
     volume.cpp
-    volume_actor_addclient.cpp
     volume_actor_acquire.cpp
+    volume_actor_addclient.cpp
     volume_actor_allocatedisk.cpp
     volume_actor_change_storage_config.cpp
     volume_actor_checkpoint.cpp
@@ -16,6 +16,7 @@ SRCS(
     volume_actor_forward_trackused.cpp
     volume_actor_initschema.cpp
     volume_actor_lagging_agents.cpp
+    volume_actor_link_volume.cpp
     volume_actor_loadstate.cpp
     volume_actor_migration.cpp
     volume_actor_monitoring_checkpoint.cpp
@@ -34,8 +35,8 @@ SRCS(
     volume_actor_throttling.cpp
     volume_actor_updateconfig.cpp
     volume_actor_updatestartpartitionsneeded.cpp
-    volume_actor_updatevolumeparams.cpp
     volume_actor_updateusedblocks.cpp
+    volume_actor_updatevolumeparams.cpp
     volume_actor_waitready.cpp
     volume_actor_write_throttlerstate.cpp
     volume_actor.cpp

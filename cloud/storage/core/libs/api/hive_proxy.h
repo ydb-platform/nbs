@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/hive_proxy/tablet_boot_info.h>
 #include <cloud/storage/core/libs/kikimr/components.h>
 #include <cloud/storage/core/libs/kikimr/events.h>
 
@@ -25,7 +26,8 @@ namespace NCloud::NStorage {
     xxx(LookupTablet,   __VA_ARGS__)                                           \
     xxx(DrainNode,      __VA_ARGS__)                                           \
                                                                                \
-    xxx(BackupTabletBootInfos, __VA_ARGS__)                                    \
+    xxx(BackupTabletBootInfos,     __VA_ARGS__)                                \
+    xxx(ListTabletBootInfoBackups, __VA_ARGS__)                                \
 // STORAGE_HIVE_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -256,6 +258,24 @@ struct TEvHiveProxy
     };
 
     //
+    // ListTabletBootInfoBackups
+    //
+
+    struct TListTabletBootInfoBackupsRequest
+    {
+    };
+
+    struct TListTabletBootInfoBackupsResponse
+    {
+        TVector<TTabletBootInfo> TabletBootInfos;
+
+        explicit TListTabletBootInfoBackupsResponse(
+                TVector<TTabletBootInfo> tabletBootInfos = {})
+            : TabletBootInfos(std::move(tabletBootInfos))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -291,6 +311,9 @@ struct TEvHiveProxy
 
         EvBackupTabletBootInfosRequest = EvBegin + 18,
         EvBackupTabletBootInfosResponse = EvBegin + 19,
+
+        EvListTabletBootInfoBackupsRequest = EvBegin + 20,
+        EvListTabletBootInfoBackupsResponse = EvBegin + 21,
 
         EvEnd
     };

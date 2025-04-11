@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/filestore/libs/storage/tablet/model/block_list.h>
+#include <cloud/filestore/libs/storage/tablet/model/deletion_markers.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -17,6 +19,10 @@ namespace NCloud::NFileStore::NStorage {
  *  - NodeRefs
  *  - NodeRefs_Ver
  *  - CheckpointNodes
+ *
+ * Also this interface contains methods related to data index: ReadMixedBlocks
+ * and ReadDeletionMarkers which are not supposed to be used in the inode index.
+ * But they are needed for the ReadData operation.
  */
 class IIndexTabletDatabase
 {
@@ -38,6 +44,15 @@ public:
         TString ShardNodeName;
         ui64 MinCommitId;
         ui64 MaxCommitId;
+
+        // There are two types of node refs: those that point to nodes in the
+        // same filesystem as the parent and those that point to nodes in
+        // another filesystem. The latter ones have ShardId and ShardNodeName
+        // specified instead of ChildNodeId
+        bool IsExternal() const
+        {
+            return !ShardId.empty();
+        }
     };
 
     struct TNodeAttr
@@ -163,6 +178,27 @@ public:
         ui64 checkpointId,
         TVector<ui64>& nodes,
         size_t maxCount) = 0;
+
+    //
+    // MixedIndex
+    //
+
+    struct TMixedBlob
+    {
+        TPartialBlobId BlobId;
+        TBlockList BlockList;
+        ui32 GarbageBlocks;
+        ui32 CheckpointBlocks;
+    };
+
+    virtual bool ReadMixedBlocks(
+        ui32 rangeId,
+        TVector<TMixedBlob>& blobs,
+        IAllocator* alloc) = 0;
+
+    virtual bool ReadDeletionMarkers(
+        ui32 rangeId,
+        TVector<TDeletionMarker>& deletionMarkers) = 0;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

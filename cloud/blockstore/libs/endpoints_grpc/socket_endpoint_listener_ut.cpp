@@ -272,11 +272,13 @@ TBootstrap CreateBootstrap(const TOptions& options)
         };
 
     TPortManager portManager;
-    ui16 dataPort = portManager.GetPort(9001);
+    ui16 port = portManager.GetPort(9001);
+    ui16 dataPort = portManager.GetPort(9002);
 
     TTestFactory testFactory;
 
     auto server = testFactory.CreateServerBuilder()
+        .SetPort(port)
         .SetDataPort(dataPort)
         .BuildServer(std::make_shared<TTestService>());
 
@@ -307,6 +309,7 @@ TBootstrap CreateBootstrap(const TOptions& options)
 
     auto client = testFactory.CreateClientBuilder()
         .SetUnixSocketPath(options.UnixSocketPath)
+        .SetPort(port)
         .SetDataPort(dataPort)
         .SetClientId(options.ClientId)
         .BuildClient();
@@ -853,7 +856,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         auto clientEndpoint = CreateDurableClient(
             config,
             bootstrap.GetClientEndpoint(),
-            CreateRetryPolicy(config),
+            CreateRetryPolicy(config, std::nullopt),
             logging,
             bootstrap.GetTimer(),
             bootstrap.GetScheduler(),

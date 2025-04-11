@@ -81,6 +81,8 @@ func prepareEncryptionMode(
 		return types.EncryptionMode_NO_ENCRYPTION, nil
 	case disk_manager.EncryptionMode_ENCRYPTION_AES_XTS:
 		return types.EncryptionMode_ENCRYPTION_AES_XTS, nil
+	case disk_manager.EncryptionMode_ENCRYPTION_AT_REST:
+		return types.EncryptionMode_ENCRYPTION_AT_REST, nil
 	default:
 		return 0, errors.NewInvalidArgumentError(
 			"unknown encryption mode %v",

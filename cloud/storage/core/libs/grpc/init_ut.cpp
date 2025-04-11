@@ -1,5 +1,6 @@
 #include "init.h"
 
+#include <contrib/libs/grpc/include/grpc/grpc.h>
 #include <contrib/libs/grpc/include/grpc/support/log.h>
 
 #include <library/cpp/logger/backend.h>
@@ -182,6 +183,14 @@ Y_UNIT_TEST_SUITE(TInitTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, AliveLoggers.load());
         UNIT_ASSERT_LE(threadCount, Writes.load());
+    }
+
+    Y_UNIT_TEST(ShouldShutdownInAnotherThread)
+    {
+        grpc_init();
+        GrpcLoggerInit(CreateLogBackend("console"), false);
+
+        std::thread{grpc_shutdown}.detach();
     }
 }
 

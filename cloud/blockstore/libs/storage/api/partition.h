@@ -10,9 +10,13 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_REQUESTS(xxx, ...)                                \
-    xxx(WaitReady,              __VA_ARGS__)                                   \
-    xxx(StatPartition,          __VA_ARGS__)                                   \
-    xxx(Drain,                  __VA_ARGS__)                                   \
+    xxx(WaitReady,                                                 __VA_ARGS__)\
+    xxx(StatPartition,                                             __VA_ARGS__)\
+    /* Waits until there are no more in-flight write requests. */              \
+    xxx(Drain,                                                     __VA_ARGS__)\
+    /* Waits for current in-flight writes to finish and does not affect any    \
+     * requests that come after. */                                            \
+    xxx(WaitForInFlightWrites,                                     __VA_ARGS__)\
 // BLOCKSTORE_PARTITION_REQUESTS
 
 // requests forwarded from service to partition
@@ -39,6 +43,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
     xxx(ScanDisk,                 __VA_ARGS__)                                 \
     xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
+    xxx(CheckRange,               __VA_ARGS__)                                 \
 // BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,6 +88,18 @@ struct TEvPartition
     };
 
     //
+    // WaitForInFlightWrites
+    //
+
+    struct TWaitForInFlightWritesRequest
+    {
+    };
+
+    struct TWaitForInFlightWritesResponse
+    {
+    };
+
+    //
     // Garbage collector finish report
     //
 
@@ -91,34 +108,6 @@ struct TEvPartition
         const ui64 TabletId;
         TGarbageCollectorCompleted(ui64 tabletId)
             : TabletId(tabletId)
-        {}
-    };
-
-    //
-    // AddLaggingAgent
-    //
-
-    struct TAddLaggingAgentRequest
-    {
-        // 0 - for main devices; 1,2 - for mirror replicas
-        ui32 ReplicaIndex;
-        TString AgentId;
-        TAddLaggingAgentRequest(ui32 replicaIndex, TString agentId)
-            : ReplicaIndex(replicaIndex)
-            , AgentId(std::move(agentId))
-        {}
-    };
-
-    //
-    // RemoveLaggingAgent
-    //
-
-    struct TRemoveLaggingReplicaRequest
-    {
-        // 0 - for main devices; 1,2 - for mirror replicas
-        const ui32 ReplicaIndex;
-        explicit TRemoveLaggingReplicaRequest(ui32 replicaIndex)
-            : ReplicaIndex(replicaIndex)
         {}
     };
 
@@ -146,6 +135,9 @@ struct TEvPartition
         EvAddLaggingAgentRequest = EvBegin + 9,
         EvRemoveLaggingReplicaRequest = EvBegin + 10,
 
+        EvWaitForInFlightWritesRequest = EvBegin + 11,
+        EvWaitForInFlightWritesResponse = EvBegin + 12,
+
         EvEnd
     };
 
@@ -162,16 +154,6 @@ struct TEvPartition
     using TEvGarbageCollectorCompleted = TRequestEvent<
         TGarbageCollectorCompleted,
         EvGarbageCollectorCompleted
-    >;
-
-    using TEvAddLaggingAgentRequest = TRequestEvent<
-        TAddLaggingAgentRequest,
-        EvAddLaggingAgentRequest
-    >;
-
-    using TEvRemoveLaggingReplicaRequest = TRequestEvent<
-        TRemoveLaggingReplicaRequest,
-        EvRemoveLaggingReplicaRequest
     >;
 };
 

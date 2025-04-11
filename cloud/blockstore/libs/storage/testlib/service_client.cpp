@@ -507,6 +507,39 @@ std::unique_ptr<TEvService::TEvGetVolumeStatsRequest> TServiceClient::CreateGetV
     return request;
 }
 
+
+std::unique_ptr<TEvService::TEvAddTagsRequest>
+TServiceClient::CreateAddTagsRequest(
+    const TString& diskId,
+    const TVector<TString>& tagsToAdd)
+{
+    auto request =
+        std::make_unique<TEvService::TEvAddTagsRequest>(diskId, tagsToAdd);
+    return request;
+}
+
+std::unique_ptr<TEvService::TEvCreateVolumeLinkRequest>
+TServiceClient::CreateCreateVolumeLinkRequest(
+    const TString& leaderDiskId,
+    const TString& followerDiskId)
+{
+    auto request = std::make_unique<TEvService::TEvCreateVolumeLinkRequest>();
+    request->Record.SetLeaderDiskId(leaderDiskId);
+    request->Record.SetFollowerDiskId(followerDiskId);
+    return request;
+}
+
+std::unique_ptr<TEvService::TEvDestroyVolumeLinkRequest>
+TServiceClient::CreateDestroyVolumeLinkRequest(
+    const TString& leaderDiskId,
+    const TString& followerDiskId)
+{
+    auto request = std::make_unique<TEvService::TEvDestroyVolumeLinkRequest>();
+    request->Record.SetLeaderDiskId(leaderDiskId);
+    request->Record.SetFollowerDiskId(followerDiskId);
+    return request;
+}
+
 void TServiceClient::WaitForVolume(const TString& diskId)
 {
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();

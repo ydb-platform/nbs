@@ -67,6 +67,9 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
         TFileLock lock(TmpBackupFilePath);
 
         if (lock.TryAcquire()) {
+            Y_DEFER {
+                lock.Release();
+            };
             TFileOutput output(TmpBackupFilePath);
             SerializeToTextFormat(BackupProto, output);
             TmpBackupFilePath.RenameTo(BackupFilePath);

@@ -177,14 +177,32 @@ struct TCompactionMap::TImpl
         }
     }
 
-    void Update(
-        TGroupNode* group,
-        size_t index,
+    TGroupNode* AddGroup(ui32 blockIndex)
+    {
+        const auto groupStart = GetGroupStart(blockIndex, RangeSize);
+        auto* group = FindGroup(groupStart);
+        if (!group) {
+            group = new TGroupNode();
+            group->BlockIndex = groupStart;
+            InitGroupScores(group);
+
+            Groups.PushBack(group);
+            GroupByBlockIndex.Insert(group);
+        }
+
+        return group;
+    }
+
+    TGroupNode* Update(
+        ui32 blockIndex,
         ui32 blobCount,
         ui32 blockCount,
         ui32 usedBlockCount,
         bool compacted)
     {
+        auto* group = AddGroup(blockIndex);
+
+        const size_t index = (blockIndex - group->BlockIndex) / RangeSize;
         const auto prev = group->Stats[index];
         if (prev.BlobCount != blobCount
                 || prev.BlockCount != blockCount
@@ -237,6 +255,8 @@ struct TCompactionMap::TImpl
                 RecalculateGroupGarbageBlockCount(group);
             }
         }
+
+        return group;
     }
 
     void RegisterRead(
@@ -340,13 +360,20 @@ void TCompactionMap::Update(
             );
         }
 
-        Update(
+        Impl->Update(
             c.BlockIndex,
             c.Stat.BlobCount,
             c.Stat.BlockCount,
             usedBlockCount,
-            c.Stat.BlobCount < 2    // compacted
+            c.Stat.BlobCount < 2   // compacted
         );
+    }
+
+    for (auto group = Impl->Groups.Begin(); group != Impl->Groups.End();
+         ++group)
+    {
+        Impl->GroupByScore.Insert(*group);
+        Impl->GroupByGarbageBlockCount.Insert(*group);
     }
 }
 
@@ -357,26 +384,12 @@ void TCompactionMap::Update(
     ui32 usedBlockCount,
     bool compacted)
 {
-    ui32 groupStart = GetGroupStart(blockIndex, Impl->RangeSize);
-
-    auto* group = Impl->FindGroup(groupStart);
-    if (!group) {
-        group = new TImpl::TGroupNode();
-        group->BlockIndex = groupStart;
-        Impl->InitGroupScores(group);
-
-        Impl->Groups.PushBack(group);
-        Impl->GroupByBlockIndex.Insert(group);
-    }
-
-    Impl->Update(
-        group,
-        (blockIndex - groupStart) / Impl->RangeSize,
+    auto* group = Impl->Update(
+        blockIndex,
         blobCount,
         blockCount,
         usedBlockCount,
-        compacted
-    );
+        compacted);
 
     Impl->GroupByScore.Insert(group);
     Impl->GroupByGarbageBlockCount.Insert(group);
@@ -517,40 +530,6 @@ TVector<ui32> TCompactionMap::GetNonEmptyRanges() const
         for (ui32 i = 0; i < group.Stats.size(); ++i) {
             if (group.Stats[i].BlobCount > 0) {
                 result.push_back(group.BlockIndex + (i * Impl->RangeSize));
-            }
-        }
-    }
-
-    return result;
-}
-
-TVector<TCompactionCounter> TCompactionMap::GetNonEmptyRanges(
-    ui32 blockIndex,
-    ui32 rangesCount) const
-{
-    if (!rangesCount) {
-        return {};
-    }
-
-    const ui32 groupStart = GetGroupStart(blockIndex, Impl->RangeSize);
-    auto rangeIndex = (blockIndex - groupStart) / Impl->RangeSize;
-
-    TVector<TCompactionCounter> result(Reserve(rangesCount));
-
-    for (auto groupIt = TImpl::TGroupByBlockIndexTree::TIterator(
-             Impl->GroupByBlockIndex.Find(groupStart));
-         groupIt != Impl->GroupByBlockIndex.End();
-         ++groupIt, rangeIndex = 0)
-    {
-        const auto& group = static_cast<TImpl::TGroupNode&>(*groupIt);
-        for (; rangeIndex < group.Stats.size(); ++rangeIndex) {
-            if (group.Stats[rangeIndex].BlobCount > 0) {
-                const auto groupRangeStart =
-                    group.BlockIndex + (rangeIndex * Impl->RangeSize);
-                result.emplace_back(groupRangeStart, group.Stats[rangeIndex]);
-                if (result.size() == rangesCount) {
-                    return result;
-                }
             }
         }
     }

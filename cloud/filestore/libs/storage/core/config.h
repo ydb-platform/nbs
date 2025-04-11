@@ -75,6 +75,7 @@ public:
     ui32 GetFlushThreshold() const;
     ui32 GetCleanupThreshold() const;
     ui32 GetCleanupThresholdAverage() const;
+    bool GetCalculateCleanupScoreBasedOnUsedBlocksCount() const;
     bool GetNewCleanupEnabled() const;
     ui32 GetCompactionThreshold() const;
     ui32 GetGarbageCompactionThreshold() const;
@@ -257,6 +258,7 @@ public:
     ui32 GetNodeRegistrationMaxAttempts() const;
     TDuration GetNodeRegistrationTimeout() const;
     TDuration GetNodeRegistrationErrorTimeout() const;
+    bool GetNodeRegistrationUseSsl() const;
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
@@ -301,10 +303,19 @@ public:
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
     bool GetDirectoryCreationInShardsEnabled() const;
 
-    bool GetGuestWritebackCacheEnabled() const;
+    bool GetGuestWriteBackCacheEnabled() const;
     ui64 GetMixedBlocksOffloadedRangesCapacity() const;
 
     bool GetYdbViewerServiceEnabled() const;
+
+    bool GetGuestPageCacheDisabled() const;
+    bool GetExtendedAttributesDisabled() const;
+
+    bool GetServerWriteBackCacheEnabled() const;
+
+    bool GetGuestKeepCacheAllowed() const;
+    NProto::EGuestCachingType GetGuestCachingType() const;
+    ui64 GetSessionHandleOffloadedStatsCapacity() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -185,6 +185,12 @@ message TClientConfig
 
     // Max request timeout (in milliseconds)
     optional uint32 RequestTimeoutMax = 42;
+
+    // First retry timeout for Disk Registry based disks (in milliseconds).
+    optional uint32 DiskRegistryBasedDiskInitialRetryTimeout = 43;
+
+    // First retry timeout for YDB based disks (in milliseconds).
+    optional uint32 YDBBasedDiskInitialRetryTimeout = 44;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

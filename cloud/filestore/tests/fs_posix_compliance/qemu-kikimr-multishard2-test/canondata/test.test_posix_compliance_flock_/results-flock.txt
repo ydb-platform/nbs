@@ -1,0 +1,11 @@
+TEST SUITE[flock, 00.t] 1..1
+Locking
+success --nonblock --conflict-exit-code 123
+success --no-fork --nonblock --conflict-exit-code 123
+
+success --shared --timeout 1 --conflict-exit-code 123
+success --nonblock --exclusive --conflict-exit-code 123
+setting release lock flag
+Unlocking
+
+success --timeout 10 --conflict-exit-code 123

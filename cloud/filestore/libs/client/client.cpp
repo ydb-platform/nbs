@@ -829,6 +829,27 @@ public:
             std::move(request),
             std::move(responseHandler));
     }
+
+    TFuture<NProto::TReadDataLocalResponse> ReadDataLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataLocalRequest> request) override
+    {
+        return TBase::template ExecuteRequest<TReadDataFsMethod>(
+            std::move(callContext),
+            std::move(request)).Apply([](TFuture<NProto::TReadDataResponse> f) {
+                NProto::TReadDataLocalResponse response(f.ExtractValue());
+                return response;
+            });
+    }
+
+    TFuture<NProto::TWriteDataLocalResponse> WriteDataLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataLocalRequest> request) override
+    {
+        return TBase::template ExecuteRequest<TWriteDataFsMethod>(
+            std::move(callContext),
+            std::move(request));
+    }
 };
 
 using TUdsFileStoreClient = TFileStoreClient<TUdsFileStoreClientBase>;

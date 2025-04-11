@@ -88,14 +88,12 @@ void TDiskRegistryActor::ScheduleMakeBackup(
     request->Record.SetBackupFilePath(TStringBuilder()
         << backupDirPath << "/" + hostPrefix << FormatIsoLocal(ctx.Now()) << ".json");
 
-    ctx.ExecutorThread.Schedule(
+    ctx.Schedule(
         backupPeriod,
-        new IEventHandle(
+        std::make_unique<IEventHandle>(
             ctx.SelfID,
             ctx.SelfID,
-            request.get()));
-
-    request.release();
+            request.release()));
 }
 
 void TDiskRegistryActor::ScheduleCleanup(const TActorContext& ctx)
@@ -107,11 +105,12 @@ void TDiskRegistryActor::ScheduleCleanup(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDisksRequest>();
 
-    ctx.ExecutorThread.Schedule(
+    ctx.Schedule(
         recyclingPeriod,
-        new IEventHandle(ctx.SelfID, ctx.SelfID, request.get()));
-
-    request.release();
+        std::make_unique<IEventHandle>(
+            ctx.SelfID,
+            ctx.SelfID,
+            request.release()));
 }
 
 void TDiskRegistryActor::BecomeAux(const TActorContext& ctx, EState state)
@@ -547,6 +546,10 @@ void TDiskRegistryActor::ScheduleSwitchAgentDisksToReadOnly(
     const NActors::TActorContext& ctx,
     TString agentId)
 {
+    // Switching disk of unknown agent will result in error.
+    if (State->GetAgentState(agentId).Empty()) {
+        return;
+    }
     auto timeout = Config->GetNonReplicatedDiskSwitchToReadOnlyTimeout();
 
     auto deadline = timeout.ToDeadLine(ctx.Now());
@@ -560,12 +563,12 @@ void TDiskRegistryActor::ScheduleSwitchAgentDisksToReadOnly(
 
     // ctx.Schedule does not set `sender`, but we need `sender` to be able to
     // intercept TEvSwitchAgentDisksToReadOnlyResponse in tests
-    auto eh = std::make_unique<IEventHandle>(
-        ctx.SelfID, // recipient
-        ctx.SelfID, // sender
-        request.release());
-
-    ctx.ExecutorThread.Schedule(deadline, eh.release());
+    ctx.Schedule(
+        deadline,
+        std::make_unique<IEventHandle>(
+            ctx.SelfID,   // recipient
+            ctx.SelfID,   // sender
+            request.release()));
 }
 
 void TDiskRegistryActor::HandleSwitchAgentDisksToReadOnlyReshedule(
@@ -586,18 +589,6 @@ void TDiskRegistryActor::HandleOperationCompleted(
     Y_UNUSED(ctx);
 
     Actors.erase(ev->Sender);
-}
-
-void TDiskRegistryActor::HandleAddLaggingDevices(
-    const TEvDiskRegistry::TEvAddLaggingDevicesRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(AddLaggingDevices);
-
-    // TODO(komarevtsev-d): Implement this.
 }
 
 ////////////////////////////////////////////////////////////////////////////////

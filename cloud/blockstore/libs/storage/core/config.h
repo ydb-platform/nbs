@@ -21,6 +21,12 @@ struct TCertificate
     TString CertPrivateKeyFile;
 };
 
+struct TLinkedDiskFillBandwidth
+{
+    ui32 Bandwidth = 0;
+    ui32 IoDepth = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TStorageConfig
@@ -366,6 +372,15 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsLaggingDevicesForMirror2DisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+    [[nodiscard]] bool IsLaggingDevicesForMirror3DisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -530,6 +545,8 @@ public:
     bool GetForceMirrorResync() const;
     ui32 GetResyncIndexCachingInterval() const;
     TDuration GetResyncAfterClientInactivityInterval() const;
+    NProto::EResyncPolicy GetAutoResyncPolicy() const;
+    NProto::EResyncPolicy GetForceResyncPolicy() const;
     ui32 GetMirrorReadReplicaCount() const;
 
     TString GetManuallyPreemptedVolumesFile() const;
@@ -596,6 +613,8 @@ public:
     ui64 GetScrubbingBandwidth() const;
     ui64 GetMaxScrubbingBandwidth() const;
     ui64 GetMinScrubbingBandwidth() const;
+    bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
+    NProto::EResyncPolicy GetScrubbingResyncPolicy() const;
 
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 
@@ -611,9 +630,16 @@ public:
     ui32 GetNodeRegistrationMaxAttempts() const;
     TDuration GetNodeRegistrationTimeout() const;
     TDuration GetNodeRegistrationErrorTimeout() const;
+    TString GetNodeType() const;
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
-    TString GetNodeType() const;
+    bool GetNodeRegistrationUseSsl() const;
+
+    [[nodiscard]] bool GetLaggingDevicesForMirror2DisksEnabled() const;
+    [[nodiscard]] bool GetLaggingDevicesForMirror3DisksEnabled() const;
+    [[nodiscard]] TDuration GetLaggingDeviceTimeoutThreshold() const;
+    [[nodiscard]] TDuration GetLaggingDevicePingInterval() const;
+    [[nodiscard]] bool GetResyncAfterLaggingAgentMigration() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 
@@ -632,9 +658,22 @@ public:
 
     bool GetYdbViewerServiceEnabled() const;
 
-    bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
     [[nodiscard]] bool GetNonReplicatedVolumeDirectAcquireEnabled() const;
     [[nodiscard]] TDuration GetDestroyVolumeTimeout() const;
+
+    ui32 GetCompactionMergedBlobThresholdHDD() const;
+
+    [[nodiscard]] ui32 GetBSGroupsPerChannelToWarmup() const;
+    [[nodiscard]] TDuration GetWarmupBSGroupConnectionsTimeout() const;
+    [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
+
+    [[nodiscard]] ui32 GetCheckRangeMaxRangeSize() const;
+
+    [[nodiscard]] bool GetDisableZeroBlocksThrottlingForYDBBasedDisks() const;
+    [[nodiscard]] bool GetLocalDiskAsyncDeallocationEnabled() const;
+
+    [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
+    GetLinkedDiskFillBandwidth() const;
 };
 
 ui64 GetAllocationUnit(
@@ -645,5 +684,10 @@ void AdaptNodeRegistrationParams(
     const TString& overriddenNodeType,
     const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig);
+
+TLinkedDiskFillBandwidth GetLinkedDiskFillBandwidth(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind leaderMediaKind,
+    NCloud::NProto::EStorageMediaKind followerMediaKind);
 
 }   // namespace NCloud::NBlockStore::NStorage

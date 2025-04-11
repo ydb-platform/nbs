@@ -152,7 +152,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             });
     }
 
-    TFileSystemInfo CreateFileSystem(
+    // This function mocks the behavior of the TCreateFileStoreActor
+    // TODO(debnatkh): use single service.CreateFileStore request with
+    // AutomaticShardCreationEnabled
+    static TFileSystemInfo CreateFileSystem(
         TServiceClient& service,
         const TFileSystemConfig& fsConfig)
     {
@@ -212,6 +215,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             if (fsConfig.DirectoryCreationInShardsEnabled) {
                 *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
                 *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
+                request.SetDirectoryCreationInShardsEnabled(true);
             }
 
             TString buf;
@@ -229,6 +233,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             if (fsConfig.DirectoryCreationInShardsEnabled) {
                 *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
                 *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
+                request.SetDirectoryCreationInShardsEnabled(true);
             }
 
             TString buf;
@@ -275,6 +280,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             request.SetFileSystemId(fsConfig.FsId);
             *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
             *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
+            request.SetDirectoryCreationInShardsEnabled(
+                fsConfig.DirectoryCreationInShardsEnabled);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -4557,6 +4564,39 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.DestroyHandle(headers, fsConfig.FsId, nodeId3, handle3);
     }
 
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(ShouldCreateHardLinks)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        fsConfig.DirectoryCreationInShardsEnabled = true;
+        CreateFileSystem(service, fsConfig);
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto dirId =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                ->Record.GetNode()
+                .GetId();
+
+        const auto file1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dirId, "file1"))->Record.GetNode().GetId();
+
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::Link(dirId, "link1", file1Id));
+    }
+
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
         ShouldListNodesAndGetNodeAttrInDirectoryInShard)
     {
@@ -4828,6 +4868,81 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 });
         }
     };
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldUnlinkNodeWithDirectoriesInShards)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig{
+            .DirectoryCreationInShardsEnabled = true,
+        };
+        CreateFileSystem(service, fsConfig);
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // /
+        // └── dir              (shard 1)
+        //     ├── file         (shard 1)
+        //     └── subdir       (shard 2)
+        //         └── file     (shard 1)
+
+        auto dirId = service
+                         .CreateNode(
+                             headers,
+                             TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                         ->Record.GetNode()
+                         .GetId();
+        Cerr << "dirId: " << dirId << Endl;
+        service.CreateNode(headers, TCreateNodeArgs::File(dirId, "file"));
+        auto subdirId = service
+                            .CreateNode(
+                                headers,
+                                TCreateNodeArgs::Directory(dirId, "subdir"))
+                            ->Record.GetNode()
+                            .GetId();
+        Cerr << "subdirId: " << subdirId << Endl;
+        UNIT_ASSERT(ExtractShardNo(dirId) != ExtractShardNo(subdirId));
+        auto fileId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(subdirId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        Cerr << "fileId: " << fileId << Endl;
+        Y_UNUSED(fileId);
+
+        auto unlinkResponse =
+            service.SendAndRecvUnlinkNode(headers, dirId, "subdir", true);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOTEMPTY,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
+
+        service.GetNodeAttr(headers, fsConfig.FsId, dirId, "subdir");
+
+        // unlinking the file in subdir
+        service.UnlinkNode(headers, subdirId, "file", false);
+
+        // unlinking subdir should now succeed
+        service.UnlinkNode(headers, dirId, "subdir", true);
+
+        // creating the subdir again
+        subdirId = service
+                       .CreateNode(
+                           headers,
+                           TCreateNodeArgs::Directory(dirId, "subdir"))
+                       ->Record.GetNode()
+                       .GetId();
+        // unlinking the subdir should now succeed
+        service.UnlinkNode(headers, dirId, "subdir", true);
+    }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
         ShouldRetryRenameNodeInShardUponLeaderRestartWithDirectoriesInShards)

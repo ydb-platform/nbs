@@ -248,6 +248,20 @@ public:
 
     std::unique_ptr<TEvService::TEvGetVolumeStatsRequest> CreateGetVolumeStatsRequest();
 
+    std::unique_ptr<TEvService::TEvAddTagsRequest> CreateAddTagsRequest(
+        const TString& diskId,
+        const TVector<TString>& tagsToAdd);
+
+    std::unique_ptr<TEvService::TEvCreateVolumeLinkRequest>
+    CreateCreateVolumeLinkRequest(
+        const TString& leaderDiskId,
+        const TString& followerDiskId);
+
+    std::unique_ptr<TEvService::TEvDestroyVolumeLinkRequest>
+    CreateDestroyVolumeLinkRequest(
+        const TString& leaderDiskId,
+        const TString& followerDiskId);
+
     void WaitForVolume(const TString& diskId = DefaultDiskId);
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \

@@ -33,7 +33,8 @@ TFileSystem::TFileSystem(
         IFileStorePtr session,
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
-        THandleOpsQueuePtr handleOpsQueue)
+        THandleOpsQueuePtr handleOpsQueue,
+        TWriteBackCachePtr writeBackCache)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
     , Timer(std::move(timer))
@@ -48,6 +49,7 @@ TFileSystem::TFileSystem(
         Config->GetXAttrCacheLimit(),
         Config->GetXAttrCacheTimeout())
     , HandleOpsQueue(std::move(handleOpsQueue))
+    , WriteBackCache(std::move(writeBackCache))
 {
     Log = Logging->CreateLog("NFS_FUSE");
 }
@@ -125,8 +127,8 @@ bool TFileSystem::UpdateNodeCache(
 
         entry.ino = attrs.GetId();
         entry.generation = NodeCache.Generation();
-        entry.attr_timeout = Config->GetAttrTimeout().Seconds();
-        entry.entry_timeout = Config->GetEntryTimeout().Seconds();
+        entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
+        entry.entry_timeout = Config->GetEntryTimeout().SecondsFloat();
 
         ConvertAttr(Config->GetPreferredBlockSize(), node->Attrs, entry.attr);
     }
@@ -239,7 +241,7 @@ void TFileSystem::ReplyAttr(
         error,
         req,
         &entry.attr,
-        Config->GetAttrTimeout().Seconds());
+        Config->GetAttrTimeout().SecondsFloat());
 }
 
 void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)

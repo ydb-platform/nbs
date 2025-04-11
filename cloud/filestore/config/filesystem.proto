@@ -49,6 +49,22 @@ message TFileSystemConfig
     // Aligment needed for buffers when using direct io
     optional uint32 DirectIoAlign = 14;
 
-    // Enable Writeback cache on guest (fuse client)
-    optional bool GuestWritebackCacheEnabled = 15;
+    // Enable write-back cache on guest (FUSE client)
+    optional bool GuestWriteBackCacheEnabled = 15;
+
+    // Enable zero copy for read/write requests
+    optional bool ZeroCopyEnabled = 16;
+
+    // Guest (FUSE client) will use direct IO for read/write requests
+    // regardless of whether file is opened with O_DIRECT or not
+    optional bool GuestPageCacheDisabled = 17;
+
+    // Don't support extended attributes
+    optional bool ExtendedAttributesDisabled = 18;
+
+    // Enable write-back cache on FUSE server
+    optional bool ServerWriteBackCacheEnabled = 19;
+
+    // Allow to set keep_cache flag on file open if allowed by tablet
+    optional bool GuestKeepCacheAllowed = 20;
 }

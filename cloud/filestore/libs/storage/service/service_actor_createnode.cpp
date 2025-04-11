@@ -112,6 +112,10 @@ void TLinkActor::CreateNodeInShard(const TActorContext& ctx)
     // Explicitly pick the shard name to reuse afterwards in the leader
     request->Record.SetName(ShardNodeName);
 
+    // The `CreateNodeInShard` is sent to the shard, and thus there is no need
+    // to consider this shard as a standalone filesystem
+    request->Record.MutableHeaders()->ClearBehaveAsDirectoryTablet();
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
@@ -151,7 +155,7 @@ void TLinkActor::HandleShardResponse(
         msg->Record.GetNode().DebugString().Quote().c_str());
 
     auto request = std::make_unique<TEvService::TEvCreateNodeRequest>();
-    // By setting the shard filesystem id, we let the leader know that he
+    // By setting the shard filesystem id, we let the filesystem know that we
     // should not verify the target node existence and just create a nodeRef
     CreateNodeRequest.SetShardFileSystemId(ShardId);
     CreateNodeRequest.MutableLink()->SetTargetNode(
@@ -159,15 +163,15 @@ void TLinkActor::HandleShardResponse(
     CreateNodeRequest.MutableLink()->SetShardNodeName(ShardNodeName);
     ShardResponse = std::move(msg->Record);
 
-    request->Record = std::move(CreateNodeRequest);
-
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "[%s] Creating nodeRef in leader for %lu, %s",
+        "[%s] Creating nodeRef in leader for %s, %lu",
         LogTag.c_str(),
-        ShardResponse.GetNode().GetId(),
+        ShardResponse.ShortDebugString().Quote().c_str(),
         CreateNodeRequest.GetLink().GetTargetNode());
+
+    request->Record = std::move(CreateNodeRequest);
 
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 
@@ -293,7 +297,7 @@ void TStorageServiceActor::HandleCreateNode(
 
     auto& headers = *msg->Record.MutableHeaders();
     headers.SetBehaveAsDirectoryTablet(
-        StorageConfig->GetDirectoryCreationInShardsEnabled());
+        filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
     if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
         // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(
@@ -359,10 +363,10 @@ void TStorageServiceActor::HandleCreateNode(
         }
     } else {
         const bool multiTabletForwardingEnabled =
-            StorageConfig->GetMultiTabletForwardingEnabled()
-            && !headers.GetDisableMultiTabletForwarding()
-            && (msg->Record.HasFile()
-                || StorageConfig->GetDirectoryCreationInShardsEnabled());
+            StorageConfig->GetMultiTabletForwardingEnabled() &&
+            !headers.GetDisableMultiTabletForwarding() &&
+            (msg->Record.HasFile() ||
+             filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
 
         if (multiTabletForwardingEnabled) {
             if (const auto& shardId = session->SelectShard()) {

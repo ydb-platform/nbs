@@ -223,19 +223,18 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
     const auto usedBandwidthQuotaPercentage =
         splittedUsedQuota.Bandwidth * 100.0;
 
-    cumulative.UsedIopsQuota.Increment(
-        static_cast<ui64>(usedIopsQuotaPercentage));
+    cumulative.UsedIopsQuota.Increment(std::round(usedIopsQuotaPercentage));
     cumulative.UsedBandwidthQuota.Increment(
-        static_cast<ui64>(usedBandwidthQuotaPercentage));
+        std::round(usedBandwidthQuotaPercentage));
 
     const auto currentSpentBudgetSharePercentage =
         100.0 * tp.CalculateCurrentSpentBudgetShare(ctx.Now());
 
-    const auto currentRate = static_cast<ui64>(
+    const auto currentRate = static_cast<ui64>(std::round(
         Min((Config->GetCalculateSplittedUsedQuotaMetric()
                  ? usedIopsQuotaPercentage + usedBandwidthQuotaPercentage
                  : currentSpentBudgetSharePercentage),
-            100.0));
+            100.0)));
     simple.MaxUsedQuota.Set(Max(simple.MaxUsedQuota.Value, currentRate));
     cumulative.UsedQuota.Increment(currentRate);
 }
@@ -995,6 +994,10 @@ STFUNC(TVolumeActor::StateInit)
             HandleUpdateShadowDiskState);
 
         HFunc(
+            TEvVolumePrivate::TEvUpdateFollowerStateRequest,
+            HandleUpdateFollowerState);
+
+        HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
@@ -1002,7 +1005,10 @@ STFUNC(TVolumeActor::StateInit)
 
         default:
             if (!RejectRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::VOLUME,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1093,14 +1099,14 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvReportLaggingDevicesToDR,
             HandleReportLaggingDevicesToDR);
         HFunc(
-            TEvVolumePrivate::TEvDeviceTimeoutedRequest,
-            HandleDeviceTimeouted);
+            TEvVolumePrivate::TEvDeviceTimedOutRequest,
+            HandleDeviceTimedOut);
         HFunc(
-            TEvVolumePrivate::TEvUpdateSmartMigrationState,
-            HandleUpdateSmartMigrationState);
+            TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
+            HandleUpdateLaggingAgentMigrationState);
         HFunc(
-            TEvVolumePrivate::TEvSmartMigrationFinished,
-            HandleSmartMigrationFinished);
+            TEvVolumePrivate::TEvLaggingAgentMigrationFinished,
+            HandleLaggingAgentMigrationFinished);
 
         HFunc(
             TEvPartitionCommonPrivate::TEvLongRunningOperation,
@@ -1111,12 +1117,19 @@ STFUNC(TVolumeActor::StateWork)
             HandleUpdateShadowDiskState);
 
         HFunc(
+            TEvVolumePrivate::TEvUpdateFollowerStateRequest,
+            HandleUpdateFollowerState);
+
+        HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::VOLUME,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1131,14 +1144,16 @@ STFUNC(TVolumeActor::StateZombie)
 
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
 
+        IgnoreFunc(TEvVolumePrivate::TEvAllocateDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateCounters);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateThrottlerState);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateReadWriteClientInfo);
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
         IgnoreFunc(TEvVolumePrivate::TEvReportLaggingDevicesToDR);
-        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
-        IgnoreFunc(TEvVolumePrivate::TEvUpdateSmartMigrationState);
-        IgnoreFunc(TEvVolumePrivate::TEvSmartMigrationFinished);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvAcquireDiskIfNeeded);
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
+        IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
 
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
 
@@ -1155,14 +1170,21 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
 
         IgnoreFunc(TEvVolumePrivate::TEvUpdateShadowDiskStateRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateFollowerStateRequest);
 
         IgnoreFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse);
 
         IgnoreFunc(TEvDiskRegistry::TEvAddLaggingDevicesResponse);
 
+        IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
+        IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
+
         default:
             if (!RejectRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::VOLUME,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

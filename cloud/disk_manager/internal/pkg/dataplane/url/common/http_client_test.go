@@ -112,5 +112,5 @@ func TestHTTPClientTimeout(t *testing.T) {
 
 	_, err := httpClient.Head(ctx)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "deadline exceeded")
+	require.ErrorContains(t, err, "Timeout exceeded")
 }

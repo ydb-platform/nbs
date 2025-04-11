@@ -26,8 +26,8 @@ TLocalFileSystem::TLocalFileSystem(
 
     STORAGE_INFO(
         "LocalFileSystemId=" << Store.GetFileSystemId() <<
-        ", DirectIoEnabled=" << Config->GetDirectIoEnabled() <<
-        ", DirectIoAlign=" << Config->GetDirectIoAlign());
+        ", Config=[" << Config->DumpStr() <<
+        "]");
 
     ScheduleCleanupSessions();
 }

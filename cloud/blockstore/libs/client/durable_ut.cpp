@@ -8,8 +8,8 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_test.h>
-
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
@@ -87,7 +87,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -142,7 +142,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -204,7 +204,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -244,7 +244,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -306,7 +306,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -368,7 +368,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -524,7 +524,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -687,7 +687,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -754,15 +754,88 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         UNIT_ASSERT_VALUES_EQUAL(writeRequestsCount, maxRequestsCount);
     }
 
-    Y_UNIT_TEST(ShouldCalculateCorrectTimeout)
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutForYDBDisks)
     {
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
         clientConfigProto.SetRetryTimeoutIncrement(2'000);
-        clientConfigProto.SetConnectionErrorMaxRetryTimeout(3'000);
+        clientConfigProto.SetYDBBasedDiskInitialRetryTimeout(1'000);
+        clientConfigProto.SetConnectionErrorMaxRetryTimeout(4'000);
+        // Should not be used in this test.
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(500);
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(1), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(4), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(5), spec.Backoff);
+        }
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(S_OK));
+            UNIT_ASSERT(!spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), spec.Backoff);
+
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(1), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(4), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(4), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(5), spec.Backoff);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutForDiskRegistryBasedDisk)
+    {
+        NProto::TClientAppConfig configProto;
+        auto& clientConfigProto = *configProto.MutableClientConfig();
+        clientConfigProto.SetRetryTimeoutIncrement(3'000);
+        clientConfigProto.SetConnectionErrorMaxRetryTimeout(7'000);
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(2'000);
+        // Should not be used in this test.
+        clientConfigProto.SetYDBBasedDiskInitialRetryTimeout(500);
+        auto config = std::make_shared<TClientAppConfig>(configProto);
+
+        auto policy =
+            CreateRetryPolicy(config, NProto::STORAGE_MEDIA_SSD_MIRROR3);
 
         {
             TRetryState state;
@@ -771,17 +844,20 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(2), spec.Backoff);
 
+            state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
             UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(4), spec.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(5), spec.Backoff);
 
+            state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
             UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
 
+            state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
             UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(8), spec.Backoff);
         }
 
         {
@@ -795,9 +871,169 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(2), spec.Backoff);
 
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(5), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutForDefaultPolicy)
+    {
+        NProto::TClientAppConfig configProto;
+        auto& clientConfigProto = *configProto.MutableClientConfig();
+        clientConfigProto.SetRetryTimeoutIncrement(3'000);
+        clientConfigProto.SetConnectionErrorMaxRetryTimeout(7'000);
+        // Should not be used in this test.
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(500);
+        clientConfigProto.SetYDBBasedDiskInitialRetryTimeout(500);
+        auto config = std::make_shared<TClientAppConfig>(configProto);
+
+        auto policy = CreateRetryPolicy(config, std::nullopt);
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
+        }
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(S_OK));
+            UNIT_ASSERT(!spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), spec.Backoff);
+
             spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutForInstantRetryFlag)
+    {
+        NProto::TClientAppConfig configProto;
+        auto& clientConfigProto = *configProto.MutableClientConfig();
+        clientConfigProto.SetRetryTimeoutIncrement(3'000);
+        clientConfigProto.SetConnectionErrorMaxRetryTimeout(7'000);
+        // Should not be used in this test.
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(500);
+        clientConfigProto.SetYDBBasedDiskInitialRetryTimeout(500);
+        auto config = std::make_shared<TClientAppConfig>(configProto);
+
+        auto policy = CreateRetryPolicy(config, std::nullopt);
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+            UNIT_ASSERT(!state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+        }
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+            UNIT_ASSERT(!state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+            UNIT_ASSERT(!state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(
+                state,
+                MakeError(E_GRPC_UNAVAILABLE, "", flags));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(
+                state,
+                MakeError(E_GRPC_UNAVAILABLE, "", flags));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
         }
     }
 
@@ -818,7 +1054,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         appConfig.SetRetryTimeout(300);
         auto config = std::make_shared<TClientAppConfig>(clientAppConfig);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -865,7 +1101,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         clientConfigProto.SetRetryTimeoutIncrement(1);
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -928,10 +1164,14 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
-        clientConfigProto.SetRetryTimeoutIncrement(TDuration::Seconds(1).MilliSeconds());
+        clientConfigProto.SetRetryTimeoutIncrement(
+            TDuration::Seconds(2).MilliSeconds());
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(
+            TDuration::Seconds(1).MilliSeconds());
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy =
+            CreateRetryPolicy(config, NProto::STORAGE_MEDIA_SSD_MIRROR3);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -964,15 +1204,22 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         const auto& response = future.GetValueSync();
         UNIT_ASSERT(SUCCEEDED(response.GetError().GetCode()));
 
-        auto expectedDelay = TDuration::Seconds(1);
-        auto errorText = TStringBuilder() <<
-            "Request was posponed for " <<
-            callContext->Time(EProcessingStage::Postponed) <<
-            " which is less than " <<
-            expectedDelay;
+        const auto actualDelay = callContext->Time(EProcessingStage::Postponed);
+        {
+            constexpr auto expectedDelay = TDuration::Seconds(1);
+            auto errorText = TStringBuilder()
+                             << "Request was posponed for " << actualDelay
+                             << " which is less than " << expectedDelay;
+            UNIT_ASSERT_GE_C(actualDelay, expectedDelay, errorText);
+        }
 
-        UNIT_ASSERT_GE_C(
-            callContext->Time(EProcessingStage::Postponed), expectedDelay, errorText);
+        {
+            constexpr auto ExpectedDelay = TDuration::Seconds(2);
+            auto errorText = TStringBuilder()
+                             << "Request was posponed for " << actualDelay
+                             << " which is more than " << ExpectedDelay;
+            UNIT_ASSERT_LT_C(actualDelay, ExpectedDelay, errorText);
+        }
     }
 
     Y_UNIT_TEST(ShouldNotCountBackoffTimeAsPostponedForNotThrottledRequests)
@@ -997,7 +1244,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         clientConfigProto.SetRetryTimeoutIncrement(TDuration::Seconds(1).MilliSeconds());
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -1066,7 +1313,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         clientConfigProto.SetRequestTimeoutMax(TDuration::Minutes(2).MilliSeconds());
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);

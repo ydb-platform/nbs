@@ -2,48 +2,21 @@ name: Nightly build
 run-name: |
   ${{ github.event_name == 'workflow_dispatch'
       && format(
-          'Nightly build (manual) use_network_cache:{0} clean_ya_dir:{1} upload_ya_dir:{2}, disk_type:{3}, build_target:{4} test_target:{5}',
-          inputs.use_network_cache, inputs.clean_ya_dir, inputs.upload_ya_dir, inputs.disk_type, inputs.build_target, inputs.test_target
+          'Nightly build (manual) ref:{0}',
+          github.event.inputs.ref
         )
       || format('Nightly build (schedule)')
     }}
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 23 * * *"
   workflow_dispatch:
     inputs:
-      clean_ya_dir:
-        description: 'Clean ya dir'
-        type: choice
+      ref:
+        description: 'Ref to build'
+        type: string
         required: false
-        default: 'no'
-        options:
-          - 'yes'
-          - 'no'
-      upload_ya_dir:
-        description: 'Upload ya dir'
-        type: choice
-        required: false
-        default: 'no'
-        options:
-          - 'yes'
-          - 'no'
-      use_network_cache:
-        description: 'Use network cache'
-        type: choice
-        required: false
-        default: 'yes'
-        options:
-          - 'yes'
-          - 'no'
-      disk_type:
-        description: 'Disk type'
-        type: choice
-        required: false
-        default: 'network-ssd-nonreplicated'
-        options:
-          - 'network-ssd'
-          - 'network-ssd-nonreplicated'
+        default: 'main'
       build_target:
         description: 'Build target'
         type: string
@@ -56,19 +29,7 @@ on:
         required: false
         #default: 'cloud/tasks/'
         default: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
-      nebius:
-        description: 'Run on new nebius runners'
-        type: choice
-        required: false
-        default: 'no'
-        options:
-          - 'yes'
-          - 'no'
-      test_threads:
-        description: 'Test threads count'
-        type: string
-        required: false
-        default: '32'
+
 
 
 jobs:
@@ -78,18 +39,16 @@ jobs:
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     secrets: inherit
     with:
+      ref: ${{ inputs.ref }}
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
       build_preset: relwithdebinfo
-      cache_update_build: true
-      cache_update_tests: false
+      cache_update: true
       sleep_after_tests: 1
-      test_threads: ${{ inputs.test_threads }}
-      disk_type: ${{ inputs.disk_type }}
-      use_network_cache: ${{ inputs.use_network_cache }}
-      upload_ya_dir: ${{ inputs.upload_ya_dir }}
-      clean_ya_dir: ${{ inputs.clean_ya_dir }}
-      nebius: ${{ inputs.nebius }}
+      disk_type: 'network-ssd-nonreplicated'
+      use_network_cache: "yes"
+      upload_ya_dir: "no"
+      clean_ya_dir: "no"
   build_schedule:
     name: Build/test x86_64 using YA (relwithdebinfo) (schedule)
     if: github.event_name == 'schedule'
@@ -99,12 +58,9 @@ jobs:
       build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
       build_preset: relwithdebinfo
-      cache_update_build: true
-      cache_update_tests: false
+      cache_update: true
       sleep_after_tests: 1
-      test_threads: 32
       disk_type: 'network-ssd-nonreplicated'
       use_network_cache: "yes"
       upload_ya_dir: "no"
       clean_ya_dir: "yes"
-      nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}

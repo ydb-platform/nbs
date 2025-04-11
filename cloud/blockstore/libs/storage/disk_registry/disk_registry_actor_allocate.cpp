@@ -1,6 +1,7 @@
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -130,10 +131,25 @@ void TDiskRegistryActor::ExecuteAddDisk(
         },
         &result);
 
+    if (args.Error.GetCode() == E_BS_DISK_ALLOCATION_FAILED &&
+        IsDiskRegistryLocalMediaKind(args.MediaKind) &&
+        State->CanAllocateLocalDiskAfterSecureErase(
+            args.AgentIds,
+            args.PoolName,
+            args.BlocksCount * args.BlockSize))
+    {
+        // Note: DM uses this specific error message to identify this case.
+        // Update createEmptyDiskTask simultaneously if you change it.
+        args.Error = MakeError(
+            E_TRY_AGAIN,
+            "Unable to allocate local disk: secure erase has not finished yet");
+    }
+
     args.Devices = std::move(result.Devices);
     args.DeviceMigrations = std::move(result.Migrations);
     args.Replicas = std::move(result.Replicas);
     args.DeviceReplacementUUIDs = std::move(result.DeviceReplacementIds);
+    args.LaggingDevices = std::move(result.LaggingDevices);
     args.IOMode = result.IOMode;
     args.IOModeTs = result.IOModeTs;
     args.MuteIOErrors = result.MuteIOErrors;
@@ -233,6 +249,11 @@ void TDiskRegistryActor::CompleteAddDisk(
 
         for (auto& deviceId: args.DeviceReplacementUUIDs) {
             *response->Record.AddDeviceReplacementUUIDs() = std::move(deviceId);
+        }
+
+        for (auto& laggingDevice: args.LaggingDevices) {
+            *response->Record.AddRemovedLaggingDevices() =
+                std::move(laggingDevice.Device);
         }
 
         response->Record.SetIOMode(args.IOMode);

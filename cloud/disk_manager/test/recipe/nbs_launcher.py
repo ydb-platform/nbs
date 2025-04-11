@@ -13,6 +13,7 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_n
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import enable_writable_state, \
     create_devices, setup_nonreplicated, setup_disk_registry_config, make_agent_id, AgentInfo, \
     DeviceInfo, make_agent_node_type
+from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.tasks.test.common.processes import register_process, kill_processes
 
 NBS_SERVICE_NAME = "nbs"
@@ -76,6 +77,10 @@ class NbsLauncher:
         storage_config_patch.InactiveClientsTimeout = 60000  # 1 min
         storage_config_patch.AgentRequestTimeout = 5000      # 5 sec
         storage_config_patch.UseShadowDisksForNonreplDiskCheckpoints = True
+
+        # Needed for tests on blockstore client https://github.com/ydb-platform/nbs/pull/3067
+        storage_config_patch.MaxDisksInPlacementGroup = 2
+
         if destruction_allowed_only_for_disks_with_id_prefixes:
             storage_config_patch.DestructionAllowedOnlyForDisksWithIdPrefixes.extend(destruction_allowed_only_for_disks_with_id_prefixes)
 
@@ -123,6 +128,11 @@ class NbsLauncher:
             kms_config.RequestTimeout = 5000
             kms_config.Insecure = True
 
+        features_config_patch = TFeaturesConfig()
+        encryption_at_rest = features_config_patch.Features.add()
+        encryption_at_rest.Name = 'EncryptionAtRestForDiskRegistryBasedDisks'
+        encryption_at_rest.Whitelist.FolderIds.append("encrypted-folder")
+
         self.__nbs = LocalNbs(
             ydb_port,
             domains_txt,
@@ -137,7 +147,8 @@ class NbsLauncher:
             nbs_binary_path=nbs_binary_path,
             grpc_trace=False,
             compute_config=compute_config,
-            kms_config=kms_config)
+            kms_config=kms_config,
+            features_config_patch=features_config_patch)
 
     def start(self):
         self.__nbs.start()

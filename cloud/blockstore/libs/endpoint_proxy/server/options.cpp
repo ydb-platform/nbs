@@ -33,16 +33,28 @@ TOptions::TOptions()
         .StoreResult(&StoredEndpointsPath);
 
     Opts.AddLongOption("nbd-request-timeout")
-        .OptionalArgument("NUM")
+        .RequiredArgument("NUM")
         .Handler1T<TString>([this] (const auto& s) {
             NbdRequestTimeout = TDuration::Parse(s);
         });
 
     Opts.AddLongOption("nbd-reconnect-delay")
-        .OptionalArgument("NUM")
+        .RequiredArgument("NUM")
         .Handler1T<TString>([this] (const auto& s) {
             NbdReconnectDelay = TDuration::Parse(s);
         });
+
+    // deprecated
+    Opts.AddLongOption("without-libnl")
+        .NoArgument()
+        .SetFlag(&WithoutLibnl);
+
+    Opts.AddLongOption(
+            "debug-restart-events-count",
+            "issue multiple restart events for each io error. this option is "
+            "used to debug nbd server reconnect")
+        .RequiredArgument("NUM")
+        .StoreResult(&DebugRestartEventsCount);
 }
 
 void TOptions::Parse(int argc, char** argv)

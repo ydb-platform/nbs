@@ -33,7 +33,15 @@ namespace {
     xxx(DirectIoEnabled,            bool,       false                         )\
     xxx(DirectIoAlign,              ui32,       4_KB                          )\
                                                                                \
-    xxx(GuestWritebackCacheEnabled, bool,       false                         )\
+    xxx(GuestWriteBackCacheEnabled, bool,       false                         )\
+                                                                               \
+    xxx(ZeroCopyEnabled,            bool,       false                         )\
+    xxx(GuestPageCacheDisabled,     bool,       false                         )\
+    xxx(ExtendedAttributesDisabled, bool,       false                         )\
+                                                                               \
+    xxx(ServerWriteBackCacheEnabled,  bool,     false                         )\
+                                                                               \
+    xxx(GuestKeepCacheAllowed,        bool,     false                         )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

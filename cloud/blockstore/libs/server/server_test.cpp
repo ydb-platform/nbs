@@ -238,7 +238,7 @@ IBlockStorePtr TTestFactory::CreateDurableClient(IBlockStorePtr client)
     return NClient::CreateDurableClient(
         config,
         std::move(client),
-        CreateRetryPolicy(config),
+        CreateRetryPolicy(config, std::nullopt),
         Logging,
         Timer,
         Scheduler,

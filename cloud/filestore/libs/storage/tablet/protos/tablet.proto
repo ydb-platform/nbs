@@ -48,6 +48,7 @@ message TFileSystem
     bool AutomaticShardCreationEnabled = 15;
     uint64 ShardAllocationUnit = 16;
     string MainFileSystemId = 17;
+    bool DirectoryCreationInShardsEnabled = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -115,13 +116,23 @@ message TCheckpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// There are some options that may be relevant only for some specific sessions
+message TSessionOptions
+{
+    // Some sessions may hold additional stats regarding recently open handles.
+    // The size of this cache is limited by SessionHandleOffloadedStatsCapacity.
+    uint64 SessionHandleOffloadedStatsCapacity = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TSession
 {
     string SessionId = 1;
     string ClientId = 2;
     string CheckpointId = 3;
-    // unused = 4
     bytes SessionState = 5;
+    // unused = 4
     uint64 MaxSeqNo = 6;
     uint64 MaxRwSeqNo = 7;
     string OriginFqdn = 8;
@@ -204,7 +215,11 @@ message TOpLogEntry
 
     oneof Request {
         TCreateNodeRequest CreateNodeRequest = 101;
-        TUnlinkNodeRequest UnlinkNodeRequest = 102;
+        // Deprecated in favor of TUnlinkNodeInShardRequest as
+        // UnlinkNodeInShardRequest has information about the original unlink
+        // request.
+        TUnlinkNodeRequest UnlinkNodeRequest = 102 [deprecated = true];
         NProtoPrivate.TRenameNodeInDestinationRequest RenameNodeInDestinationRequest = 103;
+        NProtoPrivate.TUnlinkNodeInShardRequest UnlinkNodeInShardRequest = 104;
     }
 }

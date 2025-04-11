@@ -117,7 +117,7 @@ THashMap<TString, TDeviceData> MakeDevices(
             std::move(storageAdapter),
             TThreadSafeData{std::move(synchronizedData)}};
 
-        result.insert({deviceUUID, std::move(device)});
+        result.try_emplace(deviceUUID, std::move(device));
     }
 
     return result;

@@ -40,13 +40,13 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         *f->MutableWhitelist()->AddCloudIds() = "whitelisted_cloud";
         TFeaturesConfig config(fc);
 
-        auto clouds = RandomStrings(1000);
+        auto clouds = RandomStrings(10000);
         ui32 matches = 0;
         for (const auto& cloud: clouds) {
             matches += config.IsFeatureEnabled(cloud, {}, {}, f->GetName());
         }
 
-        UNIT_ASSERT_C(150 < matches && matches < 250, TStringBuilder()
+        UNIT_ASSERT_C(1500 < matches && matches < 2500, TStringBuilder()
             << "match count: " << matches);
 
         UNIT_ASSERT(config.IsFeatureEnabled(
@@ -65,13 +65,13 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         *f->MutableWhitelist()->AddFolderIds() = "whitelisted_folder";
         TFeaturesConfig config(fc);
 
-        auto folders = RandomStrings(1000);
+        auto folders = RandomStrings(10000);
         ui32 matches = 0;
         for (const auto& folder: folders) {
             matches += config.IsFeatureEnabled({}, folder, {}, f->GetName());
         }
 
-        UNIT_ASSERT_C(250 < matches && matches < 350, TStringBuilder()
+        UNIT_ASSERT_C(2500 < matches && matches < 3500, TStringBuilder()
             << "match count: " << matches);
 
         UNIT_ASSERT(config.IsFeatureEnabled(

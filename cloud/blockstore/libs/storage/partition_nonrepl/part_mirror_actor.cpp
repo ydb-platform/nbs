@@ -1,5 +1,6 @@
 #include "part_mirror_actor.h"
 
+#include "lagging_agents_replica_proxy_actor.h"
 #include "part_mirror_resync_util.h"
 #include "part_nonrepl.h"
 #include "part_nonrepl_common.h"
@@ -89,8 +90,10 @@ void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
 
 void TMirrorPartitionActor::KillActors(const TActorContext& ctx)
 {
-    for (const auto& actorId: State.GetReplicaActors()) {
-        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId);
+    for (auto actorId : State.GetAllActors()) {
+        NCloud::Send<TEvents::TEvPoisonPill>(
+            ctx,
+            actorId);
     }
 }
 
@@ -227,13 +230,19 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 
         const bool hasQuorum = majorCount > checksums.size() / 2;
         if (hasQuorum) {
-            ReportMirroredDiskMinorityChecksumMismatch();
-            if (Config->GetResyncRangeAfterScrubbing()) {
-                StartResyncRange(ctx);
-                return;
-            }
+            ReportMirroredDiskMinorityChecksumMismatch(
+                TStringBuilder() << " disk: " << DiskId.Quote()
+                                 << ", range: " << GetScrubbingRange());
         } else {
-           ReportMirroredDiskMajorityChecksumMismatch();
+            ReportMirroredDiskMajorityChecksumMismatch(
+                TStringBuilder() << " disk: " << DiskId.Quote()
+                                 << ", range: " << GetScrubbingRange());
+        }
+        if (Config->GetResyncRangeAfterScrubbing() &&
+            CanFixMismatch(hasQuorum, Config->GetScrubbingResyncPolicy()))
+        {
+            StartResyncRange(ctx, hasQuorum);
+            return;
         }
     }
 
@@ -241,7 +250,8 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 }
 
 void TMirrorPartitionActor::StartResyncRange(
-    const NActors::TActorContext& ctx)
+    const NActors::TActorContext& ctx,
+    bool isMinor)
 {
     LOG_WARN(
         ctx,
@@ -259,25 +269,29 @@ void TMirrorPartitionActor::StartResyncRange(
 
     TVector<TReplicaDescriptor> replicas;
     const auto& replicaInfos = State.GetReplicaInfos();
-    const auto& replicaActors = State.GetReplicaActors();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
-        if (replicaInfos[i].Config->DevicesReadyForReading(GetScrubbingRange()))
-        {
+        if (State.DevicesReadyForReading(i, GetScrubbingRange())) {
             replicas.emplace_back(
                 replicaInfos[i].Config->GetName(),
                 i,
-                replicaActors[i]);
+                State.GetReplicaActor(i));
         }
     }
 
-    NCloud::Register<TResyncRangeActor>(
-        ctx,
+    // Force usage TResyncRangeActor for minor errors.
+    auto resyncPolicy = isMinor ? NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB
+                                : Config->GetScrubbingResyncPolicy();
+    auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
         State.GetBlockSize(),
         GetScrubbingRange(),
         std::move(replicas),
         State.GetRWClientId(),
-        BlockDigestGenerator);
+        BlockDigestGenerator,
+        resyncPolicy,
+        isMinor ? EBlockRangeChecksumStatus::MinorError
+                : EBlockRangeChecksumStatus::MajorError);
+    ctx.Register(resyncActor.release());
 }
 
 void TMirrorPartitionActor::AddTagForBufferCopying(
@@ -302,6 +316,11 @@ void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
     Die(ctx);
 }
 
+auto TMirrorPartitionActor::TakeNextRequestIdentifier() -> ui64
+{
+    return RequestIdentifierCounter++;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionActor::HandlePoisonPill(
@@ -314,7 +333,8 @@ void TMirrorPartitionActor::HandlePoisonPill(
 
     KillActors(ctx);
 
-    AliveReplicas = State.GetReplicaActors().size();
+    AliveReplicas =
+        State.GetReplicaActors().size() + State.LaggingReplicaCount();
 
     Poisoner = CreateRequestInfo(
         ev->Sender,
@@ -332,7 +352,7 @@ void TMirrorPartitionActor::HandlePoisonTaken(
     const TEvents::TEvPoisonTaken::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!FindPtr(State.GetReplicaActors(), ev->Sender)) {
+    if (!State.IsReplicaActor(ev->Sender)) {
         return;
     }
 
@@ -400,7 +420,7 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
         if (!requestInfo.Write) {
             continue;
         }
-        const auto& requestRange = requestInfo.Value;
+        const auto& requestRange = requestInfo.Value.BlockRange;
         if (scrubbingRange.Overlaps(requestRange)) {
             LOG_DEBUG(
                 ctx,
@@ -417,13 +437,12 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
 
     TVector<TReplicaDescriptor> replicas;
     const auto& replicaInfos = State.GetReplicaInfos();
-    const auto& replicaActors = State.GetReplicaActors();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
-        if (replicaInfos[i].Config->DevicesReadyForReading(scrubbingRange)) {
+        if (State.DevicesReadyForReading(i, scrubbingRange)) {
             replicas.emplace_back(
                 replicaInfos[i].Config->GetName(),
                 i,
-                replicaActors[i]);
+                State.GetReplicaActor(i));
         }
     }
 
@@ -500,16 +519,81 @@ void TMirrorPartitionActor::HandleRangeResynced(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const auto range = msg->Range;
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Range %s resync finished: %s",
         DiskId.c_str(),
-        DescribeRange(range).c_str(),
+        DescribeRange(msg->Range).c_str(),
         FormatError(msg->GetError()).c_str());
 
     ResyncRangeStarted = false;
     StartScrubbingRange(ctx, ScrubbingRangeId + 1);
+}
+
+void TMirrorPartitionActor::HandleAddLaggingAgent(
+    const TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    const ui32 replicaIndex = msg->LaggingAgent.GetReplicaIndex();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Adding lagging agent: %s, replica index: %u",
+        DiskId.c_str(),
+        msg->LaggingAgent.GetAgentId().c_str(),
+        replicaIndex);
+
+    if (!State.IsLaggingProxySet(replicaIndex)) {
+        Y_ABORT_UNLESS(replicaIndex < State.GetReplicaInfos().size());
+
+        const auto& replicaInfo = State.GetReplicaInfos()[replicaIndex];
+        auto proxyActorId = NCloud::Register(
+            ctx,
+            std::make_unique<TLaggingAgentsReplicaProxyActor>(
+                Config,
+                DiagnosticsConfig,
+                replicaInfo.Config,
+                replicaInfo.Migrations,
+                ProfileLog,
+                BlockDigestGenerator,
+                State.GetRWClientId(),
+                State.GetReplicaActorsBypassingProxies()[replicaIndex],
+                SelfId()));
+        State.SetLaggingReplicaProxy(replicaIndex, proxyActorId);
+    }
+
+    NCloud::Send<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
+        ctx,
+        State.GetReplicaActors()[replicaIndex],
+        0,   // cookie
+        msg->LaggingAgent);
+    State.AddLaggingAgent(std::move(msg->LaggingAgent));
+}
+
+void TMirrorPartitionActor::HandleRemoveLaggingAgent(
+    const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Removing lagging agent: %s, replica index: %u",
+        DiskId.c_str(),
+        msg->LaggingAgent.GetAgentId().c_str(),
+        msg->LaggingAgent.GetReplicaIndex());
+
+    State.RemoveLaggingAgent(msg->LaggingAgent);
+
+    const ui32 replicaIndex = msg->LaggingAgent.GetReplicaIndex();
+    if (!State.HasLaggingAgents(replicaIndex) &&
+        State.IsLaggingProxySet(replicaIndex))
+    {
+        auto proxy = State.GetReplicaActors()[replicaIndex];
+        State.ResetLaggingReplicaProxy(replicaIndex);
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, proxy);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -528,6 +612,31 @@ void TMirrorPartitionActor::HandleRWClientIdChanged(
     }
 
     State.SetRWClientId(std::move(rwClientId));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TMirrorPartitionActor::HandleAddTagsResponse(
+    const TEvService::TEvAddTagsResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    auto error = msg->GetError();
+
+    if (HasError(error)) {
+        ReportMirroredDiskAddTagFailed(
+            TStringBuilder()
+            << "Failed to add " << IntermediateWriteBufferTagName
+            << " tag for disk [" << DiskId << "] with "
+            << FormatError(error));
+        return;
+    }
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] %s tag added for disk",
+        DiskId.c_str(),
+        IntermediateWriteBufferTagName);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -581,7 +690,12 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
+        HFunc(TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest, HandleAddLaggingAgent);
+        HFunc(TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest, HandleRemoveLaggingAgent);
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
+        HFunc(
+            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            DrainActorCompanion.HandleWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -594,6 +708,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(TEvVolume::TEvGetRebuildMetadataStatusRequest, HandleGetRebuildMetadataStatus);
         HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
+        HFunc(TEvVolume::TEvCheckRangeRequest, HandleCheckRange);
 
         HFunc(
             TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted,
@@ -610,7 +725,12 @@ STFUNC(TMirrorPartitionActor::StateWork)
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
 
+        HFunc(
+            TEvService::TEvAddTagsResponse,
+            HandleAddTagsResponse);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        IgnoreFunc(TEvents::TEvPoisonTaken);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
@@ -635,6 +755,9 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(
+            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            RejectWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -653,6 +776,8 @@ STFUNC(TMirrorPartitionActor::StateZombie)
 
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
+
+        IgnoreFunc(TEvService::TEvAddTagsResponse);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

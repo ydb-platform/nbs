@@ -15,27 +15,30 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_VOLUME_REQUESTS(xxx, ...)                                   \
-    xxx(AddClient,                __VA_ARGS__)                                 \
-    xxx(RemoveClient,             __VA_ARGS__)                                 \
-    xxx(WaitReady,                __VA_ARGS__)                                 \
-    xxx(DescribeBlocks,           __VA_ARGS__)                                 \
-    xxx(GetPartitionInfo,         __VA_ARGS__)                                 \
-    xxx(CompactRange,             __VA_ARGS__)                                 \
-    xxx(GetCompactionStatus,      __VA_ARGS__)                                 \
-    xxx(ReallocateDisk,           __VA_ARGS__)                                 \
-    xxx(GetVolumeLoadInfo,        __VA_ARGS__)                                 \
-    xxx(GetUsedBlocks,            __VA_ARGS__)                                 \
-    xxx(DeleteCheckpointData,     __VA_ARGS__)                                 \
-    xxx(UpdateUsedBlocks,         __VA_ARGS__)                                 \
-    xxx(RebuildMetadata,          __VA_ARGS__)                                 \
-    xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
-    xxx(ScanDisk,                 __VA_ARGS__)                                 \
-    xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
-    xxx(GetVolumeInfo,            __VA_ARGS__)                                 \
-    xxx(UpdateVolumeParams,       __VA_ARGS__)                                 \
-    xxx(ChangeStorageConfig,      __VA_ARGS__)                                 \
-    xxx(GetStorageConfig,         __VA_ARGS__)                                 \
-    xxx(GracefulShutdown,         __VA_ARGS__)                                 \
+    xxx(AddClient,                                                 __VA_ARGS__)\
+    xxx(RemoveClient,                                              __VA_ARGS__)\
+    xxx(WaitReady,                                                 __VA_ARGS__)\
+    xxx(DescribeBlocks,                                            __VA_ARGS__)\
+    xxx(GetPartitionInfo,                                          __VA_ARGS__)\
+    xxx(CompactRange,                                              __VA_ARGS__)\
+    xxx(GetCompactionStatus,                                       __VA_ARGS__)\
+    xxx(ReallocateDisk,                                            __VA_ARGS__)\
+    xxx(GetVolumeLoadInfo,                                         __VA_ARGS__)\
+    xxx(GetUsedBlocks,                                             __VA_ARGS__)\
+    xxx(DeleteCheckpointData,                                      __VA_ARGS__)\
+    xxx(UpdateUsedBlocks,                                          __VA_ARGS__)\
+    xxx(RebuildMetadata,                                           __VA_ARGS__)\
+    xxx(GetRebuildMetadataStatus,                                  __VA_ARGS__)\
+    xxx(ScanDisk,                                                  __VA_ARGS__)\
+    xxx(GetScanDiskStatus,                                         __VA_ARGS__)\
+    xxx(GetVolumeInfo,                                             __VA_ARGS__)\
+    xxx(UpdateVolumeParams,                                        __VA_ARGS__)\
+    xxx(ChangeStorageConfig,                                       __VA_ARGS__)\
+    xxx(GetStorageConfig,                                          __VA_ARGS__)\
+    xxx(GracefulShutdown,                                          __VA_ARGS__)\
+    xxx(LinkLeaderVolumeToFollower,                                __VA_ARGS__)\
+    xxx(UnlinkLeaderVolumeFromFollower,                            __VA_ARGS__)\
+    xxx(CheckRange,                                                __VA_ARGS__)\
 
 // BLOCKSTORE_VOLUME_REQUESTS
 
@@ -65,6 +68,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
     xxx(ScanDisk,                 __VA_ARGS__)                                 \
     xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
+    xxx(CheckRange,               __VA_ARGS__)                                 \
 // BLOCKSTORE_VOLUME_HANDLED_RESPONSES
 
 // responses for the requests forwarded from service which are forwarded back
@@ -334,6 +338,15 @@ struct TEvVolume
 
         EvGracefulShutdownRequest = EvBegin + 60,
         EvGracefulShutdownResponse = EvBegin + 61,
+
+        EvCheckRangeRequest = EvBegin + 62,
+        EvCheckRangeResponse = EvBegin + 63,
+
+        EvLinkLeaderVolumeToFollowerRequest = EvBegin + 64,
+        EvLinkLeaderVolumeToFollowerResponse = EvBegin + 65,
+
+        EvUnlinkLeaderVolumeFromFollowerRequest = EvBegin + 66,
+        EvUnlinkLeaderVolumeFromFollowerResponse = EvBegin + 67,
 
         EvEnd
     };

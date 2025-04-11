@@ -14,6 +14,7 @@
 
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 
+#include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/system/hostname.h>
 #include <util/generic/map.h>
@@ -218,6 +219,9 @@ private:
             request->MutableHeaders()->SetRequestId(requestId);
             request->MutableHeaders()->SetClientId(clientId);
             request->MutableHeaders()->SetOriginFqdn(originFqdn);
+
+            auto socketPath = TFsPath(request->GetEndpoint().GetSocketPath());
+            socketPath.Parent().MkDirs();
 
             auto future = StartEndpoint(
                 MakeIntrusive<TCallContext>(requestId),

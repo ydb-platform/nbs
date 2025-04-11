@@ -27,6 +27,9 @@ namespace {
                                                                                \
     xxx(HandleOpsQueuePath,     TString,        ""                            )\
     xxx(HandleOpsQueueSize,     ui32,           1_GB                          )\
+                                                                               \
+    xxx(WriteBackCachePath,     TString,        ""                            )\
+    xxx(WriteBackCacheSize,     ui32,           1_GB                          )\
 // FILESTORE_VFS_CONFIG
 
 #define FILESTORE_VFS_DECLARE_CONFIG(name, type, value)                        \

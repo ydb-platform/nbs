@@ -47,6 +47,11 @@ void TBootstrapLocal::InitAuthService()
     // do nothing
 }
 
+void TBootstrapLocal::WarmupBSGroupConnections()
+{
+    // do nothing
+}
+
 TProgramShouldContinue& TBootstrapLocal::GetShouldContinue()
 {
     return ShouldContinue;

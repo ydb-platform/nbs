@@ -6,8 +6,8 @@
 #include <cloud/filestore/libs/service/endpoint.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
-
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -52,6 +52,8 @@ bool IsRetriableError(const NProto::TError& error)
     FILESTORE_DECLARE_METHOD(name##Vhost, name, __VA_ARGS__)
 
 FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD_FS)
+FILESTORE_DECLARE_METHOD_FS(ReadDataLocal)
+FILESTORE_DECLARE_METHOD_FS(WriteDataLocal)
 FILESTORE_ENDPOINT_SERVICE(FILESTORE_DECLARE_METHOD_VHOST)
 
 #undef FILESTORE_DECLARE_METHOD
@@ -245,6 +247,8 @@ class TDurableFileStoreClient final
 //  FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD);
+    FILESTORE_IMPLEMENT_METHOD(ReadDataLocal);
+    FILESTORE_IMPLEMENT_METHOD(WriteDataLocal);
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
@@ -303,27 +307,39 @@ struct TRetryPolicy final
 {
     TClientConfigPtr Config;
 
-    TRetryPolicy(TClientConfigPtr config)
+    explicit TRetryPolicy(TClientConfigPtr config)
         : Config(std::move(config))
     {}
 
     bool ShouldRetry(TRetryState& state, const NProto::TError& error) override
     {
         bool isRetriable = IsRetriableError(error);
-        if (isRetriable && TInstant::Now() - state.Started < Config->GetRetryTimeout()) {
-            auto timeout = state.RetryTimeout + Config->GetRetryTimeoutIncrement();
+        if (!isRetriable ||
+            TInstant::Now() - state.Started >= Config->GetRetryTimeout())
+        {
+            return false;
+        }
 
-            state.Backoff = timeout;
-            if (IsConnectionError(error) && state.Backoff > Config->GetConnectionErrorMaxRetryTimeout()) {
-                state.Backoff = Config->GetConnectionErrorMaxRetryTimeout();
-            } else {
-                state.RetryTimeout = timeout;
-            }
-
+        if (HasProtoFlag(error.GetFlags(), NProto::EF_INSTANT_RETRIABLE) &&
+            !state.DoneInstantRetry)
+        {
+            state.Backoff = TDuration::Zero();
+            state.DoneInstantRetry = true;
             return true;
         }
 
-        return false;
+        const auto newRetryTimeout =
+            state.RetryTimeout + Config->GetRetryTimeoutIncrement();
+        state.Backoff = newRetryTimeout;
+        if (IsConnectionError(error) &&
+            state.Backoff > Config->GetConnectionErrorMaxRetryTimeout())
+        {
+            state.Backoff = Config->GetConnectionErrorMaxRetryTimeout();
+            return true;
+        }
+
+        state.RetryTimeout = newRetryTimeout;
+        return true;
     }
 };
 

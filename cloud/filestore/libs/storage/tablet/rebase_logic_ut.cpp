@@ -60,9 +60,9 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
             findCheckpoint,
             findBlock);
 
-        UNIT_ASSERT_VALUES_EQUAL(5, rebaseResult.LiveBlocks);
-        UNIT_ASSERT_VALUES_EQUAL(1, rebaseResult.GarbageBlocks);
-        UNIT_ASSERT_VALUES_EQUAL(2, rebaseResult.CheckpointBlocks);
+        UNIT_ASSERT_VALUES_EQUAL(5, rebaseResult.LiveBlocksCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, rebaseResult.GarbageBlocksCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, rebaseResult.CheckpointBlocksCount);
         UNIT_ASSERT_VALUES_EQUAL(2, rebaseResult.UsedCheckpoints.size());
         UNIT_ASSERT(rebaseResult.UsedCheckpoints.contains(c2));
         UNIT_ASSERT(rebaseResult.UsedCheckpoints.contains(c3));

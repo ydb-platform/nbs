@@ -617,6 +617,8 @@ func testCreateDiskFromImage(
 	imageSize uint64,
 	pooled bool,
 	diskSize uint64,
+	diskFolderId string,
+	encryptionDesc *disk_manager.EncryptionDesc,
 ) {
 
 	ctx := testcommon.NewContext()
@@ -649,7 +651,8 @@ func testCreateDiskFromImage(
 			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
-		FolderId: "folder",
+		FolderId:       diskFolderId,
+		EncryptionDesc: encryptionDesc,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
@@ -657,8 +660,26 @@ func testCreateDiskFromImage(
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
-	err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
-	require.NoError(t, err)
+
+	if encryptionDesc != nil {
+		encryption, err := disks.PrepareEncryptionDesc(encryptionDesc)
+		require.NoError(t, err)
+
+		err = nbsClient.ValidateCrc32WithEncryption(
+			ctx,
+			diskID,
+			diskContentInfo,
+			encryption,
+		)
+		require.NoError(t, err)
+	} else {
+		err = nbsClient.ValidateCrc32(
+			ctx,
+			diskID,
+			diskContentInfo,
+		)
+		require.NoError(t, err)
+	}
 
 	diskParams, err := nbsClient.Describe(ctx, diskID)
 	require.NoError(t, err)
@@ -691,6 +712,8 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 		32*1024*4096, // imageSize
 		false,        // pooled
 		32*1024*4096, // diskSize
+		"folder",
+		nil, // encryptionDesc
 	)
 }
 
@@ -701,6 +724,81 @@ func TestDiskServiceCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 		32*1024*4096, // imageSize
 		true,         // pooled
 		262144*4096,  // diskSize
+		"folder",
+		nil, // encryptionDesc
+	)
+}
+
+/*
+// TODO: enable after issue #3071 has been completed
+func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromPooledImage(
+	t *testing.T,
+) {
+	testCreateDiskFromImage(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		32*1024*4096, // imageSize
+		true,         // pooled
+		262144*4096,  // diskSize
+		"encrypted-folder",
+		nil, // encryptionDesc
+	)
+}
+
+func TestDiskServiceCreateEncryptedSsdNonreplDiskFromPooledImage(t *testing.T) {
+	testCreateDiskFromImage(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		32*1024*4096, // imageSize
+		true,         // pooled
+		262144*4096,  // diskSize
+		"folder",
+		&disk_manager.EncryptionDesc{
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_AES_XTS,
+			Key: &disk_manager.EncryptionDesc_KmsKey{
+				KmsKey: &disk_manager.KmsKey{
+					KekId:        "kekid",
+					EncryptedDek: []byte("encrypteddek"),
+					TaskId:       "taskid",
+				},
+			},
+		},
+	)
+}
+*/
+
+func TestDiskServiceCreateEncryptedSsdNonreplDiskFromImage(t *testing.T) {
+	testCreateDiskFromImage(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		32*1024*4096, // imageSize
+		false,        // pooled
+		262144*4096,  // diskSize
+		"folder",
+		&disk_manager.EncryptionDesc{
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_AES_XTS,
+			Key: &disk_manager.EncryptionDesc_KmsKey{
+				KmsKey: &disk_manager.KmsKey{
+					KekId:        "kekid",
+					EncryptedDek: []byte("encrypteddek"),
+					TaskId:       "taskid",
+				},
+			},
+		},
+	)
+}
+
+func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromImage(
+	t *testing.T,
+) {
+	testCreateDiskFromImage(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		32*1024*4096, // imageSize
+		false,        // pooled
+		262144*4096,  // diskSize
+		"encrypted-folder",
+		nil, // encryptionDesc
 	)
 }
 
@@ -1296,4 +1394,85 @@ func TestDiskServiceCreateEncryptedDiskFromImage(t *testing.T) {
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
+}
+
+func testCreateSsdNonreplWithEncryptionAtRest(
+	t *testing.T,
+	folderID string,
+	encryptionDesc *disk_manager.EncryptionDesc,
+) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: 262144 * 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		FolderId:       folderID,
+		EncryptionDesc: encryptionDesc,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+
+	session, err := nbsClient.MountRO(
+		ctx,
+		diskID,
+		nil, // encryption
+	)
+	require.NoError(t, err)
+
+	encryption, err := session.EncryptionDesc()
+	require.NoError(t, err)
+
+	require.NotEmpty(t, encryption)
+	require.Equal(t, types.EncryptionMode_ENCRYPTION_AT_REST, encryption.Mode)
+
+	key := encryption.Key.(*types.EncryptionDesc_KmsKey)
+	require.NotEmpty(t, key)
+	require.NotEmpty(t, key.KmsKey.KekId)
+	require.NotEmpty(t, key.KmsKey.EncryptedDEK)
+
+	session.Close(ctx)
+
+	testcommon.DeleteDisk(t, ctx, client, diskID)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDiskServiceShouldCreateSsdNonreplWithEncryptionAtRestByEncryptionDesc(
+	t *testing.T,
+) {
+	testCreateSsdNonreplWithEncryptionAtRest(
+		t,
+		"folder",
+		&disk_manager.EncryptionDesc{
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_AT_REST,
+		},
+	)
+}
+
+func TestDiskServiceShouldCreateSsdNonreplWithEncryptionAtRestByFolderID(
+	t *testing.T,
+) {
+	testCreateSsdNonreplWithEncryptionAtRest(
+		t,
+		"encrypted-folder",
+		nil, // encryptionDesc
+	)
 }

@@ -36,6 +36,12 @@ struct TFinishedMigration
         true;
 };
 
+struct TLaggingDevice
+{
+    NProto::TLaggingDevice Device;
+    ui64 SeqNo = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDiskRegistryDatabase

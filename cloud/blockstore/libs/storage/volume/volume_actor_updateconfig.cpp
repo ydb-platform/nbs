@@ -351,16 +351,20 @@ void TVolumeActor::CompleteUpdateConfig(
             // TODO: will it get updated later?
             {},   // volume params
             throttlerConfig,
-            {},   // clients
+            {},                            // clients
             TCachedVolumeMountHistory{},   // history
-            {},   // checkpoint requests
-            false // StartPartitionsNeeded
-        ));
+            {},                            // checkpoint requests
+            {},                            // follower disks
+            false                          // StartPartitionsNeeded
+            ));
 
         ResetThrottlingPolicy();
         RegisterCounters(ctx);
         RegisterVolume(ctx);
     }
+
+    HasPerformanceProfileModifications =
+        State->HasPerformanceProfileModifications(*Config);
 
     Y_ABORT_UNLESS(NextVolumeConfigVersion == GetCurrentConfigVersion());
 

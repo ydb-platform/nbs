@@ -470,7 +470,7 @@ public:
         NProto::TClientAppConfig config;
         *config.MutableClientConfig() = options.ClientConfig;
         auto appConfig = std::make_shared<TClientAppConfig>(std::move(config));
-        auto retryPolicy = CreateRetryPolicy(appConfig);
+        auto retryPolicy = CreateRetryPolicy(appConfig, std::nullopt);
 
         client = CreateDurableClient(
             std::move(appConfig),
@@ -740,7 +740,8 @@ TFuture<NProto::TStartEndpointResponse> TEndpointManager::RestoreSingleEndpoint(
                 return promise.ExtractValue();
             }
 
-            auto socketPath = request->GetUnixSocketPath();
+            auto socketPath = TFsPath(request->GetUnixSocketPath());
+            socketPath.Parent().MkDirs();
 
             auto response = self->StartEndpointImpl(
                 std::move(ctx),

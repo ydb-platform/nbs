@@ -15,12 +15,14 @@ SRCS(
     context.cpp
     error.cpp
     file_io_service.cpp
+    file_ring_buffer.cpp
     format.cpp
     guarded_sglist.cpp
     helpers.cpp
     history.cpp
     lru_cache.cpp
     media.cpp
+    page_size.cpp
     persistent_table.cpp
     proto_helpers.cpp
     random.cpp
@@ -28,6 +30,7 @@ SRCS(
     scheduler.cpp
     scheduler_test.cpp
     scoped_handle.cpp
+    sglist_block_range.cpp
     sglist.cpp
     sglist_iter.cpp
     sglist_test.cpp
@@ -45,6 +48,7 @@ PEERDIR(
     cloud/storage/core/protos
 
     library/cpp/deprecated/atomic
+    library/cpp/digest/crc32c
     library/cpp/json/writer
     library/cpp/logger
     library/cpp/lwtrace

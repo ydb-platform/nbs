@@ -125,23 +125,19 @@ struct TTestEnv
 
             TString name = Sprintf("replica-%d", i);
 
+            TNonreplicatedPartitionConfig::
+                TNonreplicatedPartitionConfigInitParams params{
+                    ToLogicalBlocks(replicaDevices, DefaultBlockSize),
+                    TNonreplicatedPartitionConfig::TVolumeInfo{
+                        Now(),
+                        // only SSD/HDD distinction matters
+                        NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+                    name,
+                    DefaultBlockSize,
+                    VolumeActorId};
+            params.IOMode = ioMode;
             auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-                ToLogicalBlocks(replicaDevices, DefaultBlockSize),
-                ioMode,
-                name,
-                DefaultBlockSize,
-                TNonreplicatedPartitionConfig::TVolumeInfo{
-                    Now(),
-                    // only SSD/HDD distinction matters
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
-                VolumeActorId,
-                false,                 // muteIOErrors
-                THashSet<TString>(),   // freshDeviceIds
-                THashSet<TString>(),   // laggingDeviceIds
-                TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-                false,   // maxTimedOutDeviceStateDurationOverridden
-                true     // useSimpleMigrationBandwidthLimiter
-            );
+                std::move(params));
 
             auto part = std::make_unique<TNonreplicatedPartitionActor>(
                 config,
@@ -208,7 +204,9 @@ struct TTestEnv
     std::unique_ptr<TEvNonreplPartitionPrivate::TEvRangeResynced> ResyncRange(
         ui64 start,
         ui64 end,
-        TVector<int> idxs)
+        TVector<int> idxs,
+        NProto::EResyncPolicy resyncPolicy =
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB)
     {
         auto sender = Runtime.AllocateEdgeActor(0);
 
@@ -223,14 +221,15 @@ struct TTestEnv
             replicas.push_back(Replicas[idx]);
         }
 
-        auto actor = std::make_unique<TResyncRangeActor>(
+        std::unique_ptr<IActor> actor = MakeResyncRangeActor(
             std::move(requestInfo),
             DefaultBlockSize,
             TBlockRange64::MakeClosedInterval(start, end),
             std::move(replicas),
-            "", // rwClientId
-            BlockDigestGenerator
-        );
+            "",   // rwClientId
+            BlockDigestGenerator,
+            resyncPolicy,
+            EBlockRangeChecksumStatus::Unknown);
 
         Runtime.Register(actor.release(), 0);
 
@@ -591,6 +590,280 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             auto response = env.ResyncRange(0, 3071, {0, 1});
             UNIT_ASSERT(HasError(response->GetError()));
             UNIT_ASSERT_VALUES_EQUAL("write error", response->GetError().GetMessage());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHealMinorBlocksMismatchBlockByBlock)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.WriteReplica(0, 0, 1023, 'A');
+        env.WriteReplica(1, 0, 1023, 'A');
+        env.WriteReplica(2, 0, 1023, 'A');
+
+        // Make one minor error in each replica.
+        env.WriteReplica(0, 10, 10, 'x');
+        env.WriteReplica(1, 11, 11, 'x');
+        env.WriteReplica(2, 12, 12, 'x');
+
+        auto response = env.ResyncRange(
+            0,
+            1023,
+            {0, 1, 2},
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        // Check replica 0
+        {
+            auto blocks = env.ReadReplica(0, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 1
+        {
+            auto blocks = env.ReadReplica(1, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 2
+        {
+            auto blocks = env.ReadReplica(2, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+    }
+
+    void DoShouldNotReplaceMajorBlocksMismatchAccordingToPolicy(
+        NProto::EResyncPolicy resyncPolicy)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.WriteReplica(0, 0, 1023, 'A');
+        env.WriteReplica(1, 0, 1023, 'A');
+        env.WriteReplica(2, 0, 1023, 'A');
+
+        // Make major error.
+        const ui64 blockWithMajorError = 10;
+        env.WriteReplica(0, blockWithMajorError, blockWithMajorError, 'x');
+        env.WriteReplica(1, blockWithMajorError, blockWithMajorError, 'y');
+
+        auto response = env.ResyncRange(0, 1023, {0, 1, 2}, resyncPolicy);
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        // Check replica 0
+        {
+            auto blocks = env.ReadReplica(0, 0, 1023);
+            int i = 0;
+            for (const auto& block: blocks) {
+                char expected = i == blockWithMajorError ? 'x' : 'A';
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, expected), block);
+                ++i;
+            }
+        }
+
+        // Check replica 1
+        {
+            auto blocks = env.ReadReplica(1, 0, 1023);
+            int i = 0;
+            for (const auto& block: blocks) {
+                char expected = i == blockWithMajorError ? 'y' : 'A';
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, expected), block);
+                ++i;
+            }
+        }
+
+        // Check replica 2
+        {
+            auto blocks = env.ReadReplica(2, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotReplaceMajorBlocksMismatchAccordingToPolicy)
+    {
+        DoShouldNotReplaceMajorBlocksMismatchAccordingToPolicy(
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB);
+    }
+
+    Y_UNIT_TEST(ShouldNotReplaceMajorBlocksMismatchAccordingToPolicyBlockByBlock)
+    {
+        DoShouldNotReplaceMajorBlocksMismatchAccordingToPolicy(
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+    }
+
+    Y_UNIT_TEST(ShouldHealMinorErrorsAndSelectBestHealerForMajorSource)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.WriteReplica(0, 0, 1023, 'A');
+        env.WriteReplica(1, 0, 1023, 'A');
+        env.WriteReplica(2, 0, 1023, 'A');
+
+        // Add two minor errors for replica #0 and #1 each.
+        // For replica #2 add only one minor error, it should be elected as
+        // major source.
+        env.WriteReplica(0, 11, 11, 'x');
+        env.WriteReplica(0, 12, 12, 'x');
+        env.WriteReplica(1, 13, 13, 'x');
+        env.WriteReplica(1, 14, 14, 'x');
+        env.WriteReplica(2, 15, 15, 'x');
+
+        // Add major error
+        env.WriteReplica(0, 20, 20, 'w');
+        env.WriteReplica(1, 20, 20, 'z');
+
+        auto response = env.ResyncRange(
+            0,
+            1023,
+            {0, 1, 2},
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        // Check replica 0
+        {
+            auto blocks = env.ReadReplica(0, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 1
+        {
+            auto blocks = env.ReadReplica(1, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 2
+        {
+            auto blocks = env.ReadReplica(2, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSelectFirstReplicaAsBestHealerWhenAllHaveSameMinorErrors)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.WriteReplica(0, 0, 1023, 'A');
+        env.WriteReplica(1, 0, 1023, 'A');
+        env.WriteReplica(2, 0, 1023, 'A');
+
+        // Add two minor errors for each replica.
+        env.WriteReplica(0, 11, 11, 'x');
+        env.WriteReplica(0, 12, 12, 'x');
+        env.WriteReplica(1, 13, 13, 'x');
+        env.WriteReplica(1, 14, 14, 'x');
+        env.WriteReplica(2, 15, 15, 'x');
+        env.WriteReplica(2, 16, 16, 'x');
+
+        // Add major error
+        env.WriteReplica(1, 20, 20, 'w');
+        env.WriteReplica(2, 20, 20, 'z');
+        env.WriteReplica(1, 30, 40, 'w');
+        env.WriteReplica(2, 30, 40, 'z');
+
+        // Replica #0 should be used for fixing major error.
+        auto response = env.ResyncRange(
+            0,
+            1023,
+            {0, 1, 2},
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        // Check replica 0
+        {
+            auto blocks = env.ReadReplica(0, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 1
+        {
+            auto blocks = env.ReadReplica(1, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 2
+        {
+            auto blocks = env.ReadReplica(2, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotMessReplicaWhenOnlyMinorErrorsHealed)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.WriteReplica(0, 0, 1023, 'A');
+        env.WriteReplica(1, 0, 1023, 'A');
+        env.WriteReplica(2, 0, 1023, 'A');
+
+        // Add minor and major errors for replica #1 and #2.
+        env.WriteReplica(1, 0, 0, 'y');   // block 0 - major
+        env.WriteReplica(1, 1, 1, 'y');   // block 1 - minor
+        env.WriteReplica(2, 0, 0, 'z');   // block 0 - major
+        env.WriteReplica(2, 2, 2, 'z');   // block 2 - minor
+
+        auto response = env.ResyncRange(
+            0,
+            1023,
+            {0, 1, 2},
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        // Check replica 0
+        {
+            auto blocks = env.ReadReplica(0, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 1
+        {
+            auto blocks = env.ReadReplica(1, 0, 1023);
+            size_t blockIndx = 0;
+            for (const auto& block: blocks) {
+                const char expected = (blockIndx == 0) ? 'y' : 'A';
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, expected),
+                    block);
+                ++blockIndx;
+            }
+        }
+
+        // Check replica 2
+        {
+            size_t blockIndx = 0;
+            auto blocks = env.ReadReplica(2, 0, 1023);
+            for (const auto& block: blocks) {
+                const char expected = (blockIndx == 0) ? 'z' : 'A';
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, expected),
+                    block);
+                ++blockIndx;
+            }
         }
     }
 }

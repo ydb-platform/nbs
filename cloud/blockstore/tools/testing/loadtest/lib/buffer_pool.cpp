@@ -1,5 +1,7 @@
 #include "buffer_pool.h"
 
+#include <cloud/storage/core/libs/common/page_size.h>
+
 #include <util/generic/singleton.h>
 #include <util/memory/alloc.h>
 #include <util/system/align.h>
@@ -25,7 +27,7 @@ class TBufferPool final
     : public IAllocator
 {
 private:
-    static constexpr size_t PageSize = 4*1024;
+    const size_t PageSize = GetPlatformPageSize();
     static constexpr size_t NumBuckets = 1024;
     static constexpr size_t MaxSmallAlloc = 32*1024;
 

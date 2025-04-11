@@ -150,6 +150,8 @@ func toEncryptionMode(
 		return protos.EEncryptionMode_NO_ENCRYPTION, nil
 	case types.EncryptionMode_ENCRYPTION_AES_XTS:
 		return protos.EEncryptionMode_ENCRYPTION_AES_XTS, nil
+	case types.EncryptionMode_ENCRYPTION_AT_REST:
+		return protos.EEncryptionMode_ENCRYPTION_AT_REST, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
 			"unknown encryption mode %v",
@@ -167,6 +169,8 @@ func fromEncryptionMode(
 		return types.EncryptionMode_NO_ENCRYPTION, nil
 	case protos.EEncryptionMode_ENCRYPTION_AES_XTS:
 		return types.EncryptionMode_ENCRYPTION_AES_XTS, nil
+	case protos.EEncryptionMode_ENCRYPTION_AT_REST:
+		return types.EncryptionMode_ENCRYPTION_AT_REST, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
 			"unknown encryption mode %v",
@@ -231,14 +235,39 @@ func getEncryptionDesc(
 		return nil, err
 	}
 
-	resultDesc := types.EncryptionDesc{
-		Mode: encryptionMode,
-		Key: &types.EncryptionDesc_KeyHash{
-			KeyHash: encryptionDesc.KeyHash,
-		},
+	if encryptionDesc.EncryptionKey != nil && len(encryptionDesc.KeyHash) != 0 {
+		return nil, errors.NewNonRetriableErrorf(
+			"ill-formed EncryptionDesc: EncryptionKey and KeyHash cannot be " +
+				"provided simultaneously")
 	}
 
-	return &resultDesc, nil
+	var resultDesc *types.EncryptionDesc
+
+	if encryptionDesc.EncryptionKey != nil {
+		resultDesc = &types.EncryptionDesc{
+			Mode: encryptionMode,
+			Key: &types.EncryptionDesc_KmsKey{
+				KmsKey: &types.KmsKey{
+					KekId:        encryptionDesc.EncryptionKey.KekId,
+					EncryptedDEK: encryptionDesc.EncryptionKey.EncryptedDEK,
+					TaskId:       encryptionDesc.EncryptionKey.TaskId,
+				},
+			},
+		}
+	} else if len(encryptionDesc.KeyHash) != 0 {
+		resultDesc = &types.EncryptionDesc{
+			Mode: encryptionMode,
+			Key: &types.EncryptionDesc_KeyHash{
+				KeyHash: encryptionDesc.KeyHash,
+			},
+		}
+	} else {
+		resultDesc = &types.EncryptionDesc{
+			Mode: encryptionMode,
+		}
+	}
+
+	return resultDesc, nil
 }
 
 func toPlacementStrategy(
@@ -307,6 +336,10 @@ func fromScanDiskProgress(
 ////////////////////////////////////////////////////////////////////////////////
 
 func wrapError(e error) error {
+	return wrapErrorWithInternalFlag(e, true)
+}
+
+func wrapErrorWithInternalFlag(e error, internal bool) error {
 	if IsNotFoundError(e) {
 		return errors.NewSilentNonRetriableError(e)
 	}
@@ -321,9 +354,6 @@ func wrapError(e error) error {
 			return errors.NewRetriableError(e)
 		}
 
-		// Public errors handling.
-		// TODO: Should be reconsidered after NBS-1853 when ClientError will
-		// have public/internal flag.
 		switch clientErr.Code {
 		case nbs_client.E_PRECONDITION_FAILED:
 			e = errors.NewDetailedError(
@@ -331,7 +361,7 @@ func wrapError(e error) error {
 				&errors.ErrorDetails{
 					Code:     codes.PreconditionFailed,
 					Message:  clientErr.Message,
-					Internal: false,
+					Internal: internal,
 				},
 			)
 		case nbs_client.E_RESOURCE_EXHAUSTED:
@@ -340,7 +370,7 @@ func wrapError(e error) error {
 				&errors.ErrorDetails{
 					Code:     codes.ResourceExhausted,
 					Message:  clientErr.Message,
-					Internal: false,
+					Internal: internal,
 				},
 			)
 		}
@@ -379,6 +409,22 @@ func IsGetChangedBlocksNotSupportedError(e error) bool {
 	// TODO: don't check E_ARGUMENT after https://github.com/ydb-platform/nbs/issues/1297#issuecomment-2149816298
 	return clientErr.Code == nbs_client.E_ARGUMENT && strings.Contains(clientErr.Error(), "Disk registry based disks can not handle GetChangedBlocks requests for normal checkpoints") ||
 		clientErr.Code == nbs_client.E_NOT_IMPLEMENTED
+}
+
+func IsAlterPlacementGroupMembershipPublicError(e error) bool {
+	clientErr := nbs_client.GetClientError(e)
+
+	if clientErr.Code == nbs_client.E_RESOURCE_EXHAUSTED &&
+		strings.Contains(clientErr.Message, "max disk count in group exceeded") {
+		return true
+	}
+
+	if clientErr.Code == nbs_client.E_PRECONDITION_FAILED &&
+		strings.Contains(clientErr.Message, "failed to add some disks") {
+		return true
+	}
+
+	return false
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2041,7 +2087,11 @@ func (c *client) alterPlacementGroupMembership(
 		disksToRemove,
 		configVersion,
 	)
-	return wrapError(err)
+
+	return wrapErrorWithInternalFlag(
+		err,
+		!IsAlterPlacementGroupMembershipPublicError(err),
+	)
 }
 
 func (c *client) listPlacementGroups(

@@ -4,6 +4,8 @@
 
 namespace NCloud::NBlockStore {
 
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::EEncryptionMode EncryptionModeFromString(const TString& str);
 
 TString EncryptionModeToString(NProto::EEncryptionMode encryptionMode);

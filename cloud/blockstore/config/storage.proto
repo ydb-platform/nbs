@@ -5,6 +5,7 @@ package NCloud.NBlockStore.NProto;
 import "cloud/storage/core/protos/authorization_mode.proto";
 import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/config_dispatcher_settings.proto";
+import "cloud/storage/core/protos/media.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
@@ -45,6 +46,40 @@ enum EVolumePreemptionType
     PREEMPTION_MOVE_MOST_HEAVY = 1;
     // Move least resource consumig disk
     PREEMPTION_MOVE_LEAST_HEAVY = 2;
+}
+
+message TLinkedDiskFillBandwidth
+{
+    optional NCloud.NProto.EStorageMediaKind MediaKind = 1;
+
+    // Max linked disk fill bandwidth in MiB/s when used as source.
+    optional uint32 ReadBandwidth = 2;
+
+    // Max linked disk fill bandwidth in MiB/s when used as destination.
+    optional uint32 WriteBandwidth = 3;
+
+    // Max linked disk fill io depth when used as source.
+    optional uint32 ReadIoDepth = 4;
+
+    // Max linked disk fill io depth when used as destination.
+    optional uint32 WriteIoDepth = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EResyncPolicy
+{
+    // Fix only minor mismatches by 4MiB range.
+    RESYNC_POLICY_MINOR_4MB = 0;
+
+    // Fix minor and replace major mismatches by 4MiB range.
+    RESYNC_POLICY_MINOR_AND_MAJOR_4MB = 1;
+
+    // Fix only minor mismatches with block size range.
+    RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK = 2;
+
+    // Fix minor and replace major mismatches with block size range.
+    RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1113,4 +1148,60 @@ message TStorageServiceConfig
 
     // Timeout for TDestroyVolumeActor (in milliseconds)
     optional uint32 DestroyVolumeTimeout = 405;
+
+    // Minimum compacted blob size (in bytes) that lets us write the data as
+    // a merged blob, otherwise it is written as a mixed blob.
+    optional uint32 CompactionMergedBlobThresholdHDD = 406;
+
+    // The maximum number of BS groups that we can warm up for each channel at the bootstrap.
+    optional uint32 BSGroupsPerChannelToWarmup = 407;
+
+    // Timeout to warm up connections to BS groups at the bootstrap.
+    optional uint32 WarmupBSGroupConnectionsTimeout = 408;
+
+    // Allow SysViewProcessor and StatisticsAggregator tablets for compatibility
+    // with newer versions of ydb (24-2 and older)
+    optional bool AllowAdditionalSystemTablets = 409;
+
+    // Maximum size of CheckRange request
+    optional uint32 CheckRangeMaxRangeSize = 410;
+
+    // Enables lagging devices feature for mirror2 disks.
+    optional bool LaggingDevicesForMirror2DisksEnabled = 411;
+
+    // Enables lagging devices feature for mirror3 disks.
+    optional bool LaggingDevicesForMirror3DisksEnabled = 412;
+
+    // Devices that are not responding for more than this value considered as
+    // candidates to become lagging.
+    // See doc/blockstore/storage/dynamic_io_mirroring_proposal.md
+    optional uint32 LaggingDeviceTimeoutThreshold = 413;
+
+    // Lagging devices are monitored by periodic requests at this interval.
+    optional uint32 LaggingDevicePingInterval = 414;
+
+    // Disable throttling of ZeroBlocks requests for
+    // YDB-based ('network-ssd', 'network-hdd') disks.
+    optional bool DisableZeroBlocksThrottlingForYDBBasedDisks = 415;
+
+    // Local disk async deallocation and sync allocation
+    optional bool LocalDiskAsyncDeallocationEnabled = 416;
+
+    // Use SSL for dynamic node registration.
+    optional bool NodeRegistrationUseSsl = 417;
+
+    // Scrubber policy for resync.
+    optional EResyncPolicy ScrubbingResyncPolicy = 418;
+    // Resync policy for auto-resync.
+    optional EResyncPolicy AutoResyncPolicy = 419;
+    // Resync policy for force-resync.
+    optional EResyncPolicy ForceResyncPolicy = 420;
+
+    // Linked disk fill bandwidth settings.
+    repeated TLinkedDiskFillBandwidth LinkedDiskFillBandwidth = 421;
+
+    // Whether the volume should start resync after a successful lagging agent
+    // migration. Resync is started with a special flag and will emit critical
+    // events for any mismatch it finds.
+    optional bool ResyncAfterLaggingAgentMigration = 422;
 }

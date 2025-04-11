@@ -58,25 +58,24 @@ jobs:
       uses: actions/checkout@v4
       if: github.event.pull_request.head.sha != ''
       with:
-        submodules: true
+        submodules: false
+        sparse-checkout: '.github'
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
     - name: Rebase PR
       if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
       shell: bash
       run: |
-        set -x
-        # git config is needed for some reason, idk why it works without
-        # it on self-hosted runners
-        git config user.email "librarian@nebius.com"
-        git config user.name "Rebase Robotovich"
+        git config user.email "robot-nbs@nebius.com"
+        git config user.name "Robot NBS"
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git rebase origin/${{ github.event.pull_request.base.ref }}
     - name: Checkout
       uses: actions/checkout@v4
       if: github.event.pull_request.head.sha == ''
       with:
-        submodules: true
+        submodules: false
+        sparse-checkout: '.github'
     - name: Prepare VM
       uses: ./.github/actions/prepare
     - name: Prepare env

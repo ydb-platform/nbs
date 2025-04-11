@@ -42,12 +42,12 @@ func newContext() context.Context {
 	)
 }
 
-func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
+func newYDB(ctx context.Context, t *testing.T) *persistence.YDBClient {
 	endpoint := os.Getenv("YDB_ENDPOINT")
 	database := os.Getenv("YDB_DATABASE")
 	rootPath := "tasks"
 
-	return persistence.NewYDBClient(
+	db, err := persistence.NewYDBClient(
 		ctx,
 		&persistence_config.PersistenceConfig{
 			Endpoint: &endpoint,
@@ -56,6 +56,9 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 		},
 		metrics_empty.NewRegistry(),
 	)
+
+	require.NoError(t, err)
+	return db
 }
 
 func newStorage(
@@ -112,6 +115,7 @@ func newDefaultConfig() *tasks_config.TasksConfig {
 	clearEndedTasksLimit := uint64(10)
 	maxRetriableErrorCount := uint64(2)
 	hangingTaskTimeout := "100s"
+	maxPanicCount := uint64(0)
 	inflightTaskPerNodeLimits := map[string]int64{
 		"long": inflightLongTaskPerNodeLimit,
 	}
@@ -132,6 +136,7 @@ func newDefaultConfig() *tasks_config.TasksConfig {
 		ClearEndedTasksLimit:                &clearEndedTasksLimit,
 		MaxRetriableErrorCount:              &maxRetriableErrorCount,
 		HangingTaskTimeout:                  &hangingTaskTimeout,
+		MaxPanicCount:                       &maxPanicCount,
 		InflightTaskPerNodeLimits:           inflightTaskPerNodeLimits,
 	}
 }
@@ -695,13 +700,12 @@ func TestTasksInitInfra(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = s.startRunners(ctx)
+	err := s.startRunners(ctx)
 	require.NoError(t, err)
 }
 
@@ -709,13 +713,12 @@ func TestTasksRunningOneTask(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -734,8 +737,7 @@ func TestTasksInflightLimit(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -749,7 +751,7 @@ func TestTasksInflightLimit(t *testing.T) {
 		registry,
 	)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = registerLongTask(s.registry)
@@ -809,11 +811,14 @@ func TestTasksInflightLimit(t *testing.T) {
 	doublerTaskErrs := make(chan error)
 	for _, id := range doublerTaskIDs {
 		go func(id string) {
+			// Doubler tasks must finish fast enough: long tasks must not
+			// exhaust the whole limit on inflight tasks due to the limit on
+			// infilght long tasks.
 			_, err := waitTaskWithTimeout(
 				ctx,
 				s.scheduler,
 				id,
-				2*time.Second,
+				5*time.Second,
 			)
 			doublerTaskErrs <- err
 		}(id)
@@ -852,13 +857,12 @@ func TestTasksSendEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -916,13 +920,12 @@ func TestTasksShouldNotRunTasksThatWereNotRegisteredForExecution(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.registry.Register("sixTimes", func() tasks.Task {
@@ -960,13 +963,12 @@ func TestTasksShouldRestoreRunningAfterRetriableError(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerUnstableTask(s.registry)
+	err := registerUnstableTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -989,13 +991,12 @@ func TestTasksShouldFailRunningAfterRetriableErrorCountExceeded(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerUnstableTask(s.registry)
+	err := registerUnstableTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1023,15 +1024,14 @@ func TestTasksShouldNotRestoreRunningAfterNonRetriableError(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
 	failure := errors.NewNonRetriableError(assert.AnError)
 
-	err = registerFailureTask(s.registry, failure)
+	err := registerFailureTask(s.registry, failure)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1053,13 +1053,12 @@ func TestTasksRunningTwoConcurrentTasks(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1086,13 +1085,12 @@ func TestTasksRunningTwoConcurrentTasksReverseWaiting(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1121,13 +1119,12 @@ func TestTasksRunningTwoConcurrentTasksOnTwoRunners(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1156,13 +1153,12 @@ func TestTasksRunningTwoConcurrentTasksOnTwoRunnersReverseWaiting(t *testing.T) 
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1189,13 +1185,12 @@ func TestTasksRunningDependentTask(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = registerSixTimesTask(s.registry, s.scheduler)
@@ -1219,13 +1214,12 @@ func TestTasksRunningDependentTaskOnTwoRunners(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = registerSixTimesTask(s.registry, s.scheduler)
@@ -1248,13 +1242,12 @@ func TestTasksRunningRegularTasks(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = s.registry.RegisterForExecution("regular", func() tasks.Task {
+	err := s.registry.RegisterForExecution("regular", func() tasks.Task {
 		return &regularTask{}
 	})
 	require.NoError(t, err)
@@ -1310,12 +1303,27 @@ func newHangingTaskTestConfig() *tasks_config.TasksConfig {
 	return config
 }
 
+func waitForValue(t *testing.T, ch chan (int), expectedValue int) {
+	for {
+		value, ok := <-ch
+		if !ok {
+			require.Fail(t, fmt.Sprintf(
+				"Channel is closed, but value %v was not received",
+				expectedValue,
+			))
+		}
+
+		if value == expectedValue {
+			return
+		}
+	}
+}
+
 func TestHangingTasksMetrics(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -1323,7 +1331,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	config := newHangingTaskTestConfig()
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
-	err = registerHangingTask(s.registry)
+	err := registerHangingTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1333,57 +1341,58 @@ func TestHangingTasksMetrics(t *testing.T) {
 	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
-	gaugeSetWg := sync.WaitGroup{}
-	gaugeUnsetWg := sync.WaitGroup{}
-
-	totalHangingTaskCountGaugeSetCall := registry.GetGauge(
-		"totalHangingTaskCount",
-		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(1),
-	).Return(mock.Anything)
+	// When a value is set to a metric, this value is also sent to the
+	// corresponging channel (without blocking).
+	// The test reads values from these channels and validates them.
+	totalHangingTasksChannel := make(chan int, 100000)
+	hangingTasksChannel := make(chan int, 100000)
 
 	registry.GetGauge(
 		"totalHangingTaskCount",
 		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		totalHangingTaskCountGaugeSetCall,
-	).Return(mock.Anything)
-
-	hangingTasksGaugeSetCall := registry.GetGauge(
+	).On("Set", float64(1)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			totalHangingTasksChannel <- 1
+		},
+	)
+	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			gaugeSetWg.Done()
+			hangingTasksChannel <- 1
 		},
 	)
-	gaugeSetWg.Add(1)
 
+	registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "tasks.hanging"},
+	).On("Set", float64(0)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			totalHangingTasksChannel <- 0
+		},
+	)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		hangingTasksGaugeSetCall,
-	).Return(mock.Anything).Run(
+	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			gaugeUnsetWg.Done()
+			hangingTasksChannel <- 0
 		},
 	)
-	gaugeUnsetWg.Add(1)
 
-	gaugeSetWg.Wait()
+	// Must see value "1" when task becomes hanging.
+	waitForValue(t, totalHangingTasksChannel, 1)
+	waitForValue(t, hangingTasksChannel, 1)
+
 	_, err = s.scheduler.CancelTask(ctx, taskID)
 	require.NoError(t, err)
 	_ = s.scheduler.WaitTaskEnded(ctx, taskID)
-	gaugeUnsetWg.Wait()
+
+	// Must see value "0" when task stops being hanging.
+	waitForValue(t, totalHangingTasksChannel, 0)
+	waitForValue(t, hangingTasksChannel, 0)
+
 	registry.AssertAllExpectations(t)
 }
 
@@ -1391,8 +1400,7 @@ func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testi
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -1400,7 +1408,7 @@ func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testi
 	config := newHangingTaskTestConfig()
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
-	err = registerLongTaskNotForExecution(s.registry)
+	err := registerLongTaskNotForExecution(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1428,8 +1436,7 @@ func TestListerMetricsCleanup(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	// Do not defer db.Close(ctx) in this test.
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -1437,7 +1444,7 @@ func TestListerMetricsCleanup(t *testing.T) {
 	config := newHangingTaskTestConfig()
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
-	err = registerHangingTask(s.registry)
+	err := registerHangingTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1447,74 +1454,76 @@ func TestListerMetricsCleanup(t *testing.T) {
 	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
-	gaugeSetWg := sync.WaitGroup{}
-	gaugeUnsetWg := sync.WaitGroup{}
+	// When a value is set to a metric, this value is also sent to the
+	// corresponging channel (without blocking).
+	// The test reads values from these channels and validates them.
+	totalHangingTasksChannel := make(chan int, 100000)
+	hangingTasksChannel := make(chan int, 100000)
+	runningTasksChannel := make(chan int, 100000)
 
-	runningTaskCountGaugeSetCall := registry.GetGauge(
+	registry.GetGauge(
 		"running",
 		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(1),
-	).Return(mock.Anything)
-
-	totalHangingTaskCountGaugeSetCall := registry.GetGauge(
+	).On("Set", float64(1)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			runningTasksChannel <- 1
+		},
+	)
+	registry.GetGauge(
 		"totalHangingTaskCount",
 		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(1),
-	).Return(mock.Anything)
-
-	gaugeSetWg.Add(1)
-	hangingTasksGaugeSetCall := registry.GetGauge(
+	).On("Set", float64(1)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			totalHangingTasksChannel <- 1
+		},
+	)
+	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			gaugeSetWg.Done()
+			hangingTasksChannel <- 1
 		},
 	)
 
 	registry.GetGauge(
 		"running",
 		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		runningTaskCountGaugeSetCall,
-	).Return(mock.Anything)
-
+	).On("Set", float64(0)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			runningTasksChannel <- 0
+		},
+	)
 	registry.GetGauge(
 		"totalHangingTaskCount",
 		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		totalHangingTaskCountGaugeSetCall,
-	).Return(mock.Anything)
-
-	gaugeUnsetWg.Add(1)
+	).On("Set", float64(0)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			totalHangingTasksChannel <- 0
+		},
+	)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		hangingTasksGaugeSetCall,
-	).Return(mock.Anything).Run(
+	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			gaugeUnsetWg.Done()
+			hangingTasksChannel <- 0
 		},
 	)
 
-	gaugeSetWg.Wait()
+	waitForValue(t, runningTasksChannel, 1)
+	// Must see value "1" when task becomes hanging.
+	waitForValue(t, totalHangingTasksChannel, 1)
+	waitForValue(t, hangingTasksChannel, 1)
+
 	// Close connection to YDB to enforce collectListerMetricsTask failure.
 	err = db.Close(ctx)
 	require.NoError(t, err)
-	gaugeUnsetWg.Wait()
+
+	// When collectListerMetricsTask fails, it must clean up metrics.
+	waitForValue(t, runningTasksChannel, 0)
+	waitForValue(t, totalHangingTasksChannel, 0)
+	waitForValue(t, hangingTasksChannel, 0)
+
 	registry.AssertAllExpectations(t)
 }

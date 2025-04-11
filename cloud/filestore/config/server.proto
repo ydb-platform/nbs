@@ -90,8 +90,8 @@ message TLocalServiceConfig
     // Aligment needed for buffers when using direct io
     optional uint32 DirectIoAlign = 10;
 
-    // Enable Writeback cache on guest (fuse client)
-    optional bool GuestWritebackCacheEnabled = 11;
+    // Enable write-back cache on guest (FUSE client)
+    optional bool GuestWriteBackCacheEnabled = 11;
 
     // Async processing of destroy handle requests
     optional bool AsyncDestroyHandleEnabled = 12;
@@ -104,6 +104,19 @@ message TLocalServiceConfig
 
     // Number of nodes to clean in each iteration
     optional uint32 NodeCleanupBatchSize = 15;
+
+    // Enable zero copy for read/write requests
+    optional bool ZeroCopyEnabled = 16;
+
+    // Guest (FUSE client) will use direct IO for read/write requests
+    // regardless of whether file is opened with O_DIRECT or not
+    optional bool GuestPageCacheDisabled = 17;
+
+    // Don't support extended attributes
+    optional bool ExtendedAttributesDisabled = 18;
+
+    // Enable write-back cache on FUSE server
+    optional bool ServerWriteBackCacheEnabled = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

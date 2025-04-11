@@ -17,6 +17,22 @@ enum EBlobIndexOpsPriority
     BIOP_FAIR = 2;
 }
 
+enum EGuestCachingType
+{
+    // No caching is allowed, every CreateHandle forces a guest page cache
+    // invalidation
+    GCT_NONE = 0;
+    // The second RDONLY open call will be allowed not to invalidate the guest
+    // page cache if there are no other write handles and mtime of the file
+    // has not been changed since the last cache invalidation within a given
+    // session
+    GCT_SECOND_READ = 1;
+    // Same as GCT_SECOND_READ but the first RDONLY open call is also allowed
+    // to use the cache if the conditions regarding the write handles and
+    // mtime are met
+    GCT_ANY_READ = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //  !!!IMPORTANT!!!
@@ -472,8 +488,8 @@ message TStorageConfig
     // Affects shard count calculation if AutomaticShardCreationEnabled is on.
     optional uint64 ShardAllocationUnit = 406;
 
-    // Enable Writeback cache on guest (fuse client)
-    optional bool GuestWritebackCacheEnabled = 407;
+    // Enable write-back cache on guest (FUSE client)
+    optional bool GuestWriteBackCacheEnabled = 407;
 
     // Ignore orphan sessions upon filestore sessions check during destruction
     // attempts.
@@ -517,4 +533,34 @@ message TStorageConfig
 
     // During the InMemoryIndexCache load, the time between the batches loading
     optional uint32 InMemoryIndexCacheLoadSchedulePeriod = 417;  // in ms
+
+    // Guest (FUSE client) will use direct IO for read/write requests
+    // regardless of whether file is opened with O_DIRECT or not
+    optional bool GuestPageCacheDisabled = 418;
+
+    // Don't support extended attributes
+    optional bool ExtendedAttributesDisabled = 419;
+
+    // Enable write-back cache on FUSE server
+    optional bool ServerWriteBackCacheEnabled = 420;
+
+    // If enabled, GarbageCompactionThresholdAverage in Cleanup will be compared
+    // to the scaled ratio of DeletedMarkersCount to UsedBlocksCount instead of
+    // UsedRangesCount.
+    optional bool CalculateCleanupScoreBasedOnUsedBlocksCount = 421;
+
+    // Use SSL for dynamic node registration.
+    optional bool NodeRegistrationUseSsl = 422;
+
+    // If set to true, in some cases the client is allowed not to invalidate the
+    // guest page cache associated with the inode. It is allowed only for
+    // handles to nodes that are not being edited and are already opened
+    // within a given session
+    optional bool GuestKeepCacheAllowed = 423;
+
+    optional EGuestCachingType GuestCachingType = 424;
+
+    // In addition to the actively opened handles the tablet will also keep
+    // in memory at most this number of the most recently used nodes
+    optional uint64 SessionHandleOffloadedStatsCapacity = 425;
 }

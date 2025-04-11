@@ -88,13 +88,15 @@ TVolumeState CreateVolumeState(
         MakeConfig(inactiveClientsTimeout, {}),
         CreateDiagnosticsConfig(),
         CreateVolumeMeta(pp),
-        {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
-        {},
+        {{TInstant::Seconds(100), CreateVolumeMeta(pp)}},   // metaHistory
+        {},                                                 // volumeParams
         throttlerConfig,
         std::move(clientInfos),
-        {},
+        {},   // mountHistory
         std::move(checkpointRequests),
-        false);
+        {},     // followers
+        false   // startPartitionsNeeded
+    );
 }
 
 TVolumeState CreateVolumeState(
@@ -108,12 +110,14 @@ TVolumeState CreateVolumeState(
         CreateDiagnosticsConfig(),
         CreateVolumeMeta(pp),
         {{TInstant::Seconds(100), CreateVolumeMeta(pp)}},   // metaHistory
-        {},
+        {},                                                 // volumeParams
         CreateThrottlerConfig(),
         std::move(clientInfos),
         TCachedVolumeMountHistory{VolumeHistoryCacheSize, {}},
         std::move(checkpointRequests),
-        false);
+        {},     // followers
+        false   // startPartitionsNeeded
+    );
 }
 
 TVolumeState CreateVolumeState(
@@ -126,15 +130,17 @@ TVolumeState CreateVolumeState(
             std::make_shared<NFeatures::TFeaturesConfig>()),
         CreateDiagnosticsConfig(),
         CreateVolumeMeta({}),
-        {}, // metaHistory
-        {},
+        {},   // metaHistory
+        {},   // volumeParams
         CreateThrottlerConfig(),
-        {},
+        {},   // clientInfos
         TCachedVolumeMountHistory{
             config.GetVolumeHistoryCacheSize(),
             std::move(history)},
-        {},
-        false};
+        {},     // checkpointRequests
+        {},     // followers
+        false   // startPartitionsNeeded
+    };
 }
 
 TActorId CreateActor(ui64 id)
@@ -1903,6 +1909,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 {},     // infos
                 {},     // mountHistory
                 {},     // checkpointRequests
+                {},     // followers
                 false   // startPartitionsNeeded
             };
         };
@@ -1972,6 +1979,49 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         }
 
         UNIT_ASSERT_EQUAL(deviceUUIDSExpected, devicesUUIDSActual);
+    }
+
+    Y_UNIT_TEST(FollowerDisks)
+    {
+        auto volumeState = CreateVolumeState();
+
+        volumeState.AddOrUpdateFollower(
+            TFollowerDiskInfo{.LinkUUID = "x", .FollowerDiskId = "vol1"});
+
+        const auto& followers = volumeState.GetAllFollowers();
+        UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
+        UNIT_ASSERT_VALUES_EQUAL("x", followers[0].LinkUUID);
+        UNIT_ASSERT_VALUES_EQUAL("vol1", followers[0].FollowerDiskId);
+        UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::None, followers[0].State);
+        UNIT_ASSERT_EQUAL(
+            std::nullopt,
+            followers[0].MigratedBytes);
+
+        volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
+            .LinkUUID = "x",
+            .FollowerDiskId = "vol1",
+            .State = TFollowerDiskInfo::EState::Preparing,
+            .MigratedBytes = 100});
+        UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
+        UNIT_ASSERT_EQUAL(
+            TFollowerDiskInfo::EState::Preparing,
+            followers[0].State);
+        UNIT_ASSERT_VALUES_EQUAL(100, *followers[0].MigratedBytes);
+
+        volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
+            .LinkUUID = "y",
+            .FollowerDiskId = "vol2"});
+        UNIT_ASSERT_VALUES_EQUAL(2, followers.size());
+        UNIT_ASSERT_VALUES_EQUAL("y", followers[1].LinkUUID);
+        UNIT_ASSERT_VALUES_EQUAL("vol2", followers[1].FollowerDiskId);
+
+        volumeState.RemoveFollower("x");
+        UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
+        UNIT_ASSERT_VALUES_EQUAL("y", followers[0].LinkUUID);
+        UNIT_ASSERT_VALUES_EQUAL("vol2", followers[0].FollowerDiskId);
+
+        volumeState.RemoveFollower("y");
+        UNIT_ASSERT_VALUES_EQUAL(0, followers.size());
     }
 }
 

@@ -1,49 +1,40 @@
 import argparse
-import json
 import logging
 import math
 import os
 import random
 import string
 import time
-from typing import Optional
-
 import grpc
-import nebius.compute.v1.disk_service_pb2 as disk_service_pb2
-import nebius.compute.v1.instance_service_pb2 as instance_service_pb2
+from typing import Optional
+import asyncio
 import requests
 import yaml
 import functools
 from github import Auth as GithubAuth
 from github import Github
-from nebius.common.v1.metadata_pb2 import ResourceMetadata
-from nebius.compute.v1.disk_pb2 import Disk, DiskSpec
-from nebius.compute.v1.disk_service_pb2 import (
+
+from nebius.sdk import SDK
+from nebius.aio.service_error import RequestError
+from nebius.api.nebius.common.v1 import ResourceMetadata
+from nebius.api.nebius.compute.v1 import (
+    DiskServiceClient,
+    DiskSpec,
     CreateDiskRequest,
+    InstanceServiceClient,
+    InstanceSpec,
+    CreateInstanceRequest,
+    AttachedDiskSpec,
+    NetworkInterfaceSpec,
+    IPAddress,
+    PublicIPAddress,
+    ResourcesSpec,
+    GetInstanceRequest,
+    DeleteInstanceRequest,
     DeleteDiskRequest,
     ListDisksRequest,
-)
-from nebius.compute.v1.disk_service_pb2_grpc import DiskServiceStub
-from nebius.compute.v1.instance_pb2 import (
-    AttachedDiskSpec,
     ExistingDisk,
-    Instance,
-    InstanceSpec,
-    ResourcesSpec,
 )
-from nebius.compute.v1.instance_service_pb2 import (
-    CreateInstanceRequest,
-    DeleteInstanceRequest,
-    GetInstanceRequest,
-)
-from nebius.compute.v1.instance_service_pb2_grpc import InstanceServiceStub
-from nebius.compute.v1.network_interface_pb2 import (
-    IPAddress,
-    NetworkInterfaceSpec,
-    PublicIPAddress,
-)
-from nebiusai import SDK, RetryInterceptor, backoff_linear_with_jitter
-from nebiusai.operations import OperationError
 
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
@@ -76,16 +67,32 @@ logger.setLevel(logging.INFO)
 
 
 DISK_NAME_PREFIX = "disk-"
-PRESETS = [
-    "2vcpu-8gb",
-    "4vcpu-16gb",
-    "8vcpu-32gb",
-    "16vcpu-64gb",
-    "32vcpu-128gb",
-    "48vcpu-192gb",
-    "64vcpu-256gb",
-    "80vcpu-320gb",
-]
+PRESETS = {
+    "cpu-d3": [
+        "4vcpu-16gb",
+        "8vcpu-32gb",
+        "16vcpu-64gb",
+        "32vcpu-128gb",
+        "48vcpu-192gb",
+        "64vcpu-256gb",
+        "96vcpu-384gb",
+        "128vcpu-512gb",
+        "160vcpu-640gb",
+        "192vcpu-768gb",
+        "224vcpu-896gb",
+        "256vcpu-1024gb",
+    ],
+    "cpu-e2": [
+        "2vcpu-8gb",
+        "4vcpu-16gb",
+        "8vcpu-32gb",
+        "16vcpu-64gb",
+        "32vcpu-128gb",
+        "48vcpu-192gb",
+        "64vcpu-256gb",
+        "80vcpu-320gb",
+    ],
+}
 
 
 def github_output(key: str, value: str, is_secret: bool = False):
@@ -205,18 +212,19 @@ done
 ./run.sh || exit 0
 """
 
-    cloud_init = {"runcmd": [script]}
-    cloud_init["manage_etc_hosts"] = "true"
-    # cloud_init["ssh_pwauth"] = False
-    cloud_init["users"] = [
-        {
-            "name": user,
-            "sudo": "ALL=(ALL) NOPASSWD:ALL",
-            "passwd": os.environ["VM_USER_PASSWD"],
-            "lock_passwd": False,
-            "shell": "/bin/bash",
-        }
-    ]
+    cloud_init = {
+        "runcmd": [script],
+        "manage_etc_hosts": "true",
+        "users": [
+            {
+                "name": user,
+                "sudo": "ALL=(ALL) NOPASSWD:ALL",
+                "passwd": os.environ["VM_USER_PASSWD"],
+                "lock_passwd": False,
+                "shell": "/bin/bash",
+            }
+        ],
+    }
     if ssh_keys:
         logger.info("Adding SSH keys to cloud-init")
         cloud_init["users"][0]["ssh_authorized_keys"] = ssh_keys
@@ -304,46 +312,54 @@ def find_runner_by_name(
     return runner_id
 
 
-def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
-    try:
-        request = CreateDiskRequest(
-            metadata=ResourceMetadata(
-                parent_id=args.parent_id,
-                name=DISK_NAME_PREFIX + args.name,
-            ),
-            spec=DiskSpec(
-                type=DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED,
-                size_gibibytes=args.disk_size,
-                source_image_id=args.image_id,
-            ),
-        )
-    except TypeError as e:
-        logger.error("Failed to create disk request")
-        raise e
-
+async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
+    service = DiskServiceClient(sdk)
+    disk_request = CreateDiskRequest(
+        metadata=ResourceMetadata(
+            parent_id=args.parent_id,
+            name=DISK_NAME_PREFIX + args.name,
+        ),
+        spec=DiskSpec(
+            type=DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED,
+            size_gibibytes=args.disk_size,
+            source_image_id=args.image_id,
+        ),
+    )
     if not args.apply:
-        logger.info("Would create disk with request %s", request)
+        logger.info("Would create disk with request %s", disk_request)
         return "0"
+    else:
+        logger.info("Creating disk with request %s", disk_request)
 
-    result = sdk.create_operation_and_get_result(
-        request=request,
-        service=DiskServiceStub,
-        service_ctor=disk_service_pb2,
-        meta_type=ResourceMetadata,
-        method_name="Create",
-        response_type=Disk,
-        timeout=args.timeout,
-        logger=logger,
+    request = None
+    try:
+        request = await service.create(disk_request)
+        await request.wait()
+    except TypeError:
+        logger.error("Failed to create disk request", exc_info=True)
+        raise
+    except RequestError as e:
+        logger.error("Failed to create disk with request: %s", disk_request)
+        logger.error("Response: %s", str(e.status), exc_info=True)
+        if request is not None:
+            logger.error("Removing created instance with ID %s", request.resource_id)
+            remove_vm_by_id(sdk, request.resource_id)
+        raise
+
+    logger.info(
+        "Created disk with ID %s status:%s",
+        request.resource_id,
+        request.status(),
     )
 
-    return result
+    return request.resource_id
 
 
 def retry_create_vm(func: callable) -> callable:
     @functools.wraps(func)
-    def wrapper(sdk: SDK, args: argparse.Namespace) -> callable:
+    async def wrapper(sdk: SDK, args: argparse.Namespace) -> callable:
         total_time_limit = 30 * 60
-        retry_interval = 5 * 60
+        retry_interval = 5
         start_time = time.time()
         attempt = 0
         while time.time() - start_time < total_time_limit:
@@ -353,10 +369,10 @@ def retry_create_vm(func: callable) -> callable:
                     time.ctime(time.time()),
                     attempt,
                 )
-                result = func(sdk, args, attempt)
+                result = await func(sdk, args, attempt)
                 logger.info("VM created successfully at %s", time.ctime(time.time()))
                 return result
-            except OperationError as e:
+            except RequestError as e:
                 attempt += 1
                 if time.time() - start_time >= total_time_limit:
                     if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
@@ -370,15 +386,15 @@ def retry_create_vm(func: callable) -> callable:
                         pr.create_issue_comment(comment)
                     raise
                 next_run_time = time.time() + retry_interval
-                logger.error("Failed to create VM: %s", e)
+                logger.error("Failed to create VM", exc_info=True)
                 logger.info("Next run will be at %s", time.ctime(next_run_time))
                 while (
                     time.time() < next_run_time
                     and time.time() - start_time < total_time_limit  # noqa: W503
                 ):
-                    time.sleep(1)
+                    await asyncio.sleep(1)
             except Exception as e:
-                logger.error("Failed to create VM: %s", e)
+                logger.error("Failed to create VM", exc_info=True)
                 raise e
         raise Exception("Time limit exceeded while retrying function")
 
@@ -386,7 +402,27 @@ def retry_create_vm(func: callable) -> callable:
 
 
 @retry_create_vm
-def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
+async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
+    # validate preset
+    if args.preset not in PRESETS.get(args.platform_id, []):
+        raise Exception(
+            f"Preset {args.preset} is not available for platform {args.platform_id}"
+        )
+
+    if os.environ.get("VM_USER_PASSWD") is None:
+        raise Exception("VM_USER_PASSWD environment variable is not set")
+
+    if os.environ.get("GITHUB_TOKEN") is None:
+        raise Exception("GITHUB_TOKEN environment variable is not set")
+
+    if (
+        args.disk_type in ["network-ssd-nonreplicated", "network-ssd-io-m3"]
+        and args.disk_size % 93 != 0  # noqa: W503
+    ):
+        raise ValueError(
+            "Disk size must be a multiple of 93GB for the selected disk type"
+        )
+
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
     gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
@@ -405,17 +441,6 @@ def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
             "No GitHub organization or team specified, skipping SSH key fetching"
         )
 
-    if args.platform_id == "cpu-e2" and args.preset not in PRESETS:
-        raise ValueError(f"Preset must be {', '.join(PRESETS)} for cpu-e2 platform")
-
-    if (
-        args.disk_type in ["network-ssd-nonreplicated", "network-ssd-io-m3"]
-        and args.disk_size % 93 != 0  # noqa: W503
-    ):
-        raise ValueError(
-            "Disk size must be a multiple of 93GB for the selected disk type"
-        )
-
     # We will downgrade every N failed attempts
     # if our preset is 80cpu and downgrade_after is 2 on third
     # attempt it will be downgraded to 64cpu
@@ -427,9 +452,9 @@ def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     logger.info("attempt mod args.downgrade_after = %d", attempt % args.downgrade_after)
     logger.info("attempt > 0 = %s", attempt > 0)
     if args.allow_downgrade and attempt % args.downgrade_after == 0 and attempt > 0:
-        current_preset_index = PRESETS.index(args.preset)
+        current_preset_index = PRESETS[args.platform_id].index(args.preset)
         if current_preset_index > 0:
-            args.preset = PRESETS[current_preset_index - 1]
+            args.preset = PRESETS[args.platform_id][current_preset_index - 1]
             logger.info("Downgrading to %s preset", args.preset)
 
     runner_github_label = generate_github_label()
@@ -447,68 +472,69 @@ def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     labels = args.labels
     labels["runner-label"] = runner_github_label
 
-    disk_id = create_disk(sdk, args)
-    try:
-        request = CreateInstanceRequest(
-            metadata=ResourceMetadata(
-                parent_id=args.parent_id,
-                name=args.name,
-                labels=labels,
+    disk_id = await create_disk(sdk, args)
+    service = InstanceServiceClient(sdk)
+    instance_request = CreateInstanceRequest(
+        metadata=ResourceMetadata(
+            parent_id=args.parent_id,
+            name=args.name,
+            labels=labels,
+        ),
+        spec=InstanceSpec(
+            stopped=False,
+            cloud_init_user_data=user_data,
+            resources=ResourcesSpec(platform=args.platform_id, preset=args.preset),
+            boot_disk=AttachedDiskSpec(
+                attach_mode=AttachedDiskSpec.AttachMode.READ_WRITE,
+                existing_disk=ExistingDisk(id=disk_id),
+                device_id="boot",
             ),
-            spec=InstanceSpec(
-                stopped=False,
-                cloud_init_user_data=user_data,
-                resources=ResourcesSpec(platform=args.platform_id, preset=args.preset),
-                boot_disk=AttachedDiskSpec(
-                    attach_mode=AttachedDiskSpec.AttachMode.READ_WRITE,
-                    existing_disk=ExistingDisk(id=disk_id),
-                    device_id="boot",
+            network_interfaces=[
+                NetworkInterfaceSpec(
+                    name="eth0",
+                    subnet_id=args.subnet_id,
+                    ip_address=IPAddress(),
+                    public_ip_address=PublicIPAddress(),
                 ),
-                network_interfaces=[
-                    NetworkInterfaceSpec(
-                        name="eth0",
-                        subnet_id=args.subnet_id,
-                        ip_address=IPAddress(),
-                        public_ip_address=PublicIPAddress(),
-                    ),
-                ],
-            ),
-        )
-    except TypeError as e:
-        logger.error("Failed to create VM, removing created disk")
-        remove_disk_by_id(sdk, args, disk_id)
-        raise e
-
+            ],
+        ),
+    )
     # Create the VM
     if not args.apply:
-        logger.info("Would create VM with request: %s", request)
+        logger.info("Would create VM with request: %s", instance_request)
         return
+    else:
+        logger.info("Creating VM with request: %s", instance_request)
 
+    request = None
     try:
-        result = sdk.create_operation_and_get_result(
-            request=request,
-            service=InstanceServiceStub,
-            service_ctor=instance_service_pb2,
-            method_name="Create",
-            response_type=Instance,
-            meta_type=ResourceMetadata,
-            timeout=args.timeout,
-            logger=logger,
-        )
-    except OperationError as e:
-        logger.error("Failed to create VM with request: %s", request)
-        logger.error("Response: %s", e)
-        resource_id = e.operation_result.operation.resource_id
-        if resource_id is not None:
-            logger.error("Removing created instance with ID %s", resource_id)
-            remove_vm_by_id(sdk, args, resource_id)
+        request = await service.create(instance_request)
+        await request.wait()
+    except TypeError as e:
+        logger.error("Failed to create VM, removing created disk", exc_info=True)
+        await remove_disk_by_id(sdk, args, disk_id)
+        raise e
 
-        remove_disk_by_id(sdk, args, disk_id)
+    except RequestError as e:
+        logger.error("Failed to create VM with request: %s", instance_request)
+        logger.error("Response: %s", str(e), exc_info=True)
+        if request is not None:
+            logger.error("Removing created instance with ID %s", request.resource_id)
+            await remove_vm_by_id(sdk, request.resource_id)
+            await remove_disk_by_id(sdk, args, disk_id)
+        else:
+            await remove_disk_by_id(sdk, args, disk_id)
+        raise e
 
-        raise
-    instance_id = result
-    instance_client = sdk.client(instance_service_pb2, InstanceServiceStub)
-    instance = instance_client.Get(GetInstanceRequest(id=instance_id))
+    instance_id = request.resource_id
+    logger.info("Operation status: %s", str(request.status()))
+    if request.status().code != grpc.StatusCode.OK:
+        logger.error("Failed to create VM with request: %s", instance_request)
+        await remove_vm_by_id(sdk, instance_id)
+        await remove_disk_by_id(sdk, args, disk_id)
+        raise RequestError("Failed to create VM")
+
+    instance = await service.get(GetInstanceRequest(id=instance_id))
     name = instance.metadata.name
     logger.info("Created VM %s", instance)
 
@@ -540,8 +566,8 @@ def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
             logger.error("Failed to register VM as Github Runner")
             raise ValueError("Failed to register VM as Github Runner")
     else:
-        logger.error("Failed to create VM with request: %s", request)
-        logger.error("Response: %s", result)
+        logger.error("Failed to create VM with request: %s", instance_request)
+        logger.error("Response: %s", request.status, exc_info=True)
 
 
 def remove_runner_from_github(
@@ -585,15 +611,15 @@ def remove_runner_from_github(
         logger.info("Would remove runner with name %s and id %s", vm_id, runner_id)
 
 
-def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name: str):
+async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name: str):
     if not args.apply:
         logger.info("Would delete disk with name %s", DISK_NAME_PREFIX + instance_name)
         return
 
     disk_id = None
+    service = DiskServiceClient(sdk)
     try:
-        disk_client = sdk.client(disk_service_pb2, DiskServiceStub)
-        result = disk_client.List(ListDisksRequest(parent_id=args.parent_id))
+        result = await service.list(ListDisksRequest(parent_id=args.parent_id))
         for disk in result.items:
             if disk.metadata.name == DISK_NAME_PREFIX + instance_name:
                 disk_id = disk.metadata.id
@@ -609,66 +635,48 @@ def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name: str):
         logger.exception(
             "Failed to get Disk with name %s", instance_name, exc_info=True
         )
-        logger.error("Response: %s", result)
+        logger.error("Response: %s", result, exc_info=True)
         raise e
 
-    remove_disk_by_id(sdk, args, disk_id)
+    await remove_disk_by_id(sdk, args, disk_id)
 
 
-def remove_disk_by_id(sdk: SDK, args: argparse.Namespace, disk_id: int = None):
+async def remove_disk_by_id(sdk: SDK, args: argparse.Namespace, disk_id: int = None):
     if not args.apply:
         logger.info("Would delete disk with ID %s", disk_id)
         return
-
+    service = DiskServiceClient(sdk)
     try:
-
-        result = sdk.create_operation_and_get_result(
-            request=DeleteDiskRequest(id=disk_id),
-            service=DiskServiceStub,
-            service_ctor=disk_service_pb2,
-            method_name="Delete",
-            response_type=Disk,
-            meta_type=ResourceMetadata,
-            timeout=args.timeout,
-            logger=logger,
-        )
-
+        request = await service.delete(DeleteDiskRequest(id=disk_id))
+        await request.wait()
         logger.info("Deleted Disk with ID %s", disk_id)
     except Exception as e:
         logger.exception("Failed to delete Disk with ID %s", disk_id, exc_info=True)
-        logger.error("Response: %s", result)
+        if request is not None:
+            logger.error("Response: %s", request.status)
         raise e
 
 
-def remove_vm_by_id(sdk: SDK, args: argparse.Namespace, instance_id: int = None) -> str:
+async def remove_vm_by_id(sdk: SDK, instance_id: int = None) -> str:
     instance_name = None
+    service = InstanceServiceClient(sdk)
     try:
-        instance_client = sdk.client(instance_service_pb2, InstanceServiceStub)
-        instance_name = instance_client.Get(
-            GetInstanceRequest(id=instance_id)
-        ).metadata.name
-        result = sdk.create_operation_and_get_result(
-            request=DeleteInstanceRequest(id=instance_id),
-            service=InstanceServiceStub,
-            service_ctor=instance_service_pb2,
-            method_name="Delete",
-            response_type=Instance,
-            meta_type=ResourceMetadata,
-            timeout=args.timeout,
-            logger=logger,
-        )
-
+        instance_name = await service.get(GetInstanceRequest(id=instance_id))
+        instance_name = instance_name.metadata.name
+        request = await service.delete(DeleteInstanceRequest(id=instance_id))
+        await request.wait()
         logger.info("Deleted VM with ID %s", instance_id)
 
     except Exception as e:
         logger.exception("Failed to delete VM with ID %s", instance_id, exc_info=True)
-        logger.error("Response: %s", result)
+        if request is not None:
+            logger.error("Response: %s", request.status)
         raise e
 
     return instance_name
 
 
-def remove_vm(sdk: SDK, args: argparse.Namespace):
+async def remove_vm(sdk: SDK, args: argparse.Namespace):
     remove_runner_from_github(
         args.github_repo_owner, args.github_repo, args.id, args.apply
     )
@@ -677,7 +685,7 @@ def remove_vm(sdk: SDK, args: argparse.Namespace):
         logger.info("Would delete VM with ID %s", args.id)
         return
 
-    instance_name = remove_vm_by_id(sdk, args, args.id)
+    instance_name = await remove_vm_by_id(sdk, args.id)
 
     if instance_name is None:
         logger.error(
@@ -686,10 +694,10 @@ def remove_vm(sdk: SDK, args: argparse.Namespace):
         )
         return
 
-    remove_disk_by_name(sdk, args, instance_name)
+    await remove_disk_by_name(sdk, args, instance_name)
 
 
-if __name__ == "__main__":
+async def main() -> None:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="action", help="Action to perform")
     parser.add_argument(
@@ -745,13 +753,19 @@ if __name__ == "__main__":
     )
     create.add_argument("--name", default="", help="VM name")
     create.add_argument("--platform-id", default="cpu-e2", help="Platform ID")
+    choices = []
+    for key in PRESETS.keys():
+        for preset in PRESETS[key]:
+            choices.append(preset)
+    choices = list(set(choices))
+    choices = sorted(choices, key=lambda x: int(x.split("vcpu")[0]))
     create.add_argument(
         "--preset",
         type=str,
-        choices=PRESETS,
+        choices=choices,
         default="2vcpu-8gb",
         required=True,
-        help="Instance preset",
+        help="Instance preset (some presets are available only for specific platforms)",
     )
     create.add_argument(
         "--disk-type",
@@ -834,20 +848,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    interceptor = RetryInterceptor(
-        max_retry_count=args.timeout / args.retry_time,
-        retriable_codes=[grpc.StatusCode.UNAVAILABLE],
-        back_off_func=backoff_linear_with_jitter(args.retry_time, 0),
-    )
-
-    with open(args.service_account_key, "r") as fp:
-        sdk = SDK(
-            service_account_key=json.load(fp),
-            endpoint=args.api_endpoint,
-            interceptor=interceptor,
-        )
+    sdk = SDK(credentials_file_name=args.service_account_key)
 
     if hasattr(args, "func"):
-        args.func(sdk, args)
+        await args.func(sdk, args)
     else:
         parser.print_help()
+
+
+if __name__ == "__main__":
+
+    asyncio.run(main())

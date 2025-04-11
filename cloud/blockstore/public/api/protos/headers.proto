@@ -80,6 +80,14 @@ message THeaders
     EOptimizeNetworkTransfer OptimizeNetworkTransfer = 10;
 
     // For which replica this request will be performed.
-    // Only for network-ssd-io-m* disks.
+    // Only for STORAGE_MEDIA_SSD_MIRROR* disks.
     uint32 ReplicaIndex = 11;
+
+    // For how many replicas will this read request be executed.
+    // Only for STORAGE_MEDIA_SSD_MIRROR* disks.
+    uint32 ReplicaCount = 12;
+
+    // Monotonously increasing request ID counter needed by the disk agent to
+    // order write requests.
+    uint64 VolumeRequestId = 13;
 }

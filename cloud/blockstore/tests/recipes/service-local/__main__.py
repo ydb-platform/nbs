@@ -7,15 +7,13 @@ from library.python.testing.recipe import declare_recipe, set_env
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, TLocalServiceConfig
 
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
-from cloud.blockstore.tests.python.lib.nbs_http_proxy import create_nbs_http_proxy
 from cloud.blockstore.tests.python.lib.test_base import thread_count, \
-    wait_for_nbs_server, wait_for_nbs_server_proxy, get_free_socket_path
+    wait_for_nbs_server, get_free_socket_path
 
 import yatest.common as yatest_common
 
 
 PID_FILE_NAME = "service_local_nbs_server_recipe.pid"
-PROXY_PID_FILE_NAME = "service_local_nbs_server_recipe_proxy.pid"
 
 
 def start(argv):
@@ -62,21 +60,6 @@ def start(argv):
 
     wait_for_nbs_server(nbs.nbs_port)
 
-    if 'with-http-proxy' in argv:
-        port_manager = yatest_common.network.PortManager()
-        proxy_secure_port = port_manager.get_port()
-        proxy_insecure_port = port_manager.get_port()
-        proxy = create_nbs_http_proxy(proxy_secure_port, proxy_insecure_port, nbs.nbs_secure_port, False, certs_dir)
-        proxy.start()
-
-        set_env("SERVICE_LOCAL_SECURE_NBS_SERVER_PROXY_PORT", str(proxy_secure_port))
-        set_env("SERVICE_LOCAL_INSECURE_NBS_SERVER_PROXY_PORT", str(proxy_insecure_port))
-
-        with open(PROXY_PID_FILE_NAME, "w") as f:
-            f.write(str(proxy.pid))
-
-        wait_for_nbs_server_proxy(proxy_secure_port)
-
 
 def stop(argv):
     def kill(pid_file_name):
@@ -85,9 +68,6 @@ def stop(argv):
             os.kill(pid, signal.SIGTERM)
 
     kill(PID_FILE_NAME)
-
-    if os.path.exists(PROXY_PID_FILE_NAME):
-        kill(PROXY_PID_FILE_NAME)
 
 
 if __name__ == "__main__":

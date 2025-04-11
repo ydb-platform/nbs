@@ -468,6 +468,52 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         UNIT_ASSERT_C(!HasError(ret.GetError()), error);
         UNIT_ASSERT_VALUES_EQUAL(0, ret.GetResult().size());
     }
+
+    Y_UNIT_TEST(ShouldRestoreEndpointWhenSocketDirectoryIsMissing)
+    {
+        TString id = "id";
+        TTempDir socketDir("./" + CreateGuidAsString());
+        auto unixSocketPath = socketDir.Path() / TFsPath("socket1/disk1/fs1.sock");
+        TString unixSocket = unixSocketPath.GetPath();
+
+        UNIT_ASSERT(!unixSocketPath.Parent().Exists());
+
+        NProto::TStartEndpointRequest request;
+        auto* config = request.MutableEndpoint();
+        config->SetFileSystemId(id);
+        config->SetSocketPath(unixSocket);
+        config->SetClientId("client");
+        config->SetPersistent(true);
+
+        auto [endpointData, error] = SerializeEndpoint(request);
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        const TString dirPath = "./" + CreateGuidAsString();
+        TTempDir endpointDir(dirPath);
+        auto endpointStorage = CreateFileEndpointStorage(dirPath);
+        auto endpoint = std::make_shared<TTestEndpoint>(*config, false);
+        endpoint->Start.SetValue(NProto::TError{});
+        endpointStorage->AddEndpoint(unixSocket, endpointData);
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+
+        listener->CreateEndpointHandler = [&](const NProto::TEndpointConfig&)
+        {
+            listener->Endpoints.push_back(endpoint);
+            return endpoint;
+        };
+
+        auto service = CreateEndpointManager(
+            CreateLoggingService("console"),
+            endpointStorage,
+            listener,
+            MODE0660);
+        service->Start();
+
+        service->RestoreEndpoints().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(1, listener->Endpoints.size());
+        UNIT_ASSERT(unixSocketPath.Parent().Exists());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NServer

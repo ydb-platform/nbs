@@ -93,19 +93,18 @@ struct TEvNonreplPartitionPrivate
 
     struct TWriteOrZeroCompleted
     {
-        const ui64 RequestCounter;
+        const ui64 RequestId;
         const ui64 TotalCycles;
         const bool FollowerGotNonRetriableError;
 
         TWriteOrZeroCompleted(
-                ui64 requestCounter,
+                ui64 requestId,
                 ui64 totalCycles,
                 bool followerGotNonRetriableError)
-            : RequestCounter(requestCounter)
+            : RequestId(requestId)
             , TotalCycles(totalCycles)
             , FollowerGotNonRetriableError(followerGotNonRetriableError)
-        {
-        }
+        {}
     };
 
     //
@@ -240,6 +239,76 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    // CancelRequest
+    //
+
+    struct TCancelRequest
+    {
+        enum class EReason {
+            TimedOut,
+            Canceled
+        };
+
+        EReason Reason = EReason::TimedOut;
+    };
+
+    //
+    // AddLaggingAgent
+    //
+
+    struct TAddLaggingAgentRequest
+    {
+        NProto::TLaggingAgent LaggingAgent;
+
+        explicit TAddLaggingAgentRequest(NProto::TLaggingAgent laggingAgent)
+            : LaggingAgent(std::move(laggingAgent))
+        {}
+    };
+
+    //
+    // RemoveLaggingAgent
+    //
+
+    struct TRemoveLaggingAgentRequest
+    {
+        NProto::TLaggingAgent LaggingAgent;
+
+        explicit TRemoveLaggingAgentRequest(NProto::TLaggingAgent laggingAgent)
+            : LaggingAgent(std::move(laggingAgent))
+        {}
+    };
+
+    //
+    // AgentIsUnavailable
+    //
+
+    struct TAgentIsUnavailable
+    {
+        const NProto::TLaggingAgent LaggingAgent;
+
+        explicit TAgentIsUnavailable(NProto::TLaggingAgent laggingAgent)
+            : LaggingAgent(std::move(laggingAgent))
+        {}
+    };
+
+    //
+    // AgentIsBackOnline
+    //
+
+    struct TAgentIsBackOnline
+    {
+        const TString AgentId;
+
+        explicit TAgentIsBackOnline(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    struct TStartLaggingAgentMigration
+    {
+    };
+
+    //
     // Events declaration
     //
 
@@ -262,6 +331,12 @@ struct TEvNonreplPartitionPrivate
         EvReadResyncFastPathResponse,
         EvGetDeviceForRangeRequest,
         EvGetDeviceForRangeResponse,
+        EvCancelRequest,
+        EvAddLaggingAgentRequest,
+        EvRemoveLaggingAgentRequest,
+        EvAgentIsUnavailable,
+        EvAgentIsBackOnline,
+        EvStartLaggingAgentMigration,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -320,6 +395,33 @@ struct TEvNonreplPartitionPrivate
     using TEvGetDeviceForRangeResponse = TResponseEvent<
         TGetDeviceForRangeResponse,
         EvGetDeviceForRangeResponse
+    >;
+
+    using TEvCancelRequest = TRequestEvent<TCancelRequest, EvCancelRequest>;
+
+    using TEvAddLaggingAgentRequest = TRequestEvent<
+        TAddLaggingAgentRequest,
+        EvAddLaggingAgentRequest
+    >;
+
+    using TEvRemoveLaggingAgentRequest = TRequestEvent<
+        TRemoveLaggingAgentRequest,
+        EvRemoveLaggingAgentRequest
+    >;
+
+    using TEvAgentIsUnavailable = TRequestEvent<
+        TAgentIsUnavailable,
+        EvAgentIsUnavailable
+    >;
+
+    using TEvAgentIsBackOnline = TRequestEvent<
+        TAgentIsBackOnline,
+        EvAgentIsBackOnline
+    >;
+
+    using TEvStartLaggingAgentMigration = TRequestEvent<
+        TStartLaggingAgentMigration,
+        EvStartLaggingAgentMigration
     >;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)

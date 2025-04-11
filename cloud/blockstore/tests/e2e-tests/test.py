@@ -1,9 +1,11 @@
 import logging
 import pytest
 import os
+import signal
 import shutil
 import subprocess
 import tempfile
+import time
 import yaml
 
 from pathlib import Path
@@ -36,6 +38,7 @@ def init(
         stored_endpoints_path=None,
         nbd_request_timeout=None,
         nbd_reconnect_delay=None,
+        proxy_restart_events=None,
 ):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
@@ -75,7 +78,8 @@ def init(
         with_netlink=with_netlink,
         stored_endpoints_path=stored_endpoints_path,
         nbd_request_timeout=nbd_request_timeout,
-        nbd_reconnect_delay=nbd_reconnect_delay)
+        nbd_reconnect_delay=nbd_reconnect_delay,
+        proxy_restart_events=proxy_restart_events)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
@@ -127,15 +131,103 @@ def log_called_process_error(exc):
     )
 
 
+def test_multiple_errors():
+    volume_name = "test-disk"
+    block_size = 4096
+    blocks_count = 1024
+    nbd_device = "/dev/nbd0"
+    socket_path = "/tmp/nbd.sock"
+    request_timeout = 2
+    runtime = request_timeout * 2
+    nbs_downtime = request_timeout + 1
+    numjobs = 256
+
+    env, run = init(
+        with_netlink=True,
+        with_endpoint_proxy=True,
+        nbd_request_timeout=request_timeout,
+        proxy_restart_events=2)
+
+    try:
+        result = run(
+            "createvolume",
+            "--disk-id",
+            volume_name,
+            "--blocks-count",
+            str(blocks_count),
+            "--block-size",
+            str(block_size),
+        )
+        assert result.returncode == 0
+
+        result = run(
+            "startendpoint",
+            "--disk-id",
+            volume_name,
+            "--socket",
+            socket_path,
+            "--ipc-type",
+            "nbd",
+            "--persistent",
+            "--nbd-device",
+            nbd_device
+        )
+        assert result.returncode == 0
+
+        proc = subprocess.Popen(
+            [
+                "fio",
+                "--name=fio",
+                "--ioengine=sync",
+                "--direct=1",
+                "--time_based=1",
+                "--rw=randrw",
+                "--rwmixread=50",
+                "--filename=" + nbd_device,
+                "--runtime=" + str(runtime),
+                "--blocksize=" + str(block_size),
+                "--numjobs=" + str(numjobs),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+
+        os.kill(env.nbs.pid, signal.SIGSTOP)
+        time.sleep(nbs_downtime)
+        os.kill(env.nbs.pid, signal.SIGCONT)
+
+        proc.communicate(timeout=60)
+        assert proc.returncode == 0
+
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+
+    finally:
+        run(
+            "stopendpoint",
+            "--socket",
+            socket_path,
+        )
+
+        result = run(
+            "destroyvolume",
+            "--disk-id",
+            volume_name,
+            input=volume_name,
+        )
+
+        cleanup_after_test(env)
+
+
 def test_stop_start():
     env, run = init(
         with_netlink=True,
         with_endpoint_proxy=True,
-        nbd_reconnect_delay="1s")
+        nbd_reconnect_delay=1)
 
     volume_name = "example-disk"
     block_size = 4096
-    blocks_count = 10000
+    blocks_count = 1024
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
     data_file = "data"
@@ -430,4 +522,67 @@ def test_do_not_restore_endpoint_with_missing_volume():
     )
     assert result.returncode == 0
     assert 0 == len(os.listdir(endpoints_dir))
+    cleanup_after_test(env)
+
+
+def test_restore_endpoint_when_socket_directory_does_not_exist():
+    # Scenario:
+    # 1. run nbs
+    # 2. create volume and start endpoint
+    # 4. copy endpoint to backup directory
+    # 5. stop endpoint
+    # 6. stop nbs
+    # 7. copy endpoint from backup directory to endpoints directory
+    # 8. remove socket directory
+    # 8. run nbs
+    # 9. check that endpoint was restored
+    env, run = init()
+
+    volume_name = "example-disk"
+    block_size = 4096
+    blocks_count = 10000
+    nbd_device = Path("/dev/nbd0")
+    socket_dir = Path("/tmp") / volume_name
+    socket_dir.mkdir()
+    socket_path = socket_dir / "nbd.sock"
+    try:
+        result = run(
+            "createvolume",
+            "--disk-id",
+            volume_name,
+            "--blocks-count",
+            str(blocks_count),
+            "--block-size",
+            str(block_size),
+        )
+        assert result.returncode == 0
+
+        result = run(
+            "startendpoint",
+            "--disk-id",
+            volume_name,
+            "--socket",
+            socket_path,
+            "--ipc-type",
+            "nbd",
+            "--persistent",
+            "--nbd-device",
+            nbd_device
+        )
+
+        shutil.rmtree(socket_dir)
+
+        env.nbs.restart()
+
+        result = run(
+            "listendpoints",
+            "--wait-for-restoring",
+        )
+        assert result.returncode == 0
+        assert socket_path.exists()
+
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+
     cleanup_after_test(env)

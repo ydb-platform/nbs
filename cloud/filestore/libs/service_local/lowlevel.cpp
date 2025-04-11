@@ -671,6 +671,17 @@ TString TFileId::ToString() const
             << ", ParentContext=" << Hex(WekaInodeId.ParentContext)
             << ")";
         break;
+    case EFileIdType::VastNfs:
+        out << ", VastNfs(IdHigh32=" << Hex(VastNfsInodeId.IdHigh32)
+            << ", IdLow32=" << Hex(VastNfsInodeId.IdLow32)
+            << ", FileType=" << Hex(VastNfsInodeId.FileType)
+            << ", Unused=" << Hex(VastNfsInodeId.Unused)
+            << ", ServerFhSize=" << Hex(VastNfsInodeId.ServerFhSize)
+            << ", ServerId=" << Hex(VastNfsInodeId.ServerId)
+            << ", ServerView=" << Hex(VastNfsInodeId.ServerView)
+            << ", ServerUnused=" << Hex(VastNfsInodeId.ServerUnused)
+            << ")";
+        break;
     }
 
     out << ", Buffer=" << HexText(TStringBuf(Buffer, FileHandle.handle_bytes));

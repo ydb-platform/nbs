@@ -28,6 +28,8 @@ struct TAgentStorageInfo
 {
     ui64 ChunkSize = 0;
     ui32 ChunkCount = 0;
+    ui32 DirtyChunks = 0;
+    ui32 FreeChunks = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -37,6 +39,7 @@ struct TDiskInfo
     TVector<NProto::TDeviceConfig> Devices;
     TVector<NProto::TDeviceMigration> Migrations;
     TVector<TFinishedMigration> FinishedMigrations;
+    TVector<TLaggingDevice> LaggingDevices;
     TVector<TVector<NProto::TDeviceConfig>> Replicas;
     TString MasterDiskId;
     ui32 LogicalBlockSize = 0;
@@ -268,6 +271,8 @@ class TDiskRegistryState
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
 
         TVector<NProto::TDiskHistoryItem> History;
+
+        TVector<TLaggingDevice> LaggingDevices;
     };
 
     struct TVolumeDeviceOverrides
@@ -395,6 +400,7 @@ public:
         TVector<NProto::TDeviceMigration> Migrations;
         TVector<TVector<NProto::TDeviceConfig>> Replicas;
         TVector<TString> DeviceReplacementIds;
+        TVector<TLaggingDevice> LaggingDevices;
 
         NProto::EVolumeIOMode IOMode = {};
         TInstant IOModeTs;
@@ -452,7 +458,8 @@ public:
         const TCheckpointId& checkpointId,
         TDiskId* shadowDiskId) const;
 
-    bool FilterDevicesAtUnavailableAgents(TDiskInfo& diskInfo) const;
+    bool FilterDevicesForAcquire(TDiskInfo& diskInfo) const;
+    bool FilterDevicesForRelease(TDiskInfo& diskInfo) const;
 
     NProto::TError StartAcquireDisk(
         const TString& diskId,
@@ -765,6 +772,12 @@ public:
         const TDeviceId& deviceId,
         bool isReplacement);
 
+    [[nodiscard]] NProto::TError AddLaggingDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        TVector<NProto::TLaggingDevice> laggingDevices);
+
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
 
     void SuspendDeviceIfNeeded(
@@ -870,6 +883,11 @@ public:
         TDiskRegistryDatabase& db,
         const TVector<TString>& orphanDevicesIds);
 
+    bool CanAllocateLocalDiskAfterSecureErase(
+        const TVector<TString>& agentIds,
+        const TString& poolName,
+        const ui64 totalByteCount) const;
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
@@ -946,7 +964,9 @@ private:
     TResultOrError<NProto::TDeviceConfig> FindDevice(
         const NProto::TDeviceConfig& deviceConfig) const;
 
-    NProto::EDiskState CalculateDiskState(const TDiskState& disk) const;
+    NProto::EDiskState CalculateDiskState(
+        const TString& diskId,
+        const TDiskState& disk) const;
 
     bool TryUpdateDiskState(
         TDiskRegistryDatabase& db,
@@ -954,6 +974,12 @@ private:
         TInstant timestamp);
 
     bool TryUpdateDiskState(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        TDiskState& disk,
+        TInstant timestamp);
+
+    bool TryUpdateDiskStateImpl(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk,
@@ -1039,6 +1065,13 @@ private:
         TDiskState& disk,
         const TDeviceId& sourceId);
 
+    NProto::TError AbortMigrationAndReplaceDevice(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        TDiskState& disk,
+        const TDeviceId& sourceId);
+
     void DeleteDeviceMigration(
         const TDiskId& diskId,
         const TDeviceId& sourceId);
@@ -1072,6 +1105,11 @@ private:
         const NProto::TDeviceConfig& device);
 
     void RemoveFinishedMigrations(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        ui64 seqNo);
+
+    void RemoveLaggingDevices(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         ui64 seqNo);

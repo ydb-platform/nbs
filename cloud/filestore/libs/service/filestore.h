@@ -92,6 +92,13 @@ struct IFileStore
     FILESTORE_DATA_SERVICE(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
+
+    virtual NThreading::TFuture<NProto::TReadDataLocalResponse> ReadDataLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataLocalRequest> request) = 0;
+    virtual NThreading::TFuture<NProto::TWriteDataLocalResponse> WriteDataLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataLocalRequest> request) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -36,6 +36,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FlushThreshold,                     ui32,   4_MB                      )\
     xxx(CleanupThreshold,                   ui32,   512                       )\
     xxx(CleanupThresholdAverage,            ui32,   64                        )\
+    xxx(CalculateCleanupScoreBasedOnUsedBlocksCount, bool,   false            )\
     xxx(NewCleanupEnabled,                  bool,   false                     )\
     xxx(CompactionThreshold,                ui32,   20                        )\
     xxx(GarbageCompactionThreshold,         ui32,   100                       )\
@@ -43,7 +44,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GarbageCompactionThresholdAverage,  ui32,   10                        )\
     xxx(CompactRangeGarbagePercentageThreshold, ui32,    0                    )\
     xxx(CompactRangeAverageBlobSizeThreshold,   ui32,    0                    )\
-    xxx(GuestWritebackCacheEnabled,         bool,   false                     )\
+    xxx(GuestWriteBackCacheEnabled,         bool,   false                     )\
     xxx(NewCompactionEnabled,               bool,   false                     )\
     xxx(UseMixedBlocksInsteadOfAliveBlocksInCompaction, bool,   false         )\
     xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\
@@ -202,6 +203,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
     xxx(NodeRegistrationCert,            TCertificate,          {}            )\
     xxx(NodeRegistrationToken,           TString,               "root@builtin")\
+    xxx(NodeRegistrationUseSsl,          bool,                  false         )\
     xxx(NodeType,                        TString,               {}            )\
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
@@ -243,10 +245,20 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(DestroyFilestoreDenyList,       TVector<TString>,          {}         )\
                                                                                \
-    xxx(SSProxyFallbackMode,            bool,     false                       )\
+    xxx(SSProxyFallbackMode,            bool,      false                      )\
                                                                                \
     xxx(MixedBlocksOffloadedRangesCapacity,        ui64,     0                )\
     xxx(YdbViewerServiceEnabled,                   bool,     false            )\
+    xxx(GuestPageCacheDisabled,                    bool,     false            )\
+    xxx(ExtendedAttributesDisabled,                bool,     false            )\
+                                                                               \
+    xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
+                                                                               \
+    xxx(GuestKeepCacheAllowed,                     bool,      false           )\
+    xxx(GuestCachingType,                                                      \
+        NProto::EGuestCachingType,                                             \
+        NProto::GCT_SECOND_READ                                               )\
+    xxx(SessionHandleOffloadedStatsCapacity,       ui64,      0               )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -330,6 +342,13 @@ IOutputStream& operator <<(
     NProto::EBlobIndexOpsPriority biopp)
 {
     return out << EBlobIndexOpsPriority_Name(biopp);
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::EGuestCachingType gct)
+{
+    return out << EGuestCachingType_Name(gct);
 }
 
 template <typename T>

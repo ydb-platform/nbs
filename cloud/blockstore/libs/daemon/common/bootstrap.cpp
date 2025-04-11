@@ -556,7 +556,8 @@ void TBootstrapBase::Init()
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
             Configs->ServerConfig->GetNbdConnectionTimeout(),
-            true);  // reconfigure
+            true   // reconfigure
+        );
     }
 
     // The only case we want kernel to retry requests is when the socket is dead
@@ -896,6 +897,10 @@ void TBootstrapBase::Start()
     // 2) we have loops in our dependencies, so there is no 'correct' starting
     // order
     START_COMMON_COMPONENT(Scheduler);
+
+    if (!Configs->Options->TemporaryServer) {
+        WarmupBSGroupConnections();
+    }
 
     auto restoreFuture = EndpointManager->RestoreEndpoints();
     if (!Configs->Options->TemporaryServer) {
