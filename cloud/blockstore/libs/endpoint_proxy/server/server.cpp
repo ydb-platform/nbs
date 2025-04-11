@@ -470,6 +470,7 @@ struct TServer: IEndpointProxyServer
 
                 auto ep = std::make_shared<TEndpoint>();
                 ep->UnixSocketPath = e.GetUnixSocketPath();
+                TFsPath(ep->UnixSocketPath).Parent().MkDirs();
 
                 NProto::TStartProxyEndpointRequest request;
                 request.SetUnixSocketPath(e.GetUnixSocketPath());
