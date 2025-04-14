@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
@@ -506,14 +507,6 @@ struct TTestEnv
         Caught.clear();
     }
 };
-
-template <typename TEv>
-ui64 GetVolumeRequestId(const TAutoPtr<IEventHandle>& event)
-{
-    auto* ev = static_cast<TEv*>(event->GetBase());
-
-    return ev->Record.GetHeaders().GetVolumeRequestId();
-}
 
 }   // namespace
 
@@ -1768,6 +1761,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         }
     }
 
+#define BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(ns, eventName)    \
+    case ns::Ev##eventName##Request: {                                   \
+        resyncWriteRequestCount += 1;                                    \
+        auto* ev =                                                       \
+            static_cast<ns::TEv##eventName##Request*>(event->GetBase()); \
+        volumeRequestIds.emplace_back(GetVolumeRequestId(*ev));          \
+        break;                                                           \
+    }                                                                    \
+        // BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID
+
     void DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
         NProto::EResyncPolicy resyncPolicy)
     {
@@ -1805,19 +1808,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                 [&](TAutoPtr<IEventHandle>& event)
                 {
                     switch (event->GetTypeRewrite()) {
-                        case TEvService::EvWriteBlocksRequest:
-                            resyncWriteRequestCount += 1;
-                            volumeRequestIds.emplace_back(
-                                GetVolumeRequestId<
-                                    TEvService::TEvWriteBlocksRequest>(event));
-                            break;
-                        case TEvService::EvWriteBlocksLocalRequest:
-                            resyncWriteRequestCount += 1;
-                            volumeRequestIds.emplace_back(
-                                GetVolumeRequestId<
-                                    TEvService::TEvWriteBlocksLocalRequest>(
-                                    event));
-                            break;
+                        BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(
+                            TEvService,
+                            WriteBlocks)
+                        BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(
+                            TEvService,
+                            WriteBlocksLocal)
+
                         case TEvVolumePrivate::EvTakeVolumeRequestIdRequest:
                             stollenTakeVolumeRequestIdEvent.reset(
                                 event.Release());
@@ -1858,6 +1855,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             volumeRequestId += 12345;
         }
     }
+
+#undef BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID
 
     Y_UNIT_TEST(ShouldSendWriteRequestsWithCorrectVolumeRequestId)
     {

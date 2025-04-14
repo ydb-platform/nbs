@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/direct_copy_actor.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
@@ -284,33 +285,6 @@ struct TTestEnv
         return static_cast<TRdmaClientTest&>(*RdmaClient);
     }
 };
-
-ui64 GetVolumeRequestId(const TAutoPtr<IEventHandle>& event)
-{
-    switch (event->GetTypeRewrite()) {
-        case TEvDiskAgent::EvDirectCopyBlocksRequest: {
-            auto* ev =
-                static_cast<TEvDiskAgent::TEvDirectCopyBlocksRequest*>(
-                    event->GetBase());
-
-            return ev->Record.GetHeaders().GetVolumeRequestId();
-        }
-        case TEvService::EvWriteBlocksRequest: {
-            auto* ev = static_cast<TEvService::TEvWriteBlocksRequest*>(
-                event->GetBase());
-
-            return ev->Record.GetHeaders().GetVolumeRequestId();
-        }
-        case TEvService::EvZeroBlocksRequest: {
-            auto* ev = static_cast<TEvService::TEvZeroBlocksRequest*>(
-                event->GetBase());
-
-            return ev->Record.GetHeaders().GetVolumeRequestId();
-        }
-        default:
-            return 0;
-    }
-}
 
 }   // namespace
 
@@ -1271,6 +1245,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         }
     }
 
+#define BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(ns, eventName)    \
+    case ns::Ev##eventName##Request: {                                   \
+        copyRangeRequestCount += 1;                                      \
+        auto* ev =                                                       \
+            static_cast<ns::TEv##eventName##Request*>(event->GetBase()); \
+        volumeRequestIds.emplace_back(GetVolumeRequestId(*ev));          \
+        break;                                                           \
+    }                                                                    \
+        // BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID
+
     void ShouldCopyRangeWithCorrectVolumeRequestId(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
@@ -1294,31 +1278,25 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             runtime.SetObserverFunc(
                 [&](TAutoPtr<IEventHandle>& event)
                 {
-
                     switch (event->GetTypeRewrite()) {
-                        case TEvDiskAgent::EvDirectCopyBlocksRequest:
-                            if (useDirectCopy) {
-                                copyRangeRequestCount += 1;
-                                volumeRequestIds.emplace_back(
-                                    GetVolumeRequestId(event));
-                            }
-                            break;
-                        case TEvService::EvWriteBlocksRequest:
-                        case TEvService::EvZeroBlocksRequest:
-                            if (!useDirectCopy) {
-                                copyRangeRequestCount += 1;
-                                volumeRequestIds.emplace_back(
-                                    GetVolumeRequestId(event));
-                            }
-                            break;
+                        BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(
+                            TEvDiskAgent,
+                            DirectCopyBlocks)
+                        BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(
+                            TEvService,
+                            WriteBlocks)
+                        BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(
+                            TEvService,
+                            ZeroBlocks)
+
                         case TEvVolumePrivate::EvTakeVolumeRequestIdRequest:
-                            stollenTakeVolumeRequestIdEvent.reset(event.Release());
+                            stollenTakeVolumeRequestIdEvent.reset(
+                                event.Release());
                             return TTestActorRuntimeBase::EEventAction::DROP;
+
                         default:
                             break;
                     }
-
-
                     return TTestActorRuntime::DefaultObserverFunc(event);
                 });
 
@@ -1336,16 +1314,17 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             runtime.Send(
                 stollenTakeVolumeRequestIdEvent->Sender,
                 env.VolumeActorId,
-                std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+                std::make_unique<
+                    TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
                     volumeRequestId)
                     .release());
 
             NActors::TDispatchOptions options;
-            options.FinalEvents = {NActors::TDispatchOptions::TFinalEventCondition(
-                TEvNonreplPartitionPrivate::EvRangeMigrated)};
+            options.FinalEvents = {
+                NActors::TDispatchOptions::TFinalEventCondition(
+                    TEvNonreplPartitionPrivate::EvRangeMigrated)};
 
             runtime.DispatchEvents(options);
-
 
             UNIT_ASSERT_VALUES_EQUAL(1, copyRangeRequestCount);
             UNIT_ASSERT_VALUES_EQUAL(1, volumeRequestIds.size());
@@ -1354,11 +1333,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         }
     }
 
+#undef BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID
+
     Y_UNIT_TEST(ShouldCopyRangeWithCorrectVolumeRequestId)
     {
         ShouldCopyRangeWithCorrectVolumeRequestId(false);
     }
-
 
     Y_UNIT_TEST(ShouldCopyRangeWithCorrectVolumeRequestIdDirectCopy)
     {
