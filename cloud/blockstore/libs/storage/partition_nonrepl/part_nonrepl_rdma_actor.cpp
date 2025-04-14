@@ -337,12 +337,15 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
     PartCounters->Rdma.ReadBytes.Increment(requestBytes);
     PartCounters->Rdma.ReadCount.Increment(1);
-    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+    const ui64 nonVoidBytes =
         static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();
-    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes +=
+    const ui64 voidBytes =
         static_cast<ui64>(msg->VoidBlockCount) * PartConfig->GetBlockSize();
+    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+        nonVoidBytes;
+    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes += voidBytes;
 
-    NetworkBytes += requestBytes;
+    NetworkBytes += nonVoidBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
@@ -397,7 +400,6 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
-    NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;

@@ -192,6 +192,9 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         });
     }
 
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
+    NetworkBytes += msg->NetworkBytes;
+
     if (HasError(msg->GetError())) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
             "[%s] Range %s resync failed: %s",

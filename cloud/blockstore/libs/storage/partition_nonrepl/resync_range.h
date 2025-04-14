@@ -40,6 +40,7 @@ private:
     TDuration ReadDuration;
     TInstant WriteStartTs;
     TDuration WriteDuration;
+    ui64 NetworkBytes = 0;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion{Replicas};

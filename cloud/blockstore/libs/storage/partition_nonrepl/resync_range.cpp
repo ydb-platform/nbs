@@ -179,6 +179,7 @@ void TResyncRangeActor::WriteBlocks(const TActorContext& ctx) {
 
 void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 {
+    NetworkBytes += Range.Size() * BlockSize;
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
     auto clientId =
@@ -234,6 +235,8 @@ void TResyncRangeActor::Done(const TActorContext& ctx)
             ReadDuration,
             WriteStartTs,
             WriteDuration,
+            NetworkBytes,
+            RequestInfo->ExecCycles,
             std::move(AffectedBlockInfos),
             GetResyncStatus(ErrorFixed, ErrorFound));
 
@@ -307,6 +310,7 @@ void TResyncRangeActor::HandleReadResponse(
         return;
     }
 
+    NetworkBytes += Range.Size() * BlockSize;
     WriteBlocks(ctx);
 }
 

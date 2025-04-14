@@ -285,8 +285,9 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
             networkBytes);
     } else {
         NetworkBytes += 2 * msg->Range.Size() * BlockSize;
-        CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
     }
+
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const bool erased = MigrationsInProgress.Remove(msg->Range);
     Y_DEBUG_ABORT_UNLESS(erased);

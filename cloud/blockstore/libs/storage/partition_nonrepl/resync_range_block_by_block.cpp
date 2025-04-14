@@ -376,6 +376,7 @@ void TResyncRangeBlockByBlockActor::WriteReplicaBlocks(
     size_t replicaIndex,
     NProto::TIOVector data)
 {
+    NetworkBytes += Range.Size() * BlockSize;
     auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
     auto clientId =
@@ -431,6 +432,8 @@ void TResyncRangeBlockByBlockActor::Done(const TActorContext& ctx)
             ReadDuration,
             WriteStartTs,
             WriteDuration,
+            NetworkBytes,
+            RequestInfo->ExecCycles,
             std::move(AffectedBlockInfos),
             GetResyncStatus(FixedBlockCount, FoundErrorCount));
 
@@ -505,6 +508,7 @@ void TResyncRangeBlockByBlockActor::HandleReadResponse(
         return;
     }
 
+    NetworkBytes += Range.Size() * BlockSize;
     msg->Record.MutableBlocks()->Swap(&ReadBuffers[replicaIdx]);
 
     bool allReadsDone = AllOf(

@@ -543,6 +543,9 @@ void TMirrorPartitionActor::HandleRangeResynced(
         FormatError(msg->GetError()).c_str(),
         ToString(msg->Status).c_str());
 
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
+    NetworkBytes += msg->NetworkBytes;
+
     ResyncRangeStarted = false;
     StartScrubbingRange(ctx, ScrubbingRangeId + 1);
 }

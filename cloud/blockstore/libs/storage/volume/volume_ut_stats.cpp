@@ -381,14 +381,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
 
-        // Enable Schedule for all actors!!!
-        runtime->SetRegistrationObserverFunc(
-            [](auto& runtime, const auto& parentId, const auto& actorId)
-            {
-                Y_UNUSED(parentId);
-                runtime.EnableScheduleForActor(actorId);
-            });
-
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
             0,
@@ -402,6 +394,32 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         );
         volume.WaitReady();
 
+        // Write non-zero blocks directly to disk agent.
+        {
+            auto diskAgentActorId =
+                MakeDiskAgentServiceId(runtime->GetNodeId(0));
+            auto sender = runtime->AllocateEdgeActor();
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+
+            request->Record.SetStartIndex(0);
+            for (int i = 0; i < 3; i++) {
+                *request->Record.MutableBlocks()->AddBuffers() =
+                    GetBlockContent('1');
+            }
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetDeviceUUID("uuid0");
+
+            runtime->Send(
+                new IEventHandle(diskAgentActorId, sender, request.release()));
+            auto response =
+                volume
+                    .RecvResponse<TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
         auto clientInfo = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
@@ -414,10 +432,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto observer = [&](TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
-                    TEvVolume::EvDiskRegistryBasedPartitionCounters)
+                TEvVolume::EvDiskRegistryBasedPartitionCounters)
             {
-                auto* msg =
-                    event->Get<TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
+                auto* msg = event->Get<
+                    TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
                 if (msg->NetworkBytes || msg->CpuUsage) {
                     network = std::max(network, msg->NetworkBytes);
                     cpu = std::max(cpu, msg->CpuUsage);
@@ -441,7 +459,37 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }}, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_UNEQUAL(cpu, TDuration());
-        UNIT_ASSERT_VALUES_EQUAL(network, 1024 * 4096);
+        // All blocks should be non-void, since the "SKIP_VOID_BLOCKS" has not
+        // been enabled.
+        UNIT_ASSERT_VALUES_EQUAL(1024 * DefaultBlockSize, network);
+
+        network = 0;
+        cpu = TDuration();
+        nonEmptyReports = 0;
+        // Repeat same read blocks request, but this time with enabled
+        // "SKIP_VOID_BLOCKS".
+        {
+            auto request = volume.CreateReadBlocksRequest(
+                TBlockRange64::WithLength(0, 1024),
+                clientInfo.GetClientId());
+            request->Record.MutableHeaders()->SetOptimizeNetworkTransfer(
+                NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
+        // Wait for EvDiskRegistryBasedPartitionCounters arrived.
+        runtime->AdvanceCurrentTime(TDuration::Seconds(60));
+        runtime->DispatchEvents({ .CustomFinalCondition = [&] {
+            return nonEmptyReports == 1;
+        }}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_UNEQUAL(TDuration(), cpu);
+        // Should read only 3 non-void blocks.
+        UNIT_ASSERT_VALUES_EQUAL(3 * DefaultBlockSize, network);
     }
 
     Y_UNIT_TEST(ShouldReportCpuConsumptionAndNetUtilizationForMirroredPartitions)
@@ -452,14 +500,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto runtime = PrepareTestActorRuntime(config, state);
 
         state->ReplicaCount = 2;
-
-        // Enable Schedule for all actors!!!
-        runtime->SetRegistrationObserverFunc(
-            [](auto& runtime, const auto& parentId, const auto& actorId)
-            {
-                Y_UNUSED(parentId);
-                runtime.EnableScheduleForActor(actorId);
-            });
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
@@ -474,23 +514,50 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         );
         volume.WaitReady();
 
+        // Write non-zero blocks directly to disk agent.
+        {
+            auto diskAgentActorId =
+                MakeDiskAgentServiceId(runtime->GetNodeId(0));
+            auto sender = runtime->AllocateEdgeActor();
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+
+            request->Record.SetStartIndex(0);
+            for (int i = 0; i < 3; i++) {
+                *request->Record.MutableBlocks()->AddBuffers() =
+                    GetBlockContent('1');
+            }
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetDeviceUUID("uuid1");
+
+            runtime->Send(
+                new IEventHandle(diskAgentActorId, sender, request.release()));
+            auto response =
+                volume
+                    .RecvResponse<TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
         auto clientInfo = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             0);
         volume.AddClient(clientInfo);
 
-        ui32 nonEmptyReports = 0;
+        ui64 network = 0;
+        TDuration cpu;
         auto observer = [&](TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
-                    TEvVolume::EvDiskRegistryBasedPartitionCounters)
+                TEvVolume::EvDiskRegistryBasedPartitionCounters)
             {
-                auto* msg =
-                    event->Get<TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
+                auto* msg = event->Get<
+                    TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
                 if (msg->NetworkBytes || msg->CpuUsage) {
-                    UNIT_ASSERT_VALUES_UNEQUAL(msg->CpuUsage, TDuration());
-                    UNIT_ASSERT_VALUES_EQUAL(msg->NetworkBytes, 1024 * 4096);
+                    network = std::max(network, msg->NetworkBytes);
+                    cpu = std::max(cpu, msg->CpuUsage);
                 }
             }
 
@@ -500,13 +567,193 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->SetObserverFunc(observer);
 
         volume.ReadBlocks(
-            TBlockRange64::WithLength(0, 1024),
+            TBlockRange64::WithLength(0, 512),
             clientInfo.GetClientId());
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
-        runtime->DispatchEvents({ .CustomFinalCondition = [&] {
-            return nonEmptyReports == 3;
-        }}, TDuration::Seconds(1));
+        for (int i = 0; i < 3; i++) {
+            runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvVolume::EvDiskRegistryBasedPartitionCounters,
+                4);
+            const bool success =
+                runtime->DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT(success);
+        }
+
+        UNIT_ASSERT_VALUES_UNEQUAL(TDuration(), cpu);
+        UNIT_ASSERT_VALUES_EQUAL(512 * DefaultBlockSize, network);
+
+        // Write non-zero blocks directly to disk agent.
+        {
+            auto diskAgentActorId =
+                MakeDiskAgentServiceId(runtime->GetNodeId(0));
+            auto sender = runtime->AllocateEdgeActor();
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+
+            request->Record.SetStartIndex(0);
+            for (int i = 0; i < 3; i++) {
+                *request->Record.MutableBlocks()->AddBuffers() =
+                    GetBlockContent('1');
+            }
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetDeviceUUID("uuid0");
+
+            runtime->Send(
+                new IEventHandle(diskAgentActorId, sender, request.release()));
+            auto response =
+                volume
+                    .RecvResponse<TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
+        network = 0;
+        cpu = TDuration();
+        // Repeat same read blocks request, but this time with enabled
+        // "SKIP_VOID_BLOCKS".
+        {
+            auto request = volume.CreateReadBlocksRequest(
+                TBlockRange64::WithLength(0, 512),
+                clientInfo.GetClientId());
+            request->Record.MutableHeaders()->SetOptimizeNetworkTransfer(
+                NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
+        // Wait for stats.
+        for (int i = 0; i < 3; i++) {
+            runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvVolume::EvDiskRegistryBasedPartitionCounters,
+                4);
+            const bool success =
+                runtime->DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT(success);
+        }
+
+
+        UNIT_ASSERT_VALUES_UNEQUAL(TDuration(), cpu);
+        // Should read only 3 non-void blocks.
+        UNIT_ASSERT_VALUES_EQUAL(3 * 4096, network);
+    }
+
+    Y_UNIT_TEST(ShouldReportCpuConsumptionAndNetUtilizationForMirrorResyncPartitions)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetUseMirrorResync(true);
+        config.SetAutoResyncPolicy(
+            NProto::EResyncPolicy::
+                RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        state->ReplicaCount = 2;
+
+        constexpr auto ExpectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            ExpectedBlockCount);
+        volume.WaitReady();
+
+        // "Add client" should trigger the resync.
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        ui32 rangesResynced = 0;
+        ui32 nonEmptyStatsUpdates = 0;
+        bool resyncFinished = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::EvDiskRegistryBasedPartitionCounters: {
+                        auto* msg = event->Get<
+                            TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
+                        // Resync is done by 4MiB ranges. Checksum is an 8-byte
+                        // request.
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            0,
+                            msg->NetworkBytes % 4_MB % 8);
+                        if (msg->NetworkBytes) {
+                            nonEmptyStatsUpdates++;
+                            UNIT_ASSERT_VALUES_UNEQUAL(
+                                TDuration(),
+                                msg->CpuUsage);
+                        }
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::EvRangeResynced:
+                        rangesResynced++;
+                        break;
+                    case TEvNonreplPartitionPrivate::EvChecksumBlocksResponse: {
+                        auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                                   TEvChecksumBlocksResponse>();
+                        // Repond with different checksums to trigger resync
+                        // reads and writes.
+                        static ui64 ChecksumGenerator = 0;
+                        msg->Record.SetChecksum(++ChecksumGenerator);
+                        break;
+                    }
+                    case TEvVolume::EvResyncFinished:
+                        resyncFinished = true;
+                        return true;
+                }
+
+                return false;
+            });
+
+        // Wait for the resync to finish.
+        for (int i = 0; i <= 100; i++) {
+            runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+            auto options = TDispatchOptions{
+                .CustomFinalCondition = [&resyncFinished]()
+                {
+                    return resyncFinished;
+                }};
+            const bool success =
+                runtime->DispatchEvents(options, TDuration::MilliSeconds(10));
+            if (success) {
+                break;
+            }
+
+            if (i == 100) {
+                runtime->DispatchEvents(options);
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(32, rangesResynced);
+
+        // Wait for stats.
+        for (int i = 0; i < 3; i++) {
+            runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvVolume::EvDiskRegistryBasedPartitionCounters,
+                4);
+            const bool success =
+                runtime->DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT(success);
+        }
+        UNIT_ASSERT_VALUES_UNEQUAL(0, nonEmptyStatsUpdates);
     }
 
     void DoShouldSendPartitionStatsForShadowDisk(bool useDirectCopy)
