@@ -124,6 +124,24 @@ TString PrintRanges(const TVector<TBlockRange64>& ranges)
     return builder;
 }
 
+TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus GetResyncStatus(
+    size_t fixedBlockCount,
+    size_t foundErrorCount)
+{
+    using EStatus = TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus;
+
+    if (!foundErrorCount) {
+        return EStatus::Healthy;
+    }
+    if (foundErrorCount == fixedBlockCount) {
+        return EStatus::HealedAll;
+    }
+    if (!fixedBlockCount) {
+        return EStatus::HealedNone;
+    }
+    return EStatus::HealedPartial;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -275,6 +293,9 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
             ? ". Blocks with major errors: " + PrintRanges(rangesWithMajorError)
             : TString();
 
+    FixedBlockCount = fixedMajorErrorCount + fixedMinorErrorCount;
+    FoundErrorCount = foundMajorErrorCount + fixedMinorErrorCount;
+
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -410,7 +431,8 @@ void TResyncRangeBlockByBlockActor::Done(const TActorContext& ctx)
             ReadDuration,
             WriteStartTs,
             WriteDuration,
-            std::move(AffectedBlockInfos));
+            std::move(AffectedBlockInfos),
+            GetResyncStatus(FixedBlockCount, FoundErrorCount));
 
     LWTRACK(
         ResponseSent_PartitionWorker,

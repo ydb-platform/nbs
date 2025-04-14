@@ -139,6 +139,15 @@ struct TEvNonreplPartitionPrivate
 
     struct TRangeResynced
     {
+        enum class EStatus
+        {
+            Healthy,         // Range OK.
+            HealedAll,       // All blocks in range resynced
+            HealedPartial,   // Only a part of the blocks in the range were
+                             // resynced
+            HealedNone,      // Not a single block was resynced.
+        };
+
         TBlockRange64 Range;
         TInstant ChecksumStartTs;
         TDuration ChecksumDuration;
@@ -147,6 +156,7 @@ struct TEvNonreplPartitionPrivate
         TInstant WriteStartTs;
         TDuration WriteDuration;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
+        EStatus Status;
 
         TRangeResynced(
                 TBlockRange64 range,
@@ -156,7 +166,8 @@ struct TEvNonreplPartitionPrivate
                 TDuration readDuration,
                 TInstant writeStartTs,
                 TDuration writeDuration,
-                TVector<IProfileLog::TBlockInfo> affectedBlockInfos)
+                TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
+                EStatus status)
             : Range(range)
             , ChecksumStartTs(checksumStartTs)
             , ChecksumDuration(checksumDuration)
@@ -165,6 +176,7 @@ struct TEvNonreplPartitionPrivate
             , WriteStartTs(writeStartTs)
             , WriteDuration(writeDuration)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
+            , Status(status)
         {
         }
     };

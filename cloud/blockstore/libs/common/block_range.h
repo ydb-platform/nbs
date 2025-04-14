@@ -246,6 +246,20 @@ inline TBlockRange64 ConvertRangeSafe(const TBlockRange32& range)
     return TBlockRange64::MakeClosedInterval(range.Start, range.End);
 }
 
+struct TBlockRangeComparator
+{
+    template <typename TBlockIndex>
+    bool operator()(
+        const TBlockRange<TBlockIndex>& a,
+        const TBlockRange<TBlockIndex>& b) const
+    {
+        return std::tie(a.Start, a.End) < std::tie(b.Start, b.End);
+    }
+};
+
+using TBlockRangeSet64 = TSet<TBlockRange64, TBlockRangeComparator>;
+using TBlockRangeSet32 = TSet<TBlockRange32, TBlockRangeComparator>;
+
 template <typename T>
 IOutputStream& operator<<(IOutputStream& out, const TBlockRange<T>& rhs)
 {
