@@ -1205,5 +1205,5 @@ message TStorageServiceConfig
     // events for any mismatch it finds.
     optional bool ResyncAfterLaggingAgentMigration = 422;
 
-    optional bool StopVolumeTabletOnLockLost = 423;
+    optional bool DoNotStopVolumeTabletOnLockLost = 423;
 }

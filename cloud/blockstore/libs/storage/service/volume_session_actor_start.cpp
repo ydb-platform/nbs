@@ -284,7 +284,7 @@ void TStartVolumeActor::HandleTabletLockLost(
         VolumeTabletId,
         FormatError(msg->Error).data());
 
-    if (Config->GetStopVolumeTabletOnLockLost()) {
+    if (!Config->GetDoNotStopVolumeTabletOnLockLost()) {
         LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
             "[%lu] Stop volume tablet on lock lost", VolumeTabletId);
 

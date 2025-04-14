@@ -2957,8 +2957,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
     Y_UNIT_TEST(ShouldLockVolumeOnRemountAfterLockLost)
     {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetDoNotStopVolumeTabletOnLockLost(true);
+
         TTestEnv env;
-        ui32 nodeIdx = SetupTestEnv(env);
+        ui32 nodeIdx = SetupTestEnv(env, storageServiceConfig);
 
         auto& runtime = env.GetRuntime();
 
@@ -3000,9 +3003,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.SendMountVolumeRequest();
         auto response = service.RecvMountVolumeResponse();
         UNIT_ASSERT(FAILED(response->GetStatus()));
-        UNIT_ASSERT(response->GetErrorReason().Contains(
-            "Concurrent lock requests detected"));
-
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Concurrent lock requests detected", response->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(2, lockTabletRequestCount);
     }
 
@@ -5114,7 +5116,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             auto mountResponse = service.RecvMountVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, mountResponse->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(
-                "Tablet id changed. Retry",
+                "Disk tablet is changed. Retrying",
                 mountResponse->GetErrorReason());
         }
 

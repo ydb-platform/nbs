@@ -672,7 +672,7 @@ public:
     [[nodiscard]] bool GetDisableZeroBlocksThrottlingForYDBBasedDisks() const;
     [[nodiscard]] bool GetLocalDiskAsyncDeallocationEnabled() const;
 
-    [[nodiscard]] bool GetStopVolumeTabletOnLockLost() const;
+    [[nodiscard]] bool GetDoNotStopVolumeTabletOnLockLost() const;
 
     [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
     GetLinkedDiskFillBandwidth() const;
