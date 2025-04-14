@@ -664,14 +664,6 @@ bool TShadowDiskActor::OnMessage(
     return true;
 }
 
-void TShadowDiskActor::OnRangeMigrated(
-    const NActors::TActorContext& ctx,
-    TBlockRange64 range)
-{
-    Y_UNUSED(ctx);
-    Y_UNUSED(range);
-}
-
 void TShadowDiskActor::OnMigrationProgress(
     const NActors::TActorContext& ctx,
     ui64 migrationIndex)

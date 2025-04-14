@@ -44,6 +44,8 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
     , TargetActorId(targetActorId)
     , SourceActorId(sourceActorId)
     , AgentId(std::move(agentId))
+    , ProcessedBlockCount(GetProcessedBlockCount())
+    , BlockCountNeedToBeProcessed(GetBlockCountNeedToBeProcessed())
 {}
 
 TLaggingAgentMigrationActor::~TLaggingAgentMigrationActor() = default;
@@ -92,9 +94,12 @@ void TLaggingAgentMigrationActor::HandleStartLaggingAgentMigration(
 
 void TLaggingAgentMigrationActor::OnRangeMigrated(
     const NActors::TActorContext& ctx,
-    TBlockRange64 blockRange)
+    const TBlockRange64& blockRange)
+
 {
     BlocksMigratedSinceLastReport += blockRange.Size();
+    ProcessedBlockCount += blockRange.Size();
+    BlockCountNeedToBeProcessed -= blockRange.Size();
     if (Config->GetMigrationIndexCachingInterval() <=
         BlocksMigratedSinceLastReport)
     {
@@ -103,9 +108,8 @@ void TLaggingAgentMigrationActor::OnRangeMigrated(
             std::make_unique<
                 TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
                 AgentId,
-                GetProcessedBlockCount(),
-                GetBlockCountNeedToBeProcessed()));
-
+                ProcessedBlockCount,
+                BlockCountNeedToBeProcessed));
         BlocksMigratedSinceLastReport = 0;
     }
 }

@@ -27,6 +27,8 @@ private:
     const TString AgentId;
 
     ui64 BlocksMigratedSinceLastReport = 0;
+    ui64 ProcessedBlockCount;
+    ui64 BlockCountNeedToBeProcessed;
 
 public:
     TLaggingAgentMigrationActor(
@@ -52,7 +54,7 @@ private:
         TAutoPtr<NActors::IEventHandle>& ev) override;
     void OnRangeMigrated(
         const NActors::TActorContext& ctx,
-        TBlockRange64 blockRange) override;
+        const TBlockRange64& blockRange) override;
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
         ui64 migrationIndex) override;

@@ -37,9 +37,6 @@ public:
     void OnBootstrap(const NActors::TActorContext& ctx) override;
     bool OnMessage(const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev) override;
-    void OnRangeMigrated(
-        const NActors::TActorContext& ctx,
-        TBlockRange64 range) override;
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
         ui64 migrationIndex) override;
