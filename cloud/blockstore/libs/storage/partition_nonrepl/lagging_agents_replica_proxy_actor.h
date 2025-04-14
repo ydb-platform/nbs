@@ -147,6 +147,8 @@ private:
         const TString& agentId,
         TAgentState* state);
 
+    ui64 TakeDrainRequestId(const TString& agentId);
+
     void DestroyChildActor(
         const NActors::TActorContext& ctx,
         NActors::TActorId* actorId);

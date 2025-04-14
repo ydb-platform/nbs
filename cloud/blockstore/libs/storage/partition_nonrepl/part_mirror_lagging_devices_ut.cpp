@@ -98,7 +98,7 @@ struct TTestEnv
 
     static TVector<TDevices> OneDevicePerAgentDevices(
         const TTestBasicRuntime& runtime,
-        int deviceCountPerReplica = 3)
+        int deviceCountPerReplica)
     {
         TVector<TDevices> replicasDevices;
         TDevices devices;

@@ -11,7 +11,9 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+
 #include <cloud/storage/core/libs/common/sglist_block_range.h>
+#include <cloud/storage/core/libs/common/verify.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/library/actors/core/executor_thread.h>
@@ -343,7 +345,10 @@ void TLaggingAgentsReplicaProxyActor::MarkBlocksAsDirty(
         unavailableAgentId.Quote().c_str());
 
     auto& state = AgentState[unavailableAgentId];
-    Y_ABORT_UNLESS(state.CleanBlocksMap);
+    STORAGE_VERIFY(
+        state.CleanBlocksMap,
+        TWellKnownEntityTypes::DISK,
+        PartConfig->GetName());
     state.CleanBlocksMap->Unset(alignedStart, alignedEnd);
 }
 
@@ -607,7 +612,10 @@ NActors::TActorId TLaggingAgentsReplicaProxyActor::GetRecipientActorId(
             return {};
         case EAgentState::WaitingForDrain:
         case EAgentState::Resyncing:
-            Y_ABORT_UNLESS(agentState->MigrationActorId);
+            STORAGE_VERIFY(
+                agentState->MigrationActorId,
+                TWellKnownEntityTypes::DISK,
+                PartConfig->GetName());
             return agentState->MigrationActorId;
     }
     Y_ABORT("Unknown enum value: %u", static_cast<ui8>(agentState->State));
@@ -618,7 +626,10 @@ auto TLaggingAgentsReplicaProxyActor::GetBlockRangeData(
 {
     const auto it =
         BlockRangeDataByBlockRangeEnd.lower_bound(requestBlockRange.End);
-    Y_ABORT_UNLESS(it != BlockRangeDataByBlockRangeEnd.end());
+    STORAGE_VERIFY(
+        it != BlockRangeDataByBlockRangeEnd.end(),
+        TWellKnownEntityTypes::DISK,
+        PartConfig->GetName());
     Y_DEBUG_ABORT_UNLESS(
         BlockRangeDataByBlockRangeEnd.lower_bound(requestBlockRange.Start) ==
         it);
@@ -759,13 +770,11 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
         std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
             msg->AgentId));
 
-    DrainRequestCounter++;
-    Y_ABORT_UNLESS(!CurrentDrainingAgents.contains(DrainRequestCounter));
-    CurrentDrainingAgents[DrainRequestCounter] = msg->AgentId;
+    const ui64 drainRequestId = TakeDrainRequestId(msg->AgentId);
     NCloud::Send<NPartition::TEvPartition::TEvWaitForInFlightWritesRequest>(
         ctx,
         MirrorPartitionActorId,
-        DrainRequestCounter);
+        drainRequestId);
 
     Y_DEBUG_ABORT_UNLESS(!state->MigrationActorId);
     Y_DEBUG_ABORT_UNLESS(state->AvailabilityMonitoringActorId);
@@ -873,17 +882,15 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
             agentId.Quote().c_str(),
             FormatError(msg->GetError()).c_str());
 
-        DrainRequestCounter++;
-        Y_ABORT_UNLESS(!CurrentDrainingAgents.contains(DrainRequestCounter));
-        CurrentDrainingAgents[DrainRequestCounter] = agentId;
-
+        const ui64 drainRequestId = TakeDrainRequestId(agentId);
         ctx.ExecutorThread.Schedule(
             TDuration::Seconds(1),
             new IEventHandle(
                 MirrorPartitionActorId,
                 SelfId(),
-                new NPartition::TEvPartition::
-                    TEvWaitForInFlightWritesRequest()));
+                new NPartition::TEvPartition::TEvWaitForInFlightWritesRequest(),
+                0,
+                drainRequestId));
         return;
     }
 
@@ -970,7 +977,10 @@ void TLaggingAgentsReplicaProxyActor::StartLaggingResync(
     const TString& agentId,
     TAgentState* state)
 {
-    Y_ABORT_UNLESS(state->DrainFinished && !state->MigrationDisabled);
+    STORAGE_VERIFY(
+        state->DrainFinished && !state->MigrationDisabled,
+        TWellKnownEntityTypes::DISK,
+        PartConfig->GetName());
 
     state->State = EAgentState::Resyncing;
     LOG_DEBUG(
@@ -983,11 +993,26 @@ void TLaggingAgentsReplicaProxyActor::StartLaggingResync(
         PartConfig->GetBlockCount(),
         PartConfig->GetBlockCount() - state->CleanBlocksMap->Count());
 
-    Y_ABORT_UNLESS(state->MigrationActorId);
+    STORAGE_VERIFY(
+        state->MigrationActorId,
+        TWellKnownEntityTypes::DISK,
+        PartConfig->GetName());
     NCloud::Send<TEvNonreplPartitionPrivate::TEvStartLaggingAgentMigration>(
         ctx,
         state->MigrationActorId);
     state->State = EAgentState::Resyncing;
+}
+
+ui64 TLaggingAgentsReplicaProxyActor::TakeDrainRequestId(
+    const TString& agentId)
+{
+    DrainRequestCounter++;
+    STORAGE_VERIFY(
+        !CurrentDrainingAgents.contains(DrainRequestCounter),
+        TWellKnownEntityTypes::DISK,
+        PartConfig->GetName());
+    CurrentDrainingAgents[DrainRequestCounter] = agentId;
+    return DrainRequestCounter;
 }
 
 void TLaggingAgentsReplicaProxyActor::HandleWriteBlocks(

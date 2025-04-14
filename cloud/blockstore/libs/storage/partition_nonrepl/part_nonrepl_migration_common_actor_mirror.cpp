@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/migration_request_actor.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/mirror_request_actor.h>
 
+#include <cloud/storage/core/libs/common/verify.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -99,7 +101,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
     }
 
     if (TargetMigrationIsLagging) {
-        Y_ABORT_UNLESS(ActorOwner);
+        STORAGE_VERIFY(ActorOwner, TWellKnownEntityTypes::DISK, DiskId);
 
         // TMirrorRequestActor is used here just as a simple request actor.
         NCloud::Register<TMirrorRequestActor<TMethod>>(
