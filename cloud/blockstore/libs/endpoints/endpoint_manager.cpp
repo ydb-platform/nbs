@@ -145,7 +145,7 @@ bool CompareRequests(
         && left.GetPersistent() == right.GetPersistent()
         && left.GetNbdDeviceFile() == right.GetNbdDeviceFile()
         && left.GetUseFreeNbdDeviceFile() == right.GetUseFreeNbdDeviceFile()
-        && left.GetVhostEnableDiscard() == right.GetVhostEnableDiscard();
+        && left.GetVhostDiscardEnabled() == right.GetVhostDiscardEnabled();
 }
 
 bool CompareRequests(

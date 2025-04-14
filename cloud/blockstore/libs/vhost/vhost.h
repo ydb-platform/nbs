@@ -61,7 +61,7 @@ struct IVhostQueue
         ui32 blockSize,
         ui64 blocksCount,
         ui32 queuesCount,
-        bool enableDiscard,
+        bool discardEnabled,
         void* cookie,
         const TVhostCallbacks& callbacks) = 0;
 

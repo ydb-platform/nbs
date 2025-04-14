@@ -461,7 +461,7 @@ public:
             options.BlockSize,
             options.BlocksCount,
             options.VhostQueuesCount,
-            options.EnableDiscard,
+            options.DiscardEnabled,
             endpoint.get(),
             AppCtx.Callbacks);
         endpoint->SetVhostDevice(std::move(vhostDevice));

@@ -96,8 +96,8 @@ message TStartEndpointRequest
         bool UseFreeNbdDeviceFile = 26;
     }
 
-    // enable Discard/ZeroBlocks features for vhost device
-    bool VhostEnableDiscard = 27;
+    // Enable Discard/ZeroBlocks features for vhost device
+    bool VhostDiscardEnabled = 27;
 }
 
 message TStartEndpointResponse

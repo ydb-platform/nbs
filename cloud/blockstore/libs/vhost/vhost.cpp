@@ -138,7 +138,7 @@ public:
             ui32 blockSize,
             ui64 blocksCount,
             ui32 queuesCount,
-            bool enableDiscard,
+            bool discardEnabled,
             void* cookie,
             const TVhostCallbacks& callbacks)
         : VhdQueue(vhdQueue)
@@ -154,7 +154,7 @@ public:
         VhdBdevInfo.num_queues = queuesCount;
         VhdBdevInfo.map_cb = callbacks.MapMemory;
         VhdBdevInfo.unmap_cb = callbacks.UnmapMemory;
-        if (enableDiscard) {
+        if (discardEnabled) {
             VhdBdevInfo.features |= VHD_BDEV_F_DISCARD | VHD_BDEV_F_WRITE_ZEROES;
         }
     }
@@ -253,7 +253,7 @@ public:
         ui32 blockSize,
         ui64 blocksCount,
         ui32 queuesCount,
-        bool enableDiscard,
+        bool discardEnabled,
         void* cookie,
         const TVhostCallbacks& callbacks) override
     {
@@ -264,7 +264,7 @@ public:
             blockSize,
             blocksCount,
             queuesCount,
-            enableDiscard,
+            discardEnabled,
             cookie,
             callbacks);
     }
