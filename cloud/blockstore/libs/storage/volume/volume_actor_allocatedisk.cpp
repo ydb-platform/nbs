@@ -161,6 +161,8 @@ NProto::TVolumeMeta CreateNewMeta(
     newMeta.SetMuteIOErrors(args.MuteIOErrors);
     UpdateLaggingDevicesAfterMetaUpdate(newMeta, args.RemovedLaggingDeviceIds);
 
+    Sort(args.LostDevices);
+
     newMeta.ClearLostDevicesUUIDs();
     for (auto& lostDevice: args.LostDevices) {
         newMeta.AddLostDevicesUUIDs(std::move(lostDevice));
@@ -579,7 +581,6 @@ void TVolumeActor::ExecuteUpdateDevices(
     TTxVolume::TUpdateDevices& args)
 {
     Y_ABORT_UNLESS(State);
-
     const auto& oldMeta = State->GetMeta();
     auto newMeta = CreateNewMeta(oldMeta, args);
 
