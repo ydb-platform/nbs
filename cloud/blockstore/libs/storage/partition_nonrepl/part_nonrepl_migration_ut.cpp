@@ -286,6 +286,22 @@ struct TTestEnv
     }
 };
 
+struct TMigrationMessageHandler
+{
+    TVector<ui64> VolumeRequestIds;
+    ui64 MigrationRequestCount = 0;
+
+    template <typename TEv>
+    void Handle(TAutoPtr<IEventHandle>& event)
+    {
+        if (event->GetTypeRewrite() == TEv::EventType) {
+            MigrationRequestCount += 1;
+            auto* ev = static_cast<TEv*>(event->GetBase());
+            VolumeRequestIds.emplace_back(GetVolumeRequestId(*ev));
+        }
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1245,16 +1261,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         }
     }
 
-#define BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(ns, eventName)    \
-    case ns::Ev##eventName##Request: {                                   \
-        copyRangeRequestCount += 1;                                      \
-        auto* ev =                                                       \
-            static_cast<ns::TEv##eventName##Request*>(event->GetBase()); \
-        volumeRequestIds.emplace_back(GetVolumeRequestId(*ev));          \
-        break;                                                           \
-    }                                                                    \
-        // BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID
-
     void ShouldCopyRangeWithCorrectVolumeRequestId(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
@@ -1272,23 +1278,22 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         size_t volumeRequestId = 12345;
 
         for (size_t i = 0; i < 3; ++i) {
-            auto copyRangeRequestCount = 0;
+            TMigrationMessageHandler handler;
             std::unique_ptr<IEventHandle> stollenTakeVolumeRequestIdEvent;
-            TVector<ui64> volumeRequestIds;
             runtime.SetObserverFunc(
                 [&](TAutoPtr<IEventHandle>& event)
                 {
-                    switch (event->GetTypeRewrite()) {
-                        BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(
-                            TEvDiskAgent,
-                            DirectCopyBlocks)
-                        BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(
-                            TEvService,
-                            WriteBlocks)
-                        BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(
-                            TEvService,
-                            ZeroBlocks)
+                    if (useDirectCopy) {
+                        handler
+                            .Handle<TEvDiskAgent::TEvDirectCopyBlocksRequest>(
+                                event);
+                    } else {
+                        handler.Handle<TEvService::TEvWriteBlocksRequest>(
+                            event);
+                        handler.Handle<TEvService::TEvZeroBlocksRequest>(event);
+                    }
 
+                    switch (event->GetTypeRewrite()) {
                         case TEvVolumePrivate::EvTakeVolumeRequestIdRequest:
                             stollenTakeVolumeRequestIdEvent.reset(
                                 event.Release());
@@ -1305,7 +1310,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             runtime.AdvanceCurrentTime(5s);
             runtime.DispatchEvents({}, 10ms);
 
-            UNIT_ASSERT_VALUES_EQUAL(0, copyRangeRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, handler.MigrationRequestCount);
             UNIT_ASSERT(stollenTakeVolumeRequestIdEvent);
             UNIT_ASSERT_VALUES_EQUAL(
                 env.VolumeActorId,
@@ -1326,14 +1331,14 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
 
             runtime.DispatchEvents(options);
 
-            UNIT_ASSERT_VALUES_EQUAL(1, copyRangeRequestCount);
-            UNIT_ASSERT_VALUES_EQUAL(1, volumeRequestIds.size());
-            UNIT_ASSERT_VALUES_EQUAL(volumeRequestId, volumeRequestIds[0]);
+            UNIT_ASSERT_VALUES_EQUAL(1, handler.MigrationRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, handler.VolumeRequestIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                volumeRequestId,
+                handler.VolumeRequestIds[0]);
             volumeRequestId += 12345;
         }
     }
-
-#undef BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID
 
     Y_UNIT_TEST(ShouldCopyRangeWithCorrectVolumeRequestId)
     {

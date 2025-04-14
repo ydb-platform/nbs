@@ -178,6 +178,12 @@ void FillDevices(
     }
 }
 
+template <typename TEv>
+ui64 GetVolumeRequestIdFromHeaders(const TEv& request)
+{
+    return request.Record.GetHeaders().GetVolumeRequestId();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -484,19 +490,25 @@ ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request)
     return request.Record.GetVolumeRequestId();
 }
 
-#define BLOCKSTORE_GENERATE_VOLUME_REQUEST_ID_GETTER(ns, eventName)     \
-    ui64 GetVolumeRequestId(const ns::TEv##eventName##Request& request) \
-    {                                                                   \
-        return request.Record.GetHeaders().GetVolumeRequestId();        \
-    }                                                                   \
-    // BLOCKSTORE_GENERATE_VOLUME_REQUEST_ID_GETTER
+ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
 
-BLOCKSTORE_GENERATE_VOLUME_REQUEST_ID_GETTER(TEvService, WriteBlocks)
-BLOCKSTORE_GENERATE_VOLUME_REQUEST_ID_GETTER(TEvService, WriteBlocksLocal)
-BLOCKSTORE_GENERATE_VOLUME_REQUEST_ID_GETTER(TEvService, ZeroBlocks)
-BLOCKSTORE_GENERATE_VOLUME_REQUEST_ID_GETTER(TEvDiskAgent, DirectCopyBlocks)
+ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksLocalRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
 
-#undef BLOCKSTORE_GENERATE_VOLUME_REQUEST_ID_GETTER
+ui64 GetVolumeRequestId(const TEvService::TEvZeroBlocksRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
+
+ui64 GetVolumeRequestId(const TEvDiskAgent::TEvDirectCopyBlocksRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
 
 TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
 {

@@ -508,6 +508,20 @@ struct TTestEnv
     }
 };
 
+struct TResyncMessageHandler {
+    TVector<ui64> VolumeRequestIds;
+    ui64 ResyncRequestCount = 0;
+
+    template<typename TEv>
+    void Handle(TAutoPtr<IEventHandle>& event) {
+        if (event->GetTypeRewrite() == TEv::EventType) {
+            ResyncRequestCount += 1;
+            auto* ev = static_cast<TEv*>(event->GetBase());
+            VolumeRequestIds.emplace_back(GetVolumeRequestId(*ev));
+        }
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1761,16 +1775,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         }
     }
 
-#define BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(ns, eventName)    \
-    case ns::Ev##eventName##Request: {                                   \
-        resyncWriteRequestCount += 1;                                    \
-        auto* ev =                                                       \
-            static_cast<ns::TEv##eventName##Request*>(event->GetBase()); \
-        volumeRequestIds.emplace_back(GetVolumeRequestId(*ev));          \
-        break;                                                           \
-    }                                                                    \
-        // BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID
-
     void DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
         NProto::EResyncPolicy resyncPolicy)
     {
@@ -1801,20 +1805,17 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         ui64 volumeRequestId = 12345;
 
         for (size_t i = 0; i < 5; ++i) {
-            auto resyncWriteRequestCount = 0;
+            TResyncMessageHandler handler;
             std::unique_ptr<IEventHandle> stollenTakeVolumeRequestIdEvent;
-            TVector<ui64> volumeRequestIds;
+
             runtime.SetObserverFunc(
                 [&](TAutoPtr<IEventHandle>& event)
                 {
-                    switch (event->GetTypeRewrite()) {
-                        BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(
-                            TEvService,
-                            WriteBlocks)
-                        BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID(
-                            TEvService,
-                            WriteBlocksLocal)
+                    handler.Handle<TEvService::TEvWriteBlocksRequest>(event);
+                    handler.Handle<TEvService::TEvWriteBlocksLocalRequest>(
+                        event);
 
+                    switch (event->GetTypeRewrite()) {
                         case TEvVolumePrivate::EvTakeVolumeRequestIdRequest:
                             stollenTakeVolumeRequestIdEvent.reset(
                                 event.Release());
@@ -1829,7 +1830,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
             runtime.DispatchEvents({}, ResyncNextRangeInterval);
 
-            UNIT_ASSERT_VALUES_EQUAL(0, resyncWriteRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, handler.ResyncRequestCount);
             UNIT_ASSERT(stollenTakeVolumeRequestIdEvent);
             UNIT_ASSERT_VALUES_EQUAL(
                 env.VolumeActorId,
@@ -1849,14 +1850,14 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                     TEvNonreplPartitionPrivate::EvRangeResynced)};
 
             runtime.DispatchEvents(options);
-            UNIT_ASSERT_VALUES_EQUAL(1, resyncWriteRequestCount);
-            UNIT_ASSERT_VALUES_EQUAL(1, volumeRequestIds.size());
-            UNIT_ASSERT_VALUES_EQUAL(volumeRequestId, volumeRequestIds[0]);
+            UNIT_ASSERT_VALUES_EQUAL(1, handler.ResyncRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, handler.VolumeRequestIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                volumeRequestId,
+                handler.VolumeRequestIds[0]);
             volumeRequestId += 12345;
         }
     }
-
-#undef BLOCKSTORE_HANDLE_EVENT_WITH_VOLUME_REQUEST_ID
 
     Y_UNIT_TEST(ShouldSendWriteRequestsWithCorrectVolumeRequestId)
     {
