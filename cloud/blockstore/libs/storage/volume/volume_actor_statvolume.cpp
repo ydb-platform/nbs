@@ -313,7 +313,7 @@ void TVolumeActor::HandleStatVolume(
     if (!noPartition && State->GetPartitions()) {
         TVector<TActorId> partActorIds;
         for (const auto& partition: State->GetPartitions()) {
-            partActorIds.push_back(partition.Owner);
+            partActorIds.push_back(partition.GetTopActorId());
         }
 
         NCloud::Register<TStatPartitionActor>(

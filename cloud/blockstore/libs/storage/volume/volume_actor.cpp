@@ -312,19 +312,11 @@ void TVolumeActor::BeforeDie(const TActorContext& ctx)
     TerminateTransactions(ctx);
     KillActors(ctx);
     CancelRequests(ctx);
-
-    for (auto& [_, handler]: OnPartitionStopped) {
-        std::invoke(handler, ctx);
-    }
-    OnPartitionStopped.clear();
-
-    for (auto& [part, handler]: WaitForPartitions) {
-        if (handler) {
-            std::invoke(handler, ctx, MakeError(E_REJECTED, "tablet is shutting down"));
-        }
-    }
-    StoppedPartitions.clear();
-    WaitForPartitions.clear();
+    OnDiskRegistryBasedPartitionStopped(
+        ctx,
+        TActorId(),
+        0,   // 0 means that it's over, need to call all callbacks.
+        MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void TVolumeActor::KillActors(const TActorContext& ctx)
@@ -607,55 +599,11 @@ void TVolumeActor::HandlePoisonTaken(
         TabletID(),
         ev->Sender.ToString().c_str());
 
-    if (auto* callback = OnPartitionStopped.FindPtr(ev->Cookie)) {
-        std::invoke(*callback, ctx);
-        OnPartitionStopped.erase(ev->Cookie);
-    }
-
-    if (WaitForPartitions.empty()) {
-        return;
-    }
-
-    StoppedPartitions.insert(ev->Sender);
-
-    auto it = WaitForPartitions.begin();
-
-    for (; it != WaitForPartitions.end(); ++it) {
-        auto& [part, handler] = *it;
-
-        if (!StoppedPartitions.erase(part)) {
-            break;
-        }
-
-        if (handler) {
-            std::invoke(handler, ctx, NProto::TError());
-        }
-    }
-
-    const auto removed = std::distance(WaitForPartitions.begin(), it);
-
-    WaitForPartitions.erase(WaitForPartitions.begin(), it);
-
-    if (WaitForPartitions.empty()) {
-        StoppedPartitions.clear();
-    }
-
-    TStringStream waitList;
-    for (const auto& [p, _]: WaitForPartitions) {
-        waitList << p.ToString() << " ";
-    }
-
-    TStringStream stoppedList;
-    for (const auto& p: StoppedPartitions) {
-        stoppedList << p.ToString() << " ";
-    }
-
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Partitions removed from the wait list: %lu. W: [ %s], S: [ %s]",
-        TabletID(),
-        removed,
-        waitList.Str().c_str(),
-        stoppedList.Str().c_str());
+    OnDiskRegistryBasedPartitionStopped(
+        ctx,
+        ev->Sender,
+        ev->Cookie,
+        NProto::TError());
 }
 
 void TVolumeActor::HandleUpdateThrottlerState(

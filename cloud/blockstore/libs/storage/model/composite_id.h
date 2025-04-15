@@ -1,5 +1,6 @@
 #pragma once
 
+#include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/types.h>
 #include <util/system/yassert.h>
@@ -9,6 +10,8 @@
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+constexpr size_t SafetyMargin = 100;
 
 // The identifier has a size of 64 bits and mixes two sources. The lower 32
 // bits the request id. The upper 32 bits are the TVolume generation.
@@ -38,12 +41,28 @@ public:
     [[nodiscard]] bool CanAdvance() const
     {
         return Values.RequestId <
-               std::numeric_limits<decltype(Values.RequestId)>::max();
+               std::numeric_limits<decltype(Values.RequestId)>::max() -
+                   SafetyMargin;
     }
 
     ui64 Advance()
     {
         Y_DEBUG_ABORT_UNLESS(CanAdvance());
+        ++Values.RequestId;
+        return GetValue();
+    }
+
+    ui64 AdvanceUnsafe()
+    {
+        if (Values.RequestId ==
+            std::numeric_limits<decltype(Values.RequestId)>::max())
+        {
+            TValues randomValue{
+                .RequestId = RandomNumber<decltype(Values.RequestId)>(),
+                .Generation = Values.Generation};
+            return std::bit_cast<ui64>(randomValue);
+        }
+
         ++Values.RequestId;
         return GetValue();
     }

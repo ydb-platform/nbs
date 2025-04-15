@@ -12,12 +12,13 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration.h>
 #include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
-#include <cloud/storage/core/libs/common/media.h>
 
-#include <util/string/builder.h>
+#include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/tablet/tablet_setup.h>
+
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -273,11 +274,14 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     ReportLaggingDevicesToDR(ctx);
 }
 
-NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
+TActorsStack TVolumeActor::WrapNonreplActorIfNeeded(
     const TActorContext& ctx,
     NActors::TActorId nonreplicatedActorId,
     std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig)
 {
+    TActorsStack result;
+    result.Push(nonreplicatedActorId);
+
     for (const auto& [checkpointId, checkpointInfo]:
          State->GetCheckpointStore().GetActiveCheckpoints())
     {
@@ -302,25 +306,33 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
             nonreplicatedActorId,
             checkpointInfo);
 
+        result.Push(nonreplicatedActorId);
         State->GetCheckpointStore().ShadowActorCreated(checkpointId);
         DoRegisterVolume(ctx, checkpointInfo.ShadowDiskId);
     }
-    return nonreplicatedActorId;
+    return result;
 }
 
 void TVolumeActor::RestartPartition(
     const TActorContext& ctx,
-    TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)
+    TPoisonCallback onPartitionStopped)
 {
-    if (!State->IsDiskRegistryMediaKind()) {
-        if (onPartitionStopped) {
-            std::invoke(onPartitionStopped, ctx);
-        }
-        return;
-    }
-
     StopPartitions(ctx, std::move(onPartitionStopped));
-    StartPartitionsForUse(ctx);
+
+    switch (PartitionsStartedReason) {
+        case EPartitionsStartedReason::STARTED_FOR_GC: {
+            StartPartitionsForGc(ctx);
+            break;
+        }
+        case EPartitionsStartedReason::STARTED_FOR_USE: {
+            StartPartitionsForUse(ctx);
+            break;
+        }
+        case EPartitionsStartedReason::NOT_STARTED: {
+            break;
+        }
+    };
+
     ResetServicePipes(ctx);
 }
 
@@ -362,7 +374,7 @@ void TVolumeActor::HandleGracefulShutdown(
     const TEvVolume::TEvGracefulShutdownRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!State->GetDiskRegistryBasedPartitionActor()) {
+    if (!State->IsDiskRegistryMediaKind()) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -384,17 +396,21 @@ void TVolumeActor::HandleGracefulShutdown(
         "[%lu] Stop Partition before volume destruction",
         TabletID());
 
-    auto reqInfo =
+    auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
-    StopPartitions(
-        ctx,
-        [reqInfo = std::move(reqInfo)](const auto& ctx)
-        {
-            NCloud::Reply(
-                ctx,
-                *reqInfo,
-                std::make_unique<TEvVolume::TEvGracefulShutdownResponse>());
-        });
+    TPoisonCallback onPartitionStopped = [requestInfo = std::move(requestInfo)](
+                                             const TActorContext& ctx,
+                                             NProto::TError error)
+    {
+        Y_UNUSED(error);
+
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvVolume::TEvGracefulShutdownResponse>());
+    };
+
+    StopPartitions(ctx, std::move(onPartitionStopped));
 
     TerminateTransactions(ctx);
     KillActors(ctx);
@@ -405,19 +421,13 @@ void TVolumeActor::HandleGracefulShutdown(
 
 void TVolumeActor::StopPartitions(
     const TActorContext& ctx,
-    TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)
+    TPoisonCallback onPartitionStopped)
 {
     if (!State) {
         if (onPartitionStopped) {
-            std::invoke(onPartitionStopped, ctx);
+            std::invoke(std::move(onPartitionStopped), ctx, MakeError(S_ALREADY));
         }
         return;
-    }
-
-    ui64 requestId = 0;
-    if (onPartitionStopped) {
-        requestId = VolumeRequestIdGenerator->GetValue();
-        OnPartitionStopped[requestId] = std::move(onPartitionStopped);
     }
 
     for (const auto& [checkpointId, _]:
@@ -426,7 +436,15 @@ void TVolumeActor::StopPartitions(
         State->GetCheckpointStore().ShadowActorDestroyed(checkpointId);
     }
 
-    for (auto& part : State->GetPartitions()) {
+    if (State->IsDiskRegistryMediaKind()) {
+        StopDiskRegistryBasedPartition(ctx, std::move(onPartitionStopped));
+        return;
+    }
+
+    // onPartitionStopped should used for DiskRegistry based volumes.
+    Y_DEBUG_ABORT_UNLESS(!onPartitionStopped);
+
+    for (auto& part: State->GetPartitions()) {
         // Reset previous boot attempts
         part.RetryCookie.Detach();
         part.RequestingBootExternal = false;
@@ -443,16 +461,84 @@ void TVolumeActor::StopPartitions(
             part.Bootstrapper = {};
         }
     }
+}
 
-    if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+void TVolumeActor::StopDiskRegistryBasedPartition(
+    const NActors::TActorContext& ctx,
+    TPoisonCallback onPartitionStopped)
+{
+    const ui64 requestId = VolumeRequestIdGenerator->AdvanceUnsafe();
+    const auto actorId = State->GetDiskRegistryBasedPartitionActor();
+
+    WaitForPartitionDestroy.push_back(TPartitionDestroyCallback{
+        .VolumeRequestId = requestId,
+        .PartitionActorId = actorId,
+        .PoisonCallback = std::move(onPartitionStopped)});
+
+    if (actorId) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
             "[%lu] Send poison pill to partition %s",
             TabletID(),
             actorId.ToString().c_str());
 
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId, requestId);
         State->SetDiskRegistryBasedPartitionActor({}, nullptr);
+    } else {
+        OnDiskRegistryBasedPartitionStopped(
+            ctx,
+            actorId,
+            requestId,
+            MakeError(S_ALREADY));
     }
+}
+
+void TVolumeActor::OnDiskRegistryBasedPartitionStopped(
+    const NActors::TActorContext& ctx,
+    NActors::TActorId sender,
+    ui64 volumeRequestId,
+    NProto::TError error)
+{
+    for (auto& callback: WaitForPartitionDestroy) {
+        if (callback.VolumeRequestId == volumeRequestId || volumeRequestId == 0)
+        {
+            callback.Destroyed = true;
+            Y_DEBUG_ABORT_UNLESS(
+                volumeRequestId == 0 || callback.PartitionActorId == sender);
+        }
+    }
+
+    size_t removed = 0;
+    while (WaitForPartitionDestroy) {
+        auto& callback = WaitForPartitionDestroy.front();
+        if (!callback.Destroyed) {
+            break;
+        }
+        if (callback.PoisonCallback) {
+            std::invoke(std::move(callback.PoisonCallback), ctx, error);
+        }
+        WaitForPartitionDestroy.pop_front();
+        ++removed;
+    }
+
+    TVector<TString> stillWait;
+    for (const auto& callback: WaitForPartitionDestroy) {
+        stillWait.push_back(
+            TStringBuilder()
+            << "{ requestId="
+            << TCompositeId::FromRaw(callback.VolumeRequestId).Print()
+            << ", actorId=" << callback.PartitionActorId << " }");
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Partitions removed from the wait list: count=%lu. Still wait "
+        "[%s]",
+        TabletID(),
+        removed,
+        JoinSeq(", ", stillWait).c_str());
 }
 
 void TVolumeActor::HandleRdmaUnavailable(
@@ -656,36 +742,43 @@ void TVolumeActor::HandleTabletStatus(
     bool suggestOutdated = false;
 
     switch (msg->Status) {
-        case TEvBootstrapper::STARTED:
-            partition->SetStarted(msg->TabletUser);
+        case TEvBootstrapper::STARTED: {
+            TActorsStack actors;
+            actors.Push(msg->TabletUser);
+            partition->SetStarted(std::move(actors));
             NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
                 ctx,
                 msg->TabletUser,
                 msg->TabletId);
             break;
-        case TEvBootstrapper::STOPPED:
+        }
+        case TEvBootstrapper::STOPPED: {
             partition->RetryPolicy.Reset(ctx.Now());
             partition->Bootstrapper = {};
             partition->SetStopped();
             break;
-        case TEvBootstrapper::RACE:
+        }
+        case TEvBootstrapper::RACE: {
             shouldRestart = true;
             partition->RetryPolicy.Reset(ctx.Now());
             break;
-        case TEvBootstrapper::SUGGEST_OUTDATED:
+        }
+        case TEvBootstrapper::SUGGEST_OUTDATED: {
             shouldRestart = true;
             suggestOutdated = true;
             // Retry immediately when hive generation is out of sync
             partition->RetryPolicy.Reset(ctx.Now());
             break;
-        case TEvBootstrapper::FAILED:
+        }
+        case TEvBootstrapper::FAILED: {
             if (partition->State == TPartitionInfo::EState::READY &&
-                    ctx.Now() > partition->RetryPolicy.GetCurrentDeadline())
+                ctx.Now() > partition->RetryPolicy.GetCurrentDeadline())
             {
                 partition->RetryPolicy.Reset(ctx.Now());
             }
             shouldRestart = true;
             break;
+        }
     }
 
     if (shouldRestart) {
@@ -721,7 +814,7 @@ void TVolumeActor::HandleWaitReadyResponse(
     // Drop unexpected responses in case of restart races
     if (partition &&
         partition->State == TPartitionInfo::STARTED &&
-        partition->Owner == ev->Sender)
+        partition->IsKnownActorId(ev->Sender))
     {
         partition->SetReady();
 
