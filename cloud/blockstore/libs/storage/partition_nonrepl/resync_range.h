@@ -66,7 +66,7 @@ public:
 private:
     void GetVolumeRequestId(const NActors::TActorContext& ctx);
     void CompareChecksums(const NActors::TActorContext& ctx);
-    void ReadBlocks(const NActors::TActorContext& ctx, int idx);
+    void ReadBlocks(const NActors::TActorContext& ctx);
     void WriteBlocks(const NActors::TActorContext& ctx);
     void WriteReplicaBlocks(const NActors::TActorContext& ctx, int idx);
     void Done(const NActors::TActorContext& ctx);

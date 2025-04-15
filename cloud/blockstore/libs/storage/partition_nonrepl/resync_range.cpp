@@ -128,15 +128,15 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         }
     }
 
+    ReplicaIndexToReadFrom = majorIdx;
     if (AssignVolumeRequestId) {
-        ReplicaIndexToReadFrom = majorIdx;
         GetVolumeRequestId(ctx);
         return;
     }
-    ReadBlocks(ctx, majorIdx);
+    ReadBlocks(ctx);
 }
 
-void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
+void TResyncRangeActor::ReadBlocks(const TActorContext& ctx)
 {
     Buffer = TGuardedBuffer(TString::Uninitialized(Range.Size() * BlockSize));
 
@@ -156,12 +156,12 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
     headers->SetClientId(TString(BackgroundOpsClientId));
 
     auto event = std::make_unique<NActors::IEventHandle>(
-        Replicas[idx].ActorId,
+        Replicas[ReplicaIndexToReadFrom].ActorId,
         ctx.SelfID,
         request.release(),
         IEventHandle::FlagForwardOnNondelivery,
-        idx,          // cookie
-        &ctx.SelfID   // forwardOnNondelivery
+        ReplicaIndexToReadFrom,   // cookie
+        &ctx.SelfID               // forwardOnNondelivery
     );
 
     ctx.Send(event.release());
@@ -291,7 +291,7 @@ void TResyncRangeActor::HandleVolumeRequestId(
     }
 
     VolumeRequestId = msg->VolumeRequestId;
-    ReadBlocks(ctx, ReplicaIndexToReadFrom);
+    ReadBlocks(ctx);
 }
 
 void TResyncRangeActor::HandleReadUndelivery(

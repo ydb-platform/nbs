@@ -1,13 +1,12 @@
 #pragma once
 
-#include "copy_range_common.h"
-
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -21,8 +20,7 @@ namespace NCloud::NBlockStore::NStorage {
 // TDirectCopyRangeActor copies the range using TEvDirectCopyBlocksRequest. If
 // copying is not possible, it performcopying via TCopyRangeActor.
 class TDirectCopyRangeActor final
-    : public TCopyRangeActorCommon
-    , public ICopyRangeOwner
+    : public NActors::TActorBootstrapped<TDirectCopyRangeActor>
 {
 private:
     using TDeviceInfoResponse = std::unique_ptr<
@@ -48,8 +46,6 @@ private:
     TDeviceInfoResponse TargetInfo;
     ui64 VolumeRequestId = 0;
 
-    bool NeedToReply = true;
-
 public:
     TDirectCopyRangeActor(
         TRequestInfoPtr requestInfo,
@@ -62,23 +58,22 @@ public:
         NActors::TActorId volumeActorId,
         bool assignVolumeRequestId);
 
-    // implements ICopyRangeOwner
-    void ReadyToCopy(
-        const NActors::TActorContext& ctx,
-        ui64 volumeRequestId) override;
-    bool OnMessage(
-        const NActors::TActorContext& ctx,
-        TAutoPtr<NActors::IEventHandle>& ev) override;
-    void BeforeDie(
-        const NActors::TActorContext& ctx,
-        NProto::TError error) override;
+    void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
+    void GetVolumeRequestId(const NActors::TActorContext& ctx);
     void GetDevicesInfo(const NActors::TActorContext& ctx);
     void DirectCopy(const NActors::TActorContext& ctx);
     void Fallback(const NActors::TActorContext& ctx);
 
+    void Done(const NActors::TActorContext& ctx, NProto::TError error);
+
 private:
+    STFUNC(StateWork);
+
+    void HandleVolumeRequestId(
+        const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void HandleGetDeviceForRange(
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse::TPtr&
@@ -97,6 +92,9 @@ private:
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandlePoisonPill(
+        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

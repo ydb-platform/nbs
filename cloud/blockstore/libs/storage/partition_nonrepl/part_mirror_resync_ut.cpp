@@ -508,12 +508,14 @@ struct TTestEnv
     }
 };
 
-struct TResyncMessageHandler {
+struct TResyncMessageHandler
+{
     TVector<ui64> VolumeRequestIds;
     ui64 ResyncRequestCount = 0;
 
-    template<typename TEv>
-    void Handle(TAutoPtr<IEventHandle>& event) {
+    template <typename TEv>
+    void Handle(TAutoPtr<IEventHandle>& event)
+    {
         if (event->GetTypeRewrite() == TEv::EventType) {
             ResyncRequestCount += 1;
             auto* ev = static_cast<TEv*>(event->GetBase());
