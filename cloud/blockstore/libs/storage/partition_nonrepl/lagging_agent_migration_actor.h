@@ -27,8 +27,8 @@ private:
     const TString AgentId;
 
     ui64 BlocksMigratedSinceLastReport = 0;
-    ui64 ProcessedBlockCount;
-    ui64 BlockCountNeedToBeProcessed;
+    ui64 ProcessedBlockCount = 0;
+    ui64 BlockCountNeedToBeProcessed = 0;
 
 public:
     TLaggingAgentMigrationActor(
