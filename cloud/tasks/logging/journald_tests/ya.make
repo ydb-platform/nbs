@@ -5,7 +5,13 @@ GO_XTEST_SRCS(
 )
 
 SIZE(LARGE)
-TAG(ya:fat ya:privileged ya:force_sandbox ya:sandbox_coverage)
+TAG(
+    ya:fat
+    ya:privileged
+    ya:force_sandbox
+    ya:sandbox_coverage
+    ya:large_tests_on_single_slots
+)
 
 REQUIREMENTS(
     cpu:4
