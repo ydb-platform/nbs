@@ -1046,7 +1046,8 @@ auto TDiskRegistryState::RegisterAgent(
             disksWithLostOrReappearedDevices.emplace(diskId);
         }
 
-        for (const auto& uuid: agent.GetDevices()) {
+        for (const auto& d: agent.GetDevices()) {
+            const auto& uuid = d.GetDeviceUUID();
             if (r.LostDeviceUUIDs.contains(uuid)) {
                 continue;
             }

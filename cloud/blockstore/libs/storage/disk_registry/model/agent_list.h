@@ -133,10 +133,6 @@ public:
         const TString& agentId, const NProto::TDiskRegistryAgentParams& params);
     TVector<TString> CleanupExpiredAgentListParams(TInstant now);
     TVector<TString> GetAgentIdsWithOverriddenListParams() const;
-    const THashSet<TString>& GetLostDevices() const
-    {
-        return LostDevices;
-    }
 
 private:
     NProto::TAgentConfig& AddAgent(NProto::TAgentConfig config);
