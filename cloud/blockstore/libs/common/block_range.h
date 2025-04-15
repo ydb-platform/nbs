@@ -204,6 +204,9 @@ constexpr auto xrange(const TBlockRange<TBlockIndex>& range, TBlockIndex2 step)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Builds a vector of ranges block by block. To build, you need to call OnBlack
+// with the block index that you want to add. The block index that are passed to
+// the OnBlock should increase.
 template <typename TBlockIndex>
 class TBlockRangeBuilder
 {
@@ -211,18 +214,29 @@ private:
     TVector<TBlockRange<TBlockIndex>>& Ranges;
 
 public:
-    TBlockRangeBuilder(TVector<TBlockRange<TBlockIndex>>& ranges)
+    explicit TBlockRangeBuilder(TVector<TBlockRange<TBlockIndex>>& ranges)
         : Ranges(ranges)
     {}
 
-public:
     void OnBlock(TBlockIndex blockIndex)
     {
-        if (Ranges.empty() || Ranges.back().End + 1 != blockIndex) {
+        Y_DEBUG_ABORT_UNLESS(Ranges.empty() || Ranges.back().End <= blockIndex);
+
+        if (Ranges.empty()) {
             Ranges.push_back(
                 TBlockRange<TBlockIndex>::MakeOneBlock(blockIndex));
         } else {
-            ++Ranges.back().End;
+            auto& lastRange = Ranges.back();
+            if (lastRange.End == blockIndex) {
+                // nothing to do
+            } else if (lastRange.End + 1 == blockIndex) {
+                // Enlarge range.
+                lastRange.End = blockIndex;
+            } else {
+                // Make new range.
+                Ranges.push_back(
+                    TBlockRange<TBlockIndex>::MakeOneBlock(blockIndex));
+            }
         }
     }
 };
