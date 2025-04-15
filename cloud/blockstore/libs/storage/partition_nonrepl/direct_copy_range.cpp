@@ -143,7 +143,9 @@ void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
         SourceActor,
         TargetActor,
         WriterClientId,
-        BlockDigestGenerator);
+        BlockDigestGenerator,
+        VolumeActorId,
+        AssignVolumeRequestId);
 
     Die(ctx);
 }
