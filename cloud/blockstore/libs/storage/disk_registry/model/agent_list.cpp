@@ -315,8 +315,6 @@ void TAgentList::AddLostDevice(
         device.SetStateMessage("lost");
     }
 
-    LostDevices.emplace(device.GetDeviceUUID());
-
     agent.MutableDevices()->Add(std::move(device));
 }
 
@@ -434,15 +432,7 @@ auto TAgentList::RegisterAgent(
     int i = 0;
     int j = 0;
 
-    TVector<TString> lostOrFoundDeviceUUIDs;
-
-    auto addLostDeviceEventIfNeeded = [&](const auto& uuid)
-    {
-        if (!LostDevices.contains(uuid)) {
-            lostOrFoundDeviceUUIDs.emplace_back(uuid);
-        }
-    };
-
+    THashSet<TString> lostDeviceUUIDs;
     while (i != newList.size() && j != oldList.size()) {
         auto& newDevice = newList[i];
         auto& oldDevice = oldList[j];
@@ -451,12 +441,6 @@ auto TAgentList::RegisterAgent(
             .compare(oldDevice.GetDeviceUUID());
 
         if (cmp == 0) {
-            auto it = LostDevices.find(oldDevice.GetDeviceUUID());
-            if (it != LostDevices.end()) {
-                lostOrFoundDeviceUUIDs.emplace_back(newDevice.GetDeviceUUID());
-                LostDevices.erase(it);
-            }
-
             AddUpdatedDevice(
                 *agent,
                 knownAgent,
@@ -483,7 +467,7 @@ auto TAgentList::RegisterAgent(
         }
 
         if (IsAllowedDevice(*agent, oldDevice)) {
-            addLostDeviceEventIfNeeded(oldDevice.GetDeviceUUID());
+            lostDeviceUUIDs.emplace(oldDevice.GetDeviceUUID());
             AddLostDevice(*agent, timestamp, std::move(oldDevice));
         }
 
@@ -500,7 +484,7 @@ auto TAgentList::RegisterAgent(
     for (; j < oldList.size(); ++j) {
         auto& oldDevice = oldList[j];
         if (IsAllowedDevice(*agent, oldDevice)) {
-            addLostDeviceEventIfNeeded(oldDevice.GetDeviceUUID());
+            lostDeviceUUIDs.emplace(oldDevice.GetDeviceUUID());
             AddLostDevice(*agent, timestamp, std::move(oldDevice));
         }
     }
@@ -515,7 +499,7 @@ auto TAgentList::RegisterAgent(
         .NewDevices = std::move(newDeviceIds),
         .PrevNodeId = prevNodeId,
         .OldConfigs = std::move(oldConfigs),
-        .LostOrFoundDeviceUUIDs = std::move(lostOrFoundDeviceUUIDs)};
+        .LostDeviceUUIDs = std::move(lostDeviceUUIDs)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

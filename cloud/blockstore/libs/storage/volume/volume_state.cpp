@@ -922,41 +922,14 @@ const THashMultiMap<TActorId, TString>& TVolumeState::GetPipeServerId2ClientId()
     return ClientIdsByPipeServerId;
 }
 
-TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForAcquireRelease(
-    bool filterErrorDevices) const
+TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForAcquire() const
 {
-    const size_t allDevicesCount =
-        ((Meta.ReplicasSize() + 1) * Meta.DevicesSize()) +
-        GetMeta().MigrationsSize();
+    return GetAllDevicesForAcquireOrRelease(true);
+}
 
-    TVector<NProto::TDeviceConfig> resultDevices;
-    resultDevices.reserve(allDevicesCount);
-
-    auto addDeviceIfNeeded = [&](const auto& d)
-    {
-        if (filterErrorDevices) {
-            for (const auto& lostDevice: Meta.GetLostDevicesUUIDs()) {
-                if (d.GetDeviceUUID() == lostDevice) {
-                    return;
-                }
-            }
-        }
-        resultDevices.emplace_back(d);
-    };
-
-    for (const auto& device: Meta.GetDevices()) {
-        addDeviceIfNeeded(device);
-    }
-    for (const auto& replica: Meta.GetReplicas()) {
-        for (const auto& device: replica.GetDevices()) {
-            addDeviceIfNeeded(device);
-        }
-    }
-    for (const auto& migration: Meta.GetMigrations()) {
-        addDeviceIfNeeded(migration.GetTargetDevice());
-    }
-
-    return resultDevices;
+TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForRelease() const
+{
+    return GetAllDevicesForAcquireOrRelease(false);
 }
 
 void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
@@ -1218,6 +1191,47 @@ void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& block
         return;
     }
     CheckpointLight->Set(blockRange);
+}
+
+TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForAcquireOrRelease(
+    bool ignoreLostDevices) const
+{
+    const size_t allDevicesCount =
+        ((Meta.ReplicasSize() + 1) * Meta.DevicesSize()) +
+        GetMeta().MigrationsSize();
+
+    TVector<NProto::TDeviceConfig> resultDevices;
+    resultDevices.reserve(allDevicesCount);
+
+    THashSet<TString> deviceIdsToIgnore;
+    if (ignoreLostDevices) {
+        deviceIdsToIgnore.insert(
+            Meta.GetLostDevicesUUIDs().begin(),
+            Meta.GetLostDevicesUUIDs().end());
+    }
+
+    auto addDeviceIfNeeded = [&](const auto& d)
+    {
+        if (ignoreLostDevices && deviceIdsToIgnore.contains(d.GetDeviceUUID()))
+        {
+            return;
+        }
+        resultDevices.emplace_back(d);
+    };
+
+    for (const auto& device: Meta.GetDevices()) {
+        addDeviceIfNeeded(device);
+    }
+    for (const auto& replica: Meta.GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            addDeviceIfNeeded(device);
+        }
+    }
+    for (const auto& migration: Meta.GetMigrations()) {
+        addDeviceIfNeeded(migration.GetTargetDevice());
+    }
+
+    return resultDevices;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

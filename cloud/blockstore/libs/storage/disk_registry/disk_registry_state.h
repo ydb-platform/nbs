@@ -337,6 +337,8 @@ private:
 
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
+    THashMap<TString, TString> LostDeviceUUIDs;
+
 public:
     TDiskRegistryState(
         ILoggingServicePtr logging,

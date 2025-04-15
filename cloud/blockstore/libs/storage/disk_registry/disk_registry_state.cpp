@@ -1032,11 +1032,36 @@ auto TDiskRegistryState::RegisterAgent(
             }
         }
 
-        for (const auto& lostDevice: r.LostOrFoundDeviceUUIDs) {
-            if (auto diskId = DeviceList.FindDiskId(lostDevice)) {
-                AddReallocateRequest(db, diskId);
-                disksToReallocate.emplace_back(diskId);
+        THashSet<TString> disksWithLostOrReappearedDevices;
+        for (const auto& lostDevice: r.LostDeviceUUIDs) {
+            auto diskId = DeviceList.FindDiskId(lostDevice);
+            if (!diskId) {
+                continue;
             }
+            auto [_, inserted] =
+                LostDeviceUUIDs.try_emplace(lostDevice, diskId);
+            if (!inserted) {
+                continue;
+            }
+            disksWithLostOrReappearedDevices.emplace(diskId);
+        }
+
+        for (const auto& uuid: agent.GetDevices()) {
+            if (r.LostDeviceUUIDs.contains(uuid)) {
+                continue;
+            }
+            auto it = LostDeviceUUIDs.find(uuid);
+            if (it == LostDeviceUUIDs.end()) {
+                continue;
+            }
+
+            disksWithLostOrReappearedDevices.emplace(it->second);
+            LostDeviceUUIDs.erase(it);
+        }
+
+        for (const auto& diskId: disksWithLostOrReappearedDevices) {
+            AddReallocateRequest(db, diskId);
+            disksToReallocate.emplace_back(diskId);
         }
 
         THashSet<TDiskId> diskIds;
@@ -1117,12 +1142,10 @@ auto TDiskRegistryState::RegisterAgent(
 TVector<TString> TDiskRegistryState::GetLostDevicesForDisk(
     const TString& diskId)
 {
-    const auto& allLostDevices = AgentList.GetLostDevices();
-
     TVector<TString> lostDevicesForDisk;
-    for (const auto& d: allLostDevices) {
-        if (DeviceList.FindDiskId(d) == diskId) {
-            lostDevicesForDisk.emplace_back(d);
+    for (const auto& [uuid, diskIdForDevice]: LostDeviceUUIDs) {
+        if (diskIdForDevice == diskId) {
+            lostDevicesForDisk.emplace_back(uuid);
         }
     }
 
