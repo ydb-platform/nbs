@@ -92,6 +92,11 @@ private:
     ui32 ChecksumMismatches = 0;
     ui64 RequestIdentifierCounter = 0;
 
+    TBlockRangeSet64 Minors;
+    TBlockRangeSet64 Majors;
+    TBlockRangeSet64 Fixed;
+    TBlockRangeSet64 FixedPartial;
+
 public:
     TMirrorPartitionActor(
         TStorageConfigPtr config,

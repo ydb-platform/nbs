@@ -85,24 +85,6 @@ void HealMinors(const TBlockVariants& blockVariants)
     }
 }
 
-void AddBlockToRange(ui64 block, TVector<TBlockRange64>& rangesWithMajorError)
-{
-    if (rangesWithMajorError.empty()) {
-        rangesWithMajorError.push_back(TBlockRange64::MakeOneBlock(block));
-    } else {
-        auto& lastRange = rangesWithMajorError.back();
-        if (lastRange.End == block) {
-            // nothing to do, range already updated by another replica.
-        } else if (lastRange.End + 1 == block) {
-            // Enlarge range.
-            lastRange.End = block;
-        } else {
-            // Make new range.
-            rangesWithMajorError.push_back(TBlockRange64::MakeOneBlock(block));
-        }
-    }
-}
-
 TString PrintRanges(const TVector<TBlockRange64>& ranges)
 {
     TStringBuilder builder;
@@ -122,6 +104,24 @@ TString PrintRanges(const TVector<TBlockRange64>& ranges)
     }
     builder << "]";
     return builder;
+}
+
+TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus GetResyncStatus(
+    size_t fixedBlockCount,
+    size_t foundErrorCount)
+{
+    using EStatus = TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus;
+
+    if (!foundErrorCount) {
+        return EStatus::Healthy;
+    }
+    if (foundErrorCount == fixedBlockCount) {
+        return EStatus::HealedAll;
+    }
+    if (!fixedBlockCount) {
+        return EStatus::HealedNone;
+    }
+    return EStatus::HealedPartial;
 }
 
 }   // namespace
@@ -220,6 +220,7 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
     }
 
     TVector<TBlockRange64> rangesWithMajorError;
+    TBlockRange64Builder rangesBuilder(rangesWithMajorError);
 
     for (size_t blockIndex = 0; blockIndex < Range.Size(); ++blockIndex) {
         const auto& donorBlock = ReadBuffers[bestHealer].GetBuffers(blockIndex);
@@ -237,7 +238,7 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
             }
 
             ++healStat[replica].FoundMajorErrorCount;
-            AddBlockToRange(Range.Start + blockIndex, rangesWithMajorError);
+            rangesBuilder.OnBlock(Range.Start + blockIndex);
             if (ResyncPolicy ==
                 NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK)
             {
@@ -274,6 +275,9 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
         rangesWithMajorError
             ? ". Blocks with major errors: " + PrintRanges(rangesWithMajorError)
             : TString();
+
+    FixedBlockCount = fixedMajorErrorCount + fixedMinorErrorCount;
+    FoundErrorCount = foundMajorErrorCount + fixedMinorErrorCount;
 
     LOG_WARN(
         ctx,
@@ -410,7 +414,8 @@ void TResyncRangeBlockByBlockActor::Done(const TActorContext& ctx)
             ReadDuration,
             WriteStartTs,
             WriteDuration,
-            std::move(AffectedBlockInfos));
+            std::move(AffectedBlockInfos),
+            GetResyncStatus(FixedBlockCount, FoundErrorCount));
 
     LWTRACK(
         ResponseSent_PartitionWorker,

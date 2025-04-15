@@ -157,6 +157,10 @@ private:
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleScrubberCounters(
+        const TEvVolume::TEvScrubberCounters::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleUpdateCounters(
         const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
         const NActors::TActorContext& ctx);

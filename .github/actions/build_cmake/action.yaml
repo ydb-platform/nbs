@@ -1,0 +1,112 @@
+name: Build with cmake
+description: Build targets using cmake infrastructure
+inputs:
+  build_preset:
+    required: true
+    default: "relwithdebinfo"
+    description: "relwithdebinfo, debug"
+  bazel_remote_uri:
+    required: false
+    description: "bazel-remote endpoint"
+  bazel_remote_username:
+    required: false
+    description: "bazel-remote username"
+  bazel_remote_password:
+    required: false
+    description: "bazel-remote password"
+
+runs:
+  using: composite
+  steps:
+    - name: Init
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      id: init
+      run: |
+        export TMP_DIR=$(pwd)/tmp_build
+        export ROOT_PATH=$(pwd)
+        {
+          echo "TMP_DIR=$TMP_DIR"
+          echo "ROOT_PATH=$ROOT_PATH"
+          echo "CONAN_USER_HOME=$TMP_DIR"
+          echo "CCACHE_SLOPPINESS=locale"
+          echo "CCACHE_BASEDIR=$TMP_DIR"
+          echo "CCACHE_MAXSIZE=500G"
+          echo "CCACHE_NOREADONLY=1"
+          echo "CCACHE_REMOTE_ONLY=1"
+          echo "CCACHE_DEBUG=1"
+          echo "CCACHE_REMOTE_STORAGE=http://${{ inputs.bazel_remote_username }}:${{ inputs.bazel_remote_password }}@195.242.17.155:9090|layout=bazel"
+        } >> $GITHUB_ENV
+        rm -rf $TMP_DIR && mkdir $TMP_DIR
+
+    - name: build
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      run: |
+        cd $TMP_DIR
+        export
+
+        # shellcheck disable=SC2195
+        case "${{ inputs.build_preset }}" in
+          debug)
+            export CMAKE_BUILD_TYPE=Debug
+            ;;
+          relwithdebinfo)
+            export CMAKE_BUILD_TYPE=RelWithDebInfo
+            ;;
+          release)
+            export CMAKE_BUILD_TYPE=Release
+            ;;
+          *)
+            echo "Invalid preset: ${{ inputs.build_preset }}"
+            exit 1
+            ;;
+        esac
+        if [ "$(git branch --show-current)" == "main" ]; then
+          cp ${ROOT_PATH}/contrib/ydb/library/yql/minikql/codegen/codegen_llvm_deps.h.txt ${ROOT_PATH}/contrib/ydb/library/yql/minikql/codegen/codegen_llvm_deps.h
+        fi
+
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_TOOLCHAIN_FILE=${ROOT_PATH}/clang.toolchain \
+              ${ROOT_PATH}/ 2>&1 | tee -a $TMP_DIR/configure.log
+
+        ccache -z
+        ninja 2>&1| tee -a $TMP_DIR/build.log
+
+
+    - name: Sync logs to S3
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::s3-sync"
+        [ -f "$TMP_DIR/strace.log" ] && {
+          s3cmd sync --acl-private --no-progress --stats --no-check-md5 "$TMP_DIR/strace.log" "$S3_BUCKET_PATH/build_logs/"
+          echo ${S3_WEBSITE_PREFIX}/build_logs/strace.log
+        }
+        [ -f "$TMP_DIR/configure.log" ] && {
+          s3cmd sync --acl-private --no-progress --stats --no-check-md5 "$TMP_DIR/configure.log" "$S3_BUCKET_PATH/build_logs/"
+          echo ${S3_WEBSITE_PREFIX}/build_logs/configure.log
+        }
+        [ -f "$TMP_DIR/build.log" ] && {
+          s3cmd sync --acl-private --no-progress --stats --no-check-md5 "$TMP_DIR/build.log" "$S3_BUCKET_PATH/build_logs/"
+          echo ${S3_WEBSITE_PREFIX}/build_logs/build.log
+        }
+        echo "::endgroup::"
+
+    - name: Create directory listing on s3
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::generate-listing"
+        python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
+        echo "::endgroup::"
+
+    - name: show ccache stats
+      if: always()
+      shell: bash
+      run: ccache -s
+
+    - name: show free space
+      if: always()
+      shell: bash
+      run: df -h

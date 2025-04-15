@@ -1,0 +1,136 @@
+name: Create runner VM
+description: Create runner VM using manage-vm.py
+inputs:
+  org:
+    required: false
+    description: "org name"
+  team:
+    required: false
+    description: "team slug name"
+  repo_owner:
+    required: true
+    description: "repo owner"
+  repo:
+    required: true
+    description: "repo name"
+  service_account_key:
+    required: true
+    description: "service account key"
+  token:
+    required: true
+    description: "GITHUB_TOKEN"
+  vm_folder:
+    required: true
+    description: "vm folder"
+  vm_name:
+    required: true
+    description: "vm name"
+  vm_zone:
+    required: true
+    description: "vm zone"
+  vm_cpu:
+    required: true
+    description: "vm cpu"
+  vm_memory:
+    required: true
+    description: "vm memory"
+  vm_disk_type:
+    required: true
+    description: "vm disk type"
+  vm_disk_size:
+    required: true
+    description: "vm disk size"
+  vm_subnet:
+    required: true
+    description: "vm subnet"
+  vm_image:
+    required: true
+    description: "vm image id"
+  vm_labels:
+    required: true
+    description: "vm labels"
+  vm_user_passwd:
+    required: true
+    description: "vm user password"
+
+outputs:
+  label:
+    description: >-
+      Name of the unique label assigned to the runner.
+      The label is used in two cases:
+      - to use as the input of 'runs-on' property for the following jobs;
+      - to remove the runner from GitHub when it is not needed anymore.
+    value: ${{ steps.create-vm.outputs.label }}
+  instance-id:
+    description: >-
+      Instance id of the created runner.
+      The id is used to terminate the instance when the runner is not needed anymore.
+    value: ${{ steps.create-vm.outputs.instance-id }}
+  local-ipv4:
+    description: >-
+      Local ipv4 address of the created runner.
+      The address is used to connect to the runner via SSH.
+    value: ${{ steps.create-vm.outputs.local-ipv4 }}
+  external-ipv4:
+    description: >-
+      External ipv4 address of the created runner.
+      The address is used to connect to the runner via SSH.
+    value: ${{ steps.create-vm.outputs.external-ipv4 || '0.0.0.0' }}
+
+
+runs:
+  using: composite
+  steps:
+    - name: write service account key to file
+      shell: bash
+      run: |
+        export SERVICE_ACCOUNT_KEY=$(mktemp)
+        echo "SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}" >> $GITHUB_ENV
+        echo "${key_contents}" > $SERVICE_ACCOUNT_KEY
+      env:
+        key_contents: ${{ inputs.service_account_key }}
+    - name: install dependencies
+      shell: bash
+      run: |
+        pip install yandexcloud==0.258.0 PyGithub==2.2.0
+    - name: create vm
+      id: create-vm
+      shell: bash
+      run: |
+        python .github/scripts/manage-vm.py create ${ORG} ${TEAM} \
+          --github-repo-owner "${REPO_OWNER}" \
+          --github-repo "${REPO}" \
+          --service-account-key "${SERVICE_ACCOUNT_KEY}" \
+          --name "${VM_NAME}" \
+          --folder-id "${VM_FOLDER}" \
+          --zone-id "${VM_ZONE}" \
+          --cpu "${VM_CPU}" --ram "${VM_MEMORY}" --disk-size "${VM_DISK_SIZE}" \
+          --disk-type "${VM_DISK_TYPE}" \
+          --subnet-id "${VM_SUBNET}" \
+          --image-id "$VM_IMAGE" \
+          --labels "$VM_LABELS" \
+          --apply
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        ORG: ${{ inputs.org && format('--github-org {0}', inputs.org) || ''}}
+        TEAM: ${{ inputs.team && format('--github-team-slug {0}', inputs.team) || ''}}
+        REPO_OWNER: ${{ inputs.repo_owner }}
+        REPO: ${{ inputs.repo }}
+        VM_NAME: ${{ inputs.vm_name }}
+        VM_FOLDER: ${{ inputs.vm_folder }}
+        VM_ZONE: ${{ inputs.vm_zone }}
+        VM_CPU: ${{ inputs.vm_cpu }}
+        VM_MEMORY: ${{ inputs.vm_memory }}
+        VM_DISK_SIZE: ${{ inputs.vm_disk_size }}
+        VM_DISK_TYPE: ${{ inputs.vm_disk_type }}
+        VM_SUBNET: ${{ inputs.vm_subnet }}
+        VM_IMAGE: ${{ inputs.vm_image }}
+        VM_LABELS: ${{ inputs.vm_labels }}
+        VM_USER_PASSWD: ${{ inputs.vm_user_passwd }}
+
+    - name: save console output if we had any
+      if: ${{ steps.create-vm.outputs.console-output }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: console-output-${{ inputs.vm_name }}
+        path: ${{ steps.create-vm.outputs.console-output }}

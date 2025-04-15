@@ -181,6 +181,19 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TScrubbingInfo
+{
+    size_t FullScanCount = 0;
+    bool Running = false;
+    TBlockRange64 CurrentRange;
+    TBlockRangeSet64 Minors;
+    TBlockRangeSet64 Majors;
+    TBlockRangeSet64 Fixed;
+    TBlockRangeSet64 FixedPartial;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TVolumeState
 {
 private:
@@ -251,6 +264,8 @@ private:
     };
     THashMap<TString, TLaggingAgentMigrationInfo>
         CurrentlyMigratingLaggingAgents;
+
+    TScrubbingInfo ScrubbingInfo;
 
 public:
     TVolumeState(
@@ -780,6 +795,17 @@ public:
     {
         return FollowerDisks;
     }
+
+    //
+    // Scrubbing
+    //
+
+    const TScrubbingInfo& GetScrubbingInfo() const
+    {
+        return ScrubbingInfo;
+    }
+
+    void UpdateScrubberCounters(TScrubbingInfo counters);
 
 private:
     bool CanPreemptClient(

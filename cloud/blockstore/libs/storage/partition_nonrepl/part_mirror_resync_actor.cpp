@@ -296,6 +296,7 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
         HFunc(
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
+        HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 

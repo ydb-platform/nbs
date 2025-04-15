@@ -44,6 +44,9 @@ private:
 
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion{Replicas};
 
+    bool ErrorFound = false;
+    bool ErrorFixed = false;
+
 public:
     TResyncRangeActor(
         TRequestInfoPtr requestInfo,

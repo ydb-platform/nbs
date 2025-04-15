@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -237,7 +238,12 @@ func (s *nodeService) NodeStageVolume(
 				if nfsBackend {
 					err = s.nodeStageFileStoreAsVhostSocket(ctx, instanceId, nbsId)
 				} else {
-					err = s.nodeStageDiskAsVhostSocket(ctx, instanceId, nbsId, req.VolumeContext)
+					err = s.nodeStageDiskAsVhostSocket(
+						ctx,
+						instanceId,
+						nbsId,
+						req.VolumeContext,
+						req.VolumeCapability.GetMount())
 				}
 
 				if err != nil {
@@ -575,7 +581,8 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	ctx context.Context,
 	instanceId string,
 	diskId string,
-	volumeContext map[string]string) error {
+	volumeContext map[string]string,
+	volumeCapabilities *csi.VolumeCapability_MountVolume) error {
 
 	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, diskId, volumeContext)
 
@@ -589,6 +596,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		deviceName = diskId
 	}
 
+	vhostDiscardEnabled := slices.Contains(volumeCapabilities.MountFlags, "discard")
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
@@ -607,6 +615,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
+		VhostDiscardEnabled: vhostDiscardEnabled,
 	})
 
 	if err != nil {
@@ -1032,38 +1041,40 @@ func (s *nodeService) nodeUnpublishVolume(
 	nbsId := req.VolumeId
 	endpointDir := s.getEndpointDir(podId, nbsId)
 
-	// Trying to stop both NBS and NFS endpoints,
-	// because the endpoint's backend service is unknown here.
-	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
-
-	// Fallback to previous implementation for already mounted volumes to
-	// stop endpoint in nodeUnpublishVolume.
+	// Fallback to previous implementation for already mounted volumes
+	// in VM mode to stop endpoint in nodeUnpublishVolume.
 	// Must be removed after migration of all endpoints to the new format
-	if s.nbsClient != nil {
-		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
+	if s.vmMode {
+		// Trying to stop both NBS and NFS endpoints,
+		// because the endpoint's backend service is unknown here.
+		// When we miss we get S_FALSE/S_ALREADY code (err == nil).
+		if s.nbsClient != nil {
+			_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to stop nbs endpoint: %w", err)
+			}
 		}
-	}
 
-	nfsClient := s.getNfsClient(nbsId)
-	if nfsClient != nil {
-		_, err := nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: filepath.Join(endpointDir, nfsSocketName),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to stop nfs endpoint (%T): %w", nfsClient, err)
+		nfsClient := s.getNfsClient(nbsId)
+		if nfsClient != nil {
+			_, err := nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+				SocketPath: filepath.Join(endpointDir, nfsSocketName),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to stop nfs endpoint (%T): %w", nfsClient, err)
+			}
 		}
+
+		if err := os.RemoveAll(endpointDir); err != nil {
+			return err
+		}
+
+		// remove pod's folder if it's empty
+		ignoreError(os.Remove(s.getEndpointDir(podId, "")))
 	}
 
-	if err := os.RemoveAll(endpointDir); err != nil {
-		return err
-	}
-
-	// remove pod's folder if it's empty
-	ignoreError(os.Remove(s.getEndpointDir(podId, "")))
 	return nil
 }
 

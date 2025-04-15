@@ -1204,4 +1204,6 @@ message TStorageServiceConfig
     // migration. Resync is started with a special flag and will emit critical
     // events for any mismatch it finds.
     optional bool ResyncAfterLaggingAgentMigration = 422;
+
+    optional bool DoNotStopVolumeTabletOnLockLost = 423;
 }

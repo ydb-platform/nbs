@@ -43,9 +43,7 @@ IF (SANITIZER_TYPE)
         ya:manual
         sb:ttl=3
         sb:logs_ttl=3
-        sb:ssd
-        sb:MULTISLOT
-        sb:cores=64
+        ya:large_tests_on_multi_slots
     )
 ELSE()
     TAG(
@@ -53,9 +51,7 @@ ELSE()
         ya:force_sandbox
         sb:ttl=3
         sb:logs_ttl=3
-        sb:ssd
-        sb:MULTISLOT
-        sb:cores=16
+        ya:large_tests_on_multi_slots
     )
 ENDIF()
 
