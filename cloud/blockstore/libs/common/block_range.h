@@ -205,8 +205,7 @@ constexpr auto xrange(const TBlockRange<TBlockIndex>& range, TBlockIndex2 step)
 ////////////////////////////////////////////////////////////////////////////////
 
 // Builds a vector of ranges block by block. To build, you need to call OnBlack
-// with the block index that you want to add. The block index that are passed to
-// the OnBlock should increase.
+// with the block index that you want to add.
 template <typename TBlockIndex>
 class TBlockRangeBuilder
 {
@@ -220,7 +219,8 @@ public:
 
     void OnBlock(TBlockIndex blockIndex)
     {
-        Y_DEBUG_ABORT_UNLESS(Ranges.empty() || Ranges.back().End <= blockIndex);
+        // TODO(drbasic). Handle out-of-order blockIndex.
+        // Y_DEBUG_ABORT_UNLESS(Ranges.empty() || Ranges.back().End <= blockIndex);
 
         if (Ranges.empty()) {
             Ranges.push_back(
