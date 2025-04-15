@@ -4,7 +4,6 @@ SRCS(
     agent_availability_monitoring_actor.cpp
     checksum_range.cpp
     config.cpp
-    copy_range_common.cpp
     copy_range.cpp
     direct_copy_range.cpp
     lagging_agent_migration_actor.cpp
