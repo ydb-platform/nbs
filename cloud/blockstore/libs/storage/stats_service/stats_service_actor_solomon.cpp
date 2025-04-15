@@ -222,6 +222,9 @@ void TStatsServiceActor::HandleRegisterVolume(
     Y_UNUSED(ctx);
     const auto* msg = ev->Get();
 
+    LOG_INFO(ctx, TBlockStoreComponents::STATS_SERVICE,
+        "CHECK HandleRegisterVolume, diskId = %s", msg->DiskId.data());
+
     auto volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
     volume->VolumeTabletId = msg->TabletId;
 
@@ -270,6 +273,34 @@ void TStatsServiceActor::HandleVolumeConfigUpdated(
             AppData(ctx)->Counters,
             *volume);
     }
+}
+
+void TStatsServiceActor::HandleBootExternalResponse(
+    const TEvStatsService::TEvBootExternalResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    LOG_INFO(ctx, TBlockStoreComponents::STATS_SERVICE,
+        "CHECK HandleBootExternalResponse, volumeTabletID = %lu, diskId = %s",
+        msg->VolumeTabletId,
+        msg->DiskId.data());
+
+    // TODO:_ can we receive this before register volume?
+    // seems not: https://arcanum.yandex-team.ru/arcadia/cloud/blockstore/libs/storage/volume/volume_actor_loadstate.cpp?rev=r16366460#L162
+    // here partitions are started after sending register volume.
+    // Note that the actor is attached to the concrete mailbox, and mailbox is FIFO.
+    auto volume = State.GetVolume(msg->DiskId);
+    if (!volume) {
+        LOG_WARN(ctx, TBlockStoreComponents::STATS_SERVICE,
+            "Volume %s not found",
+            msg->DiskId.Quote().data());
+        return;
+    }
+
+    // TODO:_ what if dr based?
+    // TODO:_ can we move from message?
+    volume->VolumeGroupsInfo[msg->PartitionTabletId] = std::move(msg->ChannelInfos);
 }
 
 void TStatsServiceActor::HandleUnregisterVolume(

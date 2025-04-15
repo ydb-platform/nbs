@@ -25,6 +25,8 @@ TDuration Seconds(ui32 value)
     xxx(StatsTableRotationAfterDays,      ui32,             1                 )\
     xxx(ArchiveStatsTableName,            TString,          ""                )\
     xxx(BlobLoadMetricsTableName,         TString,          ""                )\
+    xxx(GroupsTableName,                  TString,          ""                )\
+    xxx(PartitionsTableName,              TString,          ""                )\
     xxx(UseSsl,                           bool,             false             )\
     xxx(StatsTableTtl,                    TDuration,        Seconds(0)        )\
     xxx(ArchiveStatsTableTtl,             TDuration,        Seconds(0)        )\

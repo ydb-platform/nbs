@@ -76,18 +76,24 @@ struct TSetupTablesResult
     const TString HistoryTableName;
     const TString ArchiveStatsTableName;
     const TString BlobLoadMetricsTableName;
+    const TString GroupsTableName;
+    const TString PartitionsTableName;
 
     TSetupTablesResult(
             NProto::TError error,
             TString statsTableName,
             TString historyTableName,
             TString archiveStatsTableName,
-            TString blobLoadMetricsTableName)
+            TString blobLoadMetricsTableName,
+            TString groupsTableName,
+            TString partitionsTableName)
         : Error(std::move(error))
         , StatsTableName(std::move(statsTableName))
         , HistoryTableName(std::move(historyTableName))
         , ArchiveStatsTableName(std::move(archiveStatsTableName))
         , BlobLoadMetricsTableName(std::move(blobLoadMetricsTableName))
+        , GroupsTableName(std::move(groupsTableName))
+        , PartitionsTableName(std::move(partitionsTableName))
     {}
 };
 
@@ -97,13 +103,16 @@ class TWaitSetup
 {
 private:
     TAdaptiveLock Lock;
-    size_t ResponsesToWait = 4;
+    // TODO:_ try to change and ensure that tests fail
+    size_t ResponsesToWait = 6;  // TODO:_ magic number?
 
     NProto::TError Error;
     TString StatsTableName;
     TString HistoryTableName;
     TString ArchiveStatsTableName;
     TString BlobLoadMetricsTableName;
+    TString GroupsTableName;
+    TString PartitionsTableName;
 
     TPromise<TSetupTablesResult> Result = NewPromise<TSetupTablesResult>();
 
@@ -140,6 +149,22 @@ public:
         }
     }
 
+    void SetGroupsTable(const TSetupTableResult& result)
+    {
+        with_lock (Lock) {
+            GroupsTableName = result.TableName;
+            CheckForCompletion(result.Error);
+        }
+    }
+
+    void SetPartitionsTable(const TSetupTableResult& result)
+    {
+        with_lock (Lock) {
+            PartitionsTableName = result.TableName;
+            CheckForCompletion(result.Error);
+        }
+    }
+
     TFuture<TSetupTablesResult> GetResult() const
     {
         return Result;
@@ -164,7 +189,9 @@ private:
                     StatsTableName,
                     HistoryTableName,
                     ArchiveStatsTableName,
-                    BlobLoadMetricsTableName));
+                    BlobLoadMetricsTableName,
+                    GroupsTableName,
+                    PartitionsTableName));
         }
     }
 };
@@ -315,6 +342,8 @@ private:
     const TStatsTableSchemePtr HistoryTableScheme;
     const TStatsTableSchemePtr ArchiveStatsTableScheme;
     const TStatsTableSchemePtr MetricsTableScheme;
+    const TStatsTableSchemePtr GroupsTableScheme;
+    const TStatsTableSchemePtr PartitionsTableScheme;
 
     TMutex StateLock;
     EState State = EState::UNINITIALIZED;
@@ -335,11 +364,15 @@ public:
         TStatsTableSchemePtr statsTableScheme,
         TStatsTableSchemePtr historyTableScheme,
         TStatsTableSchemePtr archiveTableScheme,
-        TStatsTableSchemePtr metricsTableScheme);
+        TStatsTableSchemePtr metricsTableScheme,
+        TStatsTableSchemePtr groupsTableScheme,
+        TStatsTableSchemePtr partitionsTableScheme);
 
     TFuture<NProto::TError> UploadStats(
         const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics) override;
+        const TVector<TYdbBlobLoadMetricRow>& metrics,
+        const TVector<TYdbGroupsInfoRow>& groups,
+        const TVector<TYdbPartitionsRow>& partitions) override;
 
     void Start() override
     {
@@ -354,6 +387,8 @@ private:
     TFuture<NProto::TError> DoUploadStats(
         const TVector<TYdbRow>& stats,
         const TVector<TYdbBlobLoadMetricRow>& metrics,
+        const TVector<TYdbGroupsInfoRow>& groups,
+        const TVector<TYdbPartitionsRow>& partitions,
         const TSetupTablesResult& setupResult);
 
     TFuture<TSetupTablesResult> EnsureInitialized();
@@ -366,6 +401,8 @@ private:
     TFuture<TSetupTableResult> SetupHistoryTable() const;
     TFuture<TSetupTableResult> SetupArchiveStatsTable() const;
     TFuture<TSetupTableResult> SetupMetricsTable() const;
+    TFuture<TSetupTableResult> SetupGroupsTable() const;
+    TFuture<TSetupTableResult> SetupPartitionsTable() const;
 
     TFuture<NProto::TError> SetupTable(
         const TString& tableName,
@@ -402,7 +439,9 @@ TYdbStatsUploader::TYdbStatsUploader(
         TStatsTableSchemePtr statsTableScheme,
         TStatsTableSchemePtr historyTableScheme,
         TStatsTableSchemePtr archiveStatsTableScheme,
-        TStatsTableSchemePtr metricsTableScheme)
+        TStatsTableSchemePtr metricsTableScheme,
+        TStatsTableSchemePtr groupsTableScheme,
+        TStatsTableSchemePtr partitionsTableScheme)
     : Config(std::move(config))
     , Logging(std::move(logging))
     , DbStorage(std::move(dbStorage))
@@ -410,6 +449,8 @@ TYdbStatsUploader::TYdbStatsUploader(
     , HistoryTableScheme(std::move(historyTableScheme))
     , ArchiveStatsTableScheme(std::move(archiveStatsTableScheme))
     , MetricsTableScheme(std::move(metricsTableScheme))
+    , GroupsTableScheme(std::move(groupsTableScheme))
+    , PartitionsTableScheme(std::move(partitionsTableScheme))
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -417,23 +458,27 @@ TYdbStatsUploader::TYdbStatsUploader(
 
 TFuture<NProto::TError> TYdbStatsUploader::UploadStats(
     const TVector<TYdbRow>& stats,
-    const TVector<TYdbBlobLoadMetricRow>& metrics)
+    const TVector<TYdbBlobLoadMetricRow>& metrics,
+    const TVector<TYdbGroupsInfoRow>& groups,
+    const TVector<TYdbPartitionsRow>& partitions)
 {
     auto response = EnsureInitialized();
     if (response.HasValue()) {
-        return DoUploadStats(stats, metrics, response.GetValue());
+        return DoUploadStats(stats, metrics, groups, partitions, response.GetValue());
     }
 
     auto pThis = shared_from_this();  // will hold reference to this
     return response.Apply(
         [=] (const auto& future) {
-            return pThis->DoUploadStats(stats, metrics, future.GetValue());
+            return pThis->DoUploadStats(stats, metrics, groups, partitions, future.GetValue());
         });
 }
 
 TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
-    const TVector<TYdbRow>& stats,
+    const TVector<TYdbRow>& stats,  // TODO:_ pul all this stuff for 4 tables in struct? We have TYdbRowData!!!
     const TVector<TYdbBlobLoadMetricRow>& metrics,
+    const TVector<TYdbGroupsInfoRow>& groups,
+    const TVector<TYdbPartitionsRow>& partitions,
     const TSetupTablesResult& setupResult)
 {
     if (FAILED(setupResult.Error.GetCode())) {
@@ -484,6 +529,33 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
 
         dataForUpload.emplace_back(
             setupResult.BlobLoadMetricsTableName,
+            rows.Build());
+    }
+
+    if (setupResult.GroupsTableName) {
+        TValueBuilder rows;
+        rows.BeginList();
+        for (const auto& groupRow : groups) {
+            rows.AddListItem(groupRow.GetYdbValues());
+        }
+        rows.EndList();
+
+        dataForUpload.emplace_back(
+            setupResult.GroupsTableName,
+            rows.Build());
+    }
+
+    // TODO:_ deduplicate
+    if (setupResult.PartitionsTableName) {
+        TValueBuilder rows;
+        rows.BeginList();
+        for (const auto& partitionRow : partitions) {
+            rows.AddListItem(partitionRow.GetYdbValues());
+        }
+        rows.EndList();
+
+        dataForUpload.emplace_back(
+            setupResult.PartitionsTableName,
             rows.Build());
     }
 
@@ -606,6 +678,16 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::SetupTables() const
             waitSetup->SetMetricsTable(future.GetValue());
         });
 
+    SetupGroupsTable().Subscribe(
+        [pThis, waitSetup] (const auto& future) {
+            waitSetup->SetGroupsTable(future.GetValue());
+        });
+
+    SetupPartitionsTable().Subscribe(
+        [pThis, waitSetup] (const auto& future) {
+            waitSetup->SetPartitionsTable(future.GetValue());
+        });
+
     return waitSetup->GetResult();
 }
 
@@ -637,6 +719,30 @@ TFuture<TSetupTableResult> TYdbStatsUploader::SetupMetricsTable() const
         return MakeFuture(TSetupTableResult(MakeError(S_OK), tableName));
     }
     return SetupTable(tableName, MetricsTableScheme).Apply(
+        [=] (const auto& future) {
+            return TSetupTableResult(future.GetValue(), tableName);
+        });
+}
+
+TFuture<TSetupTableResult> TYdbStatsUploader::SetupGroupsTable() const
+{
+    auto tableName = Config->GetGroupsTableName();
+    if (!tableName) {
+        return MakeFuture(TSetupTableResult(MakeError(S_OK), tableName));
+    }
+    return SetupTable(tableName, GroupsTableScheme).Apply(
+        [=] (const auto& future) {
+            return TSetupTableResult(future.GetValue(), tableName);
+        });
+}
+
+TFuture<TSetupTableResult> TYdbStatsUploader::SetupPartitionsTable() const
+{
+    auto tableName = Config->GetPartitionsTableName();
+    if (!tableName) {
+        return MakeFuture(TSetupTableResult(MakeError(S_OK), tableName));
+    }
+    return SetupTable(tableName, PartitionsTableScheme).Apply(
         [=] (const auto& future) {
             return TSetupTableResult(future.GetValue(), tableName);
         });
@@ -885,10 +991,14 @@ class TYdbStatsUploaderStub final
 public:
     TFuture<NProto::TError> UploadStats(
         const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics) override
+        const TVector<TYdbBlobLoadMetricRow>& metrics,
+        const TVector<TYdbGroupsInfoRow>& groups,
+        const TVector<TYdbPartitionsRow>& partitions) override
     {
         Y_UNUSED(stats);
         Y_UNUSED(metrics);
+        Y_UNUSED(groups);
+        Y_UNUSED(partitions);
         return MakeFuture<NProto::TError>();
     }
 
@@ -912,7 +1022,9 @@ IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
     TStatsTableSchemePtr statsTableScheme,
     TStatsTableSchemePtr historyTableScheme,
     TStatsTableSchemePtr archiveStatsTableScheme,
-    TStatsTableSchemePtr metricsTableScheme)
+    TStatsTableSchemePtr metricsTableScheme,
+    TStatsTableSchemePtr groupsTableScheme,
+    TStatsTableSchemePtr partitionsTableScheme)
 {
     return std::make_unique<TYdbStatsUploader>(
         std::move(config),
@@ -921,7 +1033,9 @@ IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
         std::move(statsTableScheme),
         std::move(historyTableScheme),
         std::move(archiveStatsTableScheme),
-        std::move(metricsTableScheme));
+        std::move(metricsTableScheme),
+        std::move(groupsTableScheme),
+        std::move(partitionsTableScheme));
 }
 
 IYdbVolumesStatsUploaderPtr CreateVolumesStatsUploaderStub()

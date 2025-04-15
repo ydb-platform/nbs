@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/groups_info.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
@@ -133,6 +134,9 @@ struct TVolumeStatsInfo
     NBlobMetrics::TBlobLoadMetrics OffsetBlobMetrics;
     TInstant ApproximateStartTs;
     TDuration ApproximateBootstrapTime;
+
+    // TODO:_ naming: work 'volume' is not needed here
+    NGroupsInfo::TVolumeGroupsInfo VolumeGroupsInfo; // TODO(gayurgin): TODO:_ what we do with dr based disks?
 
     TVolumeStatsInfo(
             NProto::TVolume config,

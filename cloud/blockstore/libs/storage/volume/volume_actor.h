@@ -835,6 +835,12 @@ private:
         const TEvVolumePrivate::TEvRetryStartPartition::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    // TODO:_ move method
+    void SendBootExternalResponseStats(  // TODO:_ naming
+        const NActors::TActorContext& ctx,
+        ui64 partTabletId,
+        const TVector<NKikimr::TTabletChannelInfo>& channels);
+
     void HandleBootExternalResponse(
         const NCloud::NStorage::TEvHiveProxy::TEvBootExternalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);

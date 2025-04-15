@@ -440,6 +440,10 @@ void TVolumeActor::DoRegisterVolume(
     NProto::TVolume volume;
     VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), volume);
 
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] CHECK DoRegisterVolume",
+        TabletID());
+
     if (State->GetDiskId() != diskId) {
         // Handle shadow disk.
         volume.SetDiskId(diskId);

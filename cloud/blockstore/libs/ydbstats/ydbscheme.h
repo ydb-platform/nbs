@@ -111,5 +111,7 @@ TStatsTableSchemePtr CreateStatsTableScheme(TDuration ttl);
 TStatsTableSchemePtr CreateHistoryTableScheme();
 TStatsTableSchemePtr CreateArchiveStatsTableScheme(TDuration ttl);
 TStatsTableSchemePtr CreateBlobLoadMetricsTableScheme();
+TStatsTableSchemePtr CreateGroupsTableScheme();
+TStatsTableSchemePtr CreatePartitionsTableScheme();
 
 }   // namespace NCloud::NBlockStore::NYdbStats

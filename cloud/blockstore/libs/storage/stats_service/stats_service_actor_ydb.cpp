@@ -236,6 +236,85 @@ NYdbStats::TYdbBlobLoadMetricRow BuildBlobLoadMetricsForUpload(
     return {FQDNHostName(), ctx.Now(), result.Str()};
 }
 
+TVector<TYdbGroupsInfoRow> BuildGroupsInfoForUpload(
+    const TActorContext& ctx,
+    const TVolumeStatsInfo& volume)
+{
+    // TODO:_ can a group be present several times in the same channel history?
+    // In different channel histories of the same volume?
+
+    // TODO:_ should it be single table?
+    // Maybe partId to volumeId should be separate?
+    // Also, group id to all stuff of the group should be in separate table.
+    TVector<TYdbGroupsInfoRow> rows;
+
+    auto timestamp = ctx.Now();
+
+    // for (auto& row : rows) {
+    //     row.DiskId = volume.VolumeInfo.GetDiskId();
+    //     row.Timestamp = ctx.Now();
+    //     row.VolumeTabletId = volume.VolumeTabletId;
+    // }
+
+    LOG_INFO(ctx, TBlockStoreComponents::STATS_SERVICE,
+        "CHECK volumeTabletId = %lu",
+        volume.VolumeTabletId);
+
+    for (const auto& [partitionTabletId, channels] : volume.VolumeGroupsInfo) {
+        for (const auto& channel : channels) {
+            for (const auto& historyEntry : channel.History) {
+                rows.push_back({
+                    partitionTabletId,
+                    channel.Channel,
+                    historyEntry.GroupID,
+                    historyEntry.FromGeneration,
+                    timestamp,
+                });
+            }
+        }
+
+        LOG_INFO(ctx, TBlockStoreComponents::STATS_SERVICE,
+            "CHECK volumeTabletId = %lu, partitionTabletId = %lu",
+            volume.VolumeTabletId,
+            partitionTabletId);
+    }
+
+    return rows;
+}
+
+TVector<TYdbPartitionsRow> BuildPartitionsForUpload(
+    const TActorContext& ctx,
+    const TVolumeStatsInfo& volume)
+{
+
+    TVector<TYdbPartitionsRow> rows;
+
+    auto timestamp = ctx.Now();
+
+    for (const auto& item: volume.VolumeGroupsInfo) {
+        ui64 partitionTabletId = item.first;
+        // TODO:_ emplace_back?
+        rows.push_back({
+            volume.VolumeInfo.GetDiskId(),
+            volume.VolumeTabletId,
+            partitionTabletId,
+            timestamp});
+
+        LOG_INFO(ctx, TBlockStoreComponents::STATS_SERVICE,
+            "CHECK volumeTabletId = %lu, partitionTabletId = %lu",
+            volume.VolumeTabletId,
+            partitionTabletId);
+    }
+
+    // TYdbPartitionsRow row;
+    // row.DiskId = volume.VolumeInfo.GetDiskId();
+    // row.Timestamp = ctx.Now();
+    // row.VolumeTabletId = volume.VolumeTabletId;
+    // rows.push_back(row);
+
+    return rows;
+}
+
 }    // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -349,7 +428,9 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
 
         StatsUploader->UploadStats(
             YdbStatsRequests.front().first.Stats,
-            YdbStatsRequests.front().first.Metrics).Subscribe(
+            YdbStatsRequests.front().first.Metrics,
+            YdbStatsRequests.front().first.Groups,
+            YdbStatsRequests.front().first.Partitions).Subscribe(
             [=] (const auto& future) {
                 if (auto p = weak.lock()) {
                     NProto::TError result;
@@ -399,6 +480,9 @@ void TStatsServiceActor::HandleUploadDisksStats(
     result.second = ctx.Now();
     ui32 volumeCnt = 0;
 
+    LOG_INFO(ctx, TBlockStoreComponents::STATS_SERVICE,
+        "CHECK uploading stats");
+
     while (VolumeIdQueueForYdbStatsUpload
             && volumeCnt < Config->GetStatsUploadDiskCount())
     {
@@ -422,6 +506,16 @@ void TStatsServiceActor::HandleUploadDisksStats(
 
         volumeInfoPtr->PerfCounters.YdbDiskCounters.Reset();
         volumeInfoPtr->PerfCounters.YdbVolumeSelfCounters.Reset();
+
+        auto groupsRows = BuildGroupsInfoForUpload(ctx, *volumeInfoPtr);  // TODO:_ put the row in result
+        for (const auto& row: groupsRows) {
+            result.first.Groups.push_back(std::move(row));
+        }
+
+        auto partitionRows = BuildPartitionsForUpload(ctx, *volumeInfoPtr);  // TODO:_ put the row in result
+        for (const auto& row: partitionRows) {
+            result.first.Partitions.push_back(std::move(row));
+        }
     }
 
     if (((ctx.Now() - YdbMetricsRequestSentTs) > Config->GetStatsUploadInterval())

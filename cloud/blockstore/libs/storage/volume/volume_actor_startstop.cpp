@@ -487,6 +487,32 @@ void TVolumeActor::HandleRetryStartPartition(
     }
 }
 
+// TODO:_ add to .h file
+// TODO:_ move method. Do we need this method at all?
+void TVolumeActor::SendBootExternalResponseStats(  // TODO:_ naming
+    const TActorContext& ctx,
+    ui64 partTabletId,
+    const TVector<TTabletChannelInfo>& channels)  // TODO:_ or tabe by value and move?
+{
+    // TVector<ui32> groupIds;
+    // // TODO:_ we should send all other entities too!
+    // groupIds.reserve(channels.size());
+    // for (const auto& channel : channels) {
+    //     // TODO:_ can there be no entities? If no entities, should we log a warning?
+    //     auto latestEntity = channel.LatestEntity();
+    //     if (latestEntity) {
+    //         groupIds.push_back(latestEntity->GroupID);
+    //     }
+    // }
+
+    auto request = std::make_unique<TEvStatsService::TEvBootExternalResponse>(
+        State->GetDiskId(),
+        TabletID(),
+        partTabletId,
+        channels); // TODO:_
+    NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
+}
+
 void TVolumeActor::HandleBootExternalResponse(
     const TEvHiveProxy::TEvBootExternalResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -530,6 +556,10 @@ void TVolumeActor::HandleBootExternalResponse(
         "[%lu] Received external boot info for part %lu",
         TabletID(),
         partTabletId);
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] CHECK Received external boot info for part %lu",
+        TabletID(),
+        partTabletId);
 
     if (msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition &&
         msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition2) {
@@ -549,6 +579,8 @@ void TVolumeActor::HandleBootExternalResponse(
         "Tablet IDs mismatch: %lu vs %lu",
         msg->StorageInfo->TabletID,
         partTabletId);
+
+    SendBootExternalResponseStats(ctx, partTabletId, msg->StorageInfo->Channels);
 
     if (msg->SuggestedGeneration > part->SuggestedGeneration) {
         part->SuggestedGeneration = msg->SuggestedGeneration;

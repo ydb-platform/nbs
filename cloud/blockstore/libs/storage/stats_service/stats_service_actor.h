@@ -38,6 +38,8 @@ class TStatsServiceActor final
     {
         TVector<NYdbStats::TYdbRow>               Stats;
         TVector<NYdbStats::TYdbBlobLoadMetricRow> Metrics;
+        TVector<NYdbStats::TYdbGroupsInfoRow>     Groups;
+        TVector<NYdbStats::TYdbPartitionsRow>     Partitions;
     };
 
     using TStatsUploadRequest = std::pair<TYdbRowData, TInstant>;
@@ -132,6 +134,10 @@ private:
 
     void HandleVolumeConfigUpdated(
         const TEvStatsService::TEvVolumeConfigUpdated::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleBootExternalResponse(
+        const TEvStatsService::TEvBootExternalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRegisterVolume(

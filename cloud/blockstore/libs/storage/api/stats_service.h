@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
+#include <cloud/blockstore/libs/storage/core/groups_info.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
@@ -74,6 +75,29 @@ struct TEvStatsService
                 NProto::TVolume config)
             : DiskId(std::move(diskId))
             , Config(std::move(config))
+        {}
+    };
+
+    //
+    // BootExternalResponse notification
+    //
+
+    struct TBootExternalResponse  // TODO:_ naming
+    {
+        const TString DiskId;
+        const ui64 VolumeTabletId;  // TODO:_ seems we don't need this
+        const ui64 PartitionTabletId;
+        TVector<NKikimr::TTabletChannelInfo> ChannelInfos;
+
+        TBootExternalResponse(
+                TString diskId,
+                ui64 volumeTabletId,
+                ui64 partitionTabletId,
+                TVector<NKikimr::TTabletChannelInfo> channelInfos)
+            : DiskId(std::move(diskId))
+            , VolumeTabletId(volumeTabletId)
+            , PartitionTabletId(partitionTabletId)
+            , ChannelInfos(std::move(channelInfos))
         {}
     };
 
@@ -182,6 +206,7 @@ struct TEvStatsService
         EvRegisterVolume,
         EvUnregisterVolume,
         EvVolumeConfigUpdated,
+        EvBootExternalResponse,
         EvVolumePartCounters,
         EvVolumeSelfCounters,
         EvGetVolumeStatsRequest,
@@ -208,6 +233,11 @@ struct TEvStatsService
     using TEvVolumeConfigUpdated = TRequestEvent<
         TVolumeConfigUpdated,
         EvVolumeConfigUpdated
+    >;
+
+    using TEvBootExternalResponse = TRequestEvent<
+        TBootExternalResponse,
+        EvBootExternalResponse
     >;
 
     using TEvVolumePartCounters = TRequestEvent<
