@@ -224,19 +224,19 @@ IReplayRequestGenerator::ExecuteNextRequest()
                             .c_str())
                 }
 
-                if (timestampSeconds <
+                if (ReplayTimeFrom && timestampSeconds <
                     static_cast<i64>(ReplayTimeFrom->Seconds()))
                 {
                     continue;
                 }
 
-                if (timestampSeconds >
+                if (ReplayTimeTill && timestampSeconds >
                     static_cast<i64>(ReplayTimeTill->Seconds()))
                 {
                     return {};
                 }
-                constexpr auto RealtimeToleratePastSeconds = 100;
-                constexpr auto RealtimeTolerateFutureSeconds = 1000;
+                constexpr auto RealtimeToleratePastSeconds = 10;
+                constexpr auto RealtimeTolerateFutureSeconds = 10;
                 if (const i64 realTimeAlignseconds = Spec.GetRealTime()) {
                     const i64 alignMicroSeconds =
                         realTimeAlignseconds * OneMillion;

@@ -110,7 +110,10 @@ message TReplaySpec
     uint64 RealTime = 12;
     int64 RealTimeOffset = 13;
 
-    string ReplayTimeFrom = 14; // 2025-02-04T13:58:29.572778Z
+    // Filter log by time, example:
+    // ReplayTimeFrom: "2025-03-02T11:30:00"
+    // ReplayTimeTill: "2025-03-02T12:30:00"
+    string ReplayTimeFrom = 14;
     string ReplayTimeTill = 15;
 }
 
