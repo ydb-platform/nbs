@@ -283,6 +283,14 @@ void TStartVolumeActor::HandleTabletLockLost(
         "[%lu] Tablet lock has been lost with error: %s",
         VolumeTabletId,
         FormatError(msg->Error).data());
+
+    if (!Config->GetDoNotStopVolumeTabletOnLockLost()) {
+        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+            "[%lu] Stop volume tablet on lock lost", VolumeTabletId);
+
+        auto error = MakeError(E_REJECTED, "Tablet lock has been lost");
+        StartShutdown(ctx, error);
+    }
 }
 
 void TStartVolumeActor::HandleStartVolumeRequest(
