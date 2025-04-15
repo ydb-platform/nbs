@@ -167,23 +167,28 @@ private:
                 return MakeFuture(NProto::TReadBlocksLocalResponse());
             };
 
-        TestStorage->ZeroBlocksHandler = [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TZeroBlocksRequest> request) {
+        TestStorage->ZeroBlocksHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
             Y_UNUSED(ctx);
 
             RequestQueue.Enqueue(
                 {EBlockStoreRequest::ZeroBlocks,
                  request->GetStartIndex(),
                  request->GetBlocksCount(),
-                {}});
+                 {}});
 
             if (ServiceFrozen.test()) {
                 auto promise = NewPromise<void>();
                 auto future = promise.GetFuture();
                 FrozenPromises.Enqueue(std::move(promise));
-                return future.Apply([=] (const auto& future) {
-                    Y_UNUSED(future);
-                    return NProto::TZeroBlocksResponse();
-                });
+                return future.Apply(
+                    [=](const auto& future)
+                    {
+                        Y_UNUSED(future);
+                        return NProto::TZeroBlocksResponse();
+                    });
             }
 
             return MakeFuture(NProto::TZeroBlocksResponse());
@@ -1067,12 +1072,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
             bool res = environment.DequeueRequest(request);
             UNIT_ASSERT(res);
             UNIT_ASSERT(request.Type == EBlockStoreRequest::ZeroBlocks);
-            UNIT_ASSERT(request.StartIndex * blockSize == firstSector * sectorSize);
-            UNIT_ASSERT(request.BlocksCount * blockSize == totalSectors * sectorSize);
+            UNIT_ASSERT(
+                request.StartIndex * blockSize == firstSector * sectorSize);
+            UNIT_ASSERT(
+                request.BlocksCount * blockSize == totalSectors * sectorSize);
             UNIT_ASSERT(!environment.DequeueRequest(request));
         }
     }
-
 }
 
 }   // namespace NCloud::NBlockStore::NVhost
