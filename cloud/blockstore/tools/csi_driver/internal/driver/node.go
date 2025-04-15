@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -237,7 +238,12 @@ func (s *nodeService) NodeStageVolume(
 				if nfsBackend {
 					err = s.nodeStageFileStoreAsVhostSocket(ctx, instanceId, nbsId)
 				} else {
-					err = s.nodeStageDiskAsVhostSocket(ctx, instanceId, nbsId, req.VolumeContext)
+					err = s.nodeStageDiskAsVhostSocket(
+						ctx,
+						instanceId,
+						nbsId,
+						req.VolumeContext,
+						req.VolumeCapability.GetMount())
 				}
 
 				if err != nil {
@@ -575,7 +581,8 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	ctx context.Context,
 	instanceId string,
 	diskId string,
-	volumeContext map[string]string) error {
+	volumeContext map[string]string,
+	volumeCapabilities *csi.VolumeCapability_MountVolume) error {
 
 	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, diskId, volumeContext)
 
@@ -589,6 +596,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		deviceName = diskId
 	}
 
+	vhostDiscardEnabled := slices.Contains(volumeCapabilities.MountFlags, "discard")
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
@@ -607,6 +615,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
+		VhostDiscardEnabled: vhostDiscardEnabled,
 	})
 
 	if err != nil {

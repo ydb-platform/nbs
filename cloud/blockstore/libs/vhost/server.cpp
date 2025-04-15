@@ -65,6 +65,23 @@ struct TWriteBlocksLocalMethod
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TZeroBlocksMethod
+{
+    static TFuture<NProto::TZeroBlocksResponse> Execute(
+        IDeviceHandler& deviceHandler,
+        TCallContextPtr ctx,
+        TVhostRequest& vhostRequest)
+    {
+        return deviceHandler.Zero(
+            std::move(ctx),
+            vhostRequest.From,
+            vhostRequest.Length);
+    }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRequest
     : public TIntrusiveListItem<TRequest>
     , TAtomicRefCount<TRequest>
@@ -245,6 +262,9 @@ public:
                 break;
             case EBlockStoreRequest::ReadBlocks:
                 ProcessRequest<TReadBlocksLocalMethod>(std::move(request));
+                break;
+            case EBlockStoreRequest::ZeroBlocks:
+                ProcessRequest<TZeroBlocksMethod>(std::move(request));
                 break;
             default:
                 Y_ABORT("Unexpected request type: %d",
@@ -441,6 +461,7 @@ public:
             options.BlockSize,
             options.BlocksCount,
             options.VhostQueuesCount,
+            options.DiscardEnabled,
             endpoint.get(),
             AppCtx.Callbacks);
         endpoint->SetVhostDevice(std::move(vhostDevice));
