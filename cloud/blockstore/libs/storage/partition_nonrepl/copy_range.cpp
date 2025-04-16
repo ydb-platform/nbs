@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/storage/core/libs/common/sglist.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -24,7 +25,9 @@ TCopyRangeActor::TCopyRangeActor(
         TActorId source,
         TActorId target,
         TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator)
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -32,6 +35,8 @@ TCopyRangeActor::TCopyRangeActor(
     , Target(target)
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , VolumeActorId(volumeActorId)
+    , AssignVolumeRequestId(assignVolumeRequestId)
 {
 }
 
@@ -47,7 +52,19 @@ void TCopyRangeActor::Bootstrap(const TActorContext& ctx)
         "CopyRange",
         RequestInfo->CallContext->RequestId);
 
+    if (AssignVolumeRequestId) {
+        GetVolumeRequestId(ctx);
+        return;
+    }
     ReadBlocks(ctx);
+}
+
+void TCopyRangeActor::GetVolumeRequestId(const NActors::TActorContext& ctx)
+{
+    NCloud::Send(
+        ctx,
+        VolumeActorId,
+        std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdRequest>());
 }
 
 void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
@@ -85,6 +102,7 @@ void TCopyRangeActor::WriteBlocks(const TActorContext& ctx, NProto::TIOVector bl
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(std::move(clientId));
+    headers->SetVolumeRequestId(VolumeRequestId);
 
     const auto& buffers = request->Record.GetBlocks().GetBuffers();
     for (int i = 0; i < buffers.size();++i) {
@@ -182,6 +200,20 @@ void TCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TCopyRangeActor::HandleVolumeRequestId(
+    const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        Done(ctx, msg->GetError());
+        return;
+    }
+
+    VolumeRequestId = msg->VolumeRequestId;
+    ReadBlocks(ctx);
+}
+
 void TCopyRangeActor::HandleReadUndelivery(
     const TEvService::TEvReadBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -273,6 +305,10 @@ STFUNC(TCopyRangeActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvVolumePrivate::TEvTakeVolumeRequestIdResponse,
+            HandleVolumeRequestId);
 
         HFunc(TEvService::TEvReadBlocksRequest, HandleReadUndelivery);
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteUndelivery);

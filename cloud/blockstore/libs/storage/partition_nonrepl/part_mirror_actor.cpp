@@ -296,7 +296,9 @@ void TMirrorPartitionActor::StartResyncRange(
         BlockDigestGenerator,
         resyncPolicy,
         isMinor ? EBlockRangeChecksumStatus::MinorError
-                : EBlockRangeChecksumStatus::MajorError);
+                : EBlockRangeChecksumStatus::MajorError,
+        State.GetReplicaInfos()[0].Config->GetParentActorId(),
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled());
     ctx.Register(resyncActor.release());
 }
 

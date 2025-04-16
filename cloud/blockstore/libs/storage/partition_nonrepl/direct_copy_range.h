@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -31,6 +32,8 @@ private:
     const NActors::TActorId TargetActor;
     const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const NActors::TActorId VolumeActorId;
+    const bool AssignVolumeRequestId;
 
     TRequestInfoPtr RequestInfo;
     TInstant StartTs;
@@ -41,6 +44,7 @@ private:
 
     TDeviceInfoResponse SourceInfo;
     TDeviceInfoResponse TargetInfo;
+    ui64 VolumeRequestId = 0;
 
 public:
     TDirectCopyRangeActor(
@@ -50,11 +54,14 @@ public:
         NActors::TActorId source,
         NActors::TActorId target,
         TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator);
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
+    void GetVolumeRequestId(const NActors::TActorContext& ctx);
     void GetDevicesInfo(const NActors::TActorContext& ctx);
     void DirectCopy(const NActors::TActorContext& ctx);
     void Fallback(const NActors::TActorContext& ctx);
@@ -63,6 +70,10 @@ private:
 
 private:
     STFUNC(StateWork);
+
+    void HandleVolumeRequestId(
+        const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void HandleGetDeviceForRange(
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse::TPtr&

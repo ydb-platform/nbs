@@ -27,6 +27,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ReadMetaHistory,                    __VA_ARGS__)                       \
     xxx(DeviceTimedOut,                     __VA_ARGS__)                       \
     xxx(UpdateFollowerState,                __VA_ARGS__)                       \
+    xxx(TakeVolumeRequestId,                __VA_ARGS__)                       \
 // BLOCKSTORE_VOLUME_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -149,6 +150,19 @@ struct TEvVolumePrivate
 
     struct TDeviceTimedOutResponse
     {
+    };
+
+    //
+    // TakeVolumeRequestId
+    //
+
+    struct TTakeVolumeRequestIdRequest
+    {
+    };
+
+    struct TTakeVolumeRequestIdResponse
+    {
+        ui64 VolumeRequestId = 0;
     };
 
     //

@@ -122,7 +122,9 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
         State.GetRWClientId(),
         BlockDigestGenerator,
         ResyncPolicy,
-        EBlockRangeChecksumStatus::Unknown);
+        EBlockRangeChecksumStatus::Unknown,
+        State.GetReplicaInfos()[0].Config->GetParentActorId(),
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled());
     ctx.Register(resyncActor.release());
 }
 

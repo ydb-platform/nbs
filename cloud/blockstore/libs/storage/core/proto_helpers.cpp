@@ -178,6 +178,12 @@ void FillDevices(
     }
 }
 
+template <typename TEv>
+ui64 GetVolumeRequestIdFromHeaders(const TEv& request)
+{
+    return request.Record.GetHeaders().GetVolumeRequestId();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -482,6 +488,26 @@ ui64 GetVolumeRequestId(const NProto::TWriteDeviceBlocksRequest& request)
 ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request)
 {
     return request.Record.GetVolumeRequestId();
+}
+
+ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
+
+ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksLocalRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
+
+ui64 GetVolumeRequestId(const TEvService::TEvZeroBlocksRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
+
+ui64 GetVolumeRequestId(const TEvDiskAgent::TEvDirectCopyBlocksRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
 }
 
 TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
