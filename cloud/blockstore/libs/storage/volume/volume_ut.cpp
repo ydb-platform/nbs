@@ -9681,6 +9681,101 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
         }
     }
+
+    Y_UNIT_TEST(ShouldPerformIoWithPredefinedCopyVolumeClientId)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024);
+
+        volume.WaitReady();
+
+        // IO with predefined CopyVolumeClientId accepted.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            TString(CopyVolumeClientId),
+            1);
+        volume.ZeroBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            TString(CopyVolumeClientId));
+        volume.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            TString(CopyVolumeClientId));
+    }
+
+    Y_UNIT_TEST(ShouldNotPerformIoWithPredefinedWhenOtherClient)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+        volume.WaitReady();
+
+        // IO with predefined CopyVolumeClientId declined when other session
+        // exists.
+        {
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                TString(CopyVolumeClientId),
+                1);
+            auto response = volume.RecvWriteBlocksResponse(TDuration::Zero());
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_INVALID_SESSION,
+                response->GetStatus());
+        }
+        {
+            volume.SendZeroBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                TString(CopyVolumeClientId));
+            auto response = volume.RecvZeroBlocksResponse(TDuration::Zero());
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_INVALID_SESSION,
+                response->GetStatus());
+        }
+        {
+            volume.SendReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                TString(CopyVolumeClientId));
+            auto response = volume.RecvReadBlocksResponse(TDuration::Zero());
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_INVALID_SESSION,
+                response->GetStatus());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

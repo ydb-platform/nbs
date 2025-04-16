@@ -5786,6 +5786,64 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 response->Record.GetRecommendedBandwidth());
         }
     }
+
+    Y_UNIT_TEST(ShouldAcceptCopyVolumeClientId)
+    {
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(DiskAgentConfig({
+                           "MemoryDevice1",
+                           "MemoryDevice2",
+                           "MemoryDevice3",
+                       }))
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            // Check read.
+            const auto response = ReadDeviceBlocks(
+                runtime,
+                diskAgent,
+                "MemoryDevice1",
+                0,
+                1,
+                TString(CopyVolumeClientId));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        {
+            // Check write.
+            TVector<TString> blocks;
+            auto sglist =
+                ResizeBlocks(blocks, 10, TString(DefaultBlockSize, 'X'));
+
+            const auto response = WriteDeviceBlocks(
+                runtime,
+                diskAgent,
+                "MemoryDevice1",
+                0,
+                sglist,
+                TString(CopyVolumeClientId));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        {
+            // Check zero.
+            const auto response = ZeroDeviceBlocks(
+                runtime,
+                diskAgent,
+                "MemoryDevice1",
+                0,
+                10,
+                TString(CopyVolumeClientId));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
