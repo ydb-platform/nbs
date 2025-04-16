@@ -1038,8 +1038,7 @@ auto TDiskRegistryState::RegisterAgent(
             if (!diskId) {
                 continue;
             }
-            auto [_, inserted] =
-                LostDeviceUUIDs.try_emplace(lostDevice, diskId);
+            auto [_, inserted] = LostDeviceUUIDs.emplace(lostDevice);
             if (!inserted) {
                 continue;
             }
@@ -1055,9 +1054,13 @@ auto TDiskRegistryState::RegisterAgent(
             if (it == LostDeviceUUIDs.end()) {
                 continue;
             }
-
-            disksWithLostOrReappearedDevices.emplace(it->second);
             LostDeviceUUIDs.erase(it);
+
+            auto diskId = DeviceList.FindDiskId(uuid);
+            if (!diskId) {
+                continue;
+            }
+            disksWithLostOrReappearedDevices.emplace(std::move(diskId));
         }
 
         for (const auto& diskId: disksWithLostOrReappearedDevices) {
@@ -1144,8 +1147,9 @@ TVector<TString> TDiskRegistryState::GetLostDevicesForDisk(
     const TString& diskId)
 {
     TVector<TString> lostDevicesForDisk;
-    for (const auto& [uuid, diskIdForDevice]: LostDeviceUUIDs) {
-        if (diskIdForDevice == diskId) {
+    for (const auto& uuid: LostDeviceUUIDs) {
+        auto diskIdForUUID = DeviceList.FindDiskId(uuid);
+        if (diskIdForUUID == diskId) {
             lostDevicesForDisk.emplace_back(uuid);
         }
     }

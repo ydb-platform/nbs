@@ -337,7 +337,7 @@ private:
 
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
-    THashMap<TString, TString> LostDeviceUUIDs;
+    THashSet<TString> LostDeviceUUIDs;
 
 public:
     TDiskRegistryState(
