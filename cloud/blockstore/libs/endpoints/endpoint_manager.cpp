@@ -560,7 +560,8 @@ private:
     bool IsEndpointRestoring(const TString& socket)
     {
         switch (AtomicGet(RestoringStage)) {
-            case WaitingForRestoring: return false;
+            case WaitingForRestoring:
+                return true;
             case ReadingStorage: return true;
             case StartingEndpoints: return RestoringEndpoints.contains(socket);
             case Completed: return false;
