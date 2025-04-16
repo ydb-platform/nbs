@@ -15,11 +15,11 @@ constexpr ui32 MaxBlocksCount = 1024;
 constexpr ui64 MaxPartitionBlocksCount = Max<ui32>() - 1;
 constexpr ui64 MaxPartitionBlocksCountForMultipartitionVolume = 1u << 31;
 constexpr ui64 MaxVolumeBlocksCount = 256_TB / DefaultBlockSize;
-// 1 system + 1 log + 1 index + 1 fresh + 251 data channel count
+// 1 system + 1 log + 1 index + 252 data channel count
 constexpr ui32 MaxChannelCount = 255;
 constexpr ui32 MaxMergedChannelCount = 248;
-// max merged + mixed channel count
-constexpr ui32 MaxDataChannelCount = 251;
+// max merged + mixed channel count + fresh channel count
+constexpr ui32 MaxDataChannelCount = 252;
 
 constexpr ui32 InvalidCollectCounter = 0xFFFFFFFFul;
 constexpr ui32 InvalidBlockIndex = 0xFFFFFFFFul;

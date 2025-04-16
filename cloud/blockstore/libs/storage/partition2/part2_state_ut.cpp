@@ -1110,7 +1110,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 meta,
                 TestTabletId,
                 0,
-                MaxDataChannelCount + 1,
+                MaxDataChannelCount,
                 MaxBlobSize,
                 MaxRangesPerBlob,
                 EOptimizationMode::OptimizeForLongRanges,

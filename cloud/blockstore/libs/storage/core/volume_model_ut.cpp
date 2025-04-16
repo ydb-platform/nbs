@@ -2209,7 +2209,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             CHECK_CHANNEL_HDD(i, "mixed", EChannelDataKind::Mixed);
         }
         CHECK_CHANNEL(
-            254,
+            MaxChannelCount - 1,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
             128_MB
@@ -2223,14 +2223,14 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
         UNIT_ASSERT_VALUES_EQUAL(255, volumeConfig.ExplicitChannelProfilesSize());
-        for (ui32 i = 3; i < MaxDataChannelCount; ++i) {
+        for (ui32 i = 3; i < MaxDataChannelCount - 1; ++i) {
             CHECK_CHANNEL_HDD(i, "merged", EChannelDataKind::Merged);
         }
-        for (ui32 i = MaxDataChannelCount; i < MaxChannelCount - 1; ++i) {
+        for (ui32 i = MaxDataChannelCount - 1; i < MaxChannelCount - 1; ++i) {
             CHECK_CHANNEL_HDD(i, "mixed", EChannelDataKind::Mixed);
         }
         CHECK_CHANNEL(
-            254,
+            MaxChannelCount - 1,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
             128_MB

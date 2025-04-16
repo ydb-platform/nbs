@@ -475,7 +475,7 @@ ui32 ComputeAllocationUnitCount(
     return unitCount;
 }
 
-ui32 ComputeExistingMergedChannelCount(
+ui32 GetExistingMergedChannelCount(
     const TVolumeParams& volumeParams)
 {
     ui32 existingMergedChannelCount = 0;
@@ -510,13 +510,24 @@ void SetupChannels(
     NKikimrBlockStore::TVolumeConfig& volumeConfig)
 {
     const auto existingMergedChannelCount =
-        ComputeExistingMergedChannelCount(volumeParams);
-    auto mergedChannelCount = ComputeMergedChannelCount(
+        GetExistingMergedChannelCount(volumeParams);
+    ui32 mergedChannelCount = ComputeMergedChannelCount(
         allocationUnitCount,
         existingMergedChannelCount,
         config,
         volumeParams);
     ui32 mixedChannelCount = 0;
+
+    ui32 freshChannelCount = config.GetFreshChannelCount();
+    const bool isFreshChannelEnabled =
+        config.IsAllocateFreshChannelFeatureEnabled(
+            volumeConfig.GetCloudId(),
+            volumeConfig.GetFolderId(),
+            volumeConfig.GetDiskId());
+
+    if (isFreshChannelEnabled || volumeConfig.GetTabletVersion() == 2) {
+        freshChannelCount = 1;
+    }
 
     if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_HYBRID &&
         !flags.GetNoSeparateMixedChannelAllocation() &&
@@ -538,24 +549,14 @@ void SetupChannels(
                 mixedChannelCount = 1;
             }
         } else {
+            const ui32 sumMixedMerged = MaxDataChannelCount - freshChannelCount;
             mixedChannelCount =
                 ceil((mergedChannelCount * mixedPercentage) / 100.f);
-            if ((mixedChannelCount + mergedChannelCount) > MaxDataChannelCount) {
-                mergedChannelCount = Max((MaxDataChannelCount * 100) / (100 + mixedPercentage), existingMergedChannelCount);
-                mixedChannelCount = MaxDataChannelCount - mergedChannelCount;
+            if ((mixedChannelCount + mergedChannelCount) > sumMixedMerged) {
+                mergedChannelCount = Max((sumMixedMerged * 100) / (100 + mixedPercentage), existingMergedChannelCount);
+                mixedChannelCount = sumMixedMerged - mergedChannelCount;
             }
         }
-    }
-
-    ui32 freshChannelCount = config.GetFreshChannelCount();
-    const bool isFreshChannelEnabled =
-        config.IsAllocateFreshChannelFeatureEnabled(
-            volumeConfig.GetCloudId(),
-            volumeConfig.GetFolderId(),
-            volumeConfig.GetDiskId());
-
-    if (isFreshChannelEnabled || volumeConfig.GetTabletVersion() == 2) {
-        freshChannelCount = 1;
     }
 
     SetExplicitChannelProfiles(
