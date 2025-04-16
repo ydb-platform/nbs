@@ -682,6 +682,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         ui32 rangesResynced = 0;
         ui32 nonEmptyStatsUpdates = 0;
         bool resyncFinished = false;
+        ui64 totalNetworkBytes = 0;
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
@@ -689,6 +690,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                     case TEvVolume::EvDiskRegistryBasedPartitionCounters: {
                         auto* msg = event->Get<
                             TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
+                        totalNetworkBytes += msg->NetworkBytes;
+
                         // Resync is done by 4MiB ranges. Checksum is an 8-byte
                         // request.
                         UNIT_ASSERT_VALUES_EQUAL(
@@ -740,7 +743,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 runtime->DispatchEvents(options);
             }
         }
-        UNIT_ASSERT_VALUES_EQUAL(32, rangesResynced);
+        constexpr ui64 DiskRangeCount =
+            ExpectedBlockCount * DefaultBlockSize / 4_MB;
+        UNIT_ASSERT_VALUES_EQUAL(DiskRangeCount, rangesResynced);
 
         // Wait for stats.
         for (int i = 0; i < 3; i++) {
@@ -754,6 +759,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT(success);
         }
         UNIT_ASSERT_VALUES_UNEQUAL(0, nonEmptyStatsUpdates);
+        // ((total disk size) + (disk range count) * (checksum
+        // size)) * (replica count) * (double stats account)
+        UNIT_ASSERT_VALUES_EQUAL(
+            (ExpectedBlockCount * DefaultBlockSize + DiskRangeCount * 8) * 3 *
+                2,
+            totalNetworkBytes);
     }
 
     void DoShouldSendPartitionStatsForShadowDisk(bool useDirectCopy)

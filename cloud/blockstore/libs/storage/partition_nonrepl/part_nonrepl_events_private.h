@@ -155,7 +155,6 @@ struct TEvNonreplPartitionPrivate
         TDuration ReadDuration;
         TInstant WriteStartTs;
         TDuration WriteDuration;
-        ui64 NetworkBytes;
         ui64 ExecCycles;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
         EStatus Status;
@@ -168,7 +167,6 @@ struct TEvNonreplPartitionPrivate
                 TDuration readDuration,
                 TInstant writeStartTs,
                 TDuration writeDuration,
-                ui64 networkBytes,
                 ui64 execCycles,
                 TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
                 EStatus status)
@@ -179,7 +177,6 @@ struct TEvNonreplPartitionPrivate
             , ReadDuration(readDuration)
             , WriteStartTs(writeStartTs)
             , WriteDuration(writeDuration)
-            , NetworkBytes(networkBytes)
             , ExecCycles(execCycles)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
             , Status(status)

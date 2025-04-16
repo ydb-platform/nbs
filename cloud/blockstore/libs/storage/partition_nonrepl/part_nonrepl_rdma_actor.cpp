@@ -345,7 +345,10 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
         nonVoidBytes;
     PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes += voidBytes;
 
-    NetworkBytes += nonVoidBytes;
+    // TODO(komarevtsev-d): As of now, RDMA always transfers zero over the
+    // network. Once this behaviour is optimized, "nonVoidBytes" should be added
+    // here instead of "requestBytes".
+    NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
@@ -427,6 +430,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocksCompleted(
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ChecksumBlocks.AddRequest(time, requestBytes);
 
+    NetworkBytes += sizeof(ui64);   //  Checksum is sent as a 64-bit integer.
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;

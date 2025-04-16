@@ -283,8 +283,6 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         MigrationCounters->RequestCounters.CopyBlocks.AddRequest(
             execTime.MicroSeconds(),
             networkBytes);
-    } else {
-        NetworkBytes += 2 * msg->Range.Size() * BlockSize;
     }
 
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
