@@ -71,8 +71,8 @@ private:
     THashSet<ui64> DirtyReadRequestIds;
     TRequestsInProgressWithBlockRangeTracking<
         EAllowedRequests::ReadWrite,
-        ui64,
-        ui64>
+        ui64,   // key
+        ui64>   // volume request id
         RequestsInProgress{State.GetBlockSize()};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,

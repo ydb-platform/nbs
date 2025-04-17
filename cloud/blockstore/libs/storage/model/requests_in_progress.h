@@ -30,8 +30,8 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////////
 
-template <typename TValue = TEmptyType>
-struct TIsWriteValueWrapper
+template <typename TValue>
+struct TRequestInProgress
 {
     TValue Value;
     bool IsWrite = false;
@@ -40,10 +40,10 @@ struct TIsWriteValueWrapper
 template <EAllowedRequests TKind, typename TKey, typename TValue = TEmptyType>
 class TRequestsInProgress
     : public IRequestsInProgress
-    , private TRequestsInProgressImpl<TKey, TIsWriteValueWrapper<TValue>>
+    , private TRequestsInProgressImpl<TKey, TRequestInProgress<TValue>>
 {
 public:
-    using TRequest = TIsWriteValueWrapper<TValue>;
+    using TRequest = TRequestInProgress<TValue>;
 
 private:
     using TImpl = TRequestsInProgressImpl<TKey, TRequest>;
@@ -53,7 +53,9 @@ public:
 
     using TImpl::AllRequests;
     using TImpl::Empty;
+    using TImpl::ExtractRequest;
     using TImpl::GenerateRequestId;
+    using TImpl::GetRequest;
     using TImpl::GetRequestCount;
     using TImpl::SetRequestIdentityKey;
 
@@ -87,23 +89,9 @@ public:
             TRequest{.Value = std::move(value), .IsWrite = true});
     }
 
-    TValue GetRequest(const TKey& key) const
-    {
-        return TImpl::GetRequest(key).Value;
-    }
-
     bool RemoveRequest(const TKey& key)
     {
         return ExtractRequest(key).has_value();
-    }
-
-    std::optional<TValue> ExtractRequest(const TKey& key)
-    {
-        auto maybeRequest = TImpl::ExtractRequest(key);
-        if (!maybeRequest) {
-            return std::nullopt;
-        }
-        return maybeRequest->Value;
     }
 
     // IRequestsInProgress

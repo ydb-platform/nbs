@@ -28,7 +28,7 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
         return;
     }
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    auto [range, volumeRequestId] = completeRequest.value();
+    auto [volumeRequestId, _, range] = completeRequest.value();
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
         if (range.Overlaps(request.BlockRange)) {
             DirtyReadRequestIds.insert(id);
@@ -69,7 +69,7 @@ void TMirrorPartitionActor::HandleMirroredReadCompleted(
             ReportMirroredDiskChecksumMismatchUponRead(
                 TStringBuilder()
                 << " disk: " << DiskId.Quote() << ", range: "
-                << (requestCtx ? requestCtx->first.Print() : ""));
+                << (requestCtx ? requestCtx->BlockRange.Print() : ""));
         }
     } else {
         DirtyReadRequestIds.erase(it);

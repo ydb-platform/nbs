@@ -31,7 +31,7 @@ public:
 };
 
 template <typename TValue>
-struct TIsWriteBlockRangeValueWrapper
+struct TRequestInProgressWithBlockRange
 {
     TValue Value;
     bool IsWrite = false;
@@ -41,11 +41,14 @@ struct TIsWriteBlockRangeValueWrapper
 template <EAllowedRequests TKind, typename TKey, typename TValue = TEmptyType>
 class TRequestsInProgressWithBlockRangeTracking
     : public IRequestsInProgress
-    , TRequestsInProgressImpl<TKey, TIsWriteBlockRangeValueWrapper<TValue>>
+    , TRequestsInProgressImpl<TKey, TRequestInProgressWithBlockRange<TValue>>
 {
+public:
+    using TRequest = TRequestInProgressWithBlockRange<TValue>;
+
+private:
     using TImpl =
-        TRequestsInProgressImpl<TKey, TIsWriteBlockRangeValueWrapper<TValue>>;
-    using TRangeRequest = TIsWriteBlockRangeValueWrapper<TValue>;
+        TRequestsInProgressImpl<TKey, TRequestInProgressWithBlockRange<TValue>>;
 
 private:
     TRequestBoundsTracker WriteRequestBoundsTracker;
@@ -58,19 +61,23 @@ public:
     using TImpl::AllRequests;
     using TImpl::Empty;
     using TImpl::GenerateRequestId;
+    using TImpl::GetRequest;
     using TImpl::GetRequestCount;
     using TImpl::SetRequestIdentityKey;
 
     void AddReadRequest(const TKey& key, TBlockRange64 range, TValue value = {})
         requires(IsReadAllowed<TKind>)
     {
-        TImpl::AddRequest(key, TRangeRequest{std::move(value), false, range});
+        TImpl::AddRequest(
+            key,
+            {.Value = std::move(value), .IsWrite = false, .BlockRange = range});
     }
 
     TKey AddReadRequest(TBlockRange64 range, TValue value = {})
         requires(IsReadAllowed<TKind>)
     {
-        return TImpl::AddRequest(TRangeRequest{std::move(value), false, range});
+        return TImpl::AddRequest(
+            {.Value = std::move(value), .IsWrite = false, .BlockRange = range});
     }
 
     void
@@ -81,7 +88,7 @@ public:
 
         TImpl::AddRequest(
             std::move(key),
-            TRangeRequest{std::move(value), true, range});
+            {.Value = std::move(value), .IsWrite = true, .BlockRange = range});
     }
 
     TKey AddWriteRequest(TBlockRange64 range, TValue value = {})
@@ -92,31 +99,19 @@ public:
         return key;
     }
 
-    TValue GetRequest(const TKey& key) const
-    {
-        return TImpl::GetRequest(key).Value;
-    }
-
     bool RemoveRequest(const TKey& key)
     {
         return ExtractRequest(key).has_value();
     }
 
-    std::optional<std::pair<TBlockRange64, TValue>> ExtractRequest(
-        const TKey& key)
+    std::optional<TRequest> ExtractRequest(const TKey& key)
     {
-        auto maybeValue = TImpl::ExtractRequest(key);
-        if (!maybeValue) {
-            return std::nullopt;
+        auto request = TImpl::ExtractRequest(key);
+        if (request && request->IsWrite) {
+            WriteRequestBoundsTracker.RemoveRequest(request->BlockRange);
         }
 
-        if (maybeValue->IsWrite) {
-            WriteRequestBoundsTracker.RemoveRequest(maybeValue->BlockRange);
-        }
-
-        return std::make_pair(
-            maybeValue->BlockRange,
-            std::move(maybeValue->Value));
+        return request;
     }
 
     const TRequestBoundsTracker& GetRequestBoundsTracker()
