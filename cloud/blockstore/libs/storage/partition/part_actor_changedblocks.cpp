@@ -420,8 +420,9 @@ void TPartitionActor::HandleGetChangedBlocks(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start diffing blocks between @%lu and @%lu (range: %s)",
+        "[%lu][d:%s] Start diffing blocks between @%lu and @%lu (range: %s)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         lowCommitId,
         highCommitId,
         DescribeRange(readRange).data());
@@ -505,8 +506,9 @@ void TPartitionActor::CompleteGetChangedBlocks(
     RemoveTransaction(*args.RequestInfo);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete diff blocks between @%lu and @%lu (range: %s)",
+        "[%lu][d:%s] Complete diff blocks between @%lu and @%lu (range: %s)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         args.LowCommitId,
         args.HighCommitId,
         DescribeRange(args.ReadRange).data());

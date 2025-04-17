@@ -37,16 +37,18 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
 
     if (State->GetTrimFreshLogTimeout()) {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] TrimFreshLog request scheduled: %lu, %s",
+            "[%lu][d:%s] TrimFreshLog request scheduled: %lu, %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             request->CallContext->RequestId,
             State->GetTrimFreshLogTimeout().ToString().c_str());
 
         ctx.Schedule(State->GetTrimFreshLogTimeout(), request.release());
     } else {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] TrimFreshLog request sent: %lu",
+            "[%lu][d:%s] TrimFreshLog request sent: %lu",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             request->CallContext->RequestId);
 
         NCloud::Send(
@@ -112,8 +114,9 @@ void TPartitionActor::HandleTrimFreshLog(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start TrimFreshLog @%lu @%lu",
+        "[%lu][d:%s] Start TrimFreshLog @%lu @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         trimFreshLogToCommitId,
         collectCounter);
 
@@ -145,14 +148,16 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
     if (FAILED(msg->GetStatus())) {
         LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
             "[" << TabletID() << "]"
+            "[d:" << PartitionConfig.GetDiskId() << "]"
                 << " TrimFreshLog failed: " << msg->GetStatus()
                 << " reason: " << msg->GetError().GetMessage().Quote());
 
         State->RegisterTrimFreshLogError();
     } else {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] TrimFreshLog completed",
-            TabletID());
+            "[%lu][d:%s] TrimFreshLog completed",
+            TabletID(),
+            PartitionConfig.GetDiskId().c_str());
 
         State->RegisterTrimFreshLogSuccess();
         State->SetLastTrimFreshLogToCommitId(msg->CommitId);

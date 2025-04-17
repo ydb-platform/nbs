@@ -255,8 +255,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
 
     if (ReassignRequestSentTs.GetValue()) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Retrying reassign request (timeout: %lu milliseconds)",
+            "[%lu][d:%s] Retrying reassign request (timeout: %lu milliseconds)",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             timeout.MilliSeconds());
     }
 
@@ -271,8 +272,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         }
 
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Reassign request sent for channels: %s",
+            "[%lu][d:%s] Reassign request sent for channels: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             sb.c_str());
     }
 
@@ -416,6 +418,11 @@ void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
 {
     while (auto requestActor = State->DequeueIORequest(channel)) {
         auto actorId = NCloud::Register(ctx, std::move(requestActor));
+        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+            "[%lu][d:%s] Partition registered request actor with id [%lu]",
+            TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
+            actorId);
         Actors.Insert(actorId);
     }
 }
@@ -547,8 +554,9 @@ void TPartitionActor::SendGarbageCollectorCompleted(
     const TActorContext& ctx) const
 {
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Send garbage collector completed",
-        TabletID());
+        "[%lu][d:%s] Send garbage collector completed",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
     NCloud::Send(
         ctx,
         LauncherID(),
@@ -564,8 +572,9 @@ void TPartitionActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Stop tablet because of PoisonPill request",
-        TabletID());
+        "[%lu][d:%s] Stop tablet because of PoisonPill request",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     Suicide(ctx);
 }

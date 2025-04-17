@@ -664,8 +664,9 @@ void TPartitionActor::HandleFlush(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start flush @%lu (blocks: %lu)",
+        "[%lu][d:%s] Start flush @%lu (blocks: %lu)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId,
         blocksCount);
 
@@ -812,8 +813,9 @@ void TPartitionActor::HandleFlushCompleted(
 
     ui64 commitId = msg->CommitId;
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete flush @%lu",
+        "[%lu][d:%s] Complete flush @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);
