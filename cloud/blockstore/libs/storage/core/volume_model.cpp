@@ -549,13 +549,8 @@ void SetupChannels(
                 mixedChannelCount = 1;
             }
         } else {
-            const ui32 sumMixedMerged = MaxDataChannelCount - freshChannelCount;
             mixedChannelCount =
                 ceil((mergedChannelCount * mixedPercentage) / 100.f);
-            if ((mixedChannelCount + mergedChannelCount) > sumMixedMerged) {
-                mergedChannelCount = Max((sumMixedMerged * 100) / (100 + mixedPercentage), existingMergedChannelCount);
-                mixedChannelCount = sumMixedMerged - mergedChannelCount;
-            }
         }
     }
 

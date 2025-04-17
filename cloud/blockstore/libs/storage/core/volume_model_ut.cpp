@@ -150,7 +150,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         volumeParams.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
-        UNIT_ASSERT(volumeConfig.ExplicitChannelProfilesSize() == 252);
+        UNIT_ASSERT(volumeConfig.ExplicitChannelProfilesSize() == MaxDataChannelCount);
     }
 
     Y_UNIT_TEST(ShouldSetValuesFromExplicitPerformanceProfile)
@@ -2222,12 +2222,12 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         }
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(255, volumeConfig.ExplicitChannelProfilesSize());
-        for (ui32 i = 3; i < MaxDataChannelCount - 1; ++i) {
-            CHECK_CHANNEL_HDD(i, "merged", EChannelDataKind::Merged);
+        UNIT_ASSERT_VALUES_EQUAL(MaxChannelCount, volumeConfig.ExplicitChannelProfilesSize());
+        for (ui32 i = 0; i < MaxMergedChannelCount; ++i) {
+            CHECK_CHANNEL_HDD(i + 3, "merged", EChannelDataKind::Merged);
         }
-        for (ui32 i = MaxDataChannelCount - 1; i < MaxChannelCount - 1; ++i) {
-            CHECK_CHANNEL_HDD(i, "mixed", EChannelDataKind::Mixed);
+        for (ui32 i = MaxMergedChannelCount; i < MaxDataChannelCount - 1; ++i) {
+            CHECK_CHANNEL_HDD(i + 3, "mixed", EChannelDataKind::Mixed);
         }
         CHECK_CHANNEL(
             MaxChannelCount - 1,
