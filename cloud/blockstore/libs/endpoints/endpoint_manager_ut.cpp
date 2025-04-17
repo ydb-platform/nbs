@@ -46,6 +46,8 @@ namespace NCloud::NBlockStore::NServer {
 
 using namespace NThreading;
 
+using namespace std::chrono_literals;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -616,6 +618,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         {
             NProto::TStartEndpointRequest request;
@@ -662,6 +665,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         UNIT_ASSERT_VALUES_EQUAL(0, listener->AlterEndpointCounter);
 
@@ -746,6 +750,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         TTempDir dir;
 
@@ -813,6 +818,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         TTempDir dir;
         auto socketPath = (dir.Path() / "testSocket").GetPath();
@@ -874,6 +880,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         TTempDir dir;
         auto socketPath = (dir.Path() / "testSocket").GetPath();
@@ -954,6 +961,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         TTempDir dir;
         TString unixSocket = (dir.Path() / "testSocket").GetPath();
@@ -1071,6 +1079,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         TTempDir dir;
         TString unixSocket = (dir.Path() / "testSocket").GetPath();
@@ -1115,6 +1124,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         TString maxSocketPath(UnixSocketPathLengthLimit, 'x');
 
@@ -1174,6 +1184,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         {
             NProto::TStartEndpointRequest request;
@@ -1232,6 +1243,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         TTempDir dir;
         size_t requestId = 42;
@@ -1356,6 +1368,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         TTempDir dir;
         auto socketPath = (dir.Path() / "testSocket").GetPath();
@@ -1404,6 +1417,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         TTempDir dir;
         auto socketPath = (dir.Path() / "testSocket").GetPath();
@@ -1482,6 +1496,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         Y_DEFER {
             bootstrap.Stop();
         };
+        manager->RestoreEndpoints().Wait(5s);
 
         auto& storage = *bootstrap.EndpointStorage;
         google::protobuf::util::MessageDifferencer comparator;
@@ -1960,6 +1975,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        manager->RestoreEndpoints().Wait(5s);
 
         NProto::TStartEndpointRequest request;
         SetDefaultHeaders(request);
@@ -1993,90 +2009,6 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto future = StopEndpoint(*manager, socketPath.GetPath());
             auto response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));
-        }
-    }
-
-    Y_UNIT_TEST(ShouldNotCrashRestoreEndpointWhileStartingEndpoint)
-    {
-        TString nbdDevPrefix = CreateGuidAsString() + "_nbd";
-        auto nbdDevice = nbdDevPrefix + "0";
-        auto nbdDeviceAnother = nbdDevPrefix + "1";
-        TFsPath(nbdDevice).Touch();
-        TFsPath(nbdDeviceAnother).Touch();
-        Y_DEFER {
-            TFsPath(nbdDevice).DeleteIfExists();
-            TFsPath(nbdDeviceAnother).DeleteIfExists();
-        };
-        TTempDir dir;
-        auto socketPath = dir.Path() / "testSocket";
-        TString diskId = "testDiskId";
-        auto ipcType = NProto::IPC_NBD;
-
-        TBootstrap bootstrap;
-        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        bootstrap.Service = CreateTestService(mountedVolumes);
-
-        bootstrap.Options.NbdDevicePrefix = nbdDevPrefix;
-
-        auto promise = NewPromise<NProto::TError>();
-
-        auto deviceFactory = std::make_shared<TTestControlledDeviceFactory>(
-            [&]() { return promise.GetFuture(); });
-        bootstrap.NbdDeviceFactory = deviceFactory;
-
-        auto listener = std::make_shared<TTestEndpointListener>();
-        bootstrap.EndpointListeners = {{ NProto::IPC_NBD, listener }};
-
-        auto manager = CreateEndpointManager(bootstrap);
-        bootstrap.Start();
-        Y_DEFER
-        {
-            bootstrap.Stop();
-        };
-
-        NProto::TStartEndpointRequest request;
-        SetDefaultHeaders(request);
-        request.SetUnixSocketPath(socketPath.GetPath());
-        request.SetDiskId(diskId);
-        request.SetClientId(TestClientId);
-        request.SetIpcType(ipcType);
-        request.SetNbdDeviceFile(nbdDevice);
-        request.SetPersistent(true);
-
-        auto [str, error] = SerializeEndpoint(request);
-        UNIT_ASSERT_C(!HasError(error), error);
-
-        bootstrap.EndpointStorage->AddEndpoint(socketPath.GetPath(), str);
-
-        request.SetNbdDeviceFile(nbdDeviceAnother);
-        socketPath.DeleteIfExists();
-        UNIT_ASSERT(!socketPath.Exists());
-
-        {
-            auto startEndpointFuture = StartEndpoint(*manager, request);
-
-            auto waitForTaskScheduleFuture =
-                bootstrap.Scheduler->WaitForTaskSchedule();
-            auto restoreEndpointsFuture = bootstrap.Executor->Execute(
-                [manager = manager.get(),
-                 executor = bootstrap.Executor.get()]() mutable
-                {
-                    auto future = manager->RestoreEndpoints();
-                    executor->WaitFor(future);
-                });
-
-            // We start RestoreEndpoints with other args and it execute
-            // concurrently with StartEndpoint request, this means that
-            // RestoreSingleEndpoint should be rejected until StartEndpoint
-            // request processing ends. On reject restoring client will schedule
-            // task to retry request.
-            waitForTaskScheduleFuture.Wait();
-
-            promise.SetValue(MakeError(S_OK, {}));
-
-            startEndpointFuture.Wait();
-            bootstrap.Scheduler->RunAllScheduledTasks();
-            restoreEndpointsFuture.Wait();
         }
     }
 }
