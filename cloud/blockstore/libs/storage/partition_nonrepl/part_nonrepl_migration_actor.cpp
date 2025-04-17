@@ -130,6 +130,12 @@ void TNonreplicatedPartitionMigrationActor::OnMigrationProgress(
     UpdatingMigrationState = true;
 }
 
+NActors::TActorId
+TNonreplicatedPartitionMigrationActor::GetActorToLockAndDrainRange()
+{
+    return MigrationSrcActorId;
+}
+
 void TNonreplicatedPartitionMigrationActor::FinishMigration(
     const NActors::TActorContext& ctx,
     bool isRetry)
