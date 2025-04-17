@@ -149,6 +149,10 @@ private:
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
 
+    // Whether the target of the migration is lagging. In this case writes are
+    // sent only to "SrcActorId".
+    bool TargetMigrationIsLagging = false;
+
 protected:
     // Derived class that wishes to handle wakeup messages should make its own
     // enum which starts with `WR_REASON_COUNT` value.
@@ -233,6 +237,11 @@ protected:
     [[nodiscard]] TString GetNonZeroBlocks(TBlockRange64 range) const;
     const TStorageConfigPtr& GetConfig() const;
     const TDiagnosticsConfigPtr& GetDiagnosticsConfig() const;
+    NActors::TActorId GetSrcActorId() const;
+    NActors::TActorId GetDstActorId() const;
+
+    void SetTargetMigrationIsLagging(bool lagging);
+    bool GetTargetMigrationIsLagging() const;
 
 private:
     bool IsMigrationFinished() const;
@@ -275,14 +284,6 @@ private:
 
     void HandleWriteOrZeroCompleted(
         const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleAgentIsUnavailable(
-        const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleAgentIsBackOnline(
-        const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRWClientIdChanged(

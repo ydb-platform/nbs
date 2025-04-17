@@ -124,40 +124,6 @@ void TNonreplicatedPartitionMigrationCommonActor::HandlePoisonPill(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionMigrationCommonActor::HandleAgentIsUnavailable(
-    const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    NCloud::Send(
-        ctx,
-        SrcActorId,
-        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
-            msg->LaggingAgent));
-    NCloud::Send(
-        ctx,
-        DstActorId,
-        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
-            msg->LaggingAgent));
-}
-
-void TNonreplicatedPartitionMigrationCommonActor::HandleAgentIsBackOnline(
-    const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    NCloud::Send(
-        ctx,
-        SrcActorId,
-        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
-            msg->AgentId));
-    NCloud::Send(
-        ctx,
-        DstActorId,
-        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
-            msg->AgentId));
-}
-
 void TNonreplicatedPartitionMigrationCommonActor::ScheduleCountersUpdate(
     const TActorContext& ctx)
 {
@@ -239,9 +205,6 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
         HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, HandleChecksumBlocks);
-
-        HFunc(TEvNonreplPartitionPrivate::TEvAgentIsUnavailable, HandleAgentIsUnavailable);
-        HFunc(TEvNonreplPartitionPrivate::TEvAgentIsBackOnline, HandleAgentIsBackOnline);
 
         HFunc(
             NPartition::TEvPartition::TEvDrainRequest,

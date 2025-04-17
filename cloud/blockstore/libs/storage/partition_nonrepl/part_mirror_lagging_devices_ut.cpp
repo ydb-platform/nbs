@@ -96,6 +96,40 @@ struct TTestEnv
         return devices;
     }
 
+    static TVector<TDevices> OneDevicePerAgentDevices(
+        const TTestBasicRuntime& runtime,
+        int deviceCountPerReplica)
+    {
+        TVector<TDevices> replicasDevices;
+        TDevices devices;
+        for (int i = 0; i < deviceCountPerReplica; i++) {
+            TTestEnv::AddDevice(
+                runtime.GetNodeId(i),
+                DeviceBlockCount,
+                Sprintf("uuid-%u", i),
+                Sprintf("agent-%u", i),
+                devices);
+        }
+        replicasDevices.push_back(std::move(devices));
+
+        constexpr int ReplicaCount = 2;
+        for (int i = 0; i < ReplicaCount; i++) {
+            replicasDevices.push_back(TDevices());
+            for (int j = 0; j < deviceCountPerReplica; j++) {
+                auto& devices = replicasDevices.back();
+                const ui32 num = (i + 1) * deviceCountPerReplica + j;
+                TTestEnv::AddDevice(
+                    runtime.GetNodeId(num),
+                    DeviceBlockCount,
+                    Sprintf("uuid-%u", num),
+                    Sprintf("agent-%u", num),
+                    devices);
+            }
+        }
+
+        return replicasDevices;
+    }
+
     explicit TTestEnv(TTestBasicRuntime& runtime)
         : TTestEnv(
               runtime,
@@ -115,14 +149,14 @@ struct TTestEnv
     {}
 
     TTestEnv(
-        TTestBasicRuntime& runtime,
-        TDevices devices,
-        TVector<TDevices> replicas,
-        TMigrations migrations = {},
-        THashSet<TString> freshDeviceIds = {},
-        THashSet<TString> outdatedDeviceIds = {},
-        TVector<TDiskAgentStatePtr> diskAgentStates = {},
-        NProto::TStorageServiceConfig configBase = {})
+            TTestBasicRuntime& runtime,
+            TDevices devices,
+            TVector<TDevices> replicas,
+            TMigrations migrations = {},
+            THashSet<TString> freshDeviceIds = {},
+            THashSet<TString> outdatedDeviceIds = {},
+            TVector<TDiskAgentStatePtr> diskAgentStates = {},
+            NProto::TStorageServiceConfig configBase = {})
         : Runtime(runtime)
         , Devices(std::move(devices))
         , Replicas(std::move(replicas))
@@ -168,7 +202,6 @@ struct TTestEnv
 
         NProto::TStorageServiceConfig storageConfig = std::move(configBase);
         storageConfig.SetMaxMigrationIoDepth(4);
-        storageConfig.SetLaggingDevicePingInterval(100);
         storageConfig.SetLaggingDevicePingInterval(
             TDuration::Seconds(30).MilliSeconds());
         Config = std::make_shared<TStorageConfig>(
@@ -199,7 +232,7 @@ struct TTestEnv
             CreateBlockDigestGeneratorStub(),
             "",   // rwClientId
             partConfig,
-            std::move(migrations),
+            Migrations,
             Replicas,
             nullptr,   // rdmaClient
             VolumeActorId,
@@ -220,7 +253,7 @@ struct TTestEnv
                 allDevices.Add()->CopyFrom(d);
             }
         }
-        for (auto& m: migrations) {
+        for (auto& m: Migrations) {
             allDevices.Add()->CopyFrom(m.GetTargetDevice());
         }
 
@@ -299,6 +332,44 @@ struct TTestEnv
         }
     }
 
+    void ReadFromDiskAgentAndCheckContents(
+        ui32 nodeId,
+        const TString& deviceId,
+        TBlockRange64 range,
+        char content)
+    {
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+
+        request->Record.SetStartIndex(range.Start);
+        request->Record.SetBlockSize(DefaultBlockSize);
+        request->Record.SetDeviceUUID(deviceId);
+        request->Record.SetBlocksCount(range.Size());
+
+        auto diskAgentActorId = MakeDiskAgentServiceId(nodeId);
+        Runtime.Send(new IEventHandle(
+            diskAgentActorId,
+            Runtime.AllocateEdgeActor(),
+            request.release()));
+
+        TAutoPtr<IEventHandle> handle;
+        Runtime.GrabEdgeEventRethrow<TEvDiskAgent::TEvReadDeviceBlocksResponse>(
+            handle,
+            WaitTimeout);
+
+        UNIT_ASSERT(handle);
+        auto response =
+            handle->Release<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
+
+        const auto& blocks = response->Record.GetBlocks();
+        for (ui32 j = 0; j < blocks.BuffersSize(); ++j) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                TString(DefaultBlockSize, content),
+                blocks.GetBuffers(j),
+                TStringBuilder() << "Block number: " << j);
+        }
+    }
+
     void SetupLogging()
     {
         Runtime.AppendToLogSettings(
@@ -359,6 +430,21 @@ struct TTestEnv
         Runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
     }
 
+    void AddLaggingAgent(const NProto::TLaggingAgent& laggingAgent)
+    {
+        Y_DEBUG_ABORT_UNLESS(!laggingAgent.GetAgentId().empty());
+        Y_DEBUG_ABORT_UNLESS(!laggingAgent.GetDevices().empty());
+
+        LaggingAgents.push_back(laggingAgent);
+        TPartitionClient client(Runtime, MirrorPartActorId);
+        client.SendRequest(
+            MirrorPartActorId,
+            std::make_unique<
+                TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest>(
+                laggingAgent));
+        Runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+    }
+
     void RemoveLaggingAgent(const TString& agentId)
     {
         auto* laggingAgent = FindIfPtr(
@@ -376,6 +462,24 @@ struct TTestEnv
     }
 
     void WaitForMigrationFinishEvent()
+    {
+        bool migrationFinished = false;
+        for (int i = 0; i < 100; i++) {
+            migrationFinished = Runtime.DispatchEvents(
+                {.FinalEvents = {{TEvDiskRegistry::EvFinishMigrationRequest}}},
+                TDuration::MilliSeconds(10));
+            if (migrationFinished) {
+                break;
+            }
+            Runtime.AdvanceCurrentTime(TDuration::Seconds(4));
+        }
+        if (!migrationFinished) {
+            Runtime.DispatchEvents(
+                {.FinalEvents = {{TEvDiskRegistry::EvFinishMigrationRequest}}});
+        }
+    }
+
+    void WaitForLaggingMigrationFinishEvent()
     {
         Runtime.AdvanceCurrentTime(Config->GetLaggingDevicePingInterval());
         bool migrationFinished = false;
@@ -429,7 +533,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         env.ReadAndCheckContents(1, firstAndSecondDevices, 'A');
         env.ReadAndCheckContents(2, firstAndSecondDevices, 'B');
 
-        env.WaitForMigrationFinishEvent();
+        env.WaitForLaggingMigrationFinishEvent();
 
         // After the migration all replicas are in sync.
         env.ReadAndCheckContents(firstAndSecondDevices, 'B');
@@ -713,30 +817,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             diskAgentStates.push_back(std::make_shared<TDiskAgentState>());
         }
 
-        TDevices devices;
-        for (int i = 0; i < 3; i++) {
-            TTestEnv::AddDevice(
-                runtime.GetNodeId(i),
-                DeviceBlockCount,
-                Sprintf("uuid-%u", i),
-                Sprintf("agent-%u", i),
-                devices);
-        }
-
-        TVector<TDevices> replicas;
-        for (int i = 0; i < 2; i++) {
-            replicas.push_back(TDevices());
-            for (int j = 0; j < 3; j++) {
-                auto& devices = replicas.back();
-                const ui32 num = (i + 1) * 3 + j;
-                TTestEnv::AddDevice(
-                    runtime.GetNodeId(num),
-                    DeviceBlockCount,
-                    Sprintf("uuid-%u", num),
-                    Sprintf("agent-%u", num),
-                    devices);
-            }
-        }
+        auto replicasDevices = TTestEnv::OneDevicePerAgentDevices(
+            runtime,
+            3   // deviceCountPerReplica
+        );
 
         TMigrations migrations;
         {
@@ -753,8 +837,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
 
         TTestEnv env(
             runtime,
-            std::move(devices),
-            std::move(replicas),
+            std::move(replicasDevices[0]),
+            {std::move(replicasDevices[1]), std::move(replicasDevices[2])},
             std::move(migrations),
             {"uuid-7"},   // freshDeviceIds
             {},           // outdatedDeviceIds
@@ -762,10 +846,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             {});
 
         // Migrate all the ranges.
-        for (int i = 0; i < 10; i++) {
-            runtime.AdvanceCurrentTime(TDuration::Seconds(4));
-            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
-        }
+        env.WaitForMigrationFinishEvent();
 
         // Current disk config:
         // ┌──────────────────┬──────────────────┬────────────────┐
@@ -949,6 +1030,251 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         // Poison pill has killed the proxy actor.
         runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT(!FindPtr(mirrorActorChildren, replica2Proxy));
+    }
+
+    Y_UNIT_TEST(ShouldHandleLaggingTargetMigration)
+    {
+        constexpr ui32 AgentCount = 10;
+        TTestBasicRuntime runtime(AgentCount);
+
+        TVector<TDiskAgentStatePtr> diskAgentStates;
+        for (ui32 i = 0; i < AgentCount; i++) {
+            diskAgentStates.push_back(std::make_shared<TDiskAgentState>());
+        }
+
+        auto replicasDevices = TTestEnv::OneDevicePerAgentDevices(
+            runtime,
+            3   // deviceCountPerReplica
+        );
+
+        TMigrations migrations;
+        {
+            NProto::TDeviceMigration* migration = migrations.Add();
+            migration->SetSourceDeviceId("uuid-4");
+
+            auto& targetDevice = *migration->MutableTargetDevice();
+            targetDevice.SetNodeId(runtime.GetNodeId(AgentCount - 1));
+            targetDevice.SetBlocksCount(DeviceBlockCount);
+            targetDevice.SetDeviceUUID("uuid-m");
+            targetDevice.SetBlockSize(DefaultBlockSize);
+            targetDevice.SetAgentId("agent-m");
+        }
+
+        TTestEnv env(
+            runtime,
+            std::move(replicasDevices[0]),
+            {std::move(replicasDevices[1]), std::move(replicasDevices[2])},
+            std::move(migrations),
+            {},   // freshDeviceIds
+            {},   // outdatedDeviceIds
+            std::move(diskAgentStates),
+            {});
+
+        // Migrate all the ranges.
+        env.WaitForMigrationFinishEvent();
+
+        // Current disk config:
+        // ┌──────────────────┬──────────────────┬────────────────┐
+        // │ uuid-0           │ uuid-3           │ uuid-6         │
+        // │──────────────────┼──────────────────┼────────────────│
+        // │ uuid-1           │ uuid-4 -> uuid-m │ uuid-7         │
+        // │──────────────────┼──────────────────┼────────────────│
+        // │ uuid-2           │ uuid-5           │ uuid-8         │
+        // └──────────────────┴──────────────────┴────────────────┘
+
+        TPartitionClient client(runtime, env.MirrorPartActorId);
+
+        const auto fullDiskRange =
+            TBlockRange64::WithLength(0, DeviceBlockCount * 3);
+        client.WriteBlocks(fullDiskRange, 'A');
+
+        TVector<TActorId> readActors;
+        THashSet<TString> migrationDisabledAgents;
+        bool laggingAgentMigrationFinished = false;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvReadBlocksRequest: {
+                        if (event->Recipient == env.MirrorPartActorId) {
+                            break;
+                        }
+                        readActors.push_back(event->Recipient);
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::
+                        EvLaggingMigrationDisabled: {
+                        const auto* msg =
+                            event->Get<TEvNonreplPartitionPrivate::
+                                           TEvLaggingMigrationDisabled>();
+                        migrationDisabledAgents.insert(msg->AgentId);
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::
+                        EvLaggingMigrationEnabled: {
+                        const auto* msg =
+                            event->Get<TEvNonreplPartitionPrivate::
+                                           TEvLaggingMigrationEnabled>();
+                        migrationDisabledAgents.erase(msg->AgentId);
+                        break;
+                    }
+                    case TEvVolumePrivate::EvLaggingAgentMigrationFinished: {
+                        laggingAgentMigrationFinished = true;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        // uuid-m is lagging
+        NProto::TLaggingAgent laggingAgent;
+        {
+            laggingAgent.SetAgentId("agent-m");
+            laggingAgent.SetReplicaIndex(1);
+            auto* laggingDevice = laggingAgent.MutableDevices()->Add();
+            laggingDevice->SetDeviceUUID("uuid-m");
+            laggingDevice->SetRowIndex(1);
+        }
+        env.AddLaggingAgent(laggingAgent);
+        UNIT_ASSERT(migrationDisabledAgents.contains("agent-m"));
+        UNIT_ASSERT_VALUES_EQUAL(1, migrationDisabledAgents.size());
+
+        // The first and second replicas
+        const auto firstRow = TBlockRange64::MakeOneBlock(0);
+        const auto secondRow = TBlockRange64::MakeOneBlock(DeviceBlockCount);
+        const auto thirdRow = TBlockRange64::MakeOneBlock(DeviceBlockCount * 2);
+
+        client.WriteBlocks(firstRow, 'B');
+        client.WriteBlocks(secondRow, 'B');
+        client.WriteBlocks(thirdRow, 'B');
+
+        // Reads should read from all 3 replicas.
+        env.ReadAndCheckContents(firstRow, 'B');
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[0]));
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[1]));
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[2]));
+        readActors.clear();
+
+        env.ReadAndCheckContents(secondRow, 'B');
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[0]));
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[1]));
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[2]));
+        readActors.clear();
+
+        env.ReadAndCheckContents(thirdRow, 'B');
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[0]));
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[1]));
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[2]));
+        readActors.clear();
+
+        // Write to two devices at the same time.
+        const auto firstAndSecondRow =
+            TBlockRange64::WithLength(DeviceBlockCount - 1, 2);
+        const auto secondAndThirdRow =
+            TBlockRange64::WithLength(DeviceBlockCount * 2 - 1, 2);
+        client.WriteBlocks(firstAndSecondRow, 'C');
+        client.WriteBlocks(secondAndThirdRow, 'C');
+
+        // Data is ok.
+        env.ReadAndCheckContents(firstAndSecondRow, 'C');
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[0]));
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[1]));
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[2]));
+        readActors.clear();
+
+        env.ReadAndCheckContents(secondAndThirdRow, 'C');
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[0]));
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[1]));
+        UNIT_ASSERT_VALUES_EQUAL(1, Count(readActors, env.ReplicaActors[2]));
+        readActors.clear();
+
+        // Check the data on disk agents. "uuid-m" should have obsolete data
+        // since the writes to it are disabled.
+        const auto deviceStart = TBlockRange64::MakeOneBlock(0);
+        const auto deviceEnd =
+            TBlockRange64::MakeOneBlock(DeviceBlockCount - 1);
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(AgentCount - 1),
+            "uuid-m",
+            deviceStart,
+            'A');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(AgentCount - 1),
+            "uuid-m",
+            deviceEnd,
+            'A');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(3),
+            "uuid-3",
+            deviceStart,
+            'B');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(3),
+            "uuid-3",
+            deviceEnd,
+            'C');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(4),
+            "uuid-4",
+            deviceStart,
+            'C');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(4),
+            "uuid-4",
+            deviceEnd,
+            'C');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(5),
+            "uuid-5",
+            deviceStart,
+            'C');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(5),
+            "uuid-5",
+            deviceEnd,
+            'A');
+
+        // Wait until writes to "uuid-m" are enabled.
+        runtime.AdvanceCurrentTime(env.Config->GetLaggingDevicePingInterval());
+        runtime.DispatchEvents(
+            {.FinalEvents = {
+                 {TEvNonreplPartitionPrivate::EvAgentIsBackOnline}}});
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(0, migrationDisabledAgents.size());
+
+        // Now user writes should be delivered to "uuid-m".
+        client.WriteBlocks(firstAndSecondRow, 'D');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(AgentCount - 1),
+            "uuid-m",
+            deviceStart,
+            'D');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(3),
+            "uuid-3",
+            deviceEnd,
+            'D');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(4),
+            "uuid-4",
+            deviceStart,
+            'D');
+
+        if (!laggingAgentMigrationFinished) {
+            env.WaitForLaggingMigrationFinishEvent();
+        }
+
+        // Lagging migration should catch up the data.
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(AgentCount - 1),
+            "uuid-m",
+            deviceStart,
+            'D');
+        env.ReadFromDiskAgentAndCheckContents(
+            runtime.GetNodeId(AgentCount - 1),
+            "uuid-m",
+            deviceEnd,
+            'C');
     }
 }
 

@@ -319,6 +319,32 @@ struct TEvNonreplPartitionPrivate
         {}
     };
 
+    //
+    // LaggingMigrationDisabled
+    //
+
+    struct TLaggingMigrationDisabled
+    {
+        const TString AgentId;
+
+        explicit TLaggingMigrationDisabled(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    //
+    // LaggingMigrationEnabled
+    //
+
+    struct TLaggingMigrationEnabled
+    {
+        const TString AgentId;
+
+        explicit TLaggingMigrationEnabled(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
     struct TStartLaggingAgentMigration
     {
     };
@@ -352,6 +378,8 @@ struct TEvNonreplPartitionPrivate
         EvAgentIsUnavailable,
         EvAgentIsBackOnline,
         EvStartLaggingAgentMigration,
+        EvLaggingMigrationDisabled,
+        EvLaggingMigrationEnabled,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -437,6 +465,16 @@ struct TEvNonreplPartitionPrivate
     using TEvStartLaggingAgentMigration = TRequestEvent<
         TStartLaggingAgentMigration,
         EvStartLaggingAgentMigration
+    >;
+
+    using TEvLaggingMigrationDisabled = TRequestEvent<
+        TLaggingMigrationDisabled,
+        EvLaggingMigrationDisabled
+    >;
+
+    using TEvLaggingMigrationEnabled = TRequestEvent<
+        TLaggingMigrationEnabled,
+        EvLaggingMigrationEnabled
     >;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)

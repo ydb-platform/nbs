@@ -33,6 +33,12 @@ class TLaggingAgentsReplicaProxyActor final
     : public NActors::TActorBootstrapped<TLaggingAgentsReplicaProxyActor>
     , public IPoisonPillHelperOwner
 {
+    enum class ERequestKind
+    {
+        Read,
+        Write,
+    };
+
 private:
     using TBase = NActors::TActorBootstrapped<TLaggingAgentsReplicaProxyActor>;
 
@@ -60,8 +66,16 @@ private:
         NActors::TActorId AvailabilityMonitoringActorId;
         NActors::TActorId MigrationActorId;
         std::unique_ptr<TCompressedBitmap> CleanBlocksMap;
+        bool MigrationDisabled = false;
+        bool DrainFinished = false;
     };
     THashMap<TString, TAgentState> AgentState;
+
+    struct TBlockRangeData {
+        TString LaggingAgentId;
+        bool IsTargetMigration = false;
+    };
+    TMap<ui64, TBlockRangeData> BlockRangeDataByBlockRangeEnd;
 
     ui64 DrainRequestCounter = 0;
     // To determine which agent has drained in-flight writes by cookie in the
@@ -113,14 +127,27 @@ private:
         const TVector<TDeviceRequest>& deviceRequests);
 
     [[nodiscard]] bool ShouldSplitWriteRequest(
-        const TVector<TDeviceRequest>& requests) const;
+        const TVector<TDeviceRequest>& deviceRequests) const;
     [[nodiscard]] NActors::TActorId GetRecipientActorId(
-        const TString& agentId) const;
+        const TBlockRange64& requestBlockRange,
+        ERequestKind kind) const;
+
+    [[nodiscard]] const TBlockRangeData& GetBlockRangeData(
+        const TBlockRange64& requestBlockRange) const;
+
+    void RecalculateBlockRangeDataByBlockRangeEnd();
 
     void MarkBlocksAsDirty(
         const NActors::TActorContext& ctx,
         const TString& unavailableAgentId,
         TBlockRange64 range);
+
+    void StartLaggingResync(
+        const NActors::TActorContext& ctx,
+        const TString& agentId,
+        TAgentState* state);
+
+    ui64 TakeDrainRequestId(const TString& agentId);
 
     void DestroyChildActor(
         const NActors::TActorContext& ctx,
@@ -156,6 +183,14 @@ private:
 
     void HandleAddLaggingAgent(
         const TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLaggingMigrationDisabled(
+        const TEvNonreplPartitionPrivate::TEvLaggingMigrationDisabled::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLaggingMigrationEnabled(
+        const TEvNonreplPartitionPrivate::TEvLaggingMigrationEnabled::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRWClientIdChanged(
