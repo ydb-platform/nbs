@@ -439,6 +439,7 @@ void TResyncRangeBlockByBlockActor::Done(const TActorContext& ctx)
             ReadDuration,
             WriteStartTs,
             WriteDuration,
+            RequestInfo->ExecCycles,
             std::move(AffectedBlockInfos),
             GetResyncStatus(FixedBlockCount, FoundErrorCount));
 

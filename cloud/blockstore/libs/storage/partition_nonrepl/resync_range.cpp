@@ -253,6 +253,7 @@ void TResyncRangeActor::Done(const TActorContext& ctx)
             ReadDuration,
             WriteStartTs,
             WriteDuration,
+            RequestInfo->ExecCycles,
             std::move(AffectedBlockInfos),
             GetResyncStatus(ErrorFixed, ErrorFound));
 

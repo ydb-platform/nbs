@@ -256,7 +256,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ChecksumBlocks.AddRequest(time, requestBytes);
-    NetworkBytes += requestBytes;
+    NetworkBytes += sizeof(ui64);   //  Checksum is sent as a 64-bit integer.
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);

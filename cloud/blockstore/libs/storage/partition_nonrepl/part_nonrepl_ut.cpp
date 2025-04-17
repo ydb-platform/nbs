@@ -1759,7 +1759,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         runtime.DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(0, voidBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            blockCount * DefaultBlockSize,
             counters.ReadBlocks.GetRequestNonVoidBytes());
         UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadBlocks.GetRequestVoidBytes());
 

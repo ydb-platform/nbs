@@ -247,7 +247,6 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
-    NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);
