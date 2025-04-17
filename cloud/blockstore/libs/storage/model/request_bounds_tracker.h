@@ -12,12 +12,12 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TRequestBoundsTracker
 {
-private:
     struct TRangeInfo
     {
         ui64 RequestCount = 0;
     };
 
+private:
     THashMap<ui64, TRangeInfo> RangesWithRequests;
     const ui64 BlockCountPerRange;
 
