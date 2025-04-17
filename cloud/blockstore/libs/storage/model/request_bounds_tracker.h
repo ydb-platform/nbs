@@ -12,6 +12,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TRequestBoundsTracker
 {
+private:
     struct TRangeInfo
     {
         ui64 RequestCount = 0;
@@ -43,15 +44,14 @@ class TRequestsInProgressWithBlockRangeTracking
     : public IRequestsInProgress
     , TRequestsInProgressImpl<TKey, TRequestInProgressWithBlockRange<TValue>>
 {
-public:
-    using TRequest = TRequestInProgressWithBlockRange<TValue>;
-
-private:
     using TImpl =
         TRequestsInProgressImpl<TKey, TRequestInProgressWithBlockRange<TValue>>;
 
 private:
     TRequestBoundsTracker WriteRequestBoundsTracker;
+
+public:
+    using TRequest = TRequestInProgressWithBlockRange<TValue>;
 
 public:
     explicit TRequestsInProgressWithBlockRangeTracking(size_t blockSize)
