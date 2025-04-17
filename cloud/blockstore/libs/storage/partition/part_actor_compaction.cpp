@@ -147,6 +147,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const ui64 TabletId;
+    const TString DiskId;
     const TActorId Tablet;
     const ui32 BlockSize;
     const ui32 MaxBlocksInBlob;
@@ -180,6 +181,7 @@ public:
     TCompactionActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
+        TString diskId,
         const TActorId& tablet,
         ui32 blockSize,
         ui32 maxBlocksInBlob,
@@ -242,6 +244,7 @@ private:
 TCompactionActor::TCompactionActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
+        TString diskId,
         const TActorId& tablet,
         ui32 blockSize,
         ui32 maxBlocksInBlob,
@@ -254,6 +257,7 @@ TCompactionActor::TCompactionActor(
         TVector<TRequest> requests)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
+    , DiskId(std::move(diskId))
     , Tablet(tablet)
     , BlockSize(blockSize)
     , MaxBlocksInBlob(maxBlocksInBlob)
@@ -608,8 +612,9 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             LOG_ERROR(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%lu] unexpected channel data kind %u",
+                "[%lu][d:%s] unexpected channel data kind %u",
                 TabletId,
+                DiskId.c_str(),
                 static_cast<int>(channelDataKind));
         }
     };
@@ -695,8 +700,9 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         if (rc.AffectedBlocks.size() > MaxAffectedBlocksPerCompaction) {
             // KIKIMR-6286: preventing heavy transactions
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Cropping AffectedBlocks: %lu -> %lu, range: %s",
+                "[%lu][d:%s] Cropping AffectedBlocks: %lu -> %lu, range: %s",
                 TabletId,
+                DiskId.c_str(),
                 rc.AffectedBlocks.size(),
                 MaxAffectedBlocksPerCompaction,
                 DescribeRange(rc.BlockRange).c_str());
@@ -2040,6 +2046,7 @@ void TPartitionActor::CompleteCompaction(
         ctx,
         args.RequestInfo,
         TabletID(),
+        PartitionConfig.GetDiskId(),
         SelfId(),
         State->GetBlockSize(),
         State->GetMaxBlocksInBlob(),

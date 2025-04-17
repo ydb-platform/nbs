@@ -36,6 +36,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const TActorId Tablet;
+    const TString DiskId;
     const TTabletStorageInfoPtr TabletInfo;
     const ui64 LastGCCommitId;
     const ui64 CollectCommitId;
@@ -55,6 +56,7 @@ public:
     TCollectGarbageActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
+        TString diskId,
         TTabletStorageInfoPtr tabletInfo,
         ui64 lastGCCommitId,
         ui64 collectCommitId,
@@ -95,6 +97,7 @@ private:
 TCollectGarbageActor::TCollectGarbageActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
+        TString diskId,
         TTabletStorageInfoPtr tabletInfo,
         ui64 lastGCCommitId,
         ui64 collectCommitId,
@@ -105,6 +108,7 @@ TCollectGarbageActor::TCollectGarbageActor(
         bool cleanupWholeHistory)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
+    , DiskId(std::move(diskId))
     , TabletInfo(std::move(tabletInfo))
     , LastGCCommitId(lastGCCommitId)
     , CollectCommitId(collectCommitId)
@@ -170,8 +174,9 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
                 false);                             // soft barrier
 
             LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] %s",
+                "[%lu][d:%s] %s",
                 TabletInfo->TabletID,
+                DiskId.c_str(),
                 request->Print(true).data());
 
             SendToBSProxy(
@@ -304,6 +309,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const TActorId Tablet;
+    const TString DiskId;
     const TTabletStorageInfoPtr TabletInfo;
     const ui64 CollectCommitId;
     const ui32 CollectCounter;
@@ -319,6 +325,7 @@ public:
     TCollectGarbageHardActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
+        TString diskId,
         TTabletStorageInfoPtr tabletInfo,
         ui64 collectCommitId,
         ui32 collectCounter,
@@ -352,6 +359,7 @@ private:
 TCollectGarbageHardActor::TCollectGarbageHardActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
+        TString diskId,
         TTabletStorageInfoPtr tabletInfo,
         ui64 collectCommitId,
         ui32 collectCounter,
@@ -359,6 +367,7 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
         TVector<ui32> mixedAndMergedChannels)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
+    , DiskId(std::move(diskId))
     , TabletInfo(std::move(tabletInfo))
     , CollectCommitId(collectCommitId)
     , CollectCounter(collectCounter)
@@ -411,8 +420,9 @@ void TCollectGarbageHardActor::CollectGarbage(const TActorContext& ctx)
                 true);                              // hard barrier
 
             LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] %s",
+                "[%lu][d:%s] %s",
                 TabletInfo->TabletID,
+                DiskId.c_str(),
                 request->Print(true).data());
 
             SendToBSProxy(
@@ -657,6 +667,7 @@ void TPartitionActor::HandleCollectGarbage(
         ctx,
         requestInfo,
         SelfId(),
+        PartitionConfig.GetDiskId().c_str(),
         Info(),
         State->GetLastCollectCommitId(),
         commitId,
@@ -683,14 +694,16 @@ void TPartitionActor::HandleCollectGarbageCompleted(
     if (FAILED(msg->GetStatus())) {
         LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
             "[" << TabletID() << "]"
+                << "[d:" << PartitionConfig.GetDiskId() << "]"
                 << " GC failed: " << msg->GetStatus()
                 << " reason: " << msg->GetError().GetMessage().Quote());
 
         State->RegisterCollectError();
     } else {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] GC completed",
-            TabletID());
+            "[%lu][d:%s] GC completed",
+            TabletID(),
+            PartitionConfig.GetDiskId().c_str());
 
         State->RegisterCollectSuccess();
         State->SetStartupGcExecuted();
@@ -761,6 +774,7 @@ void TPartitionActor::CompleteCollectGarbage(
         ctx,
         args.RequestInfo,
         SelfId(),
+        PartitionConfig.GetDiskId(),
         Info(),
         args.CollectCommitId,
         State->NextCollectCounter(),
