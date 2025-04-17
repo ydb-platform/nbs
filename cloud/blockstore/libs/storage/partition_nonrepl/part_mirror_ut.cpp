@@ -1119,7 +1119,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(2, mr.MigratedRanges);
 
         UNIT_ASSERT_VALUES_EQUAL("test", mr.DiskId);
-        UNIT_ASSERT_VALUES_EQUAL("vasya#2", mr.SourceDeviceId);
+        UNIT_ASSERT_VALUES_EQUAL(TString(), mr.SourceDeviceId);
         UNIT_ASSERT_VALUES_EQUAL("vasya", mr.TargetDeviceId);
 
         mr.TestAgentData("vasya", 'A', 2048);

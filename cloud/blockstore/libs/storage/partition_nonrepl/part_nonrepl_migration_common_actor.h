@@ -115,6 +115,7 @@ private:
     const NActors::TActorId VolumeActorId;
     TString RWClientId;
 
+    NActors::TActorId MigrationSrcActorId;
     NActors::TActorId SrcActorId;
     NActors::TActorId DstActorId;
     bool ActorOwner = false;
@@ -213,6 +214,7 @@ public:
     // Called from the inheritor to initialize migration.
     void InitWork(
         const NActors::TActorContext& ctx,
+        NActors::TActorId migrationSrcActorId,
         NActors::TActorId srcActorId,
         NActors::TActorId dstActorId,
         bool takeOwnershipOverActors,
