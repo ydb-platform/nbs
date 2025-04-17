@@ -1385,9 +1385,10 @@ void TPartitionActor::HandleCompaction(
             State->GetBlocksCount() - 1);
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Start %s compaction @%lu (range: %s, blobs: %u, blocks: %u"
+            "[%lu][d:%s] Start %s compaction @%lu (range: %s, blobs: %u, blocks: %u"
             ", reads: %u, blobsread: %u, blocksread: %u, score: %f)",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             compactionType == ECompactionType::Forced ? "forced" : "tablet",
             commitId,
             DescribeRange(blockRange).c_str(),
@@ -1459,14 +1460,16 @@ void TPartitionActor::HandleCompactionCompleted(
 
     ui64 commitId = msg->CommitId;
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete compaction @%lu",
+        "[%lu][d:%s] Complete compaction @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     if (HasError(msg->GetError())) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Compaction @%lu failed: %s",
+            "[%lu][d:%s] Compaction @%lu failed: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             commitId,
             FormatError(msg->GetError()).c_str());
     }
@@ -1604,9 +1607,10 @@ void PrepareRangeCompaction(
         }
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Dropping last %u blobs, %u blocks"
+            "[%lu][d:%s] Dropping last %u blobs, %u blocks"
             ", remaining blobs: %u, blocks: %u",
             tabletId,
+            state.GetConfig().GetDiskId().c_str(),
             args.BlobsSkipped,
             args.BlocksSkipped,
             liveBlocks.size(),
@@ -2014,8 +2018,9 @@ void TPartitionActor::CompleteCompaction(
 
         if (rangeCompactionInfos.back().OriginalBlobId) {
             LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Selected patching candidate: %s, data blob: %s",
+                "[%lu][d:%s] Selected patching candidate: %s, data blob: %s",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 ToString(rangeCompactionInfos.back().OriginalBlobId).c_str(),
                 ToString(rangeCompactionInfos.back().DataBlobId).c_str());
         }
@@ -2045,6 +2050,11 @@ void TPartitionActor::CompleteCompaction(
         args.CommitId,
         std::move(rangeCompactionInfos),
         std::move(requests));
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%lu][d:%s] Partition registered TCompactionActor with id [%lu]",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
+        actor);
 
     Actors.Insert(actor);
 }

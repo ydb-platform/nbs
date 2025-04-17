@@ -323,8 +323,9 @@ void TPartitionActor::HandlePatchBlobCompleted(
 
         if (msg->StorageStatusFlags.Check(yellowMoveFlag)) {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Yellow move flag received for channel %u and group %u",
+                "[%lu][d:%s] Yellow move flag received for channel %u and group %u",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 patchedChannel,
                 patchedGroup);
 
@@ -335,8 +336,9 @@ void TPartitionActor::HandlePatchBlobCompleted(
 
     if (FAILED(msg->GetStatus())) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Stop tablet because of PatchBlob error: %s",
+            "[%lu][d:%s] Stop tablet because of PatchBlob error: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             FormatError(msg->GetError()).data());
 
         ReportTabletBSFailure();

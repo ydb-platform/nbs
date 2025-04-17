@@ -537,16 +537,18 @@ void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
 
     if (State->GetCollectTimeout()) {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] CollectGarbage request scheduled: %lu, %s",
+            "[%lu][d:%s] CollectGarbage request scheduled: %lu, %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             request->CallContext->RequestId,
             State->GetCollectTimeout().ToString().c_str());
 
         ctx.Schedule(State->GetCollectTimeout(), request.release());
     } else {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] CollectGarbage request sent: %lu",
+            "[%lu][d:%s] CollectGarbage request sent: %lu",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             request->CallContext->RequestId);
 
         NCloud::Send(
@@ -606,8 +608,9 @@ void TPartitionActor::HandleCollectGarbage(
         State->CollectGarbageHardRequested = false;
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Start hard GC @%lu",
+            "[%lu][d:%s] Start hard GC @%lu",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             commitId);
 
         State->GetCollectGarbageState().SetStatus(EOperationStatus::Started);
@@ -635,8 +638,9 @@ void TPartitionActor::HandleCollectGarbage(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start GC @%lu @%lu (new: %u, garbage: %u)",
+        "[%lu][d:%s] Start GC @%lu @%lu (new: %u, garbage: %u)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId,
         collectCounter,
         static_cast<ui32>(newBlobs.size()),
@@ -661,6 +665,11 @@ void TPartitionActor::HandleCollectGarbage(
         std::move(garbageBlobs),
         std::move(mixedAndMergedChannels),
         !State->GetStartupGcExecuted());
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%lu][d:%s] Partition registered TCollectGarbageActor with id [%lu]",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
+        actor);
 
     Actors.Insert(actor);
 }
@@ -757,6 +766,11 @@ void TPartitionActor::CompleteCollectGarbage(
         State->NextCollectCounter(),
         std::move(args.KnownBlobIds),
         std::move(mixedAndMergedChannels));
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%lu][d:%s] Partition registered TCollectGarbageActor with id [%lu]",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
+        actor);
 
     Actors.Insert(actor);
 }

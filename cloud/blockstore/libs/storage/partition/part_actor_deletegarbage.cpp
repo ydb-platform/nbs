@@ -75,8 +75,9 @@ void TPartitionActor::ExecuteDeleteGarbage(
         garbageBlobBytes += blobId.BlobSize();
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Delete garbage blob: %s",
+            "[%lu][d:%s] Delete garbage blob: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             ToString(MakeBlobId(TabletID(), blobId)).data());
 
         bool deleted = State->GetGarbageQueue().RemoveGarbageBlob(blobId);

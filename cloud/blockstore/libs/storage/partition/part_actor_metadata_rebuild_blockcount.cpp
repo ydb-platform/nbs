@@ -306,8 +306,9 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
     auto [gen, step] = ParseCommitId(msg->BlobId.CommitId());
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start metadata rebuild for block count (starting %u:%u)",
+        "[%lu][d:%s] Start metadata rebuild for block count (starting %u:%u)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         gen,
         step);
 
@@ -346,8 +347,9 @@ bool TPartitionActor::PrepareMetadataRebuildBlockCount(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] PrepareMetadataRebuildBlockCount completed (%u) %s",
+        "[%lu][d:%s] PrepareMetadataRebuildBlockCount completed (%u) %s",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         static_cast<ui32>(progress),
         StringifyMetadataTx(args).c_str());
 
