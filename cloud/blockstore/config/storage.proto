@@ -1206,4 +1206,7 @@ message TStorageServiceConfig
     optional bool ResyncAfterLaggingAgentMigration = 422;
 
     optional bool DoNotStopVolumeTabletOnLockLost = 423;
+
+    // Percentage of mixed channels from the merged total
+    optional uint32 MixedChannelsPercentageFromMerged = 424;
 }

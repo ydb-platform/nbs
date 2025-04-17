@@ -1103,14 +1103,14 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
     Y_UNIT_TEST(ShouldPickProperNextChannel)
     {
-        auto meta = DefaultConfig(1024, DefaultBlockSize, MaxChannelsCount);
+        auto meta = DefaultConfig(1024, DefaultBlockSize, MaxMergedChannelCount);
 
         for (auto kind: {EChannelDataKind::Mixed, EChannelDataKind::Merged}) {
             TPartitionState state(
                 meta,
                 TestTabletId,
                 0,
-                MaxChannelsCount + 4,
+                MaxDataChannelCount,
                 MaxBlobSize,
                 MaxRangesPerBlob,
                 EOptimizationMode::OptimizeForLongRanges,

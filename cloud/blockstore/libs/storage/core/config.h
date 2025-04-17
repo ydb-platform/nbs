@@ -275,6 +275,7 @@ public:
     TString GetHybridFreshChannelPoolKind() const;
     bool GetAllocateSeparateMixedChannels() const;
     bool GetPoolKindChangeAllowed() const;
+    [[nodiscard]] ui32 GetMixedChannelsPercentageFromMerged() const;
 
     TString GetFolderId() const;
 

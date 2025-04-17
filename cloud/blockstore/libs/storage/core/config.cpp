@@ -378,6 +378,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(AllocateSeparateMixedChannels,                  bool,   false         )\
     xxx(PoolKindChangeAllowed,                          bool,   false         )\
+    xxx(MixedChannelsPercentageFromMerged,              ui32,   0             )\
                                                                                \
     xxx(BlockDigestsEnabled,                            bool,   false         )\
     xxx(UseTestBlockDigestGenerator,                    bool,   false         )\
