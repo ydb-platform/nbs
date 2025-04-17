@@ -392,7 +392,11 @@ func (s *nodeService) NodePublishVolume(
 				if nfsBackend {
 					err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
 				} else {
-					err = s.nodePublishDiskAsVhostSocket(ctx, req)
+					err = s.nodePublishDiskAsVhostSocket(
+						ctx,
+						req,
+						req.VolumeCapability.GetMount(),
+					)
 				}
 			}
 		} else {
@@ -484,7 +488,8 @@ func (s *nodeService) NodeGetInfo(
 
 func (s *nodeService) nodePublishDiskAsVhostSocket(
 	ctx context.Context,
-	req *csi.NodePublishVolumeRequest) error {
+	req *csi.NodePublishVolumeRequest,
+	volumeCapabilities *csi.VolumeCapability_MountVolume) error {
 
 	podId := s.getPodId(req)
 	diskId := req.VolumeId
@@ -500,6 +505,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		deviceName = diskId
 	}
 
+	vhostDiscardEnabled := slices.Contains(volumeCapabilities.MountFlags, "discard")
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
@@ -518,6 +524,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
+		VhostDiscardEnabled: vhostDiscardEnabled,
 	})
 
 	if err != nil {
