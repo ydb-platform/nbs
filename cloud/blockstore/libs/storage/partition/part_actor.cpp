@@ -735,6 +735,15 @@ void TPartitionActor::HandleWaitForInFlightWrites(
     DrainActorCompanion.HandleWaitForInFlightWrites(ev, ctx);
 }
 
+void TPartitionActor::HandleLockAndDrainRange(
+    const TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_DEBUG_ABORT_UNLESS(0);
+}
+
 bool TPartitionActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {

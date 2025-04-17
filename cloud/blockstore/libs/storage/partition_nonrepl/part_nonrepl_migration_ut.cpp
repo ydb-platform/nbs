@@ -33,7 +33,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 // The block count migrated at a time.
-constexpr ui64 ProcessingBlockCount = ProcessingRangeSize / DefaultBlockSize;
+constexpr ui64 ProcessingBlockCount = MigrationRangeSize / DefaultBlockSize;
 
 auto MakeLeaderFollowerFilter(
     TActorId* leaderPartition,
@@ -336,7 +336,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         const size_t migrationCopyBlocks = useDirectCopy ? 3 : 0;
         UNIT_ASSERT_VALUES_EQUAL(migrationCopyBlocks, counters.CopyBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            migrationCopyBlocks * ProcessingRangeSize,
+            migrationCopyBlocks * MigrationRangeSize,
             counters.CopyBlocks.RequestBytes);
 
         runtime.AdvanceCurrentTime(UpdateCountersInterval);

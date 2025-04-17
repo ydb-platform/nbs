@@ -47,7 +47,7 @@ private:
 
     // TODO implement DeviceStats and similar stuff
 
-    TRequestsInProgress<ui64> RequestsInProgress{EAllowedRequests::ReadWrite};
+    TRequestsInProgress<EAllowedRequests::ReadWrite, ui64> RequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         PartConfig->GetName()};

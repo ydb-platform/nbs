@@ -578,7 +578,8 @@ void TMirrorPartitionActor::ReadBlocks(
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     RequestsInProgress.AddReadRequest(
         requestIdentityKey,
-        {blockRange, record.GetHeaders().GetVolumeRequestId()});
+        blockRange,
+        record.GetHeaders().GetVolumeRequestId());
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
@@ -630,7 +631,8 @@ NProto::TError TMirrorPartitionActor::SplitReadBlocks(
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     RequestsInProgress.AddReadRequest(
         requestIdentityKey,
-        {blockRange, record.GetHeaders().GetVolumeRequestId()});
+        blockRange,
+        record.GetHeaders().GetVolumeRequestId());
 
     LOG_DEBUG(
         ctx,

@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/request_bounds_tracker.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
@@ -68,11 +69,15 @@ private:
     TDuration CpuUsage;
 
     THashSet<ui64> DirtyReadRequestIds;
-    TRequestsInProgress<ui64, TRequestCtx> RequestsInProgress{
-        EAllowedRequests::ReadWrite};
+    TRequestsInProgressWithBlockRangeTracking<
+        EAllowedRequests::ReadWrite,
+        ui64,   // key
+        ui64>   // volume request id
+        RequestsInProgress{State.GetBlockSize()};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
-        DiskId};
+        DiskId,
+        &RequestsInProgress.GetRequestBoundsTracker()};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::Read};
 
@@ -96,6 +101,8 @@ private:
     TBlockRangeSet64 Majors;
     TBlockRangeSet64 Fixed;
     TBlockRangeSet64 FixedPartial;
+
+    TRequestBoundsTracker BlockRangeRequests{State.GetBlockSize()};
 
 public:
     TMirrorPartitionActor(
@@ -186,6 +193,14 @@ private:
     void HandleRemoveLaggingAgent(
         const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr&
             ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLockAndDrainRange(
+        const NPartition::TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReleaseRange(
+        const NPartition::TEvPartition::TEvReleaseRange::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

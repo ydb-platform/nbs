@@ -14,6 +14,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
+using namespace NPartition;
+
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -27,7 +29,8 @@ TCopyRangeActor::TCopyRangeActor(
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NActors::TActorId volumeActorId,
-        bool assignVolumeRequestId)
+        bool assignVolumeRequestId,
+        TActorId actorToLockAndDrainRange)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -37,6 +40,7 @@ TCopyRangeActor::TCopyRangeActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , VolumeActorId(volumeActorId)
     , AssignVolumeRequestId(assignVolumeRequestId)
+    , ActorToLockAndDrainRange(actorToLockAndDrainRange)
 {
 }
 
@@ -52,6 +56,10 @@ void TCopyRangeActor::Bootstrap(const TActorContext& ctx)
         "CopyRange",
         RequestInfo->CallContext->RequestId);
 
+    if (ActorToLockAndDrainRange) {
+        LockAndDrainRange(ctx);
+        return;
+    }
     if (AssignVolumeRequestId) {
         GetVolumeRequestId(ctx);
         return;
@@ -65,6 +73,14 @@ void TCopyRangeActor::GetVolumeRequestId(const NActors::TActorContext& ctx)
         ctx,
         VolumeActorId,
         std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdRequest>());
+}
+
+void TCopyRangeActor::LockAndDrainRange(const TActorContext& ctx)
+{
+    NCloud::Send(
+        ctx,
+        ActorToLockAndDrainRange,
+        std::make_unique<TEvPartition::TEvLockAndDrainRangeRequest>(Range));
 }
 
 void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
@@ -170,6 +186,13 @@ void TCopyRangeActor::ZeroBlocks(const TActorContext& ctx)
 
 void TCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
 {
+    if (NeedToReleaseRange) {
+        NCloud::Send(
+            ctx,
+            ActorToLockAndDrainRange,
+            std::make_unique<TEvPartition::TEvReleaseRange>(Range));
+    }
+
     using EExecutionSide =
         TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
 
@@ -223,6 +246,23 @@ void TCopyRangeActor::HandleReadUndelivery(
     Y_UNUSED(ev);
 
     Done(ctx, MakeError(E_REJECTED, "ReadBlocks request undelivered"));
+}
+
+void TCopyRangeActor::HandleLockAndDrainRangeResponse(
+    const TEvPartition::TEvLockAndDrainRangeResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        Done(ctx, msg->GetError());
+        return;
+    }
+    NeedToReleaseRange = true;
+    if (AssignVolumeRequestId) {
+        GetVolumeRequestId(ctx);
+        return;
+    }
+    ReadBlocks(ctx);
 }
 
 void TCopyRangeActor::HandleReadResponse(
@@ -309,6 +349,9 @@ STFUNC(TCopyRangeActor::StateWork)
         HFunc(
             TEvVolumePrivate::TEvTakeVolumeRequestIdResponse,
             HandleVolumeRequestId);
+        HFunc(
+            TEvPartition::TEvLockAndDrainRangeResponse,
+            HandleLockAndDrainRangeResponse);
 
         HFunc(TEvService::TEvReadBlocksRequest, HandleReadUndelivery);
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteUndelivery);

@@ -585,11 +585,11 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                         auto clientId = msg->Record.GetHeaders().GetClientId();
                         if (clientId == BackgroundOpsClientId) {
                             UNIT_ASSERT_VALUES_EQUAL(
-                                ProcessingRangeSize,
+                                MigrationRangeSize,
                                 msg->Record.GetBlocksCount() *
                                     DefaultBlockSize);
                             const ui64 rangeSize =
-                                ProcessingRangeSize / DefaultBlockSize;
+                                MigrationRangeSize / DefaultBlockSize;
                             UNIT_ASSERT_VALUES_EQUAL(
                                 0,
                                 msg->Record.GetStartIndex() % rangeSize);
@@ -612,10 +612,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                             const auto range =
                                 BuildRequestBlockRange(*msg, DefaultBlockSize);
                             UNIT_ASSERT_VALUES_EQUAL(
-                                ProcessingRangeSize,
+                                MigrationRangeSize,
                                 range.Size() * DefaultBlockSize);
                             const ui64 rangeSize =
-                                ProcessingRangeSize / DefaultBlockSize;
+                                MigrationRangeSize / DefaultBlockSize;
                             UNIT_ASSERT_VALUES_EQUAL(
                                 0,
                                 range.Start % rangeSize);
