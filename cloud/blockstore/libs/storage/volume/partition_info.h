@@ -6,17 +6,31 @@
 #include <cloud/storage/core/libs/kikimr/public.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/library/actors/core/scheduler_cookie.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>
+#include <util/generic/stack.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Used to store the partition-related actors, the actor of the partitions
+// itself and its wrappers.
+class TActorsStack
+{
+    TDeque<NActors::TActorId> Actors;
+
+public:
+    void Push(NActors::TActorId actorId);
+    void Clear();
+    [[nodiscard]] bool IsKnown(NActors::TActorId actorId) const;
+    [[nodiscard]] NActors::TActorId GetTop() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 struct TPartitionInfo
 {
     enum EState
@@ -39,7 +53,7 @@ struct TPartitionInfo
     NKikimr::TTabletStorageInfoPtr StorageInfo;
 
     NActors::TActorId Bootstrapper;
-    NActors::TActorId Owner;
+    TActorsStack RelatedActors;
 
     EState State = UNKNOWN;
     TString Message;
@@ -47,50 +61,21 @@ struct TPartitionInfo
     TDuration ExternalBootTimeout;
 
     TPartitionInfo(
-            ui64 tabletId,
-            NProto::TPartitionConfig partitionConfig,
-            TDuration timeoutIncrement,
-            TDuration timeoutMax)
-        : TabletId(tabletId)
-        , PartitionConfig(std::move(partitionConfig))
-        , RetryPolicy(timeoutIncrement, timeoutMax)
-    {}
+        ui64 tabletId,
+        NProto::TPartitionConfig partitionConfig,
+        TDuration timeoutIncrement,
+        TDuration timeoutMax);
 
-    void Init(const NActors::TActorId& bootstrapper)
-    {
-        Bootstrapper = bootstrapper;
-        State = UNKNOWN;
-        Message = {};
-    }
+    void Init(const NActors::TActorId& bootstrapper);
+    void SetStarted(TActorsStack actors);
+    void SetReady();
+    void SetStopped();
+    void SetFailed(TString message);
 
-    void SetStarted(const NActors::TActorId& owner)
-    {
-        Owner = owner;
-        State = STARTED;
-        Message = {};
-    }
+    [[nodiscard]] NActors::TActorId GetTopActorId() const;
+    [[nodiscard]] bool IsKnownActorId(const NActors::TActorId actorId) const;
 
-    void SetReady()
-    {
-        Y_ABORT_UNLESS(State == STARTED);
-        State = READY;
-    }
-
-    void SetStopped()
-    {
-        Owner = {};
-        State = STOPPED;
-        Message = {};
-    }
-
-    void SetFailed(TString message)
-    {
-        Owner = {};
-        State = FAILED;
-        Message = std::move(message);
-    }
-
-    TString GetStatus() const;
+    [[nodiscard]] TString GetStatus() const;
 };
 
 using TPartitionInfoList = TDeque<TPartitionInfo>;

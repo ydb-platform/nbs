@@ -493,9 +493,7 @@ void TVolumeActor::HandleLongRunningBlobOperation(
 
     const auto& msg = *ev->Get();
 
-    if (ev->Get()->Reason ==
-        TEvLongRunningOperation::EReason::LongRunningDetected)
-    {
+    if (msg.Reason == TEvLongRunningOperation::EReason::LongRunningDetected) {
         if (msg.FirstNotify) {
             LongRunningActors.Insert(ev->Sender);
             LongRunningActors.MarkLongRunning(ev->Sender, msg.Operation);
@@ -522,7 +520,7 @@ void TVolumeActor::HandleLongRunningBlobOperation(
             "[%lu] For volume %s %s %s (actor %s, group %u) detected after %s",
             TabletID(),
             State->GetDiskId().Quote().c_str(),
-            ToString(ev->Get()->Reason).c_str(),
+            ToString(msg.Reason).c_str(),
             ToString(msg.Operation).c_str(),
             ev->Sender.ToString().c_str(),
             msg.GroupId,

@@ -107,7 +107,7 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
     ui64 traceTs)
 {
     static_assert(!IsCheckpointMethod<TMethod>);
-    Y_ABORT_UNLESS(!State->GetDiskRegistryBasedPartitionActor());
+    Y_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
     Y_ABORT_UNLESS(State->GetPartitions().size() > 1);
 
     const auto blocksPerStripe =
@@ -247,14 +247,14 @@ void TVolumeActor::SendRequestToPartition(
     ui64 traceTime)
 {
     STORAGE_VERIFY_C(
-        State->GetDiskRegistryBasedPartitionActor() || State->GetPartitions(),
+        State->IsDiskRegistryMediaKind() || State->GetPartitions(),
         TWellKnownEntityTypes::TABLET,
         TabletID(),
         "Empty partition list");
 
-    auto partActorId = State->GetDiskRegistryBasedPartitionActor()
+    auto partActorId = State->IsDiskRegistryMediaKind()
         ? State->GetDiskRegistryBasedPartitionActor()
-        : State->GetPartitions()[partitionId].Owner;
+        : State->GetPartitions()[partitionId].GetTopActorId();
 
     if (State->GetPartitions()) {
         LOG_TRACE(ctx, TBlockStoreComponents::VOLUME,
@@ -729,7 +729,7 @@ void TVolumeActor::ForwardRequest(
                 E_REJECTED,
                 TStringBuilder() // NBS-4447. Do not change message.
                     << "Checkpoint reject request. " << TMethod::Name << " is not allowed "
-                    << (State->GetDiskRegistryBasedPartitionActor()
+                    << (State->IsDiskRegistryMediaKind()
                             ? "if a checkpoint exists"
                             : "during checkpoint creation")));
             return;
