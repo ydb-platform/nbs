@@ -1167,16 +1167,16 @@ void TDiskRegistryState::ReallocateDisksWithLostOrReappearedDevices(
     }
 }
 
-TVector<TDiskRegistryState::TDeviceId>
+const THashSet<TDiskRegistryState::TDeviceId>*
 TDiskRegistryState::GetLostDevicesForDisk(const TString& diskId) const
 {
     const auto* disk = Disks.FindPtr(diskId);
     Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
     if (!disk) {
-        return {};
+        return nullptr;
     }
 
-    return {disk->LostDeviceIds.begin(), disk->LostDeviceIds.end()};
+    return &(disk->LostDeviceIds);
 }
 
 NProto::TError TDiskRegistryState::UnregisterAgent(

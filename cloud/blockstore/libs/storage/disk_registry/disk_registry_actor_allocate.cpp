@@ -260,8 +260,12 @@ void TDiskRegistryActor::CompleteAddDisk(
         response->Record.SetIOModeTs(args.IOModeTs.MicroSeconds());
         response->Record.SetMuteIOErrors(args.MuteIOErrors);
 
-        for (auto& d: State->GetLostDevicesForDisk(args.DiskId)) {
-            response->Record.AddLostDeviceUUIDs(d);
+        const auto* lostDevicesForDisk =
+            State->GetLostDevicesForDisk(args.DiskId);
+        if (lostDevicesForDisk) {
+            response->Record.MutableLostDeviceUUIDs()->Add(
+                lostDevicesForDisk->begin(),
+                lostDevicesForDisk->end());
         }
     }
 
