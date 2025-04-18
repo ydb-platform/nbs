@@ -667,7 +667,7 @@ void TPartitionActor::HandleCollectGarbage(
         ctx,
         requestInfo,
         SelfId(),
-        PartitionConfig.GetDiskId().c_str(),
+        PartitionConfig.GetDiskId(),
         Info(),
         State->GetLastCollectCommitId(),
         commitId,
