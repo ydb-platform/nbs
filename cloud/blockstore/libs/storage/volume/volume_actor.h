@@ -366,6 +366,7 @@ private:
     // message from destroyed partition. Callbacks are called in FIFO order,
     // even if the partitions are deleted in a different order.
     TDeque<TPartitionDestroyCallback> WaitForPartitionDestroy;
+    ui64 PartitionRestartCounter = 0;
 
     TVector<ui64> GCCompletedPartitions;
 

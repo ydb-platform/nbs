@@ -467,7 +467,7 @@ void TVolumeActor::StopDiskRegistryBasedPartition(
     const NActors::TActorContext& ctx,
     TPoisonCallback onPartitionStopped)
 {
-    const ui64 requestId = VolumeRequestIdGenerator->AdvanceUnsafe();
+    const ui64 requestId = ++PartitionRestartCounter;
     const auto actorId = State->GetDiskRegistryBasedPartitionActor();
 
     WaitForPartitionDestroy.push_back(TPartitionDestroyCallback{
