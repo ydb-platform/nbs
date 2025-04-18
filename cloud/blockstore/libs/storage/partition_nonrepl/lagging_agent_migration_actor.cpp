@@ -142,4 +142,10 @@ void TLaggingAgentMigrationActor::OnMigrationError(const TActorContext& ctx)
         AgentId.c_str());
 }
 
+NActors::TActorId
+TLaggingAgentMigrationActor::GetActorToLockAndDrainRange() const
+{
+    return SourceActorId;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

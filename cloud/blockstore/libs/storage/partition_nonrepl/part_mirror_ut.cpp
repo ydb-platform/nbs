@@ -334,10 +334,12 @@ void WaitUntilScrubbingFinishesCurrentCycle(TTestEnv& testEnv)
     }
 }
 
-struct TRangeRequestsCounter
+class TRangeRequestsCounter
 {
+private:
     TMap<TBlockRange64, ui64, TBlockRangeComparator> RangeToCountMap;
 
+public:
     void AddRequest(TBlockRange64 range)
     {
         auto [it, inserted] = RangeToCountMap.try_emplace(range, 1);
@@ -346,9 +348,9 @@ struct TRangeRequestsCounter
         }
     }
 
-    ui64 GetRequestCountWithRange(TBlockRange64 range)
+    [[nodiscard]] ui64 GetRequestCountWithRange(TBlockRange64 range) const
     {
-        auto* count = RangeToCountMap.FindPtr(range);
+        const auto* count = RangeToCountMap.FindPtr(range);
         return count ? *count : 0;
     }
 };

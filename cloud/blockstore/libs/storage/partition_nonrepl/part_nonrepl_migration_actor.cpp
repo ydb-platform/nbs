@@ -131,7 +131,7 @@ void TNonreplicatedPartitionMigrationActor::OnMigrationProgress(
 }
 
 NActors::TActorId
-TNonreplicatedPartitionMigrationActor::GetActorToLockAndDrainRange()
+TNonreplicatedPartitionMigrationActor::GetActorToLockAndDrainRange() const
 {
     return MigrationSrcActorId;
 }

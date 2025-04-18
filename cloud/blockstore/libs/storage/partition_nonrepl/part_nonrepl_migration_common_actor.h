@@ -73,7 +73,7 @@ public:
     // response before copying the range during migration. After copying, we
     // should send ReleaseRange to the same actor. If the ActorId is invalid,
     // there is no need to send either of these messages.
-    virtual NActors::TActorId GetActorToLockAndDrainRange()
+    [[nodiscard]] virtual NActors::TActorId GetActorToLockAndDrainRange() const
     {
         return {};
     }
