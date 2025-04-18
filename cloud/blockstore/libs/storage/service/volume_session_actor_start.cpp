@@ -140,6 +140,10 @@ private:
         const TEvHiveProxy::TEvLockTabletResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleDescribeVolumeResponse(
+        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandleUnlockTabletResponse(
         const TEvHiveProxy::TEvUnlockTabletResponse::TPtr& ev,
         const TActorContext& ctx);
@@ -158,10 +162,6 @@ private:
 
     void HandleTabletDead(
         const TEvTablet::TEvTabletDead::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleDescribeVolumeResponse(
-        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleWaitReadyResponse(
@@ -324,7 +324,7 @@ void TStartVolumeActor::HandleDescribeVolumeResponse(
     if (msg->GetStatus() ==
         MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
     {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
             "[%lu] Volume %s is destroyed",
             VolumeTabletId,
             DiskId.Quote().data());
@@ -338,10 +338,9 @@ void TStartVolumeActor::HandleDescribeVolumeResponse(
             GetVolumeTabletId();
 
         if (volumeTabletId != VolumeTabletId) {
-            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+            LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
                 "Volume %s tablet was changed",
                 DiskId.Quote().data());
-
 
             StartShutdown(ctx);
             return;

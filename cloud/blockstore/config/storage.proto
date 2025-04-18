@@ -1205,5 +1205,7 @@ message TStorageServiceConfig
     // events for any mismatch it finds.
     optional bool ResyncAfterLaggingAgentMigration = 422;
 
+    // Hive sends notifications when locks are lost. If the flag is set, then
+    // the volume will not be stopped.
     optional bool DoNotStopVolumeTabletOnLockLost = 423;
 }
