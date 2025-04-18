@@ -58,6 +58,7 @@ private:
     TTxPartition::TAddBlobs& Args;
 
     const ui64 TabletId;
+    const TString DiskId;
     const ui64 DeletionCommitId;
     const ui32 MaxBlocksInBlob;
 
@@ -77,11 +78,13 @@ public:
             TPartitionState& state,
             TTxPartition::TAddBlobs& args,
             ui64 tabletId,
+            TString diskId,
             ui64 deletionCommitId,
             ui32 maxBlocksInBlob)
         : State(state)
         , Args(args)
         , TabletId(tabletId)
+        , DiskId(std::move(diskId))
         , DeletionCommitId(deletionCommitId)
         , MaxBlocksInBlob(maxBlocksInBlob)
     {}
@@ -172,9 +175,10 @@ private:
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             IsDeletionMarker(blob.BlobId)
-                ? "[%lu] Add MixedBlob (zero blocks) @%lu (blob: %s, range: %s)"
-                : "[%lu] Add MixedBlob @%lu (blob: %s, range: %s)",
+                ? "[%lu][d:%s] Add MixedBlob (zero blocks) @%lu (blob: %s, range: %s)"
+                : "[%lu][d:%s] Add MixedBlob @%lu (blob: %s, range: %s)",
             TabletId,
+            DiskId.c_str(),
             Args.CommitId,
             ToString(MakeBlobId(TabletId, blob.BlobId)).data(),
             DescribeRange(blob.Blocks).data());
@@ -232,9 +236,10 @@ private:
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             IsDeletionMarker(blob.BlobId)
-                ? "[%lu] Add MergedBlob (zero blocks) @%lu (blob: %s, range: %s)"
-                : "[%lu] Add MergedBlob @%lu (blob: %s, range: %s)",
+                ? "[%lu][d:%s] Add MergedBlob (zero blocks) @%lu (blob: %s, range: %s)"
+                : "[%lu][d:%s] Add MergedBlob @%lu (blob: %s, range: %s)",
             TabletId,
+            DiskId.c_str(),
             Args.CommitId,
             ToString(MakeBlobId(TabletId, blob.BlobId)).data(),
             DescribeRange(blob.BlockRange).data());
@@ -298,9 +303,10 @@ private:
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             IsDeletionMarker(blob.BlobId)
-                ? "[%lu] Add FreshBlob (zero blocks) @%lu (blob: %s, range: %s)"
-                : "[%lu] Add FreshBlob @%lu (blob: %s, range: %s)",
+                ? "[%lu][d:%s] Add FreshBlob (zero blocks) @%lu (blob: %s, range: %s)"
+                : "[%lu][d:%s] Add FreshBlob @%lu (blob: %s, range: %s)",
             TabletId,
+            DiskId.c_str(),
             Args.CommitId,
             ToString(MakeBlobId(TabletId, blob.BlobId)).data(),
             DescribeFreshRange(blob.Blocks).data());
@@ -698,6 +704,7 @@ void TPartitionActor::ExecuteAddBlobs(
         *State,
         args,
         TabletID(),
+        PartitionConfig.GetDiskId(),
         args.DeletionCommitId,
         State->GetMaxBlocksInBlob()
     );

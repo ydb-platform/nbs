@@ -36,6 +36,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const ui64 TabletId;
+    const TString DiskId;
     const std::unique_ptr<TRequest> Request;
     const ui32 GroupId;
 
@@ -51,6 +52,7 @@ public:
         const TActorId& volumeActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
+        TString diskId,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui32 groupId);
@@ -90,6 +92,7 @@ TWriteBlobActor::TWriteBlobActor(
         const TActorId& volumeActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
+        TString diskId,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui32 groupId)
@@ -102,6 +105,7 @@ TWriteBlobActor::TWriteBlobActor(
     , TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
+    , DiskId(std::move(diskId))
     , Request(std::move(request))
     , GroupId(groupId)
 {}
@@ -226,8 +230,9 @@ void TWriteBlobActor::ReplyError(
     const TString& description)
 {
     LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] TEvBlobStorage::TEvPut failed: %s\n%s",
+        "[%lu][d:%s] TEvBlobStorage::TEvPut failed: %s\n%s",
         TabletId,
+        DiskId.c_str(),
         description.data(),
         response.Print(false).data());
 
@@ -371,6 +376,7 @@ void TPartitionActor::HandleWriteBlob(
             VolumeActorId,
             requestInfo,
             TabletID(),
+            PartitionConfig.GetDiskId(),
             std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
                 msg.Release()),
             GetDowntimeThreshold(
