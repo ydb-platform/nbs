@@ -99,6 +99,8 @@ private:
     void LockTablet(const TActorContext& ctx);
     void UnlockTablet(const TActorContext& ctx);
 
+    void DescribeVolume(const TActorContext& ctx);
+
     void ScheduleReboot(const TActorContext& ctx, bool delay = true);
 
     void BootExternal(const TActorContext& ctx);
@@ -136,6 +138,10 @@ private:
 
     void HandleLockTabletResponse(
         const TEvHiveProxy::TEvLockTabletResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleDescribeVolumeResponse(
+        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleUnlockTabletResponse(
@@ -290,6 +296,60 @@ void TStartVolumeActor::HandleTabletLockLost(
 
         auto error = MakeError(E_REJECTED, "Tablet lock has been lost");
         StartShutdown(ctx, error);
+        return;
+    }
+
+    // Check if volume is not destroyed.
+    DescribeVolume(ctx);
+}
+
+void TStartVolumeActor::DescribeVolume(const TActorContext& ctx)
+{
+    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        "Sending describe request for volume: %s",
+        DiskId.Quote().data());
+
+    NCloud::Send(
+        ctx,
+        MakeSSProxyServiceId(),
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId));
+}
+
+void TStartVolumeActor::HandleDescribeVolumeResponse(
+    const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (msg->GetStatus() ==
+        MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
+    {
+        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+            "[%lu] Volume %s is destroyed",
+            VolumeTabletId,
+            DiskId.Quote().data());
+
+        StartShutdown(ctx);
+        return;
+    } else if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
+        auto volumeTabletId = msg->
+            PathDescription.
+            GetBlockStoreVolumeDescription().
+            GetVolumeTabletId();
+
+        if (volumeTabletId != VolumeTabletId) {
+            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+                "Volume %s tablet was changed",
+                DiskId.Quote().data());
+
+            StartShutdown(ctx);
+            return;
+        }
+    }
+
+    if (Stopping) {
+        ContinueShutdown(ctx);
+        return;
     }
 }
 
@@ -886,6 +946,8 @@ STFUNC(TStartVolumeActor::StateWork)
         HFunc(TEvHiveProxy::TEvBootExternalResponse, HandleBootExternalResponse);
         HFunc(TEvHiveProxy::TEvTabletLockLost, HandleTabletLockLost);
         HFunc(TEvHiveProxy::TEvUnlockTabletResponse, HandleUnlockTabletResponse);
+
+        HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
 
         HFunc(TEvTablet::TEvRestored, HandleTabletRestored);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);

@@ -3008,6 +3008,40 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(2, lockTabletRequestCount);
     }
 
+    Y_UNIT_TEST(ShouldShutdownVolumeAfterLockLostOnVolumeDeletionDuringMounting)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetDoNotStopVolumeTabletOnLockLost(true);
+
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env, storageServiceConfig);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        service.SendMountVolumeRequest();
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::EvWaitReadyRequest: {
+                        // Let volume tablet start.
+                        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(1000));
+                        service.SendDestroyVolumeRequest();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto response1 = service.RecvDestroyVolumeResponse();
+        UNIT_ASSERT(SUCCEEDED(response1->GetStatus()));
+
+        auto response2 = service.RecvMountVolumeResponse();
+        UNIT_ASSERT(SUCCEEDED(response2->GetStatus()));
+    }
+
     Y_UNIT_TEST(ShouldNotSendVolumeMountedForPingMounts)
     {
         TTestEnv env;
