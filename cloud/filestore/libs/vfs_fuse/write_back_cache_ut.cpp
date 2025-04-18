@@ -451,9 +451,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(2, readAttempts);
         UNIT_ASSERT(!readFuture2.HasValue());
 
-        auto flushPromise1 = NewPromise<NProto::TWriteDataResponse>();
-
         ui32 flushAttempts = 0;
+
+        auto flushPromise1 = NewPromise<NProto::TWriteDataResponse>();
         b.Session->WriteDataHandler = [&] (auto, auto) {
             flushAttempts++;
             return flushPromise1.GetFuture();
@@ -502,14 +502,78 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             return readPromise4.GetFuture();
         };
 
-        auto readFuture4 = b.ReadFromCache(1, 0, 11);
-        // but it is not allowed to read range that is not flushed yet
-        UNIT_ASSERT_VALUES_EQUAL(3, readAttempts);
+        auto readFuture4 = b.ReadFromCache(2, 0, 10);
+        // also it is allowed to read other handle for the overlapping range
+        UNIT_ASSERT_VALUES_EQUAL(4, readAttempts);
         UNIT_ASSERT(!readFuture4.HasValue());
+
+        auto flushPromise2 = NewPromise<NProto::TWriteDataResponse>();
+        b.Session->WriteDataHandler = [&] (auto, auto) {
+            flushAttempts++;
+            return flushPromise2.GetFuture();
+        };
+
+        auto writeFuture2 = b.WriteToCache(2, 0, "abcdefghij");
+        // data is stored in cache, flush should not happen
+        UNIT_ASSERT_VALUES_EQUAL(1, flushAttempts);
+        UNIT_ASSERT(writeFuture2.HasValue());
+
+        auto flushFuture2 = b.Cache->FlushData(2);
+        UNIT_ASSERT_VALUES_EQUAL(1, flushAttempts);
+        UNIT_ASSERT(!flushFuture2.HasValue());
+
+        readPromise4.SetValue(response);
+        UNIT_ASSERT(readFuture4.HasValue());
+        // it is allowed to flush other handle for the overlapping range
+        // once read is finished
+        UNIT_ASSERT_VALUES_EQUAL(2, flushAttempts);
+        UNIT_ASSERT(!flushFuture2.HasValue());
+
+        auto readPromise5 = NewPromise<NProto::TReadDataResponse>();
+        b.Session->ReadDataHandler = [&] (auto, auto) {
+            readAttempts++;
+            return readPromise5.GetFuture();
+        };
+
+        auto readFuture5 = b.ReadFromCache(1, 0, 11);
+        // but it is not allowed to read range that is not flushed yet
+        UNIT_ASSERT_VALUES_EQUAL(4, readAttempts);
+        UNIT_ASSERT(!readFuture5.HasValue());
 
         // finish writing (flushing) the data
         flushPromise1.SetValue({});
+        // finally flush should happen
         UNIT_ASSERT(flushFuture1.HasValue());
+
+        // now it is allowed to read flushed range
+        UNIT_ASSERT_VALUES_EQUAL(5, readAttempts);
+        UNIT_ASSERT(!readFuture5.HasValue());
+
+        auto flushPromise3 = NewPromise<NProto::TWriteDataResponse>();
+        b.Session->WriteDataHandler = [&] (auto, auto) {
+            flushAttempts++;
+            return flushPromise3.GetFuture();
+        };
+
+        auto writeFuture3 = b.WriteToCache(1, 0, "abcdefghij");
+        // data is stored in cache, flush should not happen
+        UNIT_ASSERT_VALUES_EQUAL(2, flushAttempts);
+        UNIT_ASSERT(writeFuture3.HasValue());
+
+        auto flushFuture3 = b.Cache->FlushData(1);
+        UNIT_ASSERT_VALUES_EQUAL(2, flushAttempts);
+        UNIT_ASSERT(!flushFuture2.HasValue());
+
+        response.SetBuffer("abcdefghijk");
+        readPromise5.SetValue(response);
+        UNIT_ASSERT(readFuture5.HasValue());
+        // and it is allowed to flush once read is finished
+        UNIT_ASSERT_VALUES_EQUAL(3, flushAttempts);
+        UNIT_ASSERT(!flushFuture2.HasValue());
+
+        flushPromise3.SetValue({});
+        // flush is finished
+        UNIT_ASSERT(flushFuture3.HasValue());
     }
 
     Y_UNIT_TEST(ShouldReadAfterWrite)

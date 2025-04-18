@@ -36,6 +36,7 @@ private:
         ui64 Id = 0;
         std::function<void()> Execute;
         bool IsRead = false;
+        ui64 Handle = 0;
         ui64 Offset = 0;
         ui64 Length = 0;
     };
@@ -62,6 +63,12 @@ public:
 
             // overlaps with one of the requests in-flight
             if (offset < end) {
+                if (request.Handle != otherRequest.Handle) {
+                    // TODO(svartmetal): optimise, use separate buckets for different handles
+                    // requests to different handles should not affect each other
+                    continue;
+                }
+
                 if (request.IsRead && otherRequest.IsRead) {
                     // skip this overlapping as it does not cause inconsistency
                     continue;
@@ -137,6 +144,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> protoRequest)
     {
+        const auto handle = protoRequest->GetHandle();
         const auto offset = protoRequest->GetOffset();
         const auto length = protoRequest->GetLength();
 
@@ -176,6 +184,7 @@ public:
             .Id = id,
             .Execute = std::move(execute),
             .IsRead = true,
+            .Handle = handle,
             .Offset = offset,
             .Length = length
         };
@@ -187,6 +196,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> protoRequest)
     {
+        const auto handle = protoRequest->GetHandle();
         const auto offset = protoRequest->GetOffset();
         const auto length = protoRequest->GetBuffer().length();
 
@@ -226,6 +236,7 @@ public:
             .Id = id,
             .Execute = std::move(execute),
             .IsRead = false,
+            .Handle = handle,
             .Offset = offset,
             .Length = length,
         };
