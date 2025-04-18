@@ -467,6 +467,11 @@ struct TTestEnv
             });
     }
 
+    // We need to simulate the behavior of a mirror partition with range locks
+    // because in these tests we use some replica as a migration source and not
+    // a mirror partition. A non-replicated partition does not know anything
+    // about range locking and tests will crash if this partition receives a
+    // lock message.
     TTestActorRuntimeBase::EEventAction DefaultObserver(
         TAutoPtr<IEventHandle>& event)
     {
