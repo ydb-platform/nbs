@@ -338,7 +338,7 @@ void TStartVolumeActor::HandleDescribeVolumeResponse(
             GetVolumeTabletId();
 
         if (volumeTabletId != VolumeTabletId) {
-            LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
                 "Volume %s tablet was changed",
                 DiskId.Quote().data());
 
