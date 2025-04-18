@@ -1211,4 +1211,12 @@ message TStorageServiceConfig
 
     // Percentage of mixed channels from the merged total
     optional uint32 MixedChannelsPercentageFromMerged = 424;
+
+    // For mirror-disk write requests sends to only one disk-agent, and he
+    // propagate write requests to the rest disk-agents.
+    optional bool MultiAgentWriteEnabled = 425;
+
+    // The minimum size of the request starting from which the MultiAgentWrite
+    // is enabled.
+    optional uint32 MultiAgentWriteRequestSizeThreshold = 426;
 }

@@ -104,6 +104,9 @@ private:
 
     TRequestBoundsTracker BlockRangeRequests{State.GetBlockSize()};
 
+    bool MultiAgentWriteEnabled = true;
+    const size_t MultiAgentWriteRequestSizeThreshold = 0;
+
 public:
     TMirrorPartitionActor(
         TStorageConfigPtr config,
@@ -137,6 +140,7 @@ private:
     void StartResyncRange(const NActors::TActorContext& ctx, bool isMinor);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
     ui64 TakeNextRequestIdentifier();
+    bool CanMakeMultiagentWrite(TBlockRange64 range) const;
 
 private:
     STFUNC(StateWork);
@@ -201,6 +205,10 @@ private:
 
     void HandleReleaseRange(
         const NPartition::TEvPartition::TEvReleaseRange::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleInconsistentDiskAgent(
+        const TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

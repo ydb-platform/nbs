@@ -350,6 +350,19 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    // Inconsistent disk agent behavior for multi-agent write request.
+    //
+
+    struct TInconsistentDiskAgent
+    {
+        const TString AgentId;
+
+        explicit TInconsistentDiskAgent(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -380,6 +393,7 @@ struct TEvNonreplPartitionPrivate
         EvStartLaggingAgentMigration,
         EvLaggingMigrationDisabled,
         EvLaggingMigrationEnabled,
+        EvInconsistentDiskAgent,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -476,6 +490,9 @@ struct TEvNonreplPartitionPrivate
         TLaggingMigrationEnabled,
         EvLaggingMigrationEnabled
     >;
+
+    using TEvInconsistentDiskAgent =
+        TRequestEvent<TInconsistentDiskAgent, EvInconsistentDiskAgent>;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
 

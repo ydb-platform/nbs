@@ -2641,6 +2641,95 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, resp->GetError().GetCode());
     }
+
+    Y_UNIT_TEST(ShouldExecuteMultiWriteRequests)
+    {
+        TTestRuntime runtime;
+
+        THashMap<TString, TBlockRange64> device2WriteRange;
+        THashSet<TString> multiWriteRequests;
+        size_t describeRequestCount = 0;
+
+        auto countWrites =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                    using TRequest = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
+                    const auto& record = event->Get<TRequest>()->Record;
+                    if (record.GetReplicationTargets().empty()) {
+                        UNIT_ASSERT(!device2WriteRange.contains(
+                            record.GetDeviceUUID()));
+                        device2WriteRange[record.GetDeviceUUID()] =
+                            TBlockRange64::WithLength(
+                                record.GetStartIndex(),
+                                record.GetBlocks().GetBuffers().size());
+                    } else {
+                        UNIT_ASSERT(!multiWriteRequests.contains(
+                            record.GetDeviceUUID()));
+                        multiWriteRequests.insert(record.GetDeviceUUID());
+                    }
+                    break;
+                }
+                case TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest: {
+                    ++describeRequestCount;
+                }
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(countWrites);
+
+        NProto::TStorageServiceConfig config;
+        config.SetMultiAgentWriteEnabled(true);
+        TTestEnv env(runtime, std::move(config));
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        {
+            client.WriteBlocks(TBlockRange64::WithLength(10, 5), 1);
+
+            UNIT_ASSERT_VALUES_EQUAL(3, describeRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(3, device2WriteRange.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, multiWriteRequests.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                DescribeRange(TBlockRange64::WithLength(10, 5)),
+                DescribeRange(device2WriteRange["vasya"]));
+            UNIT_ASSERT_VALUES_EQUAL(
+                DescribeRange(TBlockRange64::WithLength(10, 5)),
+                DescribeRange(device2WriteRange["vasya#1"]));
+            UNIT_ASSERT_VALUES_EQUAL(
+                DescribeRange(TBlockRange64::WithLength(10, 5)),
+                DescribeRange(device2WriteRange["vasya#2"]));
+        }
+        {
+            device2WriteRange.clear();
+            multiWriteRequests.clear();
+            describeRequestCount = 0;
+
+            client.WriteBlocksLocal(
+                TBlockRange64::WithLength(20, 5),
+                TString(DefaultBlockSize, 'A'));
+
+            UNIT_ASSERT_VALUES_EQUAL(3, describeRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(3, device2WriteRange.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, multiWriteRequests.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                DescribeRange(TBlockRange64::WithLength(20, 5)),
+                DescribeRange(device2WriteRange["vasya"]));
+            UNIT_ASSERT_VALUES_EQUAL(
+                DescribeRange(TBlockRange64::WithLength(20, 5)),
+                DescribeRange(device2WriteRange["vasya#1"]));
+            UNIT_ASSERT_VALUES_EQUAL(
+                DescribeRange(TBlockRange64::WithLength(20, 5)),
+                DescribeRange(device2WriteRange["vasya#2"]));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

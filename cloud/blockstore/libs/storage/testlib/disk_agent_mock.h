@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_blocks_actor.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -176,7 +177,17 @@ private:
         const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        const auto& request = ev->Get()->Record;
+        auto* msg = ev->Get();
+        const auto& request = msg->Record;
+
+        if (!request.GetReplicationTargets().empty()) {
+            NCloud::Register<TMultiAgentWriteBlocksActor>(
+                ctx,
+                SelfId(),
+                CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+                std::move(msg->Record));
+            return;
+        }
 
         auto response =
             std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksResponse>();

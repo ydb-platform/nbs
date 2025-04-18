@@ -48,6 +48,7 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
         }
     }
 
+    // TODO(drbasic) Calc stat for multi-agent writing.
     // for some counters default AggregateWith logic is suboptimal for mirrored
     // partitions
     stats->Simple.BytesCount.Reset();

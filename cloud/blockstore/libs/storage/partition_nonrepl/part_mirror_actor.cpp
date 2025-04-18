@@ -67,16 +67,17 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , StatActorId(statActorId)
     , ResyncActorId(resyncActorId)
     , State(
-        Config,
-        rwClientId,
-        std::move(partConfig),
-        std::move(migrations),
-        std::move(replicas))
+          Config,
+          rwClientId,
+          std::move(partConfig),
+          std::move(migrations),
+          std::move(replicas))
+    , MultiAgentWriteEnabled(Config->GetMultiAgentWriteEnabled())
+    , MultiAgentWriteRequestSizeThreshold(
+          Config->GetMultiAgentWriteRequestSizeThreshold())
 {}
 
-TMirrorPartitionActor::~TMirrorPartitionActor()
-{
-}
+TMirrorPartitionActor::~TMirrorPartitionActor() = default;
 
 void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
 {
@@ -329,6 +330,12 @@ void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
 auto TMirrorPartitionActor::TakeNextRequestIdentifier() -> ui64
 {
     return RequestIdentifierCounter++;
+}
+
+bool TMirrorPartitionActor::CanMakeMultiagentWrite(TBlockRange64 range) const
+{
+    return MultiAgentWriteEnabled && range.Size() * State.GetBlockSize() >=
+                                         MultiAgentWriteRequestSizeThreshold;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -619,6 +626,22 @@ void TMirrorPartitionActor::HandleRemoveLaggingAgent(
     }
 }
 
+void TMirrorPartitionActor::HandleInconsistentDiskAgent(
+    const TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Disable multi-agent writes due to bad response from %s.",
+        DiskId.c_str(),
+        msg->AgentId.Quote().c_str());
+
+    MultiAgentWriteEnabled = false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionActor::HandleRWClientIdChanged(
@@ -775,6 +798,9 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             HandleGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent,
+            HandleInconsistentDiskAgent);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, HandleGetCompactionStatus);
@@ -843,6 +869,7 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.RejectGetDeviceForRange);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent)
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);

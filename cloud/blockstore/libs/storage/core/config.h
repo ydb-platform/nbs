@@ -641,6 +641,8 @@ public:
     [[nodiscard]] TDuration GetLaggingDeviceTimeoutThreshold() const;
     [[nodiscard]] TDuration GetLaggingDevicePingInterval() const;
     [[nodiscard]] bool GetResyncAfterLaggingAgentMigration() const;
+    [[nodiscard]] bool GetMultiAgentWriteEnabled() const;
+    [[nodiscard]] ui32 GetMultiAgentWriteRequestSizeThreshold() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 
