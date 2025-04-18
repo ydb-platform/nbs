@@ -238,7 +238,7 @@ private:
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
         TVector<TString> RemovedLaggingDeviceIds;
-        TVector<TString> LostDeviceUUIDs;
+        TVector<TString> LostDeviceIds;
 
         void Clear()
         {

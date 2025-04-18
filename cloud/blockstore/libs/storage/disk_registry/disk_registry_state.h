@@ -273,6 +273,8 @@ class TDiskRegistryState
         TVector<NProto::TDiskHistoryItem> History;
 
         TVector<TLaggingDevice> LaggingDevices;
+
+        THashSet<TString> LostDeviceIds;
     };
 
     struct TVolumeDeviceOverrides
@@ -336,8 +338,6 @@ private:
     NDiskRegistry::TNotificationSystem NotificationSystem;
 
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
-
-    THashSet<TString> LostDeviceUUIDs;
 
 public:
     TDiskRegistryState(
@@ -889,7 +889,7 @@ public:
         const TString& poolName,
         const ui64 totalByteCount) const;
 
-    TVector<TString> GetLostDevicesForDisk(const TString& diskId);
+    TVector<TDeviceId> GetLostDevicesForDisk(const TString& diskId) const;
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
@@ -1357,6 +1357,11 @@ private:
     static bool MigrationCanBeStarted(
         const TDiskState& disk,
         const TString& deviceUUID);
+
+    void ReallocateDisksWithLostOrReappearedDevices(
+        TDiskRegistryDatabase& db,
+        const TAgentList::TAgentRegistrationResult& r,
+        TVector<TDiskId>& disksToReallocate);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

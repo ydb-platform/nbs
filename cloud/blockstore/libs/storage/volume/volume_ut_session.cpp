@@ -494,7 +494,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
             devices.emplace_back(d.GetDeviceUUID());
         }
 
-        State->LostDevices.emplace_back(devices[0]);
+        State->LostDeviceUUIDs.emplace_back(devices[0]);
 
         volume.ReallocateDisk();
         // reallocate disk will trigger pipes reset, so reestablish connection
@@ -535,7 +535,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         }
         acquiredDevices.clear();
 
-        State->LostDevices.clear();
+        State->LostDeviceUUIDs.clear();
 
         volume.ReallocateDisk();
         // reallocate disk will trigger pipes reset, so reestablish connection
@@ -562,7 +562,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
         // Mark all devices as lost.
         for (const auto& d: diskInfo.GetDevices()) {
-            State->LostDevices.emplace_back(d.GetDeviceUUID());
+            State->LostDeviceUUIDs.emplace_back(d.GetDeviceUUID());
         }
 
         volume.ReallocateDisk();

@@ -155,7 +155,7 @@ struct TTxVolume
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
         TVector<TString> RemovedLaggingDeviceIds;
-        TVector<TString> LostDevices;
+        TVector<TString> LostDeviceIds;
         NProto::EVolumeIOMode IOMode;
         TInstant IOModeTs;
         bool MuteIOErrors;
@@ -169,10 +169,10 @@ struct TTxVolume
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
                 TVector<TString> removedLaggingDeviceIds,
-                TVector<TString> lostDevices,
+                TVector<TString> lostDeviceIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
-            bool muteIOErrors)
+                bool muteIOErrors)
             : TUpdateDevices(
                   TRequestInfoPtr(),
                   std::move(devices),
@@ -180,7 +180,7 @@ struct TTxVolume
                   std::move(replicas),
                   std::move(freshDeviceIds),
                   std::move(removedLaggingDeviceIds),
-                  std::move(lostDevices),
+                  std::move(lostDeviceIds),
                   ioMode,
                   ioModeTs,
                   muteIOErrors)
@@ -193,7 +193,7 @@ struct TTxVolume
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
                 TVector<TString> removedLaggingDeviceIds,
-                TVector<TString> lostDevices,
+                TVector<TString> lostDeviceIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
@@ -203,7 +203,7 @@ struct TTxVolume
             , Replicas(std::move(replicas))
             , FreshDeviceIds(std::move(freshDeviceIds))
             , RemovedLaggingDeviceIds(std::move(removedLaggingDeviceIds))
-            , LostDevices(std::move(lostDevices))
+            , LostDeviceIds(std::move(lostDeviceIds))
             , IOMode(ioMode)
             , IOModeTs(ioModeTs)
             , MuteIOErrors(muteIOErrors)

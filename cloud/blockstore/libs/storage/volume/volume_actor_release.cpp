@@ -40,7 +40,7 @@ void TVolumeActor::SendReleaseDevicesToAgents(
     }
 
     if (devicesToRelease.empty()) {
-        devicesToRelease = State->GetAllDevicesForRelease();
+        devicesToRelease = State->GetDevicesForRelease();
     }
 
     auto actor = NCloud::Register<TReleaseDevicesActor>(

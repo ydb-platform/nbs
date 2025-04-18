@@ -161,7 +161,12 @@ auto TAgentList::AddNewAgent(
         newDevices.insert(device.GetDeviceUUID());
     }
 
-    return {AddAgent(std::move(agentConfig)), std::move(newDevices), 0, {}, {}};
+    return {
+        .Agent = AddAgent(std::move(agentConfig)),
+        .NewDeviceIds = std::move(newDevices),
+        .LostDeviceIds = {},
+        .PrevNodeId = 0,
+        .OldConfigs = {}};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -427,12 +432,12 @@ auto TAgentList::RegisterAgent(
     agent->MutableDevices()->Clear();
 
     THashSet<TDeviceId> newDeviceIds;
+    THashSet<TDeviceId> lostDeviceIds;
     THashMap<TDeviceId, NProto::TDeviceConfig> oldConfigs;
 
     int i = 0;
     int j = 0;
 
-    THashSet<TString> lostDeviceUUIDs;
     while (i != newList.size() && j != oldList.size()) {
         auto& newDevice = newList[i];
         auto& oldDevice = oldList[j];
@@ -467,7 +472,7 @@ auto TAgentList::RegisterAgent(
         }
 
         if (IsAllowedDevice(*agent, oldDevice)) {
-            lostDeviceUUIDs.emplace(oldDevice.GetDeviceUUID());
+            lostDeviceIds.emplace(oldDevice.GetDeviceUUID());
             AddLostDevice(*agent, timestamp, std::move(oldDevice));
         }
 
@@ -484,7 +489,7 @@ auto TAgentList::RegisterAgent(
     for (; j < oldList.size(); ++j) {
         auto& oldDevice = oldList[j];
         if (IsAllowedDevice(*agent, oldDevice)) {
-            lostDeviceUUIDs.emplace(oldDevice.GetDeviceUUID());
+            lostDeviceIds.emplace(oldDevice.GetDeviceUUID());
             AddLostDevice(*agent, timestamp, std::move(oldDevice));
         }
     }
@@ -496,10 +501,10 @@ auto TAgentList::RegisterAgent(
 
     return {
         .Agent = *agent,
-        .NewDevices = std::move(newDeviceIds),
+        .NewDeviceIds = std::move(newDeviceIds),
+        .LostDeviceIds = std::move(lostDeviceIds),
         .PrevNodeId = prevNodeId,
-        .OldConfigs = std::move(oldConfigs),
-        .LostDeviceUUIDs = std::move(lostDeviceUUIDs)};
+        .OldConfigs = std::move(oldConfigs)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

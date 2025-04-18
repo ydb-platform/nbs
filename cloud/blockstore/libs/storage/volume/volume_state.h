@@ -764,8 +764,8 @@ public:
         return ForceMirrorResync;
     }
 
-    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquire() const;
-    TVector<NProto::TDeviceConfig> GetAllDevicesForRelease() const;
+    TVector<NProto::TDeviceConfig> GetDevicesForAcquire() const;
+    TVector<NProto::TDeviceConfig> GetDevicesForRelease() const;
 
     //
     // Followers
@@ -798,7 +798,7 @@ private:
 
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
 
-    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireOrRelease(
+    TVector<NProto::TDeviceConfig> GetDevicesForAcquireOrRelease(
         bool ignoreLostDevices) const;
 };
 

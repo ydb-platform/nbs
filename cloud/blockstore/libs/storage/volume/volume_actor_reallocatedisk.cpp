@@ -131,10 +131,9 @@ void TReallocateActor::HandleAllocateDiskResponse(
             std::move(*removedLaggingDevice.MutableDeviceUUID()));
     }
 
-    TVector<TString> lostDevices;
-    std::ranges::move(
-        *record.MutableLostDeviceUUIDs(),
-        std::back_inserter(lostDevices));
+    TVector<TString> lostDeviceIds(
+        std::make_move_iterator(record.MutableLostDeviceUUIDs()->begin()),
+        std::make_move_iterator(record.MutableLostDeviceUUIDs()->end()));
 
     auto request = std::make_unique<TEvVolumePrivate::TEvUpdateDevicesRequest>(
         std::move(*msg->Record.MutableDevices()),
@@ -142,7 +141,7 @@ void TReallocateActor::HandleAllocateDiskResponse(
         std::move(replicas),
         std::move(freshDeviceIds),
         std::move(removedLaggingDevices),
-        std::move(lostDevices),
+        std::move(lostDeviceIds),
         msg->Record.GetIOMode(),
         TInstant::MicroSeconds(msg->Record.GetIOModeTs()),
         msg->Record.GetMuteIOErrors());

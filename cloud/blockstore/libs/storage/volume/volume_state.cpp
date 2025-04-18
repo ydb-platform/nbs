@@ -922,14 +922,14 @@ const THashMultiMap<TActorId, TString>& TVolumeState::GetPipeServerId2ClientId()
     return ClientIdsByPipeServerId;
 }
 
-TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForAcquire() const
+TVector<NProto::TDeviceConfig> TVolumeState::GetDevicesForAcquire() const
 {
-    return GetAllDevicesForAcquireOrRelease(true);
+    return GetDevicesForAcquireOrRelease(true);
 }
 
-TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForRelease() const
+TVector<NProto::TDeviceConfig> TVolumeState::GetDevicesForRelease() const
 {
-    return GetAllDevicesForAcquireOrRelease(false);
+    return GetDevicesForAcquireOrRelease(false);
 }
 
 void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
@@ -1193,7 +1193,7 @@ void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& block
     CheckpointLight->Set(blockRange);
 }
 
-TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForAcquireOrRelease(
+TVector<NProto::TDeviceConfig> TVolumeState::GetDevicesForAcquireOrRelease(
     bool ignoreLostDevices) const
 {
     const size_t allDevicesCount =
@@ -1206,14 +1206,13 @@ TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForAcquireOrRelease(
     THashSet<TString> deviceIdsToIgnore;
     if (ignoreLostDevices) {
         deviceIdsToIgnore.insert(
-            Meta.GetLostDevicesUUIDs().begin(),
-            Meta.GetLostDevicesUUIDs().end());
+            Meta.GetLostDeviceIds().begin(),
+            Meta.GetLostDeviceIds().end());
     }
 
     auto addDeviceIfNeeded = [&](const auto& d)
     {
-        if (ignoreLostDevices && deviceIdsToIgnore.contains(d.GetDeviceUUID()))
-        {
+        if (deviceIdsToIgnore.contains(d.GetDeviceUUID())) {
             return;
         }
         resultDevices.emplace_back(d);
