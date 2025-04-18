@@ -266,6 +266,7 @@ class TDiskRegistryState
         NProto::TCheckpointReplica CheckpointReplica;
 
         TVector<TDeviceId> DeviceReplacementIds;
+        THashSet<TString> LostDeviceIds;
 
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
@@ -273,8 +274,6 @@ class TDiskRegistryState
         TVector<NProto::TDiskHistoryItem> History;
 
         TVector<TLaggingDevice> LaggingDevices;
-
-        THashSet<TString> LostDeviceIds;
     };
 
     struct TVolumeDeviceOverrides
