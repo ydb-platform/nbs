@@ -33,16 +33,18 @@ constexpr ui32 CacheSize = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void SleepForRandomDuration(ui32 lowDurationUs, ui32 highDurationUs)
+void SleepForRandomDurationMs(ui32 lowDurationMs, ui32 highDurationMs)
 {
-    Y_ABORT_UNLESS(lowDurationUs < highDurationUs);
+    Y_ABORT_UNLESS(lowDurationMs < highDurationMs);
 
     std::random_device device;
     std::mt19937 generator(device());
-    std::uniform_int_distribution<> distribution(lowDurationUs, highDurationUs);
+    std::uniform_int_distribution<> distribution(
+        lowDurationMs,
+        highDurationMs);
 
     const auto duration = distribution(generator);
-    std::this_thread::sleep_for(duration*1us);
+    std::this_thread::sleep_for(duration*1ms);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -662,7 +664,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 int writesRemaining = 333;
 
                 while (writesRemaining--) {
-                    SleepForRandomDuration(0, 10);
+                    SleepForRandomDurationMs(0, 10);
 
                     const ui64 offset = RandomNumber(alphabet.length());
                     const ui64 length = Max(
@@ -695,7 +697,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
                 int readsRemaining = 111;
                 while (readsRemaining--) {
-                    SleepForRandomDuration(0, 10);
+                    SleepForRandomDurationMs(0, 10);
 
                     auto request = std::make_shared<NProto::TReadDataRequest>();
                     request->SetHandle(0);
