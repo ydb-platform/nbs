@@ -177,7 +177,7 @@ void TUnmountRequestActor::HandleVolumeRemoveClientResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Failed to remove client %s from volume %s with error: ",
+            "Failed to remove client %s from volume %s with error: %s",
             ClientId.Quote().data(),
             DiskId.Quote().data(),
             FormatError(Error).data());
