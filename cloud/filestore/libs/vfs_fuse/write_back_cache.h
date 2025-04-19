@@ -5,6 +5,9 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/timer.h>
+
 #include <memory>
 
 namespace NCloud::NFileStore::NFuse {
@@ -20,8 +23,11 @@ private:
 public:
     TWriteBackCache(
         IFileStorePtr session,
+        ISchedulerPtr scheduler,
+        ITimerPtr timer,
+        TDuration automaticFlushPeriod,
         const TString& filePath,
-        ui32 capacity);
+        ui32 capacityBytes);
 
     ~TWriteBackCache();
 
@@ -42,7 +48,10 @@ public:
 
 TWriteBackCachePtr CreateWriteBackCache(
     IFileStorePtr session,
+    ISchedulerPtr scheduler,
+    ITimerPtr timer,
+    TDuration automaticFlushPeriod,
     const TString& filePath,
-    ui32 capacity);
+    ui32 capacityBytes);
 
 }   // namespace NCloud::NFileStore::NFuse

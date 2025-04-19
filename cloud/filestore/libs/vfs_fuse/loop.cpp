@@ -853,6 +853,9 @@ private:
                 file.Touch();
                 writeBackCache = CreateWriteBackCache(
                     Session,
+                    Scheduler,
+                    Timer,
+                    TDuration(), // TODO(svartmetal): pass AutomaticFlushPeriod from config
                     file.GetPath(),
                     Config->GetWriteBackCacheSize());
                 WriteBackCacheInitialized = true;

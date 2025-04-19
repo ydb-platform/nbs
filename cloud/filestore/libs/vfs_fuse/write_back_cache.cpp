@@ -74,7 +74,6 @@ public:
                     continue;
                 }
 
-                // TODO(svartmetal): requests to different handles cannot overlap
                 return false;
             }
         }
@@ -251,7 +250,10 @@ class TWriteBackCache::TImpl final
     : public std::enable_shared_from_this<TImpl>
 {
 private:
-    std::shared_ptr<TSessionSequencer> Session;
+    const std::shared_ptr<TSessionSequencer> Session;
+    const ISchedulerPtr Scheduler;
+    const ITimerPtr Timer;
+    const TDuration AutomaticFlushPeriod;
 
     struct TWriteDataEntry
         : public TIntrusiveListItem<TWriteDataEntry>
@@ -334,10 +336,16 @@ private:
 public:
     TImpl(
             IFileStorePtr session,
+            ISchedulerPtr scheduler,
+            ITimerPtr timer,
+            TDuration automaticFlushPeriod,
             const TString& filePath,
-            ui32 capacity)
+            ui32 capacityBytes)
         : Session(std::make_shared<TSessionSequencer>(std::move(session)))
-        , WriteDataRequestsQueue(filePath, capacity)
+        , Scheduler(std::move(scheduler))
+        , Timer(std::move(timer))
+        , AutomaticFlushPeriod(automaticFlushPeriod)
+        , WriteDataRequestsQueue(filePath, capacityBytes)
     {
         WriteDataRequestsQueue.Visit([&] (auto, auto serializedRequest) {
             NProto::TWriteDataRequest parsedRequest;
@@ -353,6 +361,26 @@ public:
                 parsedRequest.GetBuffer().length(),
                 serializedRequest);
         });
+
+        if (AutomaticFlushPeriod) {
+            ScheduleAutomaticFlush();
+        }
+    }
+
+    void ScheduleAutomaticFlush()
+    {
+        Scheduler->Schedule(
+            Timer->Now() + AutomaticFlushPeriod,
+            [ptr = weak_from_this()] () {
+                if (auto self = ptr.lock()) {
+                    self->FlushAllData().Subscribe(
+                        [ptr = self->weak_from_this()] (auto) {
+                            if (auto self = ptr.lock()) {
+                                self->ScheduleAutomaticFlush();
+                            }
+                        });
+                }
+            });
     }
 
     void AddWriteDataEntry(
@@ -929,9 +957,19 @@ public:
 
 TWriteBackCache::TWriteBackCache(
         IFileStorePtr session,
+        ISchedulerPtr scheduler,
+        ITimerPtr timer,
+        TDuration automaticFlushPeriod,
         const TString& filePath,
-        ui32 capacity)
-    : Impl(new TImpl(session, filePath, capacity))
+        ui32 capacityBytes)
+    : Impl(
+        new TImpl(
+            session,
+            scheduler,
+            timer,
+            automaticFlushPeriod,
+            filePath,
+            capacityBytes))
 {}
 
 TWriteBackCache::~TWriteBackCache() = default;
@@ -964,10 +1002,19 @@ TFuture<void> TWriteBackCache::FlushAllData()
 
 TWriteBackCachePtr CreateWriteBackCache(
     IFileStorePtr session,
+    ISchedulerPtr scheduler,
+    ITimerPtr timer,
+    TDuration automaticFlushPeriod,
     const TString& filePath,
-    ui32 capacity)
+    ui32 capacityBytes)
 {
-    return std::make_unique<TWriteBackCache>(session, filePath, capacity);
+    return std::make_unique<TWriteBackCache>(
+        session,
+        scheduler,
+        timer,
+        automaticFlushPeriod,
+        filePath,
+        capacityBytes);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

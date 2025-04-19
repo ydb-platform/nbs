@@ -3,6 +3,10 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
 
+#include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/scheduler_test.h>
+#include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -29,7 +33,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 CacheSize = 1024;
+constexpr ui32 CacheCapacityBytes = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -110,6 +114,9 @@ struct TBootstrap
     TLog Log;
 
     std::shared_ptr<TFileStoreTest> Session;
+    ISchedulerPtr Scheduler;
+    ITimerPtr Timer;
+    TDuration CacheAutomaticFlushPeriod;
     TTempFileHandle TempFileHandle;
     TWriteBackCachePtr Cache;
 
@@ -139,6 +146,9 @@ struct TBootstrap
         Logging = CreateLoggingService("console", TLogSettings{});
         Logging->Start();
         Log = Logging->CreateLog("WRITE_BACK_CACHE");
+
+        Scheduler = CreateScheduler();
+        Timer = CreateWallClockTimer();
 
         Session = std::make_shared<TFileStoreTest>();
 
@@ -244,8 +254,11 @@ struct TBootstrap
 
         Cache = CreateWriteBackCache(
             Session,
+            Scheduler,
+            Timer,
+            CacheAutomaticFlushPeriod,
             TempFileHandle.GetName(),
-            CacheSize);
+            CacheCapacityBytes);
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
