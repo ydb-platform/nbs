@@ -1,9 +1,8 @@
 #pragma once
 
-#include "public.h"
-
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/vfs_fuse/public.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>

@@ -6,7 +6,6 @@ SRCDIR(cloud/filestore/libs/vfs_fuse)
 
 SRCS(
     fs_ut.cpp
-    write_back_cache_ut.cpp
 )
 
 PEERDIR(

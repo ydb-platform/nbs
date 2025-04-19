@@ -6,7 +6,6 @@
 #include "fs.h"
 #include "handle_ops_queue.h"
 #include "node_cache.h"
-#include "write_back_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -15,6 +14,7 @@
 #include <cloud/filestore/libs/vfs/config.h>
 #include <cloud/filestore/libs/vfs/convert.h>
 #include <cloud/filestore/libs/vfs/fsync_queue.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>

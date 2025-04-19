@@ -5,7 +5,6 @@
 #include "fuse.h"
 #include "handle_ops_queue.h"
 #include "log.h"
-#include "write_back_cache.h"
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -18,6 +17,7 @@
 #include <cloud/filestore/libs/vfs/loop.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vfs/protos/session.pb.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/media.h>
