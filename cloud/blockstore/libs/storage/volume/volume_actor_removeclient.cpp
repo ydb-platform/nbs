@@ -69,7 +69,7 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
     const NActors::TActorContext& ctx)
 {
     if (AcquireReleaseDiskRequests.empty()) {
-        LOG_DEBUG_S(
+        LOG_WARN_S(
             ctx,
             TBlockStoreComponents::VOLUME,
             "Unexpected TEvReleaseDiskResponse for disk " << State->GetDiskId()
@@ -82,11 +82,11 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
     auto& cr = request.ClientRequest;
 
     if (HasError(error) && (error.GetCode() != E_NOT_FOUND)) {
-        LOG_DEBUG_S(
+        LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::VOLUME,
             "Can't release disk " << State->GetDiskId()
-        );
+                                  << " due to error: " << FormatError(error));
 
         if (cr) {
             auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
@@ -152,8 +152,11 @@ void TVolumeActor::HandleRemoveClient(
     if (PendingClientRequests.size() == 1) {
         ProcessNextPendingClientRequest(ctx);
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Postponing RemoveClientRequest[%s] for volume %s: another request in flight",
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Postponing RemoveClientRequest[%s] for volume %s: another "
+            "request in flight",
             TabletID(),
             clientId.Quote().data(),
             diskId.Quote().data());
@@ -183,7 +186,7 @@ void TVolumeActor::ExecuteRemoveClient(
 
     auto now = ctx.Now();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Volume %s received remove client %s request; pipe server %s, "
         "pipe generation %u",
         TabletID(),
