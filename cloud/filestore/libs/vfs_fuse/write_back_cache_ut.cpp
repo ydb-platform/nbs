@@ -141,8 +141,10 @@ struct TBootstrap
     THashMap<ui64, TInFlightRequestTracker> InFlightReadRequestTracker;
     THashMap<ui64, TInFlightRequestTracker> InFlightWriteRequestTracker;
 
-    TBootstrap()
+    TBootstrap(TDuration cacheAutomaticFlushPeriod = {})
     {
+        CacheAutomaticFlushPeriod = cacheAutomaticFlushPeriod;
+
         Logging = CreateLoggingService("console", TLogSettings{});
         Logging->Start();
         Log = Logging->CreateLog("WRITE_BACK_CACHE");
@@ -719,9 +721,13 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.ValidateCache();
     }
 
-    void TestShouldReadAfterWriteConcurrently(bool withManualFlush = false)
+    void TestShouldReadAfterWriteConcurrently(
+        bool withManualFlush = false,
+        bool withAutomaticFlush = false)
     {
-        TBootstrap b;
+        const auto automaticFlushPeriod =
+            withAutomaticFlush ? TDuration::MilliSeconds(1) : TDuration();
+        TBootstrap b(automaticFlushPeriod);
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";
 
@@ -802,9 +808,23 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TestShouldReadAfterWriteConcurrently();
     }
 
-    Y_UNIT_TEST(ShouldReadAfterWriteAndFlushConcurrently)
+    Y_UNIT_TEST(ShouldReadAfterWriteConcurrentlyWithManualFlush)
     {
         TestShouldReadAfterWriteConcurrently(true /* withManualFlush */);
+    }
+
+    Y_UNIT_TEST(ShouldReadAfterWriteConcurrentlyWithAutomaticFlush)
+    {
+        TestShouldReadAfterWriteConcurrently(
+            false,  // withManualFlush
+            true);  // withAutomaticFlush
+    }
+
+    Y_UNIT_TEST(ShouldReadAfterWriteConcurrentlyWithManualAndAutomaticFlush)
+    {
+        TestShouldReadAfterWriteConcurrently(
+            true,   // withManualFlush
+            true);  // withAutomaticFlush
     }
 }
 
