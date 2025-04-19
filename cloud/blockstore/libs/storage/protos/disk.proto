@@ -566,6 +566,21 @@ message TDiskRegistryStateBackup
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Used to propagate write request to multiple disk agents.
+message TAdditionalTarget
+{
+    // NodeId of target host.
+    uint32 NodeId = 1;
+
+    // UUID of target device to write.
+    string DeviceUUID = 2;
+
+    // Start block index on target device.
+    uint64 StartIndex = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TRegisterAgentRequest
 {
     // Optional request headers.
@@ -932,12 +947,18 @@ message TWriteDeviceBlocksRequest
     // The flag is set when the original request is split into requests to
     // multiple devices
     bool MultideviceRequest = 8;
+
+    // Used to propagate request to multiple disk-agents.
+    repeated TAdditionalTarget AdditionalTargets = 9;
 }
 
 message TWriteDeviceBlocksResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // Used to validate multi-agent requests.
+    repeated NCloud.NProto.TError SubResponse = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -80,7 +80,12 @@ private:
         auto* msg = ev->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
         request->Record.Swap(&msg->Record);
 
-        if (Allocator) {
+        const bool canUseAllocator =
+            Allocator &&
+            // Don't reallocate if we have to send the request to other agents.
+            request->Record.GetAdditionalTargets().empty();
+
+        if (canUseAllocator) {
             const auto& buffers = request->Record.GetBlocks().GetBuffers();
 
             ui64 bytesCount = 0;
