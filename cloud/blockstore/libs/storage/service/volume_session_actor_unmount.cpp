@@ -174,11 +174,13 @@ void TUnmountRequestActor::HandleVolumeRemoveClientResponse(
     Error = msg->GetError();
 
     if (FAILED(Error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Failed to remove client %s from volume %s with code %u",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Failed to remove client %s from volume %s with error: ",
             ClientId.Quote().data(),
             DiskId.Quote().data(),
-            Error.GetCode());
+            FormatError(Error).data());
 
         if (GetErrorKind(Error) == EErrorKind::ErrorRetriable) {
             // check if volume is not destroyed
