@@ -7,6 +7,8 @@
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
+#include <library/cpp/threading/future/future.h>
+
 #include <memory>
 
 namespace NCloud::NFileStore::NFuse {
