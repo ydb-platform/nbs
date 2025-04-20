@@ -14,95 +14,6 @@ TSessionSequencer::TSessionSequencer(IFileStorePtr session)
     : Session(std::move(session))
 {}
 
-// should be protected by |Lock|
-bool TSessionSequencer::CanExecuteRequest(const TRequest& request)
-{
-    for (const auto& [_, otherRequest]: InFlightRequests) {
-        const auto offset = Max(request.Offset, otherRequest.Offset);
-        const auto end = Min(
-            request.Offset + request.Length,
-            otherRequest.Offset + otherRequest.Length);
-
-        // overlaps with one of the requests in-flight
-        if (offset < end) {
-            if (request.Handle != otherRequest.Handle) {
-                // TODO(svartmetal): optimise, use separate buckets for
-                // different handles
-                //
-                // requests to different handles should not affect each other
-                continue;
-            }
-
-            if (request.IsRead && otherRequest.IsRead) {
-                // skip this overlapping as it does not cause inconsistency
-                continue;
-            }
-
-            return false;
-        }
-    }
-
-    return true;
-}
-
-// should be protected by |Lock|
-auto TSessionSequencer::TakeNextRequestToExecute() -> std::optional<TRequest>
-{
-    const auto begin = WaitingRequests.begin();
-    const auto end = WaitingRequests.end();
-
-    for (auto it = begin; it != end; it++) {
-        if (CanExecuteRequest(*it)) {
-            auto taken = std::move(*it);
-            WaitingRequests.erase(it);
-            return std::move(taken);
-        }
-    }
-
-    return std::nullopt;
-}
-
-void TSessionSequencer::OnRequestFinished(ui64 id)
-{
-    std::optional<TRequest> nextRequest;
-
-    with_lock (Lock) {
-        Y_DEBUG_ABORT_UNLESS(InFlightRequests.count(id) == 1);
-        InFlightRequests.erase(id);
-
-        if (WaitingRequests.empty()) {
-            return;
-        }
-
-        nextRequest = TakeNextRequestToExecute();
-        if (nextRequest) {
-            InFlightRequests[nextRequest->Id] = *nextRequest;
-        }
-    }
-
-    if (nextRequest) {
-        nextRequest->Execute();
-    }
-}
-
-void TSessionSequencer::QueueOrExecuteRequest(TRequest request)
-{
-    bool shouldExecute = false;
-
-    with_lock (Lock) {
-        if (CanExecuteRequest(request)) {
-            InFlightRequests[request.Id] = request;
-            shouldExecute = true;
-        } else {
-            WaitingRequests.push_back(std::move(request));
-        }
-    }
-
-    if (shouldExecute) {
-        request.Execute();
-    }
-}
-
 TFuture<NProto::TReadDataResponse> TSessionSequencer::ReadData(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadDataRequest> protoRequest)
@@ -207,6 +118,95 @@ TFuture<NProto::TWriteDataResponse> TSessionSequencer::WriteData(
     };
     QueueOrExecuteRequest(std::move(request));
     return future;
+}
+
+// should be protected by |Lock|
+bool TSessionSequencer::CanExecuteRequest(const TRequest& request)
+{
+    for (const auto& [_, otherRequest]: InFlightRequests) {
+        const auto offset = Max(request.Offset, otherRequest.Offset);
+        const auto end = Min(
+            request.Offset + request.Length,
+            otherRequest.Offset + otherRequest.Length);
+
+        // overlaps with one of the requests in-flight
+        if (offset < end) {
+            if (request.Handle != otherRequest.Handle) {
+                // TODO(svartmetal): optimise, use separate buckets for
+                // different handles
+                //
+                // requests to different handles should not affect each other
+                continue;
+            }
+
+            if (request.IsRead && otherRequest.IsRead) {
+                // skip this overlapping as it does not cause inconsistency
+                continue;
+            }
+
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// should be protected by |Lock|
+auto TSessionSequencer::TakeNextRequestToExecute() -> std::optional<TRequest>
+{
+    const auto begin = WaitingRequests.begin();
+    const auto end = WaitingRequests.end();
+
+    for (auto it = begin; it != end; it++) {
+        if (CanExecuteRequest(*it)) {
+            auto taken = std::move(*it);
+            WaitingRequests.erase(it);
+            return std::move(taken);
+        }
+    }
+
+    return std::nullopt;
+}
+
+void TSessionSequencer::OnRequestFinished(ui64 id)
+{
+    std::optional<TRequest> nextRequest;
+
+    with_lock (Lock) {
+        Y_DEBUG_ABORT_UNLESS(InFlightRequests.count(id) == 1);
+        InFlightRequests.erase(id);
+
+        if (WaitingRequests.empty()) {
+            return;
+        }
+
+        nextRequest = TakeNextRequestToExecute();
+        if (nextRequest) {
+            InFlightRequests[nextRequest->Id] = *nextRequest;
+        }
+    }
+
+    if (nextRequest) {
+        nextRequest->Execute();
+    }
+}
+
+void TSessionSequencer::QueueOrExecuteRequest(TRequest request)
+{
+    bool shouldExecute = false;
+
+    with_lock (Lock) {
+        if (CanExecuteRequest(request)) {
+            InFlightRequests[request.Id] = request;
+            shouldExecute = true;
+        } else {
+            WaitingRequests.push_back(std::move(request));
+        }
+    }
+
+    if (shouldExecute) {
+        request.Execute();
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

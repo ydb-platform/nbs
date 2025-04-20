@@ -9,6 +9,9 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/generic/intrlist.h>
+#include <util/generic/strbuf.h>
+
 #include <memory>
 
 namespace NCloud::NFileStore::NFuse {
@@ -18,7 +21,9 @@ namespace NCloud::NFileStore::NFuse {
 class TWriteBackCache final
 {
 private:
+    friend class TImpl;
     class TImpl;
+
     std::shared_ptr<TImpl> Impl;
 
 public:
@@ -43,6 +48,54 @@ public:
     NThreading::TFuture<void> FlushData(ui64 handle);
 
     NThreading::TFuture<void> FlushAllData();
+
+private:
+    struct TWriteDataEntry
+        : public TIntrusiveListItem<TWriteDataEntry>
+    {
+        ui64 Handle;
+        ui64 Offset;
+        ui64 Length;
+        // serialized TWriteDataRequest
+        TStringBuf SerializedRequest;
+
+        TWriteDataEntry(
+                ui64 handle,
+                ui64 offset,
+                ui64 length,
+                TStringBuf serializedRequest)
+            : Handle(handle)
+            , Offset(offset)
+            , Length(length)
+            , SerializedRequest(serializedRequest)
+        {}
+
+        ui64 End() const
+        {
+            return Offset + Length;
+        }
+
+        bool Flushing = false;
+        bool Flushed = false;
+    };
+
+    struct TWriteDataEntryPart
+    {
+        const TWriteDataEntry* Source = nullptr;
+        ui64 OffsetInSource = 0;
+        ui64 Offset = 0;
+        ui64 Length = 0;
+
+        ui64 End() const
+        {
+            return Offset + Length;
+        }
+    };
+
+    static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
+        const TVector<TWriteDataEntry*>& entries,
+        ui64 startingFromOffset,
+        ui64 length);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

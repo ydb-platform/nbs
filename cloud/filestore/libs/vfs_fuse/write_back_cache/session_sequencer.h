@@ -43,14 +43,6 @@ private:
 public:
     TSessionSequencer(IFileStorePtr session);
 
-    bool CanExecuteRequest(const TRequest& request);
-
-    std::optional<TRequest> TakeNextRequestToExecute();
-
-    void OnRequestFinished(ui64 id);
-
-    void QueueOrExecuteRequest(TRequest request);
-
     NThreading::TFuture<NProto::TReadDataResponse> ReadData(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> protoRequest);
@@ -58,6 +50,15 @@ public:
     NThreading::TFuture<NProto::TWriteDataResponse> WriteData(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> protoRequest);
+
+private:
+    bool CanExecuteRequest(const TRequest& request);
+
+    std::optional<TRequest> TakeNextRequestToExecute();
+
+    void OnRequestFinished(ui64 id);
+
+    void QueueOrExecuteRequest(TRequest request);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

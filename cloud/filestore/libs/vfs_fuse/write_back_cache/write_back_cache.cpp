@@ -11,13 +11,12 @@
 #include <util/generic/hash.h>
 #include <util/generic/intrlist.h>
 #include <util/generic/mem_copy.h>
+#include <util/generic/strbuf.h>
 #include <util/generic/vector.h>
 #include <util/system/mutex.h>
 
 #include <algorithm>
 #include <atomic>
-#include <deque>
-#include <optional>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -30,52 +29,13 @@ class TWriteBackCache::TImpl final
     : public std::enable_shared_from_this<TImpl>
 {
 private:
+    using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
+    using TWriteDataEntryPart = TWriteBackCache::TWriteDataEntryPart;
+
     const std::shared_ptr<TSessionSequencer> Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
     const TDuration AutomaticFlushPeriod;
-
-    struct TWriteDataEntry
-        : public TIntrusiveListItem<TWriteDataEntry>
-    {
-        ui64 Handle;
-        ui64 Offset;
-        ui64 Length;
-        // serialized TWriteDataRequest
-        TStringBuf SerializedRequest;
-
-        TWriteDataEntry(
-                ui64 handle,
-                ui64 offset,
-                ui64 length,
-                TStringBuf serializedRequest)
-            : Handle(handle)
-            , Offset(offset)
-            , Length(length)
-            , SerializedRequest(serializedRequest)
-        {}
-
-        ui64 End() const
-        {
-            return Offset + Length;
-        }
-
-        bool Flushing = false;
-        bool Flushed = false;
-    };
-
-    struct TWriteDataEntryPart
-    {
-        const TWriteDataEntry* Source = nullptr;
-        ui64 OffsetInSource = 0;
-        ui64 Offset = 0;
-        ui64 Length = 0;
-
-        ui64 End() const
-        {
-            return Offset + Length;
-        }
-    };
 
     struct TPendingWriteDataRequest
         : public TIntrusiveListItem<TPendingWriteDataRequest>
@@ -189,116 +149,10 @@ public:
             return {};
         }
 
-        struct TPoint
-        {
-            const TWriteDataEntry* Entry = nullptr;
-            ui64 Offset = 0;
-            bool IsEnd = false;
-            size_t Order = 0;
-        };
-
-        const auto& entries = entriesIter->second;
-        TVector<TPoint> points(Reserve(entries.size()));
-
-        for (size_t i = 0; i < entries.size(); i++) {
-            const auto* entry = entries[i];
-
-            auto pointBegin = entry->Offset;
-            auto pointEnd = entry->End();
-            if (length != 0) {
-                // intersect with [startingFromOffset, length)
-                pointBegin = Max(pointBegin, startingFromOffset);
-                pointEnd = Min(pointEnd, startingFromOffset + length);
-            }
-
-            if (pointBegin < pointEnd) {
-                points.emplace_back(entry, pointBegin, false, i);
-                points.emplace_back(entry, pointEnd, true, i);
-            }
-        }
-
-        if (points.empty()) {
-            return {};
-        }
-
-        StableSort(points, [] (const auto& l, const auto& r) {
-            return l.Offset < r.Offset;
-        });
-
-        TVector<TWriteDataEntryPart> res(Reserve(entries.size()));
-
-        const auto& heapComparator = [] (const auto& l, const auto& r) {
-            return l.Order < r.Order;
-        };
-        TVector<TPoint> heap;
-
-        const auto cutTop = [&res, &heap] (auto lastOffset, auto currOffset)
-        {
-            if (currOffset <= lastOffset) {
-                // ignore
-                return lastOffset;
-            }
-
-            const auto partLength = currOffset - lastOffset;
-            const auto& top = heap.front();
-
-            Y_DEBUG_ABORT_UNLESS(lastOffset >= top.Entry->Offset);
-            const auto offsetInSource = lastOffset - top.Entry->Offset;
-
-            if (!res.empty() &&
-                res.back().Source == top.Entry &&
-                res.back().End() == lastOffset)
-            {
-                // extend last entry
-                res.back().Length += partLength;
-            } else {
-                res.emplace_back(
-                    top.Entry, // source
-                    offsetInSource,
-                    lastOffset,
-                    partLength);
-            }
-
-            // cut part of the top
-            lastOffset += partLength;
-            return lastOffset;
-        };
-
-        ui64 cutEnd = 0;
-        for (const auto& point: points) {
-            if (point.IsEnd) {
-                // cut at every interval's end
-                cutEnd = cutTop(cutEnd, point.Offset);
-            } else {
-                if (heap.empty()) {
-                    // no intervals before, start from scratch
-                    cutEnd = point.Offset;
-                } else {
-                    if (point.Order > heap.front().Order) {
-                        // new interval is now on top
-                        cutEnd = cutTop(cutEnd, point.Offset);
-                    }
-                }
-
-                // add to heap
-                heap.push_back(point);
-                std::push_heap(heap.begin(), heap.end(), heapComparator);
-            }
-
-            // remove affected (cut) entries
-            while (!heap.empty()) {
-                const auto& top = heap.front();
-                if (cutEnd < top.Entry->End()) {
-                    break;
-                }
-
-                // remove from heap
-                std::pop_heap(heap.begin(), heap.end(), heapComparator);
-                heap.pop_back();
-            }
-        }
-
-        return res;
+        return TWriteBackCache::CalculateDataPartsToRead(
+            entriesIter->second,
+            startingFromOffset,
+            length);
     }
 
     // should be protected by |Lock|
@@ -776,6 +630,124 @@ TFuture<void> TWriteBackCache::FlushData(ui64 handle)
 TFuture<void> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+auto TWriteBackCache::CalculateDataPartsToRead(
+    const TVector<TWriteDataEntry*>& entries,
+    ui64 startingFromOffset,
+    ui64 length) -> TVector<TWriteDataEntryPart>
+{
+    struct TPoint
+    {
+        const TWriteDataEntry* Entry = nullptr;
+        ui64 Offset = 0;
+        bool IsEnd = false;
+        size_t Order = 0;
+    };
+
+    TVector<TPoint> points(Reserve(entries.size()));
+
+    for (size_t i = 0; i < entries.size(); i++) {
+        const auto* entry = entries[i];
+
+        auto pointBegin = entry->Offset;
+        auto pointEnd = entry->End();
+        if (length != 0) {
+            // intersect with [startingFromOffset, length)
+            pointBegin = Max(pointBegin, startingFromOffset);
+            pointEnd = Min(pointEnd, startingFromOffset + length);
+        }
+
+        if (pointBegin < pointEnd) {
+            points.emplace_back(entry, pointBegin, false, i);
+            points.emplace_back(entry, pointEnd, true, i);
+        }
+    }
+
+    if (points.empty()) {
+        return {};
+    }
+
+    StableSort(points, [] (const auto& l, const auto& r) {
+        return l.Offset < r.Offset;
+    });
+
+    TVector<TWriteDataEntryPart> res(Reserve(entries.size()));
+
+    const auto& heapComparator = [] (const auto& l, const auto& r) {
+        return l.Order < r.Order;
+    };
+    TVector<TPoint> heap;
+
+    const auto cutTop = [&res, &heap] (auto lastOffset, auto currOffset)
+    {
+        if (currOffset <= lastOffset) {
+            // ignore
+            return lastOffset;
+        }
+
+        const auto partLength = currOffset - lastOffset;
+        const auto& top = heap.front();
+
+        Y_DEBUG_ABORT_UNLESS(lastOffset >= top.Entry->Offset);
+        const auto offsetInSource = lastOffset - top.Entry->Offset;
+
+        if (!res.empty() &&
+            res.back().Source == top.Entry &&
+            res.back().End() == lastOffset)
+        {
+            // extend last entry
+            res.back().Length += partLength;
+        } else {
+            res.emplace_back(
+                top.Entry, // source
+                offsetInSource,
+                lastOffset,
+                partLength);
+        }
+
+        // cut part of the top
+        lastOffset += partLength;
+        return lastOffset;
+    };
+
+    ui64 cutEnd = 0;
+    for (const auto& point: points) {
+        if (point.IsEnd) {
+            // cut at every interval's end
+            cutEnd = cutTop(cutEnd, point.Offset);
+        } else {
+            if (heap.empty()) {
+                // no intervals before, start from scratch
+                cutEnd = point.Offset;
+            } else {
+                if (point.Order > heap.front().Order) {
+                    // new interval is now on top
+                    cutEnd = cutTop(cutEnd, point.Offset);
+                }
+            }
+
+            // add to heap
+            heap.push_back(point);
+            std::push_heap(heap.begin(), heap.end(), heapComparator);
+        }
+
+        // remove affected (cut) entries
+        while (!heap.empty()) {
+            const auto& top = heap.front();
+            if (cutEnd < top.Entry->End()) {
+                break;
+            }
+
+            // remove from heap
+            std::pop_heap(heap.begin(), heap.end(), heapComparator);
+            heap.pop_back();
+        }
+    }
+
+    return res;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
