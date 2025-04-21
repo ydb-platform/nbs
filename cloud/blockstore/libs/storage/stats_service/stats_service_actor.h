@@ -35,13 +35,6 @@ class TStatsServiceActor final
 {
     struct TActorSystemHolder;
 
-    // TODO:_ ok?
-    // struct TYdbRowData
-    // {
-    //     TVector<NYdbStats::TYdbRow>               Stats;
-    //     TVector<NYdbStats::TYdbBlobLoadMetricRow> Metrics;
-    // };
-
     using TStatsUploadRequest = std::pair<NYdbStats::TYdbRowData, TInstant>;
 
     struct TBackgroundBandwidthInfo
