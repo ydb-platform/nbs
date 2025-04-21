@@ -503,11 +503,20 @@ struct TMultiWriteFixture: public NUnitTest::TBaseFixture
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
         Runtime.emplace(3);
+
+        NProto::TStorageServiceConfig storageServiceConfig;
+        auto timeout = TDuration::Seconds(5);
+        storageServiceConfig.SetNonReplicatedMaxRequestTimeoutSSD(
+            timeout.MilliSeconds());
+        storageServiceConfig.SetNonReplicatedMaxRequestTimeoutHDD(
+            timeout.MilliSeconds());
+
         Environment.emplace(TTestEnvBuilder(*Runtime)
                                 .With(MakeDiskAgentConfig("DA1", false, false))
                                 .WithAgents(
                                     {MakeDiskAgentConfig("DA2", true, false),
                                      MakeDiskAgentConfig("DA3", true, true)})
+                                .With(storageServiceConfig)
                                 .Build());
 
         DiskAgent1.emplace(*Runtime, 0);
@@ -6139,9 +6148,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         auto undeliverWrite = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
-                TEvDiskAgent::EvWriteDeviceBlocksRequest &&
-                event->Recipient == DiskAgent2->DiskAgentActorId()
-                )
+                    TEvDiskAgent::EvWriteDeviceBlocksRequest &&
+                event->Recipient == DiskAgent2->DiskAgentActorId())
             {
                 auto sendTo = event->Sender;
                 auto extractedEvent =
@@ -6228,7 +6236,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 TBlockRange64::WithLength(0, 10)));
     }
 
-    Y_UNIT_TEST_F(ShouldPerformMultiWriteWithOffloadingAndAlloc, TMultiWriteFixture)
+    Y_UNIT_TEST_F(
+        ShouldPerformMultiWriteWithOffloadingAndAlloc,
+        TMultiWriteFixture)
     {
         TVector<NProto::TAdditionalTarget> additionalTargets;
         {
@@ -6263,6 +6273,55 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 *DiskAgent3,
                 "DA3-1",
                 TBlockRange64::WithLength(0, 10)));
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleTimeoutForMultiWrite, TMultiWriteFixture)
+    {
+        // Setup message filter for intercepting write.
+        auto timeoutWrite = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvWriteDeviceBlocksRequest &&
+                event->Recipient == DiskAgent2->DiskAgentActorId())
+            {
+                // Don't reply to request.
+                return true;
+            }
+            return false;
+        };
+
+        Runtime->SetEventFilter(timeoutWrite);
+
+        TVector<NProto::TAdditionalTarget> additionalTargets;
+        {
+            NProto::TAdditionalTarget target;
+            target.SetNodeId(DiskAgent2->GetNodeId());
+            target.SetDeviceUUID("DA2-1");
+            target.SetStartIndex(2);
+            additionalTargets.push_back(std::move(target));
+        }
+        auto response = MultiWriteBlocks(
+            *DiskAgent1,
+            std::move(additionalTargets),
+            "DA1-1",
+            TBlockRange64::WithLength(1, 5),
+            'a');
+
+        Runtime->AdvanceCurrentTime(TDuration::Seconds(5));
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetError().GetCode());
+
+        {
+            const auto& subResponse1 = response->Record.GetSubResponse(0);
+            UNIT_ASSERT(subResponse1.GetCode() == S_OK);
+        }
+        {
+            const auto& subResponse2 = response->Record.GetSubResponse(1);
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, subResponse2.GetCode());
+        }
     }
 }
 

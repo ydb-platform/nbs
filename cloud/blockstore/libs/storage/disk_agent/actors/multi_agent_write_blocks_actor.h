@@ -19,6 +19,7 @@ class TMultiAgentWriteBlocksActor final
 private:
     const NActors::TActorId Parent;
     const TRequestInfoPtr RequestInfo;
+    const TDuration MaxRequestTimeout;
 
     NProto::TWriteDeviceBlocksRequest Request;
     TVector<std::optional<NProto::TError>> Responses;
@@ -27,7 +28,8 @@ public:
     TMultiAgentWriteBlocksActor(
         const NActors::TActorId& parent,
         TRequestInfoPtr requestInfo,
-        NProto::TWriteDeviceBlocksRequest request);
+        NProto::TWriteDeviceBlocksRequest request,
+        TDuration maxRequestTimeout);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -43,6 +45,10 @@ private:
 
     void HandleWriteBlocksUndelivery(
         const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleTimeout(
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteBlocksResponse(

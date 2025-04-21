@@ -36,9 +36,11 @@ std::unique_ptr<TEvDiskAgent::TEvWriteDeviceBlocksRequest> PrepareRequest(
 TMultiAgentWriteBlocksActor::TMultiAgentWriteBlocksActor(
         const TActorId& parent,
         TRequestInfoPtr requestInfo,
-        NProto::TWriteDeviceBlocksRequest request)
+        NProto::TWriteDeviceBlocksRequest request,
+        TDuration maxRequestTimeout)
     : Parent(parent)
     , RequestInfo(std::move(requestInfo))
+    , MaxRequestTimeout(maxRequestTimeout)
     , Request(std::move(request))
 {}
 
@@ -84,6 +86,8 @@ void TMultiAgentWriteBlocksActor::Bootstrap(const TActorContext& ctx)
         );
         ctx.Send(event.release());
     }
+
+    ctx.Schedule(MaxRequestTimeout, new NActors::TEvents::TEvWakeup());
 }
 
 void TMultiAgentWriteBlocksActor::ReplyAndDie(
@@ -135,11 +139,31 @@ void TMultiAgentWriteBlocksActor::HandleWriteBlocksUndelivery(
     const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    const auto* msg = ev->Get();
     auto error = MakeError(
         E_REJECTED,
-        TStringBuilder() << "WriteBlocks request undelivered for agent "
-                         << ev->Cookie);
+        TStringBuilder() << "WriteDeviceBlocks request undelivered for NodeId="
+                         << ev->Recipient.NodeId() << " DeviceUUID="
+                         << msg->Record.GetDeviceUUID().Quote());
     Responses[ev->Cookie] = error;
+    ReplyAndDie(ctx, std::move(error));
+}
+
+void TMultiAgentWriteBlocksActor::HandleTimeout(
+    const NActors::TEvents::TEvWakeup::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    auto error =
+        MakeError(E_TIMEOUT, TStringBuilder() << "WriteDeviceBlocks timeout");
+
+    for (auto& subResponse: Responses) {
+        if (!subResponse) {
+            subResponse = error;
+        }
+    }
+
     ReplyAndDie(ctx, std::move(error));
 }
 
@@ -149,6 +173,7 @@ STFUNC(TMultiAgentWriteBlocksActor::StateWork)
         HFunc(
             TEvDiskAgent::TEvWriteDeviceBlocksResponse,
             HandleWriteBlocksResponse);
+        HFunc(NActors::TEvents::TEvWakeup, HandleTimeout);
         HFunc(
             TEvDiskAgent::TEvWriteDeviceBlocksRequest,
             HandleWriteBlocksUndelivery);
