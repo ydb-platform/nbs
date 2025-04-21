@@ -359,8 +359,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
         writerClient.SendAddClientRequest(writer);
         auto response = writerClient.RecvAddClientResponse();
-        UNIT_ASSERT_EQUAL(response->GetError().GetCode(), E_REJECTED);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetMessage(), "timeout");
+        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_TIMEOUT);
     }
 
     Y_UNIT_TEST_F(ShouldPassErrorsFromDiskAgent, TFixture)
@@ -448,6 +447,46 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         volume.ReconnectPipe();
 
         writerClient.AddClient(writer);
+    }
+
+    Y_UNIT_TEST_F(ShouldIgnoreTimeoutIfMuteIoErrorsFlagIsSet, TFixture)
+    {
+        SetupTest(100ms);
+
+        auto writerClient = GetVolumeClient();
+
+        std::unique_ptr<IEventHandle> stollenResponse;
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAcquireDevicesResponse)
+                {
+                    stollenResponse.reset(event.Release());
+                    return TTestActorRuntimeBase::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto writer = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        auto& disk = State->Disks.at("vol0");
+        disk.IOMode = NProto::VOLUME_IO_ERROR_READ_ONLY;
+        disk.IOModeTs = Runtime->GetCurrentTime();
+        disk.MuteIOErrors = true;
+
+        auto volume = GetVolumeClient();
+        volume.ReallocateDisk();
+        // reallocate disk will trigger pipes reset, so reestablish connection
+        volume.ReconnectPipe();
+
+        writerClient.AddClient(writer);
+
+        writerClient.RemoveClient(writer.GetClientId());
     }
 
     Y_UNIT_TEST_F(ShouldHandleRequestsUndelivery, TFixture)

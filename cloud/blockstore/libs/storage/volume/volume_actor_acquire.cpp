@@ -312,10 +312,28 @@ void TAcquireDevicesActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    OnAcquireResponse(
+    Y_UNUSED(ev);
+
+    const auto err = TStringBuilder()
+                     << "TAcquireDevicesActor timeout." << " DiskId: " << DiskId
+                     << " ClientId: " << ClientId
+                     << " Targets: " << LogTargets()
+                     << " VolumeGeneration: " << VolumeGeneration
+                     << " PendingRequests: " << PendingRequests
+                     << " MuteIoErrors: " << MuteIOErrors;
+
+    LOG_LOG(
         ctx,
-        SafeIntegerCast<ui32>(ev->Cookie),
-        MakeError(E_REJECTED, "timeout"));
+        MuteIOErrors ? NActors::NLog::PRI_INFO : NActors::NLog::PRI_WARN,
+        TBlockStoreComponents::VOLUME,
+        err);
+
+    NProto::TError errorToReply;
+    if (!MuteIOErrors) {
+        errorToReply = MakeError(E_TIMEOUT, err);
+    }
+
+    ReplyAndDie(ctx, errorToReply);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
