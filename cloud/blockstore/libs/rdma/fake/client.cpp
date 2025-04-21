@@ -267,7 +267,6 @@ private:
     const TEndpointId EndpointId;
     const TActorId Parent;
     const ui32 NodeId;
-    const TString AgentId;
     NRdma::TClientRequestPtr Request;
     TCallContextPtr CallContext;
 
@@ -277,14 +276,12 @@ public:
             TEndpointId endpointId,
             TActorId parent,
             ui32 nodeId,
-            TString agentId,
             NRdma::TClientRequestPtr request,
             TCallContextPtr callContext)
         : ClientRequestId(clientRequestId)
         , EndpointId(endpointId)
         , Parent(parent)
         , NodeId(nodeId)
-        , AgentId(std::move(agentId))
         , Request(std::move(request))
         , CallContext(std::move(callContext))
     {}
@@ -813,7 +810,6 @@ private:
         auto request = std::make_unique<TEvFakeRdmaClient::TEvUpdateNodeId>(
             msg->GetError());
         request->EndpointId = EndpointId;
-        request->EndpointId = EndpointId;
         request->NodeId = msg->Record.GetNodeId();
 
         NCloud::Send(ctx, Owner, std::move(request));
@@ -830,7 +826,6 @@ class TFakeRdmaClientActor: public TActor<TFakeRdmaClientActor>
     struct TEndpoint
     {
         ui32 NodeId = 0;
-        ui32 Refs = 0;
         TString AgentId;
         THashMap<ui64, TActorId> InflightRequests;
     };
@@ -902,7 +897,7 @@ private:
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::RDMA,
-            "Start endpoint for " << msg->AgentId.Quote());
+            "Start endpoint " << endpointId << " for " << msg->AgentId.Quote());
 
         TEndpoint& ep = Endpoints[endpointId];
         ep.AgentId = std::move(msg->AgentId);
@@ -910,7 +905,8 @@ private:
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::RDMA,
-            "Endpoint for " << ep.AgentId.Quote() << " is started");
+            "Endpoint " << endpointId << " for " << ep.AgentId.Quote()
+                        << " is started");
         UpdateNodeId(ctx, endpointId, ep.AgentId);
 
         msg->Promise.SetValue(std::make_shared<TClientEndpoint>(
@@ -928,7 +924,7 @@ private:
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::RDMA,
-            "Stop endpoint for " << msg->EndpointId);
+            "Stop endpoint " << msg->EndpointId);
 
         auto it = Endpoints.find(msg->EndpointId);
         if (it == Endpoints.end()) {
@@ -938,7 +934,8 @@ private:
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::RDMA,
-            "Endpoint for " << it->second.AgentId.Q << " is stopped");
+            "Endpoint " << msg->EndpointId << " for agent "
+                        << it->second.AgentId.Quote() << " is stopped");
 
         Endpoints.erase(it);
     }
@@ -954,8 +951,8 @@ private:
             AbortRequest(
                 std::move(msg->Request),
                 E_RDMA_UNAVAILABLE,
-                TStringBuilder() << "endpoint for " << ep->AgentId.Quote()
-                                 << " is not started");
+                TStringBuilder()
+                    << "endpoint " << msg->EndpointId << " is not started");
 
             return;
         }
@@ -987,7 +984,6 @@ private:
             msg->EndpointId,
             SelfId(),
             ep->NodeId,
-            ep->AgentId,
             std::move(msg->Request),
             std::move(msg->CallContext));
     }
@@ -1012,15 +1008,13 @@ private:
             return;
         }
 
-        if (ep) {
-            LOG_INFO_S(
-                ctx,
-                TBlockStoreComponents::RDMA,
-                "Update node id for " << ep->AgentId.Quote() << ": #"
-                                      << msg->NodeId);
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::RDMA,
+            "Update node id for " << ep->AgentId.Quote() << ": #"
+                                  << msg->NodeId);
 
-            ep->NodeId = msg->NodeId;
-        }
+        ep->NodeId = msg->NodeId;
     }
 
     void HandleCancelRequest(
