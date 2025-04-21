@@ -347,9 +347,7 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
 
         YdbStatsRequestSentTs = ctx.Now();
 
-        StatsUploader->UploadStats(
-            YdbStatsRequests.front().first.Stats,
-            YdbStatsRequests.front().first.Metrics).Subscribe(
+        StatsUploader->UploadStats(YdbStatsRequests.front().first).Subscribe(
             [=] (const auto& future) {
                 if (auto p = weak.lock()) {
                     NProto::TError result;

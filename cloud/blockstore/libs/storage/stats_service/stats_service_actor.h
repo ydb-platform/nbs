@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet_counters.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
+#include <cloud/blockstore/libs/ydbstats/ydbrow.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -34,13 +35,14 @@ class TStatsServiceActor final
 {
     struct TActorSystemHolder;
 
-    struct TYdbRowData
-    {
-        TVector<NYdbStats::TYdbRow>               Stats;
-        TVector<NYdbStats::TYdbBlobLoadMetricRow> Metrics;
-    };
+    // TODO:_ ok?
+    // struct TYdbRowData
+    // {
+    //     TVector<NYdbStats::TYdbRow>               Stats;
+    //     TVector<NYdbStats::TYdbBlobLoadMetricRow> Metrics;
+    // };
 
-    using TStatsUploadRequest = std::pair<TYdbRowData, TInstant>;
+    using TStatsUploadRequest = std::pair<NYdbStats::TYdbRowData, TInstant>;
 
     struct TBackgroundBandwidthInfo
     {

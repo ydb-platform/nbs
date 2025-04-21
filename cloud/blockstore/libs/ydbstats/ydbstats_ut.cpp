@@ -230,6 +230,11 @@ NYdbStats::TYdbBlobLoadMetricRow BuildTestMetrics()
     return out;
 }
 
+NYdbStats::TYdbRowData BuildTestYdbRowData()
+{
+    return {{BuildTestStats()}, {BuildTestMetrics()}};
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TYdbTestStorage final
@@ -449,9 +454,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             metricsScheme);
         uploader->Start();
 
-        auto response = uploader->UploadStats(
-             { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(3, ydbTestStorage->CreateTableCalls);
@@ -485,9 +488,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             directory,
             true);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->CreateTableCalls == 0);
@@ -520,9 +521,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             directory,
             true);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->CreateTableCalls == 1);
@@ -557,9 +556,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             directory,
             true);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->AlterTableCalls == 2);
@@ -594,9 +591,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             directory,
             true);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == E_ARGUMENT &&
             ydbTestStorage->AlterTableCalls == 0);
@@ -629,9 +624,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             directory,
             true);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->DropTableCalls == 1);
@@ -667,9 +660,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             return MakeFuture(MakeError(S_OK));
         };
 
-        auto response = uploader->UploadStats(
-             { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
@@ -713,9 +704,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             return MakeFuture(MakeError(E_FAIL));
         };
 
-        auto response = uploader->UploadStats(
-             { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
@@ -743,9 +732,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             metricsScheme);
         uploader->Start();
 
-        auto response = uploader->UploadStats(
-             { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->CreateTableCalls);
@@ -816,9 +803,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             true);
         ydbTestStorage->AddTable("arctest", archiveScheme);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->AlterTableCalls == 1);

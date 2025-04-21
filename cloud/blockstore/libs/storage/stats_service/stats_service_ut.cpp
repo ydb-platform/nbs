@@ -59,10 +59,9 @@ public:
     virtual ~TYdbStatsMock() = default;
 
     NThreading::TFuture<NProto::TError> UploadStats(
-        const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>&) override
+        const TYdbRowData& rows) override
     {
-        return Callback(stats);
+        return Callback(rows.Stats);
     }
 
     void Start() override

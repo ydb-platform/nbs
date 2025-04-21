@@ -4,6 +4,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NYdbStats {
 
@@ -212,8 +213,21 @@ struct TYdbBlobLoadMetricRow
     static TStringBuf GetYdbRowDefinition();
 };
 
+struct TYdbRowData
+{
+    TVector<TYdbRow> Stats;
+    TVector<TYdbBlobLoadMetricRow> Metrics;
+
+    TYdbRowData() = default;
+
+    TYdbRowData(
+            TVector<TYdbRow> stats,
+            TVector<TYdbBlobLoadMetricRow> metrics)
+        : Stats(std::move(stats))
+        , Metrics(std::move(metrics))
+    {}
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NYdbStats
-
-

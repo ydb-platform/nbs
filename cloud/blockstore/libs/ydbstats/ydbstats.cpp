@@ -337,9 +337,7 @@ public:
         TStatsTableSchemePtr archiveTableScheme,
         TStatsTableSchemePtr metricsTableScheme);
 
-    TFuture<NProto::TError> UploadStats(
-        const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics) override;
+    TFuture<NProto::TError> UploadStats(const TYdbRowData& rows) override;
 
     void Start() override
     {
@@ -352,8 +350,7 @@ public:
 
 private:
     TFuture<NProto::TError> DoUploadStats(
-        const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics,
+        const TYdbRowData& rows,
         const TSetupTablesResult& setupResult);
 
     TFuture<TSetupTablesResult> EnsureInitialized();
@@ -415,25 +412,22 @@ TYdbStatsUploader::TYdbStatsUploader(
 ////////////////////////////////////////////////////////////////////////////////
 // UploadStats
 
-TFuture<NProto::TError> TYdbStatsUploader::UploadStats(
-    const TVector<TYdbRow>& stats,
-    const TVector<TYdbBlobLoadMetricRow>& metrics)
+TFuture<NProto::TError> TYdbStatsUploader::UploadStats(const TYdbRowData& rows)
 {
     auto response = EnsureInitialized();
     if (response.HasValue()) {
-        return DoUploadStats(stats, metrics, response.GetValue());
+        return DoUploadStats(rows, response.GetValue());
     }
 
     auto pThis = shared_from_this();  // will hold reference to this
     return response.Apply(
         [=] (const auto& future) {
-            return pThis->DoUploadStats(stats, metrics, future.GetValue());
+            return pThis->DoUploadStats(rows, future.GetValue());
         });
 }
 
 TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
-    const TVector<TYdbRow>& stats,
-    const TVector<TYdbBlobLoadMetricRow>& metrics,
+    const TYdbRowData& rows,
     const TSetupTablesResult& setupResult)
 {
     if (FAILED(setupResult.Error.GetCode())) {
@@ -442,28 +436,41 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
 
     TVector<TUploadData> dataForUpload;
 
-    auto buildYdbRows = [&] () {
-        TValueBuilder rows;
-
-        rows.BeginList();
-        for (const auto& stat: stats) {
-            rows.AddListItem(stat.GetYdbValues());
+    auto addStatsRows = [&] (TValueBuilder& rowsBuilder) {
+        for (const auto& row: rows.Stats) {
+            rowsBuilder.AddListItem(row.GetYdbValues());
         }
-        rows.EndList();
+    };
+    auto addMetricsRows = [&] (TValueBuilder& rowsBuilder) {
+        for (const auto& row : rows.Metrics) {
+            rowsBuilder.AddListItem(row.GetYdbValues());
+        }
+    };
 
-        return rows.Build();
+    auto buildYdbRows = [&] (const std::function<void(TValueBuilder&)>& addRows) {
+        TValueBuilder rowsBuilder;
+
+        rowsBuilder.BeginList();
+        addRows(rowsBuilder);
+        rowsBuilder.EndList();
+
+        return rowsBuilder.Build();
     };
 
     if (setupResult.StatsTableName) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
-        dataForUpload.emplace_back(setupResult.StatsTableName, buildYdbRows());
+        dataForUpload.emplace_back(
+            setupResult.StatsTableName,
+            buildYdbRows(addStatsRows));
     }
 
     if (setupResult.HistoryTableName) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
-        dataForUpload.emplace_back(setupResult.HistoryTableName, buildYdbRows());
+        dataForUpload.emplace_back(
+            setupResult.HistoryTableName,
+            buildYdbRows(addStatsRows));
     }
 
     if (setupResult.ArchiveStatsTableName) {
@@ -471,20 +478,13 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
         dataForUpload.emplace_back(
             setupResult.ArchiveStatsTableName,
-            buildYdbRows());
+            buildYdbRows(addStatsRows));
     }
 
     if (setupResult.BlobLoadMetricsTableName) {
-        TValueBuilder rows;
-        rows.BeginList();
-        for (const auto& metric : metrics) {
-            rows.AddListItem(metric.GetYdbValues());
-        }
-        rows.EndList();
-
         dataForUpload.emplace_back(
             setupResult.BlobLoadMetricsTableName,
-            rows.Build());
+            buildYdbRows(addMetricsRows));
     }
 
     auto executor = std::make_shared<TBulkUpsertExecutor>(
@@ -883,12 +883,9 @@ class TYdbStatsUploaderStub final
     : public IYdbVolumesStatsUploader
 {
 public:
-    TFuture<NProto::TError> UploadStats(
-        const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics) override
+    TFuture<NProto::TError> UploadStats(const TYdbRowData& rows) override
     {
-        Y_UNUSED(stats);
-        Y_UNUSED(metrics);
+        Y_UNUSED(rows);
         return MakeFuture<NProto::TError>();
     }
 
