@@ -2,6 +2,7 @@ import subprocess
 
 
 import cloud.blockstore.tests.csi_driver.lib.csi_runner as csi
+from cloud.filestore.public.sdk.python.client import CreateClient
 
 
 def test_volume_lifecycle_local_fs_legacy():
@@ -13,7 +14,13 @@ def test_volume_lifecycle_local_fs_legacy():
 
     env, run = csi.init(vm_mode=True, external_fs_configs=[fs_config])
     try:
-        env.csi.create_volume(name=fs_name, size=fs_size, is_nfs=True)
+        with CreateClient(
+            str("localhost:%d" % env.local_nfs_vhost.filestore_port)
+        ) as filestore_client:
+            filestore_client.create_filestore(
+                filesystem_id=fs_name, block_size=4096, blocks_count=fs_size // 4096
+            )
+
         env.csi.stage_volume(fs_name, "mount", is_nfs=True)
         for pod_name, pod_id in zip(pod_names, pod_ids):
             env.csi.publish_volume(
@@ -48,17 +55,21 @@ def test_volume_lifecycle_local_fs():
         fs_cloud_id="cloud",
         fs_folder_id="folder",
         fs_mount_cmd="/bin/bash",
-        fs_mount_args=["-c", "echo hello world; echo LOCAL_FS_ID=$LOCAL_FS_ID; echo EXTERNAL_FS_ID=$EXTERNAL_FS_ID"],
+        fs_mount_args=[
+            "-c",
+            "echo hello world; echo LOCAL_FS_ID=$LOCAL_FS_ID; echo EXTERNAL_FS_ID=$EXTERNAL_FS_ID",
+        ],
         fs_umount_cmd="/bin/bash",
-        fs_umount_args=["-c", "echo goodbye world; echo LOCAL_FS_ID=$LOCAL_FS_ID; echo EXTERNAL_FS_ID=$EXTERNAL_FS_ID"],
+        fs_umount_args=[
+            "-c",
+            "echo goodbye world; echo LOCAL_FS_ID=$LOCAL_FS_ID; echo EXTERNAL_FS_ID=$EXTERNAL_FS_ID",
+        ],
     )
-    fs_size = 1024**3
     pod_names = ["example-pod-1", "example-pod-2"]
     pod_ids = ["deadbeef1", "deadbeef2"]
 
     env, run = csi.init(vm_mode=True, external_fs_configs=[fs_config])
     try:
-        env.csi.create_volume(name=fs_name, size=fs_size, is_nfs=True)
         env.csi.stage_volume(fs_name, "mount", is_nfs=True)
         # repeated stage should be ok
         env.csi.stage_volume(fs_name, "mount", is_nfs=True)

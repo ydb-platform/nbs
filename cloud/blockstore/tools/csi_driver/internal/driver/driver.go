@@ -205,10 +205,8 @@ func NewDriver(cfg Config) (*Driver, error) {
 	csi.RegisterControllerServer(
 		grpcServer,
 		newNBSServerControllerService(
-			externalFsOverrides,
 			clients.nbsClient,
-			clients.nfsFilestoreClient,
-			clients.nfsLocalFilestoreClient))
+			clients.nfsFilestoreClient))
 
 	csi.RegisterNodeServer(
 		grpcServer,

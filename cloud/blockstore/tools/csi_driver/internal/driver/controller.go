@@ -33,24 +33,17 @@ var nbsServerControllerServiceCapabilities = []*csi.ControllerServiceCapability{
 type nbsServerControllerService struct {
 	csi.ControllerServer
 
-	externalFsOverrides ExternalFsOverrideMap
-
-	nbsClient      nbsclient.ClientIface
-	nfsClient      nfsclient.ClientIface
-	nfsLocalClient nfsclient.ClientIface
+	nbsClient nbsclient.ClientIface
+	nfsClient nfsclient.ClientIface
 }
 
 func newNBSServerControllerService(
-	fsOverrides ExternalFsOverrideMap,
 	nbsClient nbsclient.ClientIface,
-	nfsClient nfsclient.ClientIface,
-	nfsLocalClient nfsclient.ClientIface) csi.ControllerServer {
+	nfsClient nfsclient.ClientIface) csi.ControllerServer {
 
 	return &nbsServerControllerService{
-		externalFsOverrides: fsOverrides,
-		nbsClient:           nbsClient,
-		nfsClient:           nfsClient,
-		nfsLocalClient:      nfsLocalClient,
+		nbsClient: nbsClient,
+		nfsClient: nfsClient,
 	}
 }
 
@@ -148,27 +141,17 @@ func (c *nbsServerControllerService) createDisk(
 	return err
 }
 
-func (c *nbsServerControllerService) getNfsClient(fileSystemId string) nfsclient.ClientIface {
-	_, ok := c.externalFsOverrides[fileSystemId]
-	if !ok {
-		return c.nfsClient
-	}
-
-	return c.nfsLocalClient
-}
-
 func (c *nbsServerControllerService) createFileStore(
 	ctx context.Context,
 	fileSystemId string,
 	requiredBytes int64,
 	parameters map[string]string) error {
 
-	nfsClient := c.getNfsClient(fileSystemId)
-	if nfsClient == nil {
+	if c.nfsClient == nil {
 		return status.Errorf(codes.Internal, "NFS client wasn't created")
 	}
 
-	_, err := nfsClient.CreateFileStore(ctx, &nfsapi.TCreateFileStoreRequest{
+	_, err := c.nfsClient.CreateFileStore(ctx, &nfsapi.TCreateFileStoreRequest{
 		FileSystemId:     fileSystemId,
 		CloudId:          parameters["csi.storage.k8s.io/pvc/namespace"],
 		FolderId:         parameters["csi.storage.k8s.io/pvc/namespace"],
@@ -206,10 +189,8 @@ func (c *nbsServerControllerService) DeleteVolume(
 		}
 	}
 
-	nfsClient := c.getNfsClient(req.VolumeId)
-
-	if nfsClient != nil {
-		_, err := nfsClient.DestroyFileStore(ctx, &nfsapi.TDestroyFileStoreRequest{
+	if c.nfsClient != nil {
+		_, err := c.nfsClient.DestroyFileStore(ctx, &nfsapi.TDestroyFileStoreRequest{
 			FileSystemId: req.VolumeId,
 		})
 		if err != nil {
