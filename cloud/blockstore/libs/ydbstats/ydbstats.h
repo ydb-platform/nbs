@@ -24,7 +24,9 @@ struct IYdbVolumesStatsUploader
 
     virtual NThreading::TFuture<NProto::TError> UploadStats(
         const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics) = 0;
+        const TVector<TYdbBlobLoadMetricRow>& metrics,
+        const TVector<TYdbGroupsInfoRow>& groups,
+        const TVector<TYdbPartitionsRow>& partitions) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,7 +38,9 @@ IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
     TStatsTableSchemePtr statsTableScheme,
     TStatsTableSchemePtr historyTableScheme,
     TStatsTableSchemePtr archiveStatsTableScheme,
-    TStatsTableSchemePtr metricsTableScheme);
+    TStatsTableSchemePtr metricsTableScheme,
+    TStatsTableSchemePtr groupsTableScheme,
+    TStatsTableSchemePtr partitionsTableScheme);
 
 IYdbVolumesStatsUploaderPtr CreateVolumesStatsUploaderStub();
 

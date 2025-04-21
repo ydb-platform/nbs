@@ -30,6 +30,8 @@ TYdbStatsConfigPtr CreateTestConfig()
     config.SetHistoryTableLifetimeDays(3);
     config.SetStatsTableRotationAfterDays(1);
     config.SetBlobLoadMetricsTableName("metrics");
+    config.SetGroupsTableName("groups");
+    config.SetPartitionsTableName("partitions");
 
     return std::make_shared<TYdbStatsConfig>(config);
 }
@@ -43,6 +45,8 @@ TYdbStatsConfigPtr CreateTestConfig(TDuration statsTtl, TDuration archiveTtl)
     config.SetHistoryTableLifetimeDays(3);
     config.SetStatsTableRotationAfterDays(1);
     config.SetBlobLoadMetricsTableName("metrics");
+    config.SetGroupsTableName("groups");  // TODO:_ dedup?
+    config.SetPartitionsTableName("partitions");
     config.SetStatsTableTtl(statsTtl.MilliSeconds());
     config.SetArchiveStatsTableTtl(archiveTtl.MilliSeconds());
 
@@ -58,6 +62,8 @@ TYdbStatsConfigPtr CreateAllTablesTestConfig()
     config.SetHistoryTableLifetimeDays(3);
     config.SetStatsTableRotationAfterDays(1);
     config.SetBlobLoadMetricsTableName("metrics");
+    config.SetGroupsTableName("groups");  // TODO:_ dedup?
+    config.SetPartitionsTableName("partitions");
     config.SetDatabaseName("/Root");
 
     return std::make_shared<TYdbStatsConfig>(config);
@@ -211,6 +217,85 @@ TStatsTableSchemePtr CreateBadHistoryTestScheme()
     return out.Finish();
 }
 
+TStatsTableSchemePtr CreateGroupsTestScheme()
+{
+    TStatsTableSchemeBuilder out;
+    static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
+        {"PartitionTabletId", NYdb::EPrimitiveType::Uint64},
+        {"GroudId",           NYdb::EPrimitiveType::Uint32},
+        {"Timestamp",         NYdb::EPrimitiveType::Uint64},
+    };
+    out.SetKeyColumns({"PartitionTabletId", "GroudId"});
+    out.AddColumns(columns);
+    return out.Finish();
+}
+
+TStatsTableSchemePtr CreatePartitionsTestScheme()
+{
+    TStatsTableSchemeBuilder out;
+    static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
+        {"PartitionTabletId", NYdb::EPrimitiveType::Uint64},
+        {"VolumeTabletId",    NYdb::EPrimitiveType::Uint64},
+        {"DiskId",            NYdb::EPrimitiveType::String},
+        {"Timestamp",         NYdb::EPrimitiveType::Uint64},
+    };
+    out.SetKeyColumns({"PartitionTabletId"});
+    out.AddColumns(columns);
+    return out.Finish();
+}
+
+// TStatsTableSchemePtr CreateGroupsTestScheme(TDuration ttl)
+// {
+//     TStatsTableSchemeBuilder out;
+//     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
+//         {"PartitionTabletId", NYdb::EPrimitiveType::Uint64},
+//         {"GroudId",           NYdb::EPrimitiveType::Uint32},
+//         {"Timestamp",         NYdb::EPrimitiveType::Uint64},
+//     };
+//     out.SetKeyColumns({"PartitionTabletId", "GroudId"});
+//     out.AddColumns(columns);
+//     if (ttl) {
+//         out.SetTtl(NYdb::NTable::TTtlSettings{
+//             "Timestamp",
+//             NTable::TTtlSettings::EUnit::MilliSeconds,
+//             ttl});
+//     }
+//     return out.Finish();
+// }
+//
+// // TODO:_ do we need it?
+// TStatsTableSchemePtr CreateGroupsTestScheme()
+// {
+//     return CreateGroupsTestScheme({});
+// }
+
+// TODO:_ new scheme and bad scheme?
+
+// TStatsTableSchemePtr CreatePartitionsTestScheme(TDuration ttl)
+// {
+//     TStatsTableSchemeBuilder out;
+//     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
+//         {"PartitionTabletId", NYdb::EPrimitiveType::Uint64},
+//         {"VolumeTabletId",    NYdb::EPrimitiveType::Uint64},
+//         {"DiskId",            NYdb::EPrimitiveType::String},
+//         {"Timestamp",         NYdb::EPrimitiveType::Uint64},
+//     };
+//     out.SetKeyColumns({"PartitionTabletId"});
+//     out.AddColumns(columns);
+//     if (ttl) {
+//         out.SetTtl(NYdb::NTable::TTtlSettings{
+//             "Timestamp",
+//             NTable::TTtlSettings::EUnit::MilliSeconds,
+//             ttl});
+//     }
+//     return out.Finish();
+// }
+//
+// TStatsTableSchemePtr CreatePartitionsTestScheme()
+// {
+//     return CreatePartitionsTestScheme({});
+// }
+
 NYdbStats::TYdbRow BuildTestStats()
 {
     TYdbRow out;
@@ -227,6 +312,25 @@ NYdbStats::TYdbBlobLoadMetricRow BuildTestMetrics()
     out.HostName = "Host";
     out.Timestamp = TInstant::Now();
     out.LoadData = "{}";
+    return out;
+}
+
+NYdbStats::TYdbGroupsInfoRow BuildTestGroups()
+{
+    TYdbGroupsInfoRow out;
+    out.PartitionTabletId = 713;
+    out.GroupId = 42;
+    out.Timestamp = TInstant::Now();
+    return out;
+}
+
+NYdbStats::TYdbPartitionsRow BuildTestPartitions()
+{
+    TYdbPartitionsRow out;
+    out.PartitionTabletId = 713;
+    out.VolumeTabletId = 712;
+    out.DiskId = "vol0";
+    out.Timestamp = TInstant::Now();
     return out;
 }
 
@@ -275,6 +379,8 @@ public:
     void AddTables(
         TStatsTableSchemePtr statsTableScheme,
         TStatsTableSchemePtr metricsTableScheme,
+        TStatsTableSchemePtr groupsTableScheme,
+        TStatsTableSchemePtr partitionsTableScheme,
         TStatsTableSchemePtr historyTableScheme,
         const TVector<TTableStat>& historyTables,
         bool statTable)
@@ -287,6 +393,12 @@ public:
         }
         if (metricsTableScheme) {
             Tables.emplace(Config->GetBlobLoadMetricsTableName(), metricsTableScheme);
+        }
+        if (groupsTableScheme) {
+            Tables.emplace(Config->GetGroupsTableName(), groupsTableScheme);
+        }
+        if (partitionsTableScheme) {
+            Tables.emplace(Config->GetPartitionsTableName(), partitionsTableScheme);
         }
     }
 
@@ -438,7 +550,10 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto historyScheme = CreateHistoryTestScheme();
         auto archiveScheme = CreateArchiveStatsTestScheme();
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
         auto ydbTestStorage = YdbCreateTestStorage(config);
+
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
@@ -446,15 +561,20 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             statsScheme,
             historyScheme,
             archiveScheme,
-            metricsScheme);
+            metricsScheme,
+            groupsScheme,
+            partitionsScheme);
         uploader->Start();
 
+        // TODO:_ multiple rows for groups and partitions?
         auto response = uploader->UploadStats(
              { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+             { BuildTestMetrics() },
+             { BuildTestGroups() },
+             { BuildTestPartitions() }).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(3, ydbTestStorage->CreateTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(5, ydbTestStorage->CreateTableCalls);  // TODO:_ why is was 3?
     }
 
     Y_UNIT_TEST(ShouldNotCreateTablesIfTheyAlreadyExistAndNotOutdated)
@@ -464,7 +584,10 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto historyScheme = CreateHistoryTestScheme();
         auto archiveScheme = CreateArchiveStatsTestScheme();
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
         auto ydbTestStorage = YdbCreateTestStorage(config);
+
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
@@ -472,7 +595,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             statsScheme,
             historyScheme,
             archiveScheme,
-            metricsScheme);
+            metricsScheme,
+            groupsScheme,
+            partitionsScheme);
         uploader->Start();
 
         TVector<TTableStat> directory;
@@ -481,13 +606,17 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         ydbTestStorage->AddTables(
             statsScheme,
             metricsScheme,
+            groupsScheme,
+            partitionsScheme,
             historyScheme,
             directory,
             true);
 
         auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+             { BuildTestStats() },
+             { BuildTestMetrics() },
+             { BuildTestGroups() },
+             { BuildTestPartitions() }).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->CreateTableCalls == 0);
@@ -500,7 +629,10 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto historyScheme = CreateHistoryTestScheme();
         auto archiveScheme = CreateArchiveStatsTestScheme();
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
         auto ydbTestStorage = YdbCreateTestStorage(config);
+
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
@@ -508,7 +640,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             statsScheme,
             historyScheme,
             archiveScheme,
-            metricsScheme);
+            metricsScheme,
+            groupsScheme,
+            partitionsScheme);
         uploader->Start();
 
         TVector<TTableStat> directory;
@@ -516,13 +650,17 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         ydbTestStorage->AddTables(
             statsScheme,
             metricsScheme,
+            groupsScheme,
+            partitionsScheme,
             historyScheme,
             directory,
             true);
 
         auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+             { BuildTestStats() },
+             { BuildTestMetrics() },
+             { BuildTestGroups() },
+             { BuildTestPartitions() }).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->CreateTableCalls == 1);
@@ -537,7 +675,10 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto historyNewScheme = CreateNewHistoryTestScheme();
         auto archiveNewScheme = CreateNewArchiveStatsTestScheme();
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
         auto ydbTestStorage = YdbCreateTestStorage(config);
+
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
@@ -545,7 +686,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             statsNewScheme,
             historyNewScheme,
             archiveNewScheme,
-            metricsScheme);
+            metricsScheme,
+            groupsScheme,
+            partitionsScheme);
         uploader->Start();
 
         TVector<TTableStat> directory;
@@ -553,13 +696,17 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         ydbTestStorage->AddTables(
             statsScheme,
             metricsScheme,
+            groupsScheme,
+            partitionsScheme,
             historyScheme,
             directory,
             true);
 
         auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+             { BuildTestStats() },
+             { BuildTestMetrics() },
+             { BuildTestGroups() },
+             { BuildTestPartitions() }).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->AlterTableCalls == 2);
@@ -574,7 +721,10 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto historyNewScheme = CreateBadHistoryTestScheme();
         auto archiveNewScheme = CreateBadArchiveStatsTestScheme();
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
         auto ydbTestStorage = YdbCreateTestStorage(config);
+
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
@@ -582,7 +732,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             statsNewScheme,
             historyNewScheme,
             archiveNewScheme,
-            metricsScheme);
+            metricsScheme,
+            groupsScheme,
+            partitionsScheme);
         uploader->Start();
 
         TVector<TTableStat> directory;
@@ -590,13 +742,17 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         ydbTestStorage->AddTables(
             statsScheme,
             metricsScheme,
+            groupsScheme,
+            partitionsScheme,
             historyScheme,
             directory,
             true);
 
         auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+             { BuildTestStats() },
+             { BuildTestMetrics() },
+             { BuildTestGroups() },
+             { BuildTestPartitions() }).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == E_ARGUMENT &&
             ydbTestStorage->AlterTableCalls == 0);
@@ -609,7 +765,10 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto historyScheme = CreateHistoryTestScheme();
         auto archiveScheme = CreateArchiveStatsTestScheme();
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
         auto ydbTestStorage = YdbCreateTestStorage(config);
+
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
@@ -617,7 +776,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             statsScheme,
             historyScheme,
             archiveScheme,
-            metricsScheme);
+            metricsScheme,
+            groupsScheme,
+            partitionsScheme);
         uploader->Start();
 
         TVector<TTableStat> directory;
@@ -625,13 +786,17 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         ydbTestStorage->AddTables(
             statsScheme,
             metricsScheme,
+            groupsScheme,
+            partitionsScheme,
             historyScheme,
             directory,
             true);
 
         auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+             { BuildTestStats() },
+             { BuildTestMetrics() },
+             { BuildTestGroups() },
+             { BuildTestPartitions() }).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->DropTableCalls == 1);
@@ -646,7 +811,10 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto historyScheme = CreateHistoryTestScheme();
         auto archiveScheme = CreateArchiveStatsTestScheme();
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
         auto ydbTestStorage = YdbCreateTestStorage(config);
+
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
@@ -654,7 +822,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             statsScheme,
             historyScheme,
             archiveScheme,
-            metricsScheme);
+            metricsScheme,
+            groupsScheme,
+            partitionsScheme);
         uploader->Start();
 
         ydbTestStorage->UploadTestFunc = [&] (TString tableName, NYdb::TValue)
@@ -669,10 +839,12 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
 
         auto response = uploader->UploadStats(
              { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+             { BuildTestMetrics() },
+             { BuildTestGroups() },
+             { BuildTestPartitions() }).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
+        UNIT_ASSERT_VALUES_EQUAL(6, ydbTestStorage->UpsertCalls);
 
         for (const auto& t: tables) {
             UNIT_ASSERT_C(
@@ -691,7 +863,10 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto historyScheme = CreateHistoryTestScheme();
         auto archiveScheme = CreateArchiveStatsTestScheme();
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
         auto ydbTestStorage = YdbCreateTestStorage(config);
+
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
@@ -699,7 +874,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             statsScheme,
             historyScheme,
             archiveScheme,
-            metricsScheme);
+            metricsScheme,
+            groupsScheme,
+            partitionsScheme);
         uploader->Start();
 
         ydbTestStorage->UploadTestFunc = [&] (TString, NYdb::TValue)
@@ -715,10 +892,12 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
 
         auto response = uploader->UploadStats(
              { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+             { BuildTestMetrics() },
+             { BuildTestGroups() },
+             { BuildTestPartitions() }).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
+        UNIT_ASSERT_VALUES_EQUAL(6, ydbTestStorage->UpsertCalls);
     }
 
     Y_UNIT_TEST(ShouldCreateTablesWithTtlSessingsIfNessesary)
@@ -732,7 +911,10 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto historyScheme = CreateHistoryTestScheme();
         auto archiveScheme = CreateArchiveStatsTestScheme(archiveStatsTtl);
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
         auto ydbTestStorage = YdbCreateTestStorage(config);
+
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
@@ -740,15 +922,19 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             statsScheme,
             historyScheme,
             archiveScheme,
-            metricsScheme);
+            metricsScheme,
+            groupsScheme,
+            partitionsScheme);
         uploader->Start();
 
         auto response = uploader->UploadStats(
              { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+             { BuildTestMetrics() },
+             { BuildTestGroups() },
+             { BuildTestPartitions() }).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->CreateTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(6, ydbTestStorage->CreateTableCalls);
 
         {
             auto response = ydbTestStorage->DescribeTable("test").GetValueSync();
@@ -795,7 +981,10 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto archiveScheme = CreateNewArchiveStatsTestScheme(statsTtl);
         auto archiveNewScheme = CreateNewArchiveStatsTestScheme(archiveStatsTtl);
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
         auto ydbTestStorage = YdbCreateTestStorage(config);
+
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
@@ -803,7 +992,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             statsNewScheme,
             historyNewScheme,
             archiveNewScheme,
-            metricsScheme);
+            metricsScheme,
+            groupsScheme,
+            partitionsScheme);
         uploader->Start();
 
         TVector<TTableStat> directory;
@@ -811,14 +1002,18 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         ydbTestStorage->AddTables(
             statsScheme,
             metricsScheme,
+            groupsScheme,
+            partitionsScheme,
             historyScheme,
             directory,
             true);
         ydbTestStorage->AddTable("arctest", archiveScheme);
 
         auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+             { BuildTestStats() },
+             { BuildTestMetrics() },
+             { BuildTestGroups() },
+             { BuildTestPartitions() }).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->AlterTableCalls == 1);

@@ -212,6 +212,42 @@ struct TYdbBlobLoadMetricRow
     static TStringBuf GetYdbRowDefinition();
 };
 
+struct TYdbGroupsInfoRow
+{
+    static constexpr TStringBuf PartitionTabletIdName = "PartitionTabletId";
+    static constexpr TStringBuf ChannelName = "Channel";
+    static constexpr TStringBuf GroupIdName = "GroupId";
+    static constexpr TStringBuf GenerationName = "Generation";
+    static constexpr TStringBuf TimestampName = "VolumeId";
+    // TODO:_ what about channel type or/and storage pool type?
+    // They should be already present in schemeshard...
+    static constexpr TDuration TtlDuration  = TDuration::Days(7);
+
+    ui64 PartitionTabletId;
+    ui32 Channel;
+    ui32 GroupId;
+    ui32 Generation; // TODO:_ or just bool isWritable?
+    TInstant Timestamp;  // TODO:_ or ui64?
+
+    NYdb::TValue GetYdbValues() const;
+};
+
+struct TYdbPartitionsRow
+{
+    static constexpr TStringBuf DiskIdName = "DiskId";
+    static constexpr TStringBuf VolumeTabletIdName = "VolumeTabletId";
+    static constexpr TStringBuf PartitionTabletIdName = "PartitionTabletId";
+    static constexpr TStringBuf TimestampName = "VolumeId";
+    static constexpr TDuration TtlDuration  = TDuration::Days(7);
+
+    TString DiskId;
+    ui64 VolumeTabletId;
+    ui64 PartitionTabletId;
+    TInstant Timestamp;  // TODO:_ or ui64?
+
+    NYdb::TValue GetYdbValues() const;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NYdbStats
