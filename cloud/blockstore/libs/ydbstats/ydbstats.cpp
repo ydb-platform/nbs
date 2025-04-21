@@ -103,8 +103,7 @@ class TWaitSetup
 {
 private:
     TAdaptiveLock Lock;
-    // TODO:_ try to change and ensure that tests fail
-    size_t ResponsesToWait = 6;  // TODO:_ magic number?
+    size_t ResponsesToWait = 6;
 
     NProto::TError Error;
     TString StatsTableName;
@@ -368,11 +367,7 @@ public:
         TStatsTableSchemePtr groupsTableScheme,
         TStatsTableSchemePtr partitionsTableScheme);
 
-    TFuture<NProto::TError> UploadStats(
-        const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics,
-        const TVector<TYdbGroupsInfoRow>& groups,
-        const TVector<TYdbPartitionsRow>& partitions) override;
+    TFuture<NProto::TError> UploadStats(const TYdbRows& rows) override;
 
     void Start() override
     {
@@ -385,10 +380,7 @@ public:
 
 private:
     TFuture<NProto::TError> DoUploadStats(
-        const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics,
-        const TVector<TYdbGroupsInfoRow>& groups,
-        const TVector<TYdbPartitionsRow>& partitions,
+        const TYdbRows& rows,
         const TSetupTablesResult& setupResult);
 
     TFuture<TSetupTablesResult> EnsureInitialized();
@@ -456,29 +448,22 @@ TYdbStatsUploader::TYdbStatsUploader(
 ////////////////////////////////////////////////////////////////////////////////
 // UploadStats
 
-TFuture<NProto::TError> TYdbStatsUploader::UploadStats(
-    const TVector<TYdbRow>& stats,
-    const TVector<TYdbBlobLoadMetricRow>& metrics,
-    const TVector<TYdbGroupsInfoRow>& groups,
-    const TVector<TYdbPartitionsRow>& partitions)
+TFuture<NProto::TError> TYdbStatsUploader::UploadStats(const TYdbRows& rows)
 {
     auto response = EnsureInitialized();
     if (response.HasValue()) {
-        return DoUploadStats(stats, metrics, groups, partitions, response.GetValue());
+        return DoUploadStats(rows, response.GetValue());
     }
 
     auto pThis = shared_from_this();  // will hold reference to this
     return response.Apply(
         [=] (const auto& future) {
-            return pThis->DoUploadStats(stats, metrics, groups, partitions, future.GetValue());
+            return pThis->DoUploadStats(rows, future.GetValue());
         });
 }
 
 TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
-    const TVector<TYdbRow>& stats,  // TODO:_ pul all this stuff for 4 tables in struct? We have TYdbRowData!!!
-    const TVector<TYdbBlobLoadMetricRow>& metrics,
-    const TVector<TYdbGroupsInfoRow>& groups,
-    const TVector<TYdbPartitionsRow>& partitions,
+    const TYdbRows& rows,
     const TSetupTablesResult& setupResult)
 {
     if (FAILED(setupResult.Error.GetCode())) {
@@ -487,28 +472,51 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
 
     TVector<TUploadData> dataForUpload;
 
-    auto buildYdbRows = [&] () {
-        TValueBuilder rows;
-
-        rows.BeginList();
-        for (const auto& stat: stats) {
-            rows.AddListItem(stat.GetYdbValues());
+    auto addStatsRows = [&] (TValueBuilder& rowsBuilder) {
+        for (const auto& row: rows.Stats) {
+            rowsBuilder.AddListItem(row.GetYdbValues());
         }
-        rows.EndList();
+    };
+    auto addMetricsRows = [&] (TValueBuilder& rowsBuilder) {
+        for (const auto& row : rows.Metrics) {
+            rowsBuilder.AddListItem(row.GetYdbValues());
+        }
+    };
+    auto addGroupsRows = [&] (TValueBuilder& rowsBuilder) {
+        for (const auto& row : rows.Groups) {
+            rowsBuilder.AddListItem(row.GetYdbValues());
+        }
+    };
+    auto addPartitionsRows = [&] (TValueBuilder& rowsBuilder) {
+        for (const auto& row : rows.Partitions) {
+            rowsBuilder.AddListItem(row.GetYdbValues());
+        }
+    };
 
-        return rows.Build();
+    auto buildYdbStatsRows = [&] (const std::function<void(TValueBuilder&)>& addRows) {
+        TValueBuilder rowsBuilder;
+
+        rowsBuilder.BeginList();
+        addRows(rowsBuilder);
+        rowsBuilder.EndList();
+
+        return rowsBuilder.Build();
     };
 
     if (setupResult.StatsTableName) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
-        dataForUpload.emplace_back(setupResult.StatsTableName, buildYdbRows());
+        dataForUpload.emplace_back(
+            setupResult.StatsTableName,
+            buildYdbStatsRows(addStatsRows));
     }
 
     if (setupResult.HistoryTableName) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
-        dataForUpload.emplace_back(setupResult.HistoryTableName, buildYdbRows());
+        dataForUpload.emplace_back(
+            setupResult.HistoryTableName,
+            buildYdbStatsRows(addStatsRows));
     }
 
     if (setupResult.ArchiveStatsTableName) {
@@ -516,47 +524,25 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
         dataForUpload.emplace_back(
             setupResult.ArchiveStatsTableName,
-            buildYdbRows());
+            buildYdbStatsRows(addStatsRows));
     }
 
     if (setupResult.BlobLoadMetricsTableName) {
-        TValueBuilder rows;
-        rows.BeginList();
-        for (const auto& metric : metrics) {
-            rows.AddListItem(metric.GetYdbValues());
-        }
-        rows.EndList();
-
         dataForUpload.emplace_back(
             setupResult.BlobLoadMetricsTableName,
-            rows.Build());
+            buildYdbStatsRows(addMetricsRows));
     }
 
     if (setupResult.GroupsTableName) {
-        TValueBuilder rows;
-        rows.BeginList();
-        for (const auto& groupRow : groups) {
-            rows.AddListItem(groupRow.GetYdbValues());
-        }
-        rows.EndList();
-
         dataForUpload.emplace_back(
             setupResult.GroupsTableName,
-            rows.Build());
+            buildYdbStatsRows(addGroupsRows));
     }
 
-    // TODO:_ deduplicate
     if (setupResult.PartitionsTableName) {
-        TValueBuilder rows;
-        rows.BeginList();
-        for (const auto& partitionRow : partitions) {
-            rows.AddListItem(partitionRow.GetYdbValues());
-        }
-        rows.EndList();
-
         dataForUpload.emplace_back(
             setupResult.PartitionsTableName,
-            rows.Build());
+            buildYdbStatsRows(addPartitionsRows));
     }
 
     auto executor = std::make_shared<TBulkUpsertExecutor>(
@@ -989,16 +975,9 @@ class TYdbStatsUploaderStub final
     : public IYdbVolumesStatsUploader
 {
 public:
-    TFuture<NProto::TError> UploadStats(
-        const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics,
-        const TVector<TYdbGroupsInfoRow>& groups,
-        const TVector<TYdbPartitionsRow>& partitions) override
+    TFuture<NProto::TError> UploadStats(const TYdbRows& rows) override
     {
-        Y_UNUSED(stats);
-        Y_UNUSED(metrics);
-        Y_UNUSED(groups);
-        Y_UNUSED(partitions);
+        Y_UNUSED(rows);
         return MakeFuture<NProto::TError>();
     }
 

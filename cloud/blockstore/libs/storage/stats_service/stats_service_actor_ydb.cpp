@@ -348,8 +348,11 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
         YdbStatsRequestSentTs = ctx.Now();
 
         StatsUploader->UploadStats(
-            YdbStatsRequests.front().first.Stats,
-            YdbStatsRequests.front().first.Metrics).Subscribe(
+            NYdbStats::TYdbRows(  // TODO:_ should not copy here?
+                YdbStatsRequests.front().first.Stats,
+                YdbStatsRequests.front().first.Metrics,
+                {},
+                {}).Subscribe(
             [=] (const auto& future) {
                 if (auto p = weak.lock()) {
                     NProto::TError result;
@@ -364,7 +367,7 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
                     using TMsg = TEvStatsServicePrivate::TEvUploadDisksStatsCompleted;
                     p->Send(replyTo, std::make_unique<TMsg>(result));
                 }
-        });
+        }));
     } else if (YdbStatsRequestSentTs.GetValue()) {
         const auto deadline =
             YdbStatsRequestSentTs + Config->GetStatsUploadInterval();

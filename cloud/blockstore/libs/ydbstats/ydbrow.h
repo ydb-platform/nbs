@@ -4,6 +4,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NYdbStats {
 
@@ -218,16 +219,14 @@ struct TYdbGroupsInfoRow
     static constexpr TStringBuf ChannelName = "Channel";
     static constexpr TStringBuf GroupIdName = "GroupId";
     static constexpr TStringBuf GenerationName = "Generation";
-    static constexpr TStringBuf TimestampName = "VolumeId";
-    // TODO:_ what about channel type or/and storage pool type?
-    // They should be already present in schemeshard...
+    static constexpr TStringBuf TimestampName = "Timestamp";
     static constexpr TDuration TtlDuration  = TDuration::Days(7);
 
     ui64 PartitionTabletId;
     ui32 Channel;
     ui32 GroupId;
-    ui32 Generation; // TODO:_ or just bool isWritable?
-    TInstant Timestamp;  // TODO:_ or ui64?
+    ui32 Generation;
+    TInstant Timestamp;
 
     NYdb::TValue GetYdbValues() const;
 };
@@ -237,19 +236,36 @@ struct TYdbPartitionsRow
     static constexpr TStringBuf DiskIdName = "DiskId";
     static constexpr TStringBuf VolumeTabletIdName = "VolumeTabletId";
     static constexpr TStringBuf PartitionTabletIdName = "PartitionTabletId";
-    static constexpr TStringBuf TimestampName = "VolumeId";
+    static constexpr TStringBuf TimestampName = "Timestamp";
     static constexpr TDuration TtlDuration  = TDuration::Days(7);
 
     TString DiskId;
     ui64 VolumeTabletId;
     ui64 PartitionTabletId;
-    TInstant Timestamp;  // TODO:_ or ui64?
+    TInstant Timestamp;
 
     NYdb::TValue GetYdbValues() const;
+};
+
+struct TYdbRows
+{
+    TVector<TYdbRow> Stats;
+    TVector<TYdbBlobLoadMetricRow> Metrics;
+    TVector<TYdbGroupsInfoRow> Groups;
+    TVector<TYdbPartitionsRow> Partitions;
+
+    TYdbRows(
+            TVector<TYdbRow> stats,
+            TVector<TYdbBlobLoadMetricRow> metrics,
+            TVector<TYdbGroupsInfoRow> groups,
+            TVector<TYdbPartitionsRow> partitions)
+        : Stats(std::move(stats))
+        , Metrics(std::move(metrics))
+        , Groups(std::move(groups))
+        , Partitions(std::move(partitions))
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NYdbStats
-
-

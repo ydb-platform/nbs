@@ -23,10 +23,7 @@ struct IYdbVolumesStatsUploader
     virtual ~IYdbVolumesStatsUploader() = default;
 
     virtual NThreading::TFuture<NProto::TError> UploadStats(
-        const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics,
-        const TVector<TYdbGroupsInfoRow>& groups,
-        const TVector<TYdbPartitionsRow>& partitions) = 0;
+        const TYdbRows& rows) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

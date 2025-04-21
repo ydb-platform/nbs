@@ -34,6 +34,7 @@ class TStatsServiceActor final
 {
     struct TActorSystemHolder;
 
+    // TODO:_ use TYdbRows here?
     struct TYdbRowData
     {
         TVector<NYdbStats::TYdbRow>               Stats;

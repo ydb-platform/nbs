@@ -60,7 +60,9 @@ public:
 
     NThreading::TFuture<NProto::TError> UploadStats(
         const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>&) override
+        const TVector<TYdbBlobLoadMetricRow>&,
+        const TVector<TYdbGroupsInfoRow>&,
+        const TVector<TYdbPartitionsRow>&) override
     {
         return Callback(stats);
     }
