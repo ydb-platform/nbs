@@ -32,6 +32,11 @@ void OutputDevices(const auto& devices, TStringBuilder& result)
     result << "]";
 }
 
+TString GetReplicaDiskId(const TString& diskId, ui32 i)
+{
+    return TStringBuilder() << diskId << "/" << i;
+}
+
 }   // namespace
 
 using namespace NActors;
@@ -260,11 +265,23 @@ void TDiskRegistryActor::CompleteAddDisk(
         response->Record.SetIOModeTs(args.IOModeTs.MicroSeconds());
         response->Record.SetMuteIOErrors(args.MuteIOErrors);
 
-        auto lostDevicesForDisk = State->GetLostDevicesForDisk(args.DiskId);
+        if (args.ReplicaCount) {
+            for (size_t i = 0; i < args.ReplicaCount + 1; ++i) {
+                auto diskId = GetReplicaDiskId(args.DiskId, i);
+                auto unavailableDevicesForDisk =
+                    State->GetUnavailableDevicesForDisk(diskId);
 
-        response->Record.MutableLostDeviceUUIDs()->Add(
-            std::make_move_iterator(lostDevicesForDisk.begin()),
-            std::make_move_iterator(lostDevicesForDisk.end()));
+                response->Record.MutableUnavailableDeviceUUIDs()->Add(
+                    std::make_move_iterator(unavailableDevicesForDisk.begin()),
+                    std::make_move_iterator(unavailableDevicesForDisk.end()));
+            }
+        } else {
+            auto unavailableDevicesForDisk =
+                State->GetUnavailableDevicesForDisk(args.DiskId);
+            response->Record.MutableUnavailableDeviceUUIDs()->Add(
+                std::make_move_iterator(unavailableDevicesForDisk.begin()),
+                std::make_move_iterator(unavailableDevicesForDisk.end()));
+        }
     }
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

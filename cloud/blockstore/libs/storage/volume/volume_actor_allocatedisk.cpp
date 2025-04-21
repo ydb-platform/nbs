@@ -161,11 +161,11 @@ NProto::TVolumeMeta CreateNewMeta(
     newMeta.SetMuteIOErrors(args.MuteIOErrors);
     UpdateLaggingDevicesAfterMetaUpdate(newMeta, args.RemovedLaggingDeviceIds);
 
-    Sort(args.LostDeviceIds);
+    Sort(args.UnavailableDeviceIds);
 
-    newMeta.MutableLostDeviceIds()->Assign(
-        std::make_move_iterator(args.LostDeviceIds.begin()),
-        std::make_move_iterator(args.LostDeviceIds.end()));
+    newMeta.MutableUnavailableDeviceIds()->Assign(
+        std::make_move_iterator(args.UnavailableDeviceIds.begin()),
+        std::make_move_iterator(args.UnavailableDeviceIds.end()));
 
     return newMeta;
 }
@@ -313,9 +313,9 @@ void TVolumeActor::HandleAllocateDiskError(
         UnfinishedUpdateVolumeConfig.FreshDeviceIds.assign(
             State->GetMeta().GetFreshDeviceIds().begin(),
             State->GetMeta().GetFreshDeviceIds().end());
-        UnfinishedUpdateVolumeConfig.LostDeviceIds.assign(
-            State->GetMeta().GetLostDeviceIds().begin(),
-            State->GetMeta().GetLostDeviceIds().end());
+        UnfinishedUpdateVolumeConfig.UnavailableDeviceIds.assign(
+            State->GetMeta().GetUnavailableDeviceIds().begin(),
+            State->GetMeta().GetUnavailableDeviceIds().end());
     }
 
     if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
@@ -379,7 +379,7 @@ void TVolumeActor::HandleAllocateDiskResponse(
     TVector<TDevices> replicas;
     TVector<TString> freshDeviceIds;
     TVector<TString> removedLaggingDevices;
-    TVector<TString> lostDeviceIds;
+    TVector<TString> unavailableDeviceIds;
     for (auto& msgReplica: *msg->Record.MutableReplicas()) {
         replicas.push_back(std::move(*msgReplica.MutableDevices()));
     }
@@ -392,8 +392,8 @@ void TVolumeActor::HandleAllocateDiskResponse(
         removedLaggingDevices.push_back(
             std::move(*removedLaggingDevice.MutableDeviceUUID()));
     }
-    for (auto& lostDeviceId: *msg->Record.MutableLostDeviceUUIDs()) {
-        lostDeviceIds.push_back(std::move(lostDeviceId));
+    for (auto& deviceId: *msg->Record.MutableUnavailableDeviceUUIDs()) {
+        unavailableDeviceIds.push_back(std::move(deviceId));
     }
 
     if (!CheckAllocationResult(ctx, devices, replicas)) {
@@ -407,7 +407,8 @@ void TVolumeActor::HandleAllocateDiskResponse(
         UnfinishedUpdateVolumeConfig.FreshDeviceIds = std::move(freshDeviceIds);
         UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds =
             std::move(removedLaggingDevices);
-        UnfinishedUpdateVolumeConfig.LostDeviceIds = std::move(lostDeviceIds);
+        UnfinishedUpdateVolumeConfig.UnavailableDeviceIds =
+            std::move(unavailableDeviceIds);
     } else {
         ExecuteTx<TUpdateDevices>(
             ctx,
@@ -416,7 +417,7 @@ void TVolumeActor::HandleAllocateDiskResponse(
             std::move(replicas),
             std::move(freshDeviceIds),
             std::move(removedLaggingDevices),
-            std::move(lostDeviceIds),
+            std::move(unavailableDeviceIds),
             msg->Record.GetIOMode(),
             TInstant::MicroSeconds(msg->Record.GetIOModeTs()),
             msg->Record.GetMuteIOErrors());
@@ -458,7 +459,7 @@ void TVolumeActor::HandleUpdateDevices(
         std::move(msg->Replicas),
         std::move(msg->FreshDeviceIds),
         std::move(msg->RemovedLaggingDevices),
-        std::move(msg->LostDeviceIds),
+        std::move(msg->UnavailableDeviceIds),
         msg->IOMode,
         msg->IOModeTs,
         msg->MuteIOErrors);
