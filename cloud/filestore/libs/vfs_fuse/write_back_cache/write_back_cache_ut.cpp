@@ -48,13 +48,15 @@ void SleepForRandomDurationMs(ui32 maxDurationMs)
 struct TInFlightRequestTracker
 {
     TVector<ui32> InFlightRequests;
-    TMutex Lock;
+    std::mutex Mutex;
 
     ui32 Count(ui64 offset, ui64 length)
     {
         ui32 res = 0;
 
-        with_lock (Lock) {
+        {
+            std::unique_lock lock(Mutex);
+
             const auto end = offset + length;
 
             for (auto i = offset; i < Min(end, InFlightRequests.size()); i++) {
@@ -70,7 +72,9 @@ struct TInFlightRequestTracker
     {
         ui32 res = 0;
 
-        with_lock (Lock) {
+        {
+            std::unique_lock lock(Mutex);
+
             const auto end = offset + length;
             // append zeroes if needed
             const auto newSize = Max(InFlightRequests.size(), end);
@@ -87,7 +91,9 @@ struct TInFlightRequestTracker
 
     void Remove(ui64 offset, ui64 length)
     {
-        with_lock (Lock) {
+        {
+            std::unique_lock lock(Mutex);
+
             const auto end = offset + length;
 
             for (auto i = offset; i < end; i++) {
