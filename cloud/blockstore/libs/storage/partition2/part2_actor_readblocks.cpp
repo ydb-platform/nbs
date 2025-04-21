@@ -1107,9 +1107,7 @@ void TPartitionActor::FinalizeReadBlocks(
     ui64 blocksCount = operation.Stats.GetUserReadCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * State->GetBlockSize();
 
-    UpdateNetworkStats(ctx, requestBytes);
     UpdateCPUUsageStats(ctx, CyclesToDurationSafe(operation.ExecCycles));
-    UpdateExecutorStats(ctx);
 
     auto time = CyclesToDurationSafe(operation.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);

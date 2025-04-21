@@ -180,12 +180,13 @@ private:
             MakeStorageStatsServiceId(),
             ev->Sender,
             new TEvStatsService::TEvVolumePartCounters(
-                "", // diskId
+                "",   // diskId
                 std::move(ev->Get()->DiskCounters),
                 0,
                 0,
                 false,
-                NBlobMetrics::TBlobLoadMetrics()),
+                NBlobMetrics::TBlobLoadMetrics(),
+                NKikimrTabletBase::TMetrics()),
             ev->Flags,
             ev->Cookie);
         ctx.Send(event.release());

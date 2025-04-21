@@ -284,8 +284,9 @@ void TPartitionActor::CompleteDescribeBlocks(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     UpdateNetworkStat(ctx.Now(), responseBytes);
-    UpdateCPUUsageStat(CyclesToDurationSafe(args.RequestInfo->GetExecCycles()).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(
+        ctx.Now(),
+        CyclesToDurationSafe(args.RequestInfo->GetExecCycles()).MicroSeconds());
 
     const auto duration = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles());
     const auto time = duration.MicroSeconds();

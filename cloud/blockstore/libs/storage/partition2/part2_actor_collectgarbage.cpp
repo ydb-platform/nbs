@@ -690,7 +690,6 @@ void TPartitionActor::HandleCollectGarbageCompleted(
     }
 
     UpdateCPUUsageStats(ctx, CyclesToDurationSafe(msg->ExecCycles));
-    UpdateExecutorStats(ctx);
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.CollectGarbage.AddRequest(time);

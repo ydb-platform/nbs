@@ -145,7 +145,6 @@ void TPartitionActor::CompleteDeleteCheckpoint(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     UpdateCPUUsageStats(ctx, CyclesToDurationSafe(timer.Finish()));
-    UpdateExecutorStats(ctx);
 
     EnqueueCompactionIfNeeded(ctx);
 

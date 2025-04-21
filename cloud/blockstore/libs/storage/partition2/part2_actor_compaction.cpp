@@ -874,7 +874,6 @@ void TPartitionActor::HandleCompactionCompleted(
     UpdateStats(msg->Stats);
 
     UpdateCPUUsageStats(ctx, CyclesToDurationSafe(msg->ExecCycles));
-    UpdateExecutorStats(ctx);
 
     const auto d = CyclesToDurationSafe(msg->TotalCycles);
     const auto ts = ctx.Now() - d;

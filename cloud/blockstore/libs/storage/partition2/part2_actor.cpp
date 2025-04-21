@@ -512,12 +512,6 @@ ui64 TPartitionActor::CalcChannelHistorySize() const
     return sum;
 }
 
-void TPartitionActor::UpdateExecutorStats(const TActorContext& ctx)
-{
-    auto& metrics = *Executor()->GetResourceMetrics();
-    metrics.TryUpdate(ctx);
-}
-
 void TPartitionActor::UpdateNetworkStats(const TActorContext& ctx, ui64 value)
 {
     auto& metrics = Executor()->GetResourceMetrics()->Network;

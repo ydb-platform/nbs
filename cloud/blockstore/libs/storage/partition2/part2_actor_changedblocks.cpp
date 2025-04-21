@@ -549,7 +549,6 @@ void TPartitionActor::FinalizeGetChangedBlocks(
     UpdateStats(operation.Stats);
 
     UpdateCPUUsageStats(ctx, CyclesToDurationSafe(operation.ExecCycles));
-    UpdateExecutorStats(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

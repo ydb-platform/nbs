@@ -275,7 +275,6 @@ private:
         TRequestInfo& requestInfo,
         bool replyLocal);
 
-    void UpdateExecutorStats(const NActors::TActorContext& ctx);
     void UpdateNetworkStats(const NActors::TActorContext& ctx, ui64 value);
     void UpdateStorageStats(const NActors::TActorContext& ctx, i64 value);
     void UpdateCPUUsageStats(const NActors::TActorContext& ctx, TDuration value);

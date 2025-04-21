@@ -232,7 +232,6 @@ void TPartitionActor::CompleteDescribeBlocks(
 
     UpdateNetworkStats(ctx, responseBytes);
     UpdateCPUUsageStats(ctx, CyclesToDurationSafe(args.RequestInfo->GetExecCycles()));
-    UpdateExecutorStats(ctx);
 
     const auto duration = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles());
     const auto time = duration.MicroSeconds();
