@@ -19,14 +19,12 @@
 #include <latch>
 #include <memory>
 #include <mutex>
-#include <random>
 #include <thread>
 
 namespace NCloud::NFileStore::NFuse {
 
 using namespace std::chrono_literals;
 
-using namespace NCloud::NFileStore::NVFS;
 using namespace NThreading;
 
 namespace {
@@ -37,18 +35,12 @@ constexpr ui32 CacheCapacityBytes = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void SleepForRandomDurationMs(ui32 lowDurationMs, ui32 highDurationMs)
+void SleepForRandomDurationMs(ui32 maxDurationMs)
 {
-    Y_ABORT_UNLESS(lowDurationMs < highDurationMs);
-
-    std::random_device device;
-    std::mt19937 generator(device());
-    std::uniform_int_distribution<> distribution(
-        lowDurationMs,
-        highDurationMs);
-
-    const auto duration = distribution(generator);
-    std::this_thread::sleep_for(duration*1ms);
+    const auto durationMs = RandomNumber(maxDurationMs);
+    if (durationMs != 0) {
+        std::this_thread::sleep_for(durationMs*1ms);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -747,7 +739,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 int writesRemaining = 333;
 
                 while (writesRemaining--) {
-                    SleepForRandomDurationMs(0, 10);
+                    SleepForRandomDurationMs(10);
 
                     const ui64 offset = RandomNumber(alphabet.length());
                     const ui64 length = Max(
@@ -780,7 +772,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
                 int readsRemaining = 111;
                 while (readsRemaining--) {
-                    SleepForRandomDurationMs(0, 10);
+                    SleepForRandomDurationMs(10);
 
                     auto request = std::make_shared<NProto::TReadDataRequest>();
                     request->SetHandle(0);
