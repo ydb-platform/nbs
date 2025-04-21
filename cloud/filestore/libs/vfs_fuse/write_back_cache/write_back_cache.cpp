@@ -32,7 +32,7 @@ private:
     using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
     using TWriteDataEntryPart = TWriteBackCache::TWriteDataEntryPart;
 
-    const std::shared_ptr<TSessionSequencer> Session;
+    const TSessionSequencerPtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
     const TDuration AutomaticFlushPeriod;
@@ -81,7 +81,7 @@ public:
             TDuration automaticFlushPeriod,
             const TString& filePath,
             ui32 capacityBytes)
-        : Session(std::make_shared<TSessionSequencer>(std::move(session)))
+        : Session(CreateSessionSequencer(std::move(session)))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , AutomaticFlushPeriod(automaticFlushPeriod)

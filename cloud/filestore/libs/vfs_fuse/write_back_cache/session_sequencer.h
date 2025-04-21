@@ -61,4 +61,10 @@ private:
     void QueueOrExecuteRequest(TRequest request);
 };
 
+using TSessionSequencerPtr = std::shared_ptr<TSessionSequencer>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TSessionSequencerPtr CreateSessionSequencer(IFileStorePtr session);
+
 }   // namespace NCloud::NFileStore::NFuse

@@ -209,4 +209,11 @@ void TSessionSequencer::QueueOrExecuteRequest(TRequest request)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TSessionSequencerPtr CreateSessionSequencer(IFileStorePtr session)
+{
+    return std::make_shared<TSessionSequencer>(std::move(session));
+}
+
 }   // namespace NCloud::NFileStore::NFuse
