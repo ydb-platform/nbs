@@ -121,29 +121,29 @@ TFuture<NProto::TWriteDataResponse> TSessionSequencer::WriteData(
 }
 
 // should be protected by |Lock|
-bool TSessionSequencer::CanExecuteRequest(const TRequest& request)
+bool TSessionSequencer::CanExecuteRequest(const TRequest& request) const
 {
     for (const auto& [_, otherRequest]: InFlightRequests) {
+        if (request.Handle != otherRequest.Handle) {
+            // TODO(svartmetal): optimise, use separate buckets for
+            // different handles
+            //
+            // requests to different handles should not affect each other
+            continue;
+        }
+
+        if (request.IsRead && otherRequest.IsRead) {
+            // skip this overlapping as it does not cause inconsistency
+            continue;
+        }
+
         const auto offset = Max(request.Offset, otherRequest.Offset);
         const auto end = Min(
             request.Offset + request.Length,
             otherRequest.Offset + otherRequest.Length);
 
-        // overlaps with one of the requests in-flight
         if (offset < end) {
-            if (request.Handle != otherRequest.Handle) {
-                // TODO(svartmetal): optimise, use separate buckets for
-                // different handles
-                //
-                // requests to different handles should not affect each other
-                continue;
-            }
-
-            if (request.IsRead && otherRequest.IsRead) {
-                // skip this overlapping as it does not cause inconsistency
-                continue;
-            }
-
+            // overlaps with one of the requests in-flight
             return false;
         }
     }
@@ -170,24 +170,20 @@ auto TSessionSequencer::TakeNextRequestToExecute() -> std::optional<TRequest>
 
 void TSessionSequencer::OnRequestFinished(ui64 id)
 {
-    std::optional<TRequest> nextRequest;
+    TVector<TRequest> nextRequests;
 
     with_lock (Lock) {
         Y_DEBUG_ABORT_UNLESS(InFlightRequests.count(id) == 1);
         InFlightRequests.erase(id);
 
-        if (WaitingRequests.empty()) {
-            return;
-        }
-
-        nextRequest = TakeNextRequestToExecute();
-        if (nextRequest) {
-            InFlightRequests[nextRequest->Id] = *nextRequest;
+        while (auto request = TakeNextRequestToExecute()) {
+            InFlightRequests[request->Id] = *request;
+            nextRequests.push_back(std::move(*request));
         }
     }
 
-    if (nextRequest) {
-        nextRequest->Execute();
+    for (const auto& request: nextRequests) {
+        request.Execute();
     }
 }
 

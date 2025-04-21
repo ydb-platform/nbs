@@ -52,7 +52,7 @@ public:
         std::shared_ptr<NProto::TWriteDataRequest> protoRequest);
 
 private:
-    bool CanExecuteRequest(const TRequest& request);
+    bool CanExecuteRequest(const TRequest& request) const;
 
     std::optional<TRequest> TakeNextRequestToExecute();
 
