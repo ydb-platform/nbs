@@ -1,4 +1,4 @@
-#include "multi_agent_write_blocks_actor.h"
+#include "multi_agent_write_device_blocks_actor.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 
@@ -10,12 +10,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 LocalWriteCookie = 0;
-constexpr ui64 RemoteWriteCookie = 1;
-
 std::unique_ptr<TEvDiskAgent::TEvWriteDeviceBlocksRequest> PrepareRequest(
-    const NProto::TWriteDeviceBlocksRequest& source,
-    const NProto::TAdditionalTarget& additionalTarget)
+    NProto::TWriteDeviceBlocksRequest& source,
+    const NProto::TReplicationTarget& additionalTarget,
+    bool takeBlocks)
 {
     auto result = std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
 
@@ -24,7 +22,11 @@ std::unique_ptr<TEvDiskAgent::TEvWriteDeviceBlocksRequest> PrepareRequest(
     rec.SetDeviceUUID(additionalTarget.GetDeviceUUID());
     rec.SetStartIndex(additionalTarget.GetStartIndex());
     rec.SetBlockSize(source.GetBlockSize());
-    *rec.MutableBlocks() = source.GetBlocks();
+    if (takeBlocks) {
+        rec.MutableBlocks()->Swap(source.MutableBlocks());
+    } else {
+        *rec.MutableBlocks() = source.GetBlocks();
+    }
     rec.SetVolumeRequestId(source.GetVolumeRequestId());
     rec.SetMultideviceRequest(source.GetMultideviceRequest());
 
@@ -33,7 +35,7 @@ std::unique_ptr<TEvDiskAgent::TEvWriteDeviceBlocksRequest> PrepareRequest(
 
 }   // namespace
 
-TMultiAgentWriteBlocksActor::TMultiAgentWriteBlocksActor(
+TMultiAgentWriteDeviceBlocksActor::TMultiAgentWriteDeviceBlocksActor(
         const TActorId& parent,
         TRequestInfoPtr requestInfo,
         NProto::TWriteDeviceBlocksRequest request,
@@ -44,16 +46,28 @@ TMultiAgentWriteBlocksActor::TMultiAgentWriteBlocksActor(
     , Request(std::move(request))
 {}
 
-void TMultiAgentWriteBlocksActor::Bootstrap(const TActorContext& ctx)
+void TMultiAgentWriteDeviceBlocksActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    Responses.resize(Request.GetAdditionalTargets().size() + 1);
+    Responses.resize(Request.GetReplicationTargets().size());
 
-    // Send write requests to remote agents
-    ui64 requestId = RemoteWriteCookie;
-    for (const auto& additionalTarget: Request.GetAdditionalTargets()) {
-        auto remoteWrite = PrepareRequest(Request, additionalTarget);
+    if (Request.GetDeviceUUID()) {
+        auto error = MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "A multi-agent write request should have an "
+                                "empty deviceUUID, but it is set to "
+                             << Request.GetDeviceUUID().Quote());
+        ReplyAndDie(ctx, std::move(error));
+        return;
+    }
+
+    // Send write requests to agents
+    ui64 requestId = 0;
+    for (const auto& additionalTarget: Request.GetReplicationTargets()) {
+        const bool lastRequest = requestId == Responses.size() - 1;
+        auto remoteWrite =
+            PrepareRequest(Request, additionalTarget, lastRequest);
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(additionalTarget.GetNodeId()),
@@ -68,29 +82,10 @@ void TMultiAgentWriteBlocksActor::Bootstrap(const TActorContext& ctx)
         ++requestId;
     }
 
-    // Send write request to self
-    {
-        auto localWrite =
-            std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
-
-        Request.MutableAdditionalTargets()->Clear();
-        localWrite->Record = std::move(Request);
-
-        auto event = std::make_unique<IEventHandle>(
-            Parent,
-            ctx.SelfID,
-            localWrite.release(),
-            0,   // flags
-            LocalWriteCookie,
-            nullptr   // forwardOnNondelivery
-        );
-        ctx.Send(event.release());
-    }
-
     ctx.Schedule(MaxRequestTimeout, new NActors::TEvents::TEvWakeup());
 }
 
-void TMultiAgentWriteBlocksActor::ReplyAndDie(
+void TMultiAgentWriteDeviceBlocksActor::ReplyAndDie(
     const NActors::TActorContext& ctx,
     NProto::TError error)
 {
@@ -100,8 +95,8 @@ void TMultiAgentWriteBlocksActor::ReplyAndDie(
 
     // Save responses from all requests.
     for (auto& subresponse: Responses) {
-        auto* sub = response->Record.AddSubResponse();
-        *sub =
+        auto* replicationResponse = response->Record.AddReplicationResponses();
+        *replicationResponse =
             subresponse
                 ? std::move(*subresponse)
                 : MakeError(E_CANCELLED);   // For responses that have not been
@@ -113,7 +108,7 @@ void TMultiAgentWriteBlocksActor::ReplyAndDie(
     Die(ctx);
 }
 
-void TMultiAgentWriteBlocksActor::HandleWriteBlocksResponse(
+void TMultiAgentWriteDeviceBlocksActor::HandleWriteBlocksResponse(
     const TEvDiskAgent::TEvWriteDeviceBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -121,7 +116,7 @@ void TMultiAgentWriteBlocksActor::HandleWriteBlocksResponse(
 
     Responses[ev->Cookie] = msg->GetError();
 
-    if (!SUCCEEDED(msg->GetError().GetCode())) {
+    if (HasError(msg->GetError())) {
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
@@ -135,7 +130,7 @@ void TMultiAgentWriteBlocksActor::HandleWriteBlocksResponse(
     }
 }
 
-void TMultiAgentWriteBlocksActor::HandleWriteBlocksUndelivery(
+void TMultiAgentWriteDeviceBlocksActor::HandleWriteBlocksUndelivery(
     const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -149,14 +144,15 @@ void TMultiAgentWriteBlocksActor::HandleWriteBlocksUndelivery(
     ReplyAndDie(ctx, std::move(error));
 }
 
-void TMultiAgentWriteBlocksActor::HandleTimeout(
+void TMultiAgentWriteDeviceBlocksActor::HandleTimeout(
     const NActors::TEvents::TEvWakeup::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
-    auto error =
-        MakeError(E_TIMEOUT, TStringBuilder() << "WriteDeviceBlocks timeout");
+    auto error = MakeError(
+        E_TIMEOUT,
+        TStringBuilder() << "MultiAgentWriteDeviceBlocks timeout");
 
     for (auto& subResponse: Responses) {
         if (!subResponse) {
@@ -167,7 +163,7 @@ void TMultiAgentWriteBlocksActor::HandleTimeout(
     ReplyAndDie(ctx, std::move(error));
 }
 
-STFUNC(TMultiAgentWriteBlocksActor::StateWork)
+STFUNC(TMultiAgentWriteDeviceBlocksActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(

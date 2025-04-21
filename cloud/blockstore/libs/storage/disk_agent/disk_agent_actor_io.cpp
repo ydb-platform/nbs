@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_blocks_actor.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_device_blocks_actor.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -345,8 +345,8 @@ void TDiskAgentActor::HandleWriteDeviceBlocks(
     using TMethod = TEvDiskAgent::TWriteDeviceBlocksMethod;
 
     auto* msg = ev->Get();
-    if (!msg->Record.GetAdditionalTargets().empty()) {
-        NCloud::Register<TMultiAgentWriteBlocksActor>(
+    if (!msg->Record.GetReplicationTargets().empty()) {
+        NCloud::Register<TMultiAgentWriteDeviceBlocksActor>(
             ctx,
             SelfId(),
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
@@ -370,9 +370,9 @@ void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
     using TMethod = TEvDiskAgent::TWriteDeviceBlocksMethod;
 
     auto* msg = ev->Get();
-    if (!msg->Record.GetAdditionalTargets().empty()) {
+    if (!msg->Record.GetReplicationTargets().empty()) {
         Y_DEBUG_ABORT_UNLESS(!msg->Storage);
-        NCloud::Register<TMultiAgentWriteBlocksActor>(
+        NCloud::Register<TMultiAgentWriteDeviceBlocksActor>(
             ctx,
             SelfId(),
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),

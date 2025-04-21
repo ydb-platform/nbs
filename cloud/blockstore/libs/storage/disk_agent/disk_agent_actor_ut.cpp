@@ -605,22 +605,19 @@ struct TMultiWriteFixture: public NUnitTest::TBaseFixture
 
     auto MultiWriteBlocks(
         TDiskAgentClient& diskAgent,
-        TVector<NProto::TAdditionalTarget> additionalTargets,
-        const TString& uuid,
-        TBlockRange64 range,
+        TVector<NProto::TReplicationTarget> replicationTargets,
+        size_t blockCount,
         char pattern)
     {
         auto request =
             std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
         request->Record.MutableHeaders()->SetClientId(ClientId);
-        request->Record.SetDeviceUUID(uuid);
-        request->Record.SetStartIndex(range.Start);
         request->Record.SetBlockSize(DefaultBlockSize);
-        for (auto& target: additionalTargets) {
-            request->Record.MutableAdditionalTargets()->Add(std::move(target));
+        for (auto& target: replicationTargets) {
+            request->Record.MutableReplicationTargets()->Add(std::move(target));
         }
 
-        for (size_t i = 0; i < range.Size(); ++i) {
+        for (size_t i = 0; i < blockCount; ++i) {
             request->Record.MutableBlocks()->AddBuffers(
                 TString(BlockSize, pattern));
         }
@@ -5994,31 +5991,38 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST_F(ShouldPerformMultiWrite, TMultiWriteFixture)
     {
-        TVector<NProto::TAdditionalTarget> additionalTargets;
+        TVector<NProto::TReplicationTarget> replicationTargets;
         {
-            NProto::TAdditionalTarget target;
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent1->GetNodeId());
+            target.SetDeviceUUID("DA1-1");
+            target.SetStartIndex(1);
+            replicationTargets.push_back(std::move(target));
+        }
+        {
+            NProto::TReplicationTarget target;
             target.SetNodeId(DiskAgent2->GetNodeId());
             target.SetDeviceUUID("DA2-1");
             target.SetStartIndex(2);
-            additionalTargets.push_back(std::move(target));
+            replicationTargets.push_back(std::move(target));
         }
         {
-            NProto::TAdditionalTarget target;
+            NProto::TReplicationTarget target;
             target.SetNodeId(DiskAgent3->GetNodeId());
             target.SetDeviceUUID("DA3-1");
             target.SetStartIndex(3);
-            additionalTargets.push_back(std::move(target));
+            replicationTargets.push_back(std::move(target));
         }
         auto response = MultiWriteBlocks(
             *DiskAgent1,
-            std::move(additionalTargets),
-            "DA1-1",
-            TBlockRange64::WithLength(1, 5),
+            std::move(replicationTargets),
+            5,
             'a');
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
         for (size_t i = 0; i < 3; ++i) {
-            const auto& subResponse = response->Record.GetSubResponse(i);
+            const auto& subResponse =
+                response->Record.GetReplicationResponses(i);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, subResponse.GetCode());
         }
 
@@ -6071,41 +6075,50 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         };
         auto oldFilter = Runtime->SetEventFilter(failRemoteRequest);
 
-        TVector<NProto::TAdditionalTarget> additionalTargets;
+        TVector<NProto::TReplicationTarget> replicationTargets;
         {
-            NProto::TAdditionalTarget target;
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent1->GetNodeId());
+            target.SetDeviceUUID("DA1-1");
+            target.SetStartIndex(1);
+            replicationTargets.push_back(std::move(target));
+        }
+        {
+            NProto::TReplicationTarget target;
             target.SetNodeId(DiskAgent2->GetNodeId());
             target.SetDeviceUUID("DA2-1");
             target.SetStartIndex(2);
-            additionalTargets.push_back(std::move(target));
+            replicationTargets.push_back(std::move(target));
         }
         {
-            NProto::TAdditionalTarget target;
+            NProto::TReplicationTarget target;
             target.SetNodeId(DiskAgent3->GetNodeId());
             target.SetDeviceUUID("DA3-1");
             target.SetStartIndex(3);
-            additionalTargets.push_back(std::move(target));
+            replicationTargets.push_back(std::move(target));
         }
         auto response = MultiWriteBlocks(
             *DiskAgent1,
-            std::move(additionalTargets),
-            "DA1-1",
-            TBlockRange64::WithLength(1, 5),
+            std::move(replicationTargets),
+            5,
             'a');
 
         UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetError().GetCode());
         {
-            const auto& subResponse1 = response->Record.GetSubResponse(0);
+            const auto& subResponse1 =
+                response->Record.GetReplicationResponses(0);
             UNIT_ASSERT(
                 subResponse1.GetCode() == S_OK ||
                 subResponse1.GetCode() == E_CANCELLED);
         }
         {
-            const auto& subResponse2 = response->Record.GetSubResponse(1);
+            const auto& subResponse2 =
+                response->Record.GetReplicationResponses(1);
             UNIT_ASSERT_VALUES_EQUAL(E_IO, subResponse2.GetCode());
         }
         {
-            const auto& subResponse3 = response->Record.GetSubResponse(2);
+            const auto& subResponse3 =
+                response->Record.GetReplicationResponses(2);
             UNIT_ASSERT(
                 subResponse3.GetCode() == S_OK ||
                 subResponse3.GetCode() == E_CANCELLED);
@@ -6114,28 +6127,36 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST_F(ShouldFailMultiWriteWhenLocalFail, TMultiWriteFixture)
     {
-        TVector<NProto::TAdditionalTarget> additionalTargets;
+        TVector<NProto::TReplicationTarget> replicationTargets;
         {
-            NProto::TAdditionalTarget target;
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent1->GetNodeId());
+            target.SetDeviceUUID("DA1-1");
+            target.SetStartIndex(1024);
+            replicationTargets.push_back(std::move(target));
+        }
+        {
+            NProto::TReplicationTarget target;
             target.SetNodeId(DiskAgent2->GetNodeId());
             target.SetDeviceUUID("DA2-1");
             target.SetStartIndex(2);
-            additionalTargets.push_back(std::move(target));
+            replicationTargets.push_back(std::move(target));
         }
         auto response = MultiWriteBlocks(
             *DiskAgent1,
-            std::move(additionalTargets),
-            "DA1-1",
-            TBlockRange64::WithLength(1024, 5),
+            std::move(replicationTargets),
+            5,
             'a');
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetError().GetCode());
         {
-            const auto& subResponse1 = response->Record.GetSubResponse(0);
+            const auto& subResponse1 =
+                response->Record.GetReplicationResponses(0);
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, subResponse1.GetCode());
         }
         {
-            const auto& subResponse2 = response->Record.GetSubResponse(1);
+            const auto& subResponse2 =
+                response->Record.GetReplicationResponses(1);
             UNIT_ASSERT(
                 subResponse2.GetCode() == S_OK ||
                 subResponse2.GetCode() == E_CANCELLED);
@@ -6171,54 +6192,69 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         Runtime->SetEventFilter(undeliverWrite);
 
-        TVector<NProto::TAdditionalTarget> additionalTargets;
+        TVector<NProto::TReplicationTarget> replicationTargets;
         {
-            NProto::TAdditionalTarget target;
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent1->GetNodeId());
+            target.SetDeviceUUID("DA1-1");
+            target.SetStartIndex(1);
+            replicationTargets.push_back(std::move(target));
+        }
+        {
+            NProto::TReplicationTarget target;
             target.SetNodeId(DiskAgent2->GetNodeId());
             target.SetDeviceUUID("DA2-1");
             target.SetStartIndex(2);
-            additionalTargets.push_back(std::move(target));
+            replicationTargets.push_back(std::move(target));
         }
         auto response = MultiWriteBlocks(
             *DiskAgent1,
-            std::move(additionalTargets),
-            "DA1-1",
-            TBlockRange64::WithLength(1, 5),
+            std::move(replicationTargets),
+            5,
             'a');
 
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
         {
-            const auto& subResponse1 = response->Record.GetSubResponse(0);
+            const auto& subResponse1 =
+                response->Record.GetReplicationResponses(0);
             UNIT_ASSERT(
                 subResponse1.GetCode() == S_OK ||
                 subResponse1.GetCode() == E_CANCELLED);
         }
         {
-            const auto& subResponse2 = response->Record.GetSubResponse(1);
+            const auto& subResponse2 =
+                response->Record.GetReplicationResponses(1);
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, subResponse2.GetCode());
         }
     }
 
     Y_UNIT_TEST_F(ShouldPerformMultiWriteWithOffloading, TMultiWriteFixture)
     {
-        TVector<NProto::TAdditionalTarget> additionalTargets;
+        TVector<NProto::TReplicationTarget> replicationTargets;
         {
-            NProto::TAdditionalTarget target;
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent2->GetNodeId());
+            target.SetDeviceUUID("DA2-1");
+            target.SetStartIndex(2);
+            replicationTargets.push_back(std::move(target));
+        }
+        {
+            NProto::TReplicationTarget target;
             target.SetNodeId(DiskAgent3->GetNodeId());
             target.SetDeviceUUID("DA3-1");
             target.SetStartIndex(3);
-            additionalTargets.push_back(std::move(target));
+            replicationTargets.push_back(std::move(target));
         }
         auto response = MultiWriteBlocks(
             *DiskAgent2,
-            std::move(additionalTargets),
-            "DA2-1",
-            TBlockRange64::WithLength(2, 5),
+            std::move(replicationTargets),
+            5,
             'a');
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
         for (size_t i = 0; i < 2; ++i) {
-            const auto& subResponse = response->Record.GetSubResponse(i);
+            const auto& subResponse =
+                response->Record.GetReplicationResponses(i);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, subResponse.GetCode());
         }
 
@@ -6240,24 +6276,31 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         ShouldPerformMultiWriteWithOffloadingAndAlloc,
         TMultiWriteFixture)
     {
-        TVector<NProto::TAdditionalTarget> additionalTargets;
+        TVector<NProto::TReplicationTarget> replicationTargets;
         {
-            NProto::TAdditionalTarget target;
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent3->GetNodeId());
+            target.SetDeviceUUID("DA3-1");
+            target.SetStartIndex(3);
+            replicationTargets.push_back(std::move(target));
+        }
+        {
+            NProto::TReplicationTarget target;
             target.SetNodeId(DiskAgent2->GetNodeId());
             target.SetDeviceUUID("DA2-1");
             target.SetStartIndex(2);
-            additionalTargets.push_back(std::move(target));
+            replicationTargets.push_back(std::move(target));
         }
         auto response = MultiWriteBlocks(
             *DiskAgent3,
-            std::move(additionalTargets),
-            "DA3-1",
-            TBlockRange64::WithLength(3, 5),
+            std::move(replicationTargets),
+            5,
             'a');
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
         for (size_t i = 0; i < 2; ++i) {
-            const auto& subResponse = response->Record.GetSubResponse(i);
+            const auto& subResponse =
+                response->Record.GetReplicationResponses(i);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, subResponse.GetCode());
         }
 
@@ -6294,19 +6337,25 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         Runtime->SetEventFilter(timeoutWrite);
 
-        TVector<NProto::TAdditionalTarget> additionalTargets;
+        TVector<NProto::TReplicationTarget> replicationTargets;
         {
-            NProto::TAdditionalTarget target;
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent1->GetNodeId());
+            target.SetDeviceUUID("DA1-1");
+            target.SetStartIndex(1);
+            replicationTargets.push_back(std::move(target));
+        }
+        {
+            NProto::TReplicationTarget target;
             target.SetNodeId(DiskAgent2->GetNodeId());
             target.SetDeviceUUID("DA2-1");
             target.SetStartIndex(2);
-            additionalTargets.push_back(std::move(target));
+            replicationTargets.push_back(std::move(target));
         }
         auto response = MultiWriteBlocks(
             *DiskAgent1,
-            std::move(additionalTargets),
-            "DA1-1",
-            TBlockRange64::WithLength(1, 5),
+            std::move(replicationTargets),
+            5,
             'a');
 
         Runtime->AdvanceCurrentTime(TDuration::Seconds(5));
@@ -6315,13 +6364,49 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetError().GetCode());
 
         {
-            const auto& subResponse1 = response->Record.GetSubResponse(0);
+            const auto& subResponse1 =
+                response->Record.GetReplicationResponses(0);
             UNIT_ASSERT(subResponse1.GetCode() == S_OK);
         }
         {
-            const auto& subResponse2 = response->Record.GetSubResponse(1);
+            const auto& subResponse2 =
+                response->Record.GetReplicationResponses(1);
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, subResponse2.GetCode());
         }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldReponseWithArgumentErrorForMultiWrite,
+        TMultiWriteFixture)
+    {
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+        request->Record.MutableHeaders()->SetClientId(ClientId);
+        request->Record.SetBlockSize(DefaultBlockSize);
+        // Response E_ARGUMENT when the device UUID is specified.
+        request->Record.SetDeviceUUID("SomeUUID");
+        {
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent1->GetNodeId());
+            target.SetDeviceUUID("DA1-1");
+            target.SetStartIndex(1);
+            request->Record.MutableReplicationTargets()->Add(std::move(target));
+        }
+        {
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent2->GetNodeId());
+            target.SetDeviceUUID("DA2-1");
+            target.SetStartIndex(2);
+            request->Record.MutableReplicationTargets()->Add(std::move(target));
+        }
+        request->Record.MutableBlocks()->AddBuffers(TString(BlockSize, 'a'));
+
+        DiskAgent1->SendRequest(std::move(request));
+        auto response =
+            DiskAgent1
+                ->RecvResponse<TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetError().GetCode());
     }
 }
 

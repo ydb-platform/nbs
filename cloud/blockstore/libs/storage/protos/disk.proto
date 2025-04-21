@@ -567,7 +567,7 @@ message TDiskRegistryStateBackup
 ////////////////////////////////////////////////////////////////////////////////
 
 // Used to propagate write request to multiple disk agents.
-message TAdditionalTarget
+message TReplicationTarget
 {
     // NodeId of target host.
     uint32 NodeId = 1;
@@ -949,7 +949,7 @@ message TWriteDeviceBlocksRequest
     bool MultideviceRequest = 8;
 
     // Used to propagate request to multiple disk-agents.
-    repeated TAdditionalTarget AdditionalTargets = 9;
+    repeated TReplicationTarget ReplicationTargets = 9;
 }
 
 message TWriteDeviceBlocksResponse
@@ -958,7 +958,7 @@ message TWriteDeviceBlocksResponse
     NCloud.NProto.TError Error = 1;
 
     // Used to validate multi-agent requests.
-    repeated NCloud.NProto.TError SubResponse = 2;
+    repeated NCloud.NProto.TError ReplicationResponses = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

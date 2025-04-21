@@ -10,11 +10,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Sends a write request to the disk-agents specified in AdditionalTargets and
-// this disk-agent (parent actor). Then wait for all writes to be completed and
-// send a response.
-class TMultiAgentWriteBlocksActor final
-    : public NActors::TActorBootstrapped<TMultiAgentWriteBlocksActor>
+// Sends a write request to the disk-agents specified in ReplicationTargets.
+// Then wait for all writes to be completed and send a response.
+class TMultiAgentWriteDeviceBlocksActor final
+    : public NActors::TActorBootstrapped<TMultiAgentWriteDeviceBlocksActor>
 {
 private:
     const NActors::TActorId Parent;
@@ -25,7 +24,7 @@ private:
     TVector<std::optional<NProto::TError>> Responses;
 
 public:
-    TMultiAgentWriteBlocksActor(
+    TMultiAgentWriteDeviceBlocksActor(
         const NActors::TActorId& parent,
         TRequestInfoPtr requestInfo,
         NProto::TWriteDeviceBlocksRequest request,

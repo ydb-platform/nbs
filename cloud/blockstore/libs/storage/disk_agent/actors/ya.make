@@ -5,7 +5,7 @@ SRCS(
     direct_copy_actor.cpp
     io_request_parser.cpp
     session_cache_actor.cpp
-    multi_agent_write_blocks_actor.cpp
+    multi_agent_write_device_blocks_actor.cpp
 )
 
 PEERDIR(

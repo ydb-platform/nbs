@@ -83,7 +83,7 @@ private:
         const bool canUseAllocator =
             Allocator &&
             // Don't reallocate if we have to send the request to other agents.
-            request->Record.GetAdditionalTargets().empty();
+            request->Record.GetReplicationTargets().empty();
 
         if (canUseAllocator) {
             const auto& buffers = request->Record.GetBlocks().GetBuffers();
