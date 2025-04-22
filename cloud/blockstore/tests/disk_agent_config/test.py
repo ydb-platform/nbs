@@ -53,7 +53,6 @@ def start_nbs_daemon(ydb):
     cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
     cfg.files["storage"].NonReplicatedAgentMinTimeout = 600000  # 10min
     cfg.files["storage"].NonReplicatedAgentMaxTimeout = 600000  # 10min
-    cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
 
     daemon = start_nbs(cfg)
 
@@ -406,82 +405,3 @@ def test_disable_io_for_broken_devices(
     bkp = _backup(client)
     for d in bkp['Agents'][0]['Devices']:
         assert d.get('SerialNumber') == 'XXX'
-
-
-def test_should_mount_volume_with_unknown_devices(
-        nbs,
-        data_path,
-        agent_ids,
-        disk_agent_configurators):
-
-    logger = logging.getLogger("client")
-    logger.setLevel(logging.DEBUG)
-
-    client = CreateClient(f"localhost:{nbs.port}", log=logger)
-    agent_id = agent_ids[0]
-    configurator = disk_agent_configurators[0]
-
-    data_path_for_agent = _get_agent_data_path(agent_id, data_path)
-
-    with open(os.path.join(data_path_for_agent, 'NVMENBS02'), 'wb') as f:
-        os.truncate(f.fileno(), DEVICES_PER_PATH * (DEVICE_SIZE + 4096))
-
-    # run an agent
-    agent = start_disk_agent(configurator, name=agent_id)
-
-    agent.wait_for_registration()
-    r = _add_host(client, agent_id)
-    assert len(r.ActionResults) == 1
-    assert r.ActionResults[0].Result.Code == 0
-
-    _wait_devices(client)
-
-    # create a volume
-    client.create_volume(
-        disk_id="vol1",
-        block_size=4096,
-        blocks_count=2*DEVICES_PER_PATH*DEVICE_SIZE//4096,
-        storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
-        cloud_id="test")
-
-    bkp = _backup(client)
-    assert len(bkp['Disks']) == 1
-    assert len(bkp['Disks'][0]['DeviceUUIDs']) == 12
-    assert len(bkp['Agents']) == 1
-
-    session = Session(client, "vol1", "")
-    session.mount_volume()
-
-    # IO should work
-    session.write_blocks(0, [b'\1' * 4096 * 2])
-    blocks = session.read_blocks(0, 1, checkpoint_id="")
-    assert len(blocks) == 1
-
-    session.unmount_volume()
-
-    # stop the agent
-    agent.kill()
-
-    time.sleep(5)
-
-    configurator.files["disk-agent"].\
-        StorageDiscoveryConfig.PathConfigs[0].PathRegExp = f"{data_path_for_agent}/NVMENBS([0-1]+)"
-    configurator.files["disk-agent"].CachedConfigPath = ""
-
-    agent = start_disk_agent(configurator, name=agent_id)
-    # assert false
-    agent.wait_for_registration()
-
-    r = _add_host(client, agent_id)
-    assert len(r.ActionResults) == 1
-    assert r.ActionResults[0].Result.Code == 0
-
-    session.mount_volume()
-    except_count = 0
-    for i in range(2*DEVICES_PER_PATH):
-        try:
-            blocks = session.read_blocks(i*DEVICE_SIZE//4096, 1, checkpoint_id="")
-        except Exception:
-            except_count += 1
-    assert except_count == DEVICES_PER_PATH
-    session.unmount_volume()
