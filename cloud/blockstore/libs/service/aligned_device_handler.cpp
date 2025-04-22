@@ -482,6 +482,15 @@ void TAlignedDeviceHandler::ReportCriticalError(
         return;
     }
 
+    if (error.GetCode() == E_IO_SILENT &&
+        error.GetMessage().Contains(
+            "Request WriteBlocks is not allowed for client"))
+    {
+        // Don't raise crit event when client try to write with read-only mount.
+        // See cloud/blockstore/libs/storage/volume/model/client_state.cpp
+        return;
+    }
+
     if (IsReliableMediaKind) {
         CriticalErrorReported.store(true);
     } else {
