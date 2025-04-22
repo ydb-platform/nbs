@@ -3,9 +3,10 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_device_blocks_actor.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -343,6 +344,17 @@ void TDiskAgentActor::HandleWriteDeviceBlocks(
 
     using TMethod = TEvDiskAgent::TWriteDeviceBlocksMethod;
 
+    auto* msg = ev->Get();
+    if (!msg->Record.GetReplicationTargets().empty()) {
+        NCloud::Register<TMultiAgentWriteDeviceBlocksActor>(
+            ctx,
+            SelfId(),
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+            std::move(msg->Record),
+            GetMaxRequestTimeout());
+        return;
+    }
+
     if (CheckIntersection<TMethod>(ctx, ev)) {
         return;
     }
@@ -357,11 +369,21 @@ void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
 
     using TMethod = TEvDiskAgent::TWriteDeviceBlocksMethod;
 
-    if (CheckIntersection<TMethod>(ctx, ev)) {
+    auto* msg = ev->Get();
+    if (!msg->Record.GetReplicationTargets().empty()) {
+        Y_DEBUG_ABORT_UNLESS(!msg->Storage);
+        NCloud::Register<TMultiAgentWriteDeviceBlocksActor>(
+            ctx,
+            SelfId(),
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+            std::move(msg->Record),
+            GetMaxRequestTimeout());
         return;
     }
 
-    auto* msg = ev->Get();
+    if (CheckIntersection<TMethod>(ctx, ev)) {
+        return;
+    }
 
     if (!msg->Storage) {
         PerformIO<TMethod>(ctx, ev, &TDiskAgentState::Write);

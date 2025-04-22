@@ -285,10 +285,9 @@ TTestEnvBuilder& TTestEnvBuilder::With(NProto::TDiskAgentConfig config)
     return *this;
 }
 
-TTestEnvBuilder& TTestEnvBuilder::WithSecondAgent(
-    NProto::TDiskAgentConfig config)
+TTestEnvBuilder& TTestEnvBuilder::WithAgents(TVector<NProto::TDiskAgentConfig> configs)
 {
-    SecondAgentConfigProto = std::move(config);
+    AdditionalAgentConfigsProto = std::move(configs);
     return *this;
 }
 
@@ -390,18 +389,18 @@ TTestEnv TTestEnvBuilder::Build()
         NvmeManager);
 
     const ui32 firstDiskAgentNodeIndex = 0;
-    const ui32 secondDiskAgentNodeIndex = 1;
 
     Runtime.AddLocalService(
         MakeDiskAgentServiceId(Runtime.GetNodeId(firstDiskAgentNodeIndex)),
         TActorSetupCmd(diskAgent.release(), TMailboxType::Simple, 0),
         firstDiskAgentNodeIndex);
 
-    if (SecondAgentConfigProto.GetEnabled()) {
-        auto diskAgent2 = CreateDiskAgent(
+    ui32 additionalDiskAgentNodeIndex = 1;
+    for (auto& additionalAgent : AdditionalAgentConfigsProto) {
+        auto diskAgent = CreateDiskAgent(
             config,
             std::make_shared<TDiskAgentConfig>(
-                std::move(SecondAgentConfigProto),
+                std::move(additionalAgent),
                 "the-rack",
                 0),
             nullptr,   // rdmaConfig
@@ -415,9 +414,10 @@ TTestEnv TTestEnvBuilder::Build()
             NvmeManager);
 
         Runtime.AddLocalService(
-            MakeDiskAgentServiceId(Runtime.GetNodeId(secondDiskAgentNodeIndex)),
-            TActorSetupCmd(diskAgent2.release(), TMailboxType::Simple, 0),
-            secondDiskAgentNodeIndex);
+            MakeDiskAgentServiceId(Runtime.GetNodeId(additionalDiskAgentNodeIndex)),
+            TActorSetupCmd(diskAgent.release(), TMailboxType::Simple, 0),
+            additionalDiskAgentNodeIndex);
+        ++additionalDiskAgentNodeIndex;
     }
 
     SetupTabletServices(Runtime);
