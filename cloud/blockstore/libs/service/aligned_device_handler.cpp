@@ -483,8 +483,10 @@ void TAlignedDeviceHandler::ReportCriticalError(
     }
 
     if (error.GetCode() == E_IO_SILENT &&
-        error.GetMessage().Contains(
-            "Request WriteBlocks is not allowed for client"))
+        (error.GetMessage().Contains(
+             "Request WriteBlocks is not allowed for client") ||
+         error.GetMessage().Contains(
+             "Request ZeroBlocks is not allowed for client")))
     {
         // Don't raise crit event when client try to write with read-only mount.
         // See cloud/blockstore/libs/storage/volume/model/client_state.cpp

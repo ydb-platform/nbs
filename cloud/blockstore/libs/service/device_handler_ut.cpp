@@ -1221,6 +1221,17 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
                 R"(Request WriteBlocks is not allowed for client "xxxx" and volume "yyyyy")"});
         };
 
+        storage->ZeroBlocksHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TZeroBlocksResponse>(TErrorResponse{
+                E_IO_SILENT,
+                R"(Request ZeroBlocks is not allowed for client "xxxx" and volume "yyyyy")"});
+        };
+
         auto counters = SetupCriticalEvents();
         auto reliableCritEvent = counters->GetCounter(
             "AppCriticalEvents/ErrorWasSentToTheGuestForReliableDisk",
@@ -1231,20 +1242,35 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         reliableCritEvent->Set(0);
         nonReliableCritEvent->Set(0);
+        {
+            auto future = deviceHandlerForReliableDisk->Write(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize,
+                TGuardedSgList(sgList));
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
 
-        auto future = deviceHandlerForReliableDisk->Write(
-            MakeIntrusive<TCallContext>(),
-            0,
-            blockSize,
-            TGuardedSgList(sgList));
-        UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+            future = deviceHandlerForNonReliableDisk->Write(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize,
+                TGuardedSgList(sgList));
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+        }
 
-        future = deviceHandlerForNonReliableDisk->Write(
-            MakeIntrusive<TCallContext>(),
-            0,
-            blockSize,
-            TGuardedSgList(sgList));
-        UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+        {
+            auto future = deviceHandlerForReliableDisk->Zero(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize);
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+
+            future = deviceHandlerForNonReliableDisk->Zero(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize);
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+        }
 
         UNIT_ASSERT_VALUES_EQUAL(0, reliableCritEvent->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, nonReliableCritEvent->Val());
