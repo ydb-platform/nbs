@@ -292,6 +292,8 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(ActiveSessionsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(OrphanSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
 
     REGISTER_AGGREGATABLE_SUM(ReassignCount, EMetricType::MT_ABSOLUTE);
@@ -549,6 +551,8 @@ void TIndexTabletActor::TMetrics::Update(
 
     Store(StatefulSessionsCount, sessionsStats.StatefulSessionsCount);
     Store(StatelessSessionsCount, sessionsStats.StatelessSessionsCount);
+    Store(ActiveSessionsCount, sessionsStats.ActiveSessionsCount);
+    Store(OrphanSessionsCount, sessionsStats.OrphanSessionsCount);
     Store(WritableChannelCount, channelsStats.WritableChannelCount);
     Store(UnwritableChannelCount, channelsStats.UnwritableChannelCount);
     Store(ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);

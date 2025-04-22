@@ -77,6 +77,7 @@ struct TMonSessionInfo
     TString ClientId;
     NProto::TSession ProtoInfo;
     TVector<TSubSession> SubSessions;
+    TInstant Deadline;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -307,6 +308,8 @@ struct TSessionsStats
 {
     ui32 StatefulSessionsCount = 0;
     ui32 StatelessSessionsCount = 0;
+    ui32 ActiveSessionsCount = 0;
+    ui32 OrphanSessionsCount = 0;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -503,6 +503,7 @@ TVector<TMonSessionInfo> TIndexTabletState::GetActiveSessionInfos() const
         info.ClientId = p.first;
         info.ProtoInfo = *p.second;
         info.SubSessions = p.second->SubSessions.GetAllSubSessions();
+        info.Deadline = p.second->Deadline;
     }
     return sessionInfos;
 }
@@ -516,13 +517,19 @@ TVector<TMonSessionInfo> TIndexTabletState::GetOrphanSessionInfos() const
         info.ClientId = session.GetClientId();
         info.ProtoInfo = session;
         info.SubSessions = session.SubSessions.GetAllSubSessions();
+        info.Deadline = session.Deadline;
     }
     return sessionInfos;
 }
 
 TSessionsStats TIndexTabletState::CalculateSessionsStats() const
 {
-    TSessionsStats stats;
+    TSessionsStats stats{
+        .ActiveSessionsCount = static_cast<ui32>(Impl->SessionByClient.size()),
+        // Note: the Size() of TIntrusiveList has linear complexity yet it is
+        // negligible as orphan sessions are way too uncommon
+        .OrphanSessionsCount = static_cast<ui32>(Impl->OrphanSessions.Size()),
+    };
 
     // recalculating these stats on purpose to be able to perform basic
     // validation of the counters (UsedSessionsCount should be equal to the sum
