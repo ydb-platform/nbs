@@ -31,15 +31,18 @@ public:
     {
         Opts.AddLongOption("session-id")
             .RequiredArgument("SESSION_ID")
-            .StoreResult(&SessionId);
+            .StoreResult(&SessionId)
+            .Required();
 
         Opts.AddLongOption("client-id")
             .RequiredArgument("CLIENT_ID")
-            .StoreResult(&ClientId);
+            .StoreResult(&ClientId)
+            .Required();
 
         Opts.AddLongOption("seq-no")
             .RequiredArgument("SEQ_NO")
-            .StoreResult(&SeqNo);
+            .StoreResult(&SeqNo)
+            .Required();
     }
 
     bool Execute() override
