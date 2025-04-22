@@ -486,6 +486,8 @@ void TAlignedDeviceHandler::ReportCriticalError(
         (error.GetMessage().Contains(
              "Request WriteBlocks is not allowed for client") ||
          error.GetMessage().Contains(
+             "Request WriteBlocksLocal is not allowed for client") ||
+         error.GetMessage().Contains(
              "Request ZeroBlocks is not allowed for client")))
     {
         // Don't raise crit event when client try to write with read-only mount.
