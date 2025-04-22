@@ -19,4 +19,6 @@ message CreateFilesystemRequest {
     types.FilesystemKind Kind = 7;
 }
 
-message CreateFilesystemTaskState {}
+message CreateFilesystemTaskState {
+    string CreateExternalFilesystemTaskID = 1;
+}

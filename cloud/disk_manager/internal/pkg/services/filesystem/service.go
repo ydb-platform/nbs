@@ -40,6 +40,8 @@ func fsKindToString(kind types.FilesystemKind) string {
 		return "ssd"
 	case types.FilesystemKind_FILESYSTEM_KIND_HDD:
 		return "hdd"
+	case types.FilesystemKind_FILESYSTEM_KIND_EXTERNAL:
+		return "external"
 	}
 	return "unknown"
 }

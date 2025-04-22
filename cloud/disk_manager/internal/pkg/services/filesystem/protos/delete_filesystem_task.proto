@@ -12,4 +12,6 @@ message DeleteFilesystemRequest {
     FilesystemId Filesystem = 1;
 }
 
-message DeleteFilesystemTaskState {}
+message DeleteFilesystemTaskState {
+    string DeleteExternalFilesystemTaskID = 1;
+}
