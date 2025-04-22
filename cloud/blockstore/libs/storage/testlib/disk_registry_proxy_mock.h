@@ -322,7 +322,17 @@ private:
             response->Record.SetMuteIOErrors(disk.MuteIOErrors);
         }
 
-       return response;
+        THashSet<TString> unavailableAgentIdsForDisk;
+        for (const auto& device: disk.Devices) {
+            if (State->UnavailableAgentIds.contains(device.GetAgentId())) {
+                unavailableAgentIdsForDisk.emplace(device.GetAgentId());
+            }
+        }
+        response->Record.MutableUnavailableAgentIds()->Assign(
+            std::make_move_iterator(unavailableAgentIdsForDisk.begin()),
+            std::make_move_iterator(unavailableAgentIdsForDisk.end()));
+
+        return response;
     }
 
     void HandleDeallocateDisk(

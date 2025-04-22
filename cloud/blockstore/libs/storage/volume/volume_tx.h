@@ -155,6 +155,7 @@ struct TTxVolume
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
         TVector<TString> RemovedLaggingDeviceIds;
+        TVector<TString> UnavailableAgentIds;
         NProto::EVolumeIOMode IOMode;
         TInstant IOModeTs;
         bool MuteIOErrors;
@@ -168,20 +169,21 @@ struct TTxVolume
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
                 TVector<TString> removedLaggingDeviceIds,
+                TVector<TString> unavailableAgentIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
             : TUpdateDevices(
-                TRequestInfoPtr(),
-                std::move(devices),
-                std::move(migrations),
-                std::move(replicas),
-                std::move(freshDeviceIds),
-                std::move(removedLaggingDeviceIds),
-                ioMode,
-                ioModeTs,
-                muteIOErrors
-            )
+                  TRequestInfoPtr(),
+                  std::move(devices),
+                  std::move(migrations),
+                  std::move(replicas),
+                  std::move(freshDeviceIds),
+                  std::move(removedLaggingDeviceIds),
+                  std::move(unavailableAgentIds),
+                  ioMode,
+                  ioModeTs,
+                  muteIOErrors)
         {}
 
         TUpdateDevices(
@@ -191,6 +193,7 @@ struct TTxVolume
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
                 TVector<TString> removedLaggingDeviceIds,
+                TVector<TString> unavailableAgentIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
@@ -200,6 +203,7 @@ struct TTxVolume
             , Replicas(std::move(replicas))
             , FreshDeviceIds(std::move(freshDeviceIds))
             , RemovedLaggingDeviceIds(std::move(removedLaggingDeviceIds))
+            , UnavailableAgentIds(std::move(unavailableAgentIds))
             , IOMode(ioMode)
             , IOModeTs(ioModeTs)
             , MuteIOErrors(muteIOErrors)

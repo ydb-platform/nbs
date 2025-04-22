@@ -888,6 +888,8 @@ public:
         const TString& poolName,
         const ui64 totalByteCount) const;
 
+    TVector<TAgentId> GetUnavailableAgentsForDisk(const TDiskId& diskId);
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);

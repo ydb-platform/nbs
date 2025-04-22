@@ -39,6 +39,11 @@ void TReleaseDevicesActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
+    if (Devices.empty()) {
+        ReplyAndDie(ctx, {});
+        return;
+    }
+
     SortBy(Devices, [](auto& d) { return d.GetNodeId(); });
 
     auto it = Devices.begin();
@@ -144,12 +149,7 @@ void TReleaseDevicesActor::HandleTimeout(
 
     LOG_WARN(ctx, TBlockStoreComponents::VOLUME, err);
 
-    NProto::TError errorToReply;
-    if (!MuteIOErrors) {
-        errorToReply = MakeError(E_TIMEOUT, err);
-    }
-
-    ReplyAndDie(ctx, errorToReply);
+    ReplyAndDie(ctx, MakeError(E_TIMEOUT, err));
 }
 
 STFUNC(TReleaseDevicesActor::StateWork)

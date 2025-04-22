@@ -43,7 +43,7 @@ def start_ydb_cluster():
 
 
 @pytest.fixture(name='nbs')
-def start_nbs_daemon(ydb):
+def start_nbs_daemon(request, ydb):
 
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
@@ -51,8 +51,9 @@ def start_nbs_daemon(ydb):
     cfg.files["storage"].DisableLocalService = 0
     cfg.files["storage"].NonReplicatedDontSuspendDevices = True
     cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
-    cfg.files["storage"].NonReplicatedAgentMinTimeout = 600000  # 10min
-    cfg.files["storage"].NonReplicatedAgentMaxTimeout = 600000  # 10min
+    cfg.files["storage"].NonReplicatedAgentMinTimeout = request.param
+    cfg.files["storage"].NonReplicatedAgentMaxTimeout = request.param
+    cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
 
     daemon = start_nbs(cfg)
 
@@ -173,6 +174,18 @@ def _wait_devices(client):
         time.sleep(1)
 
 
+def _wait_agent_state(client, agent_id, desired_state):
+    while True:
+        bkp = _backup(client)
+        agent = [x for x in bkp["Agents"] if x['AgentId'] == agent_id]
+        assert len(agent) == 1
+
+        if agent[0].get("State") == desired_state:
+            break
+        time.sleep(1)
+
+
+@pytest.mark.parametrize("nbs", [(600000)], indirect=["nbs"])
 def test_change_rack(nbs, agent_ids, disk_agent_configurators):
 
     client = CreateClient(f"localhost:{nbs.port}")
@@ -259,6 +272,7 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
         agent.kill()
 
 
+@pytest.mark.parametrize("nbs", [(600000)], indirect=["nbs"])
 def test_null_backend(nbs, agent_ids, disk_agent_configurators):
 
     client = CreateClient(f"localhost:{nbs.port}")
@@ -290,6 +304,7 @@ def test_null_backend(nbs, agent_ids, disk_agent_configurators):
     session.unmount_volume()
 
 
+@pytest.mark.parametrize("nbs", [(600000)], indirect=["nbs"])
 def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurators):
     assert len(disk_agent_configurators) >= 2
 
@@ -324,6 +339,7 @@ def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurato
         agent.kill()
 
 
+@pytest.mark.parametrize("nbs", [(600000)], indirect=["nbs"])
 def test_disable_io_for_broken_devices(
         nbs,
         data_path,
@@ -405,3 +421,73 @@ def test_disable_io_for_broken_devices(
     bkp = _backup(client)
     for d in bkp['Agents'][0]['Devices']:
         assert d.get('SerialNumber') == 'XXX'
+
+
+@pytest.mark.parametrize("nbs", [(6000)], indirect=["nbs"])
+def test_should_mount_volume_with_unavailable_agents(
+        nbs,
+        data_path,
+        agent_ids,
+        disk_agent_configurators):
+
+    logger = logging.getLogger("client")
+    logger.setLevel(logging.DEBUG)
+
+    client = CreateClient(f"localhost:{nbs.port}", log=logger)
+
+    agents = []
+
+    # run agents
+    for i in range(2):
+        agent_id = agent_ids[i]
+        configurator = disk_agent_configurators[i]
+        agent = start_disk_agent(configurator, name=agent_id)
+        agent.wait_for_registration()
+        r = _add_host(client, agent_id)
+        assert len(r.ActionResults) == 1
+        assert r.ActionResults[0].Result.Code == 0
+
+        agents.append(agent)
+
+    _wait_devices(client)
+
+    # create a volume
+    client.create_volume(
+        disk_id="vol1",
+        block_size=4096,
+        blocks_count=2*DEVICES_PER_PATH*DEVICE_SIZE//4096,
+        storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
+        cloud_id="test")
+
+    bkp = _backup(client)
+    assert len(bkp['Disks']) == 1
+    assert len(bkp['Disks'][0]['DeviceUUIDs']) == 12
+    assert len(bkp['Agents']) == 2
+
+    unavailable_agent = bkp['Agents']
+    unavailable_devices = [x["DeviceUUID"] for x in unavailable_agent[0]["Devices"]]
+    devices = bkp['Disks'][0]['DeviceUUIDs']
+
+    session = Session(client, "vol1", "")
+    session.mount_volume()
+
+    # IO should work
+    session.write_blocks(0, [b'\1' * 4096 * 2])
+    blocks = session.read_blocks(0, 1, checkpoint_id="")
+    assert len(blocks) == 1
+
+    session.unmount_volume()
+
+    # stop the agent
+    agents[0].kill()
+
+    _wait_agent_state(client, agent_ids[0], "AGENT_STATE_UNAVAILABLE")
+
+    session.mount_volume()
+
+    for i in range(2*DEVICES_PER_PATH):
+        if devices[i] in unavailable_devices:
+            continue
+        blocks = session.read_blocks(i*DEVICE_SIZE//4096, 1, checkpoint_id="")
+
+    session.unmount_volume()

@@ -259,6 +259,12 @@ void TDiskRegistryActor::CompleteAddDisk(
         response->Record.SetIOMode(args.IOMode);
         response->Record.SetIOModeTs(args.IOModeTs.MicroSeconds());
         response->Record.SetMuteIOErrors(args.MuteIOErrors);
+
+        auto unavailableAgents =
+            State->GetUnavailableAgentsForDisk(args.DiskId);
+        response->Record.MutableUnavailableAgentIds()->Assign(
+            std::make_move_iterator(unavailableAgents.begin()),
+            std::make_move_iterator(unavailableAgents.end()));
     }
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

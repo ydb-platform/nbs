@@ -478,6 +478,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         disk.IOMode = NProto::VOLUME_IO_ERROR_READ_ONLY;
         disk.IOModeTs = Runtime->GetCurrentTime();
         disk.MuteIOErrors = true;
+        State->UnavailableAgentIds = {disk.Devices.front().GetAgentId()};
 
         auto volume = GetVolumeClient();
         volume.ReallocateDisk();

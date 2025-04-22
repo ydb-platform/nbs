@@ -1092,6 +1092,11 @@ auto TDiskRegistryState::RegisterAgent(
                 "back from unavailable");
 
             ApplyAgentStateChange(db, agent, timestamp, affectedDisks);
+
+            for (const auto& id: diskIds) {
+                AddReallocateRequest(db, id);
+                disksToReallocate.push_back(id);
+            }
         }
 
         UpdateAgent(db, agent);
@@ -5077,7 +5082,20 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
 
     ChangeAgentState(*agent, newState, timestamp, std::move(reason));
 
-    ApplyAgentStateChange(db, *agent, timestamp, affectedDisks);
+    TVector<TDiskId> diskIds;
+
+    ApplyAgentStateChange(db, *agent, timestamp, diskIds);
+
+    if (newState == NProto::AGENT_STATE_UNAVAILABLE && newState != oldState) {
+        for (const auto& diskId: diskIds) {
+            AddReallocateRequest(db, diskId);
+        }
+    }
+
+    affectedDisks.insert(
+        affectedDisks.end(),
+        std::make_move_iterator(diskIds.begin()),
+        std::make_move_iterator(diskIds.end()));
 
     return error;
 }
@@ -7954,6 +7972,33 @@ bool TDiskRegistryState::MigrationCanBeStarted(
     }
 
     return true;
+}
+
+TVector<TDiskRegistryState::TAgentId> TDiskRegistryState::GetUnavailableAgentsForDisk(
+    const TDiskId& diskId)
+{
+    auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return {};
+    }
+
+
+    TVector<TDiskRegistryState::TAgentId> unavailableAgents;
+
+    for (const auto& device: disk->Devices) {
+        auto agentId = DeviceList.FindAgentId(device);
+        const auto* agent = AgentList.FindAgent(agentId);
+        if (!agent) {
+            continue;
+        }
+
+        if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
+            unavailableAgents.emplace_back(agentId);
+        }
+    }
+
+    SortUnique(unavailableAgents);
+    return unavailableAgents;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
