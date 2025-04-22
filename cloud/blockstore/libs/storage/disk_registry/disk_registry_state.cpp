@@ -898,7 +898,7 @@ void TDiskRegistryState::RemoveAgentFromNode(
     NProto::TAgentConfig& agent,
     TInstant timestamp,
     TVector<TDiskId>* affectedDisks,
-    TVector<TDiskId>* disksToReallocate)
+    THashSet<TDiskId>* disksToReallocate)
 {
     Y_DEBUG_ABORT_UNLESS(agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE);
 
@@ -927,8 +927,10 @@ void TDiskRegistryState::RemoveAgentFromNode(
     DeviceList.UpdateDevices(agent, DevicePoolConfigs, nodeId);
 
     for (const auto& id: diskIds) {
-        AddReallocateRequest(db, id);
-        disksToReallocate->push_back(id);
+        auto [_, inserted] = disksToReallocate->emplace(id);
+        if (inserted) {
+            AddReallocateRequest(db, id);
+        }
     }
 
     db.UpdateAgent(agent);
@@ -946,8 +948,16 @@ auto TDiskRegistryState::RegisterAgent(
     }
 
     TVector<TDiskId> affectedDisks;
-    TVector<TDiskId> disksToReallocate;
+    THashSet<TDiskId> disksToReallocate;
     TVector<TString> devicesToDisableIO;
+
+    auto addDiskToReallocate = [&](const TDiskId& diskId)
+    {
+        auto [_, inserted] = disksToReallocate.emplace(diskId);
+        if (inserted) {
+            AddReallocateRequest(db, diskId);
+        }
+    };
 
     try {
         if (auto* buddy = AgentList.FindAgent(config.GetNodeId());
@@ -1078,8 +1088,7 @@ auto TDiskRegistryState::RegisterAgent(
 
         if (r.PrevNodeId != agent.GetNodeId()) {
             for (const auto& id: diskIds) {
-                AddReallocateRequest(db, id);
-                disksToReallocate.push_back(id);
+                addDiskToReallocate(id);
             }
         }
 
@@ -1094,8 +1103,7 @@ auto TDiskRegistryState::RegisterAgent(
             ApplyAgentStateChange(db, agent, timestamp, affectedDisks);
 
             for (const auto& id: diskIds) {
-                AddReallocateRequest(db, id);
-                disksToReallocate.push_back(id);
+                addDiskToReallocate(id);
             }
         }
 
@@ -1108,7 +1116,9 @@ auto TDiskRegistryState::RegisterAgent(
 
     return TAgentRegistrationResult{
         .AffectedDisks = std::move(affectedDisks),
-        .DisksToReallocate = std::move(disksToReallocate),
+        .DisksToReallocate =
+            {std::make_move_iterator(disksToReallocate.begin()),
+             std::make_move_iterator(disksToReallocate.end())},
         .DevicesToDisableIO = std::move(devicesToDisableIO)};
 }
 

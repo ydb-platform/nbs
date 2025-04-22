@@ -54,6 +54,7 @@ def start_nbs_daemon(request, ydb):
     cfg.files["storage"].NonReplicatedAgentMinTimeout = request.param
     cfg.files["storage"].NonReplicatedAgentMaxTimeout = request.param
     cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
+    cfg.files["storage"].AcquireNonReplicatedDevices = True
 
     daemon = start_nbs(cfg)
 

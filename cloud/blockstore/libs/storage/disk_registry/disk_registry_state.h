@@ -922,7 +922,7 @@ private:
         NProto::TAgentConfig& agent,
         TInstant timestamp,
         TVector<TDiskId>* affectedDisks,
-        TVector<TDiskId>* disksToReallocate);
+        THashSet<TDiskId>* disksToReallocate);
 
     [[nodiscard]] TString GetDiskIdToNotify(const TString& diskId) const;
 
