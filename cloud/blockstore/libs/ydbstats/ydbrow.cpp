@@ -8,7 +8,7 @@ using namespace NYdb;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TValue TYdbRow::GetYdbValues() const
+TValue TYdbStatsRow::GetYdbValues() const
 {
     NYdb::TValueBuilder value;
     value.BeginStruct();
@@ -44,7 +44,7 @@ TValue TYdbRow::GetYdbValues() const
     return value.Build();
 }
 
-TStringBuf TYdbRow::GetYdbRowDefinition()
+TStringBuf TYdbStatsRow::GetYdbRowDefinition()
 {
     static TStringBuf RowDefinition =
 #define YDB_SIMPLE_STRING_FIELD(name , ...)                                    \

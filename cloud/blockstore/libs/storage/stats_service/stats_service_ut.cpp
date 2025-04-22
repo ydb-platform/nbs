@@ -43,7 +43,7 @@ static const TString DefaultFolderId = "test_folder";
 ////////////////////////////////////////////////////////////////////////////////
 
 using TYdbStatsCallback =
-    std::function<NThreading::TFuture<NProto::TError>(const TVector<TYdbRow>& stats)>;
+    std::function<NThreading::TFuture<NProto::TError>(const TVector<TYdbStatsRow>& stats)>;
 
 class TYdbStatsMock:
     public IYdbVolumesStatsUploader
@@ -898,7 +898,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
     Y_UNIT_TEST(ShouldReportYdbStatsInBatches)
     {
-        auto callback = [] (const TVector<TYdbRow>& stats)
+        auto callback = [] (const TVector<TYdbStatsRow>& stats)
         {
             Y_UNUSED(stats);
             return NThreading::MakeFuture(MakeError(S_OK));
@@ -922,7 +922,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldRetryStatsUploadInCaseOfFailure)
     {
         ui32 attemptCount = 0;
-        auto callback = [&] (const TVector<TYdbRow>& stats)
+        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
         {
             UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
 
@@ -954,7 +954,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         bool failUpload = true;
         ui32 callCnt = 0;
 
-        auto callback = [&] (const TVector<TYdbRow>& stats)
+        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
         {
             UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
 
@@ -998,7 +998,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldCorrectlyPrepareYdbStatsRequests)
     {
         TVector<TVector<TString>> batches;
-        auto callback = [&] (const TVector<TYdbRow>& stats)
+        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
         {
             TVector<TString> batch;
             for (const auto& x: stats) {
@@ -1050,7 +1050,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     {
         TVector<TVector<TString>> batches;
         bool uploadSeen = false;
-        auto callback = [&] (const TVector<TYdbRow>& stats)
+        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
         {
             Y_UNUSED(stats);
             uploadSeen = true;

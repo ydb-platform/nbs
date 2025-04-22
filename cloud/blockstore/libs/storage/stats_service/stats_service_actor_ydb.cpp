@@ -57,13 +57,13 @@ NYdbStats::TPercentileCounterField CreatePercentileCounterField(const TVector<do
     return out;
 }
 
-NYdbStats::TYdbRow BuildStatsForUpload(
+NYdbStats::TYdbStatsRow BuildStatsForUpload(
     const TActorContext& ctx,
     const TVolumeStatsInfo& volume,
     TDuration updateInterval,
     TDuration uploadInterval)
 {
-    TYdbRow out;
+    TYdbStatsRow out;
 
     out.DiskId = volume.VolumeInfo.GetDiskId();
     out.Timestamp = ctx.Now().Seconds();

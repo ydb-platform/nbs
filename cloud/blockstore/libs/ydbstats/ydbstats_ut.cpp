@@ -231,9 +231,9 @@ TYDBTableSchemes CreateBadTestSchemes()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NYdbStats::TYdbRow BuildTestStats()
+NYdbStats::TYdbStatsRow BuildTestStats()
 {
-    TYdbRow out;
+    TYdbStatsRow out;
     out.DiskId = "vol0";
     out.Timestamp = TInstant::Now().Seconds();
     out.BlocksCount = 100;

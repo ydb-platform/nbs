@@ -162,7 +162,7 @@ struct TPercentileCounterField
     double P100 = 0;
 };
 
-struct TYdbRow
+struct TYdbStatsRow
 {
 #define YDB_SIMPLE_STRING_FIELD(name, ...)                                     \
     TString name;                                                              \
@@ -215,13 +215,13 @@ struct TYdbBlobLoadMetricRow
 
 struct TYdbRowData
 {
-    TVector<TYdbRow> Stats;
+    TVector<TYdbStatsRow> Stats;
     TVector<TYdbBlobLoadMetricRow> Metrics;
 
     TYdbRowData() = default;
 
     TYdbRowData(
-            TVector<TYdbRow> stats,
+            TVector<TYdbStatsRow> stats,
             TVector<TYdbBlobLoadMetricRow> metrics)
         : Stats(std::move(stats))
         , Metrics(std::move(metrics))
