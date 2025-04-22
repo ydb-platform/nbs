@@ -10,6 +10,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -86,4 +88,58 @@ func TestDeleteFilesystemTaskCancel(t *testing.T) {
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, nfsFactory, nfsClient, execCtx)
 	require.NoError(t, err)
+}
+
+func TestDeleteExternalFilesystemTaskRun(t *testing.T) {
+	ctx := context.Background()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	storage := resources_mocks.NewStorageMock()
+	nfsFactory := nfs_mocks.NewFactoryMock()
+	execCtx := newExecutionContextMock()
+
+	filesystem := &protos.FilesystemId{ZoneId: "zone", FilesystemId: "filesystem"}
+	request := &protos.DeleteFilesystemRequest{Filesystem: filesystem}
+
+	task := &deleteFilesystemTask{
+		storage:   storage,
+		factory:   nfsFactory,
+		scheduler: scheduler,
+		request:   request,
+		state:     &protos.DeleteFilesystemTaskState{},
+	}
+
+	externalTask := &deleteExternalFilesystemTask{
+		storage: storage,
+		factory: nfsFactory,
+		request: request,
+		state:   &protos.DeleteFilesystemTaskState{},
+	}
+
+	scheduler.On("WaitTask", mock.Anything, mock.Anything).Return(mock.Anything, externalTask.Run(ctx, execCtx))
+	scheduler.On("WaitTaskEnded", mock.Anything, mock.Anything).Maybe().Return(nil)
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"filesystem.DeleteExternalFilesystem",
+		mock.Anything,
+		mock.Anything,
+	).Return(mock.Anything, nil)
+
+	storage.On(
+		"DeleteFilesystem",
+		ctx,
+		"filesystem",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return(&resources.FilesystemMeta{
+		DeleteTaskID: "toplevel_task_id",
+		Kind:         "external",
+	}, nil)
+	storage.On("FilesystemDeleted", ctx, "filesystem", mock.Anything).Return(nil)
+
+	err := task.Run(ctx, execCtx)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewRetriableErrorWithIgnoreRetryLimit(nil)))
+
+	mock.AssertExpectationsForObjects(t, scheduler, nfsFactory, execCtx)
 }

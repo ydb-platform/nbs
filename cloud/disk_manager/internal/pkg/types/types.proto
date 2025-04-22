@@ -63,4 +63,5 @@ message DiskPool {
 enum FilesystemKind {
     FILESYSTEM_KIND_SSD = 0;
     FILESYSTEM_KIND_HDD = 1;
+    FILESYSTEM_KIND_EXTERNAL = 2;
 }

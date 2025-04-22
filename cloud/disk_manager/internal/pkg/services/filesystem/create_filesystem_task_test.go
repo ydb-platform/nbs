@@ -12,6 +12,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
@@ -168,4 +170,61 @@ func TestCancelCreateFilesystemTask(t *testing.T) {
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, nfsFactory, nfsClient, execCtx)
 	require.NoError(t, err)
+}
+
+func TestCreateExternalFilesystemTask(t *testing.T) {
+	ctx := context.Background()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	storage := resources_mocks.NewStorageMock()
+	nfsFactory := nfs_mocks.NewFactoryMock()
+	execCtx := newExecutionContextMock()
+
+	request := &protos.CreateFilesystemRequest{
+		Filesystem: &protos.FilesystemId{
+			ZoneId:       "zone",
+			FilesystemId: "filesystem",
+		},
+		CloudId:     "cloud",
+		FolderId:    "folder",
+		BlockSize:   456,
+		BlocksCount: 123,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_EXTERNAL,
+	}
+
+	task := &createFilesystemTask{
+		storage:   storage,
+		factory:   nfsFactory,
+		scheduler: scheduler,
+		request:   request,
+		state:     &protos.CreateFilesystemTaskState{},
+	}
+
+	externalTask := &createExternalFilesystemTask{
+		storage: storage,
+		factory: nfsFactory,
+		request: request,
+		state:   &protos.CreateFilesystemTaskState{},
+	}
+
+	scheduler.On("WaitTask", mock.Anything, mock.Anything).Return(mock.Anything, externalTask.Run(ctx, execCtx))
+	scheduler.On("WaitTaskEnded", mock.Anything, mock.Anything).Maybe().Return(nil)
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"filesystem.CreateExternalFilesystem",
+		mock.Anything,
+		mock.Anything,
+	).Return(mock.Anything, nil)
+
+	storage.On("CreateFilesystem", ctx, mock.Anything).Return(&resources.FilesystemMeta{
+		ID:   "filesystem",
+		Kind: "external",
+	}, nil)
+	storage.On("FilesystemCreated", ctx, mock.Anything).Return(nil)
+
+	err := task.Run(ctx, execCtx)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewRetriableErrorWithIgnoreRetryLimit(nil)))
+
+	mock.AssertExpectationsForObjects(t, scheduler, nfsFactory, execCtx)
 }
