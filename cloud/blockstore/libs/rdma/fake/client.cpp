@@ -827,7 +827,7 @@ class TFakeRdmaClientActor: public TActor<TFakeRdmaClientActor>
     {
         ui32 NodeId = 0;
         TString AgentId;
-        THashMap<ui64, TActorId> InflightRequests;
+        THashMap<TClientRequestId, TActorId> InflightRequests;
     };
 
 private:
@@ -926,9 +926,12 @@ private:
             TBlockStoreComponents::RDMA,
             "Stop endpoint " << msg->EndpointId);
 
+        Y_DEFER {
+            msg->Promise.SetValue();
+        };
+
         auto it = Endpoints.find(msg->EndpointId);
         if (it == Endpoints.end()) {
-            msg->Promise.SetValue();
             return;
         }
         LOG_INFO_S(

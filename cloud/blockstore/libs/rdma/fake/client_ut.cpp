@@ -527,26 +527,16 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
             return true;
         };
 
-        auto p = NewPromise<void>();
+        auto writeSentPromise = NewPromise<void>();
+        auto writeSent = writeSentPromise.GetFuture();
 
         HandleWriteDeviceBlocks =
-            [self = this, waitForFuture = p.GetFuture()](const auto& ev)
+            [writeSentPromise =
+                 std::move(writeSentPromise)](const auto& ev) mutable
         {
-            auto sender = ev->Sender;
-            auto cookie = ev->Cookie;
-            waitForFuture.Subscribe(
-                [self, sender, cookie](const TFuture<void>&)
-                {
-                    auto response = std::make_unique<
-                        TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
-                    self->Runtime->SendAsync(new IEventHandle{
-                        sender,
-                        TActorId{},
-                        response.release(),
-                        0,   // flags
-                        cookie});
-                });
+            Y_UNUSED(ev);
 
+            writeSentPromise.SetValue();
             return true;
         };
 
@@ -557,24 +547,18 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         NRdma::IClientEndpointPtr ep = future.GetValueSync();
         UNIT_ASSERT(ep);
 
-        std::optional<NProto::TError> responseError;
-
-        std::atomic_flag received;
+        NProto::TError responseError;
 
         auto handler = Handler(
             [&](NRdma::TClientRequestPtr request, ui32 status, size_t len)
             {
-                received.test_and_set();
-
                 UNIT_ASSERT_EQUAL(NRdma::RDMA_PROTO_FAIL, status);
 
-                auto error = NProto::TError();
-                auto parsed =
-                    error.ParseFromArray(request->ResponseBuffer.Data(), len);
+                const bool parsed = responseError.ParseFromArray(
+                    request->ResponseBuffer.Data(),
+                    len);
 
                 UNIT_ASSERT(parsed);
-
-                UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, error.GetCode());
             });
 
         auto [request, error] = ep->AllocateRequest(
@@ -598,14 +582,12 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
             ep->SendRequest(std::move(request), MakeIntrusive<TCallContext>());
 
         Runtime->DispatchEvents({}, 10ms);
-
-        UNIT_ASSERT(!received.test());
+        writeSent.Wait();
 
         ep->CancelRequest(reqId);
-
         Runtime->DispatchEvents({}, 10ms);
 
-        UNIT_ASSERT(received.test());
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, responseError.GetCode());
     }
 }
 
