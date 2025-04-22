@@ -568,4 +568,9 @@ message TStorageConfig
     // of deletion markers is to be cleaned up after changing configuration.
     // (for example after changing cleanup threshold or other parameters)
     optional uint32 CleanupCpuThrottlingThresholdPercentage = 426;
+
+    // EnqueueBlobIndexOpIfNeeded will be called with this interval
+    // if background operations should run but have been throttled.
+    // (e.g. cleanup operation due to CleanupCpuThrottlingThresholdPercentage)
+    optional uint32 EnqueueBlobIndexOpIfNeededRescheduleInterval = 427; // in ms
 }

@@ -226,6 +226,7 @@ public:
     bool GetGetNodeAttrBatchEnabled() const;
 
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
+    TDuration GetEnqueueBlobIndexOpIfNeededRescheduleInterval() const;
 
     bool GetAllowFileStoreForceDestroy() const;
     bool GetAllowFileStoreDestroyWithOrphanSessions() const;

@@ -441,7 +441,8 @@ void TIndexTabletActor::ScheduleEnqueueBlobIndexOpIfNeeded(
     const NActors::TActorContext& ctx)
 {
     if (!EnqueueBlobIndexOpIfNeededScheduled) {
-        ctx.Schedule(EnqueueBlobIndexOpIfNeededInterval,
+        ctx.Schedule(
+            Config->GetEnqueueBlobIndexOpIfNeededRescheduleInterval(),
             new TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded());
             EnqueueBlobIndexOpIfNeededScheduled = true;
 

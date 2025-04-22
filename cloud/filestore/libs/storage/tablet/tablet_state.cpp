@@ -121,7 +121,7 @@ void TIndexTabletState::LoadState(
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
-    // Changing thresholds in the config may result in massive amount of
+    // Changing thresholds in the config may result in a massive amount of
     // deletion markers to be cleaned up.
     // This causes Cleanup to run incessantly for a long time (up to several
     // hours) and it may result in performance degradation.
@@ -129,7 +129,8 @@ void TIndexTabletState::LoadState(
     // reboot and throttle cleanup when the amount of deletion markers is
     // expected to drop below the minimal amount.
     // https://github.com/ydb-platform/nbs/pull/3268
-    MinimalDeletionMarkersCount = fileSystemStats.GetDeletionMarkersCount();
+    MinimalDeletionMarkersCountSinceTabletStart =
+        fileSystemStats.GetDeletionMarkersCount();
 
     if (FileSystemStats.GetLastNodeId() < RootNodeId) {
         FileSystemStats.SetLastNodeId(RootNodeId);

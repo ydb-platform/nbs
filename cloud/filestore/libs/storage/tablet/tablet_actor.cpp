@@ -610,7 +610,9 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
     // Cleanup is to be throttled only when the number of deletion markers after
     // cleanup will drop below the minimal observed amount of deletion markers.
     // https://github.com/ydb-platform/nbs/pull/3268
-    if (deletionMarkersCountAfterCleanup >= GetMinimalDeletionMarkersCount()) {
+    const auto deletionMarkersCountThreshold =
+        GetMinimalDeletionMarkersCountSinceTabletStart();
+    if (deletionMarkersCountAfterCleanup >= deletionMarkersCountThreshold) {
         return false;
     }
 
