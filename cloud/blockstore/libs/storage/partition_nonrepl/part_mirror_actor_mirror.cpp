@@ -144,7 +144,7 @@ void TMirrorPartitionActor::MirrorRequest(
         ev->Get()->Record.GetHeaders().GetVolumeRequestId());
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
-        if (CanMakeMultiagentWrite(range)) {
+        if (CanMakeMultiAgentWrite(range)) {
             NCloud::Register<TMultiAgentWriteActor<TMethod>>(
                 ctx,
                 std::move(requestInfo),

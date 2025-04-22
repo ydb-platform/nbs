@@ -332,7 +332,7 @@ auto TMirrorPartitionActor::TakeNextRequestIdentifier() -> ui64
     return RequestIdentifierCounter++;
 }
 
-bool TMirrorPartitionActor::CanMakeMultiagentWrite(TBlockRange64 range) const
+bool TMirrorPartitionActor::CanMakeMultiAgentWrite(TBlockRange64 range) const
 {
     return MultiAgentWriteEnabled && range.Size() * State.GetBlockSize() >=
                                          MultiAgentWriteRequestSizeThreshold;

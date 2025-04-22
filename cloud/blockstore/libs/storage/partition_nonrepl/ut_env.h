@@ -155,6 +155,8 @@ private:
             HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
             HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
 
+            IgnoreFunc(TEvVolume::TEvReacquireDisk);
+
             IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
             IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
 

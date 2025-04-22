@@ -166,6 +166,7 @@ void TMultiAgentWriteActor<TMethod>::SendWriteRequest(
     auto& rec = request->Record;
 
     *rec.MutableHeaders() = Request.GetHeaders();
+    rec.SetBlockSize(DevicesAndRanges[0].PartConfig->GetBlockSize());
     if constexpr (IsLocalMethod<TMethod>) {
         auto guard = Request.Sglist.Acquire();
         if (!guard) {
@@ -181,7 +182,7 @@ void TMultiAgentWriteActor<TMethod>::SendWriteRequest(
             ResizeIOVector(
                 *rec.MutableBlocks(),
                 Range.Size(),
-                DevicesAndRanges[0].PartConfig->GetBlockSize()));
+                rec.GetBlockSize()));
 
     } else {
         rec.MutableBlocks()->Swap(Request.MutableBlocks());
@@ -198,7 +199,7 @@ void TMultiAgentWriteActor<TMethod>::SendWriteRequest(
         replicationTarget->SetStartIndex(deviceInfo.DeviceBlockRange.Start);
     }
 
-    if (AssignVolumeRequestId && !rec.GetHeaders().GetIsBackgroundRequest()) {
+    if (AssignVolumeRequestId) {
         rec.SetVolumeRequestId(Request.GetHeaders().GetVolumeRequestId());
         rec.SetMultideviceRequest(false);
     }
@@ -269,9 +270,9 @@ void TMultiAgentWriteActor<TMethod>::HandleGetDeviceRangeResponse(
     const auto* msg = ev->Get();
     DevicesAndRanges.push_back(*msg);
 
-    if (!SUCCEEDED(msg->GetError().GetCode())) {
+    if (HasError(msg->GetError())) {
         // For partition we can't perform direct disk-agent write.
-        // Let's fallback to old actor.
+        // Let's fallback to TMirrorRequestActor<> actor.
         Fallback(ctx);
         return;
     }
@@ -289,18 +290,10 @@ void TMultiAgentWriteActor<TMethod>::HandleWriteDeviceBlocksResponse(
     const auto* msg = ev->Get();
     NProto::TError error = msg->GetError();
 
-    // Need to process E_BS_INVALID_SESSION with all partitions for devices
-    // reacquire.
-    if (error.GetCode() == E_BS_INVALID_SESSION) {
-        for (const auto& deviceInfo: DevicesAndRanges) {
-            NProto::TError tempError = error;
-            ProcessError(
-                *NActors::TActorContext::ActorSystem(),
-                *deviceInfo.PartConfig,
-                tempError);
-        }
-    }
-
+    ProcessError(
+        *NActors::TActorContext::ActorSystem(),
+        *DevicesAndRanges[0].PartConfig,
+        error);
     ProcessMirrorActorError(error);
 
     bool subResponsesOk = msg->Record.GetReplicationResponses().size() ==

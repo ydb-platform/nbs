@@ -140,7 +140,7 @@ private:
     void StartResyncRange(const NActors::TActorContext& ctx, bool isMinor);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
     ui64 TakeNextRequestIdentifier();
-    bool CanMakeMultiagentWrite(TBlockRange64 range) const;
+    bool CanMakeMultiAgentWrite(TBlockRange64 range) const;
 
 private:
     STFUNC(StateWork);
