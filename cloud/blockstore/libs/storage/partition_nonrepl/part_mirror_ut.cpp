@@ -3013,6 +3013,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     Y_UNIT_TEST(ShouldHandleInconsistentDiskAgentResponse)
     {
+        using namespace NMonitoring;
+
         TTestRuntime runtime;
 
         bool inconsistentDiskAgentSeen = false;
@@ -3065,12 +3067,20 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
+        TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
+        InitCriticalEventsCounter(critEventsCounters);
+        auto inconsistentCritEvent =
+            critEventsCounters->GetCounter(
+                "AppCriticalEvents/DiskAgentInconsistentMultiWriteResponse",
+                true);
+
         // Send the first request and simulate an inconsistent response from the disk-agent.
         client.SendWriteBlocksRequest(TBlockRange64::WithLength(10, 5), 1);
         auto response = client.RecvWriteBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
         UNIT_ASSERT(inconsistentDiskAgentSeen);
         UNIT_ASSERT_VALUES_EQUAL(1, multiAgentRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, inconsistentCritEvent->Val());
 
         // Send the second request and expect mirror-partition turn multi-agent feature off.
         multiAgentRequestCount = 0;

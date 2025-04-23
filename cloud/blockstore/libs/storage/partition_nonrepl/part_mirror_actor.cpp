@@ -639,6 +639,9 @@ void TMirrorPartitionActor::HandleInconsistentDiskAgent(
         DiskId.c_str(),
         msg->AgentId.Quote().c_str());
 
+    ReportDiskAgentInconsistentMultiWriteResponse(
+        TStringBuilder() << "DiskId: " << DiskId.Quote()
+                         << ", DiskAgent: " << msg->AgentId.Quote());
     MultiAgentWriteEnabled = false;
 }
 
