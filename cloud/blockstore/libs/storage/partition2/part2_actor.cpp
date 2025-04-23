@@ -526,7 +526,7 @@ void TPartitionActor::UpdateStorageStats(const TActorContext& ctx, i64 value)
     metrics.Increment(value);
 }
 
-void TPartitionActor::UpdateCPUUsageStats(
+void TPartitionActor::UpdateCPUUsageStat(
     const TActorContext& ctx,
     ui64 execCycles)
 {

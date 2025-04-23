@@ -269,7 +269,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * State->GetBlockSize();
 
-    UpdateCPUUsageStats(ctx, msg->ExecCycles);
+    UpdateCPUUsageStat(ctx, msg->ExecCycles);
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     const auto requestCount =

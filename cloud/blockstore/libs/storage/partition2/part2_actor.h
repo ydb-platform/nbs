@@ -277,7 +277,7 @@ private:
 
     void UpdateNetworkStats(const NActors::TActorContext& ctx, ui64 value);
     void UpdateStorageStats(const NActors::TActorContext& ctx, i64 value);
-    void UpdateCPUUsageStats(
+    void UpdateCPUUsageStat(
         const NActors::TActorContext& ctx,
         ui64 execCycles);
 

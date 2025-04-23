@@ -148,7 +148,7 @@ void TPartitionActor::CompleteCreateCheckpoint(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    UpdateCPUUsageStats(ctx, timer.Finish());
+    UpdateCPUUsageStat(ctx, timer.Finish());
 
     ProcessCCCRequestQueue(ctx);
 }
