@@ -5,8 +5,11 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/multi_agent_write_actor.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -139,6 +142,22 @@ void TMirrorPartitionActor::MirrorRequest(
         requestIdentityKey,
         range,
         ev->Get()->Record.GetHeaders().GetVolumeRequestId());
+
+    if constexpr (IsExactlyWriteMethod<TMethod>) {
+        if (CanMakeMultiAgentWrite(range)) {
+            NCloud::Register<TMultiAgentWriteActor<TMethod>>(
+                ctx,
+                std::move(requestInfo),
+                State.GetReplicaActors(),
+                std::move(msg->Record),
+                range,
+                State.GetReplicaInfos()[0].Config->GetName(),   // diskId
+                SelfId(),                                       // parentActorId
+                requestIdentityKey,
+                Config->GetAssignIdToWriteAndZeroRequestsEnabled());
+            return;
+        }
+    }
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,

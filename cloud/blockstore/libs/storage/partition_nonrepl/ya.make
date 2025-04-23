@@ -13,6 +13,7 @@ SRCS(
     migration_request_actor.cpp
     migration_timeout_calculator.cpp
     mirror_request_actor.cpp
+    multi_agent_write_actor.cpp
     replica_info.cpp
     resync_range_block_by_block.cpp
     resync_range.cpp

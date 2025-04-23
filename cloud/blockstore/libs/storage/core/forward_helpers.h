@@ -46,6 +46,11 @@ constexpr bool IsCheckpointMethod =
     std::is_same_v<TMethod, TEvVolume::TDeleteCheckpointDataMethod> ||
     std::is_same_v<TMethod, TEvService::TGetCheckpointStatusMethod>;
 
+template <typename TMethod>
+constexpr bool IsLocalMethod =
+    std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod> ||
+    std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
