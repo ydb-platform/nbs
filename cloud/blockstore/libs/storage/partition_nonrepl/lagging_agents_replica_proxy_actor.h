@@ -109,12 +109,23 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    [[nodiscard]] bool AgentIsUnavailable(const TString& agentId) const;
+    template <typename TMethod>
+    void ReadBlocks(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    template <typename TMethod>
+    void WriteBlocks(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     template <typename TMethod>
     TVector<TSplitRequest> SplitRequest(
         const TMethod::TRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
+
+    [[nodiscard]] bool ShouldSplitWriteRequest(
+        const TVector<TDeviceRequest>& deviceRequests) const;
 
     [[nodiscard]] TVector<TSplitRequest> DoSplitRequest(
         const TEvService::TEvWriteBlocksRequest::TPtr& ev,
@@ -126,14 +137,14 @@ private:
         const TEvService::TEvZeroBlocksRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
 
-    [[nodiscard]] bool ShouldSplitWriteRequest(
-        const TVector<TDeviceRequest>& deviceRequests) const;
     [[nodiscard]] NActors::TActorId GetRecipientActorId(
         const TBlockRange64& requestBlockRange,
         ERequestKind kind) const;
 
     [[nodiscard]] const TBlockRangeData& GetBlockRangeData(
         const TBlockRange64& requestBlockRange) const;
+
+    [[nodiscard]] bool AgentIsUnavailable(const TString& agentId) const;
 
     void RecalculateBlockRangeDataByBlockRangeEnd();
 
@@ -164,6 +175,10 @@ private:
         const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleLaggingMigrationDisabled(
+        const TEvNonreplPartitionPrivate::TEvLaggingMigrationDisabled::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleAgentIsBackOnline(
         const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -177,18 +192,6 @@ private:
             ev,
         const NActors::TActorContext& ctx);
 
-    void HandleWriteOrZeroCompleted(
-        const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleAddLaggingAgent(
-        const TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleLaggingMigrationDisabled(
-        const TEvNonreplPartitionPrivate::TEvLaggingMigrationDisabled::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleLaggingMigrationEnabled(
         const TEvNonreplPartitionPrivate::TEvLaggingMigrationEnabled::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -199,20 +202,6 @@ private:
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    template <typename TMethod>
-    void WriteBlocks(
-        const typename TMethod::TRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    template <typename TMethod>
-    void ReadBlocks(
-        const typename TMethod::TRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void ForwardUnhandledEvent(
-        TAutoPtr<NActors::IEventHandle>& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocks, TEvService);
