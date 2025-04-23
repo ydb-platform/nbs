@@ -20,6 +20,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Partitions report metrics every "UpdateCounterInterval" seconds. YDB counters
+// are averaged over "DurationToCalculate" seconds. To calculate the correct raw
+// value needed for incrementing volume counters, we need to multiply the
+// averaged values by this multiplier.
 template <
     TTimeBase<TInstant>::TValue DurationToStore,
     TTimeBase<TInstant>::TValue DurationToCalculate>
