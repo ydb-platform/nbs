@@ -47,7 +47,6 @@ public:
     NActors::TActorId GetActorToLockAndDrainRange() const override;
 
 private:
-
     bool IsMigrationTarget(const NProto::TDeviceConfig& device) const
     {
         return AnyOf(
