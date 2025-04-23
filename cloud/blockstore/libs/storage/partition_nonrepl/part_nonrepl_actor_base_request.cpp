@@ -139,11 +139,14 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
                 RequestName.c_str(),
                 RequestId,
                 JoinSeq(", ", devices).c_str());
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
             HandleError(
                 ctx,
                 PartConfig->MakeError(
                     E_REJECTED,
-                    TStringBuilder() << RequestName << " request is canceled"),
+                    TStringBuilder() << RequestName << " request is canceled",
+                    flags),
                 EStatus::Fail);
             return;
     }
