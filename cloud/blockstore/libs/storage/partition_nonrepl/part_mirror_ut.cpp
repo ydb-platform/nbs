@@ -2795,6 +2795,57 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(3, describeRequestCount);
     }
 
+    Y_UNIT_TEST(ShouldFallbackFromMultiWriteRequestsWhenMigrating)
+    {
+        TTestRuntime runtime;
+
+        size_t multiAgentRequestCount = 0;
+        auto countMultiRequest =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                    using TRequest = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
+
+                    const auto& record = event->Get<TRequest>()->Record;
+                    if (!record.GetReplicationTargets().empty()) {
+                        ++multiAgentRequestCount;
+                    }
+
+                    break;
+                }
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(countMultiRequest);
+
+        NProto::TStorageServiceConfig config;
+        config.SetMultiAgentWriteEnabled(true);
+        const THashSet<TString> freshDeviceIds{"vasya", "vasya#1", "petya#2"};
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TVector<TDevices>{
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
+            },
+            {}, // migrations
+            freshDeviceIds,
+            std::move(config));
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        // Wait until the first range has migrated to avoid overlapping with it.
+        WaitForMigrations(runtime, 1);
+        client.WriteBlocks(TBlockRange64::WithLength(10, 5), 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, multiAgentRequestCount);
+    }
+
     Y_UNIT_TEST(ShouldHandleInvalidSessionForMultiWriteRequests)
     {
         TTestRuntime runtime;

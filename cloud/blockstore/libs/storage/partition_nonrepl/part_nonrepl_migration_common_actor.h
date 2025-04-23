@@ -143,7 +143,7 @@ private:
         WriteAndZeroRequestsInProgress,
         DiskId};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
-        TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite};
+        TGetDeviceForRangeCompanion::EAllowedOperation::Read};
 
     // Statistics
     const NActors::TActorId StatActorId;

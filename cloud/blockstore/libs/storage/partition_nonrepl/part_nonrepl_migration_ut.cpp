@@ -1033,16 +1033,28 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(2040, 8),
                 response->DeviceBlockRange);
+
+            // Request with write should fail
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(2040, 8)));
+            response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ABORTED,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
 
         WaitForMigrations(runtime, 3);
 
         {
-            // Request to second device
+            // Request to second device with read should success
             client.SendRequest(
                 env.ActorId,
                 std::make_unique<TEvGetDeviceForRangeRequest>(
-                    EPurpose::ForWriting,
+                    EPurpose::ForReading,
                     TBlockRange64::WithLength(2048, 8)));
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_C(
@@ -1052,6 +1064,18 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(0, 8),
                 response->DeviceBlockRange);
+
+            // with write should fail.
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(2048, 8)));
+            response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ABORTED,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
         {   // Request on the border of two devices
             client.SendRequest(
@@ -1235,11 +1259,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         WaitForMigrations(runtime, 3);
 
         {
-            // Request to second device
+            // Request to second device (migration target) with read
             client.SendRequest(
                 env.ActorId,
                 std::make_unique<TEvGetDeviceForRangeRequest>(
-                    EPurpose::ForWriting,
+                    EPurpose::ForReading,
                     TBlockRange64::WithLength(2048, 8)));
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_C(
@@ -1249,6 +1273,18 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(0, 8),
                 response->DeviceBlockRange);
+
+            // Request to second device (migration target) with write
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(2048, 8)));
+            response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ABORTED,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
         {   // Request on the border of two devices
             client.SendRequest(
