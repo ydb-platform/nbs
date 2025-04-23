@@ -487,10 +487,11 @@ void TPartitionActor::UpdateStorageStat(i64 value)
     GetResourceMetrics()->StorageUser.Increment(value);
 }
 
-void TPartitionActor::UpdateCPUUsageStat(TInstant now, ui64 microSeconds)
+void TPartitionActor::UpdateCPUUsageStat(TInstant now, ui64 execCylces)
 {
-    UserCPUConsumption += microSeconds;
-    GetResourceMetrics()->CPU.Increment(microSeconds, now);
+    const auto duration = CyclesToDurationSafe(execCylces);
+    UserCPUConsumption += duration.MicroSeconds();
+    GetResourceMetrics()->CPU.Increment(duration.MicroSeconds(), now);
 }
 
 bool TPartitionActor::InitReadWriteBlockRange(

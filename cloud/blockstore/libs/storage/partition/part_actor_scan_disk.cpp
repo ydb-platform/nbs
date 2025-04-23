@@ -556,9 +556,7 @@ void TPartitionActor::CompleteScanDiskBatch(
 
     RemoveTransaction(*args.RequestInfo);
 
-    UpdateCPUUsageStat(
-        ctx.Now(),
-        CyclesToDurationSafe(args.RequestInfo->GetExecCycles()).MicroSeconds());
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
     const bool isScanCompleted = args.VisitCount == 0;
 

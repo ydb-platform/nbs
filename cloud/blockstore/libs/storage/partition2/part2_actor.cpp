@@ -526,11 +526,14 @@ void TPartitionActor::UpdateStorageStats(const TActorContext& ctx, i64 value)
     metrics.Increment(value);
 }
 
-void TPartitionActor::UpdateCPUUsageStats(const TActorContext& ctx, TDuration value)
+void TPartitionActor::UpdateCPUUsageStats(
+    const TActorContext& ctx,
+    ui64 execCycles)
 {
-    UserCPUConsumption += value.MicroSeconds();
+    const auto duration = CyclesToDurationSafe(execCycles);
+    UserCPUConsumption += duration.MicroSeconds();
     auto& metrics = Executor()->GetResourceMetrics()->CPU;
-    metrics.Increment(value.MicroSeconds(), ctx.Now());
+    metrics.Increment(duration.MicroSeconds(), ctx.Now());
 }
 
 void TPartitionActor::UpdateWriteThroughput(

@@ -1216,9 +1216,7 @@ void TPartitionActor::FinalizeReadBlocks(
 
     const ui64 requestBytes = State->GetBlockSize() * blocksCount;
 
-    UpdateCPUUsageStat(
-        ctx.Now(),
-        CyclesToDurationSafe(operation.ExecCycles).MicroSeconds());
+    UpdateCPUUsageStat(ctx.Now(), operation.ExecCycles);
 
     State->GetCleanupQueue().ReleaseBarrier(commitId);
 

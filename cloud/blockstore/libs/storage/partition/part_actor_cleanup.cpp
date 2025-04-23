@@ -343,7 +343,7 @@ void TPartitionActor::CompleteCleanup(
 
     const auto d = CyclesToDurationSafe(args.RequestInfo->GetExecCycles());
     State->SetLastCleanupExecTime(d, ctx.Now());
-    UpdateCPUUsageStat(ctx.Now(), d.MicroSeconds());
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);

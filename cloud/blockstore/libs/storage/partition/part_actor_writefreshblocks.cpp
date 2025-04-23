@@ -699,9 +699,7 @@ void TPartitionActor::CompleteWriteBlocks(
         execCycles += args.Requests[0].RequestInfo->GetExecCycles() + cycles;
         waitCycles += args.Requests[0].RequestInfo->GetWaitCycles();
 
-        UpdateCPUUsageStat(
-            ctx.Now(),
-            CyclesToDurationSafe(execCycles).MicroSeconds());
+        UpdateCPUUsageStat(ctx.Now(), execCycles);
         UpdateNetworkStat(ctx.Now(), totalBytes);
     }
 

@@ -356,9 +356,7 @@ void TPartitionActor::HandleZeroBlocksCompleted(
     ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * State->GetBlockSize();
 
-    UpdateCPUUsageStat(
-        ctx.Now(),
-        CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
@@ -451,9 +449,7 @@ void TPartitionActor::CompleteZeroBlocks(
 
     ui64 requestBytes = static_cast<ui64>(args.WriteRange.Size()) * State->GetBlockSize();
 
-    UpdateCPUUsageStat(
-        ctx.Now(),
-        CyclesToDurationSafe(args.RequestInfo->GetExecCycles()).MicroSeconds());
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
