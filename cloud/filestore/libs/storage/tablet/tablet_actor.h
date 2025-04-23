@@ -216,6 +216,11 @@ private:
                 return Rate(now, RequestBytes, PrevRequestBytes);
             }
 
+            double AverageSecondsPerSecond(TInstant now) const
+            {
+                return Rate(now, TimeSumUs, PrevTimeSumUs) * 1e-6;
+            }
+
             ui64 AverageRequestSize() const
             {
                 const auto requestCount =
@@ -357,6 +362,7 @@ private:
     bool UpdateLeakyBucketCountersScheduled = false;
     bool SyncSessionsScheduled = false;
     bool CleanupSessionsScheduled = false;
+    bool EnqueueBlobIndexOpIfNeededScheduled = false;
 
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
 
@@ -485,6 +491,7 @@ private:
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
+    void ScheduleEnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
 
@@ -666,6 +673,9 @@ private:
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
     TCleanupInfo GetCleanupInfo() const;
+    bool ShouldThrottleCleanup(
+        const NActors::TActorContext& ctx,
+        const TCleanupInfo& cleanupInfo) const;
     bool IsCloseToBackpressureThresholds(TString* message) const;
 
     void HandleWakeup(
@@ -762,6 +772,10 @@ private:
 
     void HandleLoadCompactionMapChunkResponse(
         const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleEnqueueBlobIndexOpIfNeeded(
+        const TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);

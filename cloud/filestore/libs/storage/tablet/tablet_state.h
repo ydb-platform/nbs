@@ -178,6 +178,7 @@ private:
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     TNodeToSessionCounters NodeToSessionCounters;
+    ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
@@ -292,6 +293,19 @@ public:
     const NProto::TFileSystemStats& GetFileSystemStats() const
     {
         return FileSystemStats;
+    }
+
+    ui64 GetMinDeletionMarkersCountSinceTabletStart() const
+    {
+        return MinDeletionMarkersCountSinceTabletStart;
+    }
+
+    void UpdateMinDeletionMarkersCountSinceTabletStart()
+    {
+        MinDeletionMarkersCountSinceTabletStart = Min(
+            MinDeletionMarkersCountSinceTabletStart,
+            FileSystemStats.GetDeletionMarkersCount()
+        );
     }
 
     const TNodeToSessionCounters& GetNodeToSessionCounters() const
