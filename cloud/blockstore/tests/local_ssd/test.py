@@ -1,7 +1,6 @@
 import json
 import os
 import pytest
-import time
 
 from cloud.blockstore.public.sdk.python.client.error_codes import EResult
 from cloud.blockstore.public.sdk.python.client import CreateClient

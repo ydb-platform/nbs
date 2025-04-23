@@ -696,7 +696,7 @@ class Client(_SafeClient):
     def wait_for_devices_to_be_cleared(self, expected_dirty_count=0):
         while True:
             bkp = self.backup()
-            if bkp.get("DirtyDevices", expected_dirty_count) == 0:
+            if len(bkp.get("DirtyDevices", [])) == expected_dirty_count:
                 break
             time.sleep(1)
 
