@@ -57,10 +57,10 @@ private:
     NActors::TActorId ParentActorId;
     ui64 RequestId;
 
-    // Indexes of devices that participated in the request.
+    // Indices of devices that participated in the request.
     TStackVec<ui32, 2> DeviceIndices;
 
-    // Indexes of devices where requests have resulted in errors.
+    // Indices of devices where requests have resulted in errors.
     TStackVec<ui32, 2> ErrorDeviceIndices;
 
 public:
