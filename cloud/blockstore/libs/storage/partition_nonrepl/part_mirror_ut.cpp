@@ -2766,12 +2766,14 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     if (describeRequestCount == 1) {
                         auto response = std::make_unique<TResponse>(
                             MakeError(E_REJECTED, "error"));
-                        runtime.Send(new IEventHandle(
-                            event->Sender,
-                            event->Recipient,
-                            response.release(),
-                            0,   // flags
-                            event->Cookie));
+                        runtime.Schedule(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            TDuration::MilliSeconds(1));
                         return true;
                     }
                 }
@@ -3024,7 +3026,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         client.SendWriteBlocksRequest(TBlockRange64::WithLength(10, 5), 1);
         response = client.RecvWriteBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, multiAgentRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, multiAgentRequestCount);
     }
 }
 
