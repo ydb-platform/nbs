@@ -149,7 +149,7 @@ void TReleaseDevicesActor::HandleTimeout(
 
     LOG_WARN(ctx, TBlockStoreComponents::VOLUME, err);
 
-    ReplyAndDie(ctx, MakeError(E_REJECTED, err));
+    ReplyAndDie(ctx, MakeError(E_TIMEOUT, err));
 }
 
 STFUNC(TReleaseDevicesActor::StateWork)

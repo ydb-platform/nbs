@@ -1,12 +1,9 @@
-import json
 import logging
 import os
 import pytest
-import time
 
 from cloud.blockstore.public.sdk.python.client import CreateClient, Session
-from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
-    TAction, STORAGE_MEDIA_SSD_NONREPLICATED
+from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
@@ -30,21 +27,17 @@ KNOWN_DEVICE_POOLS = {
 
 @pytest.fixture(name='ydb')
 def start_ydb_cluster():
-
     ydb_cluster = start_ydb()
-
     yield ydb_cluster
-
     ydb_cluster.stop()
 
 
 @pytest.fixture(name='nbs')
 def start_nbs_daemon(request, ydb):
-
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
-    cfg.files["storage"].DisableLocalService = 0
+    cfg.files["storage"].DisableLocalService = False
     cfg.files["storage"].NonReplicatedDontSuspendDevices = True
     cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
     cfg.files["storage"].NonReplicatedAgentMinTimeout = request.param
@@ -70,33 +63,31 @@ def create_agent_ids():
     return ['agent-1', 'agent-2', 'agent-3']
 
 
-def _get_agent_data_path(agent_id, data_path):
-    return os.path.join(data_path, agent_id, "dev", "disk", "by-partlabel")
+def _get_device_path(agent_id, device_path):
+    return os.path.join(device_path, agent_id, "dev", "disk", "by-partlabel")
 
 
-@pytest.fixture(name='data_path')
-def create_data_path(agent_ids):
-
+@pytest.fixture(name='device_path')
+def create_device_path(agent_ids):
     data = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
         sub_folder="data")
 
     for agent_id in agent_ids:
-        ensure_path_exists(_get_agent_data_path(agent_id, data))
+        ensure_path_exists(_get_device_path(agent_id, data))
 
     return data
 
 
 @pytest.fixture(autouse=True)
-def create_device_files(data_path, agent_ids):
-
+def create_device_files(device_path, agent_ids):
     for agent_id in agent_ids:
-        p = _get_agent_data_path(agent_id, data_path)
+        p = _get_device_path(agent_id, device_path)
         with open(os.path.join(p, 'NVMENBS01'), 'wb') as f:
             os.truncate(f.fileno(), DEVICES_PER_PATH * (DEVICE_SIZE + 4096))
 
 
-def _create_disk_agent_configurator(ydb, agent_id, data_path):
+def _create_disk_agent_configurator(ydb, agent_id, device_path):
     assert agent_id is not None
 
     configurator = NbsConfigurator(ydb, node_type='disk-agent')
@@ -107,7 +98,7 @@ def _create_disk_agent_configurator(ydb, agent_id, data_path):
         device_erase_method='DEVICE_ERASE_METHOD_NONE',  # speed up tests
         storage_discovery_config={
             "PathConfigs": [{
-                "PathRegExp": f"{data_path}/NVMENBS([0-9]+)",
+                "PathRegExp": f"{device_path}/NVMENBS([0-9]+)",
                 "PoolConfigs": [{
                     "MinSize": 4096 + DEVICE_SIZE,
                     "Layout": {
@@ -135,57 +126,20 @@ def _create_disk_agent_configurator(ydb, agent_id, data_path):
 
 
 @pytest.fixture(name='disk_agent_configurators')
-def create_disk_agent_configurators(ydb, agent_ids, data_path):
+def create_disk_agent_configurators(ydb, agent_ids, device_path):
     configurators = []
 
     for agent_id in agent_ids:
-        p = _get_agent_data_path(agent_id, data_path)
+        p = _get_device_path(agent_id, device_path)
         configurators.append(_create_disk_agent_configurator(ydb, agent_id, p))
 
     return configurators
 
 
-def _backup(client):
-    response = client.execute_action(
-        action="BackupDiskRegistryState",
-        input_bytes=str.encode('{"BackupLocalDB": true}'))
-
-    return json.loads(response)["Backup"]
-
-
-def _add_host(client, agent_id):
-    request = TCmsActionRequest()
-    action = request.Actions.add()
-    action.Type = TAction.ADD_HOST
-    action.Host = agent_id
-
-    return client.cms_action(request)
-
-
-# wait for devices to be cleared
-def _wait_devices(client):
-    while True:
-        bkp = _backup(client)
-        if bkp.get("DirtyDevices", 0) == 0:
-            break
-        time.sleep(1)
-
-
-def _wait_agent_state(client, agent_id, desired_state):
-    while True:
-        bkp = _backup(client)
-        agent = [x for x in bkp["Agents"] if x['AgentId'] == agent_id]
-        assert len(agent) == 1
-
-        if agent[0].get("State") == desired_state:
-            break
-        time.sleep(1)
-
-
 @pytest.mark.parametrize("nbs", [(6000)], indirect=["nbs"])
 def test_should_mount_volume_with_unavailable_agents(
         nbs,
-        data_path,
+        device_path,
         agent_ids,
         disk_agent_configurators):
 
@@ -202,13 +156,13 @@ def test_should_mount_volume_with_unavailable_agents(
         configurator = disk_agent_configurators[i]
         agent = start_disk_agent(configurator, name=agent_id)
         agent.wait_for_registration()
-        r = _add_host(client, agent_id)
+        r = client.add_host(agent_id)
         assert len(r.ActionResults) == 1
         assert r.ActionResults[0].Result.Code == 0
 
         agents.append(agent)
 
-    _wait_devices(client)
+    client.wait_for_devices_to_be_cleared()
 
     # create a volume
     client.create_volume(
@@ -218,7 +172,7 @@ def test_should_mount_volume_with_unavailable_agents(
         storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
         cloud_id="test")
 
-    bkp = _backup(client)
+    bkp = client.backup()
     assert len(bkp['Disks']) == 1
     assert len(bkp['Disks'][0]['DeviceUUIDs']) == 12
     assert len(bkp['Agents']) == 2
@@ -236,10 +190,11 @@ def test_should_mount_volume_with_unavailable_agents(
     # stop the agent
     agents[0].kill()
 
-    _wait_agent_state(client, agent_ids[0], "AGENT_STATE_UNAVAILABLE")
+    client.wait_agent_state(agent_ids[0], "AGENT_STATE_UNAVAILABLE")
 
     unavailable_agent = bkp['Agents'][0]
-    unavailable_devices = [x["DeviceUUID"] for x in unavailable_agent["Devices"]]
+    unavailable_devices = [x["DeviceUUID"]
+                           for x in unavailable_agent["Devices"]]
     devices = bkp['Disks'][0]['DeviceUUIDs']
 
     session.mount_volume()

@@ -7992,7 +7992,6 @@ TVector<TDiskRegistryState::TAgentId> TDiskRegistryState::GetUnavailableAgentsFo
         return {};
     }
 
-
     TVector<TDiskRegistryState::TAgentId> unavailableAgents;
 
     for (const auto& device: disk->Devices) {

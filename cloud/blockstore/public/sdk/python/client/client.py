@@ -1,6 +1,8 @@
 from concurrent import futures
 from datetime import datetime
+import json
 from logging import Logger
+import time
 
 import cloud.blockstore.public.sdk.python.protos as protos
 
@@ -672,6 +674,42 @@ class Client(_SafeClient):
             timestamp,
             trace_id,
             request_timeout)
+
+    @_handle_errors
+    def backup(self):
+        response = self.execute_action(
+            action="BackupDiskRegistryState",
+            input_bytes=str.encode('{"BackupLocalDB": true}'))
+
+        return json.loads(response)["Backup"]
+
+    @_handle_errors
+    def add_host(self, agent_id):
+        request = protos.TCmsActionRequest()
+        action = request.Actions.add()
+        action.Type = protos.TAction.ADD_HOST
+        action.Host = agent_id
+
+        return self.cms_action(request)
+
+    @_handle_errors
+    def wait_for_devices_to_be_cleared(self, expected_dirty_count=0):
+        while True:
+            bkp = self.backup()
+            if bkp.get("DirtyDevices", expected_dirty_count) == 0:
+                break
+            time.sleep(1)
+
+    @_handle_errors
+    def wait_agent_state(self, agent_id, desired_state):
+        while True:
+            bkp = self.backup()
+            agent = [x for x in bkp["Agents"] if x['AgentId'] == agent_id]
+            assert len(agent) == 1
+
+            if agent[0].get("State") == desired_state:
+                break
+            time.sleep(1)
 
 
 def CreateClient(
