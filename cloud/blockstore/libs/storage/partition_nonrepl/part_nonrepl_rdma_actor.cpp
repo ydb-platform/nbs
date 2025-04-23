@@ -348,7 +348,7 @@ void TNonreplicatedPartitionRdmaActor::ProcessOperationCompleted(
 {
     const auto& devices = PartConfig->GetDevices();
     for (auto idx: opCompleted.DeviceIndices) {
-        Y_ABORT_UNLESS(idx < static_cast<unsigned int>(devices.size()));
+        Y_ABORT_UNLESS(idx < static_cast<ui32>(devices.size()));
         const auto* errDevice = FindPtr(opCompleted.ErrorDeviceIndices, idx);
         const auto& deviceUUID = devices[idx].GetDeviceUUID();
         if (errDevice) {

@@ -57,8 +57,11 @@ private:
     NActors::TActorId ParentActorId;
     ui64 RequestId;
 
-    TStackVec<ui32, 2> AllDevices;
-    TStackVec<ui32, 2> ErrDevices;
+    // Indexes of devices that participated in the request.
+    TStackVec<ui32, 2> DeviceIndices;
+
+    // Indexes of devices where requests have resulted in errors.
+    TStackVec<ui32, 2> ErrorDeviceIndices;
 
 public:
     TRdmaRequestContext(
@@ -79,7 +82,7 @@ public:
     {}
 
     void HandleResult(
-        const TDeviceChecksumRequestContext& dc,
+        const TDeviceChecksumRequestContext& reqCtx,
         TStringBuf buffer)
     {
         auto* serializer = TBlockStoreProtocol::Serializer();
@@ -97,9 +100,9 @@ public:
             return;
         }
 
-        Checksums[dc.RangeStartIndex] = {
+        Checksums[reqCtx.RangeStartIndex] = {
             concreteProto.GetChecksum(),
-            dc.RangeSize};
+            reqCtx.RangeSize};
     }
 
     void HandleResponse(
@@ -111,18 +114,18 @@ public:
 
         auto guard = Guard(Lock);
 
-        auto* dc =
+        auto* reqCtx =
             static_cast<TDeviceChecksumRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
-        AllDevices.emplace_back(dc->DeviceIdx);
+        DeviceIndices.emplace_back(reqCtx->DeviceIdx);
 
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dc, buffer);
+            HandleResult(*reqCtx, buffer);
         } else {
             Error = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutDeviceRequestError(Error)) {
-                ErrDevices.emplace_back(dc->DeviceIdx);
+                ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
             }
         }
 
@@ -154,8 +157,8 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableSysChecksumCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
-        completion->DeviceIndices = AllDevices;
-        completion->ErrorDeviceIndices = ErrDevices;
+        completion->DeviceIndices = DeviceIndices;
+        completion->ErrorDeviceIndices = ErrorDeviceIndices;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();

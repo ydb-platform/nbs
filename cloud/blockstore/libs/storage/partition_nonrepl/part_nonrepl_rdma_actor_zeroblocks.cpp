@@ -38,8 +38,12 @@ private:
     NActors::TActorId ParentActorId;
     ui64 RequestId;
 
-    TStackVec<ui32, 2> AllDevices;
-    TStackVec<ui32, 2> ErrDevices;
+    // Indexes of devices that participated in the request.
+    TStackVec<ui32, 2> DeviceIndices;
+
+    // Indexes of devices where requests have resulted in errors.
+    TStackVec<ui32, 2> ErrorDeviceIndices;
+
 public:
     TRdmaRequestContext(
             TActorSystem* actorSystem,
@@ -85,16 +89,16 @@ public:
         auto guard = Guard(Lock);
 
         auto buffer = req->ResponseBuffer.Head(responseBytes);
-        auto* dCtx = static_cast<TDeviceRequestContext*>(req->Context.get());
+        auto* reqCtx = static_cast<TDeviceRequestContext*>(req->Context.get());
 
-        AllDevices.emplace_back(dCtx->DeviceIdx);
+        DeviceIndices.emplace_back(reqCtx->DeviceIdx);
 
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(buffer);
         } else {
             Error = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutDeviceRequestError(Error)) {
-                ErrDevices.emplace_back(dCtx->DeviceIdx);
+                ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
             }
         }
 
@@ -120,8 +124,8 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableUserWriteCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
-        completion->DeviceIndices = AllDevices;
-        completion->ErrorDeviceIndices = ErrDevices;
+        completion->DeviceIndices = DeviceIndices;
+        completion->ErrorDeviceIndices = ErrorDeviceIndices;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();

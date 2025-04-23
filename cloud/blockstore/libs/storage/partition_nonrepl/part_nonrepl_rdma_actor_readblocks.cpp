@@ -42,8 +42,11 @@ private:
 
     ui32 VoidBlockCount = 0;
 
-    TStackVec<ui32, 2> AllDevices;
-    TStackVec<ui32, 2> ErrDevices;
+    // Indexes of devices that participated in the request.
+    TStackVec<ui32, 2> DeviceIndices;
+
+    // Indexes of devices where requests have resulted in errors.
+    TStackVec<ui32, 2> ErrorDeviceIndices;
 
 public:
     TRdmaRequestReadBlocksContext(
@@ -72,7 +75,9 @@ public:
         }
     }
 
-    void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
+    void HandleResult(
+        const TDeviceReadRequestContext& reqCtx,
+        TStringBuf buffer)
     {
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
@@ -95,7 +100,7 @@ public:
         ui64 b = 0;
         bool isAllZeroes = CheckVoidBlocks;
         while (offset < result.Data.size()) {
-            ui64 targetBlock = dr.StartIndexOffset + b;
+            ui64 targetBlock = reqCtx.StartIndexOffset + b;
             Y_ABORT_UNLESS(targetBlock < static_cast<ui64>(blocks.size()));
             ui64 bytes =
                 Min(result.Data.size() - offset, blocks[targetBlock].size());
@@ -114,7 +119,7 @@ public:
         }
 
         if (isAllZeroes) {
-            VoidBlockCount += dr.BlockCount;
+            VoidBlockCount += reqCtx.BlockCount;
         }
     }
 
@@ -127,17 +132,18 @@ public:
 
         auto guard = Guard(Lock);
 
-        auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
+        auto* reqCtx =
+            static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
-        AllDevices.emplace_back(dr->DeviceIdx);
+        DeviceIndices.emplace_back(reqCtx->DeviceIdx);
 
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dr, buffer);
+            HandleResult(*reqCtx, buffer);
         } else {
             Error = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutDeviceRequestError(Error)) {
-                ErrDevices.emplace_back(dr->DeviceIdx);
+                ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
             }
         }
 
@@ -173,8 +179,8 @@ public:
         completion->TotalCycles = RequestInfo->GetTotalCycles();
         completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;
         completion->VoidBlockCount = allZeroes ? blockCount : 0;
-        completion->DeviceIndices = AllDevices;
-        completion->ErrorDeviceIndices = ErrDevices;
+        completion->DeviceIndices = DeviceIndices;
+        completion->ErrorDeviceIndices = ErrorDeviceIndices;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();

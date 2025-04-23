@@ -591,7 +591,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         TPartitionClient client(runtime, env.ActorId);
 
         TActorId notifiedActor;
-        ui32 deviceTimedOut = 0;
+        ui32 deviceTimedOutCount = 0;
         THashSet<TString> devices;
 
         runtime.SetObserverFunc(
@@ -607,7 +607,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                             TEvVolumePrivate::TEvDeviceTimedOutRequest*>(
                             event->GetBase());
                         devices.emplace(ev->DeviceUUID);
-                        ++deviceTimedOut;
+                        ++deviceTimedOutCount;
                     }
                 }
 
@@ -638,7 +638,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT(expected.contains(d));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOut);
+        UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOutCount);
     }
 
     Y_UNIT_TEST(ShouldResetDeviceTimeoutInfoOnSucceededRequest)
@@ -654,7 +654,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         TPartitionClient client(runtime, env.ActorId);
 
         TActorId notifiedActor;
-        ui32 deviceTimedOut = 0;
+        ui32 deviceTimedOutCount = 0;
         THashSet<TString> devices;
 
         runtime.SetObserverFunc(
@@ -670,7 +670,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                             TEvVolumePrivate::TEvDeviceTimedOutRequest*>(
                             event->GetBase());
                         devices.emplace(ev->DeviceUUID);
-                        ++deviceTimedOut;
+                        ++deviceTimedOutCount;
                     }
                 }
 
@@ -716,7 +716,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT(expected.contains(d));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOut);
+        UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOutCount);
     }
 
     Y_UNIT_TEST(ShouldUpdateStats)
