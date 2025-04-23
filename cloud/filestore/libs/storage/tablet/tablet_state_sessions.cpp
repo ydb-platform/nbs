@@ -164,10 +164,10 @@ TSession* TIndexTabletState::CreateSession(
 
 TSession* TIndexTabletState::CreateSession(
     const NProto::TSession& proto,
-    TInstant deadline)
+    TInstant inactivityDeadline)
 {
     auto session = std::make_unique<TSession>(proto);
-    session->Deadline = deadline;
+    session->InactivityDeadline = inactivityDeadline;
 
     Impl->OrphanSessions.PushBack(session.get());
     Impl->SessionById.emplace(session->GetSessionId(), session.get());
@@ -220,7 +220,7 @@ NActors::TActorId TIndexTabletState::RecoverSession(
     }
 
     if (oldOwner != owner) {
-        session->Deadline = {};
+        session->InactivityDeadline = {};
 
         session->Unlink();
         Impl->Sessions.PushBack(session);
@@ -294,7 +294,7 @@ void TIndexTabletState::OrphanSession(const TActorId& owner, TInstant deadline)
         owner.ToString().c_str());
 
     if (!session->DeleteSubSession(owner)) {
-        session->Deadline = deadline;
+        session->InactivityDeadline = deadline;
 
         session->Unlink();
         Impl->OrphanSessions.PushBack(session);
@@ -393,11 +393,11 @@ void TIndexTabletState::RemoveSession(TSession* session)
     Impl->SessionByClient.erase(session->GetClientId());
 }
 
-TVector<TSession*> TIndexTabletState::GetTimeoutedSessions(TInstant now) const
+TVector<TSession*> TIndexTabletState::GetTimedOutSessions(TInstant now) const
 {
     TVector<TSession*> result;
     for (auto& session: Impl->OrphanSessions) {
-        if (session.Deadline < now) {
+        if (session.InactivityDeadline < now) {
             result.push_back(&session);
         } else {
             break;
@@ -503,7 +503,7 @@ TVector<TMonSessionInfo> TIndexTabletState::GetActiveSessionInfos() const
         info.ClientId = p.first;
         info.ProtoInfo = *p.second;
         info.SubSessions = p.second->SubSessions.GetAllSubSessions();
-        info.Deadline = p.second->Deadline;
+        info.InactivityDeadline = p.second->InactivityDeadline;
     }
     return sessionInfos;
 }
@@ -517,7 +517,7 @@ TVector<TMonSessionInfo> TIndexTabletState::GetOrphanSessionInfos() const
         info.ClientId = session.GetClientId();
         info.ProtoInfo = session;
         info.SubSessions = session.SubSessions.GetAllSubSessions();
-        info.Deadline = session.Deadline;
+        info.InactivityDeadline = session.InactivityDeadline;
     }
     return sessionInfos;
 }

@@ -77,7 +77,7 @@ struct TMonSessionInfo
     TString ClientId;
     NProto::TSession ProtoInfo;
     TVector<TSubSession> SubSessions;
-    TInstant Deadline;
+    TInstant InactivityDeadline;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,7 +90,7 @@ struct TSession
     TSessionHandleList Handles;
     TSessionLockList Locks;
 
-    TInstant Deadline;
+    TInstant InactivityDeadline;
 
     // TODO: notify event stream
     ui32 LastEvent = 0;

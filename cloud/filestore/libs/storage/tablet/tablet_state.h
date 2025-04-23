@@ -626,10 +626,10 @@ public:
         ui64 sessionSeqNo,
         bool readOnly,
         const NActors::TActorId& owner);
-    void OrphanSession(const NActors::TActorId& owner, TInstant deadline);
+    void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
     void ResetSession(TIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
-    TVector<TSession*> GetTimeoutedSessions(TInstant now) const;
+    TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
     TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
 
@@ -649,7 +649,7 @@ public:
 private:
     TSession* CreateSession(
         const NProto::TSession& proto,
-        TInstant deadline);
+        TInstant inactivityDeadline);
 
     TSession* CreateSession(
         const NProto::TSession& proto,

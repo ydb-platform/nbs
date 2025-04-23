@@ -97,6 +97,7 @@ private:
         std::atomic<i64> ActiveSessionsCount{0};
         std::atomic<i64> OrphanSessionsCount{0};
         std::atomic<i64> SessionTimeouts{0};
+        std::atomic<i64> SessionCleanupAttempts{0};
 
         std::atomic<i64> AllocatedCompactionRangesCount{0};
         std::atomic<i64> UsedCompactionRangesCount{0};

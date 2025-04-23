@@ -470,7 +470,11 @@ void TIndexTabletActor::HandleCleanupSessions(
 
     CleanupSessionsScheduled = false;
 
-    auto sessions = GetTimeoutedSessions(ctx.Now());
+    Metrics.SessionCleanupAttempts.fetch_add(
+        1,
+        std::memory_order_relaxed);
+
+    auto sessions = GetTimedOutSessions(ctx.Now());
     if (sessions.empty()) {
         // nothing to do
         using TResponse = TEvIndexTabletPrivate::TEvCleanupSessionsResponse;
