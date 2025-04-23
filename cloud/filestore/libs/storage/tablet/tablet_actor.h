@@ -146,6 +146,9 @@ private:
         std::atomic<i64> CMDeletionMarkersCount{0};
         std::atomic<i64> CMGarbageBlocksCount{0};
 
+        // Write throttling
+        std::atomic<i64> IsWriteAllowed{0};
+
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
         std::atomic<i64> MaxWriteBandwidth{0};
@@ -334,7 +337,10 @@ private:
             const TNodeToSessionCounters& nodeToSessionCounters,
             const TMiscNodeStats& miscNodeStats,
             const TInMemoryIndexStateStats& inMemoryIndexStateStats,
-            const TBlobMetaMapStats& blobMetaMapStats);
+            const TBlobMetaMapStats& blobMetaMapStats,
+            const TIndexTabletState::TBackpressureThresholds&
+                backpressureThresholds,
+            const TIndexTabletState::TBackpressureValues& backpressureValues);
         void UpdatePerformanceMetrics(
             TInstant now,
             const TDiagnosticsConfig& diagConfig,

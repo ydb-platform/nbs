@@ -269,8 +269,9 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
         static_cast<ui64>(msg->End) - 1);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start metadata rebuild for used blocks(range: %s)",
+        "[%lu][d:%s] Start metadata rebuild for used blocks(range: %s)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         DescribeRange(blockRange).data());
 
     AddTransaction<TEvPartitionPrivate::TMetadataRebuildUsedBlocksMethod>(*requestInfo);

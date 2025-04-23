@@ -551,7 +551,8 @@ TShadowDiskActor::TShadowDiskActor(
               sourceDiskClientId,
               checkpointInfo.ShadowDiskState == EShadowDiskState::Ready),
           volumeActorId,
-          config->GetMaxShadowDiskFillIoDepth())
+          config->GetMaxShadowDiskFillIoDepth(),
+          volumeActorId)
     , RdmaClient(std::move(rdmaClient))
     , SrcConfig(std::move(srcConfig))
     , CheckpointId(checkpointInfo.CheckpointId)
@@ -849,7 +850,6 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         State = EActorState::Preparing;
         InitWork(
             ctx,
-            SrcActorId,
             SrcActorId,
             DstActorId,
             true,   // takeOwnershipOverActors

@@ -125,7 +125,7 @@ TAddPipeResult TVolumeClientState::AddPipe(
     } else {
         if (it->second.State == EPipeState::DEACTIVATED) {
             return TAddPipeResult(MakeError(
-                E_BS_INVALID_SESSION,
+                E_REJECTED,
                 "Pipe is already deactivated"));
         }
 
@@ -202,6 +202,7 @@ NProto::TError TVolumeClientState::GetWriteError(
         // for legacy clients
         code = E_IO_SILENT;
     }
+    // Keep in sync with TAlignedDeviceHandler::ReportCriticalError()
     return MakeError(
         code,
         TStringBuilder()

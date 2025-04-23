@@ -89,8 +89,10 @@ private:
     ui64 BlocksPerRequest = 0;
     bool ShowReadErrorsEnabled = false;
     bool SaveResultsEnabled = false;
+    bool CompareResultsEnabled = false;
     bool CalculateChecksums = false;
     TString FolderPostfix;
+    ui32 ReplicaCount = 0;
 
 public:
     TCheckRangeCommand(IBlockStorePtr client)
@@ -130,6 +132,13 @@ public:
             .StoreTrue(&SaveResultsEnabled);
 
         Opts.AddLongOption(
+                "compare-results",
+                "compare results of range checking operations from the folder "
+"               './check Range_$disk-id*', with the current ones, before overwrite file with new ones")
+            .NoArgument()
+            .StoreTrue(&CompareResultsEnabled);
+
+        Opts.AddLongOption(
                 "folder-postfix",
                 "select result folder postfix: full folder name - (checkRange_ "
                 "+ $diskId + _$postfix)")
@@ -148,6 +157,7 @@ protected:
 
         ui32 errorCount = 0;
         ui32 requestCount = 0;
+        ui32 mirrorErrorsCount = 0;
 
         auto [builder, error] = CreateRequestBuilder();
         if (HasError(error)) {
@@ -155,11 +165,13 @@ protected:
             return false;
         }
 
-        while (std::optional range = builder.Next()) {
+        bool isRetry = false;
+        std::optional range = builder.Next();
+        while (range) {
             auto request = std::make_shared<NProto::TExecuteActionRequest>();
 
             request->SetAction("checkrange");
-            request->SetInput(CreateNextInput(*range));
+            request->SetInput(CreateNextInput(*range, isRetry));
 
             const auto requestId = GetRequestId(*request);
             auto result = WaitFor(ClientEndpoint->ExecuteAction(
@@ -183,6 +195,19 @@ protected:
                 const auto& status = ExtractStatusValues(result.GetOutput());
 
                 if (HasError(status)) {
+                    if (status.GetCode() == E_REJECTED && !isRetry &&
+                        ReplicaCount)
+                    {
+                        if (ShowReadErrorsEnabled) {
+                            output << "ReadBlocks error while reading all "
+                                      "replicas in range "
+                                   << *range << ": " << FormatError(status)
+                                   << Endl;
+                        }
+                        isRetry = true;
+                        mirrorErrorsCount++;
+                        continue;
+                    }
                     errorCount++;
                     if (ShowReadErrorsEnabled) {
                         output << "ReadBlocks error in range " << *range << ": "
@@ -191,12 +216,22 @@ protected:
                 }
             }
 
+            if (CompareResultsEnabled){
+                CompareChecksums(result.GetOutput(), *range);
+            }
+
             if (SaveResultsEnabled) {
                 SaveResultToFile(result.GetOutput(), *range);
             }
+            isRetry = false;
+            range = builder.Next();
         }
 
         output << "Total requests sended: " << requestCount << Endl;
+        if (ReplicaCount && mirrorErrorsCount) {
+            output << "Errors while reading all mirror disk replicas caught: "
+                   << mirrorErrorsCount << Endl;
+        }
         output << "Total errors caught: " << errorCount << Endl;
         return true;
     }
@@ -219,7 +254,7 @@ private:
         return true;
     }
 
-    TString CreateFilename(TBlockRange64 range) const
+    TString GetFilename(TBlockRange64 range) const
     {
         TString folderPath = "./checkRange_" + DiskId;
         if (!FolderPostfix.empty()) {
@@ -229,12 +264,12 @@ private:
         TString fileName =
             Sprintf("result_%lu_%lu.json", range.Start, range.End);
 
-        return fileName;
+        return folderPath + "/" + fileName;
     }
 
     void SaveResultToFile(const TString& content, TBlockRange64 range) const
     {
-        TFsPath fileName = CreateFilename(range);
+        TFsPath fileName = GetFilename(range);
 
         fileName.Parent().MkDirs();
 
@@ -258,6 +293,16 @@ private:
         }
 
         ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
+        if (result.GetVolume().GetStorageMediaKind() ==
+            NProto::STORAGE_MEDIA_SSD_MIRROR3)
+        {
+            ReplicaCount = 3;
+        } else if (
+            result.GetVolume().GetStorageMediaKind() ==
+            NProto::STORAGE_MEDIA_SSD_MIRROR2)
+        {
+            ReplicaCount = 2;
+        }
 
         ui64 remainingBlocks = diskBlockCount;
 
@@ -272,14 +317,91 @@ private:
         return TRequestBuilder(StartIndex, remainingBlocks, BlocksPerRequest);
     }
 
-    TString CreateNextInput(TBlockRange64 range) const
+    TString CreateNextInput(TBlockRange64 range, bool isRetry) const
     {
         NJson::TJsonValue input;
         input["DiskId"] = DiskId;
         input["StartIndex"] = range.Start;
         input["BlocksCount"] = range.Size();
         input["CalculateChecksums"] = CalculateChecksums;
+        if (!isRetry && ReplicaCount) {
+            input["ReplicaCount"] = ReplicaCount;
+        }
+
         return input.GetStringRobust();
+    }
+
+    TResultOrError<TString> ReadJsonFromFile(const TString& fileName)
+    {
+        return SafeExecute<TResultOrError<TString>>([&] {
+            TIFStream file(fileName, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+            return file.ReadAll();
+        });
+    }
+
+    void CompareChecksums(const TString& response, TBlockRange64 range)
+    {
+        const auto fileName = GetFilename(range);
+        auto [data, error] = ReadJsonFromFile(fileName);
+
+        if (HasError(error)) {
+            GetOutputStream() << "Can't read from file " << fileName << " : "
+                              << FormatError(error) << Endl;
+            return;
+        }
+
+        NJson::TJsonValue jsonFromFile;
+        NJson::TJsonValue jsonFromRequest;
+
+        if (data == response) {
+            return;
+        }
+
+        if (!NJson::ReadJsonTree(data, &jsonFromFile)) {
+            GetOutputStream()
+                << "Error while parsing json from file " << fileName
+                << " for range " << range << Endl;
+            return;
+        }
+
+        if (!NJson::ReadJsonTree(response, &jsonFromRequest)) {
+            GetOutputStream()
+                << "Error while parsing json from response for range " << range
+                << Endl;
+            return;
+        }
+
+        if (!jsonFromFile["Checksums"].IsArray()) {
+            GetOutputStream()
+                << "'Checksums' in saved file is not an array for range "
+                << range << Endl;
+            return;
+        }
+
+        if (!jsonFromRequest["Checksums"].IsArray()) {
+            GetOutputStream()
+                << "'Checksums' in request is not an array for range " << range
+                << Endl;
+            return;
+        }
+
+        auto oldChecksums = jsonFromFile["Checksums"].GetArray();
+        auto newChecksums = jsonFromRequest["Checksums"].GetArray();
+
+        if (newChecksums.size() != oldChecksums.size()) {
+            GetOutputStream()
+                << "Different numbers of checksums in range " << range << Endl;
+            return;
+        }
+
+        for (ui32 i = 0; i < oldChecksums.size(); ++i) {
+            if (oldChecksums[i] != newChecksums[i]) {
+                GetOutputStream()
+                    << "Checksums mismatch for " << (range.Start + i)
+                    << " block: old = " << oldChecksums[i]
+                    << ", new = " << newChecksums[i] << Endl;
+            }
+        }
     }
 };
 

@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <util/generic/cast.h>
+#include <util/generic/set.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/generic/xrange.h>
@@ -204,6 +205,8 @@ constexpr auto xrange(const TBlockRange<TBlockIndex>& range, TBlockIndex2 step)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Builds a vector of ranges block by block. To build, you need to call OnBlack
+// with the block index that you want to add.
 template <typename TBlockIndex>
 class TBlockRangeBuilder
 {
@@ -211,18 +214,30 @@ private:
     TVector<TBlockRange<TBlockIndex>>& Ranges;
 
 public:
-    TBlockRangeBuilder(TVector<TBlockRange<TBlockIndex>>& ranges)
+    explicit TBlockRangeBuilder(TVector<TBlockRange<TBlockIndex>>& ranges)
         : Ranges(ranges)
     {}
 
-public:
     void OnBlock(TBlockIndex blockIndex)
     {
-        if (Ranges.empty() || Ranges.back().End + 1 != blockIndex) {
+        // TODO(drbasic). Handle out-of-order blockIndex.
+        // Y_DEBUG_ABORT_UNLESS(Ranges.empty() || Ranges.back().End <= blockIndex);
+
+        if (Ranges.empty()) {
             Ranges.push_back(
                 TBlockRange<TBlockIndex>::MakeOneBlock(blockIndex));
         } else {
-            ++Ranges.back().End;
+            auto& lastRange = Ranges.back();
+            if (lastRange.End == blockIndex) {
+                // nothing to do
+            } else if (lastRange.End + 1 == blockIndex) {
+                // Enlarge range.
+                lastRange.End = blockIndex;
+            } else {
+                // Make new range.
+                Ranges.push_back(
+                    TBlockRange<TBlockIndex>::MakeOneBlock(blockIndex));
+            }
         }
     }
 };
@@ -245,6 +260,20 @@ inline TBlockRange64 ConvertRangeSafe(const TBlockRange32& range)
 {
     return TBlockRange64::MakeClosedInterval(range.Start, range.End);
 }
+
+struct TBlockRangeComparator
+{
+    template <typename TBlockIndex>
+    bool operator()(
+        const TBlockRange<TBlockIndex>& a,
+        const TBlockRange<TBlockIndex>& b) const
+    {
+        return std::tie(a.Start, a.End) < std::tie(b.Start, b.End);
+    }
+};
+
+using TBlockRangeSet64 = TSet<TBlockRange64, TBlockRangeComparator>;
+using TBlockRangeSet32 = TSet<TBlockRange32, TBlockRangeComparator>;
 
 template <typename T>
 IOutputStream& operator<<(IOutputStream& out, const TBlockRange<T>& rhs)

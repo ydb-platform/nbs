@@ -11,6 +11,7 @@
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <array>
@@ -1300,7 +1301,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 NProto::TEncryptionDesc& desc = *volume.MutableEncryptionDesc();
                 desc.SetMode(NProto::ENCRYPTION_AT_REST);
                 desc.MutableEncryptionKey()->SetKekId(KekId);
-                desc.MutableEncryptionKey()->SetEncryptedDEK(EncryptionKey);
+                desc.MutableEncryptionKey()->SetEncryptedDEK(
+                    Base64Encode(EncryptionKey));
 
                 return MakeFuture(std::move(response));
             };

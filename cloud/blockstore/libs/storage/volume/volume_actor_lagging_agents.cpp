@@ -210,7 +210,8 @@ void TVolumeActor::HandleDeviceTimedOut(
             HaveCommonRows(timedOutAgentDevices, laggingAgent.GetDevices());
         if (intersects) {
             // TODO(komarevtsev-d): Allow source and target of the migration to
-            // lag at the same time.
+            // lag at the same time. "TLaggingAgentsReplicaProxyActor" does not
+            // support this yet.
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,
@@ -265,9 +266,12 @@ void TVolumeActor::HandleDeviceTimedOut(
     unavailableAgent.MutableDevices()->Assign(
         std::make_move_iterator(timedOutAgentDevices.begin()),
         std::make_move_iterator(timedOutAgentDevices.end()));
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+    AddTransaction(*requestInfo);
     ExecuteTx<TAddLaggingAgent>(
         ctx,
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        std::move(requestInfo),
         std::move(unavailableAgent));
 }
 
@@ -275,18 +279,18 @@ void TVolumeActor::HandleUpdateLaggingAgentMigrationState(
     const TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    const auto* msg = ev->Get();
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "[%lu] Lagging agent %s migration progress: %lu/%lu blocks",
         TabletID(),
-        msg->AgentId.c_str(),
+        msg->AgentId.Quote().c_str(),
         msg->CleanBlockCount,
         msg->CleanBlockCount + msg->DirtyBlockCount);
 
     State->UpdateLaggingAgentMigrationState(
-        std::move(msg->AgentId),
+        msg->AgentId,
         msg->CleanBlockCount,
         msg->DirtyBlockCount);
 }
@@ -299,9 +303,9 @@ void TVolumeActor::HandleLaggingAgentMigrationFinished(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Smart migration finished for agent %s",
+        "[%lu] Lagging agent %s migration finished",
         TabletID(),
-        msg->AgentId.c_str());
+        msg->AgentId.Quote().c_str());
 
     if (UpdateVolumeConfigInProgress) {
         // When the volume configuration update is in progress, we don't know at
@@ -316,7 +320,7 @@ void TVolumeActor::HandleLaggingAgentMigrationFinished(
             "[%lu] Lagging agent %s removal may fail because the volume config "
             "update is in progress",
             TabletID(),
-            msg->AgentId.c_str());
+            msg->AgentId.Quote().c_str());
         State->RemoveLaggingAgent(msg->AgentId);
         return;
     }
@@ -383,6 +387,7 @@ void TVolumeActor::CompleteAddLaggingAgent(
         std::make_unique<TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest>(
             args.Agent));
 
+    RemoveTransaction(*args.RequestInfo);
     auto response =
         std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutResponse>();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
@@ -421,6 +426,8 @@ void TVolumeActor::ExecuteRemoveLaggingAgent(
     TVolumeDatabase db(tx.DB);
     db.WriteMeta(State->GetMeta());
     args.RemovedLaggingAgent = std::move(*laggingAgent);
+    args.ShouldStartResync = !State->HasLaggingAgents() &&
+                             Config->GetResyncAfterLaggingAgentMigration();
 }
 
 void TVolumeActor::CompleteRemoveLaggingAgent(
@@ -431,6 +438,19 @@ void TVolumeActor::CompleteRemoveLaggingAgent(
         return;
     }
 
+    if (args.ShouldStartResync) {
+        State->SetReadWriteError(MakeError(
+            E_REJECTED,
+            "toggling resync after lagging agent migration"));
+        ExecuteTx<TToggleResync>(
+            ctx,
+            nullptr,   // requestInfo
+            true,      // resyncEnabled
+            true       // alertResyncChecksumMismatch
+        );
+    }
+
+    RemoveTransaction(*args.RequestInfo);
     NCloud::Send(
         ctx,
         State->GetDiskRegistryBasedPartitionActor(),

@@ -139,6 +139,15 @@ struct TEvNonreplPartitionPrivate
 
     struct TRangeResynced
     {
+        enum class EStatus
+        {
+            Healthy,         // Range OK.
+            HealedAll,       // All blocks in range resynced
+            HealedPartial,   // Only a part of the blocks in the range were
+                             // resynced
+            HealedNone,      // Not a single block was resynced.
+        };
+
         TBlockRange64 Range;
         TInstant ChecksumStartTs;
         TDuration ChecksumDuration;
@@ -146,7 +155,9 @@ struct TEvNonreplPartitionPrivate
         TDuration ReadDuration;
         TInstant WriteStartTs;
         TDuration WriteDuration;
+        ui64 ExecCycles;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
+        EStatus Status;
 
         TRangeResynced(
                 TBlockRange64 range,
@@ -156,7 +167,9 @@ struct TEvNonreplPartitionPrivate
                 TDuration readDuration,
                 TInstant writeStartTs,
                 TDuration writeDuration,
-                TVector<IProfileLog::TBlockInfo> affectedBlockInfos)
+                ui64 execCycles,
+                TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
+                EStatus status)
             : Range(range)
             , ChecksumStartTs(checksumStartTs)
             , ChecksumDuration(checksumDuration)
@@ -164,7 +177,9 @@ struct TEvNonreplPartitionPrivate
             , ReadDuration(readDuration)
             , WriteStartTs(writeStartTs)
             , WriteDuration(writeDuration)
+            , ExecCycles(execCycles)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
+            , Status(status)
         {
         }
     };
@@ -305,6 +320,49 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    // LaggingMigrationDisabled
+    //
+
+    struct TLaggingMigrationDisabled
+    {
+        const TString AgentId;
+
+        explicit TLaggingMigrationDisabled(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    //
+    // LaggingMigrationEnabled
+    //
+
+    struct TLaggingMigrationEnabled
+    {
+        const TString AgentId;
+
+        explicit TLaggingMigrationEnabled(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    struct TStartLaggingAgentMigration
+    {
+    };
+
+    //
+    // Inconsistent disk agent behavior for multi-agent write request.
+    //
+
+    struct TInconsistentDiskAgent
+    {
+        const TString AgentId;
+
+        explicit TInconsistentDiskAgent(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -332,6 +390,10 @@ struct TEvNonreplPartitionPrivate
         EvRemoveLaggingAgentRequest,
         EvAgentIsUnavailable,
         EvAgentIsBackOnline,
+        EvStartLaggingAgentMigration,
+        EvLaggingMigrationDisabled,
+        EvLaggingMigrationEnabled,
+        EvInconsistentDiskAgent,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -413,6 +475,24 @@ struct TEvNonreplPartitionPrivate
         TAgentIsBackOnline,
         EvAgentIsBackOnline
     >;
+
+    using TEvStartLaggingAgentMigration = TRequestEvent<
+        TStartLaggingAgentMigration,
+        EvStartLaggingAgentMigration
+    >;
+
+    using TEvLaggingMigrationDisabled = TRequestEvent<
+        TLaggingMigrationDisabled,
+        EvLaggingMigrationDisabled
+    >;
+
+    using TEvLaggingMigrationEnabled = TRequestEvent<
+        TLaggingMigrationEnabled,
+        EvLaggingMigrationEnabled
+    >;
+
+    using TEvInconsistentDiskAgent =
+        TRequestEvent<TInconsistentDiskAgent, EvInconsistentDiskAgent>;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
 

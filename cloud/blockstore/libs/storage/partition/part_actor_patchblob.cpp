@@ -37,6 +37,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const ui64 TabletId;
+    const TString DiskId;
     const std::unique_ptr<TRequest> Request;
 
     TInstant RequestSent;
@@ -51,6 +52,7 @@ public:
         const TActorId& tabletActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
+        TString diskId,
         std::unique_ptr<TRequest> request,
         ui32 originalGroupId);
 
@@ -88,11 +90,13 @@ TPatchBlobActor::TPatchBlobActor(
         const TActorId& tabletActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
+        TString diskId,
         std::unique_ptr<TRequest> request,
         ui32 originalGroupId)
     : TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
+    , DiskId(std::move(diskId))
     , Request(std::move(request))
     , OriginalGroupId(originalGroupId)
 {}
@@ -171,8 +175,9 @@ void TPatchBlobActor::ReplyError(
     const TString& description)
 {
     LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] TEvBlobStorage::TEvPatch failed: %s\n%s",
+        "[%lu][d:%s] TEvBlobStorage::TEvPatch failed: %s\n%s",
         TabletId,
+        DiskId.c_str(),
         description.data(),
         response.Print(false).data());
 
@@ -290,6 +295,7 @@ void TPartitionActor::HandlePatchBlob(
         SelfId(),
         requestInfo,
         TabletID(),
+        PartitionConfig.GetDiskId(),
         std::unique_ptr<TEvPartitionPrivate::TEvPatchBlobRequest>(msg.Release()),
         originalGroupId));
 
@@ -323,8 +329,9 @@ void TPartitionActor::HandlePatchBlobCompleted(
 
         if (msg->StorageStatusFlags.Check(yellowMoveFlag)) {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Yellow move flag received for channel %u and group %u",
+                "[%lu][d:%s] Yellow move flag received for channel %u and group %u",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 patchedChannel,
                 patchedGroup);
 
@@ -335,8 +342,9 @@ void TPartitionActor::HandlePatchBlobCompleted(
 
     if (FAILED(msg->GetStatus())) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Stop tablet because of PatchBlob error: %s",
+            "[%lu][d:%s] Stop tablet because of PatchBlob error: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             FormatError(msg->GetError()).data());
 
         ReportTabletBSFailure();

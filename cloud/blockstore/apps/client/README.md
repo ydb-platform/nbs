@@ -28,7 +28,7 @@ No options are required.
  * ```--block-size``` - minimum addressable block size (smallest unit of I/O operations); not mandatory, defaults to 4096 bytes
  * ```--blocks-count``` - number of blocks per volume; not mandatory, defaults to 0
  * ```--project-id``` - project identifier; not mandatory
- * ```--storage-media-kind``` - either of the following: ```ssd```, ```hdd```, ```hybrid```; not mandatory, defaults to ```hdd```
+ * ```--storage-media-kind``` - either of the following: ```ssd```, ```hdd```, ```hybrid```, ```ssd_nonrepl```, ```hdd_nonrepl```, ```ssd_mirror2```, ```ssd_mirror3```, ```ssd_local```, ```hdd_local```; not mandatory, defaults to ```hdd```
  * ```--folder-id``` - folder identifier; not mandatory
  * ```--cloud-id``` - cloud identifier; not mandatory
  * ```--performance-profile-max-iops``` - max iops; not mandatory

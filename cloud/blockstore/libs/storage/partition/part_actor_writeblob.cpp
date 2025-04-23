@@ -36,6 +36,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const ui64 TabletId;
+    const TString DiskId;
     const std::unique_ptr<TRequest> Request;
     const ui32 GroupId;
 
@@ -51,6 +52,7 @@ public:
         const TActorId& volumeActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
+        TString diskId,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui32 groupId);
@@ -90,6 +92,7 @@ TWriteBlobActor::TWriteBlobActor(
         const TActorId& volumeActorId,
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
+        TString diskId,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui32 groupId)
@@ -102,6 +105,7 @@ TWriteBlobActor::TWriteBlobActor(
     , TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
+    , DiskId(std::move(diskId))
     , Request(std::move(request))
     , GroupId(groupId)
 {}
@@ -226,8 +230,9 @@ void TWriteBlobActor::ReplyError(
     const TString& description)
 {
     LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] TEvBlobStorage::TEvPut failed: %s\n%s",
+        "[%lu][d:%s] TEvBlobStorage::TEvPut failed: %s\n%s",
         TabletId,
+        DiskId.c_str(),
         description.data(),
         response.Print(false).data());
 
@@ -371,6 +376,7 @@ void TPartitionActor::HandleWriteBlob(
             VolumeActorId,
             requestInfo,
             TabletID(),
+            PartitionConfig.GetDiskId(),
             std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
                 msg.Release()),
             GetDowntimeThreshold(
@@ -408,8 +414,9 @@ void TPartitionActor::HandleWriteBlobCompleted(
 
         if (msg->StorageStatusFlags.Check(yellowStopFlag)) {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Yellow stop flag received for channel %u and group %u",
+                "[%lu][d:%s] Yellow stop flag received for channel %u and group %u",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 channel,
                 groupId);
 
@@ -417,8 +424,9 @@ void TPartitionActor::HandleWriteBlobCompleted(
             ReassignChannelsIfNeeded(ctx);
         } else if (msg->StorageStatusFlags.Check(yellowMoveFlag)) {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Yellow move flag received for channel %u and group %u",
+                "[%lu][d:%s] Yellow move flag received for channel %u and group %u",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 channel,
                 groupId);
 
@@ -429,8 +437,9 @@ void TPartitionActor::HandleWriteBlobCompleted(
 
     if (FAILED(msg->GetStatus())) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Stop tablet because of WriteBlob error (actor %s, group %u): %s",
+            "[%lu][d:%s] Stop tablet because of WriteBlob error (actor %s, group %u): %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             ev->Sender.ToString().c_str(),
             groupId,
             FormatError(msg->GetError()).data());

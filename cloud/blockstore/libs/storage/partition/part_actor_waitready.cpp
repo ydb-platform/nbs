@@ -27,8 +27,9 @@ void TPartitionActor::HandleWaitReady(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Received WaitReady request",
-        TabletID());
+        "[%lu][d:%s] Received WaitReady request",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     auto response = std::make_unique<TEvPartition::TEvWaitReadyResponse>();
 

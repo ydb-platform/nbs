@@ -502,8 +502,9 @@ void TPartitionActor::WriteMergedBlocks(
     const auto maxBlocksInBlob = State->GetMaxBlocksInBlob();
 
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Writing merged blocks @%lu (range: %s)",
+        "[%lu][d:%s] Writing merged blocks @%lu (range: %s)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId,
         DescribeRange(writeRange).data()
     );

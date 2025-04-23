@@ -257,13 +257,17 @@ void TIndexTabletActor::CompleteTx_LoadState(
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet sessions");
     auto idleSessionDeadline = ctx.Now() + Config->GetIdleSessionTimeout();
+
+    auto sessionOptions = TSession::CreateSessionOptions(Config);
+
     LoadSessions(
         idleSessionDeadline,
         args.Sessions,
         args.Handles,
         args.Locks,
         args.DupCache,
-        args.SessionHistory);
+        args.SessionHistory,
+        sessionOptions);
 
     if (!Config->GetEnableCollectGarbageAtStart()) {
         SetStartupGcExecuted();

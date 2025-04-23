@@ -192,6 +192,7 @@ private:
     TStorageConfigPtr GlobalStorageConfig;
     TStorageConfigPtr Config;
     bool HasStorageConfigPatch = false;
+    bool HasPerformanceProfileModifications = false;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -350,17 +351,22 @@ private:
 
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
 
-    THashSet<NActors::TActorId> StoppedPartitions;
+    using TPoisonCallback =
+        std::function<void(const NActors::TActorContext&, NProto::TError)>;
 
-    using TPoisonCallback = std::function<
-        void (const NActors::TActorContext&, NProto::TError)
-    >;
+    struct TPartitionDestroyCallback
+    {
+        const ui64 VolumeRequestId = 0;
+        const NActors::TActorId PartitionActorId;
+        TPoisonCallback PoisonCallback;
+        bool Destroyed = false;
+    };
 
-    TDeque<std::pair<NActors::TActorId, TPoisonCallback>> WaitForPartitions;
-
-    using TDiskRegistryBasedPartitionStoppedCallback =
-        std::function<void(const NActors::TActorContext&)>;
-    THashMap<ui64, TDiskRegistryBasedPartitionStoppedCallback> OnPartitionStopped;
+    // Stores callbacks that need to be called when receiving a PoisonTaken
+    // message from destroyed partition. Callbacks are called in FIFO order,
+    // even if the partitions are deleted in a different order.
+    TDeque<TPartitionDestroyCallback> WaitForPartitionDestroy;
+    ui64 PartitionRestartCounter = 0;
 
     TVector<ui64> GCCompletedPartitions;
 
@@ -427,6 +433,7 @@ private:
 
     void RenderConfig(IOutputStream& out) const;
     void RenderStatus(IOutputStream& out) const;
+    void RenderScrubbingStatus(IOutputStream& out) const;
     void RenderMigrationStatus(IOutputStream& out) const;
     void RenderResyncStatus(IOutputStream& out) const;
     void RenderLaggingStatus(IOutputStream& out) const;
@@ -479,7 +486,15 @@ private:
     void StartPartitionsForGc(const NActors::TActorContext& ctx);
     void StopPartitions(
         const NActors::TActorContext& ctx,
-        TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped);
+        TPoisonCallback onPartitionStopped);
+    void StopDiskRegistryBasedPartition(
+        const NActors::TActorContext& ctx,
+        TPoisonCallback onPartitionStopped);
+    void OnDiskRegistryBasedPartitionStopped(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId sender,
+        ui64 volumeRequestId,
+        NProto::TError error);
 
     void SetupDiskRegistryBasedPartitions(const NActors::TActorContext& ctx);
 
@@ -663,6 +678,10 @@ private:
 
     void HandlePartStatsSaved(
         const TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleScrubberCounters(
+        const TEvVolume::TEvScrubberCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteOrZeroCompleted(
@@ -1059,14 +1078,17 @@ private:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    NActors::TActorId WrapNonreplActorIfNeeded(
+    TActorsStack WrapNonreplActorIfNeeded(
         const NActors::TActorContext& ctx,
         NActors::TActorId nonreplicatedActorId,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
 
-    void RestartDiskRegistryBasedPartition(
+    // Restart partitions. If these were partition of DiskRegistry-based disk,
+    // then the onPartitionStopped callback will be called after the partition
+    // is stopped.
+    void RestartPartition(
         const NActors::TActorContext& ctx,
-        TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped);
+        TPoisonCallback onPartitionStopped);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)

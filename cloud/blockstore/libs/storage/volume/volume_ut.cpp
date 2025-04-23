@@ -1,6 +1,7 @@
 #include "volume_ut.h"
 
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
@@ -949,32 +950,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, migratedRanges);
     }
 
-    Y_UNIT_TEST(ShouldConvertTryAgainToRejectedWhenCanAllocateLocalDiskLater)
-    {
-        NProto::TStorageServiceConfig config;
-        config.SetLocalDiskAsyncDeallocationEnabled(true);
-
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        state->CurrentErrorCode = E_TRY_AGAIN;
-        auto runtime = PrepareTestActorRuntime(config, state);
-
-        TVolumeClient volume(*runtime);
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
-
-        volume.SendWaitReadyRequest();
-        {
-            auto response = volume.RecvWaitReadyResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
-    }
-
     void DoShouldEnsureRejectWriteZeroRequestsOverlappingWithMigrating(
         ui32 ioDepth)
     {
@@ -1129,7 +1104,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         const ui64 totalBlockCount = 3 * blocksPerDevice;
         // We are migrating the first and third devices.
         const ui64 totalRangesToMigrate =
-            2 * blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+            2 * blocksPerDevice * DefaultBlockSize / MigrationRangeSize;
 
         // creating a nonreplicated disk
         volume.UpdateVolumeConfig(
@@ -1645,7 +1620,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         constexpr auto VolumeBlockCount = BlocksPerDevice * 2.5;
         // We will migrate only the first and third devices.
         constexpr auto MigrationRangesPerDevice =
-            BlocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+            BlocksPerDevice * DefaultBlockSize / MigrationRangeSize;
         constexpr auto RangesToMigrateCount = MigrationRangesPerDevice * 2;
         constexpr auto TotalRangesInVolume = MigrationRangesPerDevice * 3;
         auto getDeviceBlocks = [&](ui32 deviceIndex) -> TBlockRange64
@@ -1655,7 +1630,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 BlocksPerDevice);
         };
         auto getMigrationRangeIndexByBlockStart = [&](ui64 start) -> ui32 {
-            return start * DefaultBlockSize / ProcessingRangeSize;
+            return start * DefaultBlockSize / MigrationRangeSize;
         };
 
         // creating a nonreplicated disk
@@ -1765,7 +1740,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         const auto volumeBlockCount = blocksPerDevice * 2.5;
         // We will migrate only the first and third devices.
         const auto migrationRangesPerDevice =
-            blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+            blocksPerDevice * DefaultBlockSize / MigrationRangeSize;
         const auto totalRangesInVolume = migrationRangesPerDevice * 3;
         auto getDeviceBlocks = [&](ui32 deviceIndex) -> TBlockRange64
         {
@@ -1774,7 +1749,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 blocksPerDevice);
         };
         auto getMigrationRangeIndexByBlockStart = [&](ui64 start) -> ui32 {
-            return start * DefaultBlockSize / ProcessingRangeSize;
+            return start * DefaultBlockSize / MigrationRangeSize;
         };
 
         // creating a nonreplicated disk
@@ -1870,10 +1845,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         const auto blocksPerDevice =
             DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
         const auto migrationRangesPerDevice =
-            blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+            blocksPerDevice * DefaultBlockSize / MigrationRangeSize;
         const auto totalRangesToMigrateCount = migrationRangesPerDevice * 2;
         const ui64 blockPerMigratedRange =
-            ProcessingRangeSize / DefaultBlockSize;
+            MigrationRangeSize / DefaultBlockSize;
 
         // creating a nonreplicated disk
         volume.UpdateVolumeConfig(
@@ -3949,6 +3924,140 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.RebootTablet();
         volume.WaitReady();
         UNIT_ASSERT_VALUES_EQUAL(9'000, volume.StatVolume()->Record.GetStats().GetBoostBudget());
+    }
+
+    Y_UNIT_TEST(ShouldNoticePerformanceProfileChanges)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetThrottlingEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        auto storageConfig = std::make_shared<TStorageConfig>(
+            config,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        ui32 hasProfileModificationsCounter = 0;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->Recipient == MakeStorageStatsServiceId() &&
+                    event->GetTypeRewrite() ==
+                        TEvStatsService::EvVolumeSelfCounters)
+                {
+                    auto* msg =
+                        event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+
+                    hasProfileModificationsCounter =
+                        msg->VolumeSelfCounters->Simple
+                            .HasPerformanceProfileModifications.Value;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TVolumeClient volume(*runtime);
+        NKikimrBlockStore::TVolumeConfig defaultVolumeConfig;
+        {
+            auto request = volume.CreateUpdateVolumeConfigRequest();
+            defaultVolumeConfig = request->Record.GetVolumeConfig();
+            auto volumeParams = ComputeVolumeParams(
+                *storageConfig,
+                defaultVolumeConfig.GetBlockSize(),
+                defaultVolumeConfig.GetPartitions(0).GetBlockCount(),
+                static_cast<NProto::EStorageMediaKind>(
+                    defaultVolumeConfig.GetStorageMediaKind()),
+                static_cast<ui32>(defaultVolumeConfig.GetPartitions().size()),
+                defaultVolumeConfig.GetCloudId(),
+                defaultVolumeConfig.GetFolderId(),
+                defaultVolumeConfig.GetDiskId(),
+                defaultVolumeConfig.GetIsSystem(),
+                !defaultVolumeConfig.GetBaseDiskId().empty());
+            ResizeVolume(
+                *storageConfig,
+                volumeParams,
+                {},
+                {},
+                defaultVolumeConfig);
+        }
+
+        {
+            auto request = volume.CreateUpdateVolumeConfigRequest();
+            *request->Record.MutableVolumeConfig() = defaultVolumeConfig;
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvUpdateVolumeConfigResponse();
+            UNIT_ASSERT_C(
+                response->Record.GetStatus() == NKikimrBlockStore::OK,
+                "Unexpected status: " << NKikimrBlockStore::EStatus_Name(
+                    response->Record.GetStatus()));
+        }
+
+        volume.WaitReady();
+        // Update to the same performance profile settings doesn't count as
+        // change
+        {
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(0, hasProfileModificationsCounter);
+        }
+
+        // Setting at least one parameter a custom value counts
+        {
+            auto request = volume.CreateUpdateVolumeConfigRequest();
+            *request->Record.MutableVolumeConfig() = defaultVolumeConfig;
+            request->Record.MutableVolumeConfig()->SetVersion(2);
+            request->Record.MutableVolumeConfig()
+                ->SetPerformanceProfileBoostTime(10'000);
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvUpdateVolumeConfigResponse();
+            UNIT_ASSERT_C(
+                response->Record.GetStatus() == NKikimrBlockStore::OK,
+                "Unexpected status: " << NKikimrBlockStore::EStatus_Name(
+                    response->Record.GetStatus()));
+        }
+
+        volume.WaitReady();
+
+        {
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(1, hasProfileModificationsCounter);
+        }
+
+        volume.RebootTablet();
+        volume.WaitReady();
+
+        // Rebooting volume tablet should not decrease the counter
+        {
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(1, hasProfileModificationsCounter);
+        }
+
+        // Reverting back to suggested performance profile decreases the counter
+        {
+            auto request = volume.CreateUpdateVolumeConfigRequest();
+            *request->Record.MutableVolumeConfig() = defaultVolumeConfig;
+            request->Record.MutableVolumeConfig()->SetVersion(3);
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvUpdateVolumeConfigResponse();
+            UNIT_ASSERT_C(
+                response->Record.GetStatus() == NKikimrBlockStore::OK,
+                "Unexpected status: " << NKikimrBlockStore::EStatus_Name(
+                    response->Record.GetStatus()));
+        }
+
+        volume.WaitReady();
+
+        {
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(0, hasProfileModificationsCounter);
+        }
     }
 
     Y_UNIT_TEST(ShouldMaintainRequestOrderWhenThrottling)
@@ -6606,7 +6715,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             volumeClient1.SendAddClientRequest(clientInfo);
             auto response = volumeClient1.RecvAddClientResponse();
 
-            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
+            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
         }
 
         volumeClient1.RemoveClient(clientInfo.GetClientId());
@@ -9501,9 +9610,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             7 * 1024,   // block count per partition
             "vol2");
 
+        TString linkUuid;
         {
             // Create link
-            volume1.LinkLeaderVolumeToFollower("vol1", "vol2");
+            auto response = volume1.LinkLeaderVolumeToFollower("vol1", "vol2");
+            linkUuid = response->Record.GetLinkUUID();
 
             // Reboot tablet
             volume1.RebootTablet();
@@ -9512,8 +9623,46 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             // Should get S_ALREADY since link persisted in local volume
             // database.
             volume1.SendLinkLeaderVolumeToFollowerRequest("vol1", "vol2");
-            auto response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
+            response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
+        }
+
+        {   // Update link state
+            using EReason =
+                TEvVolumePrivate::TUpdateFollowerStateRequest::EReason;
+            using EState = TFollowerDiskInfo::EState;
+
+            auto response = volume1.UpdateFollowerState(
+                linkUuid,
+                EReason::FillProgressUpdate,
+                1_MB);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(EState::Preparing, response->NewState);
+            UNIT_ASSERT_VALUES_EQUAL(1_MB, response->MigratedBytes);
+
+            response = volume1.UpdateFollowerState(
+                linkUuid,
+                EReason::FillProgressUpdate,
+                2_MB);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(EState::Preparing, response->NewState);
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->MigratedBytes);
+
+            response = volume1.UpdateFollowerState(
+                linkUuid,
+                EReason::FillCompleted,
+                2_MB);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(EState::Ready, response->NewState);
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->MigratedBytes);
+
+            response = volume1.UpdateFollowerState(
+                linkUuid,
+                EReason::FillError,
+                2_MB);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(EState::Error, response->NewState);
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->MigratedBytes);
         }
 
         {
@@ -9530,6 +9679,101 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto response =
                 volume1.RecvUnlinkLeaderVolumeFromFollowerResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPerformIoWithPredefinedCopyVolumeClientId)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024);
+
+        volume.WaitReady();
+
+        // IO with predefined CopyVolumeClientId accepted.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            TString(CopyVolumeClientId),
+            1);
+        volume.ZeroBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            TString(CopyVolumeClientId));
+        volume.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            TString(CopyVolumeClientId));
+    }
+
+    Y_UNIT_TEST(ShouldNotPerformIoWithPredefinedWhenOtherClient)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+        volume.WaitReady();
+
+        // IO with predefined CopyVolumeClientId declined when other session
+        // exists.
+        {
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                TString(CopyVolumeClientId),
+                1);
+            auto response = volume.RecvWriteBlocksResponse(TDuration::Zero());
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_INVALID_SESSION,
+                response->GetStatus());
+        }
+        {
+            volume.SendZeroBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                TString(CopyVolumeClientId));
+            auto response = volume.RecvZeroBlocksResponse(TDuration::Zero());
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_INVALID_SESSION,
+                response->GetStatus());
+        }
+        {
+            volume.SendReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                TString(CopyVolumeClientId));
+            auto response = volume.RecvReadBlocksResponse(TDuration::Zero());
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_INVALID_SESSION,
+                response->GetStatus());
         }
     }
 }

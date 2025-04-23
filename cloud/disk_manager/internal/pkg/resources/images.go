@@ -53,6 +53,7 @@ type imageState struct {
 	id                string
 	folderID          string
 	srcDiskID         string
+	checkpointID      string
 	srcImageID        string
 	srcSnapshotID     string
 	createRequest     []byte
@@ -79,6 +80,7 @@ func (s *imageState) toImageMeta() *ImageMeta {
 		ID:                s.id,
 		FolderID:          s.folderID,
 		SrcDiskID:         s.srcDiskID,
+		CheckpointID:      s.checkpointID,
 		SrcImageID:        s.srcImageID,
 		SrcSnapshotID:     s.srcSnapshotID,
 		CreateTaskID:      s.createTaskID,
@@ -103,6 +105,7 @@ func (s *imageState) structValue() persistence.Value {
 		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
 		persistence.StructFieldValue("folder_id", persistence.UTF8Value(s.folderID)),
 		persistence.StructFieldValue("src_disk_id", persistence.UTF8Value(s.srcDiskID)),
+		persistence.StructFieldValue("checkpoint_id", persistence.UTF8Value(s.checkpointID)),
 		persistence.StructFieldValue("src_image_id", persistence.UTF8Value(s.srcImageID)),
 		persistence.StructFieldValue("src_snapshot_id", persistence.UTF8Value(s.srcSnapshotID)),
 		persistence.StructFieldValue("create_request", persistence.StringValue(s.createRequest)),
@@ -127,6 +130,7 @@ func scanImageState(res persistence.Result) (state imageState, err error) {
 		persistence.OptionalWithDefault("id", &state.id),
 		persistence.OptionalWithDefault("folder_id", &state.folderID),
 		persistence.OptionalWithDefault("src_disk_id", &state.srcDiskID),
+		persistence.OptionalWithDefault("checkpoint_id", &state.checkpointID),
 		persistence.OptionalWithDefault("src_image_id", &state.srcImageID),
 		persistence.OptionalWithDefault("src_snapshot_id", &state.srcSnapshotID),
 		persistence.OptionalWithDefault("create_request", &state.createRequest),
@@ -172,6 +176,7 @@ func imageStateStructTypeString() string {
 		id: Utf8,
 		folder_id: Utf8,
 		src_disk_id: Utf8,
+		checkpoint_id: Utf8,
 		src_image_id: Utf8,
 		src_snapshot_id: Utf8,
 		create_request: String,
@@ -195,6 +200,7 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("src_disk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("src_image_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("src_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("create_request", persistence.Optional(persistence.TypeString)),
@@ -460,6 +466,7 @@ func (s *storageYDB) imageCreated(
 	ctx context.Context,
 	session *persistence.Session,
 	imageID string,
+	checkpointID string,
 	createdAt time.Time,
 	imageSize uint64,
 	imageStorageSize uint64,
@@ -509,6 +516,17 @@ func (s *storageYDB) imageCreated(
 	state := states[0]
 
 	if state.status == imageStatusReady {
+		if state.checkpointID != checkpointID {
+			return errors.NewNonRetriableErrorf(
+				"image with id %v and checkpoint id %v can't be created, "+
+					"because image with the same id and another "+
+					"checkpoint id %v already exists",
+				imageID,
+				checkpointID,
+				state.checkpointID,
+			)
+		}
+
 		// Nothing to do.
 		return tx.Commit(ctx)
 	}
@@ -527,6 +545,7 @@ func (s *storageYDB) imageCreated(
 	}
 
 	state.status = imageStatusReady
+	state.checkpointID = checkpointID
 	state.createdAt = createdAt
 	state.size = imageSize
 	state.storageSize = imageStorageSize
@@ -853,6 +872,7 @@ func (s *storageYDB) CreateImage(
 func (s *storageYDB) ImageCreated(
 	ctx context.Context,
 	imageID string,
+	checkpointID string,
 	createdAt time.Time,
 	imageSize uint64,
 	imageStorageSize uint64,
@@ -865,6 +885,7 @@ func (s *storageYDB) ImageCreated(
 				ctx,
 				session,
 				imageID,
+				checkpointID,
 				createdAt,
 				imageSize,
 				imageStorageSize,

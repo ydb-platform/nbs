@@ -10,13 +10,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Data structure that maintains a collection of non-overlapping intervals of
-// equal length.
+// Data structure that maintains a collection of non-overlapping intervals.
 class TDisjointRangeSet
 {
 private:
     TMap<ui64, ui64> EndToStart;
-    std::optional<ui64> BlockSize;
 
 public:
     TDisjointRangeSet();

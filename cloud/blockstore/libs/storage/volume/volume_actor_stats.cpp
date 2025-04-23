@@ -99,6 +99,24 @@ void TVolumeActor::HandlePartStatsSaved(
     Y_UNUSED(ctx);
 }
 
+void TVolumeActor::HandleScrubberCounters(
+    const TEvVolume::TEvScrubberCounters::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    auto* msg = ev->Get();
+
+    TScrubbingInfo scrubbingInfo{
+        .Running = msg->Running,
+        .CurrentRange = msg->CurrentRange,
+        .Minors = std::move(msg->Minors),
+        .Majors = std::move(msg->Majors),
+        .Fixed = std::move(msg->Fixed),
+        .FixedPartial = std::move(msg->FixedPartial)};
+    State->UpdateScrubberCounters(std::move(scrubbingInfo));
+}
+
 void TVolumeActor::HandleDiskRegistryBasedPartCounters(
     const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
     const TActorContext& ctx)
@@ -411,12 +429,29 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
         100 * State->GetMeta().GetResyncIndex() / GetBlocksCount()
     );
 
+    simple.HasLaggingDevices.Set(State->HasLaggingAgents());
+    simple.LaggingDevicesCount.Set(State->GetLaggingDevices().size());
+    {
+        const auto& laggingInfos = State->GetLaggingAgentsMigrationInfo();
+        ui64 cleanBlockCount = 0;
+        ui64 dirtyBlockCount = 0;
+        for (const auto& [_, laggingInfo]: laggingInfos) {
+            cleanBlockCount += laggingInfo.CleanBlocks;
+            dirtyBlockCount += laggingInfo.DirtyBlocks;
+        }
+        simple.LaggingMigrationProgress.Set(
+            100 * cleanBlockCount /
+            Max<ui64>(cleanBlockCount + dirtyBlockCount, 1));
+    }
+
     simple.LastVolumeLoadTime.Set(GetLoadTime().MicroSeconds());
     simple.LastVolumeStartTime.Set(GetStartTime().MicroSeconds());
     simple.HasStorageConfigPatch.Set(HasStorageConfigPatch);
     simple.UseFastPath.Set(
         State->GetUseFastPath() &&
         State->GetMeta().GetMigrations().size() == 0);
+    simple.HasPerformanceProfileModifications.Set(
+        HasPerformanceProfileModifications);
 
     SendVolumeSelfCounters(ctx);
     VolumeSelfCounters = CreateVolumeSelfCounters(
@@ -458,9 +493,7 @@ void TVolumeActor::HandleLongRunningBlobOperation(
 
     const auto& msg = *ev->Get();
 
-    if (ev->Get()->Reason ==
-        TEvLongRunningOperation::EReason::LongRunningDetected)
-    {
+    if (msg.Reason == TEvLongRunningOperation::EReason::LongRunningDetected) {
         if (msg.FirstNotify) {
             LongRunningActors.Insert(ev->Sender);
             LongRunningActors.MarkLongRunning(ev->Sender, msg.Operation);
@@ -487,7 +520,7 @@ void TVolumeActor::HandleLongRunningBlobOperation(
             "[%lu] For volume %s %s %s (actor %s, group %u) detected after %s",
             TabletID(),
             State->GetDiskId().Quote().c_str(),
-            ToString(ev->Get()->Reason).c_str(),
+            ToString(msg.Reason).c_str(),
             ToString(msg.Operation).c_str(),
             ev->Sender.ToString().c_str(),
             msg.GroupId,

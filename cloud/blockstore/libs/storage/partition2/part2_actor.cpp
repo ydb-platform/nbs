@@ -703,6 +703,22 @@ void TPartitionActor::HandleDrain(
     DrainActorCompanion.HandleDrain(ev, ctx);
 }
 
+void TPartitionActor::HandleWaitForInFlightWrites(
+    const TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    DrainActorCompanion.HandleWaitForInFlightWrites(ev, ctx);
+}
+
+void TPartitionActor::HandleLockAndDrainRange(
+    const TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \

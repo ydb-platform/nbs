@@ -482,9 +482,31 @@ void TAlignedDeviceHandler::ReportCriticalError(
         return;
     }
 
-    if (!IsReliableMediaKind && CriticalErrorReported) {
-        // For non-reliable disks report crit event only once.
+    if (error.GetCode() == E_IO_SILENT &&
+        (error.GetMessage().Contains(
+             "Request WriteBlocks is not allowed for client") ||
+         error.GetMessage().Contains(
+             "Request WriteBlocksLocal is not allowed for client") ||
+         error.GetMessage().Contains(
+             "Request ZeroBlocks is not allowed for client")))
+    {
+        // Don't raise crit event when client try to write with read-only mount.
+        // See cloud/blockstore/libs/storage/volume/model/client_state.cpp
         return;
+    }
+
+    if (IsReliableMediaKind) {
+        CriticalErrorReported.store(true);
+    } else {
+        // For non-reliable disks report crit event only once.
+        bool old = CriticalErrorReported.load();
+        if (old) {
+            return;
+        }
+        bool ok = CriticalErrorReported.compare_exchange_strong(old, true);
+        if (!ok) {
+            return;
+        }
     }
 
     auto message = TStringBuilder()
@@ -495,7 +517,6 @@ void TAlignedDeviceHandler::ReportCriticalError(
     } else {
         ReportErrorWasSentToTheGuestForNonReliableDisk(message);
     }
-    CriticalErrorReported = true;
 }
 
 }   // namespace NCloud::NBlockStore

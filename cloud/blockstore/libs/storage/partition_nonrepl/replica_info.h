@@ -14,6 +14,7 @@ struct TReplicaInfo
 {
     TNonreplicatedPartitionConfigPtr Config;
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> Migrations;
+    THashMap<TString, NProto::TLaggingAgent> LaggingAgents;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

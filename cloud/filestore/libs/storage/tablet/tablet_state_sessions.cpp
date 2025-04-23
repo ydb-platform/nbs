@@ -62,7 +62,8 @@ void TIndexTabletState::LoadSessions(
     const TVector<NProto::TSessionHandle>& handles,
     const TVector<NProto::TSessionLock>& locks,
     const TVector<NProto::TDupCacheEntry>& cacheEntries,
-    const TVector<NProto::TSessionHistoryEntry>& sessionsHistory)
+    const TVector<NProto::TSessionHistoryEntry>& sessionsHistory,
+    const NProto::TSessionOptions& sessionOptions)
 {
     for (const auto& proto: sessions) {
         LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
@@ -74,7 +75,8 @@ void TIndexTabletState::LoadSessions(
             proto.GetMaxRwSeqNo(),
             proto.GetSessionState().size());
 
-        auto* session = CreateSession(proto, idleSessionDeadline);
+        auto* session =
+            CreateSession(proto, idleSessionDeadline, sessionOptions);
         TABLET_VERIFY(session);
     }
 
@@ -128,7 +130,8 @@ TSession* TIndexTabletState::CreateSession(
     const TString& originFqdn,
     ui64 seqNo,
     bool readOnly,
-    const TActorId& owner)
+    const TActorId& owner,
+    const NProto::TSessionOptions& sessionOptions)
 {
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
         "%s creating session c: %s, s: %s",
@@ -156,7 +159,8 @@ TSession* TIndexTabletState::CreateSession(
         SessionHistoryEntryCount);
     IncrementUsedSessionsCount(db);
 
-    auto* session = CreateSession(proto, seqNo, readOnly, owner);
+    auto* session =
+        CreateSession(proto, seqNo, readOnly, owner, sessionOptions);
     TABLET_VERIFY(session);
 
     return session;
@@ -164,9 +168,10 @@ TSession* TIndexTabletState::CreateSession(
 
 TSession* TIndexTabletState::CreateSession(
     const NProto::TSession& proto,
-    TInstant inactivityDeadline)
+    TInstant inactivityDeadline,
+    const NProto::TSessionOptions& sessionOptions)
 {
-    auto session = std::make_unique<TSession>(proto);
+    auto session = std::make_unique<TSession>(proto, sessionOptions);
     session->InactivityDeadline = inactivityDeadline;
 
     Impl->OrphanSessions.PushBack(session.get());
@@ -180,9 +185,10 @@ TSession* TIndexTabletState::CreateSession(
     const NProto::TSession& proto,
     ui64 seqNo,
     bool readOnly,
-    const TActorId& owner)
+    const TActorId& owner,
+    const NProto::TSessionOptions& sessionOptions)
 {
-    auto session = std::make_unique<TSession>(proto);
+    auto session = std::make_unique<TSession>(proto, sessionOptions);
     session->UpdateSubSession(seqNo, readOnly, owner);
 
     Impl->Sessions.PushBack(session.get());
@@ -565,6 +571,7 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     auto handle = std::make_unique<TSessionHandle>(session, proto);
 
     session->Handles.PushBack(handle.get());
+    session->HandleStatsByNode.RegisterHandle(proto);
     Impl->HandleById.emplace(handle->GetHandle(), handle.get());
     Impl->NodeRefsByHandle[proto.GetNodeId()]++;
 
@@ -603,6 +610,9 @@ void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
 
     if (--(it->second) == 0) {
         Impl->NodeRefsByHandle.erase(it);
+    }
+    if (auto* session = handle->Session) {
+        session->HandleStatsByNode.UnregisterHandle(*handle);
     }
 
     {

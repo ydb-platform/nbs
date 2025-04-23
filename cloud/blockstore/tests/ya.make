@@ -20,13 +20,13 @@ RECURSE(
     loadtest
     loadtest/remote
     local_ssd
-    mirror_disks
     monitoring
     mount
     notify
     python
     python_client
     rdma
+    rdma_disks
     recipes
     registration
     resize-disk

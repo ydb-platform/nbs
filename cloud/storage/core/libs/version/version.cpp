@@ -7,6 +7,7 @@
 #include <util/string/split.h>
 
 #include <cctype>
+#include <cmath>
 
 namespace NCloud {
 

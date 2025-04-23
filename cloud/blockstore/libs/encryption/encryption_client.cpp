@@ -6,11 +6,13 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/threading/future/future.h>
 
 namespace NCloud::NBlockStore {
@@ -808,10 +810,25 @@ private:
             "Use default AES XTS encryption for volume "
             << volume.GetDiskId().Quote());
 
+        const auto& encodedDEK = desc.GetEncryptionKey().GetEncryptedDEK();
+
+        auto [dek, error] = SafeExecute<TResultOrError<TString>>([&] {
+            return Base64Decode(encodedDEK);
+        });
+
+        if (HasError(error)) {
+            return MakeFuture<TResultOrError<IBlockStorePtr>>(MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Can't decode " << encodedDEK.Quote()
+                                 << " as base64: " << FormatError(error)));
+        }
+
         NProto::TEncryptionSpec spec;
         spec.SetMode(desc.GetMode());
-        spec.MutableKeyPath()->MutableKmsKey()->CopyFrom(
-            desc.GetEncryptionKey());
+
+        auto& kmsKey = *spec.MutableKeyPath()->MutableKmsKey();
+        kmsKey.SetKekId(desc.GetEncryptionKey().GetKekId());
+        kmsKey.SetEncryptedDEK(dek);
 
         return KeyProvider->GetKey(spec, volume.GetDiskId())
             .Apply(

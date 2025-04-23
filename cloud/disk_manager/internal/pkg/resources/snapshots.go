@@ -389,7 +389,6 @@ func (s *storageYDB) createSnapshot(
 		folderID:          snapshot.FolderID,
 		zoneID:            snapshot.Disk.ZoneId,
 		diskID:            snapshot.Disk.DiskId,
-		checkpointID:      snapshot.CheckpointID,
 		createRequest:     createRequest,
 		createTaskID:      snapshot.CreateTaskID,
 		creatingAt:        snapshot.CreatingAt,
@@ -445,6 +444,7 @@ func (s *storageYDB) snapshotCreated(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
+	checkpointID string,
 	createdAt time.Time,
 	snapshotSize uint64,
 	snapshotStorageSize uint64,
@@ -492,6 +492,17 @@ func (s *storageYDB) snapshotCreated(
 	state := states[0]
 
 	if state.status == snapshotStatusReady {
+		if state.checkpointID != checkpointID {
+			return errors.NewNonRetriableErrorf(
+				"snapshot with id %v and checkpoint id %v can't be created, "+
+					"because snapshot with the same id and another "+
+					"checkpoint id %v already exists",
+				snapshotID,
+				checkpointID,
+				state.checkpointID,
+			)
+		}
+
 		// Nothing to do.
 		return tx.Commit(ctx)
 	}
@@ -505,6 +516,7 @@ func (s *storageYDB) snapshotCreated(
 	}
 
 	state.status = snapshotStatusReady
+	state.checkpointID = checkpointID
 	state.createdAt = createdAt
 	state.size = snapshotSize
 	state.storageSize = snapshotStorageSize
@@ -829,6 +841,7 @@ func (s *storageYDB) CreateSnapshot(
 func (s *storageYDB) SnapshotCreated(
 	ctx context.Context,
 	snapshotID string,
+	checkpointID string,
 	createdAt time.Time,
 	snapshotSize uint64,
 	snapshotStorageSize uint64,
@@ -841,6 +854,7 @@ func (s *storageYDB) SnapshotCreated(
 				ctx,
 				session,
 				snapshotID,
+				checkpointID,
 				createdAt,
 				snapshotSize,
 				snapshotStorageSize,
