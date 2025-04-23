@@ -202,7 +202,7 @@ NProto::TError TVolumeClientState::GetWriteError(
         // for legacy clients
         code = E_IO_SILENT;
     }
-    // Keep sync with TAlignedDeviceHandler::ReportCriticalError()
+    // Keep in sync with TAlignedDeviceHandler::ReportCriticalError()
     return MakeError(
         code,
         TStringBuilder()
