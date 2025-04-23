@@ -129,7 +129,7 @@ void TIndexTabletState::LoadState(
     // reboot and throttle cleanup when the amount of deletion markers is
     // expected to drop below the minimal amount.
     // https://github.com/ydb-platform/nbs/pull/3268
-    MinimalDeletionMarkersCountSinceTabletStart =
+    MinDeletionMarkersCountSinceTabletStart =
         fileSystemStats.GetDeletionMarkersCount();
 
     if (FileSystemStats.GetLastNodeId() < RootNodeId) {

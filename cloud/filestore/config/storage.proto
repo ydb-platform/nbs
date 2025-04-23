@@ -572,5 +572,5 @@ message TStorageConfig
     // EnqueueBlobIndexOpIfNeeded will be called with this interval
     // if background operations should run but have been throttled.
     // (e.g. cleanup operation due to CleanupCpuThrottlingThresholdPercentage)
-    optional uint32 EnqueueBlobIndexOpIfNeededRescheduleInterval = 427; // in ms
+    optional uint32 EnqueueBlobIndexOpIfNeededScheduleInterval = 427; // in ms
 }

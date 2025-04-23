@@ -603,7 +603,7 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
     const auto rangeCompactionStats = GetCompactionStats(cleanupInfo.RangeId);
 
     const auto deletionMarkersCountAfterCleanup =
-        rangeCompactionStats.DeletionsCount <= deletionMarkersCount
+        deletionMarkersCount >= rangeCompactionStats.DeletionsCount
         ? deletionMarkersCount - rangeCompactionStats.DeletionsCount
         : 0;
 
@@ -611,7 +611,7 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
     // cleanup will drop below the minimal observed amount of deletion markers.
     // https://github.com/ydb-platform/nbs/pull/3268
     const auto deletionMarkersCountThreshold =
-        GetMinimalDeletionMarkersCountSinceTabletStart();
+        GetMinDeletionMarkersCountSinceTabletStart();
     if (deletionMarkersCountAfterCleanup >= deletionMarkersCountThreshold) {
         return false;
     }

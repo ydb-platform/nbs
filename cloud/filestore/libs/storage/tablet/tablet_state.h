@@ -178,7 +178,7 @@ private:
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     TNodeToSessionCounters NodeToSessionCounters;
-    ui64 MinimalDeletionMarkersCountSinceTabletStart = 0;
+    ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
@@ -295,15 +295,15 @@ public:
         return FileSystemStats;
     }
 
-    ui64 GetMinimalDeletionMarkersCountSinceTabletStart() const
+    ui64 GetMinDeletionMarkersCountSinceTabletStart() const
     {
-        return MinimalDeletionMarkersCountSinceTabletStart;
+        return MinDeletionMarkersCountSinceTabletStart;
     }
 
-    void UpdateMinimalDeletionMarkersCountSinceTabletStart()
+    void UpdateMinDeletionMarkersCountSinceTabletStart()
     {
-        MinimalDeletionMarkersCountSinceTabletStart = Min(
-            MinimalDeletionMarkersCountSinceTabletStart,
+        MinDeletionMarkersCountSinceTabletStart = Min(
+            MinDeletionMarkersCountSinceTabletStart,
             FileSystemStats.GetDeletionMarkersCount()
         );
     }

@@ -77,7 +77,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(BlobIndexOpsPriority,                                                  \
             NProto::EBlobIndexOpsPriority,                                     \
             NProto::BIOP_CLEANUP_FIRST                                        )\
-    xxx(EnqueueBlobIndexOpIfNeededRescheduleInterval,                          \
+    xxx(EnqueueBlobIndexOpIfNeededScheduleInterval,                            \
                                             TDuration, TDuration::Seconds(1)  )\
                                                                                \
     xxx(FlushThresholdForBackpressure,      ui32,      128_MB                 )\
