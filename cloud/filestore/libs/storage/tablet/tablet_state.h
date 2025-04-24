@@ -651,7 +651,7 @@ public:
 private:
     TSession* CreateSession(
         const NProto::TSession& proto,
-        TInstant inactivityDeadline);
+        TInstant inactivityDeadline,
         const NProto::TSessionOptions& sessionOptions);
 
     TSession* CreateSession(
