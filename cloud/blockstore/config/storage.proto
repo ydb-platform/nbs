@@ -1219,4 +1219,9 @@ message TStorageServiceConfig
     // The minimum size of the request starting from which the MultiAgentWrite
     // is enabled.
     optional uint32 MultiAgentWriteRequestSizeThreshold = 426;
+
+    // Minimum write request size (in bytes) that lets us write the data directly
+    // to the mixed channel.
+    // It'll be ignored if 0 or more than (equal to) WriteBlobThreshold.
+    optional uint32 WriteMixedBlobThresholdHDD = 427;
 }
