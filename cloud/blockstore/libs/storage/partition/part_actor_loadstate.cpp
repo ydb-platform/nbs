@@ -266,7 +266,6 @@ void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
 {
     auto totalBlocksCount = State->GetMixedBlocksCount() + State->GetMergedBlocksCount();
     UpdateStorageStat(totalBlocksCount * State->GetBlockSize());
-    UpdateExecutorStats(ctx);
 
     LoadFreshBlobs(ctx);
 }

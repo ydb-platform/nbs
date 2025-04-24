@@ -629,8 +629,7 @@ void TPartitionActor::HandleFlush(
             "Flush",
             requestInfo->CallContext->RequestId);
 
-        UpdateCPUUsageStat(CyclesToDurationSafe(requestInfo->GetExecCycles()).MicroSeconds());
-        UpdateExecutorStats(ctx);
+        UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
@@ -649,8 +648,7 @@ void TPartitionActor::HandleFlush(
             "Flush",
             requestInfo->CallContext->RequestId);
 
-        UpdateCPUUsageStat(CyclesToDurationSafe(requestInfo->GetExecCycles()).MicroSeconds());
-        UpdateExecutorStats(ctx);
+        UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
@@ -820,8 +818,7 @@ void TPartitionActor::HandleFlushCompleted(
 
     UpdateStats(msg->Stats);
 
-    UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     State->GetCommitQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);

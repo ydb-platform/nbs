@@ -102,12 +102,20 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         sysCpuConsumption += Counters->TxCumulative(tx, NKikimr::COUNTER_TT_BOOKKEEPING_CPUTIME).Get();
     }
 
+    auto* resourceMetrics = Executor()->GetResourceMetrics();
     NBlobMetrics::TBlobLoadMetrics blobLoadMetrics = NBlobMetrics::MakeBlobLoadMetrics(
         State->GetConfig().GetExplicitChannelProfiles(),
-        *Executor()->GetResourceMetrics());
+        *resourceMetrics);
     NBlobMetrics::TBlobLoadMetrics offsetLoadMetrics = NBlobMetrics::TakeDelta(
         PrevMetrics, blobLoadMetrics);
     offsetLoadMetrics += OverlayMetrics;
+
+    NKikimrTabletBase::TMetrics metrics;
+    resourceMetrics->FillChanged(
+        metrics,
+        ctx.Now(),
+        true   // forceAll
+    );
 
     auto request = std::make_unique<TEvStatsService::TEvVolumePartCounters>(
         MakeIntrusive<TCallContext>(),
@@ -116,7 +124,8 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         sysCpuConsumption - SysCPUConsumption,
         UserCPUConsumption,
         !State->GetCheckpoints().IsEmpty(),
-        std::move(offsetLoadMetrics));
+        std::move(offsetLoadMetrics),
+        std::move(metrics));
 
     PrevMetrics = std::move(blobLoadMetrics);
     OverlayMetrics = {};

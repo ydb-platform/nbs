@@ -131,7 +131,6 @@ void TPartitionActor::HandleReadBlobCompleted(
     const ui32 groupId = msg->GroupId;
     const bool isOverlayDisk = blobTabletId != TabletID();
     UpdateNetworkStat(ctx.Now(), msg->BytesCount);
-    UpdateExecutorStats(ctx);
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,

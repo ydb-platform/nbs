@@ -177,7 +177,8 @@ void SendDiskStats(
         0,
         0,
         volumeOptions & EVolumeTestOptions::VOLUME_HASCHECKPOINT,
-        NBlobMetrics::TBlobLoadMetrics());
+        NBlobMetrics::TBlobLoadMetrics(),
+        NKikimrTabletBase::TMetrics());
 
     auto volumeMsg = std::make_unique<TEvStatsService::TEvVolumeSelfCounters>(
         diskId,

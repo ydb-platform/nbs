@@ -87,7 +87,6 @@ void TPartitionActor::ExecuteDeleteGarbage(
     }
 
     UpdateStorageStat(newBlobBytes - garbageBlobBytes);
-    UpdateExecutorStats(ctx);
 
     State->SetLastCollectCommitId(args.CommitId);
 

@@ -16,6 +16,26 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Partitions report metrics every "UpdateCounterInterval" seconds. YDB counters
+// are averaged over "DurationToCalculate" seconds. To calculate the correct raw
+// value needed for incrementing volume counters, we need to multiply the
+// averaged values by this multiplier.
+template <
+    TTimeBase<TInstant>::TValue DurationToStore,
+    TTimeBase<TInstant>::TValue DurationToCalculate>
+constexpr double GetMetricsMultiplicator(
+    NMetrics::TDecayingAverageValue<ui64, DurationToStore, DurationToCalculate>)
+{
+    return static_cast<double>(UpdateCountersInterval.GetValue()) /
+           DurationToCalculate;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_CACHED_COUNTERS(xxx, ...)                                   \
@@ -89,6 +109,84 @@ void TVolumeActor::UpdateActorStats(const TActorContext& ctx)
         IncrementFor(actorQueue, actorQueues.first);
         IncrementFor(mailboxQueue, actorQueues.second);
     }
+}
+
+void TVolumeActor::UpdateTabletMetrics(
+    const NActors::TActorContext& ctx,
+    const NKikimrTabletBase::TMetrics& metrics)
+{
+    auto* resourceMetrics = GetResourceMetrics();
+    if (!resourceMetrics) {
+        return;
+    }
+
+    if (metrics.HasCPU()) {
+        resourceMetrics->CPU.Increment(
+            metrics.GetCPU() * GetMetricsMultiplicator(resourceMetrics->CPU),
+            ctx.Now());
+    }
+    if (metrics.HasNetwork()) {
+        resourceMetrics->Network.Increment(
+            metrics.GetNetwork() *
+                GetMetricsMultiplicator(resourceMetrics->Network),
+            ctx.Now());
+    }
+    if (metrics.HasStorage()) {
+        resourceMetrics->StorageUser.Increment(metrics.GetStorage());
+    }
+    if (metrics.GroupReadThroughputSize() > 0) {
+        for (const auto& v: metrics.GetGroupReadThroughput()) {
+            auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+            auto& readThroughput = resourceMetrics->ReadThroughput[id];
+            readThroughput.Increment(
+                v.GetThroughput() * GetMetricsMultiplicator(readThroughput),
+                ctx.Now());
+        }
+    }
+    if (metrics.GroupWriteThroughputSize() > 0) {
+        for (const auto& v: metrics.GetGroupWriteThroughput()) {
+            auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+            auto& writeThroughput = resourceMetrics->WriteThroughput[id];
+            writeThroughput.Increment(
+                v.GetThroughput() * GetMetricsMultiplicator(writeThroughput),
+                ctx.Now());
+        }
+    }
+    if (metrics.GroupReadIopsSize() > 0) {
+        for (const auto& v: metrics.GetGroupReadIops()) {
+            auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+            auto& readIops = resourceMetrics->ReadIops[id];
+            readIops.Increment(
+                v.GetIops() * GetMetricsMultiplicator(readIops),
+                ctx.Now());
+        }
+    }
+    if (metrics.GroupWriteIopsSize() > 0) {
+        for (const auto& v: metrics.GetGroupWriteIops()) {
+            auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+            auto& writeIops = resourceMetrics->WriteIops[id];
+            writeIops.Increment(
+                v.GetIops() * GetMetricsMultiplicator(writeIops),
+                ctx.Now());
+        }
+    }
+
+    NKikimrTabletBase::TMetrics volumeMetrics;
+    const bool changed = GetResourceMetrics()->FillChanged(
+        volumeMetrics,
+        ctx.Now(),
+        true   // forceAll
+    );
+    if (!changed) {
+        return;
+    }
+
+    ctx.Send(
+        LauncherActorID,
+        new TEvLocal::TEvTabletMetrics(
+            TabletID(),
+            0,   // followerId
+            volumeMetrics));
 }
 
 void TVolumeActor::HandlePartStatsSaved(
@@ -210,6 +308,8 @@ void TVolumeActor::HandlePartCounters(
             State->GetDiskId().Quote().c_str());
         return;
     }
+
+    UpdateTabletMetrics(ctx, msg->TabletMetrics);
 
     if (!statInfo->LastCounters) {
         statInfo->LastCounters = CreatePartitionDiskCounters(
@@ -367,7 +467,8 @@ void TVolumeActor::DoSendPartStatsToService(
         systemCpu,
         userCpu,
         State->GetCheckpointStore().GetActiveCheckpoints().size(),
-        std::move(offsetLoadMetrics));
+        std::move(offsetLoadMetrics),
+        NKikimrTabletBase::TMetrics());
 
     PrevMetrics = std::move(blobLoadMetrics);
 

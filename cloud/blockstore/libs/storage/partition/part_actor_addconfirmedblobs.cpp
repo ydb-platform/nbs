@@ -337,8 +337,7 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
        return;
     }
 
-    UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.AddConfirmedBlobs.AddRequest(time);
 

@@ -392,10 +392,7 @@ void TPartitionActor::CompleteMetadataRebuildBlockCount(
 
     RemoveTransaction(*args.RequestInfo);
 
-    UpdateCPUUsageStat(CyclesToDurationSafe(
-        args.RequestInfo->GetExecCycles()
-    ).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
     NCloud::Reply(
         ctx,

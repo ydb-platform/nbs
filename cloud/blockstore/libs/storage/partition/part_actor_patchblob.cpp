@@ -362,7 +362,6 @@ void TPartitionActor::HandlePatchBlobCompleted(
             msg->PatchedBlobId.BlobSize());
     }
     UpdateNetworkStat(ctx.Now(), msg->PatchedBlobId.BlobSize());
-    UpdateExecutorStats(ctx);
 
     PartCounters->RequestCounters.PatchBlob.AddRequest(
         msg->RequestTime.MicroSeconds(),

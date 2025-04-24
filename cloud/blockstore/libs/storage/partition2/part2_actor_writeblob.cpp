@@ -376,7 +376,6 @@ void TPartitionActor::HandleWriteBlobCompleted(
         UpdateWriteThroughput(ctx, channel, group, msg->BlobId.BlobSize());
     }
     UpdateNetworkStats(ctx, msg->BlobId.BlobSize());
-    UpdateExecutorStats(ctx);
 
     PartCounters->RequestCounters.WriteBlob.AddRequest(msg->RequestTime.MicroSeconds(), msg->BlobId.BlobSize());
 

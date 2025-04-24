@@ -8,6 +8,7 @@
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/tablet/tablet_counters_aggregator.h>
 
@@ -486,15 +487,11 @@ void TPartitionActor::UpdateStorageStat(i64 value)
     GetResourceMetrics()->StorageUser.Increment(value);
 }
 
-void TPartitionActor::UpdateCPUUsageStat(ui64 value)
+void TPartitionActor::UpdateCPUUsageStat(TInstant now, ui64 execCylces)
 {
-    UserCPUConsumption += value;
-    GetResourceMetrics()->CPU.Increment(value);
-}
-
-void TPartitionActor::UpdateExecutorStats(const TActorContext& ctx)
-{
-    GetResourceMetrics()->TryUpdate(ctx);
+    const auto duration = CyclesToDurationSafe(execCylces);
+    UserCPUConsumption += duration.MicroSeconds();
+    GetResourceMetrics()->CPU.Increment(duration.MicroSeconds(), now);
 }
 
 bool TPartitionActor::InitReadWriteBlockRange(

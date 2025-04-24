@@ -168,8 +168,7 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
 
     Actors.Erase(ev->Sender);
 
-    UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     EnqueueTrimFreshLogIfNeeded(ctx);
 

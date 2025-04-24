@@ -717,8 +717,7 @@ void TPartitionActor::HandleCollectGarbageCompleted(
 
     Actors.Erase(ev->Sender);
 
-    UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     EnqueueCollectGarbageIfNeeded(ctx);
 

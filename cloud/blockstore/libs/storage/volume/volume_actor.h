@@ -411,6 +411,10 @@ private:
         }
     }
 
+    void UpdateTabletMetrics(
+        const NActors::TActorContext& ctx,
+        const NKikimrTabletBase::TMetrics& tabletMetrics);
+
     void SendPartStatsToService(const NActors::TActorContext& ctx);
     void DoSendPartStatsToService(
         const NActors::TActorContext& ctx,
@@ -878,10 +882,6 @@ private:
 
     void HandleServerDestroyed(
         const NKikimr::TEvTabletPipe::TEvServerDestroyed::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleTabletMetrics(
-        NKikimr::TEvLocal::TEvTabletMetrics::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleUpdateMigrationState(
