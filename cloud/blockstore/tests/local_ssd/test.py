@@ -2,8 +2,8 @@ import json
 import os
 import pytest
 
+from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 from cloud.blockstore.public.sdk.python.client.error_codes import EResult
-from cloud.blockstore.public.sdk.python.client import CreateClient
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_POOL_KIND_GLOBAL, STORAGE_MEDIA_SSD_LOCAL
 
@@ -137,7 +137,7 @@ def test_add_host_with_legacy_local_ssd(
 
     nbs = start_nbs(nbs_config)
 
-    client = CreateClient(f"localhost:{nbs.port}")
+    client = CreateTestClient(f"localhost:{nbs.port}")
     client.execute_action(
         action="DiskRegistrySetWritableState",
         input_bytes=str.encode('{"State": true}'))
@@ -169,7 +169,7 @@ def test_add_host_with_legacy_local_ssd(
 
     client.wait_for_devices_to_be_cleared(4)
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp["DirtyDevices"]) == 4
     assert len(bkp["SuspendedDevices"]) == 4
 
@@ -190,7 +190,7 @@ def test_add_host_with_legacy_local_ssd(
     assert storage[0].ChunkCount == 2
     assert storage[0].ChunkSize == LOCAL_DEVICE_SIZE
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp["DirtyDevices"]) == 2
     assert len(bkp["SuspendedDevices"]) == 2
 
@@ -199,7 +199,7 @@ def test_add_host_with_legacy_local_ssd(
 
     client.wait_for_devices_to_be_cleared()
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp.get("SuspendedDevices", [])) == 0
 
@@ -236,7 +236,7 @@ def test_add_host_with_legacy_local_ssd(
     assert action_results[0].Result.Code == EResult.E_TRY_AGAIN.value
     assert sorted(action_results[0].DependentDisks) == ["vol0", "vol1"]
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp.get("SuspendedDevices", [])) == 0
 
@@ -264,7 +264,7 @@ def test_add_host_with_legacy_local_ssd(
     assert action_results[0].Result.Code == EResult.S_OK.value
 
     # All local devices should now be suspended.
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp["SuspendedDevices"]) == 4
 
@@ -287,14 +287,14 @@ def test_add_host_with_legacy_local_ssd(
     # wait for DR to mark the agent as warning (back from unavailable)
     client.wait_agent_state(agent_id, 'AGENT_STATE_WARNING')
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING', json.dumps(bkp)
     assert len(bkp.get("SuspendedDevices", [])) == 4
 
     client.destroy_volume("vol0", sync=True)
     client.destroy_volume("vol1", sync=True)
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp.get("DirtyDevices", [])) == 2
     assert len(bkp.get("SuspendedDevices", [])) == 4
 
@@ -302,7 +302,7 @@ def test_add_host_with_legacy_local_ssd(
     client.add_host(agent_id)
 
     # Devices are still suspended
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp.get("DirtyDevices", [])) == 2
     assert len(bkp.get("SuspendedDevices", [])) == 4
 
@@ -325,7 +325,7 @@ def test_add_host_with_legacy_local_ssd(
     client.resume_device(agent_id, os.path.join(data_path, "NVMECOMPUTE02"))
     client.wait_for_devices_to_be_cleared()
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp.get("SuspendedDevices", [])) == 2
 
@@ -355,7 +355,7 @@ def test_add_host(
 
     nbs = start_nbs(nbs_config)
 
-    client = CreateClient(f"localhost:{nbs.port}")
+    client = CreateTestClient(f"localhost:{nbs.port}")
     client.execute_action(
         action="DiskRegistrySetWritableState",
         input_bytes=str.encode('{"State": true}'))
@@ -387,7 +387,7 @@ def test_add_host(
     assert storage[0].ChunkCount == 6
     assert storage[0].ChunkSize == DEFAULT_DEVICE_SIZE
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp.get("SuspendedDevices", [])) == 0
 
@@ -415,7 +415,7 @@ def test_add_host(
     assert action_results[0].Result.Code == EResult.E_TRY_AGAIN.value
     assert action_results[0].DependentDisks == ["vol0"]
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp.get("SuspendedDevices", [])) == 0
 
@@ -449,7 +449,7 @@ def test_add_host(
     assert storage[0].ChunkCount == 0
     assert storage[0].ChunkSize == 0
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp["SuspendedDevices"]) == 4
 
@@ -467,7 +467,7 @@ def test_add_host(
 
     client.destroy_volume("vol0", sync=True)
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING', json.dumps(bkp)
     assert len(bkp.get("SuspendedDevices", [])) == 4
 
@@ -477,7 +477,7 @@ def test_add_host(
     client.wait_for_devices_to_be_cleared()
 
     # all devices are available
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp.get("SuspendedDevices", [])) == 0
 

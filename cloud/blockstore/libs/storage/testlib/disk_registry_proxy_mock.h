@@ -329,8 +329,8 @@ private:
             }
         }
         response->Record.MutableUnavailableAgentIds()->Assign(
-            std::make_move_iterator(unavailableAgentIdsForDisk.begin()),
-            std::make_move_iterator(unavailableAgentIdsForDisk.end()));
+            unavailableAgentIdsForDisk.begin(),
+            unavailableAgentIdsForDisk.end());
 
         return response;
     }

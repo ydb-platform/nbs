@@ -2,7 +2,8 @@ import logging
 import os
 import pytest
 
-from cloud.blockstore.public.sdk.python.client import CreateClient, Session
+from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
+from cloud.blockstore.public.sdk.python.client import Session
 from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
@@ -47,7 +48,7 @@ def start_nbs_daemon(request, ydb):
 
     daemon = start_nbs(cfg)
 
-    client = CreateClient(f"localhost:{daemon.port}")
+    client = CreateTestClient(f"localhost:{daemon.port}")
     client.execute_action(
         action="DiskRegistrySetWritableState",
         input_bytes=str.encode('{"State": true}'))
@@ -146,7 +147,7 @@ def test_should_mount_volume_with_unavailable_agents(
     logger = logging.getLogger("client")
     logger.setLevel(logging.DEBUG)
 
-    client = CreateClient(f"localhost:{nbs.port}", log=logger)
+    client = CreateTestClient(f"localhost:{nbs.port}", log=logger)
 
     agents = []
 
@@ -172,7 +173,7 @@ def test_should_mount_volume_with_unavailable_agents(
         storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
         cloud_id="test")
 
-    bkp = client.backup()
+    bkp = client.backup_disk_registry_state()
     assert len(bkp['Disks']) == 1
     assert len(bkp['Disks'][0]['DeviceUUIDs']) == 12
     assert len(bkp['Agents']) == 2
