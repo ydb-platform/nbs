@@ -217,8 +217,11 @@ struct TEvNonreplPartitionPrivate
         // Request execution total time.
         TDuration ExecutionTime;
 
-        // Indexes of devices that participated in the request.
+        // Indices of devices that participated in the request.
         TStackVec<ui32, 2> DeviceIndices;
+
+        // Indices of devices where requests have resulted in errors.
+        TStackVec<ui32, 2> ErrorDeviceIndices;
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;
