@@ -910,8 +910,6 @@ void TDiskRegistryState::RemoveAgentFromNode(
         timestamp,
         "lost");
 
-    THashSet<TDiskId> diskIds;
-
     for (auto& d: *agent.MutableDevices()) {
         d.SetNodeId(0);
 
