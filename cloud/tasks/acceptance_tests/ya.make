@@ -13,7 +13,6 @@ TAG(
     ya:fat
     ya:force_sandbox
     ya:sandbox_coverage
-    ya:large_tests_on_multi_slots
 )
 
 REQUIREMENTS(
