@@ -90,9 +90,14 @@ private:
         std::atomic<i64> UsedSessionsCount{0};
         std::atomic<i64> UsedHandlesCount{0};
         std::atomic<i64> UsedLocksCount{0};
+
+        // Session stats
         std::atomic<i64> StatefulSessionsCount{0};
         std::atomic<i64> StatelessSessionsCount{0};
+        std::atomic<i64> ActiveSessionsCount{0};
+        std::atomic<i64> OrphanSessionsCount{0};
         std::atomic<i64> SessionTimeouts{0};
+        std::atomic<i64> SessionCleanupAttempts{0};
 
         std::atomic<i64> AllocatedCompactionRangesCount{0};
         std::atomic<i64> UsedCompactionRangesCount{0};
