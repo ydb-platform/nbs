@@ -8,6 +8,8 @@
 #include <util/stream/output.h>
 #include <util/system/event.h>
 
+#include <numeric>
+
 namespace NCloud::NBlockStore::NVHostServer {
 namespace {
 
@@ -82,7 +84,7 @@ void WriteTimes(
     ui64 prevCount = 0;
 
     hist.IterateDiffBuckets(prevHist, [&] (ui64 start, ui64 end, ui64 count) {
-        const ui64 m = start + ((end - start) / 2);
+        const ui64 m = std::midpoint(start, end);
         const ui64 v = m * 1000 / cyclesPerMs;
 
         if (v == prevTime) {
