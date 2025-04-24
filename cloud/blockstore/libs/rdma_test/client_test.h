@@ -61,6 +61,8 @@ struct TRdmaClientTest: NRdma::IClient
     void SetMessageObserver(const TMessageObserver& messageObserver);
     void SetForceReconnectObserver(
         const TForceReconnectObserver& forceReconnectObserver);
+    void InjectFutureToWaitBeforeRequestProcessing(
+        const NThreading::TFuture<void>& future);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
