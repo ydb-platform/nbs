@@ -140,8 +140,8 @@ struct TTestEnv
     {
         SetupLogging();
 
-        Runtime.SetObserverFunc([self = this](auto& event)
-                                { return self->DefaultObserver(event); });
+        Runtime.SetObserverFunc([this](auto& event)
+                                { return DefaultObserver(event); });
 
         Runtime.SetRegistrationObserverFunc(
             [&](TTestActorRuntimeBase& runtime,
