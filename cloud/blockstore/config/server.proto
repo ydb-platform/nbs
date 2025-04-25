@@ -249,7 +249,7 @@ message TServerConfig
     // Use fake RDMA client (over Interconnect). For use in tests.
     optional bool UseFakeRdmaClient = 120;
 
-    // Mapping from SuId to fqdn hosts.
+    // Mapping from ShardId to fqdn hosts.
     repeated TShardHosts ShardMap = 121;
 }
 
