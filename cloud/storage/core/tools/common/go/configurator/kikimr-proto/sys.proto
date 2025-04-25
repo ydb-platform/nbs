@@ -1,6 +1,14 @@
 syntax = "proto2";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/tools/common/go/configurator/kikimr-proto";
+option go_package = "a.yandex-team.ru/cloud/storage/core/tools/common/go/configurator/kikimr-proto";
+
+message TAffinity {
+    repeated uint32 X = 1; // DEPRECATED: Use `CpuList` instead
+
+    // Numerical list of processors. The numbers are separated by commas and may include ranges. For example: 0,5,7,9-11
+    optional string CpuList = 2; // Processors to include. Use all processor if not set.
+    optional string ExcludeCpuList = 3; // Exclude specified processors from `CpuList` (or all processors if not set)
+}
 
 message TExecutor {
     enum EType {
@@ -12,8 +20,22 @@ message TExecutor {
     optional EType Type = 1;
     optional uint32 Threads = 2;
     optional uint64 SpinThreshold = 3;
-    optional string Name = 4;
-    optional uint32 TimePerMailboxMicroSecs = 5;
+    optional TAffinity Affinity = 4;
+    optional uint32 InjectMadSquirrels = 5; // Obsolete, no more mad squirrels anymore
+    optional string Name = 6;
+    optional uint32 TimePerMailboxMicroSecs = 7;
+    optional uint32 EventsPerMailbox = 8;
+    optional uint32 RealtimePriority = 9;
+
+    // Actorsystem 1.4
+    optional uint32 MinThreads = 12; // Lower balancing bound, should be at least 1, and not greater than `Threads`
+    optional uint32 MaxThreads = 13; // Higher balancing bound, should be not lower than `Threads`
+    optional int32 Priority = 16;
+    optional int32 MaxAvgPingDeviation = 17;
+
+    optional bool HasSharedThread = 18;
+    optional uint32 MaxLocalQueueSize = 20;
+    optional uint32 MinLocalQueueSize = 21;
 }
 
 message TScheduler {
