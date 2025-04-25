@@ -36,7 +36,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FlushThreshold,                     ui32,   4_MB                      )\
     xxx(CleanupThreshold,                   ui32,   512                       )\
     xxx(CleanupThresholdAverage,            ui32,   64                        )\
-    xxx(CalculateCleanupScoreBasedOnUsedBlocksCount, bool,   false            )\
+    xxx(CleanupCpuThrottlingThresholdPercentage,                               \
+                                            ui32,   0                         )\
+    xxx(CalculateCleanupScoreBasedOnUsedBlocksCount,                           \
+                                            bool,   false                     )\
     xxx(NewCleanupEnabled,                  bool,   false                     )\
     xxx(CompactionThreshold,                ui32,   20                        )\
     xxx(GarbageCompactionThreshold,         ui32,   100                       )\
@@ -74,6 +77,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(BlobIndexOpsPriority,                                                  \
             NProto::EBlobIndexOpsPriority,                                     \
             NProto::BIOP_CLEANUP_FIRST                                        )\
+    xxx(EnqueueBlobIndexOpIfNeededScheduleInterval,                            \
+                                            TDuration, TDuration::Seconds(1)  )\
                                                                                \
     xxx(FlushThresholdForBackpressure,      ui32,      128_MB                 )\
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
@@ -253,6 +258,12 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ExtendedAttributesDisabled,                bool,     false            )\
                                                                                \
     xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
+                                                                               \
+    xxx(GuestKeepCacheAllowed,                     bool,      false           )\
+    xxx(GuestCachingType,                                                      \
+        NProto::EGuestCachingType,                                             \
+        NProto::GCT_SECOND_READ                                               )\
+    xxx(SessionHandleOffloadedStatsCapacity,       ui64,      0               )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -336,6 +347,13 @@ IOutputStream& operator <<(
     NProto::EBlobIndexOpsPriority biopp)
 {
     return out << EBlobIndexOpsPriority_Name(biopp);
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::EGuestCachingType gct)
+{
+    return out << EGuestCachingType_Name(gct);
 }
 
 template <typename T>

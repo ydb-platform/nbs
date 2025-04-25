@@ -561,8 +561,7 @@ void TPartitionActor::HandleFlushCompleted(
 
     UpdateStats(msg->Stats);
 
-    UpdateCPUUsageStats(ctx, CyclesToDurationSafe(msg->ExecCycles));
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx, msg->ExecCycles);
 
     const auto d = CyclesToDurationSafe(msg->TotalCycles);
     const auto ts = ctx.Now() - d;

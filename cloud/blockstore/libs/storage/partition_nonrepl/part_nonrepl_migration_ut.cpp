@@ -1,4 +1,3 @@
-#include "part_nonrepl_migration.h"
 #include "part_nonrepl_migration_actor.h"
 #include "ut_env.h"
 
@@ -8,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/direct_copy_actor.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
@@ -26,13 +26,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+using namespace std::chrono_literals;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // The block count migrated at a time.
-constexpr ui64 ProcessingBlockCount = ProcessingRangeSize / DefaultBlockSize;
+constexpr ui64 ProcessingBlockCount = MigrationRangeSize / DefaultBlockSize;
 
 auto MakeLeaderFollowerFilter(
     TActorId* leaderPartition,
@@ -127,7 +128,8 @@ struct TTestEnv
             NProto::EVolumeIOMode ioMode,
             bool useRdma,
             TMigrationStatePtr migrationState,
-            bool useDirectCopy)
+            bool useDirectCopy,
+            bool enableVolumeRequestId = false)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -162,6 +164,9 @@ struct TTestEnv
         storageConfig.SetMaxMigrationBandwidth(500);
         storageConfig.SetUseDirectCopyRange(useDirectCopy);
         storageConfig.SetMigrationIndexCachingInterval(1024);
+        storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(enableVolumeRequestId);
+        storageConfig.SetRejectLateRequestsAtDiskAgentEnabled(
+            enableVolumeRequestId);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -211,7 +216,7 @@ struct TTestEnv
         auto partConfig =
             std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
-        auto part = CreateNonreplicatedPartitionMigration(
+        auto part = std::make_unique<TNonreplicatedPartitionMigrationActor>(
             std::move(config),
             CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
@@ -281,6 +286,22 @@ struct TTestEnv
     }
 };
 
+struct TMigrationMessageHandler
+{
+    TVector<ui64> VolumeRequestIds;
+    ui64 MigrationRequestCount = 0;
+
+    template <typename TEv>
+    void Handle(TAutoPtr<IEventHandle>& event)
+    {
+        if (event->GetTypeRewrite() == TEv::EventType) {
+            MigrationRequestCount += 1;
+            auto* ev = static_cast<TEv*>(event->GetBase());
+            VolumeRequestIds.emplace_back(GetVolumeRequestId(*ev));
+        }
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -315,7 +336,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         const size_t migrationCopyBlocks = useDirectCopy ? 3 : 0;
         UNIT_ASSERT_VALUES_EQUAL(migrationCopyBlocks, counters.CopyBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            migrationCopyBlocks * ProcessingRangeSize,
+            migrationCopyBlocks * MigrationRangeSize,
             counters.CopyBlocks.RequestBytes);
 
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
@@ -330,12 +351,95 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             counters.WriteBlocks.RequestBytes);
     }
 
-    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigrated) {
+    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigrated)
+    {
         DoShouldMirrorRequestsAfterAllDataIsMigrated(false);
     }
 
-    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigratedDirectCopy) {
+    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigratedDirectCopy)
+    {
         DoShouldMirrorRequestsAfterAllDataIsMigrated(true);
+    }
+
+    void DoShouldMirrorRequestsDuringMigration(bool useDirectCopy)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            nullptr,   // no migration state
+            useDirectCopy);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        // petya should be migrated => 3 ranges
+        WaitForMigrations(runtime, 3);
+
+        const auto blockRange = TBlockRange64::WithLength(2047, 2);
+        const auto buffer1 = TString(DefaultBlockSize, 'A');
+        const auto buffer2 = TString(DefaultBlockSize, 'B');
+
+        size_t writeDeviceRequestCount = 0;
+        auto checkWriteDeviceRequest =
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                auto* msg =
+                    event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+
+                writeDeviceRequestCount++;
+
+                if (msg->Record.GetStartIndex() == 2047) {
+                    const auto& blocks = msg->Record.GetBlocks().GetBuffers();
+                    TBlockDataRef src{buffer1.data(), buffer1.size()};
+                    TBlockDataRef dst{blocks[0].data(), DefaultBlockSize};
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        src.AsStringBuf(),
+                        dst.AsStringBuf());
+                } else if (msg->Record.GetStartIndex() == 0) {
+                    const auto& blocks = msg->Record.GetBlocks().GetBuffers();
+                    TBlockDataRef src{buffer2.data(), buffer2.size()};
+                    TBlockDataRef dst{blocks[0].data(), DefaultBlockSize};
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        src.AsStringBuf(),
+                        dst.AsStringBuf());
+                } else {
+                    UNIT_ASSERT(false);
+                }
+            }
+            return false;
+        };
+
+        runtime.SetEventFilter(checkWriteDeviceRequest);
+
+        auto writeRequest =
+            std::make_unique<TEvService::TEvWriteBlocksRequest>();
+        writeRequest->Record.SetStartIndex(blockRange.Start);
+        writeRequest->Record.MutableBlocks()->AddBuffers(buffer1);
+        writeRequest->Record.MutableBlocks()->AddBuffers(buffer2);
+        client.SendRequest(client.GetActorId(), std::move(writeRequest));
+        auto response = client.RecvWriteBlocksResponse();
+        UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDeviceRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldMirrorRequestsDuringMigration)
+    {
+        DoShouldMirrorRequestsDuringMigration(false);
+    }
+
+    Y_UNIT_TEST(ShouldMirrorRequestsDuringMigrationDirectCopy)
+    {
+        DoShouldMirrorRequestsDuringMigration(true);
     }
 
     void DoShouldUpdateMigrationState(bool useDirectCopy)
@@ -435,11 +539,13 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         WaitForMigrations(runtime, 3);
     }
 
-    Y_UNIT_TEST(DoShouldDoMigrationViaRdma) {
+    Y_UNIT_TEST(ShouldDoMigrationViaRdma)
+    {
         DoShouldDoMigrationViaRdma(false);
     }
 
-    Y_UNIT_TEST(DoShouldDoMigrationViaRdmaDirectCopy) {
+    Y_UNIT_TEST(ShouldDoMigrationViaRdmaDirectCopy)
+    {
         DoShouldDoMigrationViaRdma(true);
     }
 
@@ -927,16 +1033,28 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(2040, 8),
                 response->DeviceBlockRange);
+
+            // Request with write should fail
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(2040, 8)));
+            response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ABORTED,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
 
         WaitForMigrations(runtime, 3);
 
         {
-            // Request to second device
+            // Request to second device with read should success
             client.SendRequest(
                 env.ActorId,
                 std::make_unique<TEvGetDeviceForRangeRequest>(
-                    EPurpose::ForWriting,
+                    EPurpose::ForReading,
                     TBlockRange64::WithLength(2048, 8)));
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_C(
@@ -946,6 +1064,18 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(0, 8),
                 response->DeviceBlockRange);
+
+            // with write should fail.
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(2048, 8)));
+            response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ABORTED,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
         {   // Request on the border of two devices
             client.SendRequest(
@@ -1129,11 +1259,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         WaitForMigrations(runtime, 3);
 
         {
-            // Request to second device
+            // Request to second device (migration target) with read
             client.SendRequest(
                 env.ActorId,
                 std::make_unique<TEvGetDeviceForRangeRequest>(
-                    EPurpose::ForWriting,
+                    EPurpose::ForReading,
                     TBlockRange64::WithLength(2048, 8)));
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_C(
@@ -1143,6 +1273,18 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(0, 8),
                 response->DeviceBlockRange);
+
+            // Request to second device (migration target) with write
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(2048, 8)));
+            response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ABORTED,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
         {   // Request on the border of two devices
             client.SendRequest(
@@ -1153,6 +1295,95 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
         }
+    }
+
+    void ShouldCopyRangeWithCorrectVolumeRequestId(bool useDirectCopy)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            nullptr,   // no migration state
+            useDirectCopy,
+            true);
+
+        size_t volumeRequestId = 12345;
+
+        for (size_t i = 0; i < 3; ++i) {
+            TMigrationMessageHandler handler;
+            std::unique_ptr<IEventHandle> stollenTakeVolumeRequestIdEvent;
+            runtime.SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (useDirectCopy) {
+                        handler
+                            .Handle<TEvDiskAgent::TEvDirectCopyBlocksRequest>(
+                                event);
+                    } else {
+                        handler.Handle<TEvService::TEvWriteBlocksRequest>(
+                            event);
+                        handler.Handle<TEvService::TEvZeroBlocksRequest>(event);
+                    }
+
+                    switch (event->GetTypeRewrite()) {
+                        case TEvVolumePrivate::EvTakeVolumeRequestIdRequest:
+                            stollenTakeVolumeRequestIdEvent.reset(
+                                event.Release());
+                            return TTestActorRuntimeBase::EEventAction::DROP;
+
+                        default:
+                            break;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            TPartitionClient client(runtime, env.ActorId);
+
+            runtime.AdvanceCurrentTime(5s);
+            runtime.DispatchEvents({}, 10ms);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, handler.MigrationRequestCount);
+            UNIT_ASSERT(stollenTakeVolumeRequestIdEvent);
+            UNIT_ASSERT_VALUES_EQUAL(
+                env.VolumeActorId,
+                stollenTakeVolumeRequestIdEvent->Recipient);
+
+            runtime.Send(
+                stollenTakeVolumeRequestIdEvent->Sender,
+                env.VolumeActorId,
+                std::make_unique<
+                    TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+                    volumeRequestId)
+                    .release());
+
+            NActors::TDispatchOptions options;
+            options.FinalEvents = {
+                NActors::TDispatchOptions::TFinalEventCondition(
+                    TEvNonreplPartitionPrivate::EvRangeMigrated)};
+
+            runtime.DispatchEvents(options);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, handler.MigrationRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, handler.VolumeRequestIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                volumeRequestId,
+                handler.VolumeRequestIds[0]);
+            volumeRequestId += 12345;
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCopyRangeWithCorrectVolumeRequestId)
+    {
+        ShouldCopyRangeWithCorrectVolumeRequestId(false);
+    }
+
+    Y_UNIT_TEST(ShouldCopyRangeWithCorrectVolumeRequestIdDirectCopy)
+    {
+        ShouldCopyRangeWithCorrectVolumeRequestId(true);
     }
 }
 

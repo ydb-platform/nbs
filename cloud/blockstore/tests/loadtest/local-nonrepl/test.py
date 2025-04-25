@@ -174,7 +174,7 @@ def __prepare_test_config(test_case):
     return prepared_config_path
 
 
-def __run_test(test_case):
+def __run_test(test_case, use_rdma):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
@@ -226,6 +226,8 @@ def __run_test(test_case):
         server_app_config.ServerConfig.StrictContractValidation = False
         server_app_config.ServerConfig.NbdEnabled = True
         server_app_config.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
+        server_app_config.ServerConfig.UseFakeRdmaClient = use_rdma
+        server_app_config.ServerConfig.RdmaClientEnabled = use_rdma
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
         certs_dir = yatest_common.source_path('cloud/blockstore/tests/certs')
@@ -248,6 +250,8 @@ def __run_test(test_case):
         storage.RejectLateRequestsAtDiskAgentEnabled = test_case.reject_late_requests_at_disk_agent
         storage.AssignIdToWriteAndZeroRequestsEnabled = test_case.reject_late_requests_at_disk_agent
         storage.NodeType = 'main'
+        storage.UseNonreplicatedRdmaActor = use_rdma
+        storage.UseRdma = use_rdma
         storage.EncryptionAtRestForDiskRegistryBasedDisksEnabled = test_case.encryption_at_rest
 
         if test_case.dump_block_digests:
@@ -348,8 +352,9 @@ def __run_test(test_case):
 
 
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-def test_load(test_case):
+@pytest.mark.parametrize("use_rdma", [True, False], ids=['rdma', 'no-rdma'])
+def test_load(test_case, use_rdma):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
     if test_case.lwtrace_query_path:
         test_case.lwtrace_query_path = yatest_common.source_path(test_case.lwtrace_query_path)
-    return __run_test(test_case)
+    return __run_test(test_case, use_rdma)

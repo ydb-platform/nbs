@@ -27,6 +27,8 @@ struct TStorageOptions
     ui32 VhostQueuesCount = 0;
     bool UnalignedRequestsDisabled = false;
     bool CheckBufferModificationDuringWriting = false;
+    bool IsReliableMediaKind = false;
+    bool DiscardEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

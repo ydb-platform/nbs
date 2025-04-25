@@ -64,7 +64,9 @@ def test_nbs_csi_driver_volume_stat():
             usage = usage_array1[0]
             assert {"unit", "total", "available", "used"} == usage.keys()
             assert 0 != usage["total"]
-            assert usage["total"] == usage["available"] + usage["used"]
+            assert 0 != usage["available"]
+            assert 0 != usage["used"]
+            assert usage["total"] >= usage["available"] + usage["used"]
 
         mount_path = Path("/var/lib/kubelet/pods") / pod_id / "volumes/kubernetes.io~csi" / volume_name / "mount"
         (mount_path / "test1.file").write_bytes(b"\0")
@@ -78,7 +80,9 @@ def test_nbs_csi_driver_volume_stat():
             usage = usage_array2[0]
             assert {"unit", "total", "available", "used"} == usage.keys()
             assert 0 != usage["total"]
-            assert usage["total"] == usage["available"] + usage["used"]
+            assert 0 != usage["available"]
+            assert 0 != usage["used"]
+            assert usage["total"] >= usage["available"] + usage["used"]
 
         bytesUsage1 = usage_array1[0]
         bytesUsage2 = usage_array2[0]

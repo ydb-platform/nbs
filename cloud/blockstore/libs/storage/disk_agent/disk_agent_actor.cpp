@@ -181,6 +181,13 @@ void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
     }
 }
 
+TDuration TDiskAgentActor::GetMaxRequestTimeout() const
+{
+    return Max(
+        Config->GetNonReplicatedMaxRequestTimeoutSSD(),
+        Config->GetNonReplicatedMaxRequestTimeoutHDD());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskAgentActor::HandleReportDelayedDiskAgentConfigMismatch(

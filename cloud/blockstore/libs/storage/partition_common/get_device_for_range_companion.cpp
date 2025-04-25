@@ -21,10 +21,16 @@ TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
         EAllowedOperation allowedOperation,
         TStorageConfigPtr config,
         TNonreplicatedPartitionConfigPtr partConfig)
-    : AllowedOperation(allowedOperation)
-    , Config(std::move(config))
+    : Config(std::move(config))
     , PartConfig(std::move(partConfig))
+    , AllowedOperation(allowedOperation)
 {}
+
+void TGetDeviceForRangeCompanion::SetAllowedOperation(
+    EAllowedOperation allowedOperation)
+{
+    AllowedOperation = allowedOperation;
+}
 
 void TGetDeviceForRangeCompanion::SetDelegate(NActors::TActorId delegate)
 {
@@ -42,6 +48,9 @@ void TGetDeviceForRangeCompanion::HandleGetDeviceForRange(
 
     bool operationAllowed = false;
     switch (AllowedOperation) {
+        case EAllowedOperation::None:
+            operationAllowed = false;
+            break;
         case EAllowedOperation::Read:
             operationAllowed = msg->Purpose == EPurpose::ForReading;
             break;

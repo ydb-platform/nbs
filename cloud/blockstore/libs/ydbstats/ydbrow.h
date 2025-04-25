@@ -4,6 +4,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NYdbStats {
 
@@ -161,7 +162,7 @@ struct TPercentileCounterField
     double P100 = 0;
 };
 
-struct TYdbRow
+struct TYdbStatsRow
 {
 #define YDB_SIMPLE_STRING_FIELD(name, ...)                                     \
     TString name;                                                              \
@@ -212,8 +213,21 @@ struct TYdbBlobLoadMetricRow
     static TStringBuf GetYdbRowDefinition();
 };
 
+struct TYdbRowData
+{
+    TVector<TYdbStatsRow> Stats;
+    TVector<TYdbBlobLoadMetricRow> Metrics;
+
+    TYdbRowData() = default;
+
+    TYdbRowData(
+            TVector<TYdbStatsRow> stats,
+            TVector<TYdbBlobLoadMetricRow> metrics)
+        : Stats(std::move(stats))
+        , Metrics(std::move(metrics))
+    {}
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NYdbStats
-
-

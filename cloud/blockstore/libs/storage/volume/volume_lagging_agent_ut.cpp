@@ -39,7 +39,7 @@ TVector<NProto::TDeviceConfig> MakeDeviceList(ui32 agentCount, ui32 deviceCount)
 
 Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 {
-    Y_UNIT_TEST(ShouldHandleDeviceTimeouted)
+    Y_UNIT_TEST(ShouldHandleDeviceTimedOut)
     {
         constexpr ui32 AgentCount = 3;
         auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
@@ -131,8 +131,8 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                 return false;
             });
 
-        // Device in the first replica is timeouted.
-        volume.DeviceTimeouted("uuid-2.0");
+        // Device in the first replica is timed out.
+        volume.DeviceTimedOut("uuid-2.0");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -143,8 +143,8 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             addLaggingAgentRequest->LaggingAgent.GetReplicaIndex());
 
         // Can't add more lagging devices in the same row.
-        volume.SendDeviceTimeoutedRequest("uuid-3.0");
-        auto response = volume.RecvDeviceTimeoutedResponse();
+        volume.SendDeviceTimedOutRequest("uuid-3.0");
+        auto response = volume.RecvDeviceTimedOutResponse();
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
             response->GetError().GetCode());
@@ -157,7 +157,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT(!addLaggingAgentRequest.has_value());
 
         // Now the zeroth replica can lag.
-        volume.DeviceTimeouted("uuid-1.0");
+        volume.DeviceTimedOut("uuid-1.0");
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
             devices[0].GetAgentId(),
@@ -270,8 +270,8 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                 return false;
             });
 
-        // Device in the zeroth replica is timeouted.
-        volume.DeviceTimeouted("uuid-1.1");
+        // Device in the zeroth replica is timed out.
+        volume.DeviceTimedOut("uuid-1.1");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -284,8 +284,8 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         {
             addLaggingAgentRequest.reset();
             // The first agent is already lagging.
-            volume.SendDeviceTimeoutedRequest("uuid-1.0");
-            auto response = volume.RecvDeviceTimeoutedResponse();
+            volume.SendDeviceTimedOutRequest("uuid-1.0");
+            auto response = volume.RecvDeviceTimedOutResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetError().GetCode());
             UNIT_ASSERT(addLaggingAgentRequest.has_value());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -296,8 +296,8 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         {
             // 0 and 1st rows already lagging. Can't add more lagging devices on
             // these rows.
-            volume.SendDeviceTimeoutedRequest("uuid-2.1");
-            auto response = volume.RecvDeviceTimeoutedResponse();
+            volume.SendDeviceTimedOutRequest("uuid-2.1");
+            auto response = volume.RecvDeviceTimedOutResponse();
             UNIT_ASSERT_VALUES_EQUAL(
                 E_INVALID_STATE,
                 response->GetError().GetCode());
@@ -305,7 +305,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
         // Adding the second row to lagging.
         addLaggingAgentRequest.reset();
-        volume.DeviceTimeouted("uuid-6.0");
+        volume.DeviceTimedOut("uuid-6.0");
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
             replica2Devices[2].GetAgentId(),
@@ -401,8 +401,8 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                 return false;
             });
 
-        // Device in the zeroth replica is timeouted.
-        volume.DeviceTimeouted("uuid-1.1");
+        // Device in the zeroth replica is timed out.
+        volume.DeviceTimedOut("uuid-1.1");
 
         UNIT_ASSERT(!addLaggingDevicesRequest.has_value());
         // Update volume config.
@@ -577,8 +577,8 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                 return false;
             });
 
-        // Device in the zeroth replica is timeouted.
-        volume.DeviceTimeouted("uuid-migration-1");
+        // Device in the zeroth replica is timed out.
+        volume.DeviceTimedOut("uuid-migration-1");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -589,8 +589,8 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             addLaggingAgentRequest->LaggingAgent.GetReplicaIndex());
         addLaggingAgentRequest.reset();
 
-        // Device in the second replica is timeouted.
-        volume.DeviceTimeouted("uuid-migration-2");
+        // Device in the second replica is timed out.
+        volume.DeviceTimedOut("uuid-migration-2");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -603,8 +603,8 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         {
             addLaggingAgentRequest.reset();
             // The zeroth row is already lagging.
-            volume.SendDeviceTimeoutedRequest("uuid-1.0");
-            auto response = volume.RecvDeviceTimeoutedResponse();
+            volume.SendDeviceTimedOutRequest("uuid-1.0");
+            auto response = volume.RecvDeviceTimedOutResponse();
             UNIT_ASSERT_VALUES_EQUAL(
                 E_INVALID_STATE,
                 response->GetError().GetCode());
@@ -637,6 +637,130 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             metaHistoryResponse->MetaHistory.back()
                 .Meta.GetLaggingAgentsInfo()
                 .AgentsSize());
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCounters)
+    {
+        constexpr ui32 AgentCount = 3;
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->Devices = MakeDeviceList(AgentCount, 3);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = 2;
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < AgentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            std::move(storageServiceConfig),
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
+
+        // Create mirror-3 volume with a size of 1 device.
+        TVolumeClient volume(*runtime);
+        const ui64 blockCount =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,   // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            blockCount);
+
+        volume.WaitReady();
+
+        bool hasLaggingDevices = false;
+        ui64 laggingDevicesCount = 0;
+        ui64 laggingMigrationProgress = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest:
+                    case TEvNonreplPartitionPrivate::
+                        EvRemoveLaggingAgentRequest:
+                        return true;
+
+                    case TEvStatsService::EvVolumeSelfCounters: {
+                        if (event->Recipient != MakeStorageStatsServiceId()) {
+                            break;
+                        }
+                        const auto* msg =
+                            event
+                                ->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                        const auto& counters = msg->VolumeSelfCounters->Simple;
+                        hasLaggingDevices = !!counters.HasLaggingDevices.Value;
+                        laggingDevicesCount =
+                            counters.LaggingDevicesCount.Value;
+                        laggingMigrationProgress =
+                            counters.LaggingMigrationProgress.Value;
+                    }
+                }
+                return false;
+            });
+
+        // Device in the first replica is timed out.
+        volume.DeviceTimedOut("uuid-2.0");
+
+        // Update lagging agent migration progress.
+        volume.SendToPipe(
+            std::make_unique<
+                TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
+                "agent-2",
+                0,
+                blockCount));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+        runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]()
+             {
+                 return hasLaggingDevices;
+             }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, laggingDevicesCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, laggingMigrationProgress);
+
+        // Update lagging agent migration progress.
+        volume.SendToPipe(
+            std::make_unique<
+                TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
+                "agent-2",
+                blockCount / 2,
+                blockCount / 2));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+        runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]()
+             {
+                 return laggingMigrationProgress > 0;
+             }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, laggingDevicesCount);
+        UNIT_ASSERT_VALUES_EQUAL(50, laggingMigrationProgress);
+
+        // Agent devices are now up-to-date.
+        volume.SendToPipe(
+            std::make_unique<
+                TEvVolumePrivate::TEvLaggingAgentMigrationFinished>("agent-2"));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+        runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]()
+             {
+                 return !hasLaggingDevices;
+             }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, laggingDevicesCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, laggingMigrationProgress);
     }
 
     Y_UNIT_TEST(ShouldReturnErrorWhenFeatureIsDisabled)
@@ -699,7 +823,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
         // Lagging agent should be added.
         {
-            volume.DeviceTimeouted("uuid-1.0");
+            volume.DeviceTimedOut("uuid-1.0");
             UNIT_ASSERT(addLaggingAgentRequest.has_value());
             addLaggingAgentRequest.reset();
         }
@@ -719,13 +843,94 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
         // Feature is disabled for mirror-3 disks.
         {
-            volume.SendDeviceTimeoutedRequest("uuid-1.1");
-            auto response = volume.RecvDeviceTimeoutedResponse();
+            volume.SendDeviceTimedOutRequest("uuid-1.1");
+            auto response = volume.RecvDeviceTimedOutResponse();
             UNIT_ASSERT_VALUES_EQUAL(
                 E_PRECONDITION_FAILED,
                 response->GetError().GetCode());
             UNIT_ASSERT(!addLaggingAgentRequest.has_value());
         }
+    }
+
+    Y_UNIT_TEST(ShouldStartResyncAfterLaggingMigration)
+    {
+        constexpr ui32 AgentCount = 3;
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->Devices = MakeDeviceList(AgentCount, 3);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = 2;
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < AgentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetResyncAfterLaggingAgentMigration(true);
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            std::move(storageServiceConfig),
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
+
+        // Create mirror-3 volume with a size of 1 device.
+        TVolumeClient volume(*runtime);
+        const ui64 blockCount =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,   // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            blockCount);
+
+        volume.WaitReady();
+
+        bool resyncStarted = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest:
+                    case TEvNonreplPartitionPrivate::
+                        EvRemoveLaggingAgentRequest:
+                        return true;
+
+                    case TEvStatsService::EvVolumeSelfCounters: {
+                        if (event->Recipient != MakeStorageStatsServiceId()) {
+                            break;
+                        }
+                        auto* msg =
+                            event
+                                ->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                        resyncStarted = !!msg->VolumeSelfCounters->Simple
+                                              .ResyncStarted.Value;
+                    }
+                }
+                return false;
+            });
+
+        // Device in the first replica is timed out.
+        volume.DeviceTimedOut("uuid-2.0");
+
+        // Agent devices are now up-to-date.
+        volume.SendToPipe(
+            std::make_unique<
+                TEvVolumePrivate::TEvLaggingAgentMigrationFinished>("agent-2"));
+
+        // Resync should start.
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+        runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]()
+             {
+                 return resyncStarted;
+             }},
+            TDuration::Seconds(1));
     }
 }
 

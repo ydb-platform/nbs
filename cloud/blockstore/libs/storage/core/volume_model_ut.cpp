@@ -150,7 +150,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         volumeParams.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
-        UNIT_ASSERT(volumeConfig.ExplicitChannelProfilesSize() == 252);
+        UNIT_ASSERT(volumeConfig.ExplicitChannelProfilesSize() == MaxDataChannelCount);
     }
 
     Y_UNIT_TEST(ShouldSetValuesFromExplicitPerformanceProfile)
@@ -1950,9 +1950,6 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         UNIT_ASSERT_VALUES_EQUAL(blocksCount, info.BlocksCountPerPartition);
     }
 
-#undef CHECK_CHANNEL
-#undef CHECK_CHANNEL_HDD
-
     Y_UNIT_TEST(ShouldNotCapWhenEnoughChannels)
     {
         int wantAddMerged = 50;
@@ -2068,6 +2065,297 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         UNIT_ASSERT_VALUES_EQUAL(0, wantAddMixed);
         UNIT_ASSERT_VALUES_EQUAL(1, wantAddFresh);
     }
+
+    Y_UNIT_TEST(ShouldCorrectlyCalculateMixedChannelCountWithMixedPercentage20)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetAllocateSeparateMixedChannels(true);
+        storageServiceConfig.SetHybridMixedChannelPoolKind("mixed");
+        storageServiceConfig.SetHybridMergedChannelPoolKind("merged");
+        storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
+        storageServiceConfig.SetMinChannelCount(4);
+        storageServiceConfig.SetFreshChannelCount(1);
+        storageServiceConfig.SetAllocationUnitHDD(256);
+        // in case MixedChannelsPercentageFromMerged == 0 we will receive 2 mixed channels
+        storageServiceConfig.SetMixedChannelsPercentageFromMerged(20);
+
+        auto config = std::make_unique<TStorageConfig>(
+            std::move(storageServiceConfig),
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
+        );
+
+        const auto blocksCount = 16_GB / DefaultBlockSize;
+        TVolumeParams params{
+            .BlockSize = DefaultBlockSize,
+            .BlocksCountPerPartition = blocksCount,
+            .PartitionsCount = 1,
+            .MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID
+        };
+        NKikimrBlockStore::TVolumeConfig volumeConfig;
+        volumeConfig.SetPerformanceProfileMaxWriteIops(300);
+        volumeConfig.SetPerformanceProfileMaxWriteBandwidth(31457280);
+        ResizeVolume(*config, params, {}, {}, volumeConfig);
+
+        UNIT_ASSERT_VALUES_EQUAL(9, volumeConfig.ExplicitChannelProfilesSize());
+        CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(6, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(7, "mixed", EChannelDataKind::Mixed);
+        CHECK_CHANNEL(
+            8,
+            config->GetHybridFreshChannelPoolKind(),
+            EChannelDataKind::Fresh,
+            128_MB
+        );
+    }
+
+    Y_UNIT_TEST(
+        ShouldCorrectlyCalculateMixedChannelCountForBigDiskWithMixedPercentage20)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetAllocateSeparateMixedChannels(true);
+        storageServiceConfig.SetHybridMixedChannelPoolKind("mixed");
+        storageServiceConfig.SetHybridMergedChannelPoolKind("merged");
+        storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
+        storageServiceConfig.SetMinChannelCount(4);
+        storageServiceConfig.SetFreshChannelCount(1);
+        storageServiceConfig.SetAllocationUnitHDD(256);
+        storageServiceConfig.SetMixedChannelsPercentageFromMerged(20);
+
+        auto config = std::make_unique<TStorageConfig>(
+            std::move(storageServiceConfig),
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
+        );
+
+        const auto blocksCount = 100_TB / DefaultBlockSize;
+        TVolumeParams params{
+            .BlockSize = DefaultBlockSize,
+            .BlocksCountPerPartition = blocksCount,
+            .PartitionsCount = 1,
+            .MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID
+        };
+        NKikimrBlockStore::TVolumeConfig volumeConfig;
+        volumeConfig.SetPerformanceProfileMaxWriteIops(300);
+        volumeConfig.SetPerformanceProfileMaxWriteBandwidth(31457280);
+        ResizeVolume(*config, params, {}, {}, volumeConfig);
+
+        UNIT_ASSERT_VALUES_EQUAL(255, volumeConfig.ExplicitChannelProfilesSize());
+        for (int i = 3; i < 212; ++i) {
+            CHECK_CHANNEL_HDD(i, "merged", EChannelDataKind::Merged);
+        }
+        for (int i = 212; i < 254; ++i) {
+            CHECK_CHANNEL_HDD(i, "mixed", EChannelDataKind::Mixed);
+        }
+        CHECK_CHANNEL(
+            254,
+            config->GetHybridFreshChannelPoolKind(),
+            EChannelDataKind::Fresh,
+            128_MB
+        );
+    }
+
+    Y_UNIT_TEST(
+        ShouldCorrectlyRecalculateMixedChannelCountForBigDiskWithMixedPercentage20)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetAllocateSeparateMixedChannels(true);
+        storageServiceConfig.SetHybridMixedChannelPoolKind("mixed");
+        storageServiceConfig.SetHybridMergedChannelPoolKind("merged");
+        storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
+        storageServiceConfig.SetMinChannelCount(4);
+        storageServiceConfig.SetFreshChannelCount(1);
+        storageServiceConfig.SetAllocationUnitHDD(256);
+        storageServiceConfig.SetMixedChannelsPercentageFromMerged(20);
+
+        auto config = std::make_unique<TStorageConfig>(
+            std::move(storageServiceConfig),
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
+        );
+
+        const auto blocksCount = 100_TB / DefaultBlockSize;
+        TVolumeParams params{
+            .BlockSize = DefaultBlockSize,
+            .BlocksCountPerPartition = blocksCount,
+            .PartitionsCount = 1,
+            .MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID
+        };
+
+        for (int i = 0; i < 100; ++i) {
+            params.DataChannels.emplace_back("merged", EChannelDataKind::Merged);
+        }
+        for (int i = 0; i < 20; ++i) {
+            params.DataChannels.emplace_back("mixed", EChannelDataKind::Mixed);
+        }
+
+        NKikimrBlockStore::TVolumeConfig volumeConfig;
+        ResizeVolume(*config, params, {}, {}, volumeConfig);
+
+        UNIT_ASSERT_VALUES_EQUAL(MaxChannelCount, volumeConfig.ExplicitChannelProfilesSize());
+        for (int i = 3; i < 103; ++i) {
+            CHECK_CHANNEL_HDD(i, "merged", EChannelDataKind::Merged);
+        }
+        for (ui32 i = 103; i < 123; ++i) {
+            CHECK_CHANNEL_HDD(i, "mixed", EChannelDataKind::Mixed);
+        }
+
+        for (ui32 i = 123; i < 232; ++i) {
+            CHECK_CHANNEL_HDD(i, "merged", EChannelDataKind::Merged);
+        }
+        for (ui32 i = 232; i < MaxChannelCount - 1; ++i) {
+            CHECK_CHANNEL_HDD(i, "mixed", EChannelDataKind::Mixed);
+        }
+        CHECK_CHANNEL(
+            MaxChannelCount - 1,
+            config->GetHybridFreshChannelPoolKind(),
+            EChannelDataKind::Fresh,
+            128_MB
+        );
+
+        volumeConfig.ClearExplicitChannelProfiles();
+        params.DataChannels.clear();
+        for (ui32 i = 0; i < MaxMergedChannelCount; ++i) {
+            params.DataChannels.emplace_back("merged", EChannelDataKind::Merged);
+        }
+        ResizeVolume(*config, params, {}, {}, volumeConfig);
+
+        UNIT_ASSERT_VALUES_EQUAL(MaxChannelCount, volumeConfig.ExplicitChannelProfilesSize());
+        for (ui32 i = 0; i < MaxMergedChannelCount; ++i) {
+            CHECK_CHANNEL_HDD(i + 3, "merged", EChannelDataKind::Merged);
+        }
+        for (ui32 i = MaxMergedChannelCount; i < MaxDataChannelCount - 1; ++i) {
+            CHECK_CHANNEL_HDD(i + 3, "mixed", EChannelDataKind::Mixed);
+        }
+        CHECK_CHANNEL(
+            MaxChannelCount - 1,
+            config->GetHybridFreshChannelPoolKind(),
+            EChannelDataKind::Fresh,
+            128_MB
+        );
+    }
+
+    Y_UNIT_TEST(ShouldAddMixedChannelsWithMixedPercentage50)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetAllocateSeparateMixedChannels(true);
+        storageServiceConfig.SetHybridMixedChannelPoolKind("mixed");
+        storageServiceConfig.SetHybridMergedChannelPoolKind("merged");
+        storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
+        storageServiceConfig.SetMinChannelCount(1);
+        storageServiceConfig.SetFreshChannelCount(1);
+        storageServiceConfig.SetAllocationUnitHDD(1);
+        storageServiceConfig.SetMixedChannelsPercentageFromMerged(50);
+
+        auto config = std::make_unique<TStorageConfig>(
+            std::move(storageServiceConfig),
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
+        );
+
+        const auto blocksCount = 1_GB / DefaultBlockSize;
+        TVolumeParams params{
+            DefaultBlockSize,
+            blocksCount,
+            1,
+            {
+                {"merged", EChannelDataKind::Merged},
+                {"merged", EChannelDataKind::Merged},
+            },
+            0,
+            0,
+            0,
+            0,
+            NCloud::NProto::STORAGE_MEDIA_HYBRID
+        };
+        NKikimrBlockStore::TVolumeConfig volumeConfig;
+        ResizeVolume(*config, params, {}, {}, volumeConfig);
+
+        UNIT_ASSERT_VALUES_EQUAL(7, volumeConfig.ExplicitChannelProfilesSize());
+        CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(5, "mixed", EChannelDataKind::Mixed);
+        CHECK_CHANNEL(
+            6,
+            config->GetHybridFreshChannelPoolKind(),
+            EChannelDataKind::Fresh,
+            128_MB
+        );
+
+        volumeConfig.ClearExplicitChannelProfiles();
+
+        params.DataChannels = {
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"mixed", EChannelDataKind::Mixed},
+        };
+        ResizeVolume(*config, params, {}, {}, volumeConfig);
+        UNIT_ASSERT_VALUES_EQUAL(7, volumeConfig.ExplicitChannelProfilesSize());
+        CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(5, "mixed", EChannelDataKind::Mixed);
+        CHECK_CHANNEL(
+            6,
+            config->GetHybridFreshChannelPoolKind(),
+            EChannelDataKind::Fresh,
+            128_MB
+        );
+
+        volumeConfig.ClearExplicitChannelProfiles();
+
+        params.DataChannels = {
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"mixed", EChannelDataKind::Mixed},
+            {"merged", EChannelDataKind::Merged},
+        };
+        ResizeVolume(*config, params, {}, {}, volumeConfig);
+        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(6, "mixed", EChannelDataKind::Mixed);
+        CHECK_CHANNEL_HDD(7, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(8, "mixed", EChannelDataKind::Mixed);
+        CHECK_CHANNEL(
+            9,
+            config->GetHybridFreshChannelPoolKind(),
+            EChannelDataKind::Fresh,
+            128_MB
+        );
+
+        volumeConfig.ClearExplicitChannelProfiles();
+
+        params.DataChannels = {
+            {"merged", EChannelDataKind::Merged},
+            {"merged", EChannelDataKind::Merged},
+            {"mixed", EChannelDataKind::Mixed},
+        };
+        params.BlocksCountPerPartition = 5 * blocksCount;
+        params.PartitionsCount = 1;
+        ResizeVolume(*config, params, {}, {}, volumeConfig);
+        UNIT_ASSERT_VALUES_EQUAL(12, volumeConfig.ExplicitChannelProfilesSize());
+        CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(5, "mixed", EChannelDataKind::Mixed);
+        CHECK_CHANNEL_HDD(6, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(7, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(8, "merged", EChannelDataKind::Merged);
+        CHECK_CHANNEL_HDD(9, "mixed", EChannelDataKind::Mixed);
+        CHECK_CHANNEL_HDD(10, "mixed", EChannelDataKind::Mixed);
+        CHECK_CHANNEL(
+            11,
+            config->GetHybridFreshChannelPoolKind(),
+            EChannelDataKind::Fresh,
+            128_MB
+        );
+    }
+
+    #undef CHECK_CHANNEL
+    #undef CHECK_CHANNEL_HDD
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

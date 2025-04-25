@@ -5,8 +5,11 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/multi_agent_write_actor.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -28,9 +31,9 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
         return;
     }
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    auto [range, volumeRequestId] = completeRequest.value();
+    auto [volumeRequestId, _, range] = completeRequest.value();
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.Value.BlockRange)) {
+        if (range.Overlaps(request.BlockRange)) {
             DirtyReadRequestIds.insert(id);
         }
     }
@@ -68,7 +71,7 @@ void TMirrorPartitionActor::HandleMirroredReadCompleted(
         if (ev->Get()->ChecksumMismatchObserved) {
             ReportMirroredDiskChecksumMismatchUponRead(
                 TStringBuilder()
-                << " disk: " << DiskId << ", range: "
+                << " disk: " << DiskId.Quote() << ", range: "
                 << (requestCtx ? requestCtx->BlockRange.Print() : ""));
         }
     } else {
@@ -90,6 +93,21 @@ void TMirrorPartitionActor::MirrorRequest(
         ev->Cookie,
         msg->CallContext);
 
+
+    const auto range = BuildRequestBlockRange(
+        *ev->Get(),
+        State.GetBlockSize());
+
+    if (BlockRangeRequests.OverlapsWithRequest(range)) {
+        Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<typename TMethod::TResponse>(MakeError(
+                E_REJECTED,
+                "range is blocked for writing")));
+        return;
+    }
+
     if (HasError(Status)) {
         Reply(
             ctx,
@@ -100,9 +118,6 @@ void TMirrorPartitionActor::MirrorRequest(
         return;
     }
 
-    const auto range = BuildRequestBlockRange(
-        *ev->Get(),
-        State.GetBlockSize());
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     if (GetScrubbingRange().Overlaps(range)) {
         if (ResyncRangeStarted) {
@@ -118,13 +133,31 @@ void TMirrorPartitionActor::MirrorRequest(
         WriteIntersectsWithScrubbing = true;
     }
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.Value.BlockRange)) {
+        if (range.Overlaps(request.BlockRange)) {
             DirtyReadRequestIds.insert(id);
         }
     }
+
     RequestsInProgress.AddWriteRequest(
         requestIdentityKey,
-        {range, ev->Get()->Record.GetHeaders().GetVolumeRequestId()});
+        range,
+        ev->Get()->Record.GetHeaders().GetVolumeRequestId());
+
+    if constexpr (IsExactlyWriteMethod<TMethod>) {
+        if (CanMakeMultiAgentWrite(range)) {
+            NCloud::Register<TMultiAgentWriteActor<TMethod>>(
+                ctx,
+                std::move(requestInfo),
+                State.GetReplicaActors(),
+                std::move(msg->Record),
+                range,
+                State.GetReplicaInfos()[0].Config->GetName(),   // diskId
+                SelfId(),                                       // parentActorId
+                requestIdentityKey,
+                Config->GetAssignIdToWriteAndZeroRequestsEnabled());
+            return;
+        }
+    }
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,

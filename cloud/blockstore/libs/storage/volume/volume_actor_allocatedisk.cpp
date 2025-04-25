@@ -314,12 +314,6 @@ void TVolumeActor::HandleAllocateDiskError(
         return;
     }
 
-    if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED &&
-        error.GetCode() != E_TRY_AGAIN)
-    {
-        ReportDiskAllocationFailure();
-    }
-
     const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
         GetNewestConfig().GetStorageMediaKind());
     const bool localDiskAllocationRetry =
@@ -327,24 +321,18 @@ void TVolumeActor::HandleAllocateDiskError(
         error.GetCode() == E_TRY_AGAIN &&
         IsDiskRegistryLocalMediaKind(mediaKind);
 
-    if (localDiskAllocationRetry) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "[%lu] Local disk allocation failed but can succeed later. "
-            "Converted error code: E_TRY_AGAIN->E_REJECTED. DiskId=%s",
-            TabletID(),
-            GetNewestConfig().GetDiskId().Quote().c_str());
-        error.SetCode(E_REJECTED);
-    } else {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "[%lu] Disk allocation failed with error: %s. DiskId=%s",
-            TabletID(),
-            FormatError(error).c_str(),
-            GetNewestConfig().GetDiskId().Quote().c_str());
+    if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED && !localDiskAllocationRetry)
+    {
+        ReportDiskAllocationFailure();
     }
+
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Disk allocation failed with error: %s. DiskId=%s",
+        TabletID(),
+        FormatError(error).c_str(),
+        GetNewestConfig().GetDiskId().Quote().c_str());
 
     StorageAllocationResult = std::move(error);
 }
@@ -617,26 +605,27 @@ void TVolumeActor::CompleteUpdateDevices(
         State->GetDiskId().c_str(),
         args.LiteReallocation);
 
-    if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
-        if (!args.RequestInfo) {
-            WaitForPartitions.emplace_back(actorId, nullptr);
-        } else {
-            auto reply =
-                [requestInfo = args.RequestInfo](const auto& ctx, auto error)
-            {
-                using TResponse = TEvVolumePrivate::TEvUpdateDevicesResponse;
-
-                NCloud::Reply(
-                    ctx,
-                    *requestInfo,
-                    std::make_unique<TResponse>(std::move(error)));
-            };
-
-            WaitForPartitions.emplace_back(actorId, std::move(reply));
-        }
+    // Hacky way to avoid race condition with "TTxVolume::TUpdateMigrationState"
+    // TODO(komarevtsev-d): Remove after proper fix in #3162.
+    if (!args.LiteReallocation) {
+        State->UpdateMigrationIndexInMeta(0);
     }
 
-    StopPartitions(ctx, {});
+    TPoisonCallback onPartitionDestroy =
+        [requestInfo =
+             args.RequestInfo](const TActorContext& ctx, NProto::TError error)
+    {
+        if (!requestInfo) {
+            return;
+        }
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
+                std::move(error)));
+    };
+
+    StopPartitions(ctx, onPartitionDestroy);
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);

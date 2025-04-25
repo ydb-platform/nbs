@@ -540,16 +540,6 @@ ui64 MinNonzero(ui64 a, ui64 b, Args... args)
     return MinNonzero(a, MinNonzero(b, args...));
 }
 
-template <typename... Args>
-ui64 GetMinLimit(Args... args)
-{
-    auto limit = MinNonzero(args...);
-    if (limit > Max<ui32>()) {
-        limit = Max<ui32>();
-    }
-    return limit;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 bool PrepareMediaKindPerformanceProfile(
@@ -575,7 +565,7 @@ bool PrepareMediaKindPerformanceProfile(
 
         ui64 maxIops = mediaKindConfig.GetMaxReadIops();
 
-        const auto iops = GetMinLimit(
+        const auto iops = MinNonzero(
             cpuUnitCount * iopsPerCpuUnit,
             maxIopsPerGuest,
             maxIops
@@ -591,7 +581,7 @@ bool PrepareMediaKindPerformanceProfile(
 
         ui64 maxIops = mediaKindConfig.GetMaxWriteIops();
 
-        const auto iops = GetMinLimit(
+        const auto iops = MinNonzero(
             cpuUnitCount * iopsPerCpuUnit,
             maxIopsPerGuest,
             maxIops
@@ -607,7 +597,7 @@ bool PrepareMediaKindPerformanceProfile(
 
         ui64 maxBw = mediaKindConfig.GetMaxReadBandwidth() * 1_MB;
 
-        const auto bw = GetMinLimit(
+        const auto bw = MinNonzero(
             cpuUnitCount * bandwidthPerCpuUnit * 1_MB,
             maxBandwidthPerGuest,
             maxBw
@@ -623,7 +613,7 @@ bool PrepareMediaKindPerformanceProfile(
 
         ui64 maxBw = mediaKindConfig.GetMaxWriteBandwidth() * 1_MB;
 
-        const auto bw = GetMinLimit(
+        const auto bw = MinNonzero(
             cpuUnitCount * bandwidthPerCpuUnit * 1_MB,
             maxBandwidthPerGuest,
             maxBw
@@ -675,7 +665,7 @@ bool PreparePerformanceProfile(
         * (tc.GetNetworkThroughputPercentage() / 100.0);
 
     if (!networkBandwidth) {
-        networkBandwidth = Max<ui32>();
+        networkBandwidth = Max<ui64>();
     }
 
     ui64 maxIopsPerGuest = hostFraction * tc.GetMaxIopsPerHost();

@@ -452,8 +452,8 @@ public:
 
     std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> CreateGetStorageConfigRequest();
 
-    std::unique_ptr<TEvVolumePrivate::TEvDeviceTimeoutedRequest>
-    CreateDeviceTimeoutedRequest(TString deviceUUID);
+    std::unique_ptr<TEvVolumePrivate::TEvDeviceTimedOutRequest>
+    CreateDeviceTimedOutRequest(TString deviceUUID);
 
     std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest> CreateUpdateShadowDiskStateRequest(
         TString checkpointId,
@@ -475,6 +475,12 @@ public:
     CreateUnlinkLeaderVolumeFromFollowerRequest(
         const TString& leaderDiskId,
         const TString& followerDiskId);
+
+    std::unique_ptr<TEvVolumePrivate::TEvUpdateFollowerStateRequest>
+    CreateUpdateFollowerStateRequest(
+        TString followerUuid,
+        TEvVolumePrivate::TUpdateFollowerStateRequest::EReason reason,
+        std::optional<ui64> migratedBytes);
 
     void SendRemoteHttpInfo(
         const TString& params,

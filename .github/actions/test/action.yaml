@@ -180,13 +180,13 @@ runs:
         echo "::endgroup::"
         date
         echo "::group::ya-make-test"
-        sudo -E -H -u github ./ya test -k --build "${build_type}" \
+        choom -n 1 -- sudo -E -H -u github  ./ya test -k --build "${build_type}" \
           "${test_size[@]/#/--test-size=}" "${test_type[@]/#/--test-type=}" \
           --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
           --cache-size 512G --do-not-output-stderrs -T \
           --stat --log-file "$LOG_DIR/ya_log.txt" --evlog-file "$LOG_DIR/ya_evlog.jsonl" \
           --canonization-backend=ydb-canondata.storage.yandexcloud.net \
-          --junit "$JUNIT_REPORT_XML" --output "$OUT_DIR" "${extra_params[@]}" || (
+          --junit "$JUNIT_REPORT_XML" --output "$OUT_DIR" "${extra_params[@]}" --nice 0 || (
             RC=$?
             if [ $RC -ne 0 ]; then
               echo "ya test returned $RC, check existence $JUNIT_REPORT_XML"
@@ -206,6 +206,7 @@ runs:
         )
 
     - name: copying system files
+      if: ${{ !cancelled() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         sudo cp /var/log/kern.log "$LOG_DIR/kern.log" &&
@@ -241,11 +242,16 @@ runs:
 
     - name: dump VM artifacts
       shell: bash --noprofile --norc -eo pipefail -x {0}
+      if: ${{ !cancelled() }}
       run: |
         echo "::group::dump-vm-artifacts"
         # shellcheck disable=SC2024
-        sudo dmesg -T > "$LOG_DIR/dmesg.log"
-        sudo cp /var/log/atop/atop_* "$LOG_DIR/"
+        sudo dmesg -T > "$LOG_DIR/dmesg.log" || true
+        sudo cp /var/log/atop/atop_* "$LOG_DIR/" || true
+        sudo cp /var/log/syslog "$LOG_DIR/syslog.log" || true
+        # shellcheck disable=SC2024
+        sudo ps aux > "$LOG_DIR/ps.log" || true
+        sudo chown -R github:github "$LOG_DIR/dmesg.log" "$LOG_DIR/atop_*" "$LOG_DIR/syslog.log" "$LOG_DIR/ps.log" || true
         echo "::endgroup::"
 
     - name: archive unitest reports (transformed)

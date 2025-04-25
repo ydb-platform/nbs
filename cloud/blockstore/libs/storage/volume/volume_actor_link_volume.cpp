@@ -15,6 +15,7 @@ bool TVolumeActor::PrepareAddFollower(
     Y_UNUSED(tx);
     Y_UNUSED(args);
 
+    args.LinkUUID = CreateGuidAsString();
     return true;
 }
 
@@ -36,10 +37,10 @@ void TVolumeActor::ExecuteAddFollower(
     TVolumeDatabase db(tx.DB);
 
     auto newFollower = TFollowerDiskInfo{
-        .Uuid = CreateGuidAsString(),
+        .LinkUUID = args.LinkUUID,
         .FollowerDiskId = args.FollowerDiskId,
         .ScaleUnitId = "",
-        .MigrationBlockIndex = std::nullopt};
+        .MigratedBytes = std::nullopt};
 
     db.WriteFollower(newFollower);
     State->AddOrUpdateFollower(std::move(newFollower));
@@ -52,7 +53,10 @@ void TVolumeActor::CompleteAddFollower(
     auto response =
         std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>(
             MakeError(S_OK));
+    response->Record.SetLinkUUID(args.LinkUUID);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    RestartPartition(ctx, {});
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -74,9 +78,9 @@ void TVolumeActor::ExecuteRemoveFollower(
     ITransactionBase::TTransactionContext& tx,
     TTxVolume::TRemoveFollower& args)
 {
-    Y_DEBUG_ABORT_UNLESS(!args.Id.empty());
+    Y_DEBUG_ABORT_UNLESS(!args.LinkUUID.empty());
 
-    auto follower = State->FindFollowerByUuid(args.Id);
+    auto follower = State->FindFollowerByUuid(args.LinkUUID);
     Y_DEBUG_ABORT_UNLESS(follower);
 
     LOG_INFO(
@@ -88,7 +92,7 @@ void TVolumeActor::ExecuteRemoveFollower(
         follower->FollowerDiskId.c_str());
 
     TVolumeDatabase db(tx.DB);
-    State->RemoveFollower(args.Id);
+    State->RemoveFollower(args.LinkUUID);
     db.DeleteFollower(*follower);
 }
 
@@ -100,6 +104,59 @@ void TVolumeActor::CompleteRemoveFollower(
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse>(
             MakeError(S_OK));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    RestartPartition(ctx, {});
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TVolumeActor::PrepareUpdateFollower(
+    const TActorContext& ctx,
+    ITransactionBase::TTransactionContext& tx,
+    TTxVolume::TUpdateFollower& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TVolumeActor::ExecuteUpdateFollower(
+    const TActorContext& ctx,
+    ITransactionBase::TTransactionContext& tx,
+    TTxVolume::TUpdateFollower& args)
+{
+    auto current = State->FindFollowerByUuid(args.FollowerInfo.LinkUUID);
+    if (!current) {
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Update follower %s <- %s: %s -> %s",
+        TabletID(),
+        State->GetDiskId().Quote().c_str(),
+        args.FollowerInfo.GetDiskIdForPrint().Quote().c_str(),
+        current->Describe().c_str(),
+        args.FollowerInfo.Describe().c_str());
+
+    TVolumeDatabase db(tx.DB);
+    State->AddOrUpdateFollower(args.FollowerInfo);
+    db.WriteFollower(args.FollowerInfo);
+}
+
+void TVolumeActor::CompleteUpdateFollower(
+    const TActorContext& ctx,
+    TTxVolume::TUpdateFollower& args)
+{
+    auto response =
+        std::make_unique<TEvVolumePrivate::TEvUpdateFollowerStateResponse>(
+            MakeError(S_OK));
+    response->NewState = args.FollowerInfo.State;
+    response->MigratedBytes = args.FollowerInfo.MigratedBytes;
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,6 +166,7 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -137,6 +195,7 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -160,7 +219,72 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
     ExecuteTx<TRemoveFollower>(
         ctx,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        follower->Uuid);
+        follower->LinkUUID);
+}
+
+void TVolumeActor::HandleUpdateFollowerState(
+    const TEvVolumePrivate::TEvUpdateFollowerStateRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    using EReason = TEvVolumePrivate::TUpdateFollowerStateRequest::EReason;
+    using EState = TFollowerDiskInfo::EState;
+
+    auto* msg = ev->Get();
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    auto followerInfo = State->FindFollowerByUuid(msg->FollowerUuid);
+
+    auto reply = [&](EState newState)
+    {
+        auto response = std::make_unique<
+            TEvVolumePrivate::TEvUpdateFollowerStateResponse>(
+            newState,
+            msg->MigratedBytes);
+        NCloud::Reply(ctx, *ev, std::move(response));
+    };
+
+    if (!followerInfo) {
+        reply(EState::Error);
+        return;
+    }
+
+    auto currentState = followerInfo->State;
+    if (currentState == EState::Error) {
+        reply(EState::Error);
+        return;
+    }
+
+    EState newState = EState::None;
+
+    switch (msg->Reason) {
+        case EReason::FillProgressUpdate: {
+            if (currentState == EState::Ready) {
+                reply(EState::Ready);
+                return;
+            }
+            newState = EState::Preparing;
+            break;
+        }
+        case EReason::FillCompleted: {
+            newState = EState::Ready;
+            break;
+        }
+        case EReason::FillError: {
+            newState = EState::Error;
+            break;
+        }
+    }
+    Y_DEBUG_ABORT_UNLESS(newState != EState::None);
+
+    followerInfo->State = newState;
+    followerInfo->MigratedBytes = msg->MigratedBytes;
+
+    ExecuteTx<TUpdateFollower>(
+        ctx,
+        std::move(requestInfo),
+        std::move(*followerInfo));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

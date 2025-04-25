@@ -1146,7 +1146,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
     }
 
-    Y_UNIT_TEST(ShouldNotLeakMixedIndexCacheInCaseOfUnsuccessfulReads)
+    Y_UNIT_TEST(ShouldNotLeakMixedIndex)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetInMemoryIndexCacheEnabled(true);
@@ -1194,6 +1194,22 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         // All 4 ranges (1MB / 256KB) should have been offloaded to the mixed
         // index cache
         auto stats = GetBlobMetaMapStats(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.LoadedRanges);
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.OffloadedRanges);
+
+        // Describe data should not leak mixed index as well
+        tablet.DescribeData(handle, 0, 1_MB);
+        stats = GetBlobMetaMapStats(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.LoadedRanges);
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.OffloadedRanges);
+
+        // Reloading the tablet to drop the mixed index
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        // Simple describe should populate the cache
+        tablet.DescribeData(handle, 0, 1_MB);
+        stats = GetBlobMetaMapStats(env, tablet);
         UNIT_ASSERT_VALUES_EQUAL(0, stats.LoadedRanges);
         UNIT_ASSERT_VALUES_EQUAL(4, stats.OffloadedRanges);
     }

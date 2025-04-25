@@ -239,10 +239,10 @@ bool HaveCommonRows(
 bool RowHasFreshDevices(
     const NProto::TVolumeMeta& meta,
     ui32 rowIndex,
-    ui32 timeoutedDeviceReplicaIndex)
+    ui32 timedOutDeviceReplicaIndex)
 {
     for (size_t i = 0; i <= meta.ReplicasSize(); i++) {
-        if (i == timeoutedDeviceReplicaIndex) {
+        if (i == timedOutDeviceReplicaIndex) {
             continue;
         }
         const auto& devices = GetReplicaDevices(meta, i);

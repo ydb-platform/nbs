@@ -147,6 +147,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const ui64 TabletId;
+    const TString DiskId;
     const TActorId Tablet;
     const ui32 BlockSize;
     const ui32 MaxBlocksInBlob;
@@ -180,6 +181,7 @@ public:
     TCompactionActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
+        TString diskId,
         const TActorId& tablet,
         ui32 blockSize,
         ui32 maxBlocksInBlob,
@@ -242,6 +244,7 @@ private:
 TCompactionActor::TCompactionActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
+        TString diskId,
         const TActorId& tablet,
         ui32 blockSize,
         ui32 maxBlocksInBlob,
@@ -254,6 +257,7 @@ TCompactionActor::TCompactionActor(
         TVector<TRequest> requests)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
+    , DiskId(std::move(diskId))
     , Tablet(tablet)
     , BlockSize(blockSize)
     , MaxBlocksInBlob(maxBlocksInBlob)
@@ -345,19 +349,30 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
         requests.push_back(&r);
     }
 
-    Sort(requests, [] (const TRequest* l, const TRequest* r) {
-        return l->BlobId < r->BlobId
-            || l->BlobId == r->BlobId && l->BlobOffset < r->BlobOffset;
-    });
+    const auto makeTie = [](const TRequest* request)
+    {
+        return std::tie(
+            request->BlobId,
+            request->RangeCompactionIndex,
+            request->BlobOffset);
+    };
+
+    Sort(
+        requests,
+        [makeTie](const TRequest* l, const TRequest* r)
+        { return makeTie(l) < makeTie(r); });
 
     TBatchRequest current;
+    ui32 currentRangeCompactionIndex = 0;
     for (auto* r: requests) {
         if (IsDeletionMarker(r->BlobId)) {
             ++ReadRequestsCompleted;
             continue;
         }
 
-        if (current.BlobId != r->BlobId) {
+        if (std::tie(current.BlobId, currentRangeCompactionIndex) !=
+            std::tie(r->BlobId, r->RangeCompactionIndex))
+        {
             if (current.BlobOffsets || current.UnchangedBlobOffsets) {
                 BatchRequests.emplace_back(
                     current.BlobId,
@@ -371,6 +386,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             current.GroupId = r->GroupId;
             current.BlobId = r->BlobId;
             current.Proxy = r->Proxy;
+            currentRangeCompactionIndex = r->RangeCompactionIndex;
             current.RangeCompactionInfo =
                 &RangeCompactionInfos[r->RangeCompactionIndex];
         }
@@ -596,8 +612,9 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             LOG_ERROR(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%lu] unexpected channel data kind %u",
+                "[%lu][d:%s] unexpected channel data kind %u",
                 TabletId,
+                DiskId.c_str(),
                 static_cast<int>(channelDataKind));
         }
     };
@@ -640,29 +657,38 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             Y_ABORT_UNLESS(rc.ZeroBlobSkipMask.Count());
         }
 
-        for (auto it = rc.AffectedBlobs.begin(); it != rc.AffectedBlobs.end(); ) {
-            auto& blockMask = it->second.BlockMask.GetRef();
+        for (auto& [blobId, blob]: rc.AffectedBlobs) {
+            auto& blockMask = blob.BlockMask.GetRef();
 
             // could already be full
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                ++it;
-
                 continue;
             }
 
             // mask overwritten blocks
-            for (ui16 blobOffset: it->second.Offsets) {
+            for (ui16 blobOffset: blob.Offsets) {
                 blockMask.Set(blobOffset);
             }
 
-            auto& affectedBlob = affectedBlobs[it->first];
-            Y_ABORT_UNLESS(affectedBlob.Offsets.empty());
-            Y_ABORT_UNLESS(affectedBlob.BlockMask.Empty());
-            Y_ABORT_UNLESS(affectedBlob.AffectedBlockIndices.empty());
-            Y_ABORT_UNLESS(affectedBlob.BlobMeta.Empty());
-            affectedBlob = std::move(it->second);
-
-            ++it;
+            auto [blobIt, inserted] =
+                affectedBlobs.try_emplace(blobId, std::move(blob));
+            if (!inserted) {
+                auto& affectedBlob = blobIt->second;
+                affectedBlob.Offsets.insert(
+                    affectedBlob.Offsets.end(),
+                    blob.Offsets.begin(),
+                    blob.Offsets.end());
+                affectedBlob.AffectedBlockIndices.insert(
+                    affectedBlob.AffectedBlockIndices.end(),
+                    blob.AffectedBlockIndices.begin(),
+                    blob.AffectedBlockIndices.end());
+                if (affectedBlob.BlockMask) {
+                    affectedBlob.BlockMask.GetRef() |= blockMask;
+                }
+                if (affectedBlob.BlobMeta && blob.BlobMeta) {
+                    affectedBlob.BlobMeta->MergeFrom(blob.BlobMeta.GetRef());
+                }
+            }
         }
 
         Sort(rc.AffectedBlocks, [] (const auto& l, const auto& r) {
@@ -674,8 +700,9 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         if (rc.AffectedBlocks.size() > MaxAffectedBlocksPerCompaction) {
             // KIKIMR-6286: preventing heavy transactions
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Cropping AffectedBlocks: %lu -> %lu, range: %s",
+                "[%lu][d:%s] Cropping AffectedBlocks: %lu -> %lu, range: %s",
                 TabletId,
+                DiskId.c_str(),
                 rc.AffectedBlocks.size(),
                 MaxAffectedBlocksPerCompaction,
                 DescribeRange(rc.BlockRange).c_str());
@@ -1364,9 +1391,10 @@ void TPartitionActor::HandleCompaction(
             State->GetBlocksCount() - 1);
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Start %s compaction @%lu (range: %s, blobs: %u, blocks: %u"
+            "[%lu][d:%s] Start %s compaction @%lu (range: %s, blobs: %u, blocks: %u"
             ", reads: %u, blobsread: %u, blocksread: %u, score: %f)",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             compactionType == ECompactionType::Forced ? "forced" : "tablet",
             commitId,
             DescribeRange(blockRange).c_str(),
@@ -1438,14 +1466,16 @@ void TPartitionActor::HandleCompactionCompleted(
 
     ui64 commitId = msg->CommitId;
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete compaction @%lu",
+        "[%lu][d:%s] Complete compaction @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     if (HasError(msg->GetError())) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Compaction @%lu failed: %s",
+            "[%lu][d:%s] Compaction @%lu failed: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             commitId,
             FormatError(msg->GetError()).c_str());
     }
@@ -1515,7 +1545,6 @@ void PrepareRangeCompaction(
     const bool fullCompaction,
     const TActorContext& ctx,
     const ui64 tabletId,
-    THashSet<TPartialBlobId, TPartialBlobIdHash>& affectedBlobIds,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
@@ -1532,19 +1561,6 @@ void PrepareRangeCompaction(
         true,   // precharge
         state.GetMaxBlocksInBlob(),
         commitId);
-
-    if (ready) {
-        for (const auto& x: args.AffectedBlobs) {
-            if (affectedBlobIds.contains(x.first)) {
-                args.Discarded = true;
-                return;
-            }
-        }
-
-        for (const auto& x: args.AffectedBlobs) {
-            affectedBlobIds.insert(x.first);
-        }
-    }
 
     if (ready && incrementalCompactionEnabled && !fullCompaction) {
         THashMap<TPartialBlobId, ui32, TPartialBlobIdHash> liveBlocks;
@@ -1597,9 +1613,10 @@ void PrepareRangeCompaction(
         }
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Dropping last %u blobs, %u blocks"
+            "[%lu][d:%s] Dropping last %u blobs, %u blocks"
             ", remaining blobs: %u, blocks: %u",
             tabletId,
+            state.GetConfig().GetDiskId().c_str(),
             args.BlobsSkipped,
             args.BlocksSkipped,
             liveBlocks.size(),
@@ -1938,8 +1955,6 @@ bool TPartitionActor::PrepareCompaction(
 
     bool ready = true;
 
-    THashSet<TPartialBlobId, TPartialBlobIdHash> affectedBlobIds;
-
     for (auto& rangeCompaction: args.RangeCompactions) {
         PrepareRangeCompaction(
             *Config,
@@ -1948,7 +1963,6 @@ bool TPartitionActor::PrepareCompaction(
             fullCompaction,
             ctx,
             TabletID(),
-            affectedBlobIds,
             ready,
             db,
             *State,
@@ -1977,9 +1991,7 @@ void TPartitionActor::CompleteCompaction(
     RemoveTransaction(*args.RequestInfo);
 
     for (auto& rangeCompaction: args.RangeCompactions) {
-        if (!rangeCompaction.Discarded) {
-            State->RaiseRangeTemperature(rangeCompaction.RangeIdx);
-        }
+        State->RaiseRangeTemperature(rangeCompaction.RangeIdx);
     }
 
     const bool blobPatchingEnabledForCloud =
@@ -1993,17 +2005,15 @@ void TPartitionActor::CompleteCompaction(
     TVector<TRangeCompactionInfo> rangeCompactionInfos;
     TVector<TCompactionActor::TRequest> requests;
 
+    const auto mergedBlobThreshold =
+        PartitionConfig.GetStorageMediaKind() ==
+                NCloud::NProto::STORAGE_MEDIA_SSD
+            ? 0
+            : Config->GetCompactionMergedBlobThresholdHDD();
     for (auto& rangeCompaction: args.RangeCompactions) {
-        if (rangeCompaction.Discarded) {
-            continue;
-        }
-
         CompleteRangeCompaction(
             blobPatchingEnabled,
-            PartitionConfig.GetStorageMediaKind() ==
-                    NCloud::NProto::STORAGE_MEDIA_SSD
-                ? 0
-                : Config->GetCompactionMergedBlobThresholdHDD(),
+            mergedBlobThreshold,
             args.CommitId,
             *Info(),
             *State,
@@ -2014,8 +2024,9 @@ void TPartitionActor::CompleteCompaction(
 
         if (rangeCompactionInfos.back().OriginalBlobId) {
             LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Selected patching candidate: %s, data blob: %s",
+                "[%lu][d:%s] Selected patching candidate: %s, data blob: %s",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 ToString(rangeCompactionInfos.back().OriginalBlobId).c_str(),
                 ToString(rangeCompactionInfos.back().DataBlobId).c_str());
         }
@@ -2035,6 +2046,7 @@ void TPartitionActor::CompleteCompaction(
         ctx,
         args.RequestInfo,
         TabletID(),
+        PartitionConfig.GetDiskId(),
         SelfId(),
         State->GetBlockSize(),
         State->GetMaxBlocksInBlob(),
@@ -2045,6 +2057,11 @@ void TPartitionActor::CompleteCompaction(
         args.CommitId,
         std::move(rangeCompactionInfos),
         std::move(requests));
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%lu][d:%s] Partition registered TCompactionActor with id [%lu]",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
+        actor);
 
     Actors.Insert(actor);
 }

@@ -27,6 +27,7 @@ RECURSE(
     python
     python_client
     rdma
+    rdma_disks
     recipes
     registration
     resize-disk

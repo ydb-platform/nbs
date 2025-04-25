@@ -8,6 +8,7 @@
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/tablet/tablet_counters_aggregator.h>
 
@@ -255,8 +256,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
 
     if (ReassignRequestSentTs.GetValue()) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Retrying reassign request (timeout: %lu milliseconds)",
+            "[%lu][d:%s] Retrying reassign request (timeout: %lu milliseconds)",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             timeout.MilliSeconds());
     }
 
@@ -271,8 +273,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         }
 
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Reassign request sent for channels: %s",
+            "[%lu][d:%s] Reassign request sent for channels: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             sb.c_str());
     }
 
@@ -416,6 +419,11 @@ void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
 {
     while (auto requestActor = State->DequeueIORequest(channel)) {
         auto actorId = NCloud::Register(ctx, std::move(requestActor));
+        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+            "[%lu][d:%s] Partition registered request actor with id [%lu]",
+            TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
+            actorId);
         Actors.Insert(actorId);
     }
 }
@@ -479,15 +487,11 @@ void TPartitionActor::UpdateStorageStat(i64 value)
     GetResourceMetrics()->StorageUser.Increment(value);
 }
 
-void TPartitionActor::UpdateCPUUsageStat(ui64 value)
+void TPartitionActor::UpdateCPUUsageStat(TInstant now, ui64 execCylces)
 {
-    UserCPUConsumption += value;
-    GetResourceMetrics()->CPU.Increment(value);
-}
-
-void TPartitionActor::UpdateExecutorStats(const TActorContext& ctx)
-{
-    GetResourceMetrics()->TryUpdate(ctx);
+    const auto duration = CyclesToDurationSafe(execCylces);
+    UserCPUConsumption += duration.MicroSeconds();
+    GetResourceMetrics()->CPU.Increment(duration.MicroSeconds(), now);
 }
 
 bool TPartitionActor::InitReadWriteBlockRange(
@@ -547,8 +551,9 @@ void TPartitionActor::SendGarbageCollectorCompleted(
     const TActorContext& ctx) const
 {
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Send garbage collector completed",
-        TabletID());
+        "[%lu][d:%s] Send garbage collector completed",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
     NCloud::Send(
         ctx,
         LauncherID(),
@@ -564,8 +569,9 @@ void TPartitionActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Stop tablet because of PoisonPill request",
-        TabletID());
+        "[%lu][d:%s] Stop tablet because of PoisonPill request",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     Suicide(ctx);
 }
@@ -726,6 +732,22 @@ void TPartitionActor::HandleDrain(
     const TActorContext& ctx)
 {
     DrainActorCompanion.HandleDrain(ev, ctx);
+}
+
+void TPartitionActor::HandleWaitForInFlightWrites(
+    const TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    DrainActorCompanion.HandleWaitForInFlightWrites(ev, ctx);
+}
+
+void TPartitionActor::HandleLockAndDrainRange(
+    const TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_DEBUG_ABORT_UNLESS(0);
 }
 
 bool TPartitionActor::HandleRequests(STFUNC_SIG)

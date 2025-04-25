@@ -252,9 +252,9 @@ jobs:
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
       cache_update_build: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_build)) }}
       cache_update_tests: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_tests)) }}
-      upload_ya_dir: ${{ github.event == 'workflow_dispatch' && 'no' || inputs.upload_ya_dir}}
-      clean_ya_dir: ${{ github.event == 'workflow_dispatch' && 'no' || inputs.clean_ya_dir }}
-      use_network_cache: ${{ github.event == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
+      upload_ya_dir: ${{ github.event_name == 'workflow_dispatch' && 'no' || inputs.upload_ya_dir}}
+      clean_ya_dir: ${{ github.event_name == 'workflow_dispatch' && 'no' || inputs.clean_ya_dir }}
+      use_network_cache: ${{ github.event_name == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
       nebius: ${{ needs.provide-runner.outputs.nebius }}
       truncate_enabled: ${{ contains(github.event.pull_request.labels.*.name, 'disable_truncate') && 'no' || 'yes' }}
     secrets: inherit

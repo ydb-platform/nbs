@@ -486,7 +486,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         NProto::TClientConfig clientConfig;
         NProto::TClientProfile clientProfile;
         ui64 iops = 400;
-        ui64 bw = 1;
+        ui64 bw = 100;
 
         auto& tc = *clientConfig.MutableThrottlingConfig();
         tc.SetIopsPerCpuUnit(iops);
@@ -505,21 +505,15 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         for (ui32 cpuUnitCount = 1; cpuUnitCount < 100000; ++cpuUnitCount) {
             clientProfile.SetCpuUnitCount(cpuUnitCount);
 
-            auto correctedCpuUnitCount = Max(100u, cpuUnitCount);
-            auto expectedIops = iops * correctedCpuUnitCount;
-            auto expectedBandwidth = bw * correctedCpuUnitCount * 1_MB;
-            auto expectedReadIopsNonreplicated = Min(100'000UL, 2 * expectedIops);
-            auto expectedWriteIopsNonreplicated = Min(200'000UL, 2 * expectedIops);
-            auto expectedReadBandwidthNonreplicated =
+            const auto correctedCpuUnitCount = Max(100u, cpuUnitCount);
+            const auto expectedIops = iops * correctedCpuUnitCount;
+            const auto expectedBandwidth = bw * correctedCpuUnitCount * 1_MB;
+            const auto expectedReadIopsNonreplicated = Min(100'000UL, 2 * expectedIops);
+            const auto expectedWriteIopsNonreplicated = Min(200'000UL, 2 * expectedIops);
+            const auto expectedReadBandwidthNonreplicated =
                 Min(1'000_MB, 2 * expectedBandwidth);
-            auto expectedWriteBandwidthNonreplicated =
+            const auto expectedWriteBandwidthNonreplicated =
                 Min(2'000_MB, 2 * expectedBandwidth);
-            if (expectedIops > Max<ui32>()) {
-                expectedIops = Max<ui32>();
-            }
-            if (expectedBandwidth > Max<ui32>()) {
-                expectedBandwidth = Max<ui32>();
-            }
 
             NProto::TClientPerformanceProfile performanceProfile;
             UNIT_ASSERT(PreparePerformanceProfile(

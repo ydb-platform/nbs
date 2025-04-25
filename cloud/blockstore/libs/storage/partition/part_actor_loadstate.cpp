@@ -61,8 +61,9 @@ bool TPartitionActor::PrepareLoadState(
     TTxPartition::TLoadState& args)
 {
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Reading state from local db",
-        TabletID());
+        "[%lu][d:%s] Reading state from local db",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
@@ -99,8 +100,9 @@ void TPartitionActor::ExecuteLoadState(
     TTxPartition::TLoadState& args)
 {
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] State data loaded",
-        TabletID());
+        "[%lu][d:%s] State data loaded",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
@@ -264,7 +266,6 @@ void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
 {
     auto totalBlocksCount = State->GetMixedBlocksCount() + State->GetMergedBlocksCount();
     UpdateStorageStat(totalBlocksCount * State->GetBlockSize());
-    UpdateExecutorStats(ctx);
 
     LoadFreshBlobs(ctx);
 }
@@ -296,8 +297,9 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] LoadState completed",
-        TabletID());
+        "[%lu][d:%s] LoadState completed",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     for (const auto& block: msg->Record.GetUsedBlocks()) {
         State->GetLogicalUsedBlocks().Merge(

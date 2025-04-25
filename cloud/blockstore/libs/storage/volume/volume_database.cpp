@@ -711,21 +711,21 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
     using TTable = TVolumeSchema::FollowerDisks;
 
     Table<TTable>()
-        .Key(follower.Uuid)
+        .Key(follower.LinkUUID)
         .Update(
             NIceDb::TUpdate<TTable::FollowerDiskId>(follower.FollowerDiskId),
             NIceDb::TUpdate<TTable::ScaleUnitId>(follower.ScaleUnitId),
             NIceDb::TUpdate<TTable::State>(static_cast<ui32>(follower.State)));
 
-    if (follower.MigrationBlockIndex) {
+    if (follower.MigratedBytes) {
         Table<TTable>()
-            .Key(follower.Uuid)
-            .Update(NIceDb::TUpdate<TTable::MigratedBlockCount>(
-                *follower.MigrationBlockIndex));
+            .Key(follower.LinkUUID)
+            .Update(NIceDb::TUpdate<TTable::MigratedBytes>(
+                *follower.MigratedBytes));
     } else {
         Table<TTable>()
-            .Key(follower.Uuid)
-            .UpdateToNull<TTable::MigratedBlockCount>();
+            .Key(follower.LinkUUID)
+            .UpdateToNull<TTable::MigratedBytes>();
     }
 }
 
@@ -733,7 +733,7 @@ void TVolumeDatabase::DeleteFollower(const TFollowerDiskInfo& follower)
 {
     using TTable = TVolumeSchema::FollowerDisks;
 
-    Table<TTable>().Key(follower.Uuid).Delete();
+    Table<TTable>().Key(follower.LinkUUID).Delete();
 }
 
 bool TVolumeDatabase::ReadFollowers(
@@ -751,15 +751,14 @@ bool TVolumeDatabase::ReadFollowers(
 
     while (it.IsValid()) {
         followers.push_back(TFollowerDiskInfo{
-            .Uuid = it.GetValue<TTable::Uuid>(),
+            .LinkUUID = it.GetValue<TTable::Uuid>(),
             .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
             .ScaleUnitId = it.GetValue<TTable::ScaleUnitId>(),
             .State = static_cast<TFollowerDiskInfo::EState>(
                 it.GetValue<TTable::State>()),
-            .MigrationBlockIndex =
-                it.HaveValue<TTable::MigratedBlockCount>()
-                    ? it.GetValue<TTable::MigratedBlockCount>()
-                    : std::optional<ui64>()});
+            .MigratedBytes = it.HaveValue<TTable::MigratedBytes>()
+                                 ? it.GetValue<TTable::MigratedBytes>()
+                                 : std::optional<ui64>()});
         if (!it.Next()) {
             return false;   // not ready
         }

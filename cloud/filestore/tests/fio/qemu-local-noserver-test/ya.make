@@ -4,7 +4,8 @@ PY3TEST()
 # OOM under msan. It is disabled for now since:
 # 1. there was no way found to exclude particular target from sanitizer build
 # 2. max_allocation_size_mb option is ignored in release build for unknown reason
-IF (SANITIZER_TYPE != "memory")
+# Test fails under asan: https://github.com/ydb-platform/nbs/issues/3343
+IF (SANITIZER_TYPE != "memory" AND SANITIZER_TYPE != "address")
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 

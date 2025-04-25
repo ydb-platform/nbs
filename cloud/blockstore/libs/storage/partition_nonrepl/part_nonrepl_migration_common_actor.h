@@ -47,6 +47,15 @@ public:
         const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev) = 0;
 
+    // Notifies that block range was migrated.
+    virtual void OnRangeMigrated(
+        const NActors::TActorContext& ctx,
+        const TBlockRange64& migratedRange)
+    {
+        Y_UNUSED(ctx);
+        Y_UNUSED(migratedRange);
+    }
+
     // Notifies that a sufficiently large block of data has been migrated. The
     // size is determined by the settings.
     virtual void OnMigrationProgress(
@@ -59,6 +68,15 @@ public:
     // Notifies that an non-retriable error occurred during the migration.
     // And the migration was stopped.
     virtual void OnMigrationError(const NActors::TActorContext& ctx) = 0;
+
+    // Actor, to which we should send a LockAndDrain request and wait for a
+    // response before copying the range during migration. After copying, we
+    // should send ReleaseRange to the same actor. If the ActorId is invalid,
+    // there is no need to send either of these messages.
+    virtual NActors::TActorId GetActorToLockAndDrainRange()
+    {
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -94,9 +112,9 @@ private:
     const ui64 BlockCount;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ui32 MaxIoDepth;
+    const NActors::TActorId VolumeActorId;
     TString RWClientId;
 
-    NActors::TActorId MigrationSrcActorId;
     NActors::TActorId SrcActorId;
     NActors::TActorId DstActorId;
     bool ActorOwner = false;
@@ -119,13 +137,13 @@ private:
     // calling MigrationOwner->OnMigrationProgress().
     bool MigrationThresholdAchieved = false;
 
-    TRequestsInProgress<ui64, TBlockRange64> WriteAndZeroRequestsInProgress{
-        EAllowedRequests::WriteOnly};
+    TRequestsInProgress<EAllowedRequests::WriteOnly, ui64, TBlockRange64>
+        WriteAndZeroRequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         DiskId};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
-        TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite};
+        TGetDeviceForRangeCompanion::EAllowedOperation::Read};
 
     // Statistics
     const NActors::TActorId StatActorId;
@@ -139,6 +157,10 @@ private:
     // Usage statistics
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
+
+    // Whether the target of the migration is lagging. In this case writes are
+    // sent only to "SrcActorId".
+    bool TargetMigrationIsLagging = false;
 
 protected:
     // Derived class that wishes to handle wakeup messages should make its own
@@ -166,7 +188,8 @@ public:
         ui64 initialMigrationIndex,
         TString rwClientId,
         NActors::TActorId statActorId,
-        ui32 maxIoDepth);
+        ui32 maxIoDepth,
+        NActors::TActorId volumeActorId);
 
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
@@ -180,7 +203,8 @@ public:
         TCompressedBitmap migrationBlockMap,
         TString rwClientId,
         NActors::TActorId statActorId,
-        ui32 maxIoDepth);
+        ui32 maxIoDepth,
+        NActors::TActorId volumeActorId);
 
     ~TNonreplicatedPartitionMigrationCommonActor() override;
 
@@ -189,7 +213,6 @@ public:
     // Called from the inheritor to initialize migration.
     void InitWork(
         const NActors::TActorContext& ctx,
-        NActors::TActorId migrationSrcActorId,
         NActors::TActorId srcActorId,
         NActors::TActorId dstActorId,
         bool takeOwnershipOverActors,
@@ -210,6 +233,9 @@ public:
     // processed.
     ui64 GetProcessedBlockCount() const;
 
+    // Called from the inheritor to check if migration is allowed.
+    [[nodiscard]] bool IsMigrationAllowed() const;
+
     // IPoisonPillHelperOwner implementation
     void Die(const NActors::TActorContext& ctx) override
     {
@@ -220,9 +246,13 @@ protected:
     [[nodiscard]] TString GetNonZeroBlocks(TBlockRange64 range) const;
     const TStorageConfigPtr& GetConfig() const;
     const TDiagnosticsConfigPtr& GetDiagnosticsConfig() const;
+    NActors::TActorId GetSrcActorId() const;
+    NActors::TActorId GetDstActorId() const;
+
+    void SetTargetMigrationIsLagging(bool lagging);
+    bool GetTargetMigrationIsLagging() const;
 
 private:
-    bool IsMigrationAllowed() const;
     bool IsMigrationFinished() const;
     bool IsIoDepthLimitReached() const;
     bool OverlapsWithInflightWriteAndZero(TBlockRange64 range) const;
@@ -265,14 +295,6 @@ private:
         const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleAgentIsUnavailable(
-        const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleAgentIsBackOnline(
-        const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleRWClientIdChanged(
         const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -305,6 +327,9 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ChecksumBlocks, TEvNonreplPartitionPrivate);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(
+        WaitForInFlightWrites,
+        NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);

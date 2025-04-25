@@ -512,12 +512,6 @@ ui64 TPartitionActor::CalcChannelHistorySize() const
     return sum;
 }
 
-void TPartitionActor::UpdateExecutorStats(const TActorContext& ctx)
-{
-    auto& metrics = *Executor()->GetResourceMetrics();
-    metrics.TryUpdate(ctx);
-}
-
 void TPartitionActor::UpdateNetworkStats(const TActorContext& ctx, ui64 value)
 {
     auto& metrics = Executor()->GetResourceMetrics()->Network;
@@ -532,11 +526,14 @@ void TPartitionActor::UpdateStorageStats(const TActorContext& ctx, i64 value)
     metrics.Increment(value);
 }
 
-void TPartitionActor::UpdateCPUUsageStats(const TActorContext& ctx, TDuration value)
+void TPartitionActor::UpdateCPUUsageStat(
+    const TActorContext& ctx,
+    ui64 execCycles)
 {
-    UserCPUConsumption += value.MicroSeconds();
+    const auto duration = CyclesToDurationSafe(execCycles);
+    UserCPUConsumption += duration.MicroSeconds();
     auto& metrics = Executor()->GetResourceMetrics()->CPU;
-    metrics.Increment(value.MicroSeconds(), ctx.Now());
+    metrics.Increment(duration.MicroSeconds(), ctx.Now());
 }
 
 void TPartitionActor::UpdateWriteThroughput(
@@ -701,6 +698,22 @@ void TPartitionActor::HandleDrain(
     const TActorContext& ctx)
 {
     DrainActorCompanion.HandleDrain(ev, ctx);
+}
+
+void TPartitionActor::HandleWaitForInFlightWrites(
+    const TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    DrainActorCompanion.HandleWaitForInFlightWrites(ev, ctx);
+}
+
+void TPartitionActor::HandleLockAndDrainRange(
+    const TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
 }
 
 ////////////////////////////////////////////////////////////////////////////////

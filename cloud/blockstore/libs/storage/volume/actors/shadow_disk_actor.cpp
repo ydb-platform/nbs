@@ -551,7 +551,8 @@ TShadowDiskActor::TShadowDiskActor(
               sourceDiskClientId,
               checkpointInfo.ShadowDiskState == EShadowDiskState::Ready),
           volumeActorId,
-          config->GetMaxShadowDiskFillIoDepth())
+          config->GetMaxShadowDiskFillIoDepth(),
+          volumeActorId)
     , RdmaClient(std::move(rdmaClient))
     , SrcConfig(std::move(srcConfig))
     , CheckpointId(checkpointInfo.CheckpointId)
@@ -620,7 +621,7 @@ bool TShadowDiskActor::OnMessage(
             TEvService::TEvReadBlocksLocalRequest,
             HandleReadBlocks<TEvService::TReadBlocksLocalMethod>);
 
-        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
 
         // Write/zero request.
         case TEvService::TEvWriteBlocksRequest::EventType: {
@@ -849,7 +850,6 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         State = EActorState::Preparing;
         InitWork(
             ctx,
-            SrcActorId,
             SrcActorId,
             DstActorId,
             true,   // takeOwnershipOverActors

@@ -68,6 +68,8 @@ class TChecksumStorageWrapper final
     const IStoragePtr Storage;
     const TString DiskId;
 
+    std::atomic<bool> CriticalErrorReported = false;
+
 public:
     TChecksumStorageWrapper(IStoragePtr storage, TString diskId)
         : Storage(std::move(storage))
@@ -110,6 +112,9 @@ public:
     TFuture<NProto::TWriteBlocksLocalResponse> RetryWriteBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request);
+
+private:
+    void ReportChecksumMismatch(TBlockRange64 range);
 };
 
 TFuture<NProto::TWriteBlocksLocalResponse>
@@ -172,8 +177,8 @@ TChecksumStorageWrapper::RetryWriteBlocksLocal(
     const auto range = TBlockRange64::WithLength(
         request->GetStartIndex(),
         request->BlocksCount);
-    ReportMirroredDiskChecksumMismatchUponWrite(
-        TStringBuilder() << " disk: " << DiskId << ", range: " << range);
+
+    ReportChecksumMismatch(range);
 
     auto guard = request->Sglist.Acquire();
     if (!guard) {
@@ -196,6 +201,23 @@ TChecksumStorageWrapper::RetryWriteBlocksLocal(
             Y_UNUSED(buffer);   // Extending the buffer lifetime
             return future;
         });
+}
+
+void TChecksumStorageWrapper::ReportChecksumMismatch(TBlockRange64 range)
+{
+    // Report critical event only once.
+    bool old = CriticalErrorReported.load();
+    if (old) {
+        return;
+    }
+    bool ok = CriticalErrorReported.compare_exchange_strong(old, true);
+    if (!ok) {
+        return;
+    }
+
+    ReportMirroredDiskChecksumMismatchUponWrite(
+        TStringBuilder() << " disk: " << DiskId.Quote()
+                         << ", range: " << range);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

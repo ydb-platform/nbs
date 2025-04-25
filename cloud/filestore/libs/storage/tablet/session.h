@@ -1,11 +1,16 @@
 #pragma once
 
 #include "public.h"
+
 #include "subsessions.h"
 
+#include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
+
+#include <library/cpp/cache/cache.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>
@@ -33,6 +38,116 @@ struct TSessionHandle
 using TSessionHandleList =
     TIntrusiveListWithAutoDelete<TSessionHandle, TDelete>;
 using TSessionHandleMap = THashMap<ui64, TSessionHandle*>;
+
+struct TPerNodeHandleStats
+{
+private:
+    // Number of all handles to this node open in this session
+    i64 OpenHandles = 0;
+    // Number of write (both O_RDWR and O_WRONLY) handles to this node open in
+    // this session
+    i64 OpenWriteHandles = 0;
+    // Among all opens, what was the last visible mtime of the node when the
+    // guest-side invalidation occurred
+    ui64 LastGuestCacheInvalidationMtime = 0;
+
+    void RegisterHandle(const NProto::TSessionHandle& handle)
+    {
+        ++OpenHandles;
+        if (HasFlag(handle.GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
+            ++OpenWriteHandles;
+        }
+    }
+
+    void UnregisterHandle(const NProto::TSessionHandle& handle)
+    {
+        --OpenHandles;
+        if (HasFlag(handle.GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
+            --OpenWriteHandles;
+        }
+    }
+
+    void OnGuestCacheInvalidated(ui64 mtime)
+    {
+        LastGuestCacheInvalidationMtime = mtime;
+    }
+
+    [[nodiscard]] bool Empty() const
+    {
+        return OpenHandles <= 0;
+    }
+
+    friend class TSessionHandleStats;
+};
+
+class TSessionHandleStats
+{
+private:
+    THashMap<ui64, TPerNodeHandleStats> Stats;
+    TLRUCache<ui64, TPerNodeHandleStats> OffloadedStats;
+
+public:
+    explicit TSessionHandleStats(const size_t offloadedStatsCapacity)
+        : OffloadedStats(offloadedStatsCapacity)
+    {}
+
+    void RegisterHandle(const NProto::TSessionHandle& handle)
+    {
+        auto it = OffloadedStats.Find(handle.GetNodeId());
+        if (it != OffloadedStats.End()) {
+            Stats[handle.GetNodeId()] = *it;
+            OffloadedStats.Erase(it);
+        }
+        auto& nodeStats = Stats[handle.GetNodeId()];
+        nodeStats.RegisterHandle(handle);
+    }
+
+    void UnregisterHandle(const NProto::TSessionHandle& handle)
+    {
+        auto it = Stats.find(handle.GetNodeId());
+        if (it != Stats.end()) {
+            it->second.UnregisterHandle(handle);
+            if (it->second.Empty()) {
+                OffloadedStats.Insert(it->first, it->second);
+                Stats.erase(it);
+            }
+        }
+    }
+
+    void OnGuestCacheInvalidated(const NProto::TNodeAttr& node)
+    {
+        auto mtime = node.GetMTime();
+        if (mtime == 0) {
+            return;
+        }
+
+        auto it = Stats.find(node.GetId());
+        if (it != Stats.end()) {
+            it->second.OnGuestCacheInvalidated(mtime);
+        }
+    }
+
+    [[nodiscard]] bool IsAllowedToKeepCache(
+        const NProto::TNodeAttr& node,
+        bool isFirstReadAllowed) const
+    {
+        auto it = Stats.find(node.GetId());
+        if (it != Stats.end()) {
+            // We can allow ourselves not to invalidate the cache if it is not
+            // opened for writing and the last time that the cache was
+            // invalidated was after the node was modified. Also sometimes we
+            // can require this read handle to be not the first one opened, see
+            // isFirstReadAllowed variable
+            if (it->second.OpenWriteHandles == 0 &&
+                it->second.OpenHandles > (isFirstReadAllowed ? 0 : 1) &&
+                it->second.LastGuestCacheInvalidationMtime >= node.GetMTime())
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+};
 
 using TNodeRefsByHandle = THashMap<ui64, ui64>;
 
@@ -77,6 +192,7 @@ struct TMonSessionInfo
     TString ClientId;
     NProto::TSession ProtoInfo;
     TVector<TSubSession> SubSessions;
+    TInstant InactivityDeadline;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -87,9 +203,10 @@ struct TSession
 {
     // TODO: change visibility of the stuff below to private
     TSessionHandleList Handles;
+    TSessionHandleStats HandleStatsByNode;
     TSessionLockList Locks;
 
-    TInstant Deadline;
+    TInstant InactivityDeadline;
 
     // TODO: notify event stream
     ui32 LastEvent = 0;
@@ -103,8 +220,12 @@ private:
     TDupCacheEntryMap DupCache;
 
 public:
-    explicit TSession(const NProto::TSession& proto)
+    explicit TSession(
+            const NProto::TSession& proto,
+            const NProto::TSessionOptions& sessionOptions)
         : NProto::TSession(proto)
+        , HandleStatsByNode(
+              sessionOptions.GetSessionHandleOffloadedStatsCapacity())
         , SubSessions(GetMaxSeqNo(), GetMaxRwSeqNo())
     {}
 
@@ -251,6 +372,15 @@ public:
     {
         return SubSessions.GetMaxSeenRwSeqNo();
     }
+
+    static NProto::TSessionOptions CreateSessionOptions(
+        const TStorageConfigPtr& config)
+    {
+        NProto::TSessionOptions options;
+        options.SetSessionHandleOffloadedStatsCapacity(
+            config->GetSessionHandleOffloadedStatsCapacity());
+        return options;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -307,6 +437,8 @@ struct TSessionsStats
 {
     ui32 StatefulSessionsCount = 0;
     ui32 StatelessSessionsCount = 0;
+    ui32 ActiveSessionsCount = 0;
+    ui32 OrphanSessionsCount = 0;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

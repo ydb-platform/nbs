@@ -883,20 +883,17 @@ void TVolumeActor::RenderLinks(IOutputStream& out) const
                 for (const auto& follower: State->GetAllFollowers()) {
                     TABLER () {
                         TABLED () {
-                            out << follower.Uuid;
+                            out << follower.LinkUUID;
                         }
                         TABLED () {
-                            if (follower.ScaleUnitId) {
-                                out << follower.ScaleUnitId << "/";
-                            }
-                            out << follower.FollowerDiskId;
+                            out << follower.GetDiskIdForPrint();
                         }
                         TABLED () {
                             out << ToString(follower.State);
                         }
                         TABLED () {
-                            if (follower.MigrationBlockIndex) {
-                                out << *follower.MigrationBlockIndex;
+                            if (follower.MigratedBytes) {
+                                out << FormatByteSize(*follower.MigratedBytes);
                             }
                         }
                     }
@@ -1051,6 +1048,12 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
         }
 
         if (IsReliableDiskRegistryMediaKind(mediaKind)) {
+            DIV_CLASS("row") {
+                DIV_CLASS("col-md-6") {
+                    RenderScrubbingStatus(out);
+                }
+            }
+
             DIV_CLASS("row") {
                 DIV_CLASS("col-md-6") {
                     RenderResyncStatus(out);
@@ -1591,6 +1594,90 @@ void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
     }
 }
 
+void TVolumeActor::RenderScrubbingStatus(IOutputStream& out) const
+{
+    const auto& scrubbing = State->GetScrubbingInfo();
+    const auto totalBlocks = GetBlocksCount();
+    const auto blockSize = State->GetBlockSize();
+
+    auto outputRanges = [&](const TBlockRangeSet64& ranges)
+    {
+        size_t count = 0;
+        for (auto range: ranges) {
+            out << range.Print();
+            if (++count > 1000) {
+                out << "...truncated";
+                break;
+            }
+        }
+    };
+
+    HTML (out) {
+        TAG (TH3) {
+            TString statusText = "inactive";
+            TString cssClass = "label-default";
+
+            if (scrubbing.Running) {
+                statusText = "in progress";
+                cssClass = "label-success";
+            }
+
+            out << "ScrubbingStatus:";
+
+            SPAN_CLASS_STYLE ("label " + cssClass, "margin-left:10px") {
+                out << statusText;
+            }
+        }
+
+        if (!scrubbing.Running) {
+            return;
+        }
+
+        TABLE_SORTABLE_CLASS("table table-condensed") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLED() { out << "Scrubbing progress: "; }
+                    TABLED() {
+                        OutputProgress(
+                            scrubbing.CurrentRange.Start,
+                            totalBlocks,
+                            blockSize,
+                            totalBlocks - scrubbing.CurrentRange.Start,
+                            out);
+
+                        out << "<br>Full scan count: " << scrubbing.FullScanCount;
+                    }
+                }
+                TABLER() {
+                    TABLED () { out << "Minors: "; }
+                    TABLED () {
+                        outputRanges(scrubbing.Minors);
+                    }
+                }
+                TABLER() {
+                    TABLED () { out << "Majors: "; }
+                    TABLED () {
+                        outputRanges(scrubbing.Majors);
+                    }
+                }
+                TABLER() {
+                    TABLED () { out << "Fixed: "; }
+                    TABLED () {
+                        outputRanges(scrubbing.Fixed);
+                    }
+                }
+                TABLER() {
+                    TABLED () { out << "Fixed partial: "; }
+                    TABLED () {
+                        outputRanges(scrubbing.FixedPartial);
+                    }
+                }
+            }
+        }
+
+    }
+}
+
 void TVolumeActor::RenderResyncStatus(IOutputStream& out) const
 {
     HTML(out) {
@@ -1665,7 +1752,84 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
                 out << statusText;
             }
         }
+
+        if (!State->HasLaggingAgents() ||
+            State->GetLaggingAgentsMigrationInfo().empty())
+        {
+            return;
+        }
+
+        const auto& laggingInfos = State->GetLaggingAgentsMigrationInfo();
+        const auto blockSize = State->GetBlockSize();
+
+        ui64 cleanBlocks = 0;
+        ui64 dirtyBlocks = 0;
+        TStringBuilder laggingAgentIds;
+        for (const auto& [laggingAgentId, laggingInfo] : laggingInfos) {
+            if (!laggingAgentIds.empty()) {
+                laggingAgentIds << ", ";
+            }
+            laggingAgentIds << laggingAgentId;
+            cleanBlocks += laggingInfo.CleanBlocks;
+            dirtyBlocks += laggingInfo.DirtyBlocks;
+        }
+
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD()
+            {
+                TABLER()
+                {
+                    TABLED()
+                    {
+                        out << "Lagging agents " << laggingAgentIds
+                            << " migration progress: ";
+                    }
+                    TABLED()
+                    {
+                        OutputProgress(
+                            cleanBlocks,
+                            cleanBlocks + dirtyBlocks,
+                            blockSize,
+                            dirtyBlocks,
+                            out);
+                    }
+                }
+            }
+        }
     }
+}
+
+void TVolumeActor::RenderLaggingStateForDevice(
+    IOutputStream& out,
+    const NProto::TDeviceConfig& d)
+{
+    const auto* stateMsg = "ok";
+    const auto* color = "green";
+    auto laggingDevices = State->GetLaggingDevices();
+
+    if (laggingDevices.contains(d.GetDeviceUUID())) {
+        stateMsg = "lagging";
+        color = "blue";
+    }
+
+    const auto& laggingInfos = State->GetLaggingAgentsMigrationInfo();
+    if (laggingInfos.contains(d.GetAgentId())) {
+        stateMsg = "migrating";
+        color = "blue";
+    }
+
+    if (State->GetNonreplicatedPartitionConfig()
+            ->GetOutdatedDeviceIds()
+            .contains(d.GetDeviceUUID()))
+    {
+        stateMsg = "outdated";
+        color = "red";
+    }
+
+    out << "<font color=" << color << ">";
+    out << stateMsg;
+    out << "</font>";
 }
 
 void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
@@ -1938,28 +2102,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                 if (renderLaggingState) {
                                     TABLED()
                                     {
-                                        const auto* stateMsg = "ok";
-                                        const auto* color = "green";
-
-                                        if (laggingDevices.contains(
-                                                d.GetDeviceUUID()))
-                                        {
-                                            stateMsg = "lagging";
-                                            color = "blue";
-                                        }
-
-                                        if (State
-                                                ->GetNonreplicatedPartitionConfig()
-                                                ->GetOutdatedDeviceIds()
-                                                .contains(d.GetDeviceUUID()))
-                                        {
-                                            stateMsg = "outdated";
-                                            color = "red";
-                                        }
-
-                                        out << "<font color=" << color << ">";
-                                        out << stateMsg;
-                                        out << "</font>";
+                                        RenderLaggingStateForDevice(out, d);
                                     }
                                 }
                             };

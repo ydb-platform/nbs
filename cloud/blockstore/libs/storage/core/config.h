@@ -21,6 +21,12 @@ struct TCertificate
     TString CertPrivateKeyFile;
 };
 
+struct TLinkedDiskFillBandwidth
+{
+    ui32 Bandwidth = 0;
+    ui32 IoDepth = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TStorageConfig
@@ -69,6 +75,7 @@ public:
     TString GetSchemeShardDir() const;
     ui32 GetWriteBlobThreshold() const;
     ui32 GetWriteBlobThresholdSSD() const;
+    [[nodiscard]] ui32 GetWriteMixedBlobThresholdHDD() const;
     ui32 GetFlushThreshold() const;
     ui32 GetFreshBlobCountFlushThreshold() const;
     ui32 GetFreshBlobByteCountFlushThreshold() const;
@@ -269,6 +276,7 @@ public:
     TString GetHybridFreshChannelPoolKind() const;
     bool GetAllocateSeparateMixedChannels() const;
     bool GetPoolKindChangeAllowed() const;
+    [[nodiscard]] ui32 GetMixedChannelsPercentageFromMerged() const;
 
     TString GetFolderId() const;
 
@@ -539,6 +547,8 @@ public:
     bool GetForceMirrorResync() const;
     ui32 GetResyncIndexCachingInterval() const;
     TDuration GetResyncAfterClientInactivityInterval() const;
+    NProto::EResyncPolicy GetAutoResyncPolicy() const;
+    NProto::EResyncPolicy GetForceResyncPolicy() const;
     ui32 GetMirrorReadReplicaCount() const;
 
     TString GetManuallyPreemptedVolumesFile() const;
@@ -605,6 +615,8 @@ public:
     ui64 GetScrubbingBandwidth() const;
     ui64 GetMaxScrubbingBandwidth() const;
     ui64 GetMinScrubbingBandwidth() const;
+    bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
+    NProto::EResyncPolicy GetScrubbingResyncPolicy() const;
 
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 
@@ -629,6 +641,9 @@ public:
     [[nodiscard]] bool GetLaggingDevicesForMirror3DisksEnabled() const;
     [[nodiscard]] TDuration GetLaggingDeviceTimeoutThreshold() const;
     [[nodiscard]] TDuration GetLaggingDevicePingInterval() const;
+    [[nodiscard]] bool GetResyncAfterLaggingAgentMigration() const;
+    [[nodiscard]] bool GetMultiAgentWriteEnabled() const;
+    [[nodiscard]] ui32 GetMultiAgentWriteRequestSizeThreshold() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 
@@ -647,7 +662,6 @@ public:
 
     bool GetYdbViewerServiceEnabled() const;
 
-    bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
     [[nodiscard]] bool GetNonReplicatedVolumeDirectAcquireEnabled() const;
     [[nodiscard]] TDuration GetDestroyVolumeTimeout() const;
 
@@ -661,6 +675,11 @@ public:
 
     [[nodiscard]] bool GetDisableZeroBlocksThrottlingForYDBBasedDisks() const;
     [[nodiscard]] bool GetLocalDiskAsyncDeallocationEnabled() const;
+
+    [[nodiscard]] bool GetDoNotStopVolumeTabletOnLockLost() const;
+
+    [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
+    GetLinkedDiskFillBandwidth() const;
 };
 
 ui64 GetAllocationUnit(
@@ -671,5 +690,10 @@ void AdaptNodeRegistrationParams(
     const TString& overriddenNodeType,
     const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig);
+
+TLinkedDiskFillBandwidth GetLinkedDiskFillBandwidth(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind leaderMediaKind,
+    NCloud::NProto::EStorageMediaKind followerMediaKind);
 
 }   // namespace NCloud::NBlockStore::NStorage

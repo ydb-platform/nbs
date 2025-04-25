@@ -222,7 +222,6 @@ void TPartitionActor::CompleteLoadState(
     auto totalBlockCount = State->GetFreshBlockCount()
         + State->GetMergedBlockCount();
     UpdateStorageStats(ctx, totalBlockCount * State->GetBlockSize());
-    UpdateExecutorStats(ctx);
 
     LoadFreshBlobs(ctx);
 }

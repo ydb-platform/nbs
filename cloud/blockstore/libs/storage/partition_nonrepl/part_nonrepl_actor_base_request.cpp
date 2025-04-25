@@ -49,7 +49,7 @@ void TDiskAgentBaseRequestActor::Bootstrap(const TActorContext& ctx)
     StartTime = ctx.Now();
     ctx.Schedule(
         TimeoutPolicy.Timeout,
-        new TEvNonreplPartitionPrivate::TEvCancelRequest(EReason::Timeouted));
+        new TEvNonreplPartitionPrivate::TEvCancelRequest(EReason::TimedOut));
 
     SendRequest(ctx);
 }
@@ -111,7 +111,7 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
     }
 
     switch (msg->Reason) {
-        case EReason::Timeouted:
+        case EReason::TimedOut:
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::PARTITION_WORKER,

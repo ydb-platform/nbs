@@ -15,6 +15,7 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId parentActorId,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,
@@ -36,12 +37,16 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
           // Since this actor doesn't own source or destination actors, it won't
           // receive any stats and shouldn't send any either.
           TActorId(),   //  statActorId
-          config->GetMaxMigrationIoDepth())
+          config->GetMaxMigrationIoDepth(),
+          partConfig->GetParentActorId())
     , Config(std::move(config))
     , PartConfig(std::move(partConfig))
+    , ParentActorId(parentActorId)
     , TargetActorId(targetActorId)
     , SourceActorId(sourceActorId)
     , AgentId(std::move(agentId))
+    , ProcessedBlockCount(GetProcessedBlockCount())
+    , BlockCountNeedToBeProcessed(GetBlockCountNeedToBeProcessed())
 {}
 
 TLaggingAgentMigrationActor::~TLaggingAgentMigrationActor() = default;
@@ -51,14 +56,12 @@ void TLaggingAgentMigrationActor::OnBootstrap(const TActorContext& ctx)
     InitWork(
         ctx,
         SourceActorId,
-        SourceActorId,
         TargetActorId,
         false,   // takeOwnershipOverActors
         std::make_unique<TMigrationTimeoutCalculator>(
             Config->GetMaxMigrationBandwidth(),
             Config->GetExpectedDiskAgentSize(),
             PartConfig));
-    StartWork(ctx);
 }
 
 bool TLaggingAgentMigrationActor::OnMessage(
@@ -66,8 +69,50 @@ bool TLaggingAgentMigrationActor::OnMessage(
     TAutoPtr<IEventHandle>& ev)
 {
     Y_UNUSED(ctx);
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvStartLaggingAgentMigration,
+            HandleStartLaggingAgentMigration);
+
+        default:
+            // Message processing by the base class is required.
+            return false;
+    }
+
+    // We get here if we have processed an incoming message. And its processing
+    // by the base class is not required.
+    return true;
+}
+
+void TLaggingAgentMigrationActor::HandleStartLaggingAgentMigration(
+    const TEvNonreplPartitionPrivate::TEvStartLaggingAgentMigration::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
     Y_UNUSED(ev);
-    return false;
+    Y_ABORT_IF(IsMigrationAllowed());
+    StartWork(ctx);
+}
+
+void TLaggingAgentMigrationActor::OnRangeMigrated(
+    const NActors::TActorContext& ctx,
+    const TBlockRange64& blockRange)
+
+{
+    BlocksMigratedSinceLastReport += blockRange.Size();
+    ProcessedBlockCount += blockRange.Size();
+    BlockCountNeedToBeProcessed -= blockRange.Size();
+    if (Config->GetMigrationIndexCachingInterval() <=
+        BlocksMigratedSinceLastReport)
+    {
+        ctx.Send(
+            PartConfig->GetParentActorId(),
+            std::make_unique<
+                TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
+                AgentId,
+                ProcessedBlockCount,
+                BlockCountNeedToBeProcessed));
+        BlocksMigratedSinceLastReport = 0;
+    }
 }
 
 void TLaggingAgentMigrationActor::OnMigrationProgress(
@@ -75,19 +120,13 @@ void TLaggingAgentMigrationActor::OnMigrationProgress(
     ui64 migrationIndex)
 {
     Y_UNUSED(migrationIndex);
-
-    ctx.Send(
-        PartConfig->GetParentActorId(),
-        std::make_unique<TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
-            AgentId,
-            GetProcessedBlockCount(),
-            GetBlockCountNeedToBeProcessed()));
+    Y_UNUSED(ctx);
 }
 
 void TLaggingAgentMigrationActor::OnMigrationFinished(const TActorContext& ctx)
 {
     ctx.Send(
-        PartConfig->GetParentActorId(),
+        ParentActorId,
         std::make_unique<TEvVolumePrivate::TEvLaggingAgentMigrationFinished>(
             AgentId));
 }

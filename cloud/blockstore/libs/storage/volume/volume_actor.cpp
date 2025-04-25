@@ -312,19 +312,11 @@ void TVolumeActor::BeforeDie(const TActorContext& ctx)
     TerminateTransactions(ctx);
     KillActors(ctx);
     CancelRequests(ctx);
-
-    for (auto& [_, handler]: OnPartitionStopped) {
-        std::invoke(handler, ctx);
-    }
-    OnPartitionStopped.clear();
-
-    for (auto& [part, handler]: WaitForPartitions) {
-        if (handler) {
-            std::invoke(handler, ctx, MakeError(E_REJECTED, "tablet is shutting down"));
-        }
-    }
-    StoppedPartitions.clear();
-    WaitForPartitions.clear();
+    OnDiskRegistryBasedPartitionStopped(
+        ctx,
+        TActorId(),
+        0,   // 0 means that it's over, need to call all callbacks.
+        MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void TVolumeActor::KillActors(const TActorContext& ctx)
@@ -607,55 +599,11 @@ void TVolumeActor::HandlePoisonTaken(
         TabletID(),
         ev->Sender.ToString().c_str());
 
-    if (auto* callback = OnPartitionStopped.FindPtr(ev->Cookie)) {
-        std::invoke(*callback, ctx);
-        OnPartitionStopped.erase(ev->Cookie);
-    }
-
-    if (WaitForPartitions.empty()) {
-        return;
-    }
-
-    StoppedPartitions.insert(ev->Sender);
-
-    auto it = WaitForPartitions.begin();
-
-    for (; it != WaitForPartitions.end(); ++it) {
-        auto& [part, handler] = *it;
-
-        if (!StoppedPartitions.erase(part)) {
-            break;
-        }
-
-        if (handler) {
-            std::invoke(handler, ctx, NProto::TError());
-        }
-    }
-
-    const auto removed = std::distance(WaitForPartitions.begin(), it);
-
-    WaitForPartitions.erase(WaitForPartitions.begin(), it);
-
-    if (WaitForPartitions.empty()) {
-        StoppedPartitions.clear();
-    }
-
-    TStringStream waitList;
-    for (const auto& [p, _]: WaitForPartitions) {
-        waitList << p.ToString() << " ";
-    }
-
-    TStringStream stoppedList;
-    for (const auto& p: StoppedPartitions) {
-        stoppedList << p.ToString() << " ";
-    }
-
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Partitions removed from the wait list: %lu. W: [ %s], S: [ %s]",
-        TabletID(),
-        removed,
-        waitList.Str().c_str(),
-        stoppedList.Str().c_str());
+    OnDiskRegistryBasedPartitionStopped(
+        ctx,
+        ev->Sender,
+        ev->Cookie,
+        NProto::TError());
 }
 
 void TVolumeActor::HandleUpdateThrottlerState(
@@ -798,69 +746,6 @@ void TVolumeActor::ResetServicePipes(const TActorContext& ctx)
     }
 }
 
-void TVolumeActor::HandleTabletMetrics(
-    NKikimr::TEvLocal::TEvTabletMetrics::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* resourceMetrics = GetResourceMetrics();
-    if (resourceMetrics != nullptr) {
-        const auto* msg = ev->Get();
-        const auto& metrics = msg->ResourceValues;
-        bool changed = false;
-        if (metrics.HasCPU()) {
-            resourceMetrics->CPU.Increment(metrics.GetCPU(), ctx.Now());
-            changed = true;
-        }
-        if (metrics.HasNetwork()) {
-            resourceMetrics->Network.Increment(metrics.GetNetwork(), ctx.Now());
-            changed = true;
-        }
-        if (metrics.HasStorage()) {
-            resourceMetrics->StorageUser.Increment(metrics.GetStorage());
-            changed = true;
-        }
-        if (metrics.GroupReadThroughputSize() > 0) {
-            for (const auto &v: metrics.GetGroupReadThroughput()) {
-                auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
-                resourceMetrics->ReadThroughput[id].Increment(
-                    v.GetThroughput(),
-                    ctx.Now());
-            }
-            changed = true;
-        }
-        if (metrics.GroupWriteThroughputSize() > 0) {
-            for (const auto &v: metrics.GetGroupWriteThroughput()) {
-                auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
-                resourceMetrics->WriteThroughput[id].Increment(
-                    v.GetThroughput(),
-                    ctx.Now());
-            }
-            changed = true;
-        }
-        if (metrics.GroupReadIopsSize() > 0) {
-            for (const auto &v: metrics.GetGroupReadIops()) {
-                auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
-                resourceMetrics->ReadIops[id].Increment(
-                    v.GetIops(),
-                    ctx.Now());
-            }
-            changed = true;
-        }
-        if (metrics.GroupWriteIopsSize() > 0) {
-            for (const auto &v: metrics.GetGroupWriteIops()) {
-                auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
-                resourceMetrics->WriteIops[id].Increment(
-                    v.GetIops(),
-                    ctx.Now());
-            }
-            changed = true;
-        }
-        if (changed) {
-            resourceMetrics->TryUpdate(ctx);
-        }
-    }
-}
-
 void TVolumeActor::HandleGetStorageConfig(
     const TEvVolume::TEvGetStorageConfigRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -872,6 +757,27 @@ void TVolumeActor::HandleGetStorageConfig(
         ctx,
         *ev,
         std::move(response));
+}
+
+void TVolumeActor::HandleTakeVolumeRequestId(
+    const TEvVolumePrivate::TEvTakeVolumeRequestIdRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (!VolumeRequestIdGenerator->CanAdvance()) {
+        auto resp =
+            std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+                MakeError(
+                    E_REJECTED,
+                    "can't advance request id, restarting tablet"));
+        NCloud::Reply(ctx, *ev, std::move(resp));
+        NCloud::Send(ctx, SelfId(), std::make_unique<TEvents::TEvPoisonPill>());
+        return;
+    }
+
+    auto resp =
+        std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+            VolumeRequestIdGenerator->Advance());
+    NCloud::Reply(ctx, *ev, std::move(resp));
 }
 
 bool TVolumeActor::HandleRequests(STFUNC_SIG)
@@ -994,6 +900,10 @@ STFUNC(TVolumeActor::StateInit)
             HandleUpdateShadowDiskState);
 
         HFunc(
+            TEvVolumePrivate::TEvUpdateFollowerStateRequest,
+            HandleUpdateFollowerState);
+
+        HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
@@ -1047,6 +957,7 @@ STFUNC(TVolumeActor::StateWork)
             HandleDiskRegistryBasedPartCounters);
         HFunc(TEvStatsService::TEvVolumePartCounters, HandlePartCounters);
         HFunc(TEvVolumePrivate::TEvPartStatsSaved, HandlePartStatsSaved);
+        HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
         HFunc(
             TEvVolumePrivate::TEvWriteOrZeroCompleted,
             HandleWriteOrZeroCompleted);
@@ -1080,8 +991,6 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(TEvPartition::TEvBackpressureReport, HandleBackpressureReport);
         HFunc(TEvPartition::TEvGarbageCollectorCompleted, HandleGarbageCollectorCompleted);
 
-        HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
-
         HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
 
         HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
@@ -1095,8 +1004,8 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvReportLaggingDevicesToDR,
             HandleReportLaggingDevicesToDR);
         HFunc(
-            TEvVolumePrivate::TEvDeviceTimeoutedRequest,
-            HandleDeviceTimeouted);
+            TEvVolumePrivate::TEvDeviceTimedOutRequest,
+            HandleDeviceTimedOut);
         HFunc(
             TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
             HandleUpdateLaggingAgentMigrationState);
@@ -1113,8 +1022,14 @@ STFUNC(TVolumeActor::StateWork)
             HandleUpdateShadowDiskState);
 
         HFunc(
+            TEvVolumePrivate::TEvUpdateFollowerStateRequest,
+            HandleUpdateFollowerState);
+
+        HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
+
+        IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
@@ -1142,7 +1057,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateReadWriteClientInfo);
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
         IgnoreFunc(TEvVolumePrivate::TEvReportLaggingDevicesToDR);
-        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
         IgnoreFunc(TEvVolumePrivate::TEvAcquireDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
         IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
@@ -1162,6 +1077,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
 
         IgnoreFunc(TEvVolumePrivate::TEvUpdateShadowDiskStateRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateFollowerStateRequest);
 
         IgnoreFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse);
 

@@ -17,8 +17,8 @@ class TCompositeId
 private:
     struct TValues
     {
-        ui32 RequestId;
-        ui32 Generation;
+        ui32 RequestId = 0;
+        ui32 Generation = 0;
     };
     static_assert(sizeof(TValues) == sizeof(ui64));
 

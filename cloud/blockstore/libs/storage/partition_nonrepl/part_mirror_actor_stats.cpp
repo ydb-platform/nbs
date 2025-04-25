@@ -1,6 +1,7 @@
 #include "part_mirror_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -14,10 +15,9 @@ void TMirrorPartitionActor::HandlePartCounters(
 {
     auto* msg = ev->Get();
 
-    ui32 i = FindIndex(State.GetReplicaActors(), ev->Sender);
-
-    if (i < ReplicaCounters.size()) {
-        ReplicaCounters[i] = std::move(msg->DiskCounters);
+    const ui32 replicaIndex = State.GetReplicaIndex(ev->Sender);
+    if (replicaIndex < ReplicaCounters.size()) {
+        ReplicaCounters[replicaIndex] = std::move(msg->DiskCounters);
         NetworkBytes += msg->NetworkBytes;
         CpuUsage += CpuUsage;
     } else {
@@ -83,6 +83,18 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
         ctx,
         StatActorId,
         std::move(request));
+
+    const bool scrubbingEnabled =
+        Config->GetDataScrubbingEnabled() && !ResyncActorId;
+    auto scrubberCounters = std::make_unique<TEvVolume::TEvScrubberCounters>(
+        MakeIntrusive<TCallContext>(),
+        scrubbingEnabled,
+        GetScrubbingRange(),
+        std::move(Minors),
+        std::move(Majors),
+        std::move(Fixed),
+        std::move(FixedPartial));
+    NCloud::Send(ctx, StatActorId, std::move(scrubberCounters));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

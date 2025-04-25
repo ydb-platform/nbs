@@ -21,7 +21,7 @@ struct TPartitionSchema
         LogChannel,
         IndexChannel,
         FirstDataChannel,
-        MaxDataChannel = FirstDataChannel + MaxChannelsCount - 1,
+        MaxDataChannel = FirstDataChannel + MaxMergedChannelCount - 1,
     };
 
     struct Meta

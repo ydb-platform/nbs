@@ -541,11 +541,16 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
             ? static_cast<double>(stats.GetUsedBlocksCount()) /
                   (BlockGroupSize * NodeGroupSize)
             : static_cast<double>(compactionStats.UsedRangesCount);
+
     const auto avgCleanupScore = rangeCount > 0.0
         ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
         : 0;
+
     const bool shouldCleanup =
-        avgCleanupScore >= Config->GetCleanupThresholdAverage();
+        rangeCount > 0.0
+            ? avgCleanupScore >= Config->GetCleanupThresholdAverage()
+            : stats.GetDeletionMarkersCount() > 0;
+
     bool isPriority = false;
 
     TString dummy;
@@ -578,6 +583,43 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
             || Config->GetNewCleanupEnabled()
             && cleanupScore && shouldCleanup
             || isPriority};
+}
+
+bool TIndexTabletActor::ShouldThrottleCleanup(
+    const NActors::TActorContext& ctx,
+    const TCleanupInfo& cleanupInfo) const
+{
+    if (!cleanupInfo.ShouldCleanup || cleanupInfo.IsPriority) {
+        return false;
+    }
+
+    if (Config->GetCleanupCpuThrottlingThresholdPercentage() == 0) {
+        return false;
+    }
+
+    const auto deletionMarkersCount =
+        GetFileSystemStats().GetDeletionMarkersCount();
+
+    const auto rangeCompactionStats = GetCompactionStats(cleanupInfo.RangeId);
+
+    const auto deletionMarkersCountAfterCleanup =
+        deletionMarkersCount >= rangeCompactionStats.DeletionsCount
+        ? deletionMarkersCount - rangeCompactionStats.DeletionsCount
+        : 0;
+
+    // Cleanup is to be throttled only when the number of deletion markers after
+    // cleanup will drop below the minimal observed amount of deletion markers.
+    // https://github.com/ydb-platform/nbs/pull/3268
+    const auto deletionMarkersCountThreshold =
+        GetMinDeletionMarkersCountSinceTabletStart();
+    if (deletionMarkersCountAfterCleanup >= deletionMarkersCountThreshold) {
+        return false;
+    }
+
+    const auto now = ctx.Now();
+    const double cleanupCpu =
+        Metrics.Cleanup.AverageSecondsPerSecond(now) * 100.0;
+    return cleanupCpu > Config->GetCleanupCpuThrottlingThresholdPercentage();
 }
 
 bool TIndexTabletActor::IsCloseToBackpressureThresholds(TString* message) const
@@ -933,6 +975,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -981,6 +1024,9 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(
             TEvIndexTabletPrivate::TEvLoadNodesRequest,
             HandleLoadNodesRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
+            HandleEnqueueBlobIndexOpIfNeeded);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -1037,6 +1083,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvLoadNodesRequest,
             HandleLoadNodesRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
+            HandleEnqueueBlobIndexOpIfNeeded);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -1088,6 +1137,8 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
+        IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
+
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
@@ -1136,6 +1187,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);

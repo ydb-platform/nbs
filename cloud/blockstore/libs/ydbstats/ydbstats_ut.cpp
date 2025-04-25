@@ -63,6 +63,8 @@ TYdbStatsConfigPtr CreateAllTablesTestConfig()
     return std::make_shared<TYdbStatsConfig>(config);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 TStatsTableSchemePtr CreateStatsTestScheme(TDuration ttl)
 {
     TStatsTableSchemeBuilder out;
@@ -86,11 +88,6 @@ TStatsTableSchemePtr CreateStatsTestScheme(TDuration ttl)
 TStatsTableSchemePtr CreateStatsTestScheme()
 {
     return CreateStatsTestScheme({});
-}
-
-TStatsTableSchemePtr CreateArchiveStatsTestScheme()
-{
-    return CreateStatsTestScheme();
 }
 
 TStatsTableSchemePtr CreateArchiveStatsTestScheme(TDuration ttl)
@@ -132,19 +129,9 @@ TStatsTableSchemePtr CreateNewStatsTestScheme(TDuration ttl)
     return out.Finish();
 }
 
-TStatsTableSchemePtr CreateNewStatsTestScheme()
-{
-    return CreateNewStatsTestScheme({});
-}
-
 TStatsTableSchemePtr CreateNewArchiveStatsTestScheme(TDuration ttl)
 {
     return CreateNewStatsTestScheme(ttl);
-}
-
-TStatsTableSchemePtr CreateNewArchiveStatsTestScheme()
-{
-    return CreateNewArchiveStatsTestScheme({});
 }
 
 TStatsTableSchemePtr CreateBadStatsTestScheme()
@@ -211,9 +198,42 @@ TStatsTableSchemePtr CreateBadHistoryTestScheme()
     return out.Finish();
 }
 
-NYdbStats::TYdbRow BuildTestStats()
+TYDBTableSchemes CreateTestSchemes(
+    TDuration statesTtl = {},
+    TDuration archiveTtl = {})
 {
-    TYdbRow out;
+    return {
+        CreateStatsTestScheme(statesTtl),
+        CreateHistoryTestScheme(),
+        CreateArchiveStatsTestScheme(archiveTtl),
+        CreateMetricsTestScheme()};
+}
+
+TYDBTableSchemes CreateNewTestSchemes(
+    TDuration statesTtl = {},
+    TDuration archiveTtl = {})
+{
+    return {
+        CreateNewStatsTestScheme(statesTtl),
+        CreateNewHistoryTestScheme(),
+        CreateNewArchiveStatsTestScheme(archiveTtl),
+        CreateMetricsTestScheme()};
+}
+
+TYDBTableSchemes CreateBadTestSchemes()
+{
+    return {
+        CreateBadStatsTestScheme(),
+        CreateBadHistoryTestScheme(),
+        CreateBadArchiveStatsTestScheme(),
+        CreateMetricsTestScheme()};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NYdbStats::TYdbStatsRow BuildTestStats()
+{
+    TYdbStatsRow out;
     out.DiskId = "vol0";
     out.Timestamp = TInstant::Now().Seconds();
     out.BlocksCount = 100;
@@ -228,6 +248,11 @@ NYdbStats::TYdbBlobLoadMetricRow BuildTestMetrics()
     out.Timestamp = TInstant::Now();
     out.LoadData = "{}";
     return out;
+}
+
+NYdbStats::TYdbRowData BuildTestYdbRowData()
+{
+    return {{BuildTestStats()}, {BuildTestMetrics()}};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -273,20 +298,18 @@ public:
     }
 
     void AddTables(
-        TStatsTableSchemePtr statsTableScheme,
-        TStatsTableSchemePtr metricsTableScheme,
-        TStatsTableSchemePtr historyTableScheme,
+        TYDBTableSchemes tableSchemes,
         const TVector<TTableStat>& historyTables,
         bool statTable)
     {
         for (const auto& t : historyTables) {
-            Tables.emplace(t.first + "-" + t.second.FormatLocalTime("%F"), historyTableScheme);
+            Tables.emplace(t.first + "-" + t.second.FormatLocalTime("%F"), tableSchemes.History);
         }
         if (statTable) {
-            Tables.emplace(Config->GetStatsTableName(), statsTableScheme);
+            Tables.emplace(Config->GetStatsTableName(), tableSchemes.Stats);
         }
-        if (metricsTableScheme) {
-            Tables.emplace(Config->GetBlobLoadMetricsTableName(), metricsTableScheme);
+        if (tableSchemes.Metrics) {
+            Tables.emplace(Config->GetBlobLoadMetricsTableName(), tableSchemes.Metrics);
         }
     }
 
@@ -434,24 +457,16 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
     Y_UNIT_TEST(ShouldCreateTablesIfNessesary)
     {
         auto config = CreateTestConfig();
-        auto statsScheme = CreateStatsTestScheme();
-        auto historyScheme = CreateHistoryTestScheme();
-        auto archiveScheme = CreateArchiveStatsTestScheme();
-        auto metricsScheme = CreateMetricsTestScheme();
+        auto schemes = CreateTestSchemes();
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
             ydbTestStorage,
-            statsScheme,
-            historyScheme,
-            archiveScheme,
-            metricsScheme);
+            schemes);
         uploader->Start();
 
-        auto response = uploader->UploadStats(
-             { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(3, ydbTestStorage->CreateTableCalls);
@@ -460,34 +475,21 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
     Y_UNIT_TEST(ShouldNotCreateTablesIfTheyAlreadyExistAndNotOutdated)
     {
         auto config = CreateTestConfig();
-        auto statsScheme = CreateStatsTestScheme();
-        auto historyScheme = CreateHistoryTestScheme();
-        auto archiveScheme = CreateArchiveStatsTestScheme();
-        auto metricsScheme = CreateMetricsTestScheme();
+        auto schemes = CreateTestSchemes();
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
             ydbTestStorage,
-            statsScheme,
-            historyScheme,
-            archiveScheme,
-            metricsScheme);
+            schemes);
         uploader->Start();
 
         TVector<TTableStat> directory;
         directory.push_back(std::make_pair(TString("test"), TInstant::Now()));
         directory.push_back(std::make_pair(TString("test"), TInstant::Now() - TDuration::Days(5)));
-        ydbTestStorage->AddTables(
-            statsScheme,
-            metricsScheme,
-            historyScheme,
-            directory,
-            true);
+        ydbTestStorage->AddTables(schemes, directory, true);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->CreateTableCalls == 0);
@@ -496,33 +498,23 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
     Y_UNIT_TEST(ShouldCreateNewHistoryTableIfItIsOutdated)
     {
         auto config = CreateTestConfig();
-        auto statsScheme = CreateStatsTestScheme();
-        auto historyScheme = CreateHistoryTestScheme();
-        auto archiveScheme = CreateArchiveStatsTestScheme();
-        auto metricsScheme = CreateMetricsTestScheme();
+        auto schemes = CreateTestSchemes();
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
             ydbTestStorage,
-            statsScheme,
-            historyScheme,
-            archiveScheme,
-            metricsScheme);
+            schemes);
         uploader->Start();
 
         TVector<TTableStat> directory;
         directory.push_back(std::make_pair(TString("test"), TInstant::Now() - TDuration::Days(5)));
         ydbTestStorage->AddTables(
-            statsScheme,
-            metricsScheme,
-            historyScheme,
+            schemes,
             directory,
             true);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->CreateTableCalls == 1);
@@ -531,35 +523,24 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
     Y_UNIT_TEST(ShouldAlterTables)
     {
         auto config = CreateTestConfig();
-        auto statsScheme = CreateStatsTestScheme();
-        auto historyScheme = CreateHistoryTestScheme();
-        auto statsNewScheme = CreateNewStatsTestScheme();
-        auto historyNewScheme = CreateNewHistoryTestScheme();
-        auto archiveNewScheme = CreateNewArchiveStatsTestScheme();
-        auto metricsScheme = CreateMetricsTestScheme();
+        auto schemes = CreateTestSchemes();
+        auto newSchemes = CreateNewTestSchemes();
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
             ydbTestStorage,
-            statsNewScheme,
-            historyNewScheme,
-            archiveNewScheme,
-            metricsScheme);
+            newSchemes);
         uploader->Start();
 
         TVector<TTableStat> directory;
         directory.push_back(std::make_pair(TString("test"), TInstant::Now()));
         ydbTestStorage->AddTables(
-            statsScheme,
-            metricsScheme,
-            historyScheme,
+            schemes,
             directory,
             true);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->AlterTableCalls == 2);
@@ -568,35 +549,24 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
     Y_UNIT_TEST(ShouldFailIfAlterChangesTypeOfExistingColumns)
     {
         auto config = CreateTestConfig();
-        auto statsScheme = CreateStatsTestScheme();
-        auto historyScheme = CreateHistoryTestScheme();
-        auto statsNewScheme = CreateBadStatsTestScheme();
-        auto historyNewScheme = CreateBadHistoryTestScheme();
-        auto archiveNewScheme = CreateBadArchiveStatsTestScheme();
-        auto metricsScheme = CreateMetricsTestScheme();
+        auto schemes = CreateTestSchemes();
+        auto badSchemes = CreateBadTestSchemes();
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
             ydbTestStorage,
-            statsNewScheme,
-            historyNewScheme,
-            archiveNewScheme,
-            metricsScheme);
+            badSchemes);
         uploader->Start();
 
         TVector<TTableStat> directory;
         directory.push_back(std::make_pair(TString("test"), TInstant::Now() - TDuration::Days(5)));
         ydbTestStorage->AddTables(
-            statsScheme,
-            metricsScheme,
-            historyScheme,
+            schemes,
             directory,
             true);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == E_ARGUMENT &&
             ydbTestStorage->AlterTableCalls == 0);
@@ -605,33 +575,23 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
     Y_UNIT_TEST(ShouldDeleteExpiredHistoryTables)
     {
         auto config = CreateTestConfig();
-        auto statsScheme = CreateStatsTestScheme();
-        auto historyScheme = CreateHistoryTestScheme();
-        auto archiveScheme = CreateArchiveStatsTestScheme();
-        auto metricsScheme = CreateMetricsTestScheme();
+        auto schemes = CreateTestSchemes();
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
             ydbTestStorage,
-            statsScheme,
-            historyScheme,
-            archiveScheme,
-            metricsScheme);
+            schemes);
         uploader->Start();
 
         TVector<TTableStat> directory;
         directory.push_back(std::make_pair(TString("test"), TInstant::Now() - TDuration::Days(5)));
         ydbTestStorage->AddTables(
-            statsScheme,
-            metricsScheme,
-            historyScheme,
+            schemes,
             directory,
             true);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->DropTableCalls == 1);
@@ -642,19 +602,13 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         THashSet<TString> tables;
 
         auto config = CreateAllTablesTestConfig();
-        auto statsScheme = CreateStatsTestScheme();
-        auto historyScheme = CreateHistoryTestScheme();
-        auto archiveScheme = CreateArchiveStatsTestScheme();
-        auto metricsScheme = CreateMetricsTestScheme();
+        auto schemes = CreateTestSchemes();
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
             ydbTestStorage,
-            statsScheme,
-            historyScheme,
-            archiveScheme,
-            metricsScheme);
+            schemes);
         uploader->Start();
 
         ydbTestStorage->UploadTestFunc = [&] (TString tableName, NYdb::TValue)
@@ -667,9 +621,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             return MakeFuture(MakeError(S_OK));
         };
 
-        auto response = uploader->UploadStats(
-             { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
@@ -687,19 +639,13 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
     Y_UNIT_TEST(ShouldReportNotFoundInCaseOfSchemeErrors)
     {
         auto config = CreateAllTablesTestConfig();
-        auto statsScheme = CreateStatsTestScheme();
-        auto historyScheme = CreateHistoryTestScheme();
-        auto archiveScheme = CreateArchiveStatsTestScheme();
-        auto metricsScheme = CreateMetricsTestScheme();
+        auto schemes = CreateTestSchemes();
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
             ydbTestStorage,
-            statsScheme,
-            historyScheme,
-            archiveScheme,
-            metricsScheme);
+            schemes);
         uploader->Start();
 
         ydbTestStorage->UploadTestFunc = [&] (TString, NYdb::TValue)
@@ -713,9 +659,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             return MakeFuture(MakeError(E_FAIL));
         };
 
-        auto response = uploader->UploadStats(
-             { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
@@ -728,24 +672,16 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto config = CreateTestConfig(
             statsTtl,
             archiveStatsTtl);
-        auto statsScheme = CreateStatsTestScheme(statsTtl);
-        auto historyScheme = CreateHistoryTestScheme();
-        auto archiveScheme = CreateArchiveStatsTestScheme(archiveStatsTtl);
-        auto metricsScheme = CreateMetricsTestScheme();
+        auto schemes = CreateTestSchemes(statsTtl, archiveStatsTtl);
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
             CreateLoggingService("console"),
             ydbTestStorage,
-            statsScheme,
-            historyScheme,
-            archiveScheme,
-            metricsScheme);
+            schemes);
         uploader->Start();
 
-        auto response = uploader->UploadStats(
-             { BuildTestStats() },
-             { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->CreateTableCalls);
@@ -800,25 +736,26 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             config,
             CreateLoggingService("console"),
             ydbTestStorage,
-            statsNewScheme,
-            historyNewScheme,
-            archiveNewScheme,
-            metricsScheme);
+            TYDBTableSchemes(
+                statsNewScheme,
+                historyNewScheme,
+                archiveNewScheme,
+                metricsScheme));
         uploader->Start();
 
         TVector<TTableStat> directory;
         directory.push_back(std::make_pair(TString("test"), TInstant::Now()));
         ydbTestStorage->AddTables(
-            statsScheme,
-            metricsScheme,
-            historyScheme,
+            TYDBTableSchemes(
+                statsScheme,
+                historyScheme,
+                archiveScheme,
+                metricsScheme),
             directory,
             true);
         ydbTestStorage->AddTable("arctest", archiveScheme);
 
-        auto response = uploader->UploadStats(
-            { BuildTestStats() },
-            { BuildTestMetrics() }).GetValueSync();
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->AlterTableCalls == 1);

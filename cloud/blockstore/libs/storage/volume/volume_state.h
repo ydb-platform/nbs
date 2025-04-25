@@ -181,6 +181,19 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TScrubbingInfo
+{
+    size_t FullScanCount = 0;
+    bool Running = false;
+    TBlockRange64 CurrentRange;
+    TBlockRangeSet64 Minors;
+    TBlockRangeSet64 Majors;
+    TBlockRangeSet64 Fixed;
+    TBlockRangeSet64 FixedPartial;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TVolumeState
 {
 private:
@@ -196,7 +209,7 @@ private:
 
     TPartitionInfoList Partitions;
     TPartitionInfo::EState PartitionsState = TPartitionInfo::UNKNOWN;
-    NActors::TActorId DiskRegistryBasedPartitionActor;
+    TActorsStack DiskRegistryBasedPartitionActor;
     TNonreplicatedPartitionConfigPtr NonreplicatedPartitionConfig;
 
     TVector<TPartitionStatInfo> PartitionStatInfos;
@@ -243,6 +256,16 @@ private:
     std::optional<ui64> BlockCountToMigrate;
 
     TFollowerDisks FollowerDisks;
+
+    struct TLaggingAgentMigrationInfo
+    {
+        ui64 CleanBlocks;
+        ui64 DirtyBlocks;
+    };
+    THashMap<TString, TLaggingAgentMigrationInfo>
+        CurrentlyMigratingLaggingAgents;
+
+    TScrubbingInfo ScrubbingInfo;
 
 public:
     TVolumeState(
@@ -303,9 +326,12 @@ public:
         Meta.SetResyncIndex(resyncIndex);
     }
 
-    void SetResyncNeededInMeta(bool resyncNeeded)
+    void SetResyncNeededInMeta(
+        bool resyncNeeded,
+        bool alertResyncChecksumMismatch)
     {
         Meta.SetResyncNeeded(resyncNeeded);
+        Meta.SetAlertResyncChecksumMismatch(alertResyncChecksumMismatch);
         Meta.SetResyncIndex(0);
     }
 
@@ -319,6 +345,12 @@ public:
     [[nodiscard]] bool HasLaggingAgents() const;
     [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
     [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
+    void UpdateLaggingAgentMigrationState(
+        const TString& agentId,
+        ui64 cleanBlocks,
+        ui64 dirtyBlocks);
+    const THashMap<TString, TLaggingAgentMigrationInfo>&
+    GetLaggingAgentsMigrationInfo() const;
 
     void SetStartPartitionsNeeded(bool startPartitionsNeeded)
     {
@@ -366,7 +398,13 @@ public:
 
     void FillDeviceInfo(NProto::TVolume& volume) const;
 
+    NProto::EStorageMediaKind GetStorageMediaKind() const
+    {
+        return Config->GetStorageMediaKind();
+    }
     bool IsDiskRegistryMediaKind() const;
+
+    bool HasPerformanceProfileModifications(const TStorageConfig& config) const;
 
     //
     // Partitions
@@ -378,8 +416,10 @@ public:
     }
 
     TPartitionInfo* GetPartition(ui64 tabletId);
-    std::optional<ui32> FindPartitionIndex(NActors::TActorId owner) const;
-    std::optional<ui64> FindPartitionTabletId(NActors::TActorId owner) const;
+    std::optional<ui32> FindPartitionIndex(
+        NActors::TActorId partitionActorId) const;
+    std::optional<ui64> FindPartitionTabletId(
+        NActors::TActorId partitionActorId) const;
 
     //
     // State
@@ -411,12 +451,12 @@ public:
     TString GetPartitionsError() const;
 
     void SetDiskRegistryBasedPartitionActor(
-        const NActors::TActorId& actor,
+        TActorsStack actors,
         TNonreplicatedPartitionConfigPtr config);
 
-    const NActors::TActorId& GetDiskRegistryBasedPartitionActor() const
+    NActors::TActorId GetDiskRegistryBasedPartitionActor() const
     {
-        return DiskRegistryBasedPartitionActor;
+        return DiskRegistryBasedPartitionActor.GetTop();
     }
 
     const TNonreplicatedPartitionConfigPtr& GetNonreplicatedPartitionConfig() const
@@ -736,6 +776,11 @@ public:
         return Meta.GetResyncNeeded();
     }
 
+    bool IsForceMirrorResync() const
+    {
+        return ForceMirrorResync;
+    }
+
     TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
 
     //
@@ -743,15 +788,26 @@ public:
     //
 
     void AddOrUpdateFollower(TFollowerDiskInfo follower);
-    void RemoveFollower(const TString& uuid);
+    void RemoveFollower(const TString& linkUUID);
     std::optional<TFollowerDiskInfo> FindFollowerByUuid(
-        const TString& uuid) const;
+        const TString& linkUUID) const;
     std::optional<TFollowerDiskInfo> FindFollowerByDiskId(
         const TString& diskId) const;
     const TFollowerDisks& GetAllFollowers() const
     {
         return FollowerDisks;
     }
+
+    //
+    // Scrubbing
+    //
+
+    const TScrubbingInfo& GetScrubbingInfo() const
+    {
+        return ScrubbingInfo;
+    }
+
+    void UpdateScrubberCounters(TScrubbingInfo counters);
 
 private:
     bool CanPreemptClient(

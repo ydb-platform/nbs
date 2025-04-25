@@ -55,6 +55,8 @@ public:
         options.CheckBufferModificationDuringWriting =
             ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
+        options.IsReliableMediaKind =
+            IsReliableMediaKind(volume.GetStorageMediaKind());
 
         auto requestFactory = CreateServerHandlerFactory(
             CreateDefaultDeviceHandlerFactory(),

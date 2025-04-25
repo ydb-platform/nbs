@@ -428,6 +428,11 @@ void TCreateSessionActor::HandleCreateSessionResponse(
     SessionState = msg->Record.GetSessionState();
     FileStore = msg->Record.GetFileStore();
 
+    // Some of the features of the filestore are set not by the tablet but also
+    // by the client-side config
+    FileStore.MutableFeatures()->SetGuestKeepCacheAllowed(
+        Config->GetGuestKeepCacheAllowed());
+
     Notify(ctx, {}, false);
 
     if (!FirstWakeupScheduled) {

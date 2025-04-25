@@ -322,12 +322,6 @@ void TVolumeActor::CompleteUpdateConfig(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    if (State) {
-        if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
-            WaitForPartitions.emplace_back(actorId, nullptr);
-        }
-    }
-
     // stop partitions that might have been using old configuration
     StopPartitions(ctx, {});
 
@@ -362,6 +356,9 @@ void TVolumeActor::CompleteUpdateConfig(
         RegisterCounters(ctx);
         RegisterVolume(ctx);
     }
+
+    HasPerformanceProfileModifications =
+        State->HasPerformanceProfileModifications(*Config);
 
     Y_ABORT_UNLESS(NextVolumeConfigVersion == GetCurrentConfigVersion());
 
