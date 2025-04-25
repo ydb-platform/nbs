@@ -238,6 +238,24 @@ struct TRealInstanceKeyEqual
     }
 };
 
+class TDowntimeCounter
+{
+    TDynamicCounters::TCounterPtr HasDowntimeCounter;
+
+public:
+    void UpdateStats(bool updateIntervalFinished, bool hasDowntime)
+    {
+        if (updateIntervalFinished && HasDowntimeCounter) {
+            *HasDowntimeCounter = hasDowntime;
+        }
+    }
+
+    void Register(TDynamicCounters& counters)
+    {
+        HasDowntimeCounter = counters.GetCounter("HasDowntime");
+    }
+};
+
 class TVolumeInfo final
     : public IVolumeInfo
 {
@@ -248,6 +266,7 @@ private:
     const TRealInstanceId RealInstanceId;
 
     TRequestCounters RequestCounters;
+    TDowntimeCounter DowntimeCounter;
 
     TDuration InactivityTimeout;
     TInstant LastRemountTime;
@@ -716,6 +735,9 @@ public:
 
             for (auto& [key, instance]: holder.VolumeInfos) {
                 instance->RequestCounters.UpdateStats(updateIntervalFinished);
+                instance->DowntimeCounter.UpdateStats(
+                    updateIntervalFinished,
+                    hasDowntime);
             }
             if (SufferCounters &&
                 volumeBase.PerfCalc.IsSuffering())
@@ -878,6 +900,7 @@ private:
                 ->GetSubgroup("cloud", volumeConfig.GetCloudId())
                 ->GetSubgroup("folder", volumeConfig.GetFolderId());
         info->RequestCounters.Register(*countersGroup);
+        info->DowntimeCounter.Register(*countersGroup);
 
         NUserCounter::RegisterServerVolumeInstance(
             *UserCounters,
