@@ -5649,16 +5649,11 @@ void TDiskRegistryState::CleanupAgentConfig(
     const NProto::TAgentConfig& agent)
 {
     auto error = TryToRemoveAgentDevices(db, agent.GetAgentId());
+    // Do not return the error from "TryToRemoveAgentDevices()" since
+    // it's internal and shouldn't block node removal.
     if (!HasError(error) || error.GetCode() == E_NOT_FOUND) {
         return;
     }
-
-    // Do not return the error from "TryToRemoveAgentDevices()" since
-    // it's internal and shouldn't block node removal.
-    ReportDiskRegistryCleanupAgentConfigError(
-        TStringBuilder() << "Could not remove device from agent "
-                         << agent.GetAgentId().Quote() << ": "
-                         << FormatError(error));
 
     SuspendLocalDevices(db, agent);
 }
