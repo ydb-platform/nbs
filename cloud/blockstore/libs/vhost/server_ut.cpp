@@ -167,6 +167,33 @@ private:
                 return MakeFuture(NProto::TReadBlocksLocalResponse());
             };
 
+        TestStorage->ZeroBlocksHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(ctx);
+
+            RequestQueue.Enqueue(
+                {EBlockStoreRequest::ZeroBlocks,
+                 request->GetStartIndex(),
+                 request->GetBlocksCount(),
+                 {}});
+
+            if (ServiceFrozen.test()) {
+                auto promise = NewPromise<void>();
+                auto future = promise.GetFuture();
+                FrozenPromises.Enqueue(std::move(promise));
+                return future.Apply(
+                    [=](const auto& future)
+                    {
+                        Y_UNUSED(future);
+                        return NProto::TZeroBlocksResponse();
+                    });
+            }
+
+            return MakeFuture(NProto::TZeroBlocksResponse());
+        };
+
         VhostQueueFactory = std::make_shared<TTestVhostQueueFactory>();
 
         TServerConfig serverConfig;
@@ -1018,6 +1045,39 @@ Y_UNIT_TEST_SUITE(TServerTest)
         future2.GetValue(TDuration::Seconds(5));
 
         server->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldHandleVhostZeroBlocksRequests)
+    {
+        const ui32 blockSize = 4096;
+        const ui64 firstSector = 8;
+        const ui64 totalSectors = 32;
+        const ui64 sectorSize = 512;
+
+        UNIT_ASSERT(totalSectors * sectorSize % blockSize == 0);
+
+        auto environment = TTestEnvironment(blockSize);
+        auto device = environment.GetVhostDevice();
+
+        {
+            auto future = device->SendTestRequest(
+                EBlockStoreRequest::ZeroBlocks,
+                firstSector * sectorSize,
+                totalSectors * sectorSize,
+                {});
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response == TVhostRequest::SUCCESS);
+
+            TTestRequest request;
+            bool res = environment.DequeueRequest(request);
+            UNIT_ASSERT(res);
+            UNIT_ASSERT(request.Type == EBlockStoreRequest::ZeroBlocks);
+            UNIT_ASSERT(
+                request.StartIndex * blockSize == firstSector * sectorSize);
+            UNIT_ASSERT(
+                request.BlocksCount * blockSize == totalSectors * sectorSize);
+            UNIT_ASSERT(!environment.DequeueRequest(request));
+        }
     }
 }
 

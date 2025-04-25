@@ -37,7 +37,7 @@ TDuration TNonreplicatedPartitionActor::TDeviceStat::WorstRequestTime() const
 TDuration TNonreplicatedPartitionActor::TDeviceStat::GetTimedOutStateDuration(
     TInstant now) const
 {
-    return FirstTimeoutTs ? (now - FirstTimeoutTs) : TDuration();
+    return FirstTimedOutRequestStartTs ? (now - FirstTimedOutRequestStartTs) : TDuration();
 }
 
 bool TNonreplicatedPartitionActor::TDeviceStat::CooldownPassed(
@@ -328,7 +328,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
                 PartConfig->MakeError(
                     E_REJECTED,
                     TStringBuilder() << "Device " << dr.Device.GetDeviceUUID()
-                                     << "is lagging behind on data. All IO "
+                                     << " is lagging behind on data. All IO "
                                         "operations are prohibited."));
             return false;
         }
@@ -358,7 +358,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
             NCloud::Send(
                 ctx,
                 PartConfig->GetParentActorId(),
-                std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
+                std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutRequest>(
                     dr.Device.GetDeviceUUID()));
         }
     }
@@ -433,7 +433,7 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
     switch (operation.Status) {
         case EStatus::Success: {
             for (ui32 deviceIndex: operation.DeviceIndices) {
-                OnRequestSuccess(deviceIndex, operation.ExecutionTime);
+                OnRequestSuccess(deviceIndex, operation.ExecutionTime, now);
             }
             break;
         }
@@ -451,10 +451,12 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
 
 void TNonreplicatedPartitionActor::OnRequestSuccess(
     ui32 deviceIndex,
-    TDuration executionTime)
+    TDuration executionTime,
+    TInstant now)
 {
     auto& stat = DeviceStats[deviceIndex];
-    stat.FirstTimeoutTs = {};
+    stat.FirstTimedOutRequestStartTs = {};
+    stat.LastSuccessfulRequestStartTs = now - executionTime;
     stat.ResponseTimes.PushBack(executionTime);
     stat.DeviceStatus = EDeviceStatus::Ok;
     stat.BrokenTransitionTs = {};
@@ -467,8 +469,15 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
 {
     auto& stat = DeviceStats[deviceIndex];
 
-    if (!stat.FirstTimeoutTs) {
-        stat.FirstTimeoutTs = now - executionTime;
+    const TInstant requestStartTs = now - executionTime;
+    // Request timeout can be delivered with delay. Ignore ones that were
+    // started before the last successful request.
+    if (requestStartTs < stat.LastSuccessfulRequestStartTs) {
+        return;
+    }
+
+    if (!stat.FirstTimedOutRequestStartTs) {
+        stat.FirstTimedOutRequestStartTs = requestStartTs;
     }
 
     switch (stat.DeviceStatus) {
@@ -511,8 +520,8 @@ void TNonreplicatedPartitionActor::HandleUpdateCounters(
     ScheduleCountersUpdate(ctx);
 }
 
-void TNonreplicatedPartitionActor::HandleDeviceTimeoutedResponse(
-    const TEvVolumePrivate::TEvDeviceTimeoutedResponse::TPtr& ev,
+void TNonreplicatedPartitionActor::HandleDeviceTimedOutResponse(
+    const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -579,7 +588,7 @@ void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
             DeviceStats[i].DeviceStatus <= EDeviceStatus::Unavailable)
         {
             DeviceStats[i].DeviceStatus = EDeviceStatus::Ok;
-            DeviceStats[i].FirstTimeoutTs = {};
+            DeviceStats[i].FirstTimedOutRequestStartTs = {};
         }
     }
 }
@@ -655,6 +664,7 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
+        HFunc(NPartition::TEvPartition::TEvWaitForInFlightWritesRequest, DrainActorCompanion.HandleWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -676,7 +686,7 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
         HFunc(TEvVolume::TEvCheckRangeRequest, HandleCheckRange);
 
-        HFunc(TEvVolumePrivate::TEvDeviceTimeoutedResponse, HandleDeviceTimeoutedResponse);
+        HFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse, HandleDeviceTimedOutResponse);
         HFunc(TEvNonreplPartitionPrivate::TEvAgentIsUnavailable, HandleAgentIsUnavailable);
         HFunc(TEvNonreplPartitionPrivate::TEvAgentIsBackOnline, HandleAgentIsBackOnline);
 
@@ -705,6 +715,7 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(NPartition::TEvPartition::TEvWaitForInFlightWritesRequest, RejectWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -726,7 +737,7 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, RejectGetScanDiskStatus);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
-        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedResponse);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
 
         default:

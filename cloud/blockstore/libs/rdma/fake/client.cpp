@@ -146,9 +146,11 @@ public:
         size_t responseBytes)
         -> TResultOrError<NRdma::TClientRequestPtr> override;
 
-    void SendRequest(
+    ui64 SendRequest(
         NRdma::TClientRequestPtr req,
         TCallContextPtr callContext) override;
+
+    void CancelRequest(ui64 reqId) override;
 
     TFuture<void> Stop() override;
 };
@@ -180,7 +182,7 @@ auto TClientEndpoint::AllocateRequest(
     return NRdma::TClientRequestPtr(std::move(req));
 }
 
-void TClientEndpoint::SendRequest(
+ui64 TClientEndpoint::SendRequest(
     NRdma::TClientRequestPtr req,
     TCallContextPtr callContext)
 {
@@ -191,6 +193,12 @@ void TClientEndpoint::SendRequest(
     request->CallContext = std::move(callContext);
 
     ActorSystem->Send(RdmaActorId, std::move(request));
+    return 0;
+}
+
+void TClientEndpoint::CancelRequest(ui64 reqId)
+{
+    Y_UNUSED(reqId);
 }
 
 TFuture<void> TClientEndpoint::Stop()

@@ -14,11 +14,12 @@ PEERDIR(
     cloud/storage/core/libs/daemon
 
     contrib/ydb/core/security
+    contrib/ydb/library/keys
 
     library/cpp/getopt
 )
 
-IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG")
+IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG" AND BUILD_TYPE != "RELWITHDEBINFO")
     SPLIT_DWARF()
 ENDIF()
 

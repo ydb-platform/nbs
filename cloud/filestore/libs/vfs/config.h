@@ -46,6 +46,8 @@ public:
     TString GetWriteBackCachePath() const;
     ui32 GetWriteBackCacheSize() const;
 
+    bool GetGuestKeepCacheAllowed() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

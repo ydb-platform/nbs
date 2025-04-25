@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/string.h>

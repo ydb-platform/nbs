@@ -28,6 +28,17 @@ TString LogDevice(const NProto::TDeviceConfig& device);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Transfers data from a user's TWriteBlocksRequest to subrequests.
+// After construction, the BuildNextRequest method is called as many times as
+// there are elements in DeviceRequests. The subrequests may not cover all the
+// data of the original request, in which case it is necessary to skip and not
+// transfer part of the data to the subrequests.
+// BlockSize in Request and subrequests is the same. Request buffers may vary
+// in size, but they are all multiples of the BlockSize. It is guaranteed that
+// there will be enough data to fill out the subrequests. When building
+// subrequests, all data will be sliced by BlockSize. If possible, the data from
+// the request buffers is moved to the subrequests buffers.
+
 class TDeviceRequestBuilder
 {
 private:
@@ -52,32 +63,17 @@ public:
         Y_ABORT_UNLESS(CurrentDeviceIdx < DeviceRequests.size());
 
         const auto& deviceRequest = DeviceRequests[CurrentDeviceIdx];
-        for (ui32 i = 0; i < deviceRequest.BlockRange.Size(); ++i) {
-            auto& deviceBuffer = *r.MutableBlocks()->AddBuffers();
-            if (CurrentOffsetInBuffer == 0 && Buffer().size() == BlockSize) {
-                deviceBuffer = std::move(Buffer());
-                ++CurrentBufferIdx;
-            } else {
-                const ui32 rem = Buffer().size() - CurrentOffsetInBuffer;
-                Y_ABORT_UNLESS(rem >= BlockSize);
-                deviceBuffer.resize(BlockSize);
-                memcpy(
-                    deviceBuffer.begin(),
-                    Buffer().data() + CurrentOffsetInBuffer,
-                    BlockSize);
-                CurrentOffsetInBuffer += BlockSize;
-                if (CurrentOffsetInBuffer == Buffer().size()) {
-                    CurrentOffsetInBuffer = 0;
-                    ++CurrentBufferIdx;
-                }
-            }
+
+        for (size_t i = 0; i < deviceRequest.BlockRange.Size(); ++i) {
+            r.MutableBlocks()->AddBuffers(TakeBufferAndAdvance());
         }
 
         ++CurrentDeviceIdx;
     }
 
 private:
-    TString& Buffer();
+    TString TakeBufferAndAdvance();
+    TBlockDataRef GetBufferAndAdvance();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

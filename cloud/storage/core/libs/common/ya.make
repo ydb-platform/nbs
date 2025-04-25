@@ -22,6 +22,7 @@ SRCS(
     history.cpp
     lru_cache.cpp
     media.cpp
+    page_size.cpp
     persistent_table.cpp
     proto_helpers.cpp
     random.cpp

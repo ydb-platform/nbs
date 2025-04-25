@@ -5,7 +5,7 @@ Tests {
             FileSystemId: "smoke"
             FolderId: "folder"
             CloudId: "cloud"
-            BlocksCount: 10241024
+            BlocksCount: 5120512
             BlockSize: 4096
         }
         IndexLoadSpec {

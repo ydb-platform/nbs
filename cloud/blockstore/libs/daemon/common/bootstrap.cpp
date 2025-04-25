@@ -46,12 +46,10 @@
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
-#include <cloud/blockstore/libs/service_rdma/rdma_target.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
@@ -92,7 +90,6 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
-#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
@@ -673,19 +670,6 @@ void TBootstrapBase::Init()
     GrpcEndpointListener->SetClientStorageFactory(
         Server->GetClientStorageFactory());
 
-    if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
-        InitRdmaRequestServer();
-        if (RdmaRequestServer) {
-            RdmaTarget = CreateBlockstoreServerRdmaTarget(
-                std::make_shared<TBlockstoreServerRdmaTargetConfig>(
-                    Configs->RdmaConfig->GetBlockstoreServerTarget()),
-                Logging,
-                RdmaRequestServer,
-                Service);
-            STORAGE_INFO("RDMA Target initialized");
-        }
-    }
-
     TVector<IIncompleteRequestProviderPtr> requestProviders = {
         Server,
         EndpointManager
@@ -919,8 +903,6 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(ServerStatsUpdater);
     START_COMMON_COMPONENT(BackgroundThreadPool);
     START_COMMON_COMPONENT(RdmaClient);
-    START_COMMON_COMPONENT(RdmaRequestServer);
-    START_COMMON_COMPONENT(RdmaTarget);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -974,8 +956,6 @@ void TBootstrapBase::Stop()
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
 
-    STOP_COMMON_COMPONENT(RdmaRequestServer);
-    STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);

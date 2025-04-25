@@ -540,6 +540,10 @@ struct TVolumeSelfSimpleCounters
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter HasPerformanceProfileModifications{
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // BlobStorage-based
     TCounter RealMaxWriteBandwidth{
@@ -592,6 +596,18 @@ struct TVolumeSelfSimpleCounters
         EPublishingPolicy::DiskRegistryBased,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter HasLaggingDevices{
+        EPublishingPolicy::DiskRegistryBased,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LaggingDevicesCount{
+        EPublishingPolicy::DiskRegistryBased,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LaggingMigrationProgress{
+        EPublishingPolicy::DiskRegistryBased,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&TVolumeSelfSimpleCounters::MaxReadBandwidth>(),
@@ -605,6 +621,7 @@ struct TVolumeSelfSimpleCounters
         MakeMeta<&TVolumeSelfSimpleCounters::LongRunningReadBlob>(),
         MakeMeta<&TVolumeSelfSimpleCounters::LongRunningWriteBlob>(),
         MakeMeta<&TVolumeSelfSimpleCounters::UseFastPath>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::HasPerformanceProfileModifications>(),
 
         MakeMeta<&TVolumeSelfSimpleCounters::RealMaxWriteBandwidth>(),
         MakeMeta<&TVolumeSelfSimpleCounters::PostponedQueueWeight>(),
@@ -619,6 +636,10 @@ struct TVolumeSelfSimpleCounters
         MakeMeta<&TVolumeSelfSimpleCounters::MigrationProgress>(),
         MakeMeta<&TVolumeSelfSimpleCounters::ResyncStarted>(),
         MakeMeta<&TVolumeSelfSimpleCounters::ResyncProgress>(),
+
+        MakeMeta<&TVolumeSelfSimpleCounters::HasLaggingDevices>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::LaggingDevicesCount>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::LaggingMigrationProgress>(),
     };
 };
 static_assert(

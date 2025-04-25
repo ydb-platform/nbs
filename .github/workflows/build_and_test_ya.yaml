@@ -136,6 +136,33 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
         install: false
 
+    - name: Set up swap
+      shell: bash
+      run: |
+        sudo swapoff -a
+        sudo fallocate -l 100G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
+        # configure swappiness to very low value
+        echo "vm.swappiness=5" | sudo tee -a /etc/sysctl.conf
+        sudo sysctl -p
+
+    - name: Create background process that will adjust oom_score_adj for selection of processes
+      shell: bash
+      run: |
+        set -x
+        while true; do
+          for pid in $(pgrep -f ydbd) $(pgrep -f qemu-system-x86_64); do
+            # check if process is already having oom_score_adj set to 500 if not then set it
+            if [ "$(cat /proc/$pid/oom_score_adj)" != "1000" ]; then
+              echo 1000 | sudo tee /proc/$pid/oom_score_adj
+            fi
+          done
+          sleep 30
+        done &
+
     - name: Build
       uses: ./.github/actions/build
       if: inputs.run_build
@@ -144,7 +171,6 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
         cache_update: ${{ inputs.cache_update_build }}
         bazel_remote_uri: ${{ inputs.nebius == 'yes' && vars.NEBIUS_BAZEL_REMOTE_CACHE_URL || vars.REMOTE_CACHE_URL_YA }}
-        bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
         build_threads: ${{ inputs.build_threads }}
         link_threads: ${{ inputs.link_threads }}

@@ -693,6 +693,9 @@ message TCheckRangeRequest
 
     // Is it necessary to calculate and include checksums in the response
     bool CalculateChecksums = 5;
+
+    // Number of replicas to read from m3 disks.
+    uint64 ReplicaCount = 6;
 }
 
 message TCheckRangeResponse
@@ -730,8 +733,11 @@ message TLinkLeaderVolumeToFollowerResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
+    // Uuid of created link.
+    string LinkUUID = 2;
+
     // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
+    NCloud.NProto.TTraceInfo Trace = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

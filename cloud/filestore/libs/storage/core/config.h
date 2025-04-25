@@ -75,6 +75,7 @@ public:
     ui32 GetFlushThreshold() const;
     ui32 GetCleanupThreshold() const;
     ui32 GetCleanupThresholdAverage() const;
+    ui32 GetCleanupCpuThrottlingThresholdPercentage() const;
     bool GetCalculateCleanupScoreBasedOnUsedBlocksCount() const;
     bool GetNewCleanupEnabled() const;
     ui32 GetCompactionThreshold() const;
@@ -225,6 +226,7 @@ public:
     bool GetGetNodeAttrBatchEnabled() const;
 
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
+    TDuration GetEnqueueBlobIndexOpIfNeededScheduleInterval() const;
 
     bool GetAllowFileStoreForceDestroy() const;
     bool GetAllowFileStoreDestroyWithOrphanSessions() const;
@@ -312,6 +314,10 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+
+    bool GetGuestKeepCacheAllowed() const;
+    NProto::EGuestCachingType GetGuestCachingType() const;
+    ui64 GetSessionHandleOffloadedStatsCapacity() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

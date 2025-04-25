@@ -40,7 +40,9 @@ void RegisterVolumeSelfCounters(
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "service_volume")
             ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", volume.VolumeInfo.GetDiskId());
+            ->GetSubgroup("volume", volume.VolumeInfo.GetDiskId())
+            ->GetSubgroup("cloud", volume.VolumeInfo.GetCloudId())
+            ->GetSubgroup("folder", volume.VolumeInfo.GetFolderId());
 
         volume.PerfCounters.DiskCounters.Register(volumeCounters, false);
         volume.PerfCounters.VolumeSelfCounters.Register(volumeCounters, false);

@@ -319,11 +319,13 @@ TVector<TKeyring> TKeyring::GetUserKeys() const
 
     auto data = SysKeyCtlReadValue(KeySerial, size);
 
-    static_assert(sizeof(TKeyring) == sizeof(ui32));
-    auto* ptr = reinterpret_cast<const TKeyring*>(data.data());
+    static_assert(sizeof(TKeyring) == sizeof(ui32), "TKeyring size must match ui32");
     auto count = data.size() / sizeof(ui32);
+    TVector<TKeyring> keyrings;
+    keyrings.resize(count);
+    std::memcpy(keyrings.data(), data.data(), count * sizeof(ui32));
 
-    return {ptr, ptr + count};
+    return keyrings;
 }
 
 void PrintKey(TKeyring key, ui32 level, THashSet<TKeyring>& allKeys)

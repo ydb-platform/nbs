@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/request_bounds_tracker.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
@@ -68,11 +69,15 @@ private:
     TDuration CpuUsage;
 
     THashSet<ui64> DirtyReadRequestIds;
-    TRequestsInProgress<ui64, TRequestCtx> RequestsInProgress{
-        EAllowedRequests::ReadWrite};
+    TRequestsInProgressWithBlockRangeTracking<
+        EAllowedRequests::ReadWrite,
+        ui64,   // key
+        ui64>   // volume request id
+        RequestsInProgress{State.GetBlockSize()};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
-        DiskId};
+        DiskId,
+        &RequestsInProgress.GetRequestBoundsTracker()};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::Read};
 
@@ -92,6 +97,16 @@ private:
     ui32 ChecksumMismatches = 0;
     ui64 RequestIdentifierCounter = 0;
 
+    TBlockRangeSet64 Minors;
+    TBlockRangeSet64 Majors;
+    TBlockRangeSet64 Fixed;
+    TBlockRangeSet64 FixedPartial;
+
+    TRequestBoundsTracker BlockRangeRequests{State.GetBlockSize()};
+
+    bool MultiAgentWriteEnabled = true;
+    const size_t MultiAgentWriteRequestSizeThreshold = 0;
+
 public:
     TMirrorPartitionActor(
         TStorageConfigPtr config,
@@ -106,7 +121,7 @@ public:
         NActors::TActorId statActorId,
         NActors::TActorId resyncActorId);
 
-    ~TMirrorPartitionActor();
+    ~TMirrorPartitionActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -122,9 +137,10 @@ private:
     void StartScrubbingRange(
         const NActors::TActorContext& ctx,
         ui64 scrubbingRangeId);
-    void StartResyncRange(const NActors::TActorContext& ctx);
+    void StartResyncRange(const NActors::TActorContext& ctx, bool isMinor);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
     ui64 TakeNextRequestIdentifier();
+    bool CanMakeMultiAgentWrite(TBlockRange64 range) const;
 
 private:
     STFUNC(StateWork);
@@ -174,6 +190,27 @@ private:
         const TEvService::TEvAddTagsResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleAddLaggingAgent(
+        const TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRemoveLaggingAgent(
+        const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr&
+            ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLockAndDrainRange(
+        const NPartition::TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReleaseRange(
+        const NPartition::TEvPartition::TEvReleaseRange::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleInconsistentDiskAgent(
+        const TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -210,6 +247,9 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(
+        WaitForInFlightWrites,
+        NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);

@@ -520,10 +520,11 @@ void TBootstrapYdb::InitKikimrService()
             statsConfig,
             logging,
             YdbStorage,
-            NYdbStats::CreateStatsTableScheme(statsConfig->GetStatsTableTtl()),
-            NYdbStats::CreateHistoryTableScheme(),
-            NYdbStats::CreateArchiveStatsTableScheme(statsConfig->GetArchiveStatsTableTtl()),
-            NYdbStats::CreateBlobLoadMetricsTableScheme());
+            NYdbStats::TYDBTableSchemes(
+                NYdbStats::CreateStatsTableScheme(statsConfig->GetStatsTableTtl()),
+                NYdbStats::CreateHistoryTableScheme(),
+                NYdbStats::CreateArchiveStatsTableScheme(statsConfig->GetArchiveStatsTableTtl()),
+                NYdbStats::CreateBlobLoadMetricsTableScheme()));
     } else {
         StatsUploader = NYdbStats::CreateVolumesStatsUploaderStub();
     }
@@ -828,17 +829,6 @@ void TBootstrapYdb::WarmupBSGroupConnections()
         Configs->StorageConfig->GetBSGroupsPerChannelToWarmup()));
 
     future.Wait();
-}
-
-void TBootstrapYdb::InitRdmaRequestServer()
-{
-    // TODO: read config
-    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>();
-
-    RdmaRequestServer = ServerModuleFactories->RdmaServerFactory(
-        Logging,
-        Monitoring,
-        std::move(rdmaConfig));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

@@ -18,6 +18,7 @@ RECURSE_FOR_TESTS(
     fio_index_migration
     fio_migration
     fs_posix_compliance
+    guest_cache
     loadtest
     profile_log
     registration

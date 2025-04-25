@@ -65,6 +65,23 @@ struct TWriteBlocksLocalMethod
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TZeroBlocksMethod
+{
+    static TFuture<NProto::TZeroBlocksResponse> Execute(
+        IDeviceHandler& deviceHandler,
+        TCallContextPtr ctx,
+        TVhostRequest& vhostRequest)
+    {
+        return deviceHandler.Zero(
+            std::move(ctx),
+            vhostRequest.From,
+            vhostRequest.Length);
+    }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRequest
     : public TIntrusiveListItem<TRequest>
     , TAtomicRefCount<TRequest>
@@ -246,6 +263,9 @@ public:
             case EBlockStoreRequest::ReadBlocks:
                 ProcessRequest<TReadBlocksLocalMethod>(std::move(request));
                 break;
+            case EBlockStoreRequest::ZeroBlocks:
+                ProcessRequest<TZeroBlocksMethod>(std::move(request));
+                break;
             default:
                 Y_ABORT("Unexpected request type: %d",
                     static_cast<int>(requestType));
@@ -346,6 +366,8 @@ private:
             return TVhostRequest::SUCCESS;
         }
 
+        // Keep the logic synchronized with
+        // TAlignedDeviceHandler::ReportCriticalError().
         bool cancelError =
             error.GetCode() == E_CANCELLED ||
             GetErrorKind(error) == EErrorKind::ErrorRetriable;
@@ -423,7 +445,8 @@ public:
             options.ClientId,
             options.BlockSize,
             options.UnalignedRequestsDisabled,
-            options.CheckBufferModificationDuringWriting);
+            options.CheckBufferModificationDuringWriting,
+            options.IsReliableMediaKind);
 
         auto endpoint = std::make_shared<TEndpoint>(
             AppCtx,
@@ -438,6 +461,7 @@ public:
             options.BlockSize,
             options.BlocksCount,
             options.VhostQueuesCount,
+            options.DiscardEnabled,
             endpoint.get(),
             AppCtx.Callbacks);
         endpoint->SetVhostDevice(std::move(vhostDevice));

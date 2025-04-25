@@ -9,11 +9,12 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
-
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <library/cpp/string_utils/base64/base64.h>
 
 #include <util/generic/size_literals.h>
 #include <util/string/ascii.h>
@@ -234,45 +235,22 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.SetIsSystem(Request.GetIsSystem());
     config.SetFillGeneration(Request.GetFillGeneration());
 
-    TVolumeParams volumeParams;
-    volumeParams.BlockSize = GetBlockSize();
-    volumeParams.MediaKind = GetStorageMediaKind();
-    if (!IsDiskRegistryMediaKind(volumeParams.MediaKind)) {
-        TPartitionsInfo partitionsInfo;
-        if (Request.GetPartitionsCount()) {
-            partitionsInfo.PartitionsCount = Request.GetPartitionsCount();
-            partitionsInfo.BlocksCountPerPartition =
-                ComputeBlocksCountPerPartition(
-                    Request.GetBlocksCount(),
-                    Config->GetBytesPerStripe(),
-                    volumeParams.BlockSize,
-                    partitionsInfo.PartitionsCount
-                );
-        } else {
-            partitionsInfo = ComputePartitionsInfo(
-                *Config,
-                Request.GetCloudId(),
-                Request.GetFolderId(),
-                Request.GetDiskId(),
-                GetStorageMediaKind(),
-                Request.GetBlocksCount(),
-                volumeParams.BlockSize,
-                Request.GetIsSystem(),
-                !Request.GetBaseDiskId().empty()
-            );
-        }
-        volumeParams.PartitionsCount = partitionsInfo.PartitionsCount;
-        volumeParams.BlocksCountPerPartition =
-            partitionsInfo.BlocksCountPerPartition;
-    } else {
-        volumeParams.BlocksCountPerPartition = Request.GetBlocksCount();
-        volumeParams.PartitionsCount = 1;
-    }
+    const TVolumeParams volumeParams = ComputeVolumeParams(
+        *Config,
+        GetBlockSize(),
+        Request.GetBlocksCount(),
+        GetStorageMediaKind(),
+        Request.GetPartitionsCount(),
+        Request.GetCloudId(),
+        Request.GetFolderId(),
+        Request.GetDiskId(),
+        Request.GetIsSystem(),
+        !Request.GetBaseDiskId().empty());
 
     if (volumeParams.PartitionsCount > 1) {
-        config.SetBlocksPerStripe(
-            ceil(double(Config->GetBytesPerStripe()) / volumeParams.BlockSize)
-        );
+        config.SetBlocksPerStripe(ceil(
+            static_cast<double>(Config->GetBytesPerStripe()) /
+            volumeParams.BlockSize));
     }
 
     ResizeVolume(
@@ -348,7 +326,7 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
 
     auto& dek = *encryptionDesc.MutableEncryptedDataKey();
     dek.SetKekId(msg.KmsKey.GetKekId());
-    dek.SetCiphertext(msg.KmsKey.GetEncryptedDEK());
+    dek.SetCiphertext(Base64Encode(msg.KmsKey.GetEncryptedDEK()));
 
     CreateVolumeImpl(ctx, std::move(encryptionDesc));
 }

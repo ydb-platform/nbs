@@ -25,7 +25,9 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateCheckpointRequest,            __VA_ARGS__)                       \
     xxx(UpdateShadowDiskState,              __VA_ARGS__)                       \
     xxx(ReadMetaHistory,                    __VA_ARGS__)                       \
-    xxx(DeviceTimeouted,                    __VA_ARGS__)                       \
+    xxx(DeviceTimedOut,                     __VA_ARGS__)                       \
+    xxx(UpdateFollowerState,                __VA_ARGS__)                       \
+    xxx(TakeVolumeRequestId,                __VA_ARGS__)                       \
 // BLOCKSTORE_VOLUME_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -134,20 +136,33 @@ struct TEvVolumePrivate
     };
 
     //
-    // DeviceTimeouted
+    // DeviceTimedOut
     //
 
-    struct TDeviceTimeoutedRequest
+    struct TDeviceTimedOutRequest
     {
-        const TString DeviceUUID;
+        TString DeviceUUID;
 
-        explicit TDeviceTimeoutedRequest(TString deviceUUID)
+        explicit TDeviceTimedOutRequest(TString deviceUUID)
             : DeviceUUID(std::move(deviceUUID))
         {}
     };
 
-    struct TDeviceTimeoutedResponse
+    struct TDeviceTimedOutResponse
     {
+    };
+
+    //
+    // TakeVolumeRequestId
+    //
+
+    struct TTakeVolumeRequestIdRequest
+    {
+    };
+
+    struct TTakeVolumeRequestIdResponse
+    {
+        ui64 VolumeRequestId = 0;
     };
 
     //
@@ -384,6 +399,48 @@ struct TEvVolumePrivate
 
     struct TDevicesReleaseFinished
     {
+    };
+
+    //
+    //  UpdateFollowerStateRequest
+    //
+
+    struct TUpdateFollowerStateRequest
+    {
+        enum class EReason
+        {
+            FillProgressUpdate,
+            FillCompleted,
+            FillError,
+        };
+
+        TString FollowerUuid;
+        EReason Reason = EReason::FillError;
+        std::optional<ui64> MigratedBytes;
+
+        TUpdateFollowerStateRequest(
+                TString followerUuid,
+                EReason reason,
+                std::optional<ui64> migratedBytes)
+            : FollowerUuid(std::move(followerUuid))
+            , Reason(reason)
+            , MigratedBytes(migratedBytes)
+        {}
+    };
+
+    struct TUpdateFollowerStateResponse
+    {
+        TFollowerDiskInfo::EState NewState = TFollowerDiskInfo::EState::None;
+        std::optional<ui64> MigratedBytes;
+
+        TUpdateFollowerStateResponse() = default;
+
+        TUpdateFollowerStateResponse(
+                TFollowerDiskInfo::EState newState,
+                std::optional<ui64> migratedBytes)
+            : NewState(newState)
+            , MigratedBytes(migratedBytes)
+        {}
     };
 
     //

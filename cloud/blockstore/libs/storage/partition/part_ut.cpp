@@ -12237,6 +12237,167 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         UNIT_ASSERT(differentChecksums*2 < totalChecksums);
     }
+
+    void TestForcedCompaction(ui32 rangesPerRun)
+    {
+        auto config = DefaultConfig();
+        config.SetBatchCompactionEnabled(true);
+        config.SetForcedCompactionRangeCountPerRun(rangesPerRun);
+        config.SetV1GarbageCompactionEnabled(false);
+        config.SetWriteBlobThreshold(15_KB);
+        config.SetIncrementalCompactionEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            MaxPartitionBlocksCount,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        {
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 5), 1);
+            partition.WriteBlocks(TBlockRange32::WithLength(1024, 5), 2);
+
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 1), 3);
+            partition.WriteBlocks(TBlockRange32::WithLength(1028, 3), 4);
+            partition.Flush();
+
+            const auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(10, stats.GetMergedBlocksCount());
+        }
+
+        {
+            const auto response = partition.CompactRange(0, 0);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            const auto statResponse = partition.StatPartition();
+            const auto& stats = statResponse->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(22, stats.GetMergedBlocksCount());
+        }
+
+        {
+            partition.Cleanup();
+
+            const auto statResponse = partition.StatPartition();
+            const auto& stats = statResponse->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(12, stats.GetMergedBlocksCount());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(3),
+                GetBlockContent(partition.ReadBlocks(0)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(1),
+                GetBlockContent(partition.ReadBlocks(1)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(2),
+                GetBlockContent(partition.ReadBlocks(1024)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(4),
+                GetBlockContent(partition.ReadBlocks(1028)));
+        }
+
+        {
+            const auto response = partition.CompactRange(0, 0);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            partition.Cleanup();
+        }
+
+        // write to the same blocks, we need several blobs in one compacted range
+        {
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 5), 12);
+            partition.WriteBlocks(TBlockRange32::WithLength(1024, 5), 22);
+
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 1), 32);
+            partition.WriteBlocks(TBlockRange32::WithLength(1028, 3), 42);
+            partition.Flush();
+
+            const auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(22, stats.GetMergedBlocksCount());
+        }
+
+        {
+            const auto response = partition.CompactRange(0, 0);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            partition.Cleanup();
+
+            const auto statResponse = partition.StatPartition();
+            const auto& stats = statResponse->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(12, stats.GetMergedBlocksCount());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(32),
+                GetBlockContent(partition.ReadBlocks(0)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(12),
+                GetBlockContent(partition.ReadBlocks(1)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(22),
+                GetBlockContent(partition.ReadBlocks(1024)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(42),
+                GetBlockContent(partition.ReadBlocks(1028)));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCompactSeveralBlobsInTheSameRangeWithOneRangePerRun)
+    {
+        TestForcedCompaction(1);
+    }
+
+    Y_UNIT_TEST(ShouldCompactSeveralBlobsInTheSameRangeWithSeveralRangesPerRun)
+    {
+        TestForcedCompaction(10);
+    }
+
+    Y_UNIT_TEST(ShouldWriteToMixedChannelOnHddIfThresholdExceeded)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteRequestBatchingEnabled(true);
+        config.SetWriteBlobThreshold(3_MB);
+        config.SetWriteMixedBlobThresholdHDD(512_KB);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            4096,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 100));
+        partition.WriteBlocks(TBlockRange32::WithLength(512, 512));
+        partition.WriteBlocks(TBlockRange32::WithLength(2048, 1024));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(512, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

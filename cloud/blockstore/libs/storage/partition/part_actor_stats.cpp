@@ -132,6 +132,13 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         PrevMetrics, blobLoadMetrics);
     offsetLoadMetrics += OverlayMetrics;
 
+    NKikimrTabletBase::TMetrics metrics;
+    GetResourceMetrics()->FillChanged(
+        metrics,
+        ctx.Now(),
+        true   // forceAll
+    );
+
     auto request = std::make_unique<TEvStatsService::TEvVolumePartCounters>(
         MakeIntrusive<TCallContext>(),
         State->GetConfig().GetDiskId(),
@@ -139,7 +146,8 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         sysCpuConsumption - SysCPUConsumption,
         UserCPUConsumption,
         !State->GetCheckpoints().IsEmpty(),
-        std::move(offsetLoadMetrics));
+        std::move(offsetLoadMetrics),
+        std::move(metrics));
 
     PrevMetrics = std::move(blobLoadMetrics);
     OverlayMetrics = {};

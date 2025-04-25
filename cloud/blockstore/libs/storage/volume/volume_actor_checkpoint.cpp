@@ -1313,14 +1313,14 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
 
     TPartitionDescrs partitionDescrs;
     for (const auto& p: State->GetPartitions()) {
-        partitionDescrs.push_back({p.TabletId, p.Owner, false});
+        partitionDescrs.push_back({p.TabletId, p.GetTopActorId(), false});
 
         LOG_TRACE(ctx, TBlockStoreComponents::VOLUME,
             "[%lu] Forward %s request to partition: %lu %s",
             TabletID(),
             GetCheckpointRequestName(request.ReqType),
             p.TabletId,
-            ToString(p.Owner).data()
+            ToString(p.GetTopActorId()).data()
         );
     }
 
@@ -1430,13 +1430,15 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
     if (needToDestroyShadowActor) {
         DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
 
-        auto onPartitionStopped = [actorId](const NActors::TActorContext& ctx)
+        TPoisonCallback onPartitionStopped =
+            [actorId](const NActors::TActorContext& ctx, NProto::TError error)
         {
+            Y_UNUSED(error);
             auto event =
                 std::make_unique<TEvVolumePrivate::TEvExternalDrainDone>();
             NCloud::Send(ctx, actorId, std::move(event));
         };
-        RestartDiskRegistryBasedPartition(ctx, std::move(onPartitionStopped));
+        RestartPartition(ctx, std::move(onPartitionStopped));
     }
 }
 
@@ -1501,7 +1503,7 @@ bool TVolumeActor::CanExecuteWriteRequest() const
 {
     // If our volume is DiskRegistry-based, write requests are allowed only if
     // there are no active write-blocking checkpoints.
-    if (State->GetDiskRegistryBasedPartitionActor()) {
+    if (State->IsDiskRegistryMediaKind()) {
         return !State->GetCheckpointStore().DoesCheckpointBlockingWritesExist();
     }
 
@@ -1576,7 +1578,7 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         !State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
 
     if (needToCreateShadowActor) {
-        RestartDiskRegistryBasedPartition(ctx, {});
+        RestartPartition(ctx, {});
     }
 
     if (request.Type == ECheckpointType::Light) {

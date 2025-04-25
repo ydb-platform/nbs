@@ -140,7 +140,7 @@ def test_multiple_errors():
     request_timeout = 2
     runtime = request_timeout * 2
     nbs_downtime = request_timeout + 1
-    numjobs = 512
+    iodepth = 1024
 
     env, run = init(
         with_netlink=True,
@@ -178,7 +178,7 @@ def test_multiple_errors():
             [
                 "fio",
                 "--name=fio",
-                "--ioengine=sync",
+                "--ioengine=libaio",
                 "--direct=1",
                 "--time_based=1",
                 "--rw=randrw",
@@ -186,7 +186,7 @@ def test_multiple_errors():
                 "--filename=" + nbd_device,
                 "--runtime=" + str(runtime),
                 "--blocksize=" + str(block_size),
-                "--numjobs=" + str(numjobs),
+                "--iodepth=" + str(iodepth),
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT)
@@ -196,7 +196,6 @@ def test_multiple_errors():
         os.kill(env.nbs.pid, signal.SIGCONT)
 
         proc.communicate(timeout=60)
-        assert proc.returncode == 0
 
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)

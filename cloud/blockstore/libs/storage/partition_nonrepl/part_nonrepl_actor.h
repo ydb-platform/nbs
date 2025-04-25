@@ -65,7 +65,10 @@ private:
     struct TDeviceStat
     {
         // The start time of the first timed out request.
-        TInstant FirstTimeoutTs;
+        TInstant FirstTimedOutRequestStartTs;
+
+        // The start time of the last successful request.
+        TInstant LastSuccessfulRequestStartTs;
 
         // Execution times of the last 10 requests.
         TSimpleRingBuffer<TDuration> ResponseTimes{10};
@@ -91,8 +94,11 @@ private:
     {
         TStackVec<int, 2> DeviceIndices;
     };
-    TRequestsInProgress<NActors::TActorId, TRequestData> RequestsInProgress{
-        EAllowedRequests::ReadWrite};
+    TRequestsInProgress<
+        EAllowedRequests::ReadWrite,
+        NActors::TActorId,
+        TRequestData>
+        RequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         PartConfig->GetName()};
@@ -158,11 +164,10 @@ private:
     void OnRequestCompleted(
         const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
         TInstant now);
-    void OnRequestSuccess(ui32 deviceIndex, TDuration executionTime);
-    void OnRequestTimeout(
-        ui32 deviceIndex,
-        TDuration executionTime,
-        TInstant now);
+    void
+    OnRequestSuccess(ui32 deviceIndex, TDuration executionTime, TInstant now);
+    void
+    OnRequestTimeout(ui32 deviceIndex, TDuration executionTime, TInstant now);
 
     void HandleUpdateCounters(
         const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
@@ -188,8 +193,8 @@ private:
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleDeviceTimeoutedResponse(
-        const TEvVolumePrivate::TEvDeviceTimeoutedResponse::TPtr& ev,
+    void HandleDeviceTimedOutResponse(
+        const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleAgentIsUnavailable(
@@ -210,6 +215,9 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ChecksumBlocks, TEvNonreplPartitionPrivate);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(
+        WaitForInFlightWrites,
+        NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetCompactionStatus, TEvVolume);

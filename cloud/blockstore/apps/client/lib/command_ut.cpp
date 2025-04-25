@@ -7,6 +7,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/json/json_reader.h>
+#include <library/cpp/json/json_writer.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
@@ -787,6 +788,63 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlocksCount,
             checkRangeCounter * blocksPerRequest);
+    }
+
+    Y_UNIT_TEST(ShouldRepeatCheckRangeRequestForMirrorDisksErrors)
+    {
+        ui64 blocksPerRequest = 1024;
+        auto client = std::make_shared<TTestService>();
+
+        ui32 requestCount = 0;
+        client->ExecuteActionHandler =
+            [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
+        {
+            NJson::TJsonValue json;
+
+            UNIT_ASSERT(NJson::ReadJsonTree(request->GetInput(), &json));
+            ui32 replicaCount = json["ReplicaCount"].GetUIntegerRobust();
+
+            if(requestCount == 0){
+                UNIT_ASSERT_VALUES_EQUAL(3, replicaCount);
+            } else {
+                UNIT_ASSERT_VALUES_UNEQUAL(3, replicaCount);
+            }
+            requestCount++;
+
+            NProto::TExecuteActionResponse response;
+
+            NJson::TJsonValue input;
+            input["Status"]["Code"] = E_REJECTED;
+            input["Status"]["Message"] = "Message";
+
+            TString jsonStr = NJson::WriteJson(input);
+            response.MutableOutput()->append(jsonStr);
+
+            return MakeFuture(std::move(response));
+        };
+
+        client->StatVolumeHandler =
+            [&](std::shared_ptr<NProto::TStatVolumeRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, request->GetDiskId());
+            NProto::TStatVolumeResponse response;
+            response.MutableVolume()->SetBlocksCount(DefaultBlocksCount);
+            response.MutableVolume()->SetStorageMediaKind(
+                NProto::STORAGE_MEDIA_SSD_MIRROR3);
+
+            return MakeFuture(response);
+        };
+        TVector<TString> argv;
+        argv.reserve(5);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back("--disk-id=" + DefaultDiskId);
+        argv.emplace_back("--start-index=0");
+        argv.emplace_back(
+            TStringBuilder() << "--blocks-per-request=" << blocksPerRequest);
+        argv.emplace_back(
+            TStringBuilder() << "--blocks-count=" << blocksPerRequest);
+        UNIT_ASSERT(ExecuteRequest("checkrange", argv, client));
+        UNIT_ASSERT_VALUES_EQUAL(2, requestCount);
     }
 }
 

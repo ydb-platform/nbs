@@ -533,12 +533,12 @@ std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> TVolumeClient::CreateGetS
     return request;
 }
 
-std::unique_ptr<TEvVolumePrivate::TEvDeviceTimeoutedRequest>
-TVolumeClient::CreateDeviceTimeoutedRequest(
+std::unique_ptr<TEvVolumePrivate::TEvDeviceTimedOutRequest>
+TVolumeClient::CreateDeviceTimedOutRequest(
     TString deviceUUID)
 {
     auto request =
-        std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
+        std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutRequest>(
             std::move(deviceUUID));
     return request;
 }
@@ -588,6 +588,20 @@ TVolumeClient::CreateUnlinkLeaderVolumeFromFollowerRequest(
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>();
     result->Record.SetDiskId(leaderDiskId);
     result->Record.SetFollowerDiskId(followerDiskId);
+    return result;
+}
+
+std::unique_ptr<TEvVolumePrivate::TEvUpdateFollowerStateRequest>
+TVolumeClient::CreateUpdateFollowerStateRequest(
+    TString followerUuid,
+    TEvVolumePrivate::TUpdateFollowerStateRequest::EReason reason,
+    std::optional<ui64> migratedBytes)
+{
+    auto result =
+        std::make_unique<TEvVolumePrivate::TEvUpdateFollowerStateRequest>(
+            std::move(followerUuid),
+            reason,
+            migratedBytes);
     return result;
 }
 

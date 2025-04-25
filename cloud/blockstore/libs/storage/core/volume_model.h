@@ -104,4 +104,16 @@ void ComputeChannelCountLimits(
     int* wantToAddMixed,
     int* wantToAddFresh);
 
+TVolumeParams ComputeVolumeParams(
+    const TStorageConfig& config,
+    ui32 blockSize,
+    ui64 blocksCount,
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    ui32 partitionsCount,
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& diskId,
+    bool isSystem,
+    bool isOverlayDisk);
+
 }   // namespace NCloud::NBlockStore::NStorage

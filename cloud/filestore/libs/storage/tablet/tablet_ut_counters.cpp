@@ -301,6 +301,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "UsedSessionsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "StatefulSessionsCount"}, {"filesystem", "test"}}, 0},
             {{{"sensor", "StatelessSessionsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "ActiveSessionsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "OrphanSessionsCount"}, {"filesystem", "test"}}, 0},
             {{{"sensor", "SessionTimeouts"}, {"filesystem", "test"}}, 0},
         });
 
@@ -315,6 +317,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "StatefulSessionsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "StatelessSessionsCount"}, {"filesystem", "test"}}, 0},
             {{{"sensor", "SessionTimeouts"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "SessionCleanupAttempts"}, {"filesystem", "test"}}, 0},
         });
 
         Tablet->RebootTablet();
@@ -330,6 +333,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "StatefulSessionsCount"}, {"filesystem", "test"}}, 0},
             {{{"sensor", "StatelessSessionsCount"}, {"filesystem", "test"}}, 0},
             {{{"sensor", "SessionTimeouts"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "SessionCleanupAttempts"}, {"filesystem", "test"}}, 2},
         });
     }
 

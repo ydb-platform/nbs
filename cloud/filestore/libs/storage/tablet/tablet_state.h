@@ -178,6 +178,7 @@ private:
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     TNodeToSessionCounters NodeToSessionCounters;
+    ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
@@ -292,6 +293,19 @@ public:
     const NProto::TFileSystemStats& GetFileSystemStats() const
     {
         return FileSystemStats;
+    }
+
+    ui64 GetMinDeletionMarkersCountSinceTabletStart() const
+    {
+        return MinDeletionMarkersCountSinceTabletStart;
+    }
+
+    void UpdateMinDeletionMarkersCountSinceTabletStart()
+    {
+        MinDeletionMarkersCountSinceTabletStart = Min(
+            MinDeletionMarkersCountSinceTabletStart,
+            FileSystemStats.GetDeletionMarkersCount()
+        );
     }
 
     const TNodeToSessionCounters& GetNodeToSessionCounters() const
@@ -598,7 +612,8 @@ public:
         const TVector<NProto::TSessionHandle>& handles,
         const TVector<NProto::TSessionLock>& locks,
         const TVector<NProto::TDupCacheEntry>& cacheEntries,
-        const TVector<NProto::TSessionHistoryEntry>& sessionsHistory);
+        const TVector<NProto::TSessionHistoryEntry>& sessionsHistory,
+        const NProto::TSessionOptions& sessionOptions);
 
     TSession* CreateSession(
         TIndexTabletDatabase& db,
@@ -608,7 +623,8 @@ public:
         const TString& originFqdn,
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(
         TIndexTabletDatabase& db,
@@ -626,10 +642,10 @@ public:
         ui64 sessionSeqNo,
         bool readOnly,
         const NActors::TActorId& owner);
-    void OrphanSession(const NActors::TActorId& owner, TInstant deadline);
+    void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
     void ResetSession(TIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
-    TVector<TSession*> GetTimeoutedSessions(TInstant now) const;
+    TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
     TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
 
@@ -649,13 +665,15 @@ public:
 private:
     TSession* CreateSession(
         const NProto::TSession& proto,
-        TInstant deadline);
+        TInstant inactivityDeadline,
+        const NProto::TSessionOptions& sessionOptions);
 
     TSession* CreateSession(
         const NProto::TSession& proto,
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(TSession* session);
 
@@ -795,10 +813,10 @@ public:
 
     using TBackpressureValues = TBackpressureThresholds;
 
-    bool IsWriteAllowed(
+    static bool IsWriteAllowed(
         const TBackpressureThresholds& thresholds,
         const TBackpressureValues& values,
-        TString* message) const;
+        TString* message);
 
     //
     // FreshBytes

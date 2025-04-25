@@ -45,6 +45,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(RemoveLaggingAgent,             __VA_ARGS__)                           \
     xxx(AddFollower,                    __VA_ARGS__)                           \
     xxx(RemoveFollower,                 __VA_ARGS__)                           \
+    xxx(UpdateFollower,                 __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -580,11 +581,16 @@ struct TTxVolume
     {
         const TRequestInfoPtr RequestInfo;
         const bool ResyncEnabled;
+        const bool AlertResyncChecksumMismatch;
         bool ResyncWasNeeded = false;
 
-        TToggleResync(TRequestInfoPtr requestInfo, bool resyncEnabled)
+        TToggleResync(
+                TRequestInfoPtr requestInfo,
+                bool resyncEnabled,
+                bool alertResyncChecksumMismatch)
             : RequestInfo(std::move(requestInfo))
             , ResyncEnabled(resyncEnabled)
+            , AlertResyncChecksumMismatch(alertResyncChecksumMismatch)
         {}
 
         void Clear()
@@ -738,6 +744,7 @@ struct TTxVolume
         const TString AgentId;
 
         NProto::TLaggingAgent RemovedLaggingAgent;
+        bool ShouldStartResync = false;
 
         TRemoveLaggingAgent(TRequestInfoPtr requestInfo, TString agentId)
             : RequestInfo(std::move(requestInfo))
@@ -747,6 +754,75 @@ struct TTxVolume
         void Clear()
         {
             RemovedLaggingAgent.Clear();
+            ShouldStartResync = false;
+        }
+    };
+
+    //
+    // AddFollower
+    //
+
+    struct TAddFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString FollowerDiskId;
+        TString LinkUUID;
+
+        TAddFollower(
+                TRequestInfoPtr requestInfo,
+                TString followerDiskId)
+            : RequestInfo(std::move(requestInfo))
+            , FollowerDiskId(std::move(followerDiskId))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // RemoveFollower
+    //
+
+    struct TRemoveFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString LinkUUID;
+
+        TRemoveFollower(
+                TRequestInfoPtr requestInfo,
+                TString linkUUID)
+            : RequestInfo(std::move(requestInfo))
+            , LinkUUID(std::move(linkUUID))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+
+    //
+    // UpdateFollower
+    //
+
+    struct TUpdateFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TFollowerDiskInfo FollowerInfo;
+
+        TUpdateFollower(
+                TRequestInfoPtr requestInfo,
+                TFollowerDiskInfo followerInfo)
+            : RequestInfo(std::move(requestInfo))
+            , FollowerInfo(std::move(followerInfo))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
         }
     };
 

@@ -141,7 +141,8 @@ public:
             "testClientId",
             BlockSize,
             unalignedRequestsDisabled,   // unalignedRequestsDisabled,
-            false                        // checkBufferModificationDuringWriting
+            false,                       // checkBufferModificationDuringWriting
+            false                        // isReliableMediaKind
         );
     }
 
@@ -345,7 +346,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
-        const ui64 deviceBlocksCount = 8*1024;
+        const ui64 deviceBlocksCount = 8 * 1024;
         const ui64 blocksCountLimit = deviceBlocksCount / 4;
 
         auto storage = std::make_shared<TTestStorage>();
@@ -357,7 +358,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             clientId,
             blockSize,
             false,   // unalignedRequestsDisabled,
-            false    // checkBufferModificationDuringWriting
+            false,   // checkBufferModificationDuringWriting
+            false    // isReliableMediaKind
         );
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
@@ -422,8 +424,9 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             diskId,
             clientId,
             blockSize,
-            true,   // unalignedRequestsDisabled,
-            false   // checkBufferModificationDuringWriting
+            true,    // unalignedRequestsDisabled,
+            false,   // checkBufferModificationDuringWriting
+            false    // isReliableMediaKind
         );
 
         ui32 startIndex = 42;
@@ -512,8 +515,9 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             diskId,
             clientId,
             blockSize,
-            true,   // unalignedRequestsDisabled,
-            false   // checkBufferModificationDuringWriting
+            true,    // unalignedRequestsDisabled,
+            false,   // checkBufferModificationDuringWriting
+            false    // isReliableMediaKind
         );
 
         {
@@ -567,6 +571,12 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         UNIT_ASSERT_VALUES_EQUAL(4, env.GetWriteRequestCount());
 
         env.ReadSectorsAndCheck(0, 24, "aaaaaaaabbbbbbbbZZZZZZZZ");
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetReadRequestCount());
+
+        env.ResetRequestCounters();
+        env.ZeroSectors(4, 8);
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetZeroRequestCount());
+        env.ReadSectorsAndCheck(0, 24, "aaaaZZZZZZZZbbbbZZZZZZZZ");
         UNIT_ASSERT_VALUES_EQUAL(6, env.GetReadRequestCount());
     }
 
@@ -630,7 +640,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             clientId,
             blockSize,
             unalignedRequestDisabled,   // unalignedRequestsDisabled,
-            false                       // checkBufferModificationDuringWriting
+            false,                      // checkBufferModificationDuringWriting
+            false                       // isReliableMediaKind
         );
 
         storage->ZeroBlocksHandler = [&] (
@@ -749,7 +760,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
                 clientId,
                 blockSize,
                 false,   // unalignedRequestsDisabled,
-                false    // checkBufferModificationDuringWriting
+                false,   // checkBufferModificationDuringWriting
+                false    // isReliableMediaKind
             );
 
         storage->WriteBlocksLocalHandler = [&] (
@@ -817,7 +829,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
                 clientId,
                 blockSize,
                 false,   // unalignedRequestsDisabled,
-                false    // checkBufferModificationDuringWriting
+                false,   // checkBufferModificationDuringWriting
+                false    // isReliableMediaKind
             );
 
         storage->WriteBlocksLocalHandler = [&] (
@@ -944,13 +957,13 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             clientId,
             blockSize,
             false,   // unalignedRequestsDisabled,
-            true    // checkBufferModificationDuringWriting
+            true,    // checkBufferModificationDuringWriting
+            false    // isReliableMediaKind
         );
 
         ui32 writeAttempts  = 0;
 
         auto buffer = TString(DefaultBlockSize, 'g');
-        TSgList sgList{{buffer.data(), buffer.size()}};
         storage->WriteBlocksLocalHandler =
             [&](TCallContextPtr ctx,
                 std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
@@ -976,16 +989,291 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             "AppCriticalEvents/MirroredDiskChecksumMismatchUponWrite",
             true);
 
-        auto future = deviceHandler->Write(
-            MakeIntrusive<TCallContext>(),
-            0,
-            blockSize,
-            TGuardedSgList(sgList));
+        {   // First write should raise critical event
+            TSgList sgList{{buffer.data(), buffer.size()}};
+            auto future = deviceHandler->Write(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize,
+                TGuardedSgList(sgList));
 
-        const auto& response = future.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT(!HasError(response));
-        UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
-        UNIT_ASSERT_VALUES_EQUAL(1, mirroredDiskChecksumMismatchUponWrite->Val());
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                mirroredDiskChecksumMismatchUponWrite->Val());
+        }
+
+        {   // Second write should't raise critical event
+            writeAttempts = 0;
+            buffer = TString(DefaultBlockSize, 'g');
+            TSgList sgList{{buffer.data(), buffer.size()}};
+            auto future = deviceHandler->Write(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize,
+                TGuardedSgList(sgList));
+
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                mirroredDiskChecksumMismatchUponWrite->Val());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportCriticalEventOnError)
+    {
+        const auto diskId = "disk1";
+        const auto clientId = "testClientId";
+        const ui32 blockSize = DefaultBlockSize;
+        const ui64 deviceBlocksCount = 8 * 1024;
+        const ui64 blocksCountLimit = deviceBlocksCount / 4;
+
+        auto storage = std::make_shared<TTestStorage>();
+
+        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto deviceHandlerForReliableDisk = factory->CreateDeviceHandler(
+            storage,
+            diskId,
+            clientId,
+            blockSize,
+            false,   // unalignedRequestsDisabled,
+            true,    // checkBufferModificationDuringWriting
+            true     // isReliableMediaKind
+        );
+        auto deviceHandlerForNonReliableDisk = factory->CreateDeviceHandler(
+            storage,
+            diskId,
+            clientId,
+            blockSize,
+            false,   // unalignedRequestsDisabled,
+            true,    // checkBufferModificationDuringWriting
+            false    // isReliableMediaKind
+        );
+
+        auto buffer = TString(DefaultBlockSize, 'g');
+        TSgList sgList{{buffer.data(), buffer.size()}};
+        storage->WriteBlocksLocalHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TWriteBlocksLocalResponse>(
+                TErrorResponse{E_IO});
+        };
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse{E_IO});
+        };
+        storage->ZeroBlocksHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TZeroBlocksResponse>(
+                TErrorResponse{E_IO});
+        };
+        auto counters = SetupCriticalEvents();
+        auto reliableCritEvent = counters->GetCounter(
+            "AppCriticalEvents/ErrorWasSentToTheGuestForReliableDisk",
+            true);
+        auto nonReliableCritEvent = counters->GetCounter(
+            "AppCriticalEvents/ErrorWasSentToTheGuestForNonReliableDisk",
+            true);
+
+        {
+            // Two write errors generate same critical events count for reliable
+            // disk.
+            reliableCritEvent->Set(0);
+            nonReliableCritEvent->Set(0);
+            {
+                auto future = deviceHandlerForReliableDisk->Write(
+                    MakeIntrusive<TCallContext>(),
+                    0,
+                    blockSize,
+                    TGuardedSgList(sgList));
+                UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+            }
+            {
+                auto future = deviceHandlerForReliableDisk->Write(
+                    MakeIntrusive<TCallContext>(),
+                    0,
+                    blockSize,
+                    TGuardedSgList(sgList));
+                UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+            }
+            UNIT_ASSERT_VALUES_EQUAL(2, reliableCritEvent->Val());
+            UNIT_ASSERT_VALUES_EQUAL(0, nonReliableCritEvent->Val());
+        }
+
+        {
+            // Two write errors generate only one critical event for non
+            // reliable disk.
+            reliableCritEvent->Set(0);
+            nonReliableCritEvent->Set(0);
+            {
+                auto future = deviceHandlerForNonReliableDisk->Write(
+                    MakeIntrusive<TCallContext>(),
+                    0,
+                    blockSize,
+                    TGuardedSgList(sgList));
+                UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+            }
+            {
+                auto future = deviceHandlerForNonReliableDisk->Write(
+                    MakeIntrusive<TCallContext>(),
+                    0,
+                    blockSize,
+                    TGuardedSgList(sgList));
+                UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+            }
+            UNIT_ASSERT_VALUES_EQUAL(0, reliableCritEvent->Val());
+            UNIT_ASSERT_VALUES_EQUAL(1, nonReliableCritEvent->Val());
+        }
+
+        {
+            // Check critical event for read.
+            reliableCritEvent->Set(0);
+            nonReliableCritEvent->Set(0);
+
+            auto buffer = TString::Uninitialized(DefaultBlockSize);
+            TSgList sgList{{buffer.data(), buffer.size()}};
+
+            auto future = deviceHandlerForReliableDisk->Read(
+                MakeIntrusive<TCallContext>(),
+                0,
+                DefaultBlockSize,
+                TGuardedSgList(sgList),
+                {});
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+            Cout << FormatError(future.GetValue().GetError());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, reliableCritEvent->Val());
+            UNIT_ASSERT_VALUES_EQUAL(0, nonReliableCritEvent->Val());
+        }
+
+        {
+            // Check critical event for zero.
+            reliableCritEvent->Set(0);
+            nonReliableCritEvent->Set(0);
+
+            auto future = deviceHandlerForReliableDisk->Zero(
+                MakeIntrusive<TCallContext>(),
+                0,
+                1);
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+            UNIT_ASSERT_VALUES_EQUAL(1, reliableCritEvent->Val());
+            UNIT_ASSERT_VALUES_EQUAL(0, nonReliableCritEvent->Val());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotReportCriticalEventOnReadOnlyMountViolation)
+    {
+        const auto diskId = "disk1";
+        const auto clientId = "testClientId";
+        const ui32 blockSize = DefaultBlockSize;
+        const ui64 deviceBlocksCount = 8 * 1024;
+        const ui64 blocksCountLimit = deviceBlocksCount / 4;
+
+        auto storage = std::make_shared<TTestStorage>();
+
+        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto deviceHandlerForReliableDisk = factory->CreateDeviceHandler(
+            storage,
+            diskId,
+            clientId,
+            blockSize,
+            false,   // unalignedRequestsDisabled,
+            true,    // checkBufferModificationDuringWriting
+            true     // isReliableMediaKind
+        );
+        auto deviceHandlerForNonReliableDisk = factory->CreateDeviceHandler(
+            storage,
+            diskId,
+            clientId,
+            blockSize,
+            false,   // unalignedRequestsDisabled,
+            true,    // checkBufferModificationDuringWriting
+            false    // isReliableMediaKind
+        );
+
+        auto buffer = TString(DefaultBlockSize, 'g');
+        TSgList sgList{{buffer.data(), buffer.size()}};
+        storage->WriteBlocksLocalHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TWriteBlocksLocalResponse>(TErrorResponse{
+                E_IO_SILENT,
+                R"(Request WriteBlocks is not allowed for client "xxxx" and volume "yyyyy")"});
+        };
+
+        storage->ZeroBlocksHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TZeroBlocksResponse>(TErrorResponse{
+                E_IO_SILENT,
+                R"(Request ZeroBlocks is not allowed for client "xxxx" and volume "yyyyy")"});
+        };
+
+        auto counters = SetupCriticalEvents();
+        auto reliableCritEvent = counters->GetCounter(
+            "AppCriticalEvents/ErrorWasSentToTheGuestForReliableDisk",
+            true);
+        auto nonReliableCritEvent = counters->GetCounter(
+            "AppCriticalEvents/ErrorWasSentToTheGuestForNonReliableDisk",
+            true);
+
+        reliableCritEvent->Set(0);
+        nonReliableCritEvent->Set(0);
+        {
+            auto future = deviceHandlerForReliableDisk->Write(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize,
+                TGuardedSgList(sgList));
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+
+            future = deviceHandlerForNonReliableDisk->Write(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize,
+                TGuardedSgList(sgList));
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+        }
+
+        {
+            auto future = deviceHandlerForReliableDisk->Zero(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize);
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+
+            future = deviceHandlerForNonReliableDisk->Zero(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize);
+            UNIT_ASSERT(HasError(future.GetValue(TDuration::Seconds(5))));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, reliableCritEvent->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, nonReliableCritEvent->Val());
     }
 }
 

@@ -490,20 +490,29 @@ public:
             return spec;
         }
 
+        spec.ShouldRetry = true;
+        if (HasProtoFlag(error.GetFlags(), NProto::EF_INSTANT_RETRIABLE) &&
+            !state.DoneInstantRetry)
+        {
+            spec.Backoff = TDuration::Zero();
+            state.DoneInstantRetry = true;
+            return spec;
+        }
+
         const auto newRetryTimeout =
             state.Retries > 0
                 ? (state.RetryTimeout + Config->GetRetryTimeoutIncrement())
                 : InitialRetryTimeout;
-        spec.ShouldRetry = true;
+
         spec.Backoff = newRetryTimeout;
         if (IsConnectionError(error) &&
             spec.Backoff > Config->GetConnectionErrorMaxRetryTimeout())
         {
             spec.Backoff = Config->GetConnectionErrorMaxRetryTimeout();
-        } else {
-            state.RetryTimeout = newRetryTimeout;
+            return spec;
         }
 
+        state.RetryTimeout = newRetryTimeout;
         return spec;
     }
 };

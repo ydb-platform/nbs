@@ -833,6 +833,10 @@ void TIndexTabletActor::CompleteTx_ReadData(
 {
     RemoveTransaction(*args.RequestInfo);
 
+    Y_DEFER {
+        ReleaseMixedBlocks(args.MixedBlocksRanges);
+    };
+
     if (args.DescribeOnly && !HasError(args.Error)) {
         if (args.ReadAheadRange) {
             NProtoPrivate::TDescribeDataResponse record;
@@ -921,7 +925,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.RequestInfo->CallContext,
             ctx);
 
-        ReleaseMixedBlocks(args.MixedBlocksRanges);
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }

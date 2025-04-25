@@ -34,11 +34,15 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
-        ui64 initialResyncIndex)
+        ui64 initialResyncIndex,
+        NProto::EResyncPolicy resyncPolicy,
+        bool critOnChecksumMismatch)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
+    , ResyncPolicy(resyncPolicy)
+    , CritOnChecksumMismatch(critOnChecksumMismatch)
     , RWClientId(std::move(rwClientId))
     , PartConfig(std::move(partConfig))
     , Migrations(std::move(migrations))
@@ -48,9 +52,7 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , State(Config, RWClientId, PartConfig, ReplicaDevices, initialResyncIndex)
 {}
 
-TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor()
-{
-}
+TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor() = default;
 
 void TMirrorPartitionResyncActor::Bootstrap(const TActorContext& ctx)
 {
@@ -259,6 +261,9 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
+        HFunc(
+            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            DrainActorCompanion.HandleWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -291,6 +296,7 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
         HFunc(
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
+        HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -313,6 +319,9 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(
+            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            RejectWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,

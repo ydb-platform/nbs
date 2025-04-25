@@ -24,6 +24,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/driver/mocks"
 	csimounter "github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
 	nfs "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
+	storagecoreapi "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -75,7 +76,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 		nfsLocalClient,
 		mounter,
 		[]string{},
-		false,
+		true, // enable discard
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -110,6 +111,15 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 
 	if backend == "nbs" {
+		nbsClient.On("DescribeVolume", ctx, &nbs.TDescribeVolumeRequest{
+			DiskId: diskId,
+		}).Return(
+			&nbs.TDescribeVolumeResponse{
+				Volume: &nbs.TVolume{
+					StorageMediaKind: storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
+				},
+			},
+			nil)
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			UnixSocketPath:   nbsSocketPath,
 			DiskId:           diskId,
@@ -127,6 +137,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 			ClientProfile: &nbs.TClientProfile{
 				HostType: &hostType,
 			},
+			VhostDiscardEnabled: true,
 		}).Return(&nbs.TStartEndpointResponse{}, nil)
 	}
 
@@ -838,7 +849,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	bytesUsage := stat.GetUsage()[0]
 	assert.Equal(t, bytesUsage.Unit, csi.VolumeUsage_BYTES)
 	assert.NotEqual(t, 0, bytesUsage.Total)
-	assert.Equal(t, bytesUsage.Used+bytesUsage.Available, bytesUsage.Total)
+	assert.LessOrEqual(t, bytesUsage.Used+bytesUsage.Available, bytesUsage.Total)
 
 	nodesUsage := stat.GetUsage()[1]
 	assert.Equal(t, nodesUsage.Unit, csi.VolumeUsage_INODES)

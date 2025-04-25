@@ -171,6 +171,8 @@ private:
         const NActors::TActorContext& ctx,
         TVector<TString> devicesToDisableIO);
 
+    TDuration GetMaxRequestTimeout() const;
+
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);

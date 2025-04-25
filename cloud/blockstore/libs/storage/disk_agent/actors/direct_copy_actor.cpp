@@ -20,6 +20,7 @@ auto PrepareRequest(
     headers->SetIsBackgroundRequest(
         copyBlocks.GetHeaders().GetIsBackgroundRequest());
     headers->SetClientId(TString(copyBlocks.GetTargetClientId()));
+    headers->SetVolumeRequestId(copyBlocks.GetHeaders().GetVolumeRequestId());
 
     rec.SetDeviceUUID(copyBlocks.GetTargetDeviceUUID());
     rec.SetStartIndex(copyBlocks.GetTargetStartIndex());

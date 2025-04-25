@@ -47,8 +47,9 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
     }
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Loaded fresh blobs",
-        TabletID());
+        "[%lu][d:%s] Loaded fresh blobs",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     Actors.Erase(ev->Sender);
 

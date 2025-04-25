@@ -95,6 +95,15 @@ sudo chmod 0440 "/etc/sudoers.d/99-${USER_TO_CREATE}"
 # increase the total number of aio requests to run more tests in parallel, default is 65536
 echo "fs.aio-max-nr=1048576" >> /etc/sysctl.conf
 
+# Set atop logging interval to 30 seconds
+if grep -q '^LOGINTERVAL=' /etc/default/atop; then
+    # Update existing LOGINTERVAL line
+    sed -i 's/^LOGINTERVAL=.*/LOGINTERVAL=30/' /etc/default/atop
+else
+    # Add LOGINTERVAL line if not present
+    echo "LOGINTERVAL=30" >> /etc/default/atop
+fi
+
 if [ -n "$GITHUB_TOKEN" ] && [ -n "$ORG" ] && [ -n "$TEAM" ]; then
     export LOGINS_FILE
     export KEYS_FILE

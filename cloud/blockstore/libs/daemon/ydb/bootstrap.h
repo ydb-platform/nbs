@@ -126,7 +126,6 @@ protected:
     void InitRdmaServer() override;
     void InitKikimrService() override;
     void InitAuthService() override;
-    void InitRdmaRequestServer() override;
 
     void WarmupBSGroupConnections() override;
 

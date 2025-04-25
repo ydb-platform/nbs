@@ -23,7 +23,7 @@ namespace NCloud::NBlockStore::NStorage {
 [[nodiscard]] bool RowHasFreshDevices(
     const NProto::TVolumeMeta& meta,
     ui32 rowIndex,
-    ui32 timeoutedDeviceReplicaIndex);
+    ui32 timedOutDeviceReplicaIndex);
 
 [[nodiscard]] bool HaveCommonRows(
     const TVector<NProto::TLaggingDevice>& laggingCandidates,

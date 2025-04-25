@@ -292,7 +292,7 @@ struct TVolumeSchema
         {
         };
 
-        struct MigratedBlockCount
+        struct MigratedBytes
             : public Column<5, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
@@ -303,7 +303,7 @@ struct TVolumeSchema
             FollowerDiskId,
             ScaleUnitId,
             State,
-            MigratedBlockCount>;
+            MigratedBytes>;
     };
 
     using TTables = SchemaTables<

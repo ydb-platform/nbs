@@ -87,10 +87,11 @@ void TChecksumRangeActorCompanion::HandleChecksumResponse(
     ++CalculatedChecksumsCount;
     auto* msg = ev->Get();
     const auto& error = msg->Record.GetError();
+    auto replicaIndex = ev->Cookie;
     if (HasError(error)) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
             "[%s] Checksum error %s",
-            Replicas[0].Name.c_str(),
+            Replicas[replicaIndex].ReplicaId.c_str(),
             FormatError(error).c_str());
 
         Error = error;
@@ -98,7 +99,7 @@ void TChecksumRangeActorCompanion::HandleChecksumResponse(
         return;
     }
 
-    Checksums[ev->Cookie] = msg->Record.GetChecksum();
+    Checksums[replicaIndex] = msg->Record.GetChecksum();
     if (CalculatedChecksumsCount == Replicas.size()) {
         ChecksumDuration = ctx.Now() - ChecksumStartTs;
     }

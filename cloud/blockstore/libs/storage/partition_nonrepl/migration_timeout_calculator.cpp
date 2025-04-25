@@ -25,20 +25,22 @@ TDuration TMigrationTimeoutCalculator::CalculateTimeout(
 {
     if (RecommendedBandwidth) {
         auto rangesPerSecond =
-            static_cast<double>(RecommendedBandwidth) / ProcessingRangeSize;
+            static_cast<double>(RecommendedBandwidth) / MigrationRangeSize;
         return TDuration::Seconds(1) / Max(rangesPerSecond, 1.0);
     }
 
     // migration range is 4_MB
-    constexpr double ProcessingRangeSizeMiBs =
-        static_cast<double>(ProcessingRangeSize) / 1_MB;
+    constexpr double MigrationRangeSizeMiBs =
+        static_cast<double>(MigrationRangeSize) / 1_MB;
 
     const ui32 limitedBandwidthMiBs =
         Min(MaxMigrationBandwidthMiBs, LimitedBandwidthMiBs);
     const double migrationFactorPerAgent =
-        limitedBandwidthMiBs / ProcessingRangeSizeMiBs;
+        limitedBandwidthMiBs / MigrationRangeSizeMiBs;
 
-    if (PartitionConfig->GetUseSimpleMigrationBandwidthLimiter()) {
+    if (!PartitionConfig ||
+        PartitionConfig->GetUseSimpleMigrationBandwidthLimiter())
+    {
         return TDuration::Seconds(1) / migrationFactorPerAgent;
     }
 
@@ -64,6 +66,9 @@ TDuration TMigrationTimeoutCalculator::CalculateTimeout(
 void TMigrationTimeoutCalculator::RegisterTrafficSource(
     const NActors::TActorContext& ctx)
 {
+    if (!PartitionConfig) {
+        return;
+    }
     auto request = std::make_unique<
         TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>();
     request->SourceId = PartitionConfig->GetName();

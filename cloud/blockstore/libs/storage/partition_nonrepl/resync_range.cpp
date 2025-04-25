@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <cloud/storage/core/libs/common/sglist.h>
 
@@ -15,7 +16,23 @@ using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus GetResyncStatus(
+    bool errorFixed,
+    bool errorFound)
+{
+    using EStatus = TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus;
+
+    if (!errorFound) {
+        return EStatus::Healthy;
+    }
+    return errorFixed ? EStatus::HealedAll : EStatus::HealedNone;
+}
+
+}   // namespace
 
 TResyncRangeActor::TResyncRangeActor(
         TRequestInfoPtr requestInfo,
@@ -23,14 +40,25 @@ TResyncRangeActor::TResyncRangeActor(
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator)
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        NProto::EResyncPolicy resyncPolicy,
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
-{}
+    , ResyncPolicy(resyncPolicy)
+    , VolumeActorId(volumeActorId)
+    , AssignVolumeRequestId(assignVolumeRequestId)
+{
+    using EResyncPolicy = NProto::EResyncPolicy;
+    Y_DEBUG_ABORT_UNLESS(
+        ResyncPolicy == EResyncPolicy::RESYNC_POLICY_MINOR_4MB ||
+        ResyncPolicy == EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+}
 
 void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
 {
@@ -45,6 +73,14 @@ void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     ChecksumRangeActorCompanion.CalculateChecksums(ctx, Range);
+}
+
+void TResyncRangeActor::GetVolumeRequestId(const NActors::TActorContext& ctx)
+{
+    NCloud::Send(
+        ctx,
+        VolumeActorId,
+        std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdRequest>());
 }
 
 void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
@@ -70,9 +106,25 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         return;
     }
 
+    ErrorFound = true;
+
+    if (ResyncPolicy == NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB &&
+        majorCount == 1)
+    {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Can't resync range %s with major error due to policy "
+            "restrictions",
+            Replicas[0].ReplicaId.c_str(),
+            DescribeRange(Range).c_str());
+        Done(ctx);
+        return;
+    }
+
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Resync range %s: majority replica %lu, checksum %lu, count %u of %u",
-        Replicas[0].Name.c_str(),
+        Replicas[0].ReplicaId.c_str(),
         DescribeRange(Range).c_str(),
         majorIdx,
         majorChecksum,
@@ -84,7 +136,7 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         if (checksum != majorChecksum) {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
                 "[%s] Replica %lu block range %s checksum %lu differs from majority checksum %lu",
-                Replicas[0].Name.c_str(),
+                Replicas[0].ReplicaId.c_str(),
                 Replicas[i].ReplicaIndex,
                 DescribeRange(Range).c_str(),
                 checksum,
@@ -94,10 +146,15 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         }
     }
 
-    ReadBlocks(ctx, majorIdx);
+    ReplicaIndexToReadFrom = majorIdx;
+    if (AssignVolumeRequestId) {
+        GetVolumeRequestId(ctx);
+        return;
+    }
+    ReadBlocks(ctx);
 }
 
-void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
+void TResyncRangeActor::ReadBlocks(const TActorContext& ctx)
 {
     Buffer = TGuardedBuffer(TString::Uninitialized(Range.Size() * BlockSize));
 
@@ -117,12 +174,12 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
     headers->SetClientId(TString(BackgroundOpsClientId));
 
     auto event = std::make_unique<NActors::IEventHandle>(
-        Replicas[idx].ActorId,
+        Replicas[ReplicaIndexToReadFrom].ActorId,
         ctx.SelfID,
         request.release(),
         IEventHandle::FlagForwardOnNondelivery,
-        idx,          // cookie
-        &ctx.SelfID   // forwardOnNondelivery
+        ReplicaIndexToReadFrom,   // cookie
+        &ctx.SelfID               // forwardOnNondelivery
     );
 
     ctx.Send(event.release());
@@ -141,6 +198,7 @@ void TResyncRangeActor::WriteBlocks(const TActorContext& ctx) {
 void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 {
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
+    request->Record.MutableHeaders()->SetVolumeRequestId(VolumeRequestId);
     request->Record.SetStartIndex(Range.Start);
     auto clientId =
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
@@ -176,7 +234,7 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Replica %lu Overwrite block range %s during resync",
-        Replicas[0].Name.c_str(),
+        Replicas[idx].ReplicaId.c_str(),
         Replicas[idx].ReplicaIndex,
         DescribeRange(Range).c_str());
 
@@ -185,17 +243,19 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 
 void TResyncRangeActor::Done(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvNonreplPartitionPrivate::TEvRangeResynced>(
-        std::move(Error),
-        Range,
-        ChecksumRangeActorCompanion.GetChecksumStartTs(),
-        ChecksumRangeActorCompanion.GetChecksumDuration(),
-        ReadStartTs,
-        ReadDuration,
-        WriteStartTs,
-        WriteDuration,
-        std::move(AffectedBlockInfos)
-    );
+    auto response =
+        std::make_unique<TEvNonreplPartitionPrivate::TEvRangeResynced>(
+            std::move(Error),
+            Range,
+            ChecksumRangeActorCompanion.GetChecksumStartTs(),
+            ChecksumRangeActorCompanion.GetChecksumDuration(),
+            ReadStartTs,
+            ReadDuration,
+            WriteStartTs,
+            WriteDuration,
+            RequestInfo->ExecCycles,
+            std::move(AffectedBlockInfos),
+            GetResyncStatus(ErrorFixed, ErrorFound));
 
     LWTRACK(
         ResponseSent_PartitionWorker,
@@ -237,6 +297,21 @@ void TResyncRangeActor::HandleChecksumResponse(
     if (ChecksumRangeActorCompanion.IsFinished()) {
         CompareChecksums(ctx);
     }
+}
+
+void TResyncRangeActor::HandleVolumeRequestId(
+    const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->Error)) {
+        Error = msg->Error;
+        Done(ctx);
+        return;
+    }
+
+    VolumeRequestId = msg->VolumeRequestId;
+    ReadBlocks(ctx);
 }
 
 void TResyncRangeActor::HandleReadUndelivery(
@@ -299,6 +374,7 @@ void TResyncRangeActor::HandleWriteResponse(
     }
 
     if (++ResyncedCount == ActorsToResync.size()) {
+        ErrorFixed = true;
         Done(ctx);
     }
 }
@@ -326,6 +402,9 @@ STFUNC(TResyncRangeActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse,
             HandleChecksumResponse);
+        HFunc(
+            TEvVolumePrivate::TEvTakeVolumeRequestIdResponse,
+            HandleVolumeRequestId);
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadUndelivery);
         HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadResponse);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteUndelivery);
