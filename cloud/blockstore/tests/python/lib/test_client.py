@@ -55,6 +55,39 @@ class TestClient(Client):
                 break
             time.sleep(1)
 
+    @_handle_errors
+    def get_dr_tablet_id(self):
+        response = self.execute_action(
+            action="getdiskregistrytabletinfo",
+            input_bytes=str.encode('{ }'))
+
+        return json.loads(response)["TabletId"]
+
+    @_handle_errors
+    def kill_tablet(self, tabletId):
+        self.execute_action(
+            action='killtablet',
+            input_bytes=str.encode('{"TabletId": %s}' % tabletId))
+
+    @_handle_errors
+    def reset_tablet(self, tabletId):
+        self.execute_action(
+            action='resettablet',
+            input_bytes=str.encode('{"TabletId": %s, "Generation": %s}' % (tabletId, 0)))
+
+    @_handle_errors
+    def get_volume_tablet_id(self, disk_id):
+        response = self.execute_action(
+            action="describevolume",
+            input_bytes=str.encode('{"DiskId": "%s"}' % (disk_id)))
+
+        return json.loads(response)["VolumeTabletId"]
+
+    @_handle_errors
+    def restart_volume(self, disk_id):
+        tablet_id = self.get_volume_tablet_id(disk_id)
+        self.kill_tablet(tablet_id)
+
 
 def CreateTestClient(
         endpoint: str,

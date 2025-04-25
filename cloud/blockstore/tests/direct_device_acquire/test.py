@@ -137,10 +137,75 @@ def create_disk_agent_configurators(ydb, agent_ids, device_path):
     return configurators
 
 
+def simulate_dr_unavailability(client):
+    # Reset and restart the DR to simulate its unavailability.
+    # The DR should forget about the disks and not attempt to reallocate them.
+    tablet_id = client.get_dr_tablet_id()
+    client.reset_tablet(tablet_id)
+    client.kill_tablet(tablet_id)
+
+
+@pytest.mark.parametrize("nbs", [(6000)], indirect=["nbs"])
+def test_should_mount_volume_without_dr(nbs, agent_ids, disk_agent_configurators):
+
+    logger = logging.getLogger("client")
+    logger.setLevel(logging.DEBUG)
+
+    client = CreateTestClient(f"localhost:{nbs.port}", log=logger)
+
+    agents = []
+
+    # run agents
+    for i in range(2):
+        agent_id = agent_ids[i]
+        configurator = disk_agent_configurators[i]
+        agent = start_disk_agent(configurator, name=agent_id)
+        agent.wait_for_registration()
+        r = client.add_host(agent_id)
+        assert len(r.ActionResults) == 1
+        assert r.ActionResults[0].Result.Code == 0
+
+        agents.append(agent)
+
+    client.wait_for_devices_to_be_cleared()
+
+    # create a volume
+    client.create_volume(
+        disk_id="vol1",
+        block_size=4096,
+        blocks_count=2*DEVICES_PER_PATH*DEVICE_SIZE//4096,
+        storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
+        cloud_id="test")
+
+    bkp = client.backup_disk_registry_state()
+    assert len(bkp['Disks']) == 1
+    assert len(bkp['Disks'][0]['DeviceUUIDs']) == 12
+    assert len(bkp['Agents']) == 2
+
+    session = Session(client, "vol1", "")
+    session.mount_volume()
+
+    # IO should work
+    session.write_blocks(0, [b'\1' * 4096 * 2])
+    blocks = session.read_blocks(0, 1, checkpoint_id="")
+    assert len(blocks) == 1
+
+    session.unmount_volume()
+
+    simulate_dr_unavailability(client)
+    client.restart_volume("vol1")
+
+    session.mount_volume()
+
+    for i in range(2*DEVICES_PER_PATH):
+        blocks = session.read_blocks(i*DEVICE_SIZE//4096, 1, checkpoint_id="")
+
+    session.unmount_volume()
+
+
 @pytest.mark.parametrize("nbs", [(6000)], indirect=["nbs"])
 def test_should_mount_volume_with_unavailable_agents(
         nbs,
-        device_path,
         agent_ids,
         disk_agent_configurators):
 
@@ -192,6 +257,9 @@ def test_should_mount_volume_with_unavailable_agents(
     agents[0].kill()
 
     client.wait_agent_state(agent_ids[0], "AGENT_STATE_UNAVAILABLE")
+
+    simulate_dr_unavailability(client)
+    client.restart_volume("vol1")
 
     unavailable_agent = bkp['Agents'][0]
     unavailable_devices = [x["DeviceUUID"]
