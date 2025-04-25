@@ -825,51 +825,6 @@ struct TTxVolume
             // nothing to do
         }
     };
-
-    //
-    // AddFollower
-    //
-
-    struct TAddFollower
-    {
-        const TRequestInfoPtr RequestInfo;
-        const TString FollowerDiskId;
-
-        TAddFollower(
-                TRequestInfoPtr requestInfo,
-                TString followerDiskId)
-            : RequestInfo(std::move(requestInfo))
-            , FollowerDiskId(std::move(followerDiskId))
-        {}
-
-        void Clear()
-        {
-            // nothing to do
-        }
-    };
-
-    //
-    // RemoveFollower
-    //
-
-    struct TRemoveFollower
-    {
-        const TRequestInfoPtr RequestInfo;
-        const TString Id;
-
-        TRemoveFollower(
-                TRequestInfoPtr requestInfo,
-                TString id)
-            : RequestInfo(std::move(requestInfo))
-            , Id(std::move(id))
-        {}
-
-        void Clear()
-        {
-            // nothing to do
-        }
-    };
-
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
