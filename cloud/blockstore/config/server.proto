@@ -17,6 +17,15 @@ message TAffinity
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EShardDataTransport
+{
+    GRPC = 0;
+    NBD = 1;
+    RDMA = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TLocation
 {
     optional string DataCenter = 1;
@@ -32,6 +41,25 @@ message TChecksumFlags
     // writing. This is done to ensure that the same data is written to all
     // mirror disk replicas.
     optional bool CheckBufferModificationForMirrorDisk = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TShardHostInfo
+{
+    string Fqdn = 1;
+    uint32 ControlPort = 2;
+    uint32 DataPort = 3;
+    uint32 RdmaPort = 4;
+    uint32 NbdPort = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TShardHosts
+{
+    optional string ShardId = 1;
+    repeated TShardHostInfo HostInfo = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -220,6 +248,16 @@ message TServerConfig
 
     // Use fake RDMA client (over Interconnect). For use in tests.
     optional bool UseFakeRdmaClient = 120;
+
+    // Mapping from SuId to fqdn hosts.
+    repeated TShardHosts ShardMap = 121;
+
+    // Shard Id, nbs belongs to.
+    optional string ShardId = 122;
+
+    optional EShardDataTransport SuTransport = 123;
+
+    optional uint32 NbdPort = 124;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
