@@ -5,6 +5,7 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
+#include <util/generic/hash.h>
 #include <util/system/sysstat.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -12,6 +13,8 @@ namespace NCloud::NBlockStore::NServer {
 namespace {
 
 using TStrings = TVector<TString>;
+
+using TShardMap = THashMap<TString, TVector<NProto::TShardHostInfo>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -104,7 +107,11 @@ constexpr TDuration Seconds(int s)
     xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
-    xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )
+    xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
+    xxx(ShardMap,                    TShardMap ,             {}               )\
+    xxx(ShardId,                     TString,                {}               )\
+    xxx(ShardTransport,              NProto::EShardDataTransport,     {}      )\
+    xxx(NbdPort,                     ui32,                            0       )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \
@@ -143,6 +150,20 @@ TVector<TCertificate> ConvertValue(
     TVector<TCertificate> v;
     for (const auto& x: value) {
         v.push_back({x.GetCertFile(), x.GetCertPrivateKeyFile()});
+    }
+    return v;
+}
+
+template <>
+THashMap<TString, TVector<NProto::TShardHostInfo>> ConvertValue(
+    const google::protobuf::RepeatedPtrField<NProto::TShardHosts>& value)
+{
+    THashMap<TString, TVector<NProto::TShardHostInfo>> v;
+    for (const auto& item: value) {
+        TVector<NProto::TShardHostInfo> hostInfo {
+            item.GetHostInfo().begin(),
+            item.GetHostInfo().end()};
+        v.emplace(item.GetShardId(), std::move(hostInfo));
     }
     return v;
 }
@@ -189,6 +210,15 @@ void DumpImpl(const TVector<TCertificate>& value, IOutputStream& os)
 }
 
 template <>
+void DumpImpl(
+    const THashMap<TString, TVector<NProto::TShardHostInfo>>& value,
+    IOutputStream& os)
+{
+    Y_UNUSED(value);
+    Y_UNUSED(os);
+}
+
+template <>
 void DumpImpl(const TAffinity& value, IOutputStream& os)
 {
     const auto& cores = value.GetCores();
@@ -218,6 +248,29 @@ void DumpImpl(
             break;
         default:
             os << "(Unknown EEndpointStorageType value "
+                << static_cast<int>(value)
+                << ")";
+            break;
+    }
+}
+
+template <>
+void DumpImpl(
+    const NProto::EShardDataTransport& value,
+    IOutputStream& os)
+{
+    switch (value) {
+        case NProto::GRPC:
+            os << "GRPC";
+            break;
+        case NProto::NBD:
+            os << "NBD";
+            break;
+        case NProto::RDMA:
+            os << "RDMA";
+            break;
+        default:
+            os << "(Unknown ESuDataTransport value "
                 << static_cast<int>(value)
                 << ")";
             break;
