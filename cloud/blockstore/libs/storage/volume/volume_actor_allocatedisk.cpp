@@ -389,9 +389,9 @@ void TVolumeActor::HandleAllocateDiskResponse(
         removedLaggingDevices.push_back(
             std::move(*removedLaggingDevice.MutableDeviceUUID()));
     }
-    std::ranges::move(
-        *msg->Record.MutableUnavailableAgentIds(),
-        std::back_inserter(unavailableAgents));
+    for (auto& agentId: *msg->Record.MutableUnavailableAgentIds()) {
+        unavailableAgents.push_back(std::move(agentId));
+    }
 
     if (!CheckAllocationResult(ctx, devices, replicas)) {
         return;

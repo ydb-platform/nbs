@@ -322,11 +322,7 @@ void TAcquireDevicesActor::HandleWakeup(
                      << " PendingRequests: " << PendingRequests
                      << " MuteIoErrors: " << MuteIOErrors;
 
-    LOG_LOG(
-        ctx,
-        MuteIOErrors ? NActors::NLog::PRI_INFO : NActors::NLog::PRI_WARN,
-        TBlockStoreComponents::VOLUME,
-        err);
+    LOG_WARN(ctx, TBlockStoreComponents::VOLUME, err);
 
     NProto::TError errorToReply;
     if (!MuteIOErrors) {
