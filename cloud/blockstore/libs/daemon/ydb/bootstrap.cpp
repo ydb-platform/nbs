@@ -831,4 +831,15 @@ void TBootstrapYdb::WarmupBSGroupConnections()
     future.Wait();
 }
 
+void TBootstrapYdb::InitRdmaRequestServer()
+{
+    // TODO: read config
+    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>();
+
+    RdmaRequestServer = ServerModuleFactories->RdmaServerFactory(
+        Logging,
+        Monitoring,
+        std::move(rdmaConfig));
+}
+
 }   // namespace NCloud::NBlockStore::NServer
