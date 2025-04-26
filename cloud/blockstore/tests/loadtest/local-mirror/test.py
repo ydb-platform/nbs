@@ -101,6 +101,12 @@ TESTS = [
         dump_block_digests=True,
         max_migration_bandwidth=1
     ),
+    TestCase(
+        "mirror2-fresh-device-migration",
+        "cloud/blockstore/tests/loadtest/local-mirror/local-mirror2-fresh-device-migration.txt",
+        agent_count=6,
+        dump_block_digests=True,
+    ),
 ]
 
 

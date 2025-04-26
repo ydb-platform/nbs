@@ -18,7 +18,7 @@ Vertices {
         ReplaceDevicesRequest {
             DiskId: "vol0"
             DevicesToReplace {
-                ReplicaIndex: 1
+                ReplicaIndex: 0
                 DeviceIndex: 0
             }
             DevicesToReplace {
@@ -36,14 +36,14 @@ Vertices {
 
         ArtificialLoadSpec {
             Ranges {
-                Start: 261644
-                End: 262644
+                Start: 0
+                End: 524287
                 WriteRate: 100
                 ReadRate: 100
                 ZeroRate: 10
                 LoadType: LOAD_TYPE_RANDOM
-                IoDepth: 20
-                MaxRequestSize: 100
+                IoDepth: 32
+                MaxRequestSize: 1024
             }
         }
         TestDuration: 60

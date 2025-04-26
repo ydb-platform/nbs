@@ -62,6 +62,8 @@ struct TTestEnv
     TVector<TDiskAgentStatePtr> DiskAgentStates;
     TVector<TActorId> ReplicaActors;
     TVector<TActorId> DiskAgentActors;
+    TBlockRangeSet64 Locks;
+    TRequestBoundsTracker LocksBoundsTracker{DefaultBlockSize};
 
     TNonreplicatedPartitionConfigPtr PartConfig;
     THashMap<ui32, TActorId> Controllers;
@@ -137,6 +139,9 @@ struct TTestEnv
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
     {
         SetupLogging();
+
+        Runtime.SetObserverFunc([this](auto& event)
+                                { return DefaultObserver(event); });
 
         Runtime.SetRegistrationObserverFunc(
             [&](TTestActorRuntimeBase& runtime,
@@ -446,6 +451,61 @@ struct TTestEnv
                 {.FinalEvents = {
                      {TEvVolumePrivate::EvLaggingAgentMigrationFinished}}});
         }
+    }
+
+    void SetObserverFunc(TTestActorRuntimeBase::TEventObserver observer)
+    {
+        Runtime.SetObserverFunc(
+            [&, observer = std::move(observer)](TAutoPtr<IEventHandle>& event)
+            {
+                auto action = observer(event);
+                if (action == TTestActorRuntimeBase::EEventAction::PROCESS) {
+                    return DefaultObserver(event);
+                }
+
+                return action;
+            });
+    }
+
+    // We need to simulate the behavior of a mirror partition with range locks
+    // because in these tests we use some replica as a migration source and not
+    // a mirror partition. A non-replicated partition does not know anything
+    // about range locking and tests will crash if this partition receives a
+    // lock message.
+    TTestActorRuntimeBase::EEventAction DefaultObserver(
+        TAutoPtr<IEventHandle>& event)
+    {
+        switch (event->GetTypeRewrite()) {
+            case NPartition::TEvPartition::EvLockAndDrainRangeRequest: {
+                auto* ev = static_cast<
+                    NPartition::TEvPartition::TEvLockAndDrainRangeRequest*>(
+                    event->GetBase());
+                NProto::TError error;
+                if (LocksBoundsTracker.OverlapsWithRequest(ev->Range)) {
+                    error = MakeError(E_REJECTED);
+                } else {
+                    Locks.emplace(ev->Range);
+                    LocksBoundsTracker.AddRequest(ev->Range);
+                }
+                Runtime.Send(
+                    event->Sender,
+                    event->Recipient,
+                    new NPartition::TEvPartition::TEvLockAndDrainRangeResponse(
+                        std::move(error)));
+                return TTestActorRuntimeBase::EEventAction::DROP;
+            }
+            case NPartition::TEvPartition::EvReleaseRange: {
+                auto* ev =
+                    static_cast<NPartition::TEvPartition::TEvReleaseRange*>(
+                        event->GetBase());
+                UNIT_ASSERT(Locks.contains(ev->Range));
+                Locks.erase(ev->Range);
+                LocksBoundsTracker.RemoveRequest(ev->Range);
+                return TTestActorRuntimeBase::EEventAction::DROP;
+            }
+        }
+
+        return TTestActorRuntime::DefaultObserverFunc(event);
     }
 
 private:
@@ -1038,7 +1098,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
         }
 
         ui64 lastCleanBlocksAmountReported = 0;
-        runtime.SetObserverFunc(
+        env.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {

@@ -56,6 +56,7 @@ void TLaggingAgentMigrationActor::OnBootstrap(const TActorContext& ctx)
     InitWork(
         ctx,
         SourceActorId,
+        SourceActorId,
         TargetActorId,
         false,   // takeOwnershipOverActors
         std::make_unique<TMigrationTimeoutCalculator>(
@@ -139,6 +140,12 @@ void TLaggingAgentMigrationActor::OnMigrationError(const TActorContext& ctx)
         "[%s] Lagging agent %s migration failed",
         PartConfig->GetName().c_str(),
         AgentId.c_str());
+}
+
+NActors::TActorId
+TLaggingAgentMigrationActor::GetActorToLockAndDrainRange() const
+{
+    return SourceActorId;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
