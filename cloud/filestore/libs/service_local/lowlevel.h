@@ -76,6 +76,23 @@ struct TFileId
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TFileSystemStat
+{
+    ui64 Type = 0;         /* Type of filesystem */
+    ui64 BlockSize = 0;    /* Optimal transfer block size */
+    ui64 TotalBlocks = 0;  /* Total data blocks in filesystem */
+    ui64 FreeBlocks = 0;   /* Free blocks in filesystem */
+    ui64 AvailBlocks = 0;  /* Free blocks available to unprivileged user */
+    ui64 TotalFiles = 0;   /* Total file nodes in filesystem */
+    ui64 FreeFiles = 0;    /* Free file nodes in filesystem */
+    ui32 FsId[2] = {0, 0}; /* Filesystem ID */
+    ui64 MaxNameLen = 0;   /* Maximum length of filenames */
+    ui64 FragmentSize = 0; /* Fragment size  */
+    ui64 MountFlags = 0;   /* Mount flags of filesystem */
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TFileHandle Open(const TString& path, int flags, int mode);
 TFileHandle Open(const TFileHandle& handle, int flags, int mode);
 TFileHandle OpenAt(
@@ -108,6 +125,7 @@ TString ReadLink(const TFileHandle& handle);
 
 TFileStat Stat(const TFileHandle& handle);
 TFileStat StatAt(const TFileHandle& handle, const TString& name);
+TFileSystemStat StatFs(const TFileHandle& handle);
 
 TVector<std::pair<TString, TFileStat>> ListDirAt(
     const TFileHandle& handle,

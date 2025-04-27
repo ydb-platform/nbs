@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/xattr.h>
@@ -57,6 +58,24 @@ TFileStat GetFileStat(struct stat fs)
     st.MTime = fs.st_mtime;
     st.CTime = fs.st_ctime;
     st.INode = fs.st_ino;
+    return st;
+}
+
+TFileSystemStat GetFileSystemStat(const struct statfs& fs)
+{
+    TFileSystemStat st;
+    st.Type = fs.f_type;
+    st.BlockSize = fs.f_bsize;
+    st.TotalBlocks = fs.f_blocks;
+    st.FreeBlocks = fs.f_bfree;
+    st.AvailBlocks = fs.f_bavail;
+    st.TotalFiles = fs.f_files;
+    st.FreeFiles = fs.f_ffree;
+    st.FsId[0] = fs.f_fsid.__val[0];
+    st.FsId[1] = fs.f_fsid.__val[1];
+    st.MaxNameLen = fs.f_namelen;
+    st.FragmentSize = fs.f_frsize;
+    st.MountFlags = fs.f_flags;
     return st;
 }
 
@@ -228,6 +247,16 @@ TFileStat StatAt(const TFileHandle& handle, const TString& name)
         << ": " << LastSystemErrorText());
 
     return GetFileStat(fs);
+}
+
+TFileSystemStat StatFs(const TFileHandle& handle)
+{
+    struct statfs fs = {};
+    int res = fstatfs(Fd(handle), &fs);
+    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
+        << "failed to fstatfs: " << LastSystemErrorText());
+
+    return GetFileSystemStat(fs);
 }
 
 TVector<std::pair<TString, TFileStat>> ListDirAt(
