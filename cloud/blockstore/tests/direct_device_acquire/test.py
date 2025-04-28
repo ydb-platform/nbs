@@ -1,12 +1,12 @@
-import json
 import logging
 import os
 import pytest
 import time
 
-from cloud.blockstore.public.sdk.python.client import CreateClient, Session
-from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
-    TAction, STORAGE_MEDIA_SSD_NONREPLICATED
+from cloud.blockstore.public.sdk.python.client import Session
+from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED
+
+from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
@@ -38,13 +38,12 @@ def start_ydb_cluster():
     ydb_cluster.stop()
 
 
-@pytest.fixture(name='nbs')
-def start_nbs_daemon(ydb):
-
+@pytest.fixture(name='nbs_with_dr')
+def start_nbs_daemon_with_dr(ydb):
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
-    cfg.files["storage"].DisableLocalService = 0
+    cfg.files["storage"].DisableLocalService = False
     cfg.files["storage"].NonReplicatedDontSuspendDevices = True
     cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
     cfg.files["storage"].NonReplicatedAgentMinTimeout = 600000  # 10min
@@ -54,11 +53,32 @@ def start_nbs_daemon(ydb):
 
     daemon = start_nbs(cfg)
 
-    client = CreateClient(f"localhost:{daemon.port}")
+    client = CreateTestClient(f"localhost:{daemon.port}")
     client.execute_action(
         action="DiskRegistrySetWritableState",
         input_bytes=str.encode('{"State": true}'))
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
+
+    yield daemon
+
+    daemon.kill()
+
+
+@pytest.fixture(name='nbs')
+def start_nbs_daemon(ydb):
+
+    cfg = NbsConfigurator(ydb)
+    cfg.generate_default_nbs_configs()
+
+    cfg.files["storage"].DisableLocalService = True
+    cfg.files["storage"].NonReplicatedDontSuspendDevices = True
+    cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
+    cfg.files["storage"].NonReplicatedAgentMinTimeout = 600000  # 10min
+    cfg.files["storage"].NonReplicatedAgentMaxTimeout = 600000  # 10min
+    cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
+    cfg.files["storage"].AcquireNonReplicatedDevices = True
+
+    daemon = start_nbs(cfg)
 
     yield daemon
 
@@ -145,33 +165,8 @@ def create_disk_agent_configurators(ydb, agent_ids, data_path):
     return configurators
 
 
-def _backup(client):
-    response = client.execute_action(
-        action="BackupDiskRegistryState",
-        input_bytes=str.encode('{"BackupLocalDB": true}'))
-
-    return json.loads(response)["Backup"]
-
-
-def _add_host(client, agent_id):
-    request = TCmsActionRequest()
-    action = request.Actions.add()
-    action.Type = TAction.ADD_HOST
-    action.Host = agent_id
-
-    return client.cms_action(request)
-
-
-# wait for devices to be cleared
-def _wait_devices(client):
-    while True:
-        bkp = _backup(client)
-        if bkp.get("DirtyDevices", 0) == 0:
-            break
-        time.sleep(1)
-
-
 def test_should_mount_volume_with_unknown_devices(
+        nbs_with_dr,
         nbs,
         data_path,
         agent_ids,
@@ -180,7 +175,7 @@ def test_should_mount_volume_with_unknown_devices(
     logger = logging.getLogger("client")
     logger.setLevel(logging.DEBUG)
 
-    client = CreateClient(f"localhost:{nbs.port}", log=logger)
+    client = CreateTestClient(f"localhost:{nbs.port}", log=logger)
     agent_id = agent_ids[0]
     configurator = disk_agent_configurators[0]
 
@@ -193,11 +188,11 @@ def test_should_mount_volume_with_unknown_devices(
     agent = start_disk_agent(configurator, name=agent_id)
 
     agent.wait_for_registration()
-    r = _add_host(client, agent_id)
+    r = client.add_host(agent_id)
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
-    _wait_devices(client)
+    client.wait_for_devices_to_be_cleared()
 
     # create a volume
     client.create_volume(
@@ -207,7 +202,7 @@ def test_should_mount_volume_with_unknown_devices(
         storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
         cloud_id="test")
 
-    bkp = _backup(client)
+    bkp = client.backup_disk_registry_state()
     assert len(bkp['Disks']) == 1
     assert len(bkp['Disks'][0]['DeviceUUIDs']) == 12
     assert len(bkp['Agents']) == 1
@@ -225,25 +220,32 @@ def test_should_mount_volume_with_unknown_devices(
     # stop the agent
     agent.kill()
 
-    time.sleep(5)
+    time.sleep(1)
 
     configurator.files["disk-agent"].\
-        StorageDiscoveryConfig.PathConfigs[0].PathRegExp = f"{data_path_for_agent}/NVMENBS([0-1]+)"
+        StorageDiscoveryConfig.PathConfigs[
+            0].PathRegExp = f"{data_path_for_agent}/NVMENBS([0-1]+)"
     configurator.files["disk-agent"].CachedConfigPath = ""
 
     agent = start_disk_agent(configurator, name=agent_id)
     # assert false
     agent.wait_for_registration()
 
-    r = _add_host(client, agent_id)
+    r = client.add_host(agent_id)
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
+
+    time.sleep(1)
+
+    nbs_with_dr.kill()
+    client.restart_volume("vol1")
 
     session.mount_volume()
     except_count = 0
     for i in range(2*DEVICES_PER_PATH):
         try:
-            blocks = session.read_blocks(i*DEVICE_SIZE//4096, 1, checkpoint_id="")
+            blocks = session.read_blocks(
+                i*DEVICE_SIZE//4096, 1, checkpoint_id="")
         except Exception:
             except_count += 1
     assert except_count == DEVICES_PER_PATH
