@@ -942,17 +942,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "server");
-        auto getServerVolumeCounters = [&](const IVolumeInfoPtr& volumeInfo)
-        {
-            return monitoring->GetCounters()
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "server_volume")
-                ->GetSubgroup("host", "cluster")
-                ->GetSubgroup("volume", volumeInfo->GetInfo().GetDiskId())
-                ->GetSubgroup("instance", "instance")
-                ->GetSubgroup("cloud", volumeInfo->GetInfo().GetCloudId())
-                ->GetSubgroup("folder", volumeInfo->GetInfo().GetFolderId());
-        };
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
@@ -993,7 +982,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetCounter("DownDisks")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            getServerVolumeCounters(volumeInfo)
+            monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test1")
+                ->GetSubgroup("instance", "instance")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
                 ->GetCounter("HasDowntime")
                 ->Val());
 
@@ -1005,7 +1001,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetCounter("DownDisks")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            getServerVolumeCounters(volumeInfo)
+            monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test1")
+                ->GetSubgroup("instance", "instance")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
                 ->GetCounter("HasDowntime")
                 ->Val());
     }
