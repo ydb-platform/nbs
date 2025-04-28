@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
@@ -207,7 +208,8 @@ struct TTestEnv
             ui32 blockSize,
             TDevices devices,
             TVector<TDevices> replicas,
-            THashSet<TString> freshDeviceIds)
+            THashSet<TString> freshDeviceIds,
+            bool enableVolumeRequestId = false)
         : Runtime(runtime)
         , BlockSize(blockSize)
         , MirrorActorId(0, "YYY")
@@ -230,6 +232,10 @@ struct TTestEnv
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
+        storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(
+            enableVolumeRequestId);
+        storageConfig.SetRejectLateRequestsAtDiskAgentEnabled(
+            enableVolumeRequestId);
 
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -499,6 +505,22 @@ struct TTestEnv
             Runtime.Send(ev.release());
         }
         Caught.clear();
+    }
+};
+
+struct TResyncMessageHandler
+{
+    TVector<ui64> VolumeRequestIds;
+    ui64 ResyncRequestCount = 0;
+
+    template <typename TEv>
+    void Handle(TAutoPtr<IEventHandle>& event)
+    {
+        if (event->GetTypeRewrite() == TEv::EventType) {
+            ResyncRequestCount += 1;
+            auto* ev = static_cast<TEv*>(event->GetBase());
+            VolumeRequestIds.emplace_back(GetVolumeRequestId(*ev));
+        }
     }
 };
 
@@ -1753,6 +1775,102 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
         }
+    }
+
+    void DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
+        NProto::EResyncPolicy resyncPolicy)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            DefaultBlockSize,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0), DefaultBlockSize),
+            TVector<TDevices>{
+                TTestEnv::DefaultReplica(
+                    runtime.GetNodeId(0),
+                    DefaultBlockSize,
+                    1),
+                TTestEnv::DefaultReplica(
+                    runtime.GetNodeId(0),
+                    DefaultBlockSize,
+                    2),
+            },
+            {},
+            true);
+
+        const auto range = TBlockRange64::WithLength(0, 5120);
+
+        env.WriteMirror(range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+
+        ui64 volumeRequestId = 12345;
+
+        for (size_t i = 0; i < 5; ++i) {
+            TResyncMessageHandler handler;
+            std::unique_ptr<IEventHandle> stollenTakeVolumeRequestIdEvent;
+
+            runtime.SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    handler.Handle<TEvService::TEvWriteBlocksRequest>(event);
+                    handler.Handle<TEvService::TEvWriteBlocksLocalRequest>(
+                        event);
+
+                    switch (event->GetTypeRewrite()) {
+                        case TEvVolumePrivate::EvTakeVolumeRequestIdRequest:
+                            stollenTakeVolumeRequestIdEvent.reset(
+                                event.Release());
+                            return TTestActorRuntimeBase::EEventAction::DROP;
+                        default:
+                            break;
+                    }
+
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+            env.StartResync(0, resyncPolicy);
+
+            runtime.DispatchEvents({}, ResyncNextRangeInterval);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, handler.ResyncRequestCount);
+            UNIT_ASSERT(stollenTakeVolumeRequestIdEvent);
+            UNIT_ASSERT_VALUES_EQUAL(
+                env.VolumeActorId,
+                stollenTakeVolumeRequestIdEvent->Recipient);
+
+            runtime.Send(
+                stollenTakeVolumeRequestIdEvent->Sender,
+                env.VolumeActorId,
+                std::make_unique<
+                    TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+                    volumeRequestId)
+                    .release());
+
+            NActors::TDispatchOptions options;
+            options.FinalEvents = {
+                NActors::TDispatchOptions::TFinalEventCondition(
+                    TEvNonreplPartitionPrivate::EvRangeResynced)};
+
+            runtime.DispatchEvents(options);
+            UNIT_ASSERT_VALUES_EQUAL(1, handler.ResyncRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, handler.VolumeRequestIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                volumeRequestId,
+                handler.VolumeRequestIds[0]);
+            volumeRequestId += 12345;
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSendWriteRequestsWithCorrectVolumeRequestId)
+    {
+        DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB);
+    }
+
+    Y_UNIT_TEST(ShouldSendWriteRequestsWithCorrectVolumeRequestIdBlockByBlock)
+    {
+        DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
     }
 }
 

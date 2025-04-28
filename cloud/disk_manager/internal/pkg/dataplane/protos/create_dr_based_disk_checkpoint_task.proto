@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package dataplane;
+
+import "cloud/disk_manager/internal/pkg/types/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message CreateDRBasedDiskCheckpointRequest {
+    types.Disk Disk = 1;
+    string CheckpointIdPrefix = 2;
+}
+
+message CreateDRBasedDiskCheckpointResponse {
+    string CheckpointId = 1;
+}
+
+message CreateDRBasedDiskCheckpointTaskState {
+    int32 CheckpointIteration = 1;
+    string CheckpointId = 2;
+}
+
+message CreateDRBasedDiskCheckpointMetadata {
+    string CheckpointId = 1;
+}

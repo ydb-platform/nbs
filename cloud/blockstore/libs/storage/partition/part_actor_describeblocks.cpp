@@ -102,8 +102,9 @@ void TPartitionActor::DescribeBlocks(
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start describe blocks @%lu (range: %s)",
+        "[%lu][d:%s] Start describe blocks @%lu (range: %s)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId,
         DescribeRange(describeRange).data());
 
@@ -254,8 +255,9 @@ void TPartitionActor::CompleteDescribeBlocks(
 
     const ui64 commitId = args.CommitId;
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete describe blocks @%lu",
+        "[%lu][d:%s] Complete describe blocks @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     LWTRACK(
@@ -282,8 +284,7 @@ void TPartitionActor::CompleteDescribeBlocks(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     UpdateNetworkStat(ctx.Now(), responseBytes);
-    UpdateCPUUsageStat(CyclesToDurationSafe(args.RequestInfo->GetExecCycles()).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
     const auto duration = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles());
     const auto time = duration.MicroSeconds();

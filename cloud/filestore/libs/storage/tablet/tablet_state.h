@@ -178,6 +178,7 @@ private:
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     TNodeToSessionCounters NodeToSessionCounters;
+    ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
@@ -292,6 +293,19 @@ public:
     const NProto::TFileSystemStats& GetFileSystemStats() const
     {
         return FileSystemStats;
+    }
+
+    ui64 GetMinDeletionMarkersCountSinceTabletStart() const
+    {
+        return MinDeletionMarkersCountSinceTabletStart;
+    }
+
+    void UpdateMinDeletionMarkersCountSinceTabletStart()
+    {
+        MinDeletionMarkersCountSinceTabletStart = Min(
+            MinDeletionMarkersCountSinceTabletStart,
+            FileSystemStats.GetDeletionMarkersCount()
+        );
     }
 
     const TNodeToSessionCounters& GetNodeToSessionCounters() const
@@ -628,10 +642,10 @@ public:
         ui64 sessionSeqNo,
         bool readOnly,
         const NActors::TActorId& owner);
-    void OrphanSession(const NActors::TActorId& owner, TInstant deadline);
+    void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
     void ResetSession(TIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
-    TVector<TSession*> GetTimeoutedSessions(TInstant now) const;
+    TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
     TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
 
@@ -651,7 +665,7 @@ public:
 private:
     TSession* CreateSession(
         const NProto::TSession& proto,
-        TInstant deadline,
+        TInstant inactivityDeadline,
         const NProto::TSessionOptions& sessionOptions);
 
     TSession* CreateSession(

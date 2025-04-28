@@ -192,6 +192,7 @@ struct TMonSessionInfo
     TString ClientId;
     NProto::TSession ProtoInfo;
     TVector<TSubSession> SubSessions;
+    TInstant InactivityDeadline;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -205,7 +206,7 @@ struct TSession
     TSessionHandleStats HandleStatsByNode;
     TSessionLockList Locks;
 
-    TInstant Deadline;
+    TInstant InactivityDeadline;
 
     // TODO: notify event stream
     ui32 LastEvent = 0;
@@ -436,6 +437,8 @@ struct TSessionsStats
 {
     ui32 StatefulSessionsCount = 0;
     ui32 StatelessSessionsCount = 0;
+    ui32 ActiveSessionsCount = 0;
+    ui32 OrphanSessionsCount = 0;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

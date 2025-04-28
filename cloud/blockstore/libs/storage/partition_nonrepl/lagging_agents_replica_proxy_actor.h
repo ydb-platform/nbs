@@ -33,6 +33,12 @@ class TLaggingAgentsReplicaProxyActor final
     : public NActors::TActorBootstrapped<TLaggingAgentsReplicaProxyActor>
     , public IPoisonPillHelperOwner
 {
+    enum class ERequestKind
+    {
+        Read,
+        Write,
+    };
+
 private:
     using TBase = NActors::TActorBootstrapped<TLaggingAgentsReplicaProxyActor>;
 
@@ -60,8 +66,16 @@ private:
         NActors::TActorId AvailabilityMonitoringActorId;
         NActors::TActorId MigrationActorId;
         std::unique_ptr<TCompressedBitmap> CleanBlocksMap;
+        bool MigrationDisabled = false;
+        bool DrainFinished = false;
     };
     THashMap<TString, TAgentState> AgentState;
+
+    struct TBlockRangeData {
+        TString LaggingAgentId;
+        bool IsTargetMigration = false;
+    };
+    TMap<ui64, TBlockRangeData> BlockRangeDataByBlockRangeEnd;
 
     ui64 DrainRequestCounter = 0;
     // To determine which agent has drained in-flight writes by cookie in the
@@ -95,12 +109,23 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    [[nodiscard]] bool AgentIsUnavailable(const TString& agentId) const;
+    template <typename TMethod>
+    void ReadBlocks(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    template <typename TMethod>
+    void WriteBlocks(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     template <typename TMethod>
     TVector<TSplitRequest> SplitRequest(
         const TMethod::TRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
+
+    [[nodiscard]] bool ShouldSplitWriteRequest(
+        const TVector<TDeviceRequest>& deviceRequests) const;
 
     [[nodiscard]] TVector<TSplitRequest> DoSplitRequest(
         const TEvService::TEvWriteBlocksRequest::TPtr& ev,
@@ -112,15 +137,28 @@ private:
         const TEvService::TEvZeroBlocksRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
 
-    [[nodiscard]] bool ShouldSplitWriteRequest(
-        const TVector<TDeviceRequest>& requests) const;
     [[nodiscard]] NActors::TActorId GetRecipientActorId(
-        const TString& agentId) const;
+        const TBlockRange64& requestBlockRange,
+        ERequestKind kind) const;
+
+    [[nodiscard]] const TBlockRangeData& GetBlockRangeData(
+        const TBlockRange64& requestBlockRange) const;
+
+    [[nodiscard]] bool AgentIsUnavailable(const TString& agentId) const;
+
+    void RecalculateBlockRangeDataByBlockRangeEnd();
 
     void MarkBlocksAsDirty(
         const NActors::TActorContext& ctx,
         const TString& unavailableAgentId,
         TBlockRange64 range);
+
+    void StartLaggingResync(
+        const NActors::TActorContext& ctx,
+        const TString& agentId,
+        TAgentState* state);
+
+    ui64 TakeDrainRequestId(const TString& agentId);
 
     void DestroyChildActor(
         const NActors::TActorContext& ctx,
@@ -137,6 +175,10 @@ private:
         const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleLaggingMigrationDisabled(
+        const TEvNonreplPartitionPrivate::TEvLaggingMigrationDisabled::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleAgentIsBackOnline(
         const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -150,12 +192,8 @@ private:
             ev,
         const NActors::TActorContext& ctx);
 
-    void HandleWriteOrZeroCompleted(
-        const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleAddLaggingAgent(
-        const TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest::TPtr& ev,
+    void HandleLaggingMigrationEnabled(
+        const TEvNonreplPartitionPrivate::TEvLaggingMigrationEnabled::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRWClientIdChanged(
@@ -164,20 +202,6 @@ private:
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    template <typename TMethod>
-    void WriteBlocks(
-        const typename TMethod::TRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    template <typename TMethod>
-    void ReadBlocks(
-        const typename TMethod::TRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void ForwardUnhandledEvent(
-        TAutoPtr<NActors::IEventHandle>& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocks, TEvService);

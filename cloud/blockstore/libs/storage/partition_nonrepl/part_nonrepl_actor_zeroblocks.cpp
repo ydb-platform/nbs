@@ -218,10 +218,6 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         return;
     }
 
-    const bool assignVolumeRequestId =
-        Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&
-        !msg->Record.GetHeaders().GetIsBackgroundRequest();
-
     auto actorId = NCloud::Register<TDiskAgentZeroActor>(
         ctx,
         requestInfo,
@@ -231,7 +227,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         PartConfig,
         SelfId(),
         PartConfig->GetBlockSize(),
-        assignVolumeRequestId);
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled());
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
@@ -251,7 +247,6 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
-    NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);

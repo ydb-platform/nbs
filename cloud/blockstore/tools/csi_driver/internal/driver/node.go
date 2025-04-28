@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -392,7 +391,11 @@ func (s *nodeService) NodePublishVolume(
 				if nfsBackend {
 					err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
 				} else {
-					err = s.nodePublishDiskAsVhostSocket(ctx, req)
+					err = s.nodePublishDiskAsVhostSocket(
+						ctx,
+						req,
+						req.VolumeCapability.GetMount(),
+					)
 				}
 			}
 		} else {
@@ -484,7 +487,8 @@ func (s *nodeService) NodeGetInfo(
 
 func (s *nodeService) nodePublishDiskAsVhostSocket(
 	ctx context.Context,
-	req *csi.NodePublishVolumeRequest) error {
+	req *csi.NodePublishVolumeRequest,
+	volumeCapabilities *csi.VolumeCapability_MountVolume) error {
 
 	podId := s.getPodId(req)
 	diskId := req.VolumeId
@@ -518,6 +522,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
+		VhostDiscardEnabled: s.IsDiscardEnabled(ctx, diskId),
 	})
 
 	if err != nil {
@@ -596,7 +601,6 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		deviceName = diskId
 	}
 
-	vhostDiscardEnabled := slices.Contains(volumeCapabilities.MountFlags, "discard")
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
@@ -615,7 +619,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
-		VhostDiscardEnabled: vhostDiscardEnabled,
+		VhostDiscardEnabled: s.IsDiscardEnabled(ctx, diskId),
 	})
 
 	if err != nil {
@@ -1661,3 +1665,21 @@ func (s *nodeService) NodeExpandVolume(
 }
 
 func ignoreError(_ error) {}
+
+func (s *nodeService) IsDiscardEnabled(ctx context.Context, diskId string) bool {
+	if !s.useDiscardForYDBBasedDisks {
+		return false
+	}
+
+	resp, err := s.nbsClient.DescribeVolume(
+		ctx, &nbsapi.TDescribeVolumeRequest{
+			DiskId: diskId,
+		},
+	)
+
+	if err != nil {
+		return false
+	}
+
+	return !isDiskRegistryMediaKind(resp.Volume.StorageMediaKind)
+}

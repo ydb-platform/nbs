@@ -545,7 +545,7 @@ message TStorageConfig
     optional bool ServerWriteBackCacheEnabled = 420;
 
     // If enabled, GarbageCompactionThresholdAverage in Cleanup will be compared
-    // to the scaled ratio of DeletedMarkersCount to UsedBlocksCount instead of
+    // to the scaled ratio of DeletionMarkersCount to UsedBlocksCount instead of
     // UsedRangesCount.
     optional bool CalculateCleanupScoreBasedOnUsedBlocksCount = 421;
 
@@ -563,4 +563,14 @@ message TStorageConfig
     // In addition to the actively opened handles the tablet will also keep
     // in memory at most this number of the most recently used nodes
     optional uint64 SessionHandleOffloadedStatsCapacity = 425;
+
+    // Limit CPU consumption by Cleanup when a massive amount
+    // of deletion markers is to be cleaned up after changing configuration.
+    // (for example after changing cleanup threshold or other parameters)
+    optional uint32 CleanupCpuThrottlingThresholdPercentage = 426;
+
+    // EnqueueBlobIndexOpIfNeeded will be called with this interval
+    // if background operations should run but have been throttled.
+    // (e.g. cleanup operation due to CleanupCpuThrottlingThresholdPercentage)
+    optional uint32 EnqueueBlobIndexOpIfNeededScheduleInterval = 427; // in ms
 }

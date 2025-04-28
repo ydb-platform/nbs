@@ -79,8 +79,9 @@ void TPartitionActor::ExecuteAddGarbage(
 
     for (const auto& blobId: diff) {
         LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Add garbage blob: %s",
+            "[%lu][d:%s] Add garbage blob: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             ToString(MakeBlobId(TabletID(), blobId)).data());
 
         bool added = State->GetGarbageQueue().AddGarbageBlob(blobId);

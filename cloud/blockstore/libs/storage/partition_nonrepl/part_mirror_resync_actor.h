@@ -62,8 +62,8 @@ private:
 
     bool ResyncFinished = false;
 
-    TRequestsInProgress<ui64, TBlockRange64> WriteAndZeroRequestsInProgress{
-        EAllowedRequests::WriteOnly};
+    TRequestsInProgress<EAllowedRequests::WriteOnly, ui64, TBlockRange64>
+        WriteAndZeroRequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         PartConfig->GetName()};

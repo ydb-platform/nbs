@@ -35,6 +35,8 @@ namespace NCloud::NBlockStore::NServer {
 
 using namespace NThreading;
 
+using namespace std::chrono_literals;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -268,6 +270,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             nullptr,    // nbdDeviceFactory
             {}          // options
         );
+        endpointManager->RestoreEndpoints().Wait(5s);
 
         NProto::TStartEndpointRequest request;
         request.SetUnixSocketPath(unixSocket);
@@ -351,6 +354,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             nullptr,    // nbdDeviceFactory
             {}          // options
         );
+        endpointManager->RestoreEndpoints().Wait(5s);
 
         auto endpointService = CreateMultipleEndpointService(
             std::make_shared<TTestService>(),
@@ -762,6 +766,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             nullptr,    // nbdDeviceFactory
             {}          // options
         );
+        endpointManager->RestoreEndpoints().Wait(5s);
 
         auto future = endpointManager->ListKeyrings(
             MakeIntrusive<TCallContext>(),
@@ -921,6 +926,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             nullptr,    // nbdDeviceFactory
             {}          // options
         );
+        endpointManager->RestoreEndpoints().Wait(5s);
 
         TTempDir dir;
         TString unixSocket = (dir.Path() / "testSocket").GetPath();

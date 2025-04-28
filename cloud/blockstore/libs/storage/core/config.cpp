@@ -166,6 +166,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
     xxx(WriteBlobThreshold,            ui32,      1_MB                        )\
     xxx(WriteBlobThresholdSSD,         ui32,      128_KB                      )\
+    xxx(WriteMixedBlobThresholdHDD,    ui32,      0                           )\
     xxx(FlushThreshold,                ui32,      4_MB                        )\
     xxx(FreshBlobCountFlushThreshold,  ui32,      3200                        )\
     xxx(FreshBlobByteCountFlushThreshold,   ui32,      16_MB                  )\
@@ -378,6 +379,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(AllocateSeparateMixedChannels,                  bool,   false         )\
     xxx(PoolKindChangeAllowed,                          bool,   false         )\
+    xxx(MixedChannelsPercentageFromMerged,              ui32,   0             )\
                                                                                \
     xxx(BlockDigestsEnabled,                            bool,   false         )\
     xxx(UseTestBlockDigestGenerator,                    bool,   false         )\
@@ -563,6 +565,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(LaggingDeviceTimeoutThreshold,            TDuration, Seconds(5)          )\
     xxx(LaggingDevicePingInterval,                TDuration, MSeconds(500)       )\
     xxx(ResyncAfterLaggingAgentMigration,         bool,      false               )\
+    xxx(MultiAgentWriteEnabled,                   bool,      false               )\
+    xxx(MultiAgentWriteRequestSizeThreshold,      ui32,      0                   )\
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\

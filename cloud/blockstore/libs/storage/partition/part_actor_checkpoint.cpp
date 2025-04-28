@@ -152,8 +152,9 @@ void TPartitionActor::CompleteCreateCheckpoint(
         args.RequestInfo->CallContext->RequestId);
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-         "[%lu] Checkpoint %s %s created (commit: %lu)",
+         "[%lu][d:%s] Checkpoint %s %s created (commit: %lu)",
          TabletID(),
+         PartitionConfig.GetDiskId().c_str(),
          args.WithoutData ? "without data" : "",
          args.Checkpoint.CheckpointId.Quote().data(),
          args.Checkpoint.CommitId);
@@ -281,8 +282,9 @@ void TPartitionActor::CompleteDeleteCheckpoint(
     args.ReplyCallback(ctx, args.RequestInfo, args.Error);
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Checkpoint %s %s",
+        "[%lu][d:%s] Checkpoint %s %s",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         args.CheckpointId.Quote().data(),
         args.DeleteOnlyData ? "data deleted" : "deleted");
 

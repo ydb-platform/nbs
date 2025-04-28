@@ -105,6 +105,11 @@ public:
         return MakeDiskAgentServiceId(Runtime.GetNodeId(NodeIdx));
     }
 
+    [[nodiscard]] ui32 GetNodeId() const
+    {
+        return Runtime.GetNodeId(NodeIdx);
+    }
+
     template <typename TRequest>
     void SendRequest(std::unique_ptr<TRequest> request, ui64 cookie = 0)
     {
@@ -454,7 +459,7 @@ struct TTestEnvBuilder
     NActors::TTestActorRuntime& Runtime;
 
     NProto::TDiskAgentConfig AgentConfigProto;
-    NProto::TDiskAgentConfig SecondAgentConfigProto;
+    TVector<NProto::TDiskAgentConfig> AdditionalAgentConfigsProto;
     IStorageProviderPtr StorageProvider;
     IFileIOServicePtr FileIOService;
     NNvme::INvmeManagerPtr NvmeManager;
@@ -469,7 +474,7 @@ struct TTestEnvBuilder
     TTestEnvBuilder& With(IFileIOServicePtr fileIO);
     TTestEnvBuilder& With(NNvme::INvmeManagerPtr nvmeManager);
     TTestEnvBuilder& With(NProto::TDiskAgentConfig config);
-    TTestEnvBuilder& WithSecondAgent(NProto::TDiskAgentConfig config);
+    TTestEnvBuilder& WithAgents(TVector<NProto::TDiskAgentConfig> configs);
     TTestEnvBuilder& With(NProto::TStorageServiceConfig storageServiceConfig);
     TTestEnvBuilder& With(TDiskRegistryState::TPtr diskRegistryState);
 

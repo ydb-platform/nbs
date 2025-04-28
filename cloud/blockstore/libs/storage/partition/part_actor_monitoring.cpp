@@ -408,8 +408,9 @@ void TPartitionActor::HandleHttpInfo(
         requestInfo->CallContext->RequestId);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] HTTP request: %s",
+        "[%lu][d:%s] HTTP request: %s",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         msg->Query.Quote().data());
 
     if (State && State->IsLoadStateFinished()) {

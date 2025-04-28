@@ -37,13 +37,16 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
           // Since this actor doesn't own source or destination actors, it won't
           // receive any stats and shouldn't send any either.
           TActorId(),   //  statActorId
-          config->GetMaxMigrationIoDepth())
+          config->GetMaxMigrationIoDepth(),
+          partConfig->GetParentActorId())
     , Config(std::move(config))
     , PartConfig(std::move(partConfig))
     , ParentActorId(parentActorId)
     , TargetActorId(targetActorId)
     , SourceActorId(sourceActorId)
     , AgentId(std::move(agentId))
+    , ProcessedBlockCount(GetProcessedBlockCount())
+    , BlockCountNeedToBeProcessed(GetBlockCountNeedToBeProcessed())
 {}
 
 TLaggingAgentMigrationActor::~TLaggingAgentMigrationActor() = default;
@@ -52,6 +55,7 @@ void TLaggingAgentMigrationActor::OnBootstrap(const TActorContext& ctx)
 {
     InitWork(
         ctx,
+        SourceActorId,
         SourceActorId,
         TargetActorId,
         false,   // takeOwnershipOverActors
@@ -90,18 +94,34 @@ void TLaggingAgentMigrationActor::HandleStartLaggingAgentMigration(
     StartWork(ctx);
 }
 
+void TLaggingAgentMigrationActor::OnRangeMigrated(
+    const NActors::TActorContext& ctx,
+    const TBlockRange64& blockRange)
+
+{
+    BlocksMigratedSinceLastReport += blockRange.Size();
+    ProcessedBlockCount += blockRange.Size();
+    BlockCountNeedToBeProcessed -= blockRange.Size();
+    if (Config->GetMigrationIndexCachingInterval() <=
+        BlocksMigratedSinceLastReport)
+    {
+        ctx.Send(
+            PartConfig->GetParentActorId(),
+            std::make_unique<
+                TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
+                AgentId,
+                ProcessedBlockCount,
+                BlockCountNeedToBeProcessed));
+        BlocksMigratedSinceLastReport = 0;
+    }
+}
+
 void TLaggingAgentMigrationActor::OnMigrationProgress(
     const TActorContext& ctx,
     ui64 migrationIndex)
 {
     Y_UNUSED(migrationIndex);
-
-    ctx.Send(
-        PartConfig->GetParentActorId(),
-        std::make_unique<TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
-            AgentId,
-            GetProcessedBlockCount(),
-            GetBlockCountNeedToBeProcessed()));
+    Y_UNUSED(ctx);
 }
 
 void TLaggingAgentMigrationActor::OnMigrationFinished(const TActorContext& ctx)
@@ -120,6 +140,12 @@ void TLaggingAgentMigrationActor::OnMigrationError(const TActorContext& ctx)
         "[%s] Lagging agent %s migration failed",
         PartConfig->GetName().c_str(),
         AgentId.c_str());
+}
+
+NActors::TActorId
+TLaggingAgentMigrationActor::GetActorToLockAndDrainRange() const
+{
+    return SourceActorId;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

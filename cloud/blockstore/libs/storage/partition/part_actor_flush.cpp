@@ -629,8 +629,7 @@ void TPartitionActor::HandleFlush(
             "Flush",
             requestInfo->CallContext->RequestId);
 
-        UpdateCPUUsageStat(CyclesToDurationSafe(requestInfo->GetExecCycles()).MicroSeconds());
-        UpdateExecutorStats(ctx);
+        UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
@@ -649,8 +648,7 @@ void TPartitionActor::HandleFlush(
             "Flush",
             requestInfo->CallContext->RequestId);
 
-        UpdateCPUUsageStat(CyclesToDurationSafe(requestInfo->GetExecCycles()).MicroSeconds());
-        UpdateExecutorStats(ctx);
+        UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
@@ -664,8 +662,9 @@ void TPartitionActor::HandleFlush(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start flush @%lu (blocks: %lu)",
+        "[%lu][d:%s] Start flush @%lu (blocks: %lu)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId,
         blocksCount);
 
@@ -812,14 +811,14 @@ void TPartitionActor::HandleFlushCompleted(
 
     ui64 commitId = msg->CommitId;
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete flush @%lu",
+        "[%lu][d:%s] Complete flush @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);
 
-    UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     State->GetCommitQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);

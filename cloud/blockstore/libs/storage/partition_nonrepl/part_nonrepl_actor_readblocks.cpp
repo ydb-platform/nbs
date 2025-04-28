@@ -185,7 +185,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
             STORAGE_CHECK_PRECONDITION(SkipVoidBlocksToOptimizeNetworkTransfer);
             destBuffer.resize(blockSize, 0);
             ++VoidBlockCount;
-        } else if (SkipVoidBlocksToOptimizeNetworkTransfer) {
+        } else {
             ++NonVoidBlockCount;
         }
     }
@@ -294,12 +294,15 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
     PartCounters->Interconnect.ReadBytes.Increment(requestBytes);
     PartCounters->Interconnect.ReadCount.Increment(1);
 
-    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+    const ui64 nonVoidBytes =
         static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();
-    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes +=
+    const ui64 voidBytes =
         static_cast<ui64>(msg->VoidBlockCount) * PartConfig->GetBlockSize();
+    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+        nonVoidBytes;
+    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes += voidBytes;
 
-    NetworkBytes += requestBytes;
+    NetworkBytes += nonVoidBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);

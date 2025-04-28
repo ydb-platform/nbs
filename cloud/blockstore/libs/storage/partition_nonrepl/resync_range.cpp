@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <cloud/storage/core/libs/common/sglist.h>
 
@@ -40,7 +41,9 @@ TResyncRangeActor::TResyncRangeActor(
         TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NProto::EResyncPolicy resyncPolicy)
+        NProto::EResyncPolicy resyncPolicy,
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -48,6 +51,8 @@ TResyncRangeActor::TResyncRangeActor(
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , ResyncPolicy(resyncPolicy)
+    , VolumeActorId(volumeActorId)
+    , AssignVolumeRequestId(assignVolumeRequestId)
 {
     using EResyncPolicy = NProto::EResyncPolicy;
     Y_DEBUG_ABORT_UNLESS(
@@ -68,6 +73,14 @@ void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     ChecksumRangeActorCompanion.CalculateChecksums(ctx, Range);
+}
+
+void TResyncRangeActor::GetVolumeRequestId(const NActors::TActorContext& ctx)
+{
+    NCloud::Send(
+        ctx,
+        VolumeActorId,
+        std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdRequest>());
 }
 
 void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
@@ -133,10 +146,15 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         }
     }
 
-    ReadBlocks(ctx, majorIdx);
+    ReplicaIndexToReadFrom = majorIdx;
+    if (AssignVolumeRequestId) {
+        GetVolumeRequestId(ctx);
+        return;
+    }
+    ReadBlocks(ctx);
 }
 
-void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
+void TResyncRangeActor::ReadBlocks(const TActorContext& ctx)
 {
     Buffer = TGuardedBuffer(TString::Uninitialized(Range.Size() * BlockSize));
 
@@ -156,12 +174,12 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
     headers->SetClientId(TString(BackgroundOpsClientId));
 
     auto event = std::make_unique<NActors::IEventHandle>(
-        Replicas[idx].ActorId,
+        Replicas[ReplicaIndexToReadFrom].ActorId,
         ctx.SelfID,
         request.release(),
         IEventHandle::FlagForwardOnNondelivery,
-        idx,          // cookie
-        &ctx.SelfID   // forwardOnNondelivery
+        ReplicaIndexToReadFrom,   // cookie
+        &ctx.SelfID               // forwardOnNondelivery
     );
 
     ctx.Send(event.release());
@@ -180,6 +198,7 @@ void TResyncRangeActor::WriteBlocks(const TActorContext& ctx) {
 void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 {
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
+    request->Record.MutableHeaders()->SetVolumeRequestId(VolumeRequestId);
     request->Record.SetStartIndex(Range.Start);
     auto clientId =
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
@@ -234,6 +253,7 @@ void TResyncRangeActor::Done(const TActorContext& ctx)
             ReadDuration,
             WriteStartTs,
             WriteDuration,
+            RequestInfo->ExecCycles,
             std::move(AffectedBlockInfos),
             GetResyncStatus(ErrorFixed, ErrorFound));
 
@@ -277,6 +297,21 @@ void TResyncRangeActor::HandleChecksumResponse(
     if (ChecksumRangeActorCompanion.IsFinished()) {
         CompareChecksums(ctx);
     }
+}
+
+void TResyncRangeActor::HandleVolumeRequestId(
+    const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->Error)) {
+        Error = msg->Error;
+        Done(ctx);
+        return;
+    }
+
+    VolumeRequestId = msg->VolumeRequestId;
+    ReadBlocks(ctx);
 }
 
 void TResyncRangeActor::HandleReadUndelivery(
@@ -367,6 +402,9 @@ STFUNC(TResyncRangeActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse,
             HandleChecksumResponse);
+        HFunc(
+            TEvVolumePrivate::TEvTakeVolumeRequestIdResponse,
+            HandleVolumeRequestId);
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadUndelivery);
         HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadResponse);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteUndelivery);

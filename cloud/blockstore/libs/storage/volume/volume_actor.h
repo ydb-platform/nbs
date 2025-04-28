@@ -351,17 +351,22 @@ private:
 
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
 
-    THashSet<NActors::TActorId> StoppedPartitions;
+    using TPoisonCallback =
+        std::function<void(const NActors::TActorContext&, NProto::TError)>;
 
-    using TPoisonCallback = std::function<
-        void (const NActors::TActorContext&, NProto::TError)
-    >;
+    struct TPartitionDestroyCallback
+    {
+        const ui64 VolumeRequestId = 0;
+        const NActors::TActorId PartitionActorId;
+        TPoisonCallback PoisonCallback;
+        bool Destroyed = false;
+    };
 
-    TDeque<std::pair<NActors::TActorId, TPoisonCallback>> WaitForPartitions;
-
-    using TDiskRegistryBasedPartitionStoppedCallback =
-        std::function<void(const NActors::TActorContext&)>;
-    THashMap<ui64, TDiskRegistryBasedPartitionStoppedCallback> OnPartitionStopped;
+    // Stores callbacks that need to be called when receiving a PoisonTaken
+    // message from destroyed partition. Callbacks are called in FIFO order,
+    // even if the partitions are deleted in a different order.
+    TDeque<TPartitionDestroyCallback> WaitForPartitionDestroy;
+    ui64 PartitionRestartCounter = 0;
 
     TVector<ui64> GCCompletedPartitions;
 
@@ -405,6 +410,10 @@ private:
             UpdateActorStats(ctx);
         }
     }
+
+    void UpdateTabletMetrics(
+        const NActors::TActorContext& ctx,
+        const NKikimrTabletBase::TMetrics& tabletMetrics);
 
     void SendPartStatsToService(const NActors::TActorContext& ctx);
     void DoSendPartStatsToService(
@@ -481,7 +490,15 @@ private:
     void StartPartitionsForGc(const NActors::TActorContext& ctx);
     void StopPartitions(
         const NActors::TActorContext& ctx,
-        TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped);
+        TPoisonCallback onPartitionStopped);
+    void StopDiskRegistryBasedPartition(
+        const NActors::TActorContext& ctx,
+        TPoisonCallback onPartitionStopped);
+    void OnDiskRegistryBasedPartitionStopped(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId sender,
+        ui64 volumeRequestId,
+        NProto::TError error);
 
     void SetupDiskRegistryBasedPartitions(const NActors::TActorContext& ctx);
 
@@ -867,10 +884,6 @@ private:
         const NKikimr::TEvTabletPipe::TEvServerDestroyed::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleTabletMetrics(
-        NKikimr::TEvLocal::TEvTabletMetrics::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleUpdateMigrationState(
         const TEvVolume::TEvUpdateMigrationState::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -1065,7 +1078,7 @@ private:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    NActors::TActorId WrapNonreplActorIfNeeded(
+    TActorsStack WrapNonreplActorIfNeeded(
         const NActors::TActorContext& ctx,
         NActors::TActorId nonreplicatedActorId,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
@@ -1075,7 +1088,7 @@ private:
     // is stopped.
     void RestartPartition(
         const NActors::TActorContext& ctx,
-        TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped);
+        TPoisonCallback onPartitionStopped);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)

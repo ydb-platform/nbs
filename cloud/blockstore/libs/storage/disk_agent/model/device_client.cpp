@@ -281,7 +281,7 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
     TReadGuard g(deviceState->Lock);
 
     bool acquired = false;
-    if (clientId == BackgroundOpsClientId) {
+    if (clientId == BackgroundOpsClientId || clientId == CopyVolumeClientId) {
         // it's fine to accept migration writes if this device is not acquired
         // migration might be in progress even for an unmounted volume
         acquired = !IsReadWriteMode(accessMode)

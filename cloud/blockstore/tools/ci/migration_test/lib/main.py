@@ -96,6 +96,10 @@ class TestRunner:
                     self.instance = ycp.get_instance(disk.instance_ids[0])
                     break
 
+            if self.disk_id is None:
+                description = f'id={args.disk_id}' if args.disk_id else f'name={args.disk_name}'
+                raise Error(f"Can't find disk with {description}")
+
             if args.use_auth:
                 if args.service_account_id:
                     token = ycp.create_iam_token_for_service_account(args.service_account_id)
@@ -105,10 +109,6 @@ class TestRunner:
 
             host = args.nbs_host if args.nbs_host else self.instance.compute_node
             self.endpoint = '{}:{}'.format(host, self.port)
-
-            if self.disk_id is None:
-                description = f'id={args.disk_id}' if args.disk_id else f'name={args.disk_name}'
-                raise Error(f"Can't find disk with {description}")
 
         try:
             self.client = make_client(

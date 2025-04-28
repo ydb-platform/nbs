@@ -557,7 +557,6 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
             if (PartConfig->GetDevices()[deviceIndex].GetAgentId() ==
                 msg->LaggingAgent.GetAgentId())
             {
-                // TODO(komarevtsev-d): implement fast reject (via error flags).
                 NCloud::Send<TEvNonreplPartitionPrivate::TEvCancelRequest>(
                     ctx,
                     actorId,

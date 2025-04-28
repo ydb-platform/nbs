@@ -943,6 +943,7 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
     }
 
     DecrementDeletionMarkersCount(db, deletionMarkerCount);
+    UpdateMinDeletionMarkersCountSinceTabletStart();
 
     auto largeDeletionMarkers =
         Impl->LargeBlocks.ExtractProcessedDeletionMarkers();

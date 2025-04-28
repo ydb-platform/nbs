@@ -122,7 +122,9 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
         State.GetRWClientId(),
         BlockDigestGenerator,
         ResyncPolicy,
-        EBlockRangeChecksumStatus::Unknown);
+        EBlockRangeChecksumStatus::Unknown,
+        State.GetReplicaInfos()[0].Config->GetParentActorId(),
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled());
     ctx.Register(resyncActor.release());
 }
 
@@ -191,6 +193,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
             },
         });
     }
+
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     if (HasError(msg->GetError())) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,

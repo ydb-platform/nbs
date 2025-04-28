@@ -453,7 +453,6 @@ void TPartitionActor::HandleReadBlobCompleted(
 
     UpdateReadThroughput(ctx, channel, group, msg->BytesCount, isOverlayDisk);
     UpdateNetworkStats(ctx, msg->BytesCount);
-    UpdateExecutorStats(ctx);
 
     if (blobTabletId != TabletID()) {
         // Treat this situation as we were reading from base disk.

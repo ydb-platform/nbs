@@ -37,3 +37,4 @@ DataScrubbingEnabled: true
 ResyncRangeAfterScrubbing: true
 ScrubbingChecksumMismatchTimeout: 1000
 ScrubbingResyncPolicy: RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK
+MultiAgentWriteEnabled: true

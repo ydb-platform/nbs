@@ -16,6 +16,7 @@ message CreateImageFromDiskRequest {
     string FolderId = 3;
     repeated types.DiskPool DiskPools = 6;
     bool UseS3 = 8;
+    bool RetryBrokenDRBasedDiskCheckpoint = 9;
 }
 
 message CreateImageFromDiskTaskState {

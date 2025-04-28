@@ -92,8 +92,9 @@ void TPartitionActor::HandleReadBlobCompleted(
             LOG_DEBUG(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%lu] Failed to read blob from base disk, blob tablet: %lu error: %s",
+                "[%lu][d:%s] Failed to read blob from base disk, blob tablet: %lu error: %s",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 blobTabletId,
                 FormatError(msg->GetError()).data());
             return;
@@ -107,8 +108,9 @@ void TPartitionActor::HandleReadBlobCompleted(
                 >= Config->GetMaxReadBlobErrorsBeforeSuicide())
         {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Stop tablet because of too many ReadBlob errors (actor %s, group %u): %s",
+                "[%lu][d:%s] Stop tablet because of too many ReadBlob errors (actor %s, group %u): %s",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 ev->Sender.ToString().c_str(),
                 msg->GroupId,
                 FormatError(msg->GetError()).data());
@@ -117,8 +119,9 @@ void TPartitionActor::HandleReadBlobCompleted(
             Suicide(ctx);
         } else {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] ReadBlob error happened: %s",
+                "[%lu][d:%s] ReadBlob error happened: %s",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 FormatError(msg->GetError()).data());
         }
         return;
@@ -128,7 +131,6 @@ void TPartitionActor::HandleReadBlobCompleted(
     const ui32 groupId = msg->GroupId;
     const bool isOverlayDisk = blobTabletId != TabletID();
     UpdateNetworkStat(ctx.Now(), msg->BytesCount);
-    UpdateExecutorStats(ctx);
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,

@@ -1,4 +1,5 @@
-#include "requests_in_progress.h"
+#include "common_constants.h"
+#include "request_bounds_tracker.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -10,8 +11,8 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
 {
     Y_UNIT_TEST(Basic)
     {
-        TRequestsInProgress<ui32, TString> requestsInProgress{
-            EAllowedRequests::ReadWrite};
+        TRequestsInProgress<EAllowedRequests::ReadWrite, ui32, TString>
+            requestsInProgress;
         IRequestsInProgress* interface = &requestsInProgress;
 
         UNIT_ASSERT(requestsInProgress.Empty());
@@ -47,8 +48,8 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
 
     Y_UNIT_TEST(CustomId)
     {
-        TRequestsInProgress<ui32, TString> requestsInProgress{
-            EAllowedRequests::ReadWrite};
+        TRequestsInProgress<EAllowedRequests::ReadWrite, ui32, TString>
+            requestsInProgress;
         IRequestsInProgress* interface = &requestsInProgress;
 
         requestsInProgress.AddReadRequest(100, "Read Request 1");
@@ -68,8 +69,8 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
 
     Y_UNIT_TEST(ResetIdentityKey)
     {
-        TRequestsInProgress<ui32, TString> requestsInProgress{
-            EAllowedRequests::ReadWrite};
+        TRequestsInProgress<EAllowedRequests::ReadWrite, ui32, TString>
+            requestsInProgress;
 
         requestsInProgress.SetRequestIdentityKey(1000);
         auto id1 = requestsInProgress.AddReadRequest("Read Request 1");
@@ -81,8 +82,8 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
 
     Y_UNIT_TEST(GenerateIdentityKey)
     {
-        TRequestsInProgress<ui32, TString> requestsInProgress{
-            EAllowedRequests::ReadWrite};
+        TRequestsInProgress<EAllowedRequests::ReadWrite, ui32, TString>
+            requestsInProgress;
 
         auto id1 = requestsInProgress.GenerateRequestId();
         auto id2 = requestsInProgress.GenerateRequestId();
@@ -91,59 +92,65 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
 
     Y_UNIT_TEST(AllRequests)
     {
-        using TRequests = TRequestsInProgress<ui32, TString>;
+        using TRequests =
+            TRequestsInProgress<EAllowedRequests::ReadWrite, ui32, TString>;
 
         TMap<ui32, TRequests::TRequest> testData{
-            {0, {"Read Request 1", false}},
-            {1, {"Write Request 1", true}},
-            {10, {"Read Request 2", false}},
-            {20, {"Write Request 2", true}},
+            {0, {.Value = "Read Request 1", .IsWrite = false}},
+            {1, {.Value = "Write Request 1", .IsWrite = true}},
+            {10, {.Value = "Read Request 2", .IsWrite = false}},
+            {20, {.Value = "Write Request 2", .IsWrite = true}},
         };
 
-        TRequests requestsInProgress{EAllowedRequests::ReadWrite};
-        for (const auto& item : testData) {
-            if (item.second.Write) {
+        TRequests requestsInProgress;
+        for (const auto& item: testData) {
+            if (item.second.IsWrite) {
                 requestsInProgress.AddWriteRequest(
-                    item.first, TString(item.second.Value));
+                    item.first,
+                    TString(item.second.Value));
             } else {
                 requestsInProgress.AddReadRequest(
-                    item.first, TString(item.second.Value));
+                    item.first,
+                    TString(item.second.Value));
             }
         }
 
-        for (const auto& request : requestsInProgress.AllRequests()) {
+        for (const auto& request: requestsInProgress.AllRequests()) {
             ui32 id = request.first;
             const TRequests::TRequest& item = request.second;
             const auto& testItem = testData[id];
-            UNIT_ASSERT_EQUAL(testItem.Write, item.Write);
+            UNIT_ASSERT_EQUAL(testItem.IsWrite, item.IsWrite);
             UNIT_ASSERT_EQUAL(testItem.Value, item.Value);
         }
     }
 
     Y_UNIT_TEST(ShouldWaitForInFlightWrites)
     {
-        using TRequests = TRequestsInProgress<ui32, TString>;
+        using TRequests =
+            TRequestsInProgress<EAllowedRequests::ReadWrite, ui32, TString>;
 
         TMap<ui32, TRequests::TRequest> testData{
-            {0, {"Read Request 1", false}},
-            {1, {"Write Request 1", true}},
-            {10, {"Read Request 2", false}},
-            {20, {"Write Request 2", true}},
+            {0, {.Value = "Read Request 1", .IsWrite = false}},
+            {1, {.Value = "Write Request 1", .IsWrite = true}},
+            {10, {.Value = "Read Request 2", .IsWrite = false}},
+            {20, {.Value = "Write Request 2", .IsWrite = true}},
         };
 
         // When there is no in-flight requests waiting does nothing.
-        TRequests requestsInProgress{EAllowedRequests::ReadWrite};
+        TRequests requestsInProgress;
         UNIT_ASSERT(!requestsInProgress.IsWaitingForInFlightWrites());
         requestsInProgress.WaitForInFlightWrites();
         UNIT_ASSERT(!requestsInProgress.IsWaitingForInFlightWrites());
 
-        for (const auto& item : testData) {
-            if (item.second.Write) {
+        for (const auto& item: testData) {
+            if (item.second.IsWrite) {
                 requestsInProgress.AddWriteRequest(
-                    item.first, TString(item.second.Value));
+                    item.first,
+                    TString(item.second.Value));
             } else {
                 requestsInProgress.AddReadRequest(
-                    item.first, TString(item.second.Value));
+                    item.first,
+                    TString(item.second.Value));
             }
         }
 
@@ -158,4 +165,4 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
     }
 }
 
-}  // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage::NPartition

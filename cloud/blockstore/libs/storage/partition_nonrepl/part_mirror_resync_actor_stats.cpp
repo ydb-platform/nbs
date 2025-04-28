@@ -34,12 +34,10 @@ void TMirrorPartitionResyncActor::HandlePartCounters(
 
     if (!MirrorCounters) {
         MirrorCounters = std::move(msg->DiskCounters);
-        NetworkBytes = msg->NetworkBytes;
-        CpuUsage = msg->CpuUsage;
-        return;
+    } else {
+        MirrorCounters->AggregateWith(*msg->DiskCounters);
     }
 
-    MirrorCounters->AggregateWith(*msg->DiskCounters);
     NetworkBytes += msg->NetworkBytes;
     CpuUsage += msg->CpuUsage;
 }
@@ -73,6 +71,9 @@ void TMirrorPartitionResyncActor::SendStats(const TActorContext& ctx)
             CpuUsage);
 
     NCloud::Send(ctx, StatActorId, std::move(request));
+
+    NetworkBytes = 0;
+    CpuUsage = TDuration();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

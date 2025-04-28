@@ -295,14 +295,14 @@ public:
         return SubSessions.count(seqNo);
     }
 
-    bool RemoveStaleSubSessions(TInstant deadline)
+    bool RemoveStaleSubSessions(TInstant inactivityDeadline)
     {
         EraseNodesIf(
             SubSessions,
             [=] (const auto& val) {
                 const auto& [_, value] = val;
                 const auto [ro, ts] = value;
-                return ts < deadline;
+                return ts < inactivityDeadline;
             });
         return SubSessions.empty();
     }
