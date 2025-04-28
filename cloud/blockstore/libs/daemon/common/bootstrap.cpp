@@ -68,6 +68,7 @@
 #include <cloud/blockstore/libs/service_throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_tracker.h>
 #include <cloud/blockstore/libs/service_throttling/throttling.h>
+#include <cloud/blockstore/libs/service_su/service_su.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
@@ -146,7 +147,8 @@ NBD::TServerConfig CreateNbdServerConfig(const TServerAppConfig& config)
         .LimiterEnabled = config.GetNbdLimiterEnabled(),
         .MaxInFlightBytesPerThread = config.GetMaxInFlightBytesPerThread(),
         .SocketAccessMode = config.GetSocketAccessMode(),
-        .Affinity = config.GetNbdAffinity()
+        .Affinity = config.GetNbdAffinity(),
+        .NbdPort = config.GetNbdPort()
     };
 }
 
@@ -342,7 +344,9 @@ void TBootstrapBase::Init()
     }
 
     storageProviders.push_back(CreateDefaultStorageProvider(Service));
-    StorageProvider = CreateMultiStorageProvider(std::move(storageProviders));
+
+    StorageProvider = CreateMultiStorageProvider(
+        std::move(storageProviders));
 
     STORAGE_INFO("StorageProvider initialized");
 
@@ -353,6 +357,7 @@ void TBootstrapBase::Init()
         = Configs->EndpointConfig->GetClientConfig();
     sessionManagerOptions.HostProfile = Configs->HostPerformanceProfile;
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
+    sessionManagerOptions.ShardId = Configs->ServerConfig->GetShardId();
 
     if (!KmsKeyProvider) {
         KmsKeyProvider = CreateKmsKeyProviderStub();
@@ -366,6 +371,8 @@ void TBootstrapBase::Init()
         Logging,
         CreateEncryptionKeyProvider(KmsKeyProvider, RootKmsKeyProvider));
 
+    ServiceWithDicovery = CreateSuDiscoveryService(Service, Timer,Scheduler,Logging,Monitoring, Configs->ServerConfig);
+
     auto sessionManager = CreateSessionManager(
         Timer,
         Scheduler,
@@ -374,11 +381,15 @@ void TBootstrapBase::Init()
         RequestStats,
         VolumeStats,
         ServerStats,
-        Service,
+        //Service,
+        ServiceWithDicovery,
         StorageProvider,
+        RdmaClient,
         encryptionClientFactory,
         Executor,
-        sessionManagerOptions);
+        sessionManagerOptions,
+        Configs->ServerConfig
+    );
 
     STORAGE_INFO("SessionManager initialized");
 
@@ -673,19 +684,6 @@ void TBootstrapBase::Init()
     GrpcEndpointListener->SetClientStorageFactory(
         Server->GetClientStorageFactory());
 
-    if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
-        InitRdmaRequestServer();
-        if (RdmaRequestServer) {
-            RdmaTarget = CreateBlockstoreServerRdmaTarget(
-                std::make_shared<TBlockstoreServerRdmaTargetConfig>(
-                    Configs->RdmaConfig->GetBlockstoreServerTarget()),
-                Logging,
-                RdmaRequestServer,
-                Service);
-            STORAGE_INFO("RDMA Target initialized");
-        }
-    }
-
     TVector<IIncompleteRequestProviderPtr> requestProviders = {
         Server,
         EndpointManager
@@ -911,6 +909,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(EndpointProxyClient);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
+    START_COMMON_COMPONENT(ServiceWithDicovery);
     START_COMMON_COMPONENT(VhostServer);
     START_COMMON_COMPONENT(NbdServer);
     START_COMMON_COMPONENT(GrpcEndpointListener);
@@ -984,6 +983,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(GrpcEndpointListener);
     STOP_COMMON_COMPONENT(NbdServer);
     STOP_COMMON_COMPONENT(VhostServer);
+    STOP_COMMON_COMPONENT(ServiceWithDicovery);
     STOP_COMMON_COMPONENT(Service);
     STOP_COMMON_COMPONENT(EndpointManager);
     STOP_COMMON_COMPONENT(EndpointProxyClient);

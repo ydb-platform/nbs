@@ -5,11 +5,15 @@
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
+#include <cloud/blockstore/libs/rdma/iface/client.h>
+
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/encryption/public.h>
+#include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
+#include <cloud/blockstore/libs/service_su/public.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 
@@ -71,6 +75,8 @@ struct TSessionManagerOptions
 
     NProto::TClientConfig DefaultClientConfig;
     NClient::THostPerformanceProfile HostProfile;
+
+    TString ShardId;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,8 +91,10 @@ ISessionManagerPtr CreateSessionManager(
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
     IStorageProviderPtr storageProvider,
+    NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,
     TExecutorPtr executor,
-    TSessionManagerOptions options);
+    TSessionManagerOptions options,
+    const TServerAppConfigPtr config);
 
 }   // namespace NCloud::NBlockStore::NServer
