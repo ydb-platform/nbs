@@ -311,61 +311,6 @@ void TLaggingAgentsReplicaProxyActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-bool TLaggingAgentsReplicaProxyActor::AgentIsUnavailable(
-    const TString& agentId) const
-{
-    const TAgentState* state = AgentState.FindPtr(agentId);
-    return state && state->State == EAgentState::Unavailable;
-}
-
-void TLaggingAgentsReplicaProxyActor::MarkBlocksAsDirty(
-    const TActorContext& ctx,
-    const TString& unavailableAgentId,
-    TBlockRange64 range)
-{
-    // We artificially lower the resolution of the "CleanBlocksMap". This is
-    // done because the migration actor migrates by ranges of
-    // "MigrationRangeSize" anyway. The full resolution here would lead to
-    // migrating not aligned ranges which is not ideal.
-    const ui64 blocksPerRange = MigrationRangeSize / PartConfig->GetBlockSize();
-    auto alignedStart = AlignDown<ui64>(range.Start, blocksPerRange);
-    auto alignedEnd = AlignUp<ui64>(range.End + 1, blocksPerRange);
-
-    LOG_TRACE(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Lower block range resolution %s -> %s and mark blocks as dirty "
-        "for lagging agent %s",
-        PartConfig->GetName().c_str(),
-        range.Print().c_str(),
-        TBlockRange64::MakeClosedInterval(alignedStart, alignedEnd)
-            .Print()
-            .c_str(),
-        unavailableAgentId.Quote().c_str());
-
-    auto& state = AgentState[unavailableAgentId];
-    STORAGE_VERIFY(
-        state.CleanBlocksMap,
-        TWellKnownEntityTypes::DISK,
-        PartConfig->GetName());
-    state.CleanBlocksMap->Unset(alignedStart, alignedEnd);
-}
-
-void TLaggingAgentsReplicaProxyActor::DestroyChildActor(
-    const TActorContext& ctx,
-    TActorId* actorId)
-{
-    Y_DEBUG_ABORT_UNLESS(actorId);
-
-    if (!*actorId) {
-        return;
-    }
-
-    PoisonPillHelper.ReleaseOwnership(ctx, *actorId);
-    NCloud::Send<TEvents::TEvPoisonPill>(ctx, *actorId);
-    *actorId = TActorId();
-}
-
 template <typename TMethod>
 void TLaggingAgentsReplicaProxyActor::ReadBlocks(
     const typename TMethod::TRequest::TPtr& ev,
@@ -635,6 +580,13 @@ auto TLaggingAgentsReplicaProxyActor::GetBlockRangeData(
     return it->second;
 }
 
+bool TLaggingAgentsReplicaProxyActor::AgentIsUnavailable(
+    const TString& agentId) const
+{
+    const TAgentState* state = AgentState.FindPtr(agentId);
+    return state && state->State == EAgentState::Unavailable;
+}
+
 void TLaggingAgentsReplicaProxyActor::RecalculateBlockRangeDataByBlockRangeEnd()
 {
     ui64 blockIndex = 0;
@@ -671,6 +623,104 @@ void TLaggingAgentsReplicaProxyActor::RecalculateBlockRangeDataByBlockRangeEnd()
         BlockRangeDataByBlockRangeEnd[blockIndex - 1] = {};
     }
 }
+
+void TLaggingAgentsReplicaProxyActor::MarkBlocksAsDirty(
+    const TActorContext& ctx,
+    const TString& unavailableAgentId,
+    TBlockRange64 range)
+{
+    // We artificially lower the resolution of the "CleanBlocksMap". This is
+    // done because the migration actor migrates by ranges of
+    // "MigrationRangeSize" anyway. The full resolution here would lead to
+    // migrating not aligned ranges which is not ideal.
+    const ui64 blocksPerRange = MigrationRangeSize / PartConfig->GetBlockSize();
+    auto alignedStart = AlignDown<ui64>(range.Start, blocksPerRange);
+    auto alignedEnd = AlignUp<ui64>(range.End + 1, blocksPerRange);
+
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] Lower block range resolution %s -> %s and mark blocks as dirty "
+        "for lagging agent %s",
+        PartConfig->GetName().c_str(),
+        range.Print().c_str(),
+        TBlockRange64::MakeClosedInterval(alignedStart, alignedEnd)
+            .Print()
+            .c_str(),
+        unavailableAgentId.Quote().c_str());
+
+    auto& state = AgentState[unavailableAgentId];
+    STORAGE_VERIFY(
+        state.CleanBlocksMap,
+        TWellKnownEntityTypes::DISK,
+        PartConfig->GetName());
+    state.CleanBlocksMap->Unset(alignedStart, alignedEnd);
+}
+
+void TLaggingAgentsReplicaProxyActor::StartLaggingResync(
+    const NActors::TActorContext& ctx,
+    const TString& agentId,
+    TAgentState* state)
+{
+    STORAGE_VERIFY(
+        state->DrainFinished && !state->MigrationDisabled,
+        TWellKnownEntityTypes::DISK,
+        PartConfig->GetName());
+
+    state->State = EAgentState::Resyncing;
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] Starting lagging agent %s migration. Block count: %lu, dirty "
+        "block count: %lu",
+        PartConfig->GetName().c_str(),
+        agentId.Quote().c_str(),
+        PartConfig->GetBlockCount(),
+        PartConfig->GetBlockCount() - state->CleanBlocksMap->Count());
+
+    STORAGE_VERIFY(
+        state->MigrationActorId,
+        TWellKnownEntityTypes::DISK,
+        PartConfig->GetName());
+    NCloud::Send<TEvNonreplPartitionPrivate::TEvStartLaggingAgentMigration>(
+        ctx,
+        state->MigrationActorId);
+    state->State = EAgentState::Resyncing;
+}
+
+ui64 TLaggingAgentsReplicaProxyActor::TakeDrainRequestId(
+    const TString& agentId)
+{
+    DrainRequestCounter++;
+    STORAGE_VERIFY(
+        !CurrentDrainingAgents.contains(DrainRequestCounter),
+        TWellKnownEntityTypes::DISK,
+        PartConfig->GetName());
+    CurrentDrainingAgents[DrainRequestCounter] = agentId;
+    return DrainRequestCounter;
+}
+
+void TLaggingAgentsReplicaProxyActor::DestroyChildActor(
+    const TActorContext& ctx,
+    TActorId* actorId)
+{
+    Y_DEBUG_ABORT_UNLESS(actorId);
+
+    if (!*actorId) {
+        return;
+    }
+
+    PoisonPillHelper.ReleaseOwnership(ctx, *actorId);
+    NCloud::Send<TEvents::TEvPoisonPill>(ctx, *actorId);
+    *actorId = TActorId();
+}
+
+void TLaggingAgentsReplicaProxyActor::Die(const NActors::TActorContext& ctx)
+{
+    TBase::Die(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
@@ -732,6 +782,27 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
             SelfId(),
             state.LaggingAgent));
     PoisonPillHelper.TakeOwnership(ctx, state.AvailabilityMonitoringActorId);
+}
+
+void TLaggingAgentsReplicaProxyActor::HandleLaggingMigrationDisabled(
+    const TEvNonreplPartitionPrivate::TEvLaggingMigrationDisabled::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    auto* state = AgentState.FindPtr(msg->AgentId);
+    if (!state) {
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] Lagging agent %s is a target for a migration. Writes to it are "
+        "disabled.",
+        PartConfig->GetName().c_str(),
+        msg->AgentId.Quote().c_str());
+
+    state->MigrationDisabled = true;
 }
 
 void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
@@ -916,27 +987,6 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
     StartLaggingResync(ctx, agentId, state);
 }
 
-void TLaggingAgentsReplicaProxyActor::HandleLaggingMigrationDisabled(
-    const TEvNonreplPartitionPrivate::TEvLaggingMigrationDisabled::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    auto* state = AgentState.FindPtr(msg->AgentId);
-    if (!state) {
-        return;
-    }
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Lagging agent %s is a target for a migration. Writes to it are "
-        "disabled.",
-        PartConfig->GetName().c_str(),
-        msg->AgentId.Quote().c_str());
-
-    state->MigrationDisabled = true;
-}
-
 void TLaggingAgentsReplicaProxyActor::HandleLaggingMigrationEnabled(
     const TEvNonreplPartitionPrivate::TEvLaggingMigrationEnabled::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -969,49 +1019,6 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingMigrationEnabled(
             return;
     }
     StartLaggingResync(ctx, msg->AgentId, state);
-}
-
-void TLaggingAgentsReplicaProxyActor::StartLaggingResync(
-    const NActors::TActorContext& ctx,
-    const TString& agentId,
-    TAgentState* state)
-{
-    STORAGE_VERIFY(
-        state->DrainFinished && !state->MigrationDisabled,
-        TWellKnownEntityTypes::DISK,
-        PartConfig->GetName());
-
-    state->State = EAgentState::Resyncing;
-    LOG_DEBUG(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Starting lagging agent %s migration. Block count: %lu, dirty "
-        "block count: %lu",
-        PartConfig->GetName().c_str(),
-        agentId.Quote().c_str(),
-        PartConfig->GetBlockCount(),
-        PartConfig->GetBlockCount() - state->CleanBlocksMap->Count());
-
-    STORAGE_VERIFY(
-        state->MigrationActorId,
-        TWellKnownEntityTypes::DISK,
-        PartConfig->GetName());
-    NCloud::Send<TEvNonreplPartitionPrivate::TEvStartLaggingAgentMigration>(
-        ctx,
-        state->MigrationActorId);
-    state->State = EAgentState::Resyncing;
-}
-
-ui64 TLaggingAgentsReplicaProxyActor::TakeDrainRequestId(
-    const TString& agentId)
-{
-    DrainRequestCounter++;
-    STORAGE_VERIFY(
-        !CurrentDrainingAgents.contains(DrainRequestCounter),
-        TWellKnownEntityTypes::DISK,
-        PartConfig->GetName());
-    CurrentDrainingAgents[DrainRequestCounter] = agentId;
-    return DrainRequestCounter;
 }
 
 void TLaggingAgentsReplicaProxyActor::HandleWriteBlocks(
@@ -1080,11 +1087,6 @@ void TLaggingAgentsReplicaProxyActor::HandlePoisonPill(
     PoisonPillHelper.HandlePoisonPill(ev, ctx);
 }
 
-void TLaggingAgentsReplicaProxyActor::Die(const NActors::TActorContext& ctx)
-{
-    TBase::Die(ctx);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
@@ -1126,13 +1128,6 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
             break;
     }
-}
-
-void TLaggingAgentsReplicaProxyActor::ForwardUnhandledEvent(
-    TAutoPtr<IEventHandle>& ev,
-    const TActorContext& ctx)
-{
-    ForwardMessageToActor(ev, ctx, NonreplPartitionActorId);
 }
 
 STFUNC(TLaggingAgentsReplicaProxyActor::StateZombie)
