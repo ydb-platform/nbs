@@ -47,6 +47,8 @@ struct TYDBTableNames
     TString History;
     TString Archive;
     TString Metrics;
+    TString Groups;
+    TString Partitions;
 
     TYDBTableNames() = default;
 };

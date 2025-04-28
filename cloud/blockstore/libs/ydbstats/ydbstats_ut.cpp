@@ -30,6 +30,8 @@ TYdbStatsConfigPtr CreateTestConfig()
     config.SetHistoryTableLifetimeDays(3);
     config.SetStatsTableRotationAfterDays(1);
     config.SetBlobLoadMetricsTableName("metrics");
+    config.SetGroupsTableName("groups");
+    config.SetPartitionsTableName("partitions");
 
     return std::make_shared<TYdbStatsConfig>(config);
 }
@@ -43,6 +45,8 @@ TYdbStatsConfigPtr CreateTestConfig(TDuration statsTtl, TDuration archiveTtl)
     config.SetHistoryTableLifetimeDays(3);
     config.SetStatsTableRotationAfterDays(1);
     config.SetBlobLoadMetricsTableName("metrics");
+    config.SetGroupsTableName("groups");
+    config.SetPartitionsTableName("partitions");
     config.SetStatsTableTtl(statsTtl.MilliSeconds());
     config.SetArchiveStatsTableTtl(archiveTtl.MilliSeconds());
 
@@ -58,6 +62,8 @@ TYdbStatsConfigPtr CreateAllTablesTestConfig()
     config.SetHistoryTableLifetimeDays(3);
     config.SetStatsTableRotationAfterDays(1);
     config.SetBlobLoadMetricsTableName("metrics");
+    config.SetGroupsTableName("groups");
+    config.SetPartitionsTableName("partitions");
     config.SetDatabaseName("/Root");
 
     return std::make_shared<TYdbStatsConfig>(config);
@@ -198,6 +204,33 @@ TStatsTableSchemePtr CreateBadHistoryTestScheme()
     return out.Finish();
 }
 
+TStatsTableSchemePtr CreateGroupsTestScheme()
+{
+    TStatsTableSchemeBuilder out;
+    static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
+        {"PartitionTabletId", NYdb::EPrimitiveType::Uint64},
+        {"GroudId", NYdb::EPrimitiveType::Uint32},
+        {"Timestamp", NYdb::EPrimitiveType::Uint64},
+    };
+    out.SetKeyColumns({"PartitionTabletId", "GroudId"});
+    out.AddColumns(columns);
+    return out.Finish();
+}
+
+TStatsTableSchemePtr CreatePartitionsTestScheme()
+{
+    TStatsTableSchemeBuilder out;
+    static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
+        {"DiskId", NYdb::EPrimitiveType::String},
+        {"VolumeTabletId", NYdb::EPrimitiveType::Uint64},
+        {"PartitionTabletId", NYdb::EPrimitiveType::Uint64},
+        {"Timestamp", NYdb::EPrimitiveType::Uint64},
+    };
+    out.SetKeyColumns({"PartitionTabletId"});
+    out.AddColumns(columns);
+    return out.Finish();
+}
+
 TYDBTableSchemes CreateTestSchemes(
     TDuration statesTtl = {},
     TDuration archiveTtl = {})
@@ -206,7 +239,9 @@ TYDBTableSchemes CreateTestSchemes(
         CreateStatsTestScheme(statesTtl),
         CreateHistoryTestScheme(),
         CreateArchiveStatsTestScheme(archiveTtl),
-        CreateMetricsTestScheme()};
+        CreateMetricsTestScheme(),
+        CreateGroupsTestScheme(),
+        CreatePartitionsTestScheme()};
 }
 
 TYDBTableSchemes CreateNewTestSchemes(
@@ -217,7 +252,9 @@ TYDBTableSchemes CreateNewTestSchemes(
         CreateNewStatsTestScheme(statesTtl),
         CreateNewHistoryTestScheme(),
         CreateNewArchiveStatsTestScheme(archiveTtl),
-        CreateMetricsTestScheme()};
+        CreateMetricsTestScheme(),
+        CreateGroupsTestScheme(),
+        CreatePartitionsTestScheme()};
 }
 
 TYDBTableSchemes CreateBadTestSchemes()
@@ -226,7 +263,9 @@ TYDBTableSchemes CreateBadTestSchemes()
         CreateBadStatsTestScheme(),
         CreateBadHistoryTestScheme(),
         CreateBadArchiveStatsTestScheme(),
-        CreateMetricsTestScheme()};
+        CreateMetricsTestScheme(),
+        CreateGroupsTestScheme(),
+        CreatePartitionsTestScheme()};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -250,9 +289,32 @@ NYdbStats::TYdbBlobLoadMetricRow BuildTestMetrics()
     return out;
 }
 
+NYdbStats::TYdbGroupsRow BuildTestGroups()
+{
+    TYdbGroupsRow out;
+    out.PartitionTabletId = 713;
+    out.GroupId = 42;
+    out.Timestamp = TInstant::Now();
+    return out;
+}
+
+NYdbStats::TYdbPartitionsRow BuildTestPartitions()
+{
+    TYdbPartitionsRow out;
+    out.PartitionTabletId = 713;
+    out.VolumeTabletId = 712;
+    out.DiskId = "vol0";
+    out.Timestamp = TInstant::Now();
+    return out;
+}
+
 NYdbStats::TYdbRowData BuildTestYdbRowData()
 {
-    return {{BuildTestStats()}, {BuildTestMetrics()}};
+    return {
+        { BuildTestStats() },
+        { BuildTestMetrics() },
+        { BuildTestGroups() },
+        { BuildTestPartitions() }};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -310,6 +372,14 @@ public:
         }
         if (tableSchemes.Metrics) {
             Tables.emplace(Config->GetBlobLoadMetricsTableName(), tableSchemes.Metrics);
+        }
+        if (tableSchemes.Groups) {
+            Tables.emplace(Config->GetGroupsTableName(), tableSchemes.Groups);
+        }
+        if (tableSchemes.Partitions) {
+            Tables.emplace(
+                Config->GetPartitionsTableName(),
+                tableSchemes.Partitions);
         }
     }
 
@@ -469,7 +539,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(3, ydbTestStorage->CreateTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(5, ydbTestStorage->CreateTableCalls);
     }
 
     Y_UNIT_TEST(ShouldNotCreateTablesIfTheyAlreadyExistAndNotOutdated)
@@ -624,7 +694,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
+        UNIT_ASSERT_VALUES_EQUAL(6, ydbTestStorage->UpsertCalls);
 
         for (const auto& t: tables) {
             UNIT_ASSERT_C(
@@ -662,7 +732,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
+        UNIT_ASSERT_VALUES_EQUAL(6, ydbTestStorage->UpsertCalls);
     }
 
     Y_UNIT_TEST(ShouldCreateTablesWithTtlSessingsIfNessesary)
@@ -684,7 +754,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->CreateTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(6, ydbTestStorage->CreateTableCalls);
 
         {
             auto response = ydbTestStorage->DescribeTable("test").GetValueSync();
@@ -724,6 +794,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto config = CreateTestConfig(
             statsTtl,
             archiveStatsTtl);
+
         auto statsScheme = CreateStatsTestScheme(statsTtl);
         auto historyScheme = CreateHistoryTestScheme();
         auto statsNewScheme = CreateStatsTestScheme();
@@ -731,6 +802,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         auto archiveScheme = CreateNewArchiveStatsTestScheme(statsTtl);
         auto archiveNewScheme = CreateNewArchiveStatsTestScheme(archiveStatsTtl);
         auto metricsScheme = CreateMetricsTestScheme();
+        auto groupsScheme = CreateGroupsTestScheme();
+        auto partitionsScheme = CreatePartitionsTestScheme();
+
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
             config,
@@ -740,7 +814,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
                 statsNewScheme,
                 historyNewScheme,
                 archiveNewScheme,
-                metricsScheme));
+                metricsScheme,
+                groupsScheme,
+                partitionsScheme));
         uploader->Start();
 
         TVector<TTableStat> directory;
@@ -750,7 +826,9 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
                 statsScheme,
                 historyScheme,
                 archiveScheme,
-                metricsScheme),
+                metricsScheme,
+                groupsScheme,
+                partitionsScheme),
             directory,
             true);
         ydbTestStorage->AddTable("arctest", archiveScheme);
