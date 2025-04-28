@@ -667,11 +667,15 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     TClientAppConfigPtr clientConfig;
 
     if (suId != Config->GetShardId()) {
-        auto index = RandomNumber(Config->GetShardMap()[suId].size());
+        clientConfig = CreateClientConfig(
+            request,
+            Config->GetShardMap()[suId][0].GetFqdn(),
+            Config->GetShardMap()[suId][0].GetDataPort());
+
         if (Config->GetShardTransport() == NProto::GRPC) {
             NProto::TShardHostInfo info;
-            info.SetFqdn(Config->GetShardMap()[suId][index].GetFqdn());
-            info.SetControlPort(Config->GetShardMap()[suId][index].GetControlPort());
+            info.SetFqdn(Config->GetShardMap()[suId][0].GetFqdn());
+            info.SetControlPort(Config->GetShardMap()[suId][0].GetControlPort());
 
             service = CreateSuDataService(Timer, Scheduler, Logging, Monitoring, info, clientId);
             service->Start();
@@ -679,8 +683,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             storage = CreateRemoteEndpoint(service);
         } else if (Config->GetShardTransport() == NProto::RDMA) {
             NProto::TShardHostInfo info;
-            info.SetFqdn(Config->GetShardMap()[suId][index].GetFqdn());
-            info.SetControlPort(Config->GetShardMap()[suId][index].GetControlPort());
+            info.SetFqdn(Config->GetShardMap()[suId][0].GetFqdn());
+            info.SetControlPort(Config->GetShardMap()[suId][0].GetControlPort());
 
             service = CreateSuDataService(Timer, Scheduler, Logging, Monitoring, info, clientId);
             service->Start();
@@ -696,8 +700,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             RdmaClient->Start();
 
             TRdmaEndpointConfig rdmaEndpoint {
-                .Address = Config->GetShardMap()[suId][index].GetFqdn(),
-                .Port = Config->GetShardMap()[suId][index].GetRdmaPort(),
+                .Address = Config->GetShardMap()[suId][0].GetFqdn(),
+                .Port = Config->GetShardMap()[suId][0].GetRdmaPort(),
             };
 
             ClientEndpoint = CreateRdmaEndpointClient(
