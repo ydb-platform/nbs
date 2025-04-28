@@ -107,6 +107,7 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
+        Request->SetBlockSize(BlockSize);
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
@@ -125,9 +126,12 @@ public:
         const auto& response = resultOrError.GetResult();
         Y_ENSURE(response.MsgId == TBlockStoreProtocol::ReadBlocksResponse);
 
-        CopyData(Request->Sglist, response.Data);
-
         auto& responseMsg = static_cast<TResponse&>(*response.Proto);
+
+        if (!HasError(responseMsg.GetError())) {
+            CopyData(Request->Sglist, response.Data);
+        }
+
         Response.SetValue(std::move(responseMsg));
     }
 
@@ -208,6 +212,7 @@ public:
         Y_ENSURE(guard);
 
         const auto& sglist = guard.Get();
+        Request->SetBlockSize(BlockSize);
 
         return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,

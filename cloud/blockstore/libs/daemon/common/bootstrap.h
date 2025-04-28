@@ -57,6 +57,7 @@ protected:
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
+    IBlockStorePtr ServiceWithDicovery;
     ISocketEndpointListenerPtr GrpcEndpointListener;
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;

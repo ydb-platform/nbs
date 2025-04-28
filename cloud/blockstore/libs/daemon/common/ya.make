@@ -29,6 +29,7 @@ PEERDIR(
     cloud/blockstore/libs/service_local
     cloud/blockstore/libs/service_rdma
     cloud/blockstore/libs/service_throttling
+    cloud/blockstore/libs/service_su
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/disk_agent/model
     cloud/blockstore/libs/storage/disk_registry_proxy/model

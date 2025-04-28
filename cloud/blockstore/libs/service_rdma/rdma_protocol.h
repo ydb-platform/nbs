@@ -9,18 +9,17 @@ namespace NCloud::NBlockStore::NStorage {
 
 struct TBlockStoreServerProtocol
 {
-
-#define BLOCKSTORE_DEFINE_E_MESSAGE_TYPE(name, ...) \
-        Ev##name##Request,                          \
-        Ev##name##Response,                         \
-                                                    \
-
     enum EMessageType
     {
-        BLOCKSTORE_SERVICE(BLOCKSTORE_DEFINE_E_MESSAGE_TYPE)
-    };
+        EvReadBlocksRequest = 1,
+        EvReadBlocksResponse = 2,
 
-#undef BLOCKSTORE_DEFINE_E_MESSAGE_TYPE
+        EvWriteBlocksRequest = 3,
+        EvWriteBlocksResponse = 4,
+
+        EvZeroBlocksRequest = 5,
+        EvZeroBlocksResponse = 6,
+    };
 
     static NRdma::TProtoMessageSerializer* Serializer();
 };
