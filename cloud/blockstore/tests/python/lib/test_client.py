@@ -1,4 +1,4 @@
-from cloud.blockstore.public.sdk.python.client import Client
+from cloud.blockstore.public.sdk.python.client import CreateClient
 
 from concurrent import futures
 import json
@@ -8,16 +8,16 @@ import time
 import cloud.blockstore.public.sdk.python.protos as protos
 
 from cloud.blockstore.public.sdk.python.client.credentials import ClientCredentials
-from cloud.blockstore.public.sdk.python.client.durable import DurableClient
 from cloud.blockstore.public.sdk.python.client.error import _handle_errors
-from cloud.blockstore.public.sdk.python.client.grpc_client import GrpcClient
-from cloud.blockstore.public.sdk.python.client.http_client import HttpClient
 
 
-class TestClient(Client):
+class TestClient:
 
-    def __init__(self, impl):
-        super(Client, self).__init__(impl)
+    def __init__(self, client):
+        self.__impl = client
+
+    def __getattr__(self, name):
+        return getattr(self.__impl, name)
 
     @_handle_errors
     def backup_disk_registry_state(self):
@@ -97,28 +97,6 @@ def CreateTestClient(
         retry_timeout_increment: int | None = None,
         log: type[Logger] | None = None,
         executor: futures.ThreadPoolExecutor | None = None):
-
-    backend = None
-
-    if endpoint.startswith('https://') or \
-            endpoint.startswith('http://'):
-        backend = HttpClient(
-            endpoint,
-            credentials,
-            request_timeout,
-            log,
-            executor)
-    else:
-        backend = GrpcClient(
-            endpoint,
-            credentials,
-            request_timeout,
-            log)
-
-    durable_client = DurableClient(
-        backend,
-        retry_timeout,
-        retry_timeout_increment,
-        log)
-
-    return TestClient(durable_client)
+    client = CreateClient(endpoint, credentials, request_timeout,
+                          retry_timeout, retry_timeout_increment, log, executor)
+    return TestClient(client)
