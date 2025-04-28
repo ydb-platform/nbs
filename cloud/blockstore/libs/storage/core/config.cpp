@@ -564,6 +564,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(LaggingDevicesForMirror3DisksEnabled,     bool,      false               )\
     xxx(LaggingDeviceTimeoutThreshold,            TDuration, Seconds(5)          )\
     xxx(LaggingDevicePingInterval,                TDuration, MSeconds(500)       )\
+    xxx(LaggingDeviceMaxMigrationBandwidth,       ui32,      400                 )\
+    xxx(LaggingDeviceMaxMigrationIoDepth,         ui32,      1                   )\
     xxx(ResyncAfterLaggingAgentMigration,         bool,      false               )\
     xxx(MultiAgentWriteEnabled,                   bool,      false               )\
     xxx(MultiAgentWriteRequestSizeThreshold,      ui32,      0                   )\

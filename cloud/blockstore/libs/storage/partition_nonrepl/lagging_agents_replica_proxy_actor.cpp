@@ -330,6 +330,7 @@ void TLaggingAgentsReplicaProxyActor::ReadBlocks(
                               << "Desired recipient actor is not "
                                  "nonreplicated partition for device: "
                               << deviceRequest.Device.GetDeviceUUID()
+                              << ", in range " << blockRange
                               << ", lagging agent: " << agentId
                               << ", disk id: " << PartConfig->GetName();
             ReportLaggingAgentsProxyWrongRecipientActor(message);
@@ -731,7 +732,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s went unavailable. Creating availability monitor",
+        "[%s] Agent %s went unavailable (lagging). Creating availability "
+        "monitor",
         PartConfig->GetName().c_str(),
         msg->LaggingAgent.GetAgentId().Quote().c_str());
 
@@ -751,6 +753,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     auto& state = AgentState[agentId];
     state.State = EAgentState::Unavailable;
     state.LaggingAgent = msg->LaggingAgent;
+    state.MigrationDisabled = false;
+    state.DrainFinished = false;
 
     RecalculateBlockRangeDataByBlockRangeEnd();
 
@@ -766,7 +770,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s block count: %lu, dirty block count: %lu",
+        "[%s] Lagging agent %s blocks map initialized. Block count: %lu, dirty "
+        "block count: %lu",
         PartConfig->GetName().c_str(),
         agentId.c_str(),
         PartConfig->GetBlockCount(),
@@ -826,6 +831,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
             return;
     }
     state->State = EAgentState::WaitingForDrain;
+    state->DrainFinished = false;
 
     LOG_INFO(
         ctx,
@@ -969,6 +975,13 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
     if (!state) {
         return;
     }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] Drain is finished for lagging agent %s",
+        PartConfig->GetName().c_str(),
+        agentId.Quote().c_str());
 
     state->DrainFinished = true;
     if (state->MigrationDisabled) {

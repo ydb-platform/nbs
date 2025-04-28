@@ -202,6 +202,7 @@ struct TTestEnv
 
         NProto::TStorageServiceConfig storageConfig = std::move(configBase);
         storageConfig.SetMaxMigrationIoDepth(4);
+        storageConfig.SetLaggingDeviceMaxMigrationIoDepth(4);
         storageConfig.SetLaggingDevicePingInterval(
             TDuration::Seconds(30).MilliSeconds());
         Config = std::make_shared<TStorageConfig>(

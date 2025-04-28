@@ -70,6 +70,7 @@ def main():
         action='append')
 
     parser.add_argument('--restart-interval', help='restart the process every N seconds', type=int, default=5)
+    parser.add_argument('--downtime', help='delay before the start of the process in seconds', type=int, default=0)
     parser.add_argument('--ping-port', help='ping this port via http after launching the process', type=int)
     parser.add_argument('--ping-attempts', help='the number of ping attempts before failing (0 - infinite)', type=int, default=0)
     parser.add_argument('--ping-timeout', help='the timeout between ping attempts in seconds', type=int, default=1)
@@ -117,6 +118,10 @@ def main():
                                             check_timeout=args.terminate_check_timeout)
 
             def start_process():
+                if args.downtime > 0:
+                    logging.info(f'waiting {args.downtime} seconds before starting process')
+                    time.sleep(args.downtime)
+
                 logging.info(f'starting process {cmdline}')
                 return subprocess.Popen(cmdline.split())
 

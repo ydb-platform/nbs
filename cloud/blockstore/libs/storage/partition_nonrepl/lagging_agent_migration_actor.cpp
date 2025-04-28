@@ -37,7 +37,7 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
           // Since this actor doesn't own source or destination actors, it won't
           // receive any stats and shouldn't send any either.
           TActorId(),   //  statActorId
-          config->GetMaxMigrationIoDepth(),
+          config->GetLaggingDeviceMaxMigrationIoDepth(),
           partConfig->GetParentActorId())
     , Config(std::move(config))
     , PartConfig(std::move(partConfig))
@@ -60,7 +60,7 @@ void TLaggingAgentMigrationActor::OnBootstrap(const TActorContext& ctx)
         TargetActorId,
         false,   // takeOwnershipOverActors
         std::make_unique<TMigrationTimeoutCalculator>(
-            Config->GetMaxMigrationBandwidth(),
+            Config->GetLaggingDeviceMaxMigrationBandwidth(),
             Config->GetExpectedDiskAgentSize(),
             PartConfig));
 }

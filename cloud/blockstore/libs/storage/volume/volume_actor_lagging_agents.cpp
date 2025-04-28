@@ -108,7 +108,7 @@ void TVolumeActor::HandleDeviceTimedOut(
 {
     const auto* msg = ev->Get();
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
         "[%lu] Device \"%s\" timed out",
