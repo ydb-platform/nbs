@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -2189,6 +2190,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(!HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
             UNIT_ASSERT(
                 response->GetErrorReason().Contains("request timed out"));
             UNIT_ASSERT(!timedOutDevice.has_value());
@@ -2207,6 +2211,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(!HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
             UNIT_ASSERT(
                 response->GetErrorReason().Contains("request timed out"));
             UNIT_ASSERT(timedOutDevice.has_value());
@@ -2222,6 +2229,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(!HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
             UNIT_ASSERT(
                 response->GetErrorReason().Contains("request timed out"));
             UNIT_ASSERT(timedOutDevice.has_value());
@@ -2259,6 +2269,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+            UNIT_ASSERT(HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
             UNIT_ASSERT_C(
                 response->GetErrorReason().Contains("request is canceled"),
                 response->GetErrorReason());
@@ -2266,6 +2279,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+            UNIT_ASSERT(HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
             UNIT_ASSERT_C(
                 response->GetErrorReason().Contains("request is canceled"),
                 response->GetErrorReason());
@@ -2283,6 +2299,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(!HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
             UNIT_ASSERT(
                 response->GetErrorReason().Contains("request timed out"));
             UNIT_ASSERT(!timedOutDevice.has_value());
