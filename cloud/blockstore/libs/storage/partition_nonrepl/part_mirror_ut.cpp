@@ -2782,15 +2782,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // Write requeests should work in migrated range.
         client.ZeroBlocks(firstMigrationRange);
 
+        // Write requests should be rejected within the currently migrating
+        // range.
         client.SendZeroBlocksRequest(secondMigrationRange);
         auto resp = client.RecvZeroBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, resp->GetError().GetCode());
 
         uuidsToStoleWriteEvents.clear();
-
-        client.SendWriteBlocksLocalRequest(
-            firstMigrationRange,
-            TString(DefaultBlockSize, 'B'));
 
         for (auto& ev: stollenEvents) {
             runtime.Send(ev.release());
