@@ -33,8 +33,8 @@ def start_ydb_cluster():
     ydb_cluster.stop()
 
 
-@pytest.fixture(name='nbs')
-def start_nbs_daemon(request, ydb):
+@pytest.fixture(name='nbs_with_dr')
+def start_nbs_daemon_with_dr(request, ydb):
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
@@ -53,6 +53,24 @@ def start_nbs_daemon(request, ydb):
         action="DiskRegistrySetWritableState",
         input_bytes=str.encode('{"State": true}'))
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
+
+    yield daemon
+
+    daemon.kill()
+
+
+@pytest.fixture(name='nbs')
+def start_nbs_daemon(ydb):
+    cfg = NbsConfigurator(ydb)
+    cfg.generate_default_nbs_configs()
+
+    cfg.files["storage"].DisableLocalService = True
+    cfg.files["storage"].NonReplicatedDontSuspendDevices = True
+    cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
+    cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
+    cfg.files["storage"].AcquireNonReplicatedDevices = True
+
+    daemon = start_nbs(cfg)
 
     yield daemon
 
@@ -137,16 +155,8 @@ def create_disk_agent_configurators(ydb, agent_ids, device_path):
     return configurators
 
 
-def simulate_dr_unavailability(client):
-    # Reset and restart the DR to simulate its unavailability.
-    # The DR should forget about the disks and not attempt to reallocate them.
-    tablet_id = client.get_dr_tablet_id()
-    client.reset_tablet(tablet_id)
-    client.kill_tablet(tablet_id)
-
-
-@pytest.mark.parametrize("nbs", [(6000)], indirect=["nbs"])
-def test_should_mount_volume_without_dr(nbs, agent_ids, disk_agent_configurators):
+@pytest.mark.parametrize("nbs_with_dr", [(6000)], indirect=["nbs_with_dr"])
+def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_configurators):
 
     logger = logging.getLogger("client")
     logger.setLevel(logging.DEBUG)
@@ -192,7 +202,7 @@ def test_should_mount_volume_without_dr(nbs, agent_ids, disk_agent_configurators
 
     session.unmount_volume()
 
-    simulate_dr_unavailability(client)
+    nbs_with_dr.kill()
     client.restart_volume("vol1")
 
     session.mount_volume()
@@ -203,8 +213,9 @@ def test_should_mount_volume_without_dr(nbs, agent_ids, disk_agent_configurators
     session.unmount_volume()
 
 
-@pytest.mark.parametrize("nbs", [(6000)], indirect=["nbs"])
+@pytest.mark.parametrize("nbs_with_dr", [(6000)], indirect=["nbs_with_dr"])
 def test_should_mount_volume_with_unavailable_agents(
+        nbs_with_dr,
         nbs,
         agent_ids,
         disk_agent_configurators):
@@ -258,7 +269,7 @@ def test_should_mount_volume_with_unavailable_agents(
 
     client.wait_agent_state(agent_ids[0], "AGENT_STATE_UNAVAILABLE")
 
-    simulate_dr_unavailability(client)
+    nbs_with_dr.kill()
     client.restart_volume("vol1")
 
     unavailable_agent = bkp['Agents'][0]
