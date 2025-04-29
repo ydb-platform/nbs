@@ -44,7 +44,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-2", "uuid-2", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { complete });
@@ -77,7 +78,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-2", "uuid-2", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { config1 });
@@ -110,7 +112,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-2", "uuid-2", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { config1 });
@@ -147,7 +150,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-3", "uuid-3", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { config1 });
@@ -223,7 +227,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { config1 });
@@ -300,13 +305,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-3", "uuid-2.3", "rack-2"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2a })
             .WithDisks({
                 Disk("disk-1", {"uuid-1.1", "uuid-2.1"}),
                 Disk("disk-2", {"uuid-1.2", "uuid-2.2"})
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TString> affectedDisks;
@@ -352,12 +358,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         device.SetPhysicalOffset(222);
         const auto agent1d = AgentConfig(1, {device});
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1a })
             .WithDisks({
                 Disk("disk-1", {"uuid-1"}),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             auto [r, error] = state.RegisterAgent(db, agent1b, Now());
@@ -427,9 +434,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-3", "uuid-1.3", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithConfig(1, { agent1a })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TString> affectedDisks;
@@ -490,9 +498,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.UpdateAgent(agent2);
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TString> affectedDisks;
@@ -532,9 +541,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         const auto config1 = AgentConfig(42, {device});
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TVector<TDeviceConfig> devices;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -556,9 +566,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-1", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -589,9 +600,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         const auto config1 = AgentConfig(42, {device});
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TVector<TDeviceConfig> devices;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -638,9 +650,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-2", "uuid-9", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1, config2, config3 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TVector<TDeviceConfig> expected;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -692,9 +705,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-3", "uuid-3", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -813,9 +827,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-1", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TVector<TDeviceConfig> devices;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -838,9 +853,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-1", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -896,9 +912,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-2", "uuid-4", "rack-2"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1, config2 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -964,7 +981,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-2", "uuid-2", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { stage1 });
@@ -1143,10 +1161,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
     {
         const auto config1 = AgentConfig(1, { Device("dev-1", "uuid-1", "rack-1")});
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1 })
             .WithDisks({ Disk("disk-1", {"uuid-1"}) })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         {
             TDiskInfo diskInfo;
@@ -1191,13 +1210,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
     Y_UNIT_TEST(ShouldGetDiskIds)
     {
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithDisks({
                 Disk("disk-1", {}),
                 Disk("disk-2", {}),
                 Disk("disk-3", {})
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto ids = state.GetDiskIds();
 
@@ -1227,13 +1247,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-3", "uuid-7", "rack-1")
         });
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithKnownAgents({agent1, agent2})
                 .WithDisks({Disk("disk-1", {"uuid-1"})})
                 .WithDirtyDevices(
                     {TDirtyDevice{"uuid-4", {}}, TDirtyDevice{"uuid-7", {}}})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -1292,10 +1313,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-3", "uuid-3", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1 })
             .WithDisks({ Disk("disk-1", {"uuid-1", "uuid-2"}) })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
@@ -1344,9 +1366,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         const auto agent1 = AgentConfig(1, { Device("dev-1", "uuid-1", "rack-1") });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT(state.MarkDeviceAsDirty(db, "uuid-1"));
@@ -1398,12 +1421,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(CreateStorageConfig(proto))
             .With(diskRegistryGroup)
             .WithKnownAgents(agents)
             .AddDevicePoolConfig("local-ssd", 10_GB, NProto::DEVICE_POOL_KIND_LOCAL)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TDiskRegistrySelfCounters::TDevicePoolCounters defaultPool;
         TDiskRegistrySelfCounters::TDevicePoolCounters localPool;
@@ -1864,10 +1888,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(diskRegistryGroup)
             .WithConfig({ config1, config2 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         config2 = AgentConfig(1001, {
             Device("dev-1", "uuid-2.1"),
@@ -1984,7 +2009,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto config2 = config1;
         config2.SetNodeId(1400);
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { config1 });
@@ -2033,8 +2059,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-1", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { agentConfig });
@@ -2087,7 +2114,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-12", "uuid-12", "rack-4"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({
                 agentConfig1,
                 agentConfig2,
@@ -2095,6 +2122,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 agentConfig4
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
@@ -2399,7 +2427,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-12", "uuid-12", "rack-4"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({
                 agentConfig1,
                 agentConfig2,
@@ -2407,6 +2435,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 agentConfig4
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
@@ -2698,13 +2727,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-9", "uuid-9", "rack-3"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({
                 agentConfig1,
                 agentConfig2,
                 agentConfig3
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
@@ -2888,13 +2918,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-9", "uuid-9", "rack-3"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({
                 agentConfig1,
                 agentConfig2,
                 agentConfig3
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
@@ -3116,7 +3147,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-4", "uuid-4", "rack-4"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({
                 agentConfig1,
                 agentConfig2,
@@ -3124,6 +3155,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 agentConfig4
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
@@ -3334,9 +3366,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-1", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agentConfig1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
@@ -3408,9 +3441,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-2", "uuid-2", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agentConfig1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
@@ -3496,9 +3530,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-1", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agentConfig1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // Make two groups with different placement strategy.
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -3601,9 +3636,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-1", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agentConfig1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // Make group with partitions.
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -3676,10 +3712,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({config})
             .WithSpreadPlacementGroups({"group-1"})
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -3731,7 +3768,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         ui64 lastSeqNo = 0;
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2, agent3 })
             .WithDisks({
                 Disk("disk-1", {"uuid-1"}),
@@ -3740,6 +3777,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
             .With(lastSeqNo)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // #1 : online -> warning
         // disk-1 : online -> migration
@@ -4008,7 +4046,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-2", "uuid-7", "rack-3"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2, agent3 })
             .WithDisks({
                 Disk("disk-1", {"uuid-1"}),
@@ -4016,6 +4054,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Disk("disk-3", {"uuid-2", "uuid-4"})
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // uuid-1 : online -> warning
         // disk-1 : online -> migration
@@ -4227,9 +4266,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-3", "uuid-5", "rack-2")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // #2 : online -> warning
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -4351,7 +4391,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2 })
             .WithDisks({
                 Disk("disk-1", {"uuid-1.1"}),
@@ -4360,6 +4400,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Disk("disk-4", {"uuid-1.3", "uuid-2.3"})
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // #2 : online -> warning
         // disk-2 : online -> migration
@@ -4509,7 +4550,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1a, agent2a, agent3a, agent4a })
             .WithDisks({
                 Disk("disk-1", {"uuid-1.1"}),
@@ -4518,6 +4559,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Disk("disk-4", {"uuid-1.3", "uuid-2.3"})
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             // drop uuid-1.1
@@ -4759,9 +4801,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1a })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // check initial configuration
         {
@@ -4825,9 +4868,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TString> affectedDisks;
@@ -4911,9 +4955,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2, agent3 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -5009,10 +5054,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2 })
             .WithDisks({ Disk("disk-1", { "uuid-1.1", "uuid-2.1" }) })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TString affectedDisk;
@@ -5106,9 +5152,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
@@ -5234,12 +5281,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2 })
             .WithDisks({
                 Disk("disk-1", { "uuid-1.1", "uuid-1.2", "uuid-1.3" })
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TString affectedDisk;
@@ -5296,12 +5344,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2 })
             .WithDisks({
                 Disk("disk-1", { "uuid-1.1", "uuid-1.2", "uuid-1.3" })
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             bool updated = false;
@@ -5355,7 +5404,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { agent1 });
@@ -5460,7 +5510,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { agent1 });
@@ -5516,7 +5567,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, { agent1 });
@@ -5709,12 +5761,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2a })
             .WithDisks({
                 Disk("disk-1", { "uuid-1.1", "uuid-2.1" })
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TString affectedDisk;
@@ -5802,7 +5855,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             TDuration::Hours(1).MilliSeconds());
         auto storageConfig = CreateStorageConfig(proto);
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(storageConfig)
             .WithKnownAgents({ agent1 })
             .WithDisks({
@@ -5811,6 +5864,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
             .With(lastSeqNo)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto ts = Now();
         TDuration cmsTimeout;
@@ -6093,7 +6147,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         ui64 lastSeqNo = 0;
         auto storageConfig = CreateStorageConfig();
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(storageConfig)
             .WithKnownAgents({ agent1 })
             .WithDisks({
@@ -6102,6 +6156,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
             .With(lastSeqNo)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto ts = Now();
 
@@ -6221,11 +6276,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             }),
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .AddDevicePoolConfig("", 100_GB, NProto::DEVICE_POOL_KIND_DEFAULT)
             .AddDevicePoolConfig("rot", 100_GB, NProto::DEVICE_POOL_KIND_GLOBAL)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -6302,13 +6358,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             }),
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .AddDevicePoolConfig("rot", 100_GB, NProto::DEVICE_POOL_KIND_GLOBAL)
             .WithDisks({
                 Disk("disk-1", {"uuid-1.1"}),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -6368,12 +6425,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto disksInWarningState = diskRegistryGroup->GetCounter("DisksInWarningState");
         auto maxWarningTime = diskRegistryGroup->GetCounter("MaxWarningTime");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(diskRegistryGroup)
             .With(storageConfig)
             .WithKnownAgents(agents)
             .AddDevicePoolConfig("rot", 100_GB, NProto::DEVICE_POOL_KIND_GLOBAL)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -6741,11 +6799,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         proto.SetNonReplicatedInfraTimeout(TDuration::Days(1).MilliSeconds());
         auto storageConfig = CreateStorageConfig(proto);
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(storageConfig)
             .WithKnownAgents(agents)
             .AddDevicePoolConfig("rot", 100_GB, NProto::DEVICE_POOL_KIND_GLOBAL)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -7007,7 +7066,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-5", "uuid-10", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2 })
             .WithDisks({
                 Disk("disk-1", {"uuid-1", "uuid-2"}),
@@ -7015,6 +7074,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Disk("disk-3", {"uuid-5"}),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TVector<TString> diskIds;
         auto error =
@@ -7070,10 +7130,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             });
         disks.push_back(Disk("disk-1", {"uuid-2.3", "uuid-3.3"}));
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2, agent3 })
             .WithDisks(disks)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TVector<TString> agentsIds = {
             agent1.GetAgentId(),
@@ -7119,7 +7180,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         const auto agent2 =
             AgentConfig(2, {Device("dev-2", "uuid-2", "rack-1")});
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithKnownAgents({agent1, agent2})
                 .WithDisks({
@@ -7127,6 +7188,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     ShadowDisk("disk-1", "cp-1", {"uuid-2"}),
                 })
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TVector<TString> diskIds;
         auto error =
@@ -7152,9 +7214,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         {
             auto agents = state.GetAgents();
@@ -7277,9 +7340,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1a })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -7324,8 +7388,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TString> affectedDisks;
@@ -7419,11 +7484,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         ui64 lastSeqNo = 0;
         auto storageConfig = CreateStorageConfig();
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(storageConfig)
             .WithKnownAgents({ agent1 })
             .With(lastSeqNo)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto ts = Now();
 
@@ -7473,11 +7539,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         ui64 lastSeqNo = 0;
         auto storageConfig = CreateStorageConfig();
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(storageConfig)
             .WithKnownAgents({ agent1 })
             .With(lastSeqNo)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto updateDevice = [&] (auto db, auto desiredState) {
             return state.UpdateCmsDeviceState(
@@ -7564,11 +7631,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         ui64 lastSeqNo = 0;
         auto storageConfig = CreateStorageConfig();
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(storageConfig)
             .WithKnownAgents({ agent1 })
             .With(lastSeqNo)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto ts = Now();
 
@@ -7622,8 +7690,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-2", "rack-2"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, {agent1, agent2});
@@ -7709,7 +7778,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({
                 AgentConfig(1, {
                     Device("dev-1", "uuid-1.1", "rack-1"),
@@ -7737,6 +7806,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 })
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TVector<TVector<TDeviceConfig>> diskDevices(5);
 
@@ -7829,10 +7899,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .WithDisks({Disk("disk-1", {"uuid-2.1", "uuid-1.1"})})
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -7997,7 +8068,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agentA })
             .WithStorageConfig([] {
                 auto config = CreateDefaultStorageConfigProto();
@@ -8016,6 +8087,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 } ()
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             auto [r, error] = state.RegisterAgent(db, agentB, Now());
@@ -8079,7 +8151,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto maxWarningTime = diskRegistryGroup->GetCounter("MaxWarningTime");
         auto maxMigrationTime = diskRegistryGroup->GetCounter("MaxMigrationTime");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(diskRegistryGroup)
             .WithKnownAgents(agents)
             .WithDisks({
@@ -8091,6 +8163,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Disk("disk-6", {"uuid-1.6"}),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto kickDevice = [&] (
             int i,
@@ -8283,7 +8356,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             }),
         };
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithKnownAgents(agents)
                 .WithDisks({
@@ -8306,6 +8379,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     10_GB,
                     NProto::DEVICE_POOL_KIND_GLOBAL)
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         const auto poolNames = state.GetPoolNames();
         ASSERT_VECTORS_EQUAL(
@@ -8441,7 +8515,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .With(diskRegistryGroup)
             .WithStorageConfig([] {
@@ -8466,6 +8540,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 SpreadPlacementGroup("group-3", {"disk-7", "disk-8", "disk-9"}),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -8585,7 +8660,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .With(diskRegistryGroup)
             .WithStorageConfig([] {
@@ -8614,6 +8689,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 }),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
 
         TTestExecutor executor;
@@ -8738,11 +8814,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ->GetSubgroup("component", "disk_registry");
         auto freeBytes = diskRegistryGroup->GetCounter("FreeBytes");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .With(diskRegistryGroup)
             .WithDisks({ Disk("disk-1", {"uuid-1.1"}) })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         state.PublishCounters(TInstant::Zero());
 
@@ -8804,9 +8881,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-2", "uuid-1.2", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({agent1a})
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agent1b));
@@ -8848,10 +8926,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithConfig(agents)
             .WithAgents({agents[0]})
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -8962,7 +9041,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .WithDisks({
                 Disk("disk-1", {"uuid-1.1", "uuid-3.1"}, NProto::DISK_STATE_WARNING),
@@ -8970,6 +9049,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Disk("disk-3", {"uuid-2.1", "uuid-3.2"}, NProto::DISK_STATE_WARNING),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto migrations = state.BuildMigrationList();
         UNIT_ASSERT_VALUES_EQUAL(4, migrations.size());
@@ -9009,11 +9089,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithConfig(agents)
             .WithAgents({ agents[0], agents[1] })
             .WithDisks({ Disk("disk-1", {"uuid-1.1", "uuid-1.2"}) })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
@@ -9143,9 +9224,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto config = CreateDefaultStorageConfigProto();
         config.SetAllocationUnitNonReplicatedSSD(10);
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithStorageConfig(config)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, {agent1b});
@@ -9305,10 +9387,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto config = CreateDefaultStorageConfigProto();
         config.SetAllocationUnitNonReplicatedSSD(referenceDeviceSize / 1_GB);
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithStorageConfig(config)
             .WithDisks({Disk("disk-1", {"uuid-1.1", "uuid-1.2"})})
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, agents);
@@ -9472,10 +9555,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         deviceOverrides.back().SetDevice("uuid-1.1");
         deviceOverrides.back().SetBlocksCount(referenceDeviceSize / blockSize);
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithStorageConfig(config)
             .WithDisks({Disk("disk-1", {"uuid-1.1", "uuid-1.2"})})
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UpdateConfig(state, db, agents, deviceOverrides);
@@ -9623,9 +9707,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
     {
         const TVector<TString> expected {"group1", "group2", "group3"};
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithSpreadPlacementGroups(expected)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TVector<TPlacementGroupInfo> groups;
 
@@ -9661,7 +9746,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             }),
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .WithDisksToReallocate({ "disk-1" })
             .WithDisks({
@@ -9669,6 +9754,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Disk("disk-2", {"uuid-1.2", "uuid-2.2"})
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_VALUES_EQUAL(1, state.GetDisksToReallocate().size());
         UNIT_ASSERT_GT(state.GetDisksToReallocate().at("disk-1"), 0);
@@ -9734,12 +9820,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto config = CreateDefaultStorageConfigProto();
         config.SetAllocationUnitNonReplicatedSSD(10);
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithStorageConfig(config)
             .WithKnownAgents(agents)
             .WithDisksToReallocate({ "disk-1" })
             .WithDisks({ Disk("disk-1", { "uuid-1.1" }) })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         {
             TVector<NProto::TDeviceConfig> devices;
@@ -10002,9 +10089,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1a })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto CheckDevices = [&] () {
             const auto dev1 = state.GetDevice("uuid-1.1");
@@ -10055,11 +10143,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             AgentConfig(1, { Device("dev-1", "uuid-1.1") })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .WithDisksToReallocate({ "disk-1" })
             .WithDisks({ Disk("disk-1", { "uuid-1.1" }) })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         {
             TDiskInfo info;
@@ -10094,9 +10183,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-1", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agentConfig1 })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(state.CreatePlacementGroup(
@@ -10210,12 +10300,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-2", "uuid-2", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({agent1})
             .WithDisks({
                 Disk("disk-1", {"uuid-1", "uuid-2"}),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto allocateDisk = [&] (auto& db, auto& diskId, auto totalSize) {
             TDiskRegistryState::TAllocateDiskResult result {};
@@ -10316,12 +10407,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-2", "rack-2"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({agent1, agent2})
             .WithDisks({
                 Disk("disk-1", {"uuid-1", "uuid-2"}),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto updateAgentState = [&] (auto db, const auto& agent, auto desiredState) {
             TVector<TString> affectedDisks;
@@ -10393,12 +10485,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .WithDisks({
                 Disk("disk-1", {"uuid-1.1", "uuid-1.2"}),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());
@@ -10541,7 +10634,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .WithStorageConfig([] {
                 auto config = CreateDefaultStorageConfigProto();
@@ -10552,6 +10645,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Disk("disk-1", {"uuid-1.1", "uuid-1.2"}),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         for (TString uuid: { "uuid-1.1", "uuid-1.2" }) {
             auto device = state.GetDevice(uuid);
@@ -10599,7 +10693,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.WriteDiskRegistryConfig(MakeConfig(agents));
         });
 
-        std::optional<TDiskRegistryState> state = TDiskRegistryStateBuilder()
+        auto state = TDiskRegistryStateBuilder()
             .WithConfig(agents)
             .WithStorageConfig([] {
                 auto config = CreateDefaultStorageConfigProto();
@@ -10891,13 +10985,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 diskRegistryAgentListParams));
             UNIT_ASSERT_VALUES_EQUAL(0, diskRegistryAgentListParams.size());
 
-            state.emplace(TDiskRegistryState {
+            state = std::make_unique<TDiskRegistryState>(
                 CreateLoggingService("console"),
-                CreateStorageConfig([] {
-                    auto proto = CreateDefaultStorageConfigProto();
-                    proto.SetAllocationUnitNonReplicatedSSD(93);
-                    return proto;
-                }()),
+                CreateStorageConfig(
+                    []
+                    {
+                        auto proto = CreateDefaultStorageConfigProto();
+                        proto.SetAllocationUnitNonReplicatedSSD(93);
+                        return proto;
+                    }()),
                 rootGroup,
                 std::move(config),
                 std::move(agents),
@@ -10914,8 +11010,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 std::move(outdatedVolumeConfigs),
                 std::move(suspendedDevices),
                 std::move(automaticallyReplacedDevices),
-                std::move(diskRegistryAgentListParams)
-            });
+                std::move(diskRegistryAgentListParams));
         });
 
         UNIT_ASSERT_VALUES_EQUAL(0, criticalEvents->Val());
@@ -11007,7 +11102,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             }),
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
             .WithDisks([] {
                 TVector disks {
@@ -11034,6 +11129,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 return disks;
             }())
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         {
             TDiskInfo info;
@@ -11082,10 +11178,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto agentCounters = diskRegistryGroup
             ->GetSubgroup("agent", agent.GetAgentId());
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(diskRegistryGroup)
             .WithKnownAgents({agent})
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto changeAgentState = [&] (const auto& newState, const auto& ts) {
             executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -11221,9 +11318,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
     Y_UNIT_TEST(ShouldPullInLegacyDiskErrorUserNotifications)
     {
-        auto state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithErrorNotifications({"disk0", "disk1", "disk2"})
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_VALUES_EQUAL(3, state.GetUserNotifications().Count);
 
@@ -11267,10 +11365,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({ agent1, agent2 })
             .WithDisks({ Disk("disk-1", { "uuid-1.1", "uuid-2.1" }) })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto moveDeviceToErrorState = [&] (auto deviceId, auto seqNum) {
             executor.WriteTx([&](TDiskRegistryDatabase db) mutable {
@@ -11426,13 +11525,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithKnownAgents({agent1, agent2})
                 .WithDisks(
                     {Disk("disk-1", {"uuid-1.1", "uuid-1.2"}),
                      Disk("disk-2", {"uuid-2.1", "uuid-2.2"})})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto moveDeviceToState =
             [&](TString deviceId, NProto::EDeviceState deviceState)
@@ -11604,13 +11704,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithKnownAgents({agent1, agent2})
                 .WithDisks(
                     {Disk("disk-1", {"uuid-1.1", "uuid-1.2"}),
                      Disk("disk-2", {"uuid-2.1", "uuid-2.2"})})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto moveDeviceToState =
             [&](TString deviceId, NProto::EDeviceState deviceState)
@@ -11786,9 +11887,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-1", "uuid-1", "rack-1")
         });
 
-        auto state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithConfig({agentConfig})
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // Register new agent with one device.
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -11850,7 +11952,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             2,
             {Device("dev-2", "uuid-2", "rack-1")});
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithKnownAgents({agent1, agent2})
                 .WithDisks({Disk("disk-1", {"uuid-1", "uuid-2"})})
@@ -11858,6 +11960,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     {TDirtyDevice{"uuid-1", "disk-1"},
                      TDirtyDevice{"uuid-2", "disk-1"}})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_EQUAL(state.GetDirtyDevices().size(), 2);
 
@@ -11888,7 +11991,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             2,
             {Device("dev-2", "uuid-2", "rack-1")});
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithKnownAgents({agent1, agent2})
                 .WithDisks(
@@ -11897,6 +12000,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     {TDirtyDevice{"uuid-1", "disk-1"},
                      TDirtyDevice{"uuid-2", "disk-2"}})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_EQUAL(state.GetDirtyDevices().size(), 2);
 
@@ -11938,10 +12042,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .With(counters)
             .WithKnownAgents(agents)
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         TDiskRegistrySelfCounters::TDevicePoolCounters defaultPool;
         defaultPool.Init(counters->GetSubgroup("pool", "default"));
@@ -12116,12 +12221,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("NVMENBS02", "uuid-1.2"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
             .WithKnownAgents({agentConfig})
             .WithDisks({
                 Disk("disk-1", {"uuid-1.2"}),
             })
             .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
@@ -12240,7 +12346,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                auto state = TDiskRegistryStateBuilder::LoadState(db).Build();
+                auto statePtr =
+                    TDiskRegistryStateBuilder::LoadState(db).Build();
+                TDiskRegistryState& state = *statePtr;
 
                 auto orphanDevices = state.FindOrphanDevices();
                 UNIT_ASSERT_EQUAL(static_cast<size_t>(3), orphanDevices.size());
@@ -12349,7 +12457,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             agentConfig,
         };
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -12376,6 +12484,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     TDirtyDevice{"uuid-2", {}},
                 })
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto allocate = [&](auto db, ui32 deviceCount)
         {

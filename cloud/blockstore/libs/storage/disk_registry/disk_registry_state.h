@@ -359,6 +359,11 @@ public:
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
         THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
 
+    ~TDiskRegistryState();
+
+    TDiskRegistryState(const TDiskRegistryState&) = delete;
+    TDiskRegistryState& operator=(const TDiskRegistryState&) = delete;
+
     struct TAgentRegistrationResult
     {
         TVector<TDiskId> AffectedDisks;

@@ -43,7 +43,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                  Device("dev-3", "uuid-2.3"),
                  Device("dev-4", "uuid-2.4")})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -59,6 +59,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     }())
                 .WithAgents(agents)
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto agentsInfo = state.QueryAgentsInfo();
         UNIT_ASSERT_VALUES_EQUAL(2, agentsInfo.size());
@@ -95,7 +96,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             1,
             {Device("dev-1", "uuid-1.1"), Device("dev-2", "uuid-1.2")})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -112,6 +113,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                 .WithAgents(agents)
                 .WithDirtyDevices({TDirtyDevice{"uuid-1.1", {}}})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto agentsInfo = state.QueryAgentsInfo();
         UNIT_ASSERT_VALUES_EQUAL(1, agentsInfo.size());
@@ -139,7 +141,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             1,
             {Device("dev-1", "uuid-1.1"), Device("dev-2", "uuid-1.2")})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -156,6 +158,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                 .WithAgents(agents)
                 .WithSuspendedDevices({"uuid-1.1"})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto agentsInfo = state.QueryAgentsInfo();
         UNIT_ASSERT_VALUES_EQUAL(1, agentsInfo.size());
@@ -183,7 +186,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             1,
             {Device("dev-1", "uuid-1.1"), Device("dev-2", "uuid-1.2")})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -199,6 +202,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     }())
                 .WithAgents(agents)
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto allocate = [&](auto db,
                             TString agentId,
@@ -268,7 +272,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     "uuid-2.2",
                     NProto::EDeviceState::DEVICE_STATE_ERROR)})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -283,6 +287,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     }())
                 .WithAgents(agents)
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         const auto agentsInfo = state.QueryAgentsInfo();
         UNIT_ASSERT_VALUES_EQUAL(2, agentsInfo.size());
@@ -341,7 +346,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     "uuid-2.2",
                     NProto::EDeviceState::DEVICE_STATE_WARNING)})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -356,6 +361,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     }())
                 .WithAgents(agents)
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         const auto agentsInfo = state.QueryAgentsInfo();
         UNIT_ASSERT_VALUES_EQUAL(2, agentsInfo.size());
