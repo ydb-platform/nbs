@@ -409,6 +409,8 @@ TDiskRegistryState::TDiskRegistryState(
     // fills Migrations and uses both Disks and DeviceList
     FillMigrations();
 
+    ClusterHealth = std::make_unique<TClusterHealth>(this);
+
     if (Counters) {
         TVector<TString> poolNames;
         for (const auto& x: DevicePoolConfigs) {
@@ -1097,6 +1099,9 @@ auto TDiskRegistryState::RegisterAgent(
         }
 
         UpdateAgent(db, agent);
+        Y_DEBUG_ABORT_UNLESS(ClusterHealth);
+        ClusterHealth->OnAgentConnected(agent.GetAgentId());
+        ClusterHealth->OnAgentStateChanged(agent.GetAgentId());
     } catch (const TServiceError& e) {
         return MakeError(e.GetCode(), e.what());
     } catch (...) {
@@ -1721,6 +1726,7 @@ void TDiskRegistryState::ChangeAgentState(
     agent.SetState(newState);
     agent.SetStateTs(now.MicroSeconds());
     agent.SetStateMessage(std::move(stateMessage));
+    ClusterHealth->OnAgentStateChanged(agent.GetAgentId());
 }
 
 TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
@@ -3772,6 +3778,7 @@ void TDiskRegistryState::RemoveAgent(
     DeviceList.RemoveDevices(agent);
     AgentList.RemoveAgent(nodeId);
 
+    ClusterHealth->OnAgentStateChanged(agentId);
     db.DeleteAgent(agentId);
 }
 
@@ -4383,6 +4390,31 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.AgentsInWarningState->Set(agentsInWarningState);
     SelfCounters.AgentsInUnavailableState->Set(agentsInUnavailableState);
     SelfCounters.DisksInOnlineState->Set(disksInOnlineState);
+
+    const ui32 agentCount = ClusterHealth->GetAgents().size();
+    const ui32 unavailableAgentCount = ClusterHealth->GetUnavailableAgents().size();
+    const ui32 disconnectedAgentCount = ClusterHealth->GetDisconnectedAgents().size();
+    Y_ABORT_UNLESS(
+        agentsInUnavailableState == unavailableAgentCount,
+        "cluster health: all[%u] unav[%u] disc[%u]; stats: online[%u] warn[%u] "
+        "unav[%u]",
+        agentCount,
+        unavailableAgentCount,
+        disconnectedAgentCount,
+        agentsInOnlineState,
+        agentsInWarningState,
+        agentsInUnavailableState);
+    Y_ABORT_UNLESS(
+        agentCount - unavailableAgentCount ==
+            agentsInOnlineState + agentsInWarningState,
+        "cluster health: all[%u] unav[%u] disc[%u]; stats: online[%u] warn[%u] "
+        "unav[%u]",
+        agentCount,
+        unavailableAgentCount,
+        disconnectedAgentCount,
+        agentsInOnlineState,
+        agentsInWarningState,
+        agentsInUnavailableState);
 
     SelfCounters.DisksInWarningState->Set(disksInWarningState);
     SelfCounters.MaxWarningTime->Set(maxWarningTime.Seconds());
@@ -5654,13 +5686,6 @@ void TDiskRegistryState::CleanupAgentConfig(
     if (!HasError(error) || error.GetCode() == E_NOT_FOUND) {
         return;
     }
-
-    // Do not return the error from "TryToRemoveAgentDevices()" since
-    // it's internal and shouldn't block node removal.
-    ReportDiskRegistryCleanupAgentConfigError(
-        TStringBuilder() << "Could not remove device from agent "
-                         << agent.GetAgentId().Quote() << ": "
-                         << FormatError(error));
 
     SuspendLocalDevices(db, agent);
 }

@@ -1728,6 +1728,24 @@ message TGetAgentNodeIdResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+//
+
+message TGetLaggingDevicesAllowedRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Disk identifier to perform operations on.
+    string DiskId = 2;
+}
+
+message TGetLaggingDevicesAllowedResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Report that some of the devices were lagging.
 
 message TAddLaggingDevicesRequest

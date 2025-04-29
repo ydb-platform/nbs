@@ -58,6 +58,8 @@ private:
     THashMap<TAgentId, size_t> AgentIdToIdx;
     THashMap<TNodeId, size_t> NodeIdToIdx;
 
+    THashSet<TAgentId> DisconnectedAgents;
+
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
 
     TLog Log;
@@ -107,6 +109,8 @@ public:
     TUpdateAgentDevicesResult TryUpdateAgentDevices(
         const TString& agentId,
         const TKnownAgent& knownAgent);
+
+    void OnAgentDisconnected(const TAgentId& agentId);
 
     bool RemoveAgent(TNodeId nodeId);
     bool RemoveAgent(const TAgentId& agentId);

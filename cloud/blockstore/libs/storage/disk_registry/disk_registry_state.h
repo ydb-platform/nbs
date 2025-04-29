@@ -2,13 +2,13 @@
 
 #include "public.h"
 
-#include "disk_registry_state_notification.h"
-
 #include "disk_registry_database.h"
 #include "disk_registry_private.h"
 #include "disk_registry_self_counters.h"
+#include "disk_registry_state_notification.h"
 
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/disk_registry/cluster_health.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/agent_list.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/pending_cleanup.h>
@@ -336,6 +336,8 @@ private:
     NDiskRegistry::TNotificationSystem NotificationSystem;
 
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
+
+    std::unique_ptr<TClusterHealth> ClusterHealth;
 
 public:
     TDiskRegistryState(
@@ -860,6 +862,7 @@ public:
     void OnAgentDisconnected(TInstant now, const TString& agentId)
     {
         AgentList.OnAgentDisconnected(now, agentId);
+        ClusterHealth->OnAgentDisconnected(agentId);
     }
 
     TVector<TAgentId> GetAgentIdsWithOverriddenListParams() const

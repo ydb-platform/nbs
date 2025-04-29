@@ -415,6 +415,9 @@ void TDiskRegistryActor::HandleServerDisconnected(
 
     if (agentId) {
         auto& info = AgentRegInfo[agentId];
+        if (info.Connected || info.SeqNo == 0) {
+            DisconnectedAgentCount++;
+        }
         info.Connected = false;
 
         LOG_WARN_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
@@ -511,12 +514,17 @@ void TDiskRegistryActor::HandleAgentConnectionLost(
     }
 
     auto it = AgentRegInfo.find(msg->AgentId);
-    if (it != AgentRegInfo.end() && msg->SeqNo < it->second.SeqNo) {
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "Agent " << msg->AgentId.Quote() << " is connected: "
-            << msg->SeqNo << " < SeqNo " << it->second.SeqNo);
+    if (it != AgentRegInfo.end()) {
+        if (msg->SeqNo < it->second.SeqNo) {
+            LOG_DEBUG_S(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
+                "Agent " << msg->AgentId.Quote() << " is connected: "
+                         << msg->SeqNo << " < SeqNo " << it->second.SeqNo);
 
-        return;
+            return;
+        }
+        AgentRegInfo.erase(it);
     }
 
     LOG_WARN_S(ctx, TBlockStoreComponents::DISK_REGISTRY,

@@ -524,6 +524,7 @@ void TNonreplicatedPartitionActor::HandleDeviceTimedOutResponse(
     const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+
     const auto* msg = ev->Get();
     LOG_DEBUG(
         ctx,

@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    cluster_health.cpp
     disk_registry_actor_acquire.cpp
     disk_registry_actor_add_lagging_devices.cpp
     disk_registry_actor_allocate.cpp

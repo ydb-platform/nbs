@@ -52,6 +52,21 @@ void TDiskRegistryActor::HandleAddLaggingDevices(
         std::move(laggingDevices));
 }
 
+void TDiskRegistryActor::HandleGetLaggingDevicesAllowed(
+    const TEvDiskRegistry::TEvGetLaggingDevicesAllowedRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(GetLaggingDevicesAllowed);
+
+    // State->GetAgents()
+
+    auto response = std::make_unique<
+        TEvDiskRegistry::TEvGetLaggingDevicesAllowedResponse>();
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TDiskRegistryActor::PrepareAddLaggingDevices(
