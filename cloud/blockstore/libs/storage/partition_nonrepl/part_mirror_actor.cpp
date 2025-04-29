@@ -615,7 +615,7 @@ void TMirrorPartitionActor::HandleRemoveLaggingAgent(
         TBlockStoreComponents::PARTITION,
         "[%s] Removing lagging agent: %s, replica index: %u",
         DiskId.c_str(),
-        msg->LaggingAgent.GetAgentId().c_str(),
+        msg->LaggingAgent.GetAgentId().Quote().c_str(),
         msg->LaggingAgent.GetReplicaIndex());
 
     State.RemoveLaggingAgent(msg->LaggingAgent);

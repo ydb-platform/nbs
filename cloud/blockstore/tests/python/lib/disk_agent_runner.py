@@ -41,7 +41,7 @@ class LocalDiskAgent(Daemon):
             enable_tls=False,
             discovery_config=None,
             restart_interval=None,
-            downtime_after_restart=None,
+            restart_downtime=None,
             dynamic_storage_pools=None,
             load_configs_from_cms=False,
             kikimr_binary_path=None,
@@ -87,9 +87,9 @@ class LocalDiskAgent(Daemon):
                 "--ping-timeout", "2",
                 # "-vvvvv",
             ]
-            if downtime_after_restart is not None:
+            if restart_downtime is not None:
                 self.__unstable_process_args += ['--downtime',
-                                                 str(downtime_after_restart)]
+                                                 str(restart_downtime)]
 
         self.__output_path = yatest_common.output_path()
         self.__cwd = get_unique_path_for_current_test(
