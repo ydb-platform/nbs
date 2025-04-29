@@ -96,6 +96,15 @@ public:
         return std::make_pair(bytes, deletedBytes);
     }
 
+    size_t GetTotalDataSize() const
+    {
+        size_t size = 0;
+        for (const auto& c: Chunks) {
+            size += c.Data.size();
+        }
+        return size;
+    }
+
     void UpdateLogTag(TString logTag)
     {
         LogTag = std::move(logTag);

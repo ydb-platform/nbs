@@ -88,6 +88,7 @@ public:
     bool GetUseMixedBlocksInsteadOfAliveBlocksInCompaction() const;
     ui32 GetCollectGarbageThreshold() const;
     ui64 GetFlushBytesThreshold() const;
+    ui32 GetFlushBytesEntriesThreshold() const;
     ui32 GetMaxDeleteGarbageBlobsPerTx() const;
     ui32 GetLoadedCompactionRangesPerTx() const;
 

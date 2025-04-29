@@ -573,4 +573,8 @@ message TStorageConfig
     // if background operations should run but have been throttled.
     // (e.g. cleanup operation due to CleanupCpuThrottlingThresholdPercentage)
     optional uint32 EnqueueBlobIndexOpIfNeededScheduleInterval = 427; // in ms
+
+    // The amount of data entries in the fresh bytes table that triggers
+    // flushing
+    optional uint32 FlushBytesEntriesThreshold = 428;
 }

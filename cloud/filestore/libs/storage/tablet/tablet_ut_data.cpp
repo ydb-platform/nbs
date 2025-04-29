@@ -382,6 +382,48 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldFlushFreshBytesByEntriesThreshold)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetFlushBytesThreshold(1000);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        // Write 1 byte 999 times
+        for (int i = 1; i <= 999; i++) {
+            tablet.WriteData(handle, i, 1, 'a');
+        }
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 999);
+        }
+
+        // Write 1000th byte - FlushBytes should be triggered
+        tablet.WriteData(handle, 1000, 1, 'a');
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 0);
+        }
+    }
+
     TABLET_TEST(ShouldAcceptLargeUnalignedWrites)
     {
         const auto rangeSize = 4 * tabletConfig.BlockSize;

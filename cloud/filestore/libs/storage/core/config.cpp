@@ -52,6 +52,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(UseMixedBlocksInsteadOfAliveBlocksInCompaction, bool,   false         )\
     xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\
     xxx(FlushBytesThreshold,                ui64,   4_MB                      )\
+    xxx(FlushBytesEntriesThreshold,         ui32,   0 /*TODO: default value*/ )\
     xxx(MaxDeleteGarbageBlobsPerTx,         ui32,   16384                     )\
     xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
