@@ -213,7 +213,7 @@ struct TYdbBlobLoadMetricRow
     static TStringBuf GetYdbRowDefinition();
 };
 
-struct TYdbGroupsRow
+struct TYdbGroupRow
 {
     static constexpr TStringBuf TabletIdName = "TabletId";
     static constexpr TStringBuf ChannelName = "Channel";
@@ -231,7 +231,7 @@ struct TYdbGroupsRow
     NYdb::TValue GetYdbValues() const;
 };
 
-struct TYdbPartitionsRow
+struct TYdbPartitionRow
 {
     static constexpr TStringBuf PartitionTabletIdName = "PartitionTabletId";
     static constexpr TStringBuf VolumeTabletIdName = "VolumeTabletId";
@@ -251,16 +251,16 @@ struct TYdbRowData
 {
     TVector<TYdbStatsRow> Stats;
     TVector<TYdbBlobLoadMetricRow> Metrics;
-    TVector<TYdbGroupsRow> Groups;
-    TVector<TYdbPartitionsRow> Partitions;
+    TVector<TYdbGroupRow> Groups;
+    TVector<TYdbPartitionRow> Partitions;
 
     TYdbRowData() = default;
 
     TYdbRowData(
             TVector<TYdbStatsRow> stats,
             TVector<TYdbBlobLoadMetricRow> metrics,
-            TVector<TYdbGroupsRow> groups,
-            TVector<TYdbPartitionsRow> partitions)
+            TVector<TYdbGroupRow> groups,
+            TVector<TYdbPartitionRow> partitions)
         : Stats(std::move(stats))
         , Metrics(std::move(metrics))
         , Groups(std::move(groups))

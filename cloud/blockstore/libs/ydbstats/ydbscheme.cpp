@@ -147,11 +147,11 @@ TStatsTableSchemePtr CreateGroupsTableScheme()
     TStatsTableSchemeBuilder out;
 
     static const TVector<std::pair<TString, EPrimitiveType>> columns = {
-        {TYdbGroupsRow::TabletIdName.data(), EPrimitiveType::Uint64},
-        {TYdbGroupsRow::ChannelName.data(), EPrimitiveType::Uint32},
-        {TYdbGroupsRow::GroupIdName.data(), EPrimitiveType::Uint32},
-        {TYdbGroupsRow::GenerationName.data(), EPrimitiveType::Uint32},
-        {TYdbGroupsRow::TimestampName.data(), EPrimitiveType::Uint64}};
+        {TYdbGroupRow::TabletIdName.data(), EPrimitiveType::Uint64},
+        {TYdbGroupRow::ChannelName.data(), EPrimitiveType::Uint32},
+        {TYdbGroupRow::GroupIdName.data(), EPrimitiveType::Uint32},
+        {TYdbGroupRow::GenerationName.data(), EPrimitiveType::Uint32},
+        {TYdbGroupRow::TimestampName.data(), EPrimitiveType::Uint64}};
 
     STORAGE_VERIFY_C(
         out.AddColumns(columns),
@@ -161,18 +161,18 @@ TStatsTableSchemePtr CreateGroupsTableScheme()
 
     STORAGE_VERIFY_C(
         out.SetKeyColumns({
-            TYdbGroupsRow::TabletIdName.data(),
-            TYdbGroupsRow::ChannelName.data(),
-            TYdbGroupsRow::GroupIdName.data(),
-            TYdbGroupsRow::GenerationName.data()}),
+            TYdbGroupRow::TabletIdName.data(),
+            TYdbGroupRow::ChannelName.data(),
+            TYdbGroupRow::GroupIdName.data(),
+            TYdbGroupRow::GenerationName.data()}),
         TWellKnownEntityTypes::YDB_TABLE,
         "groups table",
         "unable to setup key fields");
 
     out.SetTtl(NTable::TTtlSettings{
-        TYdbGroupsRow::TimestampName.data(),
+        TYdbGroupRow::TimestampName.data(),
         NTable::TTtlSettings::EUnit::Seconds,
-        TYdbGroupsRow::TtlDuration});
+        TYdbGroupRow::TtlDuration});
 
     return out.Finish();
 }
@@ -184,10 +184,10 @@ TStatsTableSchemePtr CreatePartitionsTableScheme()
     TStatsTableSchemeBuilder out;
 
     static const TVector<std::pair<TString, EPrimitiveType>> columns = {
-        {TYdbPartitionsRow::PartitionTabletIdName.data(), EPrimitiveType::Uint64},
-        {TYdbPartitionsRow::VolumeTabletIdName.data(), EPrimitiveType::Uint64},
-        {TYdbPartitionsRow::DiskIdName.data(), EPrimitiveType::String},
-        {TYdbPartitionsRow::TimestampName.data(), EPrimitiveType::Uint64}};
+        {TYdbPartitionRow::PartitionTabletIdName.data(), EPrimitiveType::Uint64},
+        {TYdbPartitionRow::VolumeTabletIdName.data(), EPrimitiveType::Uint64},
+        {TYdbPartitionRow::DiskIdName.data(), EPrimitiveType::String},
+        {TYdbPartitionRow::TimestampName.data(), EPrimitiveType::Uint64}};
 
     STORAGE_VERIFY_C(
         out.AddColumns(columns),
@@ -196,15 +196,15 @@ TStatsTableSchemePtr CreatePartitionsTableScheme()
         "unable to setup fields");
 
     STORAGE_VERIFY_C(
-        out.SetKeyColumns({TYdbPartitionsRow::PartitionTabletIdName.data()}),
+        out.SetKeyColumns({TYdbPartitionRow::PartitionTabletIdName.data()}),
         TWellKnownEntityTypes::YDB_TABLE,
         "partitions table",
         "unable to setup key fields");
 
     out.SetTtl(NTable::TTtlSettings{
-        TYdbPartitionsRow::TimestampName.data(),
+        TYdbPartitionRow::TimestampName.data(),
         NTable::TTtlSettings::EUnit::Seconds,
-        TYdbPartitionsRow::TtlDuration});
+        TYdbPartitionRow::TtlDuration});
 
     return out.Finish();
 }

@@ -289,18 +289,18 @@ NYdbStats::TYdbBlobLoadMetricRow BuildTestMetrics()
     return out;
 }
 
-NYdbStats::TYdbGroupsRow BuildTestGroups()
+NYdbStats::TYdbGroupRow BuildTestGroups()
 {
-    TYdbGroupsRow out;
+    TYdbGroupRow out;
     out.TabletId = 713;
     out.GroupId = 42;
     out.Timestamp = TInstant::Now();
     return out;
 }
 
-NYdbStats::TYdbPartitionsRow BuildTestPartitions()
+NYdbStats::TYdbPartitionRow BuildTestPartitions()
 {
-    TYdbPartitionsRow out;
+    TYdbPartitionRow out;
     out.PartitionTabletId = 713;
     out.VolumeTabletId = 712;
     out.DiskId = "vol0";

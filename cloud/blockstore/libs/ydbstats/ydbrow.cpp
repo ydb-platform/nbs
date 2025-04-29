@@ -102,7 +102,7 @@ TStringBuf TYdbBlobLoadMetricRow::GetYdbRowDefinition()
     return TStringBuf(RowDefinition.data());
 }
 
-TValue TYdbGroupsRow::GetYdbValues() const
+TValue TYdbGroupRow::GetYdbValues() const
 {
     NYdb::TValueBuilder value;
     value.BeginStruct();
@@ -117,7 +117,7 @@ TValue TYdbGroupsRow::GetYdbValues() const
     return value.Build();
 }
 
-TValue TYdbPartitionsRow::GetYdbValues() const
+TValue TYdbPartitionRow::GetYdbValues() const
 {
     NYdb::TValueBuilder value;
     value.BeginStruct();
