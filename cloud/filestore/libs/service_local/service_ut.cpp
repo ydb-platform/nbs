@@ -947,7 +947,8 @@ std::pair<NProto::TStatFileStoreResponse, struct statfs> GetFileSystemStat(
 
     // Retry to avoid inconsistent statfs results due to concurrent filesystem
     // modifications by other processes
-    for (int i = 0; i < 100; i++) {
+    uint64_t retryCount = 0;
+    while (true) {
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             statfs(bootstrap.Cwd->GetName().c_str(), &stfs1));
@@ -960,10 +961,15 @@ std::pair<NProto::TStatFileStoreResponse, struct statfs> GetFileSystemStat(
             return {response, stfs1};
         }
 
+        retryCount++;
         Sleep(TDuration::MilliSeconds(100));
+        if (retryCount % 100 == 0) {
+            Cerr << "unable to get consisten statfs, retry count:" << retryCount
+                 << Endl;
+        }
     }
 
-    UNIT_ASSERT_C(false, "unable to get consisten statfs, fs keeps changing");
+    UNIT_ASSERT_C(false, "unable to get consistent statfs, fs keeps changing");
     return {};
 }
 
@@ -2245,29 +2251,6 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
             response.GetFileStore().GetNodesCount() -
                 response.GetStats().GetUsedNodesCount(),
             stfs.f_ffree);
-
-        // auto prevNodesCount = response.GetStats().GetUsedNodesCount();
-        // auto prevBlocksCount = response.GetStats().GetUsedBlocksCount();
-
-        // auto handle =
-        //     bootstrap
-        //         .CreateHandle(
-        //             RootNodeId,
-        //             "file",
-        //             TCreateHandleArgs::CREATE | TCreateHandleArgs::RDWR)
-        //         .GetHandle();
-        // bootstrap.WriteData(handle, 0, "aaaabbbbccccddddeeee");
-        // bootstrap.DestroyHandle(handle);
-
-        // auto [response, stfs] = GetFileSystemStat(bootstrap)
-        // UNIT_ASSERT_VALUES_EQUAL(
-        //     prevNodesCount + 1,
-        //     response.GetStats().GetUsedNodesCount());
-        // UNIT_ASSERT_VALUES_EQUAL(
-        //     prevBlocksCount + 1,
-        //     response.GetStats().GetUsedBlocksCount());
-
-
     }
 };
 
