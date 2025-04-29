@@ -717,10 +717,12 @@ public:
 
             for (auto& [key, instance]: holder.VolumeInfos) {
                 instance->RequestCounters.UpdateStats(updateIntervalFinished);
-                *instance->HasDowntimeCounter =
-                    updateIntervalFinished
-                        ? hasDowntime
-                        : static_cast<bool>(*instance->HasDowntimeCounter);
+                if (updateIntervalFinished) {
+                    Y_DEBUG_ABORT_UNLESS(instance->HasDowntimeCounter);
+                    if (instance->HasDowntimeCounter) {
+                        *instance->HasDowntimeCounter = hasDowntime;
+                    }
+                }
             }
             if (SufferCounters &&
                 volumeBase.PerfCalc.IsSuffering())
