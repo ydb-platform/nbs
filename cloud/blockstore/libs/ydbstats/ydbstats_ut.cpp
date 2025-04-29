@@ -208,11 +208,11 @@ TStatsTableSchemePtr CreateGroupsTestScheme()
 {
     TStatsTableSchemeBuilder out;
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
-        {"PartitionTabletId", NYdb::EPrimitiveType::Uint64},
+        {"TabletId", NYdb::EPrimitiveType::Uint64},
         {"GroudId", NYdb::EPrimitiveType::Uint32},
         {"Timestamp", NYdb::EPrimitiveType::Uint64},
     };
-    out.SetKeyColumns({"PartitionTabletId", "GroudId"});
+    out.SetKeyColumns({"TabletId", "GroudId"});
     out.AddColumns(columns);
     return out.Finish();
 }
@@ -221,9 +221,9 @@ TStatsTableSchemePtr CreatePartitionsTestScheme()
 {
     TStatsTableSchemeBuilder out;
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
-        {"DiskId", NYdb::EPrimitiveType::String},
-        {"VolumeTabletId", NYdb::EPrimitiveType::Uint64},
         {"PartitionTabletId", NYdb::EPrimitiveType::Uint64},
+        {"VolumeTabletId", NYdb::EPrimitiveType::Uint64},
+        {"DiskId", NYdb::EPrimitiveType::String},
         {"Timestamp", NYdb::EPrimitiveType::Uint64},
     };
     out.SetKeyColumns({"PartitionTabletId"});
@@ -292,7 +292,7 @@ NYdbStats::TYdbBlobLoadMetricRow BuildTestMetrics()
 NYdbStats::TYdbGroupsRow BuildTestGroups()
 {
     TYdbGroupsRow out;
-    out.PartitionTabletId = 713;
+    out.TabletId = 713;
     out.GroupId = 42;
     out.Timestamp = TInstant::Now();
     return out;

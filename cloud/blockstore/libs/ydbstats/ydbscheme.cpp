@@ -147,7 +147,7 @@ TStatsTableSchemePtr CreateGroupsTableScheme()
     TStatsTableSchemeBuilder out;
 
     static const TVector<std::pair<TString, EPrimitiveType>> columns = {
-        {TYdbGroupsRow::PartitionTabletIdName.data(), EPrimitiveType::Uint64},
+        {TYdbGroupsRow::TabletIdName.data(), EPrimitiveType::Uint64},
         {TYdbGroupsRow::ChannelName.data(), EPrimitiveType::Uint32},
         {TYdbGroupsRow::GroupIdName.data(), EPrimitiveType::Uint32},
         {TYdbGroupsRow::GenerationName.data(), EPrimitiveType::Uint32},
@@ -161,7 +161,7 @@ TStatsTableSchemePtr CreateGroupsTableScheme()
 
     STORAGE_VERIFY_C(
         out.SetKeyColumns({
-            TYdbGroupsRow::PartitionTabletIdName.data(),
+            TYdbGroupsRow::TabletIdName.data(),
             TYdbGroupsRow::ChannelName.data(),
             TYdbGroupsRow::GroupIdName.data(),
             TYdbGroupsRow::GenerationName.data()}),
@@ -184,9 +184,9 @@ TStatsTableSchemePtr CreatePartitionsTableScheme()
     TStatsTableSchemeBuilder out;
 
     static const TVector<std::pair<TString, EPrimitiveType>> columns = {
-        {TYdbPartitionsRow::DiskIdName.data(), EPrimitiveType::String},
-        {TYdbPartitionsRow::VolumeTabletIdName.data(), EPrimitiveType::Uint64},
         {TYdbPartitionsRow::PartitionTabletIdName.data(), EPrimitiveType::Uint64},
+        {TYdbPartitionsRow::VolumeTabletIdName.data(), EPrimitiveType::Uint64},
+        {TYdbPartitionsRow::DiskIdName.data(), EPrimitiveType::String},
         {TYdbPartitionsRow::TimestampName.data(), EPrimitiveType::Uint64}};
 
     STORAGE_VERIFY_C(

@@ -215,14 +215,14 @@ struct TYdbBlobLoadMetricRow
 
 struct TYdbGroupsRow
 {
-    static constexpr TStringBuf PartitionTabletIdName = "PartitionTabletId";
+    static constexpr TStringBuf TabletIdName = "TabletId";
     static constexpr TStringBuf ChannelName = "Channel";
     static constexpr TStringBuf GroupIdName = "GroupId";
     static constexpr TStringBuf GenerationName = "Generation";
     static constexpr TStringBuf TimestampName = "Timestamp";
     static constexpr TDuration TtlDuration = TDuration::Days(7);
 
-    ui64 PartitionTabletId;
+    ui64 TabletId;
     ui32 Channel;
     ui32 GroupId;
     ui32 Generation;
@@ -233,15 +233,15 @@ struct TYdbGroupsRow
 
 struct TYdbPartitionsRow
 {
-    static constexpr TStringBuf DiskIdName = "DiskId";
-    static constexpr TStringBuf VolumeTabletIdName = "VolumeTabletId";
     static constexpr TStringBuf PartitionTabletIdName = "PartitionTabletId";
+    static constexpr TStringBuf VolumeTabletIdName = "VolumeTabletId";
+    static constexpr TStringBuf DiskIdName = "DiskId";
     static constexpr TStringBuf TimestampName = "Timestamp";
     static constexpr TDuration TtlDuration = TDuration::Days(7);
 
-    TString DiskId;
-    ui64 VolumeTabletId;
     ui64 PartitionTabletId;
+    ui64 VolumeTabletId;
+    TString DiskId;
     TInstant Timestamp;
 
     NYdb::TValue GetYdbValues() const;
