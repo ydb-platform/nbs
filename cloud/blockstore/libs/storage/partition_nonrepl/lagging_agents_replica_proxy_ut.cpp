@@ -177,7 +177,9 @@ struct TTestEnv
 
         NProto::TStorageServiceConfig storageConfig = std::move(configBase);
         storageConfig.SetMaxMigrationBandwidth(1);
+        storageConfig.SetLaggingDeviceMaxMigrationBandwidth(1);
         storageConfig.SetMaxMigrationIoDepth(1);
+        storageConfig.SetLaggingDeviceMaxMigrationIoDepth(1);
         storageConfig.SetLaggingDevicePingInterval(
             TDuration::Seconds(5).MilliSeconds());
         storageConfig.SetLaggingDeviceTimeoutThreshold(

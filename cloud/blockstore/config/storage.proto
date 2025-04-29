@@ -1224,4 +1224,12 @@ message TStorageServiceConfig
     // to the mixed channel.
     // It'll be ignored if 0 or more than (equal to) WriteBlobThreshold.
     optional uint32 WriteMixedBlobThresholdHDD = 427;
+
+    // Max bandwidth (in MiB/s) used during the lagging migration after the
+    // replica becomes online.
+    optional uint32 LaggingDeviceMaxMigrationBandwidth = 428;
+
+    // Max migration io depth used during the lagging migration after the
+    // replica becomes online
+    optional uint32 LaggingDeviceMaxMigrationIoDepth = 429;
 }
