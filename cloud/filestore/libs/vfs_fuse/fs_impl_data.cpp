@@ -356,6 +356,8 @@ void TFileSystem::Write(
         return;
     }
 
+    auto request = StartRequest<NProto::TWriteDataRequest>(ino);
+
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
         || !IsAligned(buffer.size(), Config->GetBlockSize());
 
@@ -366,7 +368,6 @@ void TFileSystem::Write(
         (void*)buffer.data(),
         buffer.size());
 
-    auto request = StartRequest<NProto::TWriteDataRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
