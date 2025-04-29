@@ -4,6 +4,7 @@ package NCloud.NBlockStore.NPrivateProto;
 
 import "cloud/blockstore/private/api/protos/blob.proto";
 import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/media.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
 
@@ -323,4 +324,23 @@ message TCheckRangeResponse
 
     // checksum of blocks
     repeated uint32 Checksums = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetZoneCapacity request/response.
+
+message TClusterCapacityInfo
+{
+    NCloud.NProto.EStorageMediaKind Kind = 1;
+    uint64 free = 2;
+    uint64 total = 3;
+}
+
+message TGetClusterCapacityRequest
+{
+}
+
+message TGetClusterCapacityResponse
+{
+    repeated TClusterCapacityInfo Capacity = 1;
 }

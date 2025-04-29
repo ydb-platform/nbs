@@ -418,6 +418,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateBackupTabletBootInfosActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateGetCapacityActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

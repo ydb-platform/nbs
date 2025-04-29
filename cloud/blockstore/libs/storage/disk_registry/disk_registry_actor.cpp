@@ -807,6 +807,9 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             TEvDiskRegistry::TEvDescribeDiskRequest,
             HandleDescribeDisk);
         HFunc(
+            TEvDiskRegistry::TEvGetClusterCapacityRequest,
+            HandleGetClusterCapacity);
+        HFunc(
             TEvDiskRegistry::TEvDescribeConfigRequest,
             HandleDescribeConfig);
         HFunc(
