@@ -3,10 +3,6 @@ name: Build and test NBS on demand
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        type: string
-        default: ""
-        description: "Ref to build/test"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -61,10 +57,6 @@ on:
         description: "Number of retries for tests"
   workflow_call:
     inputs:
-      ref:
-        type: string
-        default: ""
-        description: "Ref to build"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -89,7 +81,7 @@ on:
         type: string
         default: "0"
         description: "Amount of seconds to sleep after tests"
-      cache_update:
+      cache_update_build:
         type: boolean
         default: false
         description: "Update build cache in build stage"
@@ -161,7 +153,6 @@ jobs:
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
-          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           sparse-checkout: '.github'
       - name: Start runner
         id: start-runner
@@ -200,7 +191,6 @@ jobs:
     needs:
       - provide-runner
     with:
-      ref: ${{ github.event.pull_request.head.sha != '' && github.event.pull_request.head.sha || inputs.ref != '' && inputs.ref || github.ref }}
       runner_kind: self-hosted
       runner_label: ${{ needs.provide-runner.outputs.label }}
       runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
@@ -272,7 +262,6 @@ jobs:
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
-          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           sparse-checkout: '.github'
       - name: Stop runner
         uses: ./.github/actions/nebius_runner_remove
