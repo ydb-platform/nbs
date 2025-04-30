@@ -280,7 +280,7 @@ void TVolumeActor::HandleUpdateLaggingAgentMigrationState(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
         "[%lu] Lagging agent %s migration progress: %lu/%lu blocks",
