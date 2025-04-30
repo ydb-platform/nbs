@@ -189,8 +189,8 @@ void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
         TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
 
     if (TargetInfo) {
-        // If target info is nullptr, it means that we failed before reading
-        // stage and there is no need to process error.
+        // If the target info is null, it means that we have failed before the
+        // reading stage and there is no need to process errors.
         ProcessError(
             *NActors::TActorContext::ActorSystem(),
             *TargetInfo->PartConfig,

@@ -2894,7 +2894,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         runtime.DispatchEvents(options);
 
-        const auto migrationRange = TBlockRange64::WithLength(0, 1024);
         UNIT_ASSERT_VALUES_EQUAL(0, migrationRangesCount);
     }
 
