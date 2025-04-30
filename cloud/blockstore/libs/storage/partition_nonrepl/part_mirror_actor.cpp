@@ -718,7 +718,7 @@ void TMirrorPartitionActor::HandleLockAndDrainRange(
         std::move(reqInfo),
         msg->Range);
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Range %s is blocked for writing requests",
@@ -736,7 +736,7 @@ void TMirrorPartitionActor::HandleReleaseRange(
     BlockRangeRequests.RemoveRequest(msg->Range);
 
     DrainActorCompanion.RemoveDrainRangeRequest(ctx, msg->Range);
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Releasing range %s for writing requests",
