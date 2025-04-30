@@ -2882,17 +2882,17 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        const auto migrationRange = TBlockRange64::WithLength(0, 1024);
         runtime.AdvanceCurrentTime(40ms);
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            migrationReadRanges.GetRequestCountWithRange(migrationRange));
         NActors::TDispatchOptions options;
         options.FinalEvents = {NActors::TDispatchOptions::TFinalEventCondition(
             TEvNonreplPartitionPrivate::EvRangeMigrated)};
 
         runtime.DispatchEvents(options);
+
+        const auto migrationRange = TBlockRange64::WithLength(0, 1024);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            migrationReadRanges.GetRequestCountWithRange(migrationRange));
     }
 
     Y_UNIT_TEST(ShouldExecuteMultiWriteRequests)
