@@ -125,38 +125,32 @@ runs:
         # shellcheck disable=SC2195
         case "${{ inputs.build_preset }}" in
           debug)
-            build_type=debug
             extra_params+=(--build "debug")
             RETRY_COUNT=${NUMBER_OF_RETRIES}
             ;;
           relwithdebinfo)
-            build_type=relwithdebinfo
             extra_params+=(--build "relwithdebinfo")
             RETRY_COUNT=${NUMBER_OF_RETRIES}
             ;;
           release-asan)
-            build_type=release
             extra_params+=(--build "release")
             extra_params+=(--sanitize="address")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
             RETRY_COUNT=1
             ;;
           release-tsan)
-            build_type=release
             extra_params+=(--build "release")
             extra_params+=(--sanitize="thread")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
             RETRY_COUNT=1
             ;;
           release-msan)
-            build_type=release
             extra_params+=(--build "release")
             extra_params+=(--sanitize="memory")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
             RETRY_COUNT=1
             ;;
           release-ubsan)
-            build_type=release
             extra_params+=(--build "release")
             extra_params+=(--sanitize="undefined")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
