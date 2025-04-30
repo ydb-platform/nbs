@@ -2819,9 +2819,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TestAgentData(runtime, "vasya#2", 'A', 1024, 1024);
     }
 
-    Y_UNIT_TEST(ShouldNotDoMigrationIfCantLockMigrationRange)
+    DoShouldNotMigrateIfCantLockMigrationRange(bool useDirectCopy)
     {
         TTestRuntime runtime;
+
+        NProto::TStorageServiceConfig cfg;
+        cfg.SetUseDirectCopyRange(useDirectCopy);
 
         const THashSet<TString> freshDeviceIds{"vasya"};
         TTestEnv env(
@@ -2832,10 +2835,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
             },
             {},   // migrations
-            freshDeviceIds);
+            freshDeviceIds,
+            cfg);
 
         TPartitionClient client(runtime, env.ActorId);
-        TRangeRequestsCounter migrationReadRanges;
+        ui64 migrationRangesCount = 0;
 
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -2871,11 +2875,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                             static_cast<TEvService::TEvReadBlocksRequest*>(
                                 event->GetBase());
                         if (ev->Record.GetHeaders().GetIsBackgroundRequest()) {
-                            migrationReadRanges.AddRequest(
-                                TBlockRange64::WithLength(
-                                    ev->Record.GetStartIndex(),
-                                    ev->Record.GetBlocksCount()));
+                            ++migrationRangesCount;
                         }
+                        break;
+                    }
+                    case TEvDiskAgent::EvDirectCopyBlocksRequest: {
+                        ++migrationRangesCount;
                         break;
                     }
                 }
@@ -2890,9 +2895,17 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         runtime.DispatchEvents(options);
 
         const auto migrationRange = TBlockRange64::WithLength(0, 1024);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            migrationReadRanges.GetRequestCountWithRange(migrationRange));
+        UNIT_ASSERT_VALUES_EQUAL(0, migrationRangesCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantLockMigrationRange)
+    {
+        DoShouldNotMigrateIfCantLockMigrationRange(false);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantLockMigrationRangeDirectCopy)
+    {
+        DoShouldNotMigrateIfCantLockMigrationRange(true);
     }
 
     Y_UNIT_TEST(ShouldExecuteMultiWriteRequests)
