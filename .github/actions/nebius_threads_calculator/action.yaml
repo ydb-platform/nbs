@@ -33,36 +33,37 @@ runs:
         test_threads=0
         if [[ $tests_size == *"large"* ]]; then
           case "$vm_preset" in
+            # for large tests we need 6 vcpu per thread
             "256vcpu-1024gb")
-                test_threads=50
+                test_threads=42
                 build_threads=256
             ;;
             "224vcpu-896gb")
-                test_threads=44
+                test_threads=38
                 build_threads=224
             ;;
             "192vcpu-768gb")
-                test_threads=38
+                test_threads=32
                 build_threads=192
             ;;
             "160vcpu-640gb")
-                test_threads=32
+                test_threads=26
                 build_threads=160
             ;;
             "128vcpu-512gb")
-                test_threads=24
+                test_threads=21
                 build_threads=128
             ;;
             "96vcpu-384gb")
-                test_threads=20
+                test_threads=16
                 build_threads=96
             ;;
             "80vcpu-320gb")
-                test_threads=16
+                test_threads=14
                 build_threads=80
             ;;
             "64vcpu-256gb")
-                test_threads=12
+                test_threads=10
                 build_threads=64
             ;;
             "48vcpu-192gb")
@@ -70,7 +71,7 @@ runs:
                 build_threads=48
             ;;
             "32vcpu-128gb")
-                test_threads=6
+                test_threads=5
                 build_threads=32
             ;;
             "16vcpu-64gb")

@@ -3,10 +3,6 @@ name: Build and test
 on:
   workflow_call:
     inputs:
-      ref:
-        type: string
-        default: ""
-        description: "Ref to build"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -123,7 +119,6 @@ jobs:
       if: github.event.pull_request.head.sha == ''
       with:
         submodules: true
-        ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
 
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
@@ -182,9 +177,7 @@ jobs:
         sync_to_s3: ${{ vars.SYNC_TO_S3 }}
         upload_ya_dir: ${{ inputs.upload_ya_dir }}
         clean_ya_dir: ${{ inputs.run_build && 'no' || inputs.clean_ya_dir }}
-        # for some reason ya-bin began to leak memory on ya-test and
-        # will eventually be killed by OOM killer
-        use_network_cache: false
+        use_network_cache: ${{ inputs.use_network_cache }}
         truncate_enabled: ${{ inputs.truncate_enabled }}
     - id: failure
       name: set sleep_after_tests in case of failure

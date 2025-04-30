@@ -3,10 +3,6 @@ name: Build and test NBS on demand
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        type: string
-        default: ""
-        description: "Ref to build/test"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -26,10 +22,14 @@ on:
           - release-tsan
           - release-msan
           - release-ubsan
-      cache_update:
+      cache_update_build:
         type: boolean
         default: false
-        description: "Update build cache for build and test cache"
+        description: "Update build cache in build stage"
+      cache_update_tests:
+        type: boolean
+        default: false
+        description: "Update build cache in test stage"
       test_size:
         type: choice
         default: "small"
@@ -51,13 +51,8 @@ on:
         type: string
         default: "0"
         description: "Amount of seconds to sleep after tests"
-      
   workflow_call:
     inputs:
-      ref:
-        type: string
-        default: ""
-        description: "Ref to build"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -82,10 +77,14 @@ on:
         type: string
         default: "0"
         description: "Amount of seconds to sleep after tests"
-      cache_update:
+      cache_update_build:
         type: boolean
         default: false
-        description: "Update cache"
+        description: "Update build cache in build stage"
+      cache_update_tests:
+        type: boolean
+        default: false
+        description: "Update build cache in test stage"
       upload_ya_dir:
         type: string
         default: "no"
@@ -146,7 +145,6 @@ jobs:
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
-          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           sparse-checkout: '.github'
       - name: Start runner
         id: start-runner
@@ -185,7 +183,6 @@ jobs:
     needs:
       - provide-runner
     with:
-      ref: ${{ github.event.pull_request.head.sha != '' && github.event.pull_request.head.sha || inputs.ref != '' && inputs.ref || github.ref }}
       runner_kind: self-hosted
       runner_label: ${{ needs.provide-runner.outputs.label }}
       runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
@@ -201,9 +198,8 @@ jobs:
       link_threads: ${{ needs.provide-runner.outputs.link_threads || '24' }}
       test_threads: ${{ needs.provide-runner.outputs.test_threads || '12' }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
-      cache_update_build: ${{ inputs.cache_update }}
-      # if you enable cache_update_tests it will break flake8/gofmt tests
-      cache_update_tests: false
+      cache_update_build: ${{ inputs.cache_update_build }}
+      cache_update_tests: ${{ inputs.cache_update_tests }}
       upload_ya_dir: ${{ github.event_name == 'workflow_dispatch' && 'no' || inputs.upload_ya_dir}}
       clean_ya_dir: ${{ github.event_name == 'workflow_dispatch' && 'no' || inputs.clean_ya_dir }}
       use_network_cache: ${{ github.event_name == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
@@ -257,7 +253,6 @@ jobs:
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
-          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
           sparse-checkout: '.github'
       - name: Stop runner
         uses: ./.github/actions/nebius_runner_remove

@@ -19,5 +19,6 @@ jobs:
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/storage/'
       build_preset: release-tsan
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      cache_update: true
+      cache_update_build: true
+      cache_update_tests: false
       sleep_after_tests: 1

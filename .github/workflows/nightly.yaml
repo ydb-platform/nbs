@@ -1,22 +1,18 @@
 name: Nightly build
 run-name: |
-  ${{ github.event_name == 'workflow_dispatch'
-      && format(
-          'Nightly build (manual) ref:{0}',
-          inputs.ref != '' && inputs.ref || github.ref
-        )
-      || format('Nightly build (schedule)')
+  ${{ github.event_name == 'schedule'
+      && format('Nightly build (schedule)')
+      || (
+            inputs.comment != ''
+            && format('Nightly build (manual) (comment: {0})', inputs.comment)
+            || format('Nightly build (manual)')
+          )
     }}
 on:
   schedule:
     - cron: "0 23 * * *"
   workflow_dispatch:
     inputs:
-      ref:
-        description: 'Ref to build'
-        type: string
-        required: false
-        default: ''
       build_target:
         description: 'Build target'
         type: string
@@ -29,6 +25,11 @@ on:
         required: false
         #default: 'cloud/tasks/'
         default: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
+      comment:
+        description: 'Comment'
+        type: string
+        required: false
+        default: ""
 
 
 
@@ -39,11 +40,11 @@ jobs:
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     secrets: inherit
     with:
-      ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
       build_preset: relwithdebinfo
-      cache_update: true
+      cache_update_build: true
+      cache_update_tests: false
       sleep_after_tests: 1
   build_schedule:
     name: Build/test x86_64 using YA (relwithdebinfo) (schedule)
@@ -54,5 +55,6 @@ jobs:
       build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
       build_preset: relwithdebinfo
-      cache_update: true
+      cache_update_build: true
+      cache_update_tests: false
       sleep_after_tests: 1

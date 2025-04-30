@@ -93,6 +93,15 @@ runs:
         # checking /etc/hosts to see if vm was created correctly
         cat /etc/hosts
 
+    - name: Setup cache password file
+      shell: bash
+      run: |
+        export BAZEL_REMOTE_PASSWORD_FILE=$(mktemp)
+        echo -n "${{ inputs.bazel_remote_password }}" > "$BAZEL_REMOTE_PASSWORD_FILE"
+        echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
+        chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
+        chown github:github "$BAZEL_REMOTE_PASSWORD_FILE"
+
     - name: ya test
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
@@ -141,7 +150,7 @@ runs:
           done
         fi
 
-        # shellcheck disable=SC2193
+        # shellcheck disable=SC2157,SC2193
         if [ "${{ inputs.use_network_cache }}" == "yes" ]; then
           # shellcheck disable=SC2157
           if [ -n "${{ inputs.bazel_remote_uri }}" ]; then
@@ -152,11 +161,11 @@ runs:
           # shellcheck disable=SC2157
           if [ -n "${{ inputs.bazel_remote_username }}" ]; then
             extra_params+=(--bazel-remote-username "${{ inputs.bazel_remote_username }}")
-            extra_params+=(--bazel-remote-password "${{ inputs.bazel_remote_password }}")
+            extra_params+=(--bazel-remote-password-file="$BAZEL_REMOTE_PASSWORD_FILE")
           fi
 
           # shellcheck disable=SC2193
-          if [ "${{ inputs.cache_update }}" = "true" ]; then
+          if [ "${{ inputs.cache_update }}" == "true" ]; then
             extra_params+=(--bazel-remote-put)
           fi
         fi
@@ -177,7 +186,7 @@ runs:
         date
         ./ya --version
         echo "::group::ya-make-test"
-        sudo -E -H -u github  ./ya test -k --build "${build_type}" \
+        sudo -E -H -u github ./ya test -k --build "${build_type}" \
           "${test_size[@]/#/--test-size=}" "${test_type[@]/#/--test-type=}" \
           --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
           --cache-size 512G --do-not-output-stderrs -T \
