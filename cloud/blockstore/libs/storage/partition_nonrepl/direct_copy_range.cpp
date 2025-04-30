@@ -188,10 +188,14 @@ void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
     using EExecutionSide =
         TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
 
-    ProcessError(
-        *NActors::TActorContext::ActorSystem(),
-        *TargetInfo->PartConfig,
-        error);
+    if (TargetInfo) {
+        // If target info is nullptr, it means that we failed before reading
+        // stage and there is no need to process error.
+        ProcessError(
+            *NActors::TActorContext::ActorSystem(),
+            *TargetInfo->PartConfig,
+            error);
+    }
 
     const auto writeTs = StartTs + ReadDuration;
     auto response =

@@ -2819,6 +2819,81 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TestAgentData(runtime, "vasya#2", 'A', 1024, 1024);
     }
 
+    Y_UNIT_TEST(ShouldNotDoMigrationIfCantLockMigrationRange)
+    {
+        TTestRuntime runtime;
+
+        const THashSet<TString> freshDeviceIds{"vasya"};
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TVector<TDevices>{
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
+            },
+            {},   // migrations
+            freshDeviceIds);
+
+        TPartitionClient client(runtime, env.ActorId);
+        TRangeRequestsCounter migrationReadRanges;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartition::EvLockAndDrainRangeRequest: {
+                        auto lockResponse = std::make_unique<
+                            TEvPartition::TEvLockAndDrainRangeResponse>(
+                            MakeError(E_REJECTED));
+
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                lockResponse.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    case TEvNonreplPartitionPrivate::EvRangeMigrated: {
+                        auto* ev = static_cast<
+                            TEvNonreplPartitionPrivate::TEvRangeMigrated*>(
+                            event->GetBase());
+
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            E_REJECTED,
+                            ev->Error.GetCode());
+                        break;
+                    }
+                    case TEvService::EvReadBlocksRequest: {
+                        auto* ev =
+                            static_cast<TEvService::TEvReadBlocksRequest*>(
+                                event->GetBase());
+                        if (ev->Record.GetHeaders().GetIsBackgroundRequest()) {
+                            migrationReadRanges.AddRequest(
+                                TBlockRange64::WithLength(
+                                    ev->Record.GetStartIndex(),
+                                    ev->Record.GetBlocksCount()));
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto migrationRange = TBlockRange64::WithLength(0, 1024);
+        runtime.AdvanceCurrentTime(40ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            migrationReadRanges.GetRequestCountWithRange(migrationRange));
+        NActors::TDispatchOptions options;
+        options.FinalEvents = {NActors::TDispatchOptions::TFinalEventCondition(
+            TEvNonreplPartitionPrivate::EvRangeMigrated)};
+
+        runtime.DispatchEvents(options);
+    }
 
     Y_UNIT_TEST(ShouldExecuteMultiWriteRequests)
     {
