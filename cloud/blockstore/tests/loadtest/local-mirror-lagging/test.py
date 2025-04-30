@@ -41,7 +41,7 @@ class TestCase(object):
             block_count_per_device=DEFAULT_BLOCK_COUNT_PER_DEVICE,
             agent_count=1,
             dump_block_digests=False,
-            max_migration_bandwidth=100,
+            max_migration_bandwidth=50,
             lagging_device_max_migration_bandwidth=100):
         self.name = name
         self.config_path = config_path
@@ -63,26 +63,26 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-basic.txt",
         agent_count=2,
         device_count=3,
-        restart_interval=30,
+        restart_interval=20,
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
     TestCase(
         "mirror2-device-per-agent",
-        "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-device-per-agent.txt",
+        "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-basic.txt",
         agent_count=6,
         device_count=1,
-        restart_interval=30,
+        restart_interval=20,
         agent_indexes_to_restart=[1],
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
     TestCase(
         "mirror2-device-per-agent-multiple-replicas",
-        "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-device-per-agent-multiple-replicas.txt",
+        "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-basic.txt",
         agent_count=6,
         device_count=1,
-        restart_interval=30,
+        restart_interval=20,
         agent_indexes_to_restart=[1, 3],
         disk_agent_downtime=5,
         dump_block_digests=True,
@@ -92,7 +92,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-migration.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=30,
+        restart_interval=20,
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
@@ -101,7 +101,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-migration.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=30,
+        restart_interval=20,
         agent_indexes_to_restart=[2],
         disk_agent_downtime=5,
         dump_block_digests=True,
@@ -111,18 +111,19 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-fresh-device-migration.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=30,
+        restart_interval=20,
         agent_indexes_to_restart=[2],
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
     TestCase(
-        "mirror2-small-interval",
-        "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-small-interval.txt",
+        "mirror2-small-restart-interval",
+        "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-small-restart-interval.txt",
         agent_count=2,
         device_count=3,
         restart_interval=5,
         disk_agent_downtime=5,
+        lagging_device_max_migration_bandwidth=50,
         dump_block_digests=True,
     ),
     TestCase(
@@ -130,7 +131,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror3-basic.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=30,
+        restart_interval=20,
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
@@ -140,15 +141,15 @@ TESTS = [
         agent_count=2,
         device_count=3,
         restart_interval=30,
-        disk_agent_downtime=5,
-        nbs_restart_interval=60,
-        lagging_device_max_migration_bandwidth=50,
+        disk_agent_downtime=6,
+        nbs_restart_interval=40,
+        lagging_device_max_migration_bandwidth=10,
         dump_block_digests=True,
     ),
 ]
 
 
-def __cleanup_file_devices(devices):
+def __remove_file_devices(devices):
     logging.info("Remove temporary device files")
     for d in devices:
         if d.path is not None:
@@ -164,7 +165,7 @@ def __process_config(config_path, devices_per_agent):
     device_tag = "\"$DEVICE:"
     prev_index = 0
     new_config_data = ""
-    have_replacements = False
+    has_replacements = False
     while True:
         next_device_tag_index = config_data.find(device_tag, prev_index)
         if next_device_tag_index == -1:
@@ -176,11 +177,11 @@ def __process_config(config_path, devices_per_agent):
         assert next_index != -1
         agent_id, device_id = config_data[prev_index:next_index].split("/")
         new_config_data += "\"%s\"" % devices_per_agent[int(agent_id)][int(device_id)].path
-        have_replacements = True
+        has_replacements = True
 
         prev_index = next_index + 1
 
-    if have_replacements:
+    if has_replacements:
         config_folder = get_unique_path_for_current_test(
             output_path=yatest_common.output_path(),
             sub_folder="test_configs")
@@ -271,7 +272,7 @@ def __run_test(test_case):
         storage.LaggingDeviceMaxMigrationBandwidth = test_case.lagging_device_max_migration_bandwidth
         storage.LaggingDeviceTimeoutThreshold = 3000      # 3 sec
         storage.NonReplicatedMinRequestTimeoutSSD = 500   # 500 msec
-        storage.NonReplicatedMaxRequestTimeoutSSD = 5000  # 5 sec
+        storage.NonReplicatedMaxRequestTimeoutSSD = 1000  # 1 sec
         storage.MaxTimedOutDeviceStateDuration = 60000    # 1 min
         storage.NonReplicatedAgentMinTimeout = 60000      # 1 min
         storage.NonReplicatedAgentMaxTimeout = 60000      # 1 min
@@ -285,6 +286,7 @@ def __run_test(test_case):
 
         client_config = TClientConfig()
         client_config.RetryTimeout = 20000  # 20 sec
+        client_config.RetryTimeoutIncrement = 100  # 100 msec
         client_app_config = TClientAppConfig()
         client_app_config.ClientConfig.CopyFrom(client_config)
 
@@ -326,7 +328,7 @@ def __run_test(test_case):
                 kikimr_binary_path=kikimr_binary_path,
                 disk_agent_binary_path=yatest_common.binary_path(disk_agent_binary_path),
                 restart_interval=restart_interval,
-                downtime_after_restart=test_case.disk_agent_downtime,
+                restart_downtime=test_case.disk_agent_downtime,
                 rack="rack-%s" % i,
                 node_type=make_agent_node_type(i))
 
@@ -337,8 +339,7 @@ def __run_test(test_case):
 
         wait_for_secure_erase(nbs.mon_port, expectedAgents=test_case.agent_count)
 
-        client = TClientConfig()
-        client.NbdSocketSuffix = nbd_socket_suffix
+        client_config.NbdSocketSuffix = nbd_socket_suffix
 
         config_path = __process_config(test_case.config_path, devices_per_agent)
 
@@ -348,7 +349,7 @@ def __run_test(test_case):
             nbs.nbs_port,
             nbs.mon_port,
             nbs_log_path=nbs.stderr_file_name,
-            client_config=client,
+            client_config=client_config,
             env_processes=disk_agents + [nbs],
         )
     finally:
@@ -358,6 +359,7 @@ def __run_test(test_case):
             nbs.stop()
         if kikimr_cluster is not None:
             kikimr_cluster.stop()
+        __remove_file_devices(devices)
 
     return ret
 

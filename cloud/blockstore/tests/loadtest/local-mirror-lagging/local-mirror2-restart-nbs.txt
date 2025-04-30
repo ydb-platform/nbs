@@ -7,8 +7,8 @@ Vertices {
         }
         ArtificialLoadSpec {
             Ranges {
-                Start: 261144
-                End: 263144
+                Start: 250000
+                End: 270000
                 WriteRate: 80
                 ZeroRate: 20
                 ReadRate: 100
@@ -31,8 +31,8 @@ Vertices {
                 }
             }
             Ranges {
-                Start: 523288
-                End: 525288
+                Start: 500000
+                End: 550000
                 WriteRate: 80
                 ZeroRate: 20
                 ReadRate: 100
@@ -55,7 +55,7 @@ Vertices {
                 }
             }
         }
-        TestDuration: 120
+        TestDuration: 60
         Verify: true
         Name: "test_vol0"
     }
