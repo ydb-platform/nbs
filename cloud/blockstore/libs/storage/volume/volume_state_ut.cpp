@@ -1935,7 +1935,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 NProto::ENCRYPTION_AES_XTS);
 
-            UNIT_ASSERT(state.GetTrackUsedBlocks());
+            UNIT_ASSERT(!state.GetTrackUsedBlocks());
         }
 
         {
