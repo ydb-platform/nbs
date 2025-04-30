@@ -71,6 +71,10 @@
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
         NAMES(NCloud::NProbeParam::RequestType, "requestId"))                  \
+    PROBE(RequestReceived_NonreplPartitionWorker,                              \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(TString, ui64, TString),                                         \
+        NAMES(NCloud::NProbeParam::RequestType, "requestId", "device"))        \
     PROBE(RequestReceived_PartitionWorker_DSProxy,                             \
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64, ui32),                                            \
@@ -80,6 +84,10 @@
         TYPES(TString, ui64),                                                  \
         NAMES(NCloud::NProbeParam::RequestType, "requestId"))                  \
     PROBE(ResponseSent_PartitionWorker,                                        \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES(NCloud::NProbeParam::RequestType, "requestId"))                  \
+    PROBE(ResponseSent_NonreplPartitionWorker,                                 \
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \
         NAMES(NCloud::NProbeParam::RequestType, "requestId"))                  \
