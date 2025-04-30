@@ -280,6 +280,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
                 ", error: %s",
                 FormatError(err).c_str());
 
+            NotifyDeviceTimedOutIfNeeded(ctx, r.Device.GetDeviceUUID());
             return err;
         }
 
@@ -607,6 +608,20 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(
         agentId.Quote().c_str());
 }
 
+void TNonreplicatedPartitionRdmaActor::HandleDeviceTimedOutResponse(
+    const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Attempted to deem device %s as lagging. Result: %s",
+        PartConfig->GetName().c_str(),
+        PartConfig->GetDevices()[ev->Cookie].GetDeviceUUID().c_str(),
+        FormatError(msg->GetError()).c_str());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TNonreplicatedPartitionRdmaActor::HandleRequests(STFUNC_SIG)
@@ -697,7 +712,9 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvAgentIsUnavailable,
             HandleAgentIsUnavailable);
-        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
+        HFunc(
+            TEvVolumePrivate::TEvDeviceTimedOutResponse,
+            HandleDeviceTimedOutResponse);
 
         default:
             if (!HandleRequests(ev)) {
@@ -746,6 +763,7 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateZombie)
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
 
         default:
             if (!HandleRequests(ev)) {
