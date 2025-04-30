@@ -2819,7 +2819,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TestAgentData(runtime, "vasya#2", 'A', 1024, 1024);
     }
 
-    DoShouldNotMigrateIfCantLockMigrationRange(bool useDirectCopy)
+    void DoShouldNotMigrateIfCantLockMigrationRange(bool useDirectCopy)
     {
         TTestRuntime runtime;
 
