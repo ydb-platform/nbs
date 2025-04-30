@@ -361,6 +361,21 @@ struct TTestEnv
         ReadAndCheckContents(ReplicaActors[replicaIndex], range, content);
     }
 
+    auto ChecksumFromController(ui32 index, TBlockRange64 range)
+    {
+        auto actorId = GetControllerActorId(index);
+        TPartitionClient client(Runtime, MirrorPartActorId);
+
+        auto request = client.CreateChecksumBlocksRequest(range);
+        client.SendRequest(actorId, std::move(request));
+        auto response = client.RecvResponse<
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>();
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+        return response;
+    }
+
     const TDevices& GetReplicaDevices(ui32 replicaIndex)
     {
         if (replicaIndex == 0) {
@@ -764,6 +779,28 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
     {
         ShouldNotWriteToLaggingDevices(false);
         ShouldNotWriteToLaggingDevices(true);
+    }
+
+    Y_UNIT_TEST(ShouldHandleChecksumBlocks)
+    {
+        TTestBasicRuntime runtime(AgentCount);
+        TTestEnv env(runtime, false);
+        TPartitionClient client(runtime, env.MirrorPartActorId);
+
+        const auto fullDiskRange = TBlockRange64::WithLength(
+            0,
+            DeviceBlockCount * DeviceCountPerReplica);
+        env.WriteBlocksToPartition(fullDiskRange, 'A');
+
+        // Second row in the first column is lagging.
+        env.AddLaggingAgent(runtime.GetNodeId(1), 0);
+
+        const auto range = TBlockRange64::WithLength(0, DeviceBlockCount);
+        auto response = env.ChecksumFromController(0, range);
+        UNIT_ASSERT_C(
+            !HasError(response->GetError()),
+            FormatError(response->GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(297130258ULL, response->Record.GetChecksum());
     }
 
     void LaggingAgentTwice(bool localRequests)
