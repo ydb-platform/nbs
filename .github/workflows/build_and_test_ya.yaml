@@ -132,18 +132,17 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
         install: false
 
-    - name: Set up swap
+    - name: set up zramswap
       shell: bash
       run: |
-        sudo swapoff -a
-        sudo fallocate -l 16G /swapfile
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
-        echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
-        # configure swappiness to very low value
+        sudo apt-get update
+        sudo apt-get install -y zram-tools
         echo "vm.swappiness=1" | sudo tee -a /etc/sysctl.conf
         sudo sysctl -p
+        echo "SIZE=102400" | sudo tee -a /etc/default/zramswap
+        echo "PRIORITY=2" | sudo tee -a /etc/default/zramswap
+        echo "ALGO=lz4" | sudo tee -a /etc/default/zramswap
+        sudo systemctl restart zramswap
 
     - name: Build
       uses: ./.github/actions/build
