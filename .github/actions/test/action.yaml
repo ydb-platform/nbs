@@ -68,6 +68,7 @@ runs:
         {
           echo "TMP_DIR=$TMP_DIR"
           echo "LOG_DIR=$TMP_DIR/logs"
+          echo "YA_MAKE_OUTPUT=$TMP_DIR/logs/ya_make_output"
           echo "OUT_DIR=$TMP_DIR/out"
           echo "ARTIFACTS_DIR=$TMP_DIR/artifacts"
           echo "TESTS_DATA_DIR=$TMP_DIR/test_data"
@@ -75,7 +76,7 @@ runs:
           echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml"
           echo "JUNIT_REPORT_PARTS=$TMP_DIR/junit-split"
           echo "SUMMARY_LINKS=$(mktemp -p /home/github)"
-        } >> $GITHUB_ENV
+        } | tee -a $GITHUB_ENV
 
     - name: prepare
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -94,7 +95,7 @@ runs:
         cat /etc/hosts
 
     - name: Setup cache password file
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         export BAZEL_REMOTE_PASSWORD_FILE=$(mktemp)
         echo -n "${{ inputs.bazel_remote_password }}" > "$BAZEL_REMOTE_PASSWORD_FILE"
@@ -104,37 +105,62 @@ runs:
 
     - name: ya test
       shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        NUMBER_OF_RETRIES: ${{ github.event_name == 'pull_request_target' && 3 || 1 }}
       run: |
-        set -x
-        extra_params=()
+        extra_params=(
+          --run-all-tests
+          --keep-going
+          --retest
+          --test-threads "${{ inputs.test_threads }}"
+          --link-threads "${{ inputs.link_threads }}"
+          --cache-size 512G
+          --do-not-output-stderrs
+          -T
+          --nice 0
+          --stat
+          --output "$OUT_DIR"
+        )
 
         # shellcheck disable=SC2195
         case "${{ inputs.build_preset }}" in
           debug)
             build_type=debug
+            extra_params+=(--build "debug")
+            RETRY_COUNT=${NUMBER_OF_RETRIES}
             ;;
           relwithdebinfo)
             build_type=relwithdebinfo
+            extra_params+=(--build "relwithdebinfo")
+            RETRY_COUNT=${NUMBER_OF_RETRIES}
             ;;
           release-asan)
             build_type=release
+            extra_params+=(--build "release")
             extra_params+=(--sanitize="address")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            RETRY_COUNT=1
             ;;
           release-tsan)
             build_type=release
+            extra_params+=(--build "release")
             extra_params+=(--sanitize="thread")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            RETRY_COUNT=1
             ;;
           release-msan)
             build_type=release
+            extra_params+=(--build "release")
             extra_params+=(--sanitize="memory")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            RETRY_COUNT=1
             ;;
           release-ubsan)
             build_type=release
+            extra_params+=(--build "release")
             extra_params+=(--sanitize="undefined")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            RETRY_COUNT=1
             ;;
           *)
             echo "Invalid preset: ${{ inputs.build_preset }}"
@@ -185,30 +211,72 @@ runs:
         echo "::endgroup::"
         date
         ./ya --version
-        echo "::group::ya-make-test"
-        sudo -E -H -u github ./ya test -k --build "${build_type}" \
-          "${test_size[@]/#/--test-size=}" "${test_type[@]/#/--test-type=}" \
-          --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
-          --cache-size 512G --do-not-output-stderrs -T \
-          --stat --log-file "$LOG_DIR/ya_log.txt" --evlog-file "$LOG_DIR/ya_evlog.jsonl" \
-          --junit "$JUNIT_REPORT_XML" --output "$OUT_DIR" "${extra_params[@]}" --nice 0 || (
-            RC=$?
-            if [ $RC -ne 0 ]; then
-              echo "ya test returned $RC, check existence $JUNIT_REPORT_XML"
-              if [ -s "$JUNIT_REPORT_XML" ]; then
-                echo "$JUNIT_REPORT_XML exists"
-                ls -la "$JUNIT_REPORT_XML"
-                echo "::endgroup::"
-                date
+        RETRIES=$RETRY_COUNT
+        echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
+        RETRY_FLAG=""
+        for i in $(seq 1 $RETRIES); do
+          echo "::group::ya-make-test-${i}"
+          set +e
+          (
+            sudo -E -H -u github ./ya make "${test_size[@]/#/--test-size=}" \
+                "${test_type[@]/#/--test-type=}" \
+                "${extra_params[@]}" \
+                --junit "${JUNIT_REPORT_XML}.${i}" \
+                --log-file "$LOG_DIR/ya_log.$i.txt" \
+                --evlog-file "$LOG_DIR/ya_evlog.$i.jsonl" \
+                "$RETRY_FLAG";
+            echo $? > exit_code
+          ) |& tee "${YA_MAKE_OUTPUT}.${i}.txt"
+          set -e
+          RC=$(< exit_code)
+          DO_RETRY=0
+          case $RC in
+            0)
+              echo "ya test successfully finished, no errors"
+              ls -la "${JUNIT_REPORT_XML}.${i}" || true
+              date
+              if [ -s "${JUNIT_REPORT_XML}.${i}" ]; then
+                echo "${JUNIT_REPORT_XML}.${i} exists"
               else
-                echo "$JUNIT_REPORT_XML doesn't exist or has zero size"
-                ls -la "$JUNIT_REPORT_XML" || true
-                echo "::endgroup::"
-                date
-                exit $RC
+                echo "${JUNIT_REPORT_XML}.${i} doesn't exist or has zero size"
               fi
-            fi
-        )
+              ;;
+            137)
+              echo "ya test returned $RC it was killed by OOM killer"
+              DO_RETRY=1
+              if [ "$i" -eq "$RETRY_COUNT" ];
+              then
+                DO_RETRY=0
+              fi
+              ;;
+            *)
+              echo "ya test returned $RC"
+              ls -la "${JUNIT_REPORT_XML}.${i}" || true
+              date
+              if [ -s "${JUNIT_REPORT_XML}.${i}" ]; then
+                echo "${JUNIT_REPORT_XML}.${i} exists"
+              else
+                echo "${JUNIT_REPORT_XML}.${i} doesn't exist or has zero size"
+              fi
+              # disabling retries here for now until we will be able to 
+              # process junit with retried runs
+              DO_RETRY=1
+              RETRY_FLAG="-X"
+              if [ "$i" -eq "$RETRY_COUNT" ];
+              then
+                DO_RETRY=0
+              fi
+              ;;
+          esac
+          if [ $DO_RETRY -eq 1 ]; then
+            echo "Retrying..."
+            echo "::endgroup::"
+            continue
+          else
+            echo "::endgroup::"
+            break
+          fi
+        done
 
     - name: copying system files
       if: ${{ !cancelled() }}
@@ -221,7 +289,14 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         # shellcheck disable=SC2024
-        sudo -E -H -u github gzip -c $JUNIT_REPORT_XML > $REPORTS_ARTIFACTS_DIR/orig_junit.xml.gz
+        for i in $(seq 1 $RETRIES); do
+          # shellcheck disable=SC2024
+          if [ -f "${JUNIT_REPORT_XML}.${i}" ];
+          then
+            # shellcheck disable=SC2024
+            sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/orig_junit.${i}.xml.gz"
+          fi
+        done
 
     - name: postprocess junit report
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -230,17 +305,25 @@ runs:
         cat .github/config/muted_ya.txt
         MUTED_CONFIG=".github/config/muted_ya.txt"
         echo "::endgroup::"
-        echo "::group::postprocess-junit"
-        sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
-          -m "${MUTED_CONFIG}" \
-          --ya-out "$OUT_DIR" \
-          --log-url-prefix "$S3_WEBSITE_PREFIX/logs/" \
-          --data-url-prefix "$S3_WEBSITE_PREFIX/test_data$GITHUB_WORKSPACE" \
-          --log-out-dir "$ARTIFACTS_DIR/logs/" \
-          "$JUNIT_REPORT_XML"
+        # shellcheck disable=SC2024
+        for i in $(seq 1 $RETRIES); do
+          # shellcheck disable=SC2024
+          if [ -f "${JUNIT_REPORT_XML}.${i}" ];
+          then
+            # shellcheck disable=SC2024
+            echo "::group::postprocess-junit-${i}"
+            sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
+              -m "${MUTED_CONFIG}" \
+              --ya-out "$OUT_DIR" \
+              --log-url-prefix "$S3_WEBSITE_PREFIX/logs/" \
+              --data-url-prefix "$S3_WEBSITE_PREFIX/test_data$GITHUB_WORKSPACE" \
+              --log-out-dir "$ARTIFACTS_DIR/logs/" \
+              "${JUNIT_REPORT_XML}.${i}"
 
-        sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS" "$JUNIT_REPORT_XML"
-        echo "::endgroup::"
+            sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS/${i}" "${JUNIT_REPORT_XML}.${i}"
+            echo "::endgroup::"
+          fi
+        done
 
     - name: dump VM artifacts
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -257,46 +340,67 @@ runs:
     - name: archive unitest reports (transformed)
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        sudo -E -H -u github tar -C $JUNIT_REPORT_PARTS/.. -czf $REPORTS_ARTIFACTS_DIR/junit_parts.xml.tar.gz "$(basename $JUNIT_REPORT_PARTS)" $JUNIT_REPORT_XML
+
+        sudo -E -H -u github tar -C $JUNIT_REPORT_PARTS/.. -czf $REPORTS_ARTIFACTS_DIR/junit_parts.xml.tar.gz "$(basename $JUNIT_REPORT_PARTS)" ${JUNIT_REPORT_XML}*
 
     - name: write tests summary
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: |
-        echo "::group::write-summary"
-        sudo -E -H -u github mkdir $ARTIFACTS_DIR/summary/
+        # shellcheck disable=SC2024
+        for i in $(seq 1 $RETRIES); do
+          # shellcheck disable=SC2024
+          if [ -f "${JUNIT_REPORT_XML}.${i}" ];
+          then
+            echo "::group::write-summary-${i}"
+            sudo -E -H -u github mkdir -p $ARTIFACTS_DIR/summary/${i}
 
-        cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
+            cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
 
-        platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
+            platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
 
-        export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
-        chown github:github $SUMMARY_OUT_ENV_PATH
-        sudo -E -H -u github .github/scripts/tests/generate-summary.py \
-          --summary-out-path "$ARTIFACTS_DIR/summary/" \
-          --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
-          --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/" \
-          --build-preset "${platform_name}-${{ inputs.build_preset }}" \
-          "Tests" ya-test.html "$JUNIT_REPORT_XML"
+            export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
+            chown github:github $SUMMARY_OUT_ENV_PATH
+            sudo -E -H -u github .github/scripts/tests/generate-summary.py \
+              --summary-out-path "$ARTIFACTS_DIR/summary/${i}/" \
+              --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
+              --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${i}/" \
+              --build-preset "${platform_name}-${{ inputs.build_preset }}" \
+              "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
 
-        cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
-        echo "::endgroup::"
+            cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
+            echo "::endgroup::"
+          fi
+        done
 
     - name: check test results
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        sudo -E -H -u github .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML" || {
-          RC=$?
-
-          echo "::group::Copy-failed-tests-data"
-          sudo -E -H -u github .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML" --paths-only
-          sudo -E -H -u github .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML" --paths-only | while read -r path; do
-            echo $path
-            find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
-          done
+        NEED_COPYING=0
+        # shellcheck disable=SC2024
+        for i in $(seq 1 $RETRIES); do
+          # shellcheck disable=SC2024
+          if [ -f "${JUNIT_REPORT_XML}.${i}" ];
+          then
+            set +e
+            (sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}"; echo $? > exit_code) |& tee fail-checker-output.log
+            set -e
+            RC=$(< exit_code)
+            if [ "$RC" -ne 0 ]; then
+              NEED_COPYING=1
+              echo "::group::Copy-failed-tests-data"
+              sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}" --paths-only | while read -r path; do
+                echo $path
+                find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
+              done
+              echo "::endgroup::"
+            fi
+          fi
+        done
+        if [ "$NEED_COPYING" -ne "0" ];
+        then 
           chown -R github:github "$TESTS_DATA_DIR"
-          echo "::endgroup::"
           echo "::group::remove-binaries-from-tests-data-dir"
           find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
           find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
@@ -325,14 +429,15 @@ runs:
             sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/"
           fi
           echo "::endgroup::"
-          exit $RC
-        }
+        fi
+        echo "Exiting with $RC"
+        exit $RC
       env:
         SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
 
     - name: Sync test results to S3
       if: always()
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-sync"
         sudo -E -H -u github s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
@@ -340,14 +445,7 @@ runs:
 
     - name: Sync logs results to S3
       if: always()
-      shell: bash
-      run: |
-        echo "::group::s3-sync"
-        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/"
-        echo "::endgroup::"
-    - name: Sync reports to S3
-      if: always()
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-sync"
         sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/"
@@ -355,7 +453,7 @@ runs:
 
     - name: Display links to s3 summary
       if: always()
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-report-links"
         echo ${S3_URL_PREFIX}/summary/ya-test.html
@@ -440,12 +538,12 @@ runs:
         path: /home/github/ya_s3_url.txt
     - name: Create directory listing on s3
       if: always()
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::generate-listing"
         sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
         echo "::endgroup::"
     - name: show free space
       if: always()
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: df -h
