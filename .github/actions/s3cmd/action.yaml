@@ -136,7 +136,7 @@ runs:
         echo "S3_URL_PREFIX=${S3_ENDPOINT}/${S3_BUCKET}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${S3_FOLDER_PREFIX}${folder}" >> $GITHUB_ENV
         echo "S3_WEBSITE_PREFIX=https://${S3_BUCKET}.${S3_WEBSITE_SUFFIX}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${S3_FOLDER_PREFIX}${folder}" >> $GITHUB_ENV
         echo "S3_WEBSITE_SUFFIX=${S3_WEBSITE_SUFFIX}" >> $GITHUB_ENV
-        
+
     - name: test s3cmd
       shell: bash
       run: sudo -E -H -u $USER s3cmd ls
