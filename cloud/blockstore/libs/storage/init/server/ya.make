@@ -14,6 +14,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_agent
     cloud/blockstore/libs/storage/disk_agent/model
+    cloud/blockstore/libs/storage/disk_agent_stats
     cloud/blockstore/libs/storage/disk_registry
     cloud/blockstore/libs/storage/disk_registry_proxy
     cloud/blockstore/libs/storage/disk_registry_proxy/model

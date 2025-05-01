@@ -3,6 +3,7 @@ RECURSE(
     bootstrapper
     core
     disk_agent
+    disk_agent_stats
     disk_common
     disk_registry
     disk_registry_proxy

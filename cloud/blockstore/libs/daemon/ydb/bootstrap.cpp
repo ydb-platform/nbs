@@ -690,6 +690,8 @@ void TBootstrapYdb::InitKikimrService()
         Log,
         logging);
 
+    STORAGE_INFO("StatsFetcher initialized");
+
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
         if (Configs->StorageConfig->GetUseTestBlockDigestGenerator()) {
             BlockDigestGenerator = CreateTestBlockDigestGenerator();
