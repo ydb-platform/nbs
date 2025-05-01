@@ -40,6 +40,7 @@ struct TProxyDevice: NBD::IDevice
     const TString DeviceName;
     const ui64 BlockCount;
     const ui32 BlockSize;
+    const ui32 MaxZeroBlocksSubRequestSize;
 
     TProxyDevice(
             TProxyDeviceFactoryConfig config,
@@ -47,13 +48,15 @@ struct TProxyDevice: NBD::IDevice
             const TNetworkAddress& connectAddress,
             TString deviceName,
             ui64 blockCount,
-            ui32 blockSize)
+            ui32 blockSize,
+            ui32 maxZeroBlocksSubRequestSize)
         : Config(config)
         , Client(std::move(client))
         , AddressString(Addr2String(connectAddress))
         , DeviceName(std::move(deviceName))
         , BlockCount(blockCount)
         , BlockSize(blockSize)
+        , MaxZeroBlocksSubRequestSize(maxZeroBlocksSubRequestSize)
     {}
 
     NThreading::TFuture<NProto::TError> Start() override
@@ -69,6 +72,7 @@ struct TProxyDevice: NBD::IDevice
             request->SetBlocksCount(BlockCount);
             request->SetBlockSize(BlockSize);
         }
+        request->SetMaxZeroBlocksSubRequestSize(MaxZeroBlocksSubRequestSize);
         return Client->StartProxyEndpoint(std::move(request)).Apply(
             [] (const auto& f) {
                 return f.GetValue().GetError();
@@ -115,7 +119,8 @@ struct TProxyFactory: NBD::IDeviceFactory
         const TNetworkAddress& connectAddress,
         TString deviceName,
         ui64 blockCount,
-        ui32 blockSize) override
+        ui32 blockSize,
+        ui32 maxZeroBlocksSubRequestSize) override
     {
         return std::make_shared<TProxyDevice>(
             Config,
@@ -123,7 +128,8 @@ struct TProxyFactory: NBD::IDeviceFactory
             connectAddress,
             std::move(deviceName),
             blockCount,
-            blockSize);
+            blockSize,
+            maxZeroBlocksSubRequestSize);
     }
 };
 

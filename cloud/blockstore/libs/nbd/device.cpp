@@ -305,8 +305,10 @@ public:
         const TNetworkAddress& connectAddress,
         TString deviceName,
         ui64 blockCount,
-        ui32 blockSize) override
+        ui32 blockSize,
+        ui32 maxZeroBlocksSubRequestSize) override
     {
+        Y_UNUSED(maxZeroBlocksSubRequestSize);
         return std::make_shared<TDevice>(
             Logging,
             connectAddress,

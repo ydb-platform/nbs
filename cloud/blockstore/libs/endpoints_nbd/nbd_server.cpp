@@ -57,6 +57,8 @@ public:
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.IsReliableMediaKind =
             IsReliableMediaKind(volume.GetStorageMediaKind());
+        options.MaxZeroBlocksSubRequestSize =
+            request.GetMaxZeroBlocksSubRequestSize();
 
         auto requestFactory = CreateServerHandlerFactory(
             CreateDefaultDeviceHandlerFactory(),

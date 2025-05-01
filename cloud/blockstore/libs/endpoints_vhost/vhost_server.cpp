@@ -47,6 +47,8 @@ public:
         options.IsReliableMediaKind =
             IsReliableMediaKind(volume.GetStorageMediaKind());
         options.DiscardEnabled = request.GetVhostDiscardEnabled();
+        options.MaxZeroBlocksSubRequestSize =
+            request.GetMaxZeroBlocksSubRequestSize();
 
         return Server->StartEndpoint(
             request.GetUnixSocketPath(),

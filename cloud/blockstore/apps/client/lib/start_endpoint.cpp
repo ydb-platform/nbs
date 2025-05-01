@@ -112,6 +112,7 @@ private:
     bool Persistent = false;
     TString NbdDeviceFile;
     THashSet<TString> CGroups;
+    ui32 MaxZeroBlocksSubRequestSize = 0;
 
 public:
     TStartEndpointCommand(IBlockStorePtr client)
@@ -191,6 +192,12 @@ public:
         Opts.AddLongOption("cgroup", "cgroup to place into")
             .RequiredArgument("STR")
             .InsertTo(&CGroups);
+
+        Opts.AddLongOption(
+                "max-zeroblocks-subrequest-size",
+                "max size of zeroblocks subreqest")
+            .RequiredArgument("NUM")
+            .StoreResult(&MaxZeroBlocksSubRequestSize);
     }
 
 protected:
@@ -238,6 +245,8 @@ protected:
             request->SetPersistent(Persistent);
             request->SetNbdDeviceFile(NbdDeviceFile);
             request->MutableClientCGroups()->Assign(CGroups.begin(), CGroups.end());
+            request->SetMaxZeroBlocksSubRequestSize(
+                MaxZeroBlocksSubRequestSize);
         }
 
         STORAGE_DEBUG("Sending StartEndpoint request");
