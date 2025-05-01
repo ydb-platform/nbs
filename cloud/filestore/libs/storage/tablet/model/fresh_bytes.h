@@ -81,28 +81,27 @@ private:
     ui64 LastChunkId = 0;
     TString LogTag;
 
+    ui64 TotalBytes = 0;
+    ui64 TotalDeletedBytes = 0;
+    ui64 TotalDataSize = 0;
+
 public:
     TFreshBytes(IAllocator* allocator);
     ~TFreshBytes();
 
-    std::pair<size_t, size_t> GetTotalBytes() const
+    std::size_t GetTotalBytes() const
     {
-        size_t bytes = 0;
-        size_t deletedBytes = 0;
-        for (const auto& c: Chunks) {
-            bytes += c.TotalBytes;
-            deletedBytes += c.TotalDeletedBytes;
-        }
-        return std::make_pair(bytes, deletedBytes);
+        return TotalBytes;
+    }
+
+    std::size_t GetTotalDeletedBytes() const
+    {
+        return TotalDeletedBytes;
     }
 
     size_t GetTotalDataSize() const
     {
-        size_t size = 0;
-        for (const auto& c: Chunks) {
-            size += c.Data.size();
-        }
-        return size;
+        return TotalDataSize;
     }
 
     void UpdateLogTag(TString logTag)
