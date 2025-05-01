@@ -143,35 +143,29 @@ runs:
         case "$BUILD_PRESET" in
           debug)
             extra_params+=(--build "debug")
-            RETRY_COUNT=${NUMBER_OF_RETRIES}
             ;;
           relwithdebinfo)
             extra_params+=(--build "relwithdebinfo")
-            RETRY_COUNT=${NUMBER_OF_RETRIES}
             ;;
           release-asan)
             extra_params+=(--build "release")
             extra_params+=(--sanitize="address")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            RETRY_COUNT=1
             ;;
           release-tsan)
             extra_params+=(--build "release")
             extra_params+=(--sanitize="thread")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            RETRY_COUNT=1
             ;;
           release-msan)
             extra_params+=(--build "release")
             extra_params+=(--sanitize="memory")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            RETRY_COUNT=1
             ;;
           release-ubsan)
             extra_params+=(--build "release")
             extra_params+=(--sanitize="undefined")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            RETRY_COUNT=1
             ;;
           *)
             echo "Invalid preset: $BUILD_PRESET"
@@ -219,7 +213,7 @@ runs:
         echo "::endgroup::"
         date
         ./ya --version
-        RETRIES=$RETRY_COUNT
+        RETRIES="${NUMBER_OF_RETRIES}"
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
         RETRY_FLAG=""
         for i in $(seq 1 $RETRIES); do

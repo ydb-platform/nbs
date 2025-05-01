@@ -86,6 +86,10 @@ on:
         type: string
         default: "yes"
         description: "Truncate enabled"
+      number_of_retries:
+        type: string
+        default: "1"
+        description: "Number of retries for tests"
     outputs:
       sleep_after_tests:
         description: "sleep_after_tests"
@@ -194,6 +198,7 @@ jobs:
         upload_ya_dir: ${{ inputs.upload_ya_dir }}
         clean_ya_dir: ${{ inputs.run_build && 'no' || inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
+        number_of_retries: ${{ inputs.number_of_retries }}
         truncate_enabled: ${{ inputs.truncate_enabled }}
     - id: failure
       name: set sleep_after_tests in case of failure
