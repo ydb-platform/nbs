@@ -411,7 +411,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 999);
+            UNIT_ASSERT_VALUES_EQUAL(999, stats.GetFreshBytesCount());
         }
 
         // Write 1000th byte - FlushBytes should be triggered
@@ -420,7 +420,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
         }
     }
 
