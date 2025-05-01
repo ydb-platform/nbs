@@ -44,24 +44,18 @@ runs:
     - name: Init
       id: init
       shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
       run: |
         export TMP_DIR=/home/github/tmp_build
         echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
         rm -rf $TMP_DIR && mkdir $TMP_DIR && chown -R github:github $TMP_DIR $GITHUB_WORKSPACE
 
-        # shellcheck disable=SC2193
-        if [ "${{ inputs.clean_ya_dir }}" == "yes" ] && [ -d /home/github/.ya/ ]; then
+        
+        if [ "$CLEAN_YA_DIR" == "yes" ] && [ -d /home/github/.ya/ ]; then
           echo "Cleaning ya dir"
           rm -rf /home/github/.ya/
         fi
-    - name: Setup cache password file
-      shell: bash
-      run: |
-        export BAZEL_REMOTE_PASSWORD_FILE=$(mktemp)
-        echo -n "${{ inputs.bazel_remote_password }}" > "$BAZEL_REMOTE_PASSWORD_FILE"
-        echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
-        chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
-        chown github:github "$BAZEL_REMOTE_PASSWORD_FILE"
 
     - name: Setup cache password file
       shell: bash --noprofile --norc -eo pipefail -x {0}
