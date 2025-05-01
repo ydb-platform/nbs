@@ -38,24 +38,28 @@ inputs:
     description: "Use cache for tests"
   sync_to_s3:
     required: false
-    default: 'false'
-    description: 'Sync failed tests folders to s3'
+    default: "false"
+    description: "Sync failed tests folders to s3"
   upload_ya_dir:
     required: false
-    default: 'no'
-    description: 'Upload ya dir to s3'
+    default: "no"
+    description: "Upload ya dir to s3"
   clean_ya_dir:
     required: false
-    default: 'no'
-    description: 'Clean ya dir'
+    default: "no"
+    description: "Clean ya dir"
   use_network_cache:
     required: false
-    default: 'yes'
-    description: 'Use network cache'
+    default: "yes"
+    description: "Use network cache"
   truncate_enabled:
     required: false
-    default: 'yes'
-    description: 'Truncate err files'
+    default: "yes"
+    description: "Truncate err files"
+  number_of_retries:
+    required: false
+    default: "1"
+    description: "Number of retries for ya make"
 
 runs:
   using: composite
@@ -80,6 +84,8 @@ runs:
 
     - name: prepare
       shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
       run: |
         rm -rf $TMP_DIR $JUNIT_REPORT_XML $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
         mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
@@ -87,7 +93,7 @@ runs:
                                $REPORTS_ARTIFACTS_DIR $SUMMARY_LINKS $GITHUB_WORKSPACE \
                                $GITHUB_STEP_SUMMARY $TESTS_DATA_DIR
         # shellcheck disable=SC2193
-        if [ "${{ inputs.clean_ya_dir }}" == "yes" ] && [ -d /home/github/.ya/ ]; then
+        if [ "$CLEAN_YA_DIR" == "yes" ] && [ -d /home/github/.ya/ ]; then
           echo "Cleaning ya dir"
           rm -rf /home/github/.ya/
         fi
@@ -96,9 +102,11 @@ runs:
 
     - name: Setup cache password file
       shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        BAZEL_REMOTE_PASSWORD: ${{ inputs.bazel_remote_password }}
       run: |
         export BAZEL_REMOTE_PASSWORD_FILE=$(mktemp)
-        echo -n "${{ inputs.bazel_remote_password }}" > "$BAZEL_REMOTE_PASSWORD_FILE"
+        echo -n "$BAZEL_REMOTE_PASSWORD" > "$BAZEL_REMOTE_PASSWORD_FILE"
         echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
         chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
         chown github:github "$BAZEL_REMOTE_PASSWORD_FILE"
@@ -106,14 +114,24 @@ runs:
     - name: ya test
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
-        NUMBER_OF_RETRIES: ${{ github.event_name == 'pull_request_target' && 3 || 1 }}
+        NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
+        BUILD_PRESET: ${{ inputs.build_preset }}
+        TEST_TARGET: ${{ inputs.test_target }}
+        TEST_SIZE: ${{ inputs.test_size }}
+        TEST_TYPE: ${{ inputs.test_type }}
+        TEST_THREADS: ${{ inputs.test_threads }}
+        LINK_THREADS: ${{ inputs.link_threads }}
+        BAZEL_REMOTE_USERNAME: ${{ inputs.bazel_remote_username }}
+        BAZEL_REMOTE_URI: ${{ inputs.bazel_remote_uri }}
+        USE_NETWORK_CACHE: ${{ inputs.use_network_cache }}
+        CACHE_UPDATE: ${{ inputs.cache_update }}
       run: |
         extra_params=(
           --run-all-tests
           --keep-going
           --retest
-          --test-threads "${{ inputs.test_threads }}"
-          --link-threads "${{ inputs.link_threads }}"
+          --test-threads "$TEST_THREADS"
+          --link-threads "$LINK_THREADS"
           --cache-size 512G
           --do-not-output-stderrs
           -T
@@ -122,8 +140,7 @@ runs:
           --output "$OUT_DIR"
         )
 
-        # shellcheck disable=SC2195
-        case "${{ inputs.build_preset }}" in
+        case "$BUILD_PRESET" in
           debug)
             extra_params+=(--build "debug")
             RETRY_COUNT=${NUMBER_OF_RETRIES}
@@ -157,41 +174,38 @@ runs:
             RETRY_COUNT=1
             ;;
           *)
-            echo "Invalid preset: ${{ inputs.build_preset }}"
+            echo "Invalid preset: $BUILD_PRESET"
             exit 1
             ;;
         esac
 
-        # shellcheck disable=SC2157
-        if [ -n "${{ inputs.test_target }}" ]; then
-          readarray -d ',' -t targets < <(printf "%s" "${{ inputs.test_target }}")
+        if [ -n "$TEST_TARGET" ]; then
+          readarray -d ',' -t targets < <(printf "%s" "$TEST_TARGET")
           for target in "${targets[@]}"; do
             extra_params+=(--target="${target}")
           done
         fi
 
-        # shellcheck disable=SC2157,SC2193
-        if [ "${{ inputs.use_network_cache }}" == "yes" ]; then
-          # shellcheck disable=SC2157
-          if [ -n "${{ inputs.bazel_remote_uri }}" ]; then
+        if [ "$USE_NETWORK_CACHE" == "yes" ]; then
+          if [ -n "$BAZEL_REMOTE_URI" ]; then
             extra_params+=(--bazel-remote-store)
-            extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
+            extra_params+=(--bazel-remote-base-uri "$BAZEL_REMOTE_URI")
           fi
 
-          # shellcheck disable=SC2157
-          if [ -n "${{ inputs.bazel_remote_username }}" ]; then
-            extra_params+=(--bazel-remote-username "${{ inputs.bazel_remote_username }}")
-            extra_params+=(--bazel-remote-password-file="$BAZEL_REMOTE_PASSWORD_FILE")
+          if [ -n "$BAZEL_REMOTE_USERNAME" ]; then
+            extra_params+=(--bazel-remote-username "$BAZEL_REMOTE_USERNAME")
+            extra_params+=(--bazel-remote-password-file "$BAZEL_REMOTE_PASSWORD_FILE")
           fi
 
-          # shellcheck disable=SC2193
-          if [ "${{ inputs.cache_update }}" == "true" ]; then
+          if [ "$CACHE_UPDATE" = "true" ]; then
             extra_params+=(--bazel-remote-put)
           fi
         fi
 
-        readarray -d ',' -t test_size < <(printf "%s" "${{ inputs.test_size }}")
-        readarray -d ',' -t test_type < <(printf "%s" "${{ inputs.test_type }}")
+        # shellcheck disable=SC2153
+        readarray -d ',' -t test_size < <(printf "%s" "$TEST_SIZE")
+        # shellcheck disable=SC2153
+        readarray -d ',' -t test_type < <(printf "%s" "$TEST_TYPE")
 
         echo "::group::empty-files"
         [ -d  /home/github/.ya/tools/ ] && {
@@ -299,12 +313,9 @@ runs:
         cat .github/config/muted_ya.txt
         MUTED_CONFIG=".github/config/muted_ya.txt"
         echo "::endgroup::"
-        # shellcheck disable=SC2024
         for i in $(seq 1 $RETRIES); do
-          # shellcheck disable=SC2024
           if [ -f "${JUNIT_REPORT_XML}.${i}" ];
           then
-            # shellcheck disable=SC2024
             echo "::group::postprocess-junit-${i}"
             sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
               -m "${MUTED_CONFIG}" \
@@ -341,6 +352,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         GITHUB_TOKEN: ${{ github.token }}
+        BUILD_PRESET: ${{ inputs.build_preset }}
       run: |
         # shellcheck disable=SC2024
         for i in $(seq 1 $RETRIES); do
@@ -360,7 +372,7 @@ runs:
               --summary-out-path "$ARTIFACTS_DIR/summary/${i}/" \
               --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
               --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${i}/" \
-              --build-preset "${platform_name}-${{ inputs.build_preset }}" \
+              --build-preset "${platform_name}-${BUILD_PRESET}" \
               "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
 
             cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
@@ -370,6 +382,9 @@ runs:
 
     - name: check test results
       shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        TRUNCATE_ENABLED: ${{ inputs.truncate_enabled }}
+        SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
       run: |
         NEED_COPYING=0
         # shellcheck disable=SC2024
@@ -408,7 +423,7 @@ runs:
               orig_size=$(du -h "$file" | cut -f1)
               echo "$file - $orig_size"
               # shellcheck disable=SC2193
-              if [ "${{ inputs.truncate_enabled }}" == "yes" ]; then
+              if [ "$TRUNCATE_ENABLED" == "yes" ]; then
                 truncate -s 1G "$file"
                 echo "... truncated (original size was $orig_size) ..." >> "$file"
               else
@@ -426,8 +441,6 @@ runs:
         fi
         echo "Exiting with $RC"
         exit $RC
-      env:
-        SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
 
     - name: Sync test results to S3
       if: always()
