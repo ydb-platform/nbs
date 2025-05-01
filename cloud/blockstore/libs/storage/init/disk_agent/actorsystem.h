@@ -45,6 +45,7 @@ struct TDiskAgentActorSystemArgs
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     NRdma::IServerPtr RdmaServer;
     NNvme::INvmeManagerPtr NvmeManager;
+    NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
