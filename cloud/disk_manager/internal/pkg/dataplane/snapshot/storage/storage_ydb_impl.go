@@ -1420,3 +1420,39 @@ func (s *storageYDB) getSnapshotMeta(
 
 	return states[0].toSnapshotMeta(), nil
 }
+
+func (s *storageYDB) listAllSnapshots(
+	ctx context.Context,
+	session *persistence.Session,
+) (map[string]struct{}, error) {
+	result := make(map[string]struct{})
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		select id
+		from snapshots
+	`, s.tablesPath))
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var id string
+			err := res.Scan("id", &id)
+			if err != nil {
+				return nil, err
+			}
+
+			result[id] = struct{}{}
+		}
+	}
+
+	err = res.Err()
+	if err != nil {
+		return nil, task_errors.NewRetriableError(err)
+	}
+
+	return result, nil
+}

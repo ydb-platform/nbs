@@ -143,4 +143,5 @@ type Storage interface {
 		ctx context.Context,
 		disk *types.Disk,
 	) (snapshotID string, checkpointID string, err error)
+	ListAllSnapshots(ctx context.Context) (map[string]struct{}, error)
 }

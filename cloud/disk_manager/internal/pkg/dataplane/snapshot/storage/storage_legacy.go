@@ -285,3 +285,7 @@ func (s *legacyStorage) GetIncremental(
 
 	return "", "", task_errors.NewNonRetriableErrorf("not implemented")
 }
+
+func (s *legacyStorage) ListAllSnapshots(ctx context.Context) (map[string]struct{}, error) {
+	return nil, task_errors.NewNonRetriableErrorf("not implemented")
+}

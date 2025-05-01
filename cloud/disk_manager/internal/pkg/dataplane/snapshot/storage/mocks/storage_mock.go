@@ -243,6 +243,14 @@ func (s *StorageMock) GetIncremental(
 	return args.String(0), args.String(1), args.Error(2)
 }
 
+func (s *StorageMock) ListAllSnapshots(
+	ctx context.Context,
+) (map[string]struct{}, error) {
+
+	args := s.Called(ctx)
+	return args.Get(0).(map[string]struct{}), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {
