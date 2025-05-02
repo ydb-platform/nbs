@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -258,9 +259,7 @@ func (s *storageYDB) GetIncremental(
 	return snapshotID, checkpointID, err
 }
 
-func (s *storageYDB) ListAllSnapshots(
-	ctx context.Context,
-) (ids map[string]struct{}, err error) {
+func (s *storageYDB) ListAllSnapshots(ctx context.Context) (ids task_storage.StringSet, err error) {
 
 	err = s.db.Execute(
 		ctx,

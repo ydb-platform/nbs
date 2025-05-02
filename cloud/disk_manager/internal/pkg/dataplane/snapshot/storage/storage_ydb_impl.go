@@ -15,6 +15,7 @@ import (
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -1424,8 +1425,8 @@ func (s *storageYDB) getSnapshotMeta(
 func (s *storageYDB) listAllSnapshots(
 	ctx context.Context,
 	session *persistence.Session,
-) (map[string]struct{}, error) {
-	result := make(map[string]struct{})
+) (task_storage.StringSet, error) {
+	result := task_storage.NewStringSet()
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -1439,7 +1440,7 @@ func (s *storageYDB) listAllSnapshots(
 		),
 	)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	defer res.Close()
 
@@ -1448,16 +1449,16 @@ func (s *storageYDB) listAllSnapshots(
 			var id string
 			err := res.Scan("id", &id)
 			if err != nil {
-				return nil, err
+				return result, err
 			}
 
-			result[id] = struct{}{}
+			result.Add(id)
 		}
 	}
 
 	err = res.Err()
 	if err != nil {
-		return nil, task_errors.NewRetriableError(err)
+		return result, task_errors.NewRetriableError(err)
 	}
 
 	return result, nil

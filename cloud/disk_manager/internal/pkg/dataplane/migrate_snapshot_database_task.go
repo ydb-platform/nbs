@@ -47,10 +47,10 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 			return err
 		}
 
-		var snapshotIDs = common.NewChannelWithCancellation[string](len(srcSnapshots))
+		var snapshotIDs = common.NewChannelWithCancellation[string](srcSnapshots.Size())
 
-		for snapshotId, _ := range srcSnapshots {
-			if _, ok := dstSnapshots[snapshotId]; ok {
+		for snapshotId, _ := range srcSnapshots.Vals() {
+			if dstSnapshots.Has(snapshotId) {
 				continue
 			}
 

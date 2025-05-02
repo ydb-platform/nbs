@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -20,7 +21,7 @@ type SnapshotMeta struct {
 	BaseCheckpointID string
 	// Snapshot virtual size, i.e. the minimum amount of disk space needed to restore.
 	Size uint64
-	// Snapshot real size, i.e. the amount of disk space occupied in storage.
+	// Snapshot real size, i.e. the amount of disk space occupied in task_storage.
 	StorageSize uint64
 	LockTaskID  string
 	ChunkCount  uint32
@@ -143,5 +144,5 @@ type Storage interface {
 		ctx context.Context,
 		disk *types.Disk,
 	) (snapshotID string, checkpointID string, err error)
-	ListAllSnapshots(ctx context.Context) (map[string]struct{}, error)
+	ListAllSnapshots(ctx context.Context) (task_storage.StringSet, error)
 }

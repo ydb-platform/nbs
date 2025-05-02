@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
@@ -10,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -286,6 +288,6 @@ func (s *legacyStorage) GetIncremental(
 	return "", "", task_errors.NewNonRetriableErrorf("not implemented")
 }
 
-func (s *legacyStorage) ListAllSnapshots(ctx context.Context) (map[string]struct{}, error) {
+func (s *legacyStorage) ListAllSnapshots(ctx context.Context) (task_storage.StringSet, error) {
 	return nil, task_errors.NewNonRetriableErrorf("not implemented")
 }
