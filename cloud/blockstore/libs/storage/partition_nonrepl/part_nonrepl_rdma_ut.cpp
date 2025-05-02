@@ -34,6 +34,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EIOType {
+    Read = 0,
+    Write = 1,
+    Zero = 2,
+    Checksum = 3
+};
 struct TTestEnv
 {
     TTestActorRuntime& Runtime;
@@ -497,6 +503,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         }                                                                      \
 // READ_BLOCKS_E
 
+#define CHECKSUM_BLOCKS_E(error) {                                             \
+        client.SendChecksumBlocksRequest(blockRange1);                         \
+        auto response = client.RecvChecksumBlocksResponse();                   \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                            \
+            error.GetCode(),                                                   \
+            response->GetStatus(),                                             \
+            response->GetErrorReason());                                       \
+    }                                                                          \
+// CHECKSUM_BLOCKS_E
+
     Y_UNIT_TEST(ShouldLocalReadWriteWithErrors)
     {
         TTestBasicRuntime runtime;
@@ -641,7 +657,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOutCount);
     }
 
-    Y_UNIT_TEST(ShouldSendDeviceTimedOutOnAllocationError)
+    void ShouldSendDeviceTimedOutOnAllocationError(EIOType ioType)
     {
         TTestBasicRuntime runtime;
 
@@ -677,22 +693,32 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        env.Rdma().InjectErrors(
-            MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable"),
-            {},
-            {});
-        env.Rdma().InitAllEndpoints();
         const auto error = MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable");
+        env.Rdma().InjectErrors(error, {}, {});
+        env.Rdma().InitAllEndpoints();
 
         const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
 
         WRITE_BLOCKS_E(error);
-        READ_BLOCKS_E(error, 0);
-        UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
         runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+
         runtime.AdvanceCurrentTime(
             env.Config->GetLaggingDeviceTimeoutThreshold() + 1ms);
-        ZERO_BLOCKS_E(error);
+        switch (ioType) {
+            case EIOType::Read:
+                READ_BLOCKS_E(error, 0);
+                break;
+            case EIOType::Write:
+                WRITE_BLOCKS_E(error);
+                break;
+            case EIOType::Zero:
+                ZERO_BLOCKS_E(error);
+                break;
+            case EIOType::Checksum:
+                CHECKSUM_BLOCKS_E(error);
+                break;
+        }
         runtime.DispatchEvents({}, 10ms);
 
         THashSet<TString> expected = {"vasya"};
@@ -702,6 +728,13 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(1, deviceTimedOutCount);
+    }
+
+    Y_UNIT_TEST(ShouldSendDeviceTimedOutOnAllocationError) {
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Read);
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Write);
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Zero);
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Checksum);
     }
 
     Y_UNIT_TEST(ShouldResetDeviceTimeoutInfoOnSucceededRequest)

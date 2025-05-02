@@ -616,7 +616,7 @@ void TNonreplicatedPartitionRdmaActor::HandleDeviceTimedOutResponse(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Attempted to deem device %s as lagging. Result: %s",
+        "[%s] Attempted to mark device %s as lagging. Result: %s",
         PartConfig->GetName().c_str(),
         PartConfig->GetDevices()[ev->Cookie].GetDeviceUUID().c_str(),
         FormatError(msg->GetError()).c_str());
