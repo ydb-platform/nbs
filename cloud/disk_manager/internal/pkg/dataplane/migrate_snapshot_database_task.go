@@ -2,6 +2,8 @@ package dataplane
 
 import (
 	"context"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
@@ -37,6 +39,11 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 		// Disabling snapshot creation is error-prone, thus we should perform
 		// it manually by disabling respective tasks in config.
 		inflightSnapshotsCount := m.config.GetMigrationInflightTransferringSnapshotsCount()
+		taskTimeout, err := time.ParseDuration(m.config.GetMigrationSnapshotCollectionTimeout())
+		if err != nil {
+			return err
+		}
+
 		srcSnapshots, err := m.srcStorage.ListAllSnapshots(ctx)
 		if err != nil {
 			return err
@@ -95,7 +102,7 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 			inflightTasksLimitReached := len(inflightTaskIDs) == int(inflightSnapshotsCount)
 			inflightTasksLimitReached = inflightTasksLimitReached || snapshotIDs.Empty()
 			if inflightTasksLimitReached {
-				finishedTaskIDs, err := m.scheduler.WaitAnyTasks(ctx, inflightTaskIDs)
+				finishedTaskIDs, err := m.scheduler.WaitAnyTasksWithTimeout(ctx, inflightTaskIDs, taskTimeout)
 				if err != nil {
 					return err
 				}

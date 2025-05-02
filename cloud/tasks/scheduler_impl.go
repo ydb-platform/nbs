@@ -296,7 +296,17 @@ func (s *scheduler) WaitAnyTasks(
 ) ([]string, error) {
 
 	ctx = withComponentLoggingField(ctx)
-	timeout := time.After(s.taskWaitingTimeout)
+	return s.WaitAnyTasksWithTimeout(ctx, taskIDs, s.taskWaitingTimeout)
+}
+
+func (s *scheduler) WaitAnyTasksWithTimeout(
+	ctx context.Context,
+	taskIDs []string,
+	timeout time.Duration,
+) ([]string, error) {
+
+	ctx = withComponentLoggingField(ctx)
+	timeoutExpired := time.After(timeout)
 
 	for {
 		var finishedTaskIDs []string
@@ -321,7 +331,7 @@ func (s *scheduler) WaitAnyTasks(
 		case <-ctx.Done():
 			logging.Info(ctx, "waiting cancelled, taskIDs %v", taskIDs)
 			return nil, ctx.Err()
-		case <-timeout:
+		case <-timeoutExpired:
 			logging.Warn(ctx, "waiting timed out, taskIDs %v", taskIDs)
 			return nil, errors.NewInterruptExecutionError()
 		case <-time.After(s.pollForTaskUpdatesPeriod):
