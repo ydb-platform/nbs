@@ -86,6 +86,11 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 				return err
 			}
 
+			err = execCtx.AddTaskDependency(ctx, taskID)
+			if err != nil {
+				return err
+			}
+
 			inflightTaskIDs = append(inflightTaskIDs, taskID)
 			inflightTasksLimitReached := len(inflightTaskIDs) == int(inflightSnapshotsCount)
 			inflightTasksLimitReached = inflightTasksLimitReached || snapshotIDs.Empty()
@@ -96,15 +101,15 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 				}
 
 				newInflightTaskIds := make([]string, len(inflightTaskIDs))
-				for _, finishedTaskIDs := range finishedTaskIDs {
-					for _, inflightTaskID := range inflightTaskIDs {
-						if finishedTaskIDs == inflightTaskID {
-							continue
-						}
+				for _, inflightTaskID := range inflightTaskIDs {
+					if common.Find(finishedTaskIDs, inflightTaskID) {
 
+					} else {
 						newInflightTaskIds = append(newInflightTaskIds, inflightTaskID)
 					}
 				}
+
+				inflightTaskIDs = newInflightTaskIds
 			}
 
 		}
