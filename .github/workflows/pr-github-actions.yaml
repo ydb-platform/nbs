@@ -329,4 +329,5 @@ jobs:
     with:
       allow_downgrade: ${{ needs.set-env.outputs.allow_downgrade }}
       large_tests: ${{ needs.set-env.outputs.large_tests }}
+      number_of_retries: 3
     secrets: inherit

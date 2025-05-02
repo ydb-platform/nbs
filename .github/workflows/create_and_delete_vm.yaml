@@ -28,6 +28,10 @@ on:
         options:
           - "yes"
           - "no"
+      number_of_retries:
+        type: number
+        default: 1
+        description: "Number of retries for the tests"
   workflow_call:
     inputs:
       vm_name_suffix:
@@ -50,6 +54,10 @@ on:
         type: string
         default: "no"
         description: "Launch large tests"
+      number_of_retries:
+        type: number
+        default: 1
+        description: "Number of retries for the tests"
 
 env:
   allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
@@ -151,6 +159,7 @@ jobs:
       upload_ya_dir: "no"
       clean_ya_dir: "no"
       use_network_cache: "yes"
+      number_of_retries: ${{ inputs.number_of_retries }}
       truncate_enabled: ${{ contains(github.event.pull_request.labels.*.name, 'disable_truncate') && 'no' || 'yes' }}
     secrets: inherit
 
