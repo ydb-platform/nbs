@@ -53,7 +53,11 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 			if _, ok := dstSnapshots[snapshotId]; ok {
 				continue
 			}
-			snapshotIDs.Send(ctx, snapshotId)
+
+			_, err := snapshotIDs.Send(ctx, snapshotId)
+			if err != nil {
+				return err
+			}
 		}
 
 		var inflightTaskIDs []string
@@ -83,20 +87,22 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 			}
 
 			inflightTaskIDs = append(inflightTaskIDs, taskID)
-			if len(inflightTaskIDs) == m.inflightTransferringSnapshotsCount || snapshotIDs.Empty() {
+			inflightTasksLimitReached := len(inflightTaskIDs) == m.inflightTransferringSnapshotsCount
+			inflightTasksLimitReached = inflightTasksLimitReached || snapshotIDs.Empty()
+			if inflightTasksLimitReached {
 				finishedTaskIDs, err := m.scheduler.WaitAnyTasks(ctx, inflightTaskIDs)
 				if err != nil {
 					return err
 				}
 
+				newInflightTaskIds := make([]string, len(inflightTaskIDs))
 				for _, finishedTaskIDs := range finishedTaskIDs {
-					for i := 0; i < len(inflightTaskIDs); i++ {
-						if finishedTaskIDs == inflightTaskIDs[i] {
-							// Remove finished task from the list
-							inflightTaskIDs[i] = inflightTaskIDs[len(inflightTaskIDs)-1]
-							inflightTaskIDs = inflightTaskIDs[:len(inflightTaskIDs)-1]
-							break
+					for _, inflightTaskID := range inflightTaskIDs {
+						if finishedTaskIDs == inflightTaskID {
+							continue
 						}
+
+						newInflightTaskIds = append(newInflightTaskIds, inflightTaskID)
 					}
 				}
 			}
