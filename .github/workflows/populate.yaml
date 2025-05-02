@@ -97,12 +97,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           sparse-checkout: '.github'
-      - name: calculate threads
-        id: calculate-threads
-        uses: ./.github/actions/nebius_threads_calculator
-        with:
-          vm_preset: ${{ env.preset }}
-          tests_size: ${{ inputs.flavor == 'heavy' && 'small,medium,large' || 'small' }}
       - name: Create VM ${{ matrix.vms_to_create }}
         id: start-runner
         uses: ./.github/actions/nebius_runner_create
@@ -122,7 +116,7 @@ jobs:
           vm_disk_size: ${{ env.disk_size }}
           vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
           vm_image: ${{ vars.NEBIUS_IMAGE_ID_2204 }}
-          vm_labels: ${{ format('run={0}-{1},repo={2},owner={3},build_threads={4},test_threads={5},link_threads={6}',github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner, steps.calculate-threads.outputs.build_threads, steps.calculate-threads.outputs.test_threads, steps.calculate-threads.outputs.link_threads) }}
+          vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}',github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
           vm_flavor: ${{ inputs.flavor }}
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
           vm_allow_downgrade: 'no'

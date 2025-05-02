@@ -58,32 +58,35 @@ inputs:
     description: "allow downgrade"
 
 outputs:
-  label:
+  LABEL:
     description: >-
       Name of the unique label assigned to the runner.
       The label is used in two cases:
       - to use as the input of 'runs-on' property for the following jobs;
       - to remove the runner from GitHub when it is not needed anymore.
     value: ${{ steps.create-vm.outputs.label }}
-  instance-id:
+  INSTANCE_ID:
     description: >-
       Instance id of the created runner.
       The id is used to terminate the instance when the runner is not needed anymore.
     value: ${{ steps.create-vm.outputs.instance-id }}
-  local-ipv4:
+  RUNNER_LOCAL_IPV4:
     description: >-
       Local ipv4 address of the created runner.
       The address is used to connect to the runner via SSH.
     value: ${{ steps.create-vm.outputs.local-ipv4 }}
-  external-ipv4:
+  RUNNER_IPV4:
     description: >-
       External ipv4 address of the created runner.
       The address is used to connect to the runner via SSH.
     value: ${{ steps.create-vm.outputs.external-ipv4 || '0.0.0.0' }}
-  vm-preset:
+  VM_PRESET:
     description: >-
       Resulting VM preset of the created runner.
     value: ${{ steps.create-vm.outputs.vm-preset || inputs.vm_preset }}
+  RUNNER_FLAVOR:
+    value: ${{ steps.result.outputs.RUNNER_FLAVOR }}
+    description: "runner flavor"
 
 
 

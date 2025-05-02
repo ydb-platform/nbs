@@ -105,107 +105,20 @@ on:
         type: string
         default: "network-ssd-nonreplicated"
         description: "Disk type for VM"
-      allow_downgrade:
-        type: string
-        default: "no"
-        description: "Allow downgrade of VM"
       number_of_retries:
         type: string
         default: "1"
         description: "Number of retries for tests"
 
-env:
-  allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
+
 
 jobs:
-  provide-runner:
-    name: Lock self-hosted runner (${{ inputs.build_preset }})
-    timeout-minutes: 60
-    if: always()
-    runs-on: [ self-hosted, "self-hosted", "runner_light"]
-    outputs:
-      label: ${{ steps.get-runner.outputs.LABEL }}
-      runner_flavor: ${{ steps.get-runner.outputs.RUNNER_FLAVOR }}
-      instance-id: ${{ steps.get-runner.outputs.INSTANCE_ID }}
-      vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
-      old-instance-name: ${{ steps.get-runner.outputs.OLD_INSTANCE_NAME }}
-      runner_ipv4: ${{ steps.get-runner.outputs.RUNNER_IPV4 }}
-      runner_local_ipv4: ${{ steps.get-runner.outputs.RUNNER_LOCAL_IPV4 }}
-      build_threads: ${{ steps.calculate-threads.outputs.build_threads || '60' }}
-      test_threads: ${{ steps.calculate-threads.outputs.test_threads || '32' }}
-      link_threads: ${{ steps.calculate-threads.outputs.link_threads || '24' }}
-    steps:
-      - name: checkout PR
-        uses: actions/checkout@v4
-        if: github.event.pull_request.head.sha != ''
-        with:
-          submodules: false
-          sparse-checkout: '.github'
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
-      - name: rebase PR
-        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
-        shell: bash
-        run: |
-          git config user.email "robot-nbs@nebius.com"
-          git config user.name "Robot NBS"
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          git rebase origin/${{ github.event.pull_request.base.ref }}
-      - name: checkout
-        uses: actions/checkout@v4
-        if: github.event.pull_request.head.sha == ''
-        with:
-          submodules: false
-          sparse-checkout: '.github'
-
-      - name: set up nebius cli
-        id: cli
-        uses: ./.github/actions/nebius_cli
-        with:
-          sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
-      - name: set up gh cli
-        id: gh
-        uses: ./.github/actions/gh_cli
-      - name: Select nebius runner
-        id: get-runner
-        uses: ./.github/actions/nebius_runner_select
-        with:
-          parent_id: ${{ vars.NEBIUS_PARENT_ID }}
-          instance_name: ${{ github.event.pull_request.number &&  format('running-pr-{0}-{1}-{2}', github.event.pull_request.number, github.run_id, github.run_attempt) ||  format('running-{0}-{1}-run-{1}-{2}', github.event.repository.owner.login, github.event.repository.name, github.run_id, github.run_attempt) }}
-          flavor: "heavy"
-          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          
-      - name: Calculate threads
-        id: calculate-threads
-        if: always()
-        uses: ./.github/actions/nebius_threads_calculator
-        with:
-          vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
-          tests_size: ${{ inputs.test_size }}
-      - name: debug
-        id: debug
-        shell: bash
-        run: |
-          echo "RUNNER_IPV4=${{ steps.get-runner.outputs.RUNNER_IPV4 }}"
-          echo "RUNNER_LOCAL_IPV4=${{ steps.get-runner.outputs.RUNNER_LOCAL_IPV4 }}"
-          echo "INSTANCE_ID=${{ steps.get-runner.outputs.INSTANCE_ID }}"
-          echo "RUNNER_FLAVOR=${{ steps.get-runner.outputs.RUNNER_FLAVOR }}"
-          echo "LABEL=${{ steps.get-runner.outputs.LABEL }}"
-          echo "OLD_INSTANCE_NAME=${{ steps.get-runner.outputs.OLD_INSTANCE_NAME }}"
-          echo "VM_PRESET=${{ steps.get-runner.outputs.VM_PRESET }}"
-          echo "use_network_cache=${{ github.event_name == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}"
-
   build-and-test:
-    name: Build and test NBS (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
+    name: Build and test NBS (${{ inputs.build_preset }})
     uses: ./.github/workflows/build_and_test_ya.yaml
-    needs:
-      - provide-runner
     with:
       runner_kind: self-hosted
-      runner_label: ${{ needs.provide-runner.outputs.label }}
-      runner_flavor: ${{ needs.provide-runner.outputs.runner_flavor }}
-      runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
-      runner_ipv4: ${{ needs.provide-runner.outputs.runner_ipv4 }}
+      runner_flavor: "heavy"
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
       build_preset: ${{ inputs.build_preset }}
@@ -213,9 +126,6 @@ jobs:
       run_tests: true
       test_size: ${{ inputs.test_size }}
       test_type: ${{ inputs.test_type }}
-      build_threads: ${{ needs.provide-runner.outputs.build_threads || '60' }}
-      link_threads: ${{ needs.provide-runner.outputs.link_threads || '24' }}
-      test_threads: ${{ needs.provide-runner.outputs.test_threads || '12' }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
       cache_update_build: ${{ inputs.cache_update_build }}
       cache_update_tests: ${{ inputs.cache_update_tests }}
@@ -226,62 +136,3 @@ jobs:
       number_of_retries: ${{ inputs.number_of_retries }}
     secrets: inherit
 
-  sleep-if-needed:
-    name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests || '0' }}s if build failed
-    if: ${{ !cancelled() }}
-    needs:
-      - provide-runner # required to get output from the start-runner job
-      - build-and-test # required to wait when the main job is done
-    runs-on: [ self-hosted, "self-hosted", "${{ needs.provide-runner.outputs.label }}", "runner_${{ needs.provide-runner.outputs.label }}" ]
-    steps:
-      - name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests  || '0' }}s if build failed
-        shell: bash
-        if: ${{ needs.build-and-test.outputs.sleep_after_tests && needs.build-and-test.outputs.sleep_after_tests != '0'  }}
-        # we need to use binary because builting doesn't produce process
-        # which we can kill to stop the vm before it's done
-        run: |
-          echo "sleeping ${{ needs.build-and-test.outputs.sleep_after_tests }}s"
-          /usr/bin/sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
-
-  release-runner:
-    name: Release self-hosted runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
-    needs:
-      - provide-runner  # required to get output from the start-runner job
-      - build-and-test  # required to wait when the main job is done
-      - sleep-if-needed # required to wait until all debug is done
-    runs-on: [ self-hosted, "self-hosted", "${{ needs.provide-runner.outputs.label }}", "runner_${{ needs.provide-runner.outputs.label }}" ]
-    if: always()
-    steps:
-      - name: checkout PR
-        uses: actions/checkout@v4
-        if: github.event.pull_request.head.sha != ''
-        with:
-          submodules: false
-          sparse-checkout: '.github'
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
-      - name: rebase PR
-        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
-        shell: bash
-        run: |
-          git config user.email "robot-nbs@nebius.com"
-          git config user.name "Robot NBS"
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          git rebase origin/${{ github.event.pull_request.base.ref }}
-      - name: checkout
-        uses: actions/checkout@v4
-        if: github.event.pull_request.head.sha == ''
-        with:
-          submodules: false
-          sparse-checkout: '.github'
-      - name: Setup nebius cli
-        id: rename
-        uses: ./.github/actions/nebius_cli
-        with:
-          sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
-      - name: Release VM
-        id: release
-        uses: ./.github/actions/nebius_runner_release
-        with:
-          instance_id: ${{ needs.provide-runner.outputs.instance-id }}
-          instance_name: ${{ needs.provide-runner.outputs.old-instance-name }}
