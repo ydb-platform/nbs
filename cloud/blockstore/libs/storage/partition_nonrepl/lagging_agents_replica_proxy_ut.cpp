@@ -798,7 +798,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
         const auto range = TBlockRange64::WithLength(0, DeviceBlockCount);
         auto response = env.ChecksumFromController(0, range);
         UNIT_ASSERT_C(
-            !HasError(response->GetError()),
+            SUCCEEDED(response->GetStatus()),
             FormatError(response->GetError()));
         UNIT_ASSERT_VALUES_EQUAL(297130258ULL, response->Record.GetChecksum());
     }
