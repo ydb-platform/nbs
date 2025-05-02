@@ -102,5 +102,33 @@ TStringBuf TYdbBlobLoadMetricRow::GetYdbRowDefinition()
     return TStringBuf(RowDefinition.data());
 }
 
+TValue TYdbGroupRow::GetYdbValues() const
+{
+    NYdb::TValueBuilder value;
+    value.BeginStruct();
+
+    value.AddMember(TabletIdName.data()).Uint64(TabletId);
+    value.AddMember(ChannelName.data()).Uint32(Channel);
+    value.AddMember(GroupIdName.data()).Uint32(GroupId);
+    value.AddMember(GenerationName.data()).Uint32(Generation);
+    value.AddMember(TimestampName.data()).Uint64(Timestamp.Seconds());
+
+    value.EndStruct();
+    return value.Build();
+}
+
+TValue TYdbPartitionRow::GetYdbValues() const
+{
+    NYdb::TValueBuilder value;
+    value.BeginStruct();
+
+    value.AddMember(PartitionTabletIdName.data()).Uint64(PartitionTabletId);
+    value.AddMember(VolumeTabletIdName.data()).Uint64(VolumeTabletId);
+    value.AddMember(DiskIdName.data()).String(DiskId);
+    value.AddMember(TimestampName.data()).Uint64(Timestamp.Seconds());
+
+    value.EndStruct();
+    return value.Build();
+}
 
 }   // namespace NCloud::NBlockStore::NYdbStats
