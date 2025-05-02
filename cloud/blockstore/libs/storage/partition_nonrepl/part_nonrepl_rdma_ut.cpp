@@ -40,6 +40,7 @@ enum class EIOType {
     Zero = 2,
     Checksum = 3
 };
+
 struct TTestEnv
 {
     TTestActorRuntime& Runtime;
