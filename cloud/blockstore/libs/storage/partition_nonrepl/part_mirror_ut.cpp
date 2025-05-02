@@ -2819,6 +2819,93 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TestAgentData(runtime, "vasya#2", 'A', 1024, 1024);
     }
 
+    void DoShouldNotMigrateIfCantLockMigrationRange(bool useDirectCopy)
+    {
+        TTestRuntime runtime;
+
+        NProto::TStorageServiceConfig cfg;
+        cfg.SetUseDirectCopyRange(useDirectCopy);
+
+        const THashSet<TString> freshDeviceIds{"vasya"};
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TVector<TDevices>{
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
+            },
+            {},   // migrations
+            freshDeviceIds,
+            cfg);
+
+        TPartitionClient client(runtime, env.ActorId);
+        ui64 migrationRangesCount = 0;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartition::EvLockAndDrainRangeRequest: {
+                        auto lockResponse = std::make_unique<
+                            TEvPartition::TEvLockAndDrainRangeResponse>(
+                            MakeError(E_REJECTED));
+
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                lockResponse.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    case TEvNonreplPartitionPrivate::EvRangeMigrated: {
+                        auto* ev = static_cast<
+                            TEvNonreplPartitionPrivate::TEvRangeMigrated*>(
+                            event->GetBase());
+
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            E_REJECTED,
+                            ev->Error.GetCode());
+                        break;
+                    }
+                    case TEvService::EvReadBlocksRequest: {
+                        auto* ev =
+                            static_cast<TEvService::TEvReadBlocksRequest*>(
+                                event->GetBase());
+                        if (ev->Record.GetHeaders().GetIsBackgroundRequest()) {
+                            ++migrationRangesCount;
+                        }
+                        break;
+                    }
+                    case TEvDiskAgent::EvDirectCopyBlocksRequest: {
+                        ++migrationRangesCount;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        runtime.AdvanceCurrentTime(40ms);
+        NActors::TDispatchOptions options;
+        options.FinalEvents = {NActors::TDispatchOptions::TFinalEventCondition(
+            TEvNonreplPartitionPrivate::EvRangeMigrated)};
+
+        runtime.DispatchEvents(options);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, migrationRangesCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantLockMigrationRange)
+    {
+        DoShouldNotMigrateIfCantLockMigrationRange(false);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantLockMigrationRangeDirectCopy)
+    {
+        DoShouldNotMigrateIfCantLockMigrationRange(true);
+    }
 
     Y_UNIT_TEST(ShouldExecuteMultiWriteRequests)
     {
