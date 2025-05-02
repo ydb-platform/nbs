@@ -93,10 +93,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
                     DefaultDeviceSize);
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig(makeConfig(0, TVector { Agents[0] }))
-            .WithAgents({ Agents[0] })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithConfig(makeConfig(0, TVector{Agents[0]}))
+                            .WithAgents({Agents[0]})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto allocateDisk = [&] (auto db, auto* diskId, auto deviceCount, auto kind) {
             TDiskRegistryState::TAllocateDiskResult result;
@@ -249,14 +250,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
 
     Y_UNIT_TEST_F(ShouldSuspendDevicesOnCMSRequest, TFixture)
     {
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig(MakeConfig(0, Agents)
-                | WithPoolConfig(
-                    "local-ssd",
-                    NProto::DEVICE_POOL_KIND_LOCAL,
-                    DefaultDeviceSize))
-            .WithAgents(Agents)
-            .Build();
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    MakeConfig(0, Agents) | WithPoolConfig(
+                                                "local-ssd",
+                                                NProto::DEVICE_POOL_KIND_LOCAL,
+                                                DefaultDeviceSize))
+                .WithAgents(Agents)
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         for (auto& agent: Agents) {
             for (const auto& d: agent.GetDevices()) {

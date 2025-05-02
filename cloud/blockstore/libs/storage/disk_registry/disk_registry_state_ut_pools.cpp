@@ -121,19 +121,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig([&] {
-                auto config = MakeConfig(0, agents);
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
 
-                auto* local = config.AddDevicePoolConfigs();
-                local->SetName("local-ssd");
-                local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-                local->SetAllocationUnit(DefaultDeviceSize);
+                        auto* local = config.AddDevicePoolConfigs();
+                        local->SetName("local-ssd");
+                        local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        local->SetAllocationUnit(DefaultDeviceSize);
 
-                return config;
-             }())
-            .WithAgents(agents)
-            .Build();
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto allocate = [&] (auto db, ui32 deviceCount, TString agentId) {
             TDiskRegistryState::TAllocateDiskResult result;
@@ -200,19 +204,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig([&] {
-                auto config = MakeConfig(0, agents);
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
 
-                auto* local = config.AddDevicePoolConfigs();
-                local->SetName("local-ssd");
-                local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-                local->SetAllocationUnit(DefaultDeviceSize);
+                        auto* local = config.AddDevicePoolConfigs();
+                        local->SetName("local-ssd");
+                        local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        local->SetAllocationUnit(DefaultDeviceSize);
 
-                return config;
-             }())
-            .WithAgents(agents)
-            .Build();
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto allocate = [&] (auto db, ui32 deviceCount, TString agentId) {
             TDiskRegistryState::TAllocateDiskResult result;
@@ -275,19 +283,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig([&] {
-                auto config = MakeConfig(0, agents);
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
 
-                auto* local = config.AddDevicePoolConfigs();
-                local->SetName("pool");
-                local->SetAllocationUnit(DefaultDeviceSize);
+                        auto* local = config.AddDevicePoolConfigs();
+                        local->SetName("pool");
+                        local->SetAllocationUnit(DefaultDeviceSize);
 
-                return config;
-             }())
-            .WithAgents(agents)
-            .WithDisks({ Disk("disk-1", { "uuid-1.1", "uuid-1.2" }) })
-            .Build();
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .WithDisks({Disk("disk-1", {"uuid-1.1", "uuid-1.2"})})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             bool updated = false;
@@ -350,20 +362,24 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig([&] {
-                auto config = MakeConfig(0, agents);
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
 
-                auto* local = config.AddDevicePoolConfigs();
-                local->SetName("local-ssd");
-                local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-                local->SetAllocationUnit(DefaultDeviceSize);
+                        auto* local = config.AddDevicePoolConfigs();
+                        local->SetName("local-ssd");
+                        local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        local->SetAllocationUnit(DefaultDeviceSize);
 
-                return config;
-             }())
-            .WithAgents(agents)
-            .WithDisks({ Disk("disk-1", { "uuid-1.1", "uuid-1.2" }) })
-            .Build();
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .WithDisks({Disk("disk-1", {"uuid-1.1", "uuid-1.2"})})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             bool updated = false;
@@ -425,30 +441,34 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             {"global2", 2500_MB}
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig([&] {
-                auto config = MakeConfig(0, {agent});
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, {agent});
 
-                auto* nonrepl = config.AddDevicePoolConfigs();
-                nonrepl->SetAllocationUnit(pools[""]);
+                        auto* nonrepl = config.AddDevicePoolConfigs();
+                        nonrepl->SetAllocationUnit(pools[""]);
 
-                for (auto* name: {"local1", "local2"}) {
-                    auto* local = config.AddDevicePoolConfigs();
-                    local->SetName(name);
-                    local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-                    local->SetAllocationUnit(pools[name]);
-                }
+                        for (auto* name: {"local1", "local2"}) {
+                            auto* local = config.AddDevicePoolConfigs();
+                            local->SetName(name);
+                            local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                            local->SetAllocationUnit(pools[name]);
+                        }
 
-                for (auto* name: {"global1", "global2"}) {
-                    auto* local = config.AddDevicePoolConfigs();
-                    local->SetName(name);
-                    local->SetKind(NProto::DEVICE_POOL_KIND_GLOBAL);
-                    local->SetAllocationUnit(pools[name]);
-                }
+                        for (auto* name: {"global1", "global2"}) {
+                            auto* local = config.AddDevicePoolConfigs();
+                            local->SetName(name);
+                            local->SetKind(NProto::DEVICE_POOL_KIND_GLOBAL);
+                            local->SetAllocationUnit(pools[name]);
+                        }
 
-                return config;
-             }())
-            .Build();
+                        return config;
+                    }())
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agent));
@@ -597,19 +617,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig([&] {
-                auto config = MakeConfig(0, agents);
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
 
-                auto* pool = config.AddDevicePoolConfigs();
-                pool->SetName("local-ssd");
-                pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-                pool->SetAllocationUnit(localDeviceSize);
+                        auto* pool = config.AddDevicePoolConfigs();
+                        pool->SetName("local-ssd");
+                        pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        pool->SetAllocationUnit(localDeviceSize);
 
-                return config;
-             }())
-            .WithAgents(agents)
-            .Build();
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto allocate = [&] (auto db, ui32 deviceCount, TVector<TString> agentIds) {
             TDiskRegistryState::TAllocateDiskResult result;
@@ -682,28 +706,34 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                 | WithTotalSize(bigPoolUnitSize, DefaultLogicalBlockSize)
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithStorageConfig([]{
-                auto config = CreateDefaultStorageConfigProto();
-                config.SetAllocationUnitNonReplicatedSSD(93);
-                return config;
-            }())
-            .WithConfig([&] {
-                auto config = MakeConfig(0, {agentConfig});
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithStorageConfig(
+                    []
+                    {
+                        auto config = CreateDefaultStorageConfigProto();
+                        config.SetAllocationUnitNonReplicatedSSD(93);
+                        return config;
+                    }())
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, {agentConfig});
 
-                auto* small = config.AddDevicePoolConfigs();
-                small->SetName("small");
-                small->SetKind(NProto::DEVICE_POOL_KIND_GLOBAL);
-                small->SetAllocationUnit(smallPoolUnitSize);
+                        auto* small = config.AddDevicePoolConfigs();
+                        small->SetName("small");
+                        small->SetKind(NProto::DEVICE_POOL_KIND_GLOBAL);
+                        small->SetAllocationUnit(smallPoolUnitSize);
 
-                auto* big = config.AddDevicePoolConfigs();
-                big->SetName("big");
-                big->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-                big->SetAllocationUnit(bigPoolUnitSize);
+                        auto* big = config.AddDevicePoolConfigs();
+                        big->SetName("big");
+                        big->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        big->SetAllocationUnit(bigPoolUnitSize);
 
-                return config;
-             }())
-            .Build();
+                        return config;
+                    }())
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agentConfig));
@@ -869,25 +899,30 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithStorageConfig([] {
-                auto config = CreateDefaultStorageConfigProto();
-                config.SetAllocationUnitNonReplicatedSSD(
-                    static_cast<ui32>(allocationUnitSize / 1_GB));
-                return config;
-            }())
-            .WithKnownAgents(agents)
-            .WithDisks({[] {
-                NProto::TDiskConfig disk;
-                disk.SetDiskId("vol0");
-                disk.AddDeviceUUIDs("uuid-4.1");
-                disk.SetBlockSize(4_KB);
-                disk.SetStorageMediaKind(
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithStorageConfig(
+                    []
+                    {
+                        auto config = CreateDefaultStorageConfigProto();
+                        config.SetAllocationUnitNonReplicatedSSD(
+                            static_cast<ui32>(allocationUnitSize / 1_GB));
+                        return config;
+                    }())
+                .WithKnownAgents(agents)
+                .WithDisks({[]
+                            {
+                                NProto::TDiskConfig disk;
+                                disk.SetDiskId("vol0");
+                                disk.AddDeviceUUIDs("uuid-4.1");
+                                disk.SetBlockSize(4_KB);
+                                disk.SetStorageMediaKind(
+                                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
-                return disk;
-            }()})
-            .Build();
+                                return disk;
+                            }()})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // uuid-2.1 was detected as a non-standart size device.
         UNIT_ASSERT_VALUES_EQUAL(1, criticalEvents->Val());

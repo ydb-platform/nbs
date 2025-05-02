@@ -44,9 +44,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithAgents(agents)
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder().WithAgents(agents).Build();
+        TDiskRegistryState& state = *statePtr;
 
         TVector<NProto::TDeviceConfig> devices;
 
@@ -156,12 +155,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
              Device("dev-3", "uuid-1.3"),
              Device("dev-4", "uuid-1.4")})};
 
-        TDiskRegistryState state =
-            TDiskRegistryStateBuilder()
-                .WithAgents(agents)
-                .WithSuspendedDevices({"uuid-1.1"})
-                .WithDirtyDevices({TDirtyDevice{"uuid-1.1", ""}})
-                .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithAgents(agents)
+                            .WithSuspendedDevices({"uuid-1.1"})
+                            .WithDirtyDevices({TDirtyDevice{"uuid-1.1", ""}})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // Create a disk.
         executor.WriteTx(
