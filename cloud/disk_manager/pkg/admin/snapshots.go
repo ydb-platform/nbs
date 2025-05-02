@@ -519,6 +519,10 @@ func newSnapshotsCmd(
 			clientConfig,
 			serverConfig,
 		),
+		newMigrateSnapshotDatabaseCmd(
+			clientConfig,
+			serverConfig,
+		),
 	)
 
 	return cmd
