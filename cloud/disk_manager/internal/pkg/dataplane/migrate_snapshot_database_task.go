@@ -3,6 +3,7 @@ package dataplane
 import (
 	"context"
 	"github.com/golang/protobuf/proto"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
@@ -17,7 +18,6 @@ type migrateSnapshotDatabaseTask struct {
 	dstStorage                         storage.Storage
 	config                             *config.DataplaneConfig
 	scheduler                          tasks.Scheduler
-	useS3                              bool
 	inflightTransferringSnapshotsCount int
 }
 
@@ -47,19 +47,26 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 			return err
 		}
 
-		var snapshotIDs = make([]string, 0)
+		var snapshotIDs = common.NewChannelWithCancellation[string](len(srcSnapshots))
 
 		for snapshotId, _ := range srcSnapshots {
 			if _, ok := dstSnapshots[snapshotId]; ok {
 				continue
 			}
-
-			snapshotIDs = append(snapshotIDs, snapshotId)
+			snapshotIDs.Send(ctx, snapshotId)
 		}
 
-		var taskIDs []string
+		var inflightTaskIDs []string
 
-		for _, snapshotId := range snapshotIDs {
+		for !snapshotIDs.Empty() {
+			snapshotId, ok, err := snapshotIDs.Receive(ctx)
+			if !ok {
+				break
+			}
+			if err != nil {
+				return err
+			}
+
 			taskID, err := m.scheduler.ScheduleTask(
 				headers.SetIncomingIdempotencyKey(
 					ctx,
@@ -75,33 +82,25 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 				return err
 			}
 
-			taskIDs = append(taskIDs, taskID)
-		}
+			inflightTaskIDs = append(inflightTaskIDs, taskID)
+			if len(inflightTaskIDs) == m.inflightTransferringSnapshotsCount || snapshotIDs.Empty() {
+				finishedTaskIDs, err := m.scheduler.WaitAnyTasks(ctx, inflightTaskIDs)
+				if err != nil {
+					return err
+				}
 
-		for len(taskIDs) > 0 {
-			// On each iteration we copy a batch of inflight tasks
-			// and then delete finished ones from the list.
-			inflightTaskIDs := make([]string, m.inflightTransferringSnapshotsCount)
-			for i := 0; i < m.inflightTransferringSnapshotsCount && i < len(taskIDs); i++ {
-				inflightTaskIDs[i] = taskIDs[i]
-			}
-
-			finishedTaskIDs, err := m.scheduler.WaitAnyTasks(ctx, inflightTaskIDs)
-			if err != nil {
-				return err
-			}
-
-			for i := 0; i < m.inflightTransferringSnapshotsCount && i < len(taskIDs); i++ {
-				for _, finishedTaskID := range finishedTaskIDs {
-					if finishedTaskID != taskIDs[i] {
-						continue
+				for _, finishedTaskIDs := range finishedTaskIDs {
+					for i := 0; i < len(inflightTaskIDs); i++ {
+						if finishedTaskIDs == inflightTaskIDs[i] {
+							// Remove finished task from the list
+							inflightTaskIDs[i] = inflightTaskIDs[len(inflightTaskIDs)-1]
+							inflightTaskIDs = inflightTaskIDs[:len(inflightTaskIDs)-1]
+							break
+						}
 					}
-
-					// Remove finished task from the list
-					taskIDs[i] = taskIDs[len(taskIDs)-1]
-					taskIDs = taskIDs[:len(taskIDs)-1]
 				}
 			}
+
 		}
 	}
 
