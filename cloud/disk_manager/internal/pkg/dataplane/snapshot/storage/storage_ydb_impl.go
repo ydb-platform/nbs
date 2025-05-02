@@ -1429,9 +1429,15 @@ func (s *storageYDB) listAllSnapshots(
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
+		declare $snapshotStatusReady as Int64;
 		select id
-		from snapshots
-	`, s.tablesPath))
+		from snapshots where status = $snapshotStatusReady
+	`, s.tablesPath),
+		persistence.ValueParam(
+			"$snapshotStatusReady",
+			persistence.Int64Value(int64(snapshotStatusReady)),
+		),
+	)
 	if err != nil {
 		return nil, err
 	}
