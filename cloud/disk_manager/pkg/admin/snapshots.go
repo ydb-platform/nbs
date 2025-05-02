@@ -428,6 +428,73 @@ func newScheduleMigrateSnapshotTaskCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type migrateSnapshotDatabaseCmd struct {
+	clientConfig *client_config.ClientConfig
+	serverConfig *server_config.ServerConfig
+}
+
+func (c *migrateSnapshotDatabaseCmd) run() error {
+	ctx := newContext(c.clientConfig)
+
+	taskStorage, db, err := newTaskStorage(ctx, c.serverConfig)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	logging.Info(ctx, "Creating task scheduler")
+	taskRegistry := tasks.NewRegistry()
+
+	regularSystemTasksEnabled := false
+	c.serverConfig.TasksConfig.RegularSystemTasksEnabled = &regularSystemTasksEnabled
+	taskScheduler, err := tasks.NewScheduler(
+		ctx,
+		taskRegistry,
+		taskStorage,
+		c.serverConfig.TasksConfig,
+		metrics.NewEmptyRegistry(),
+	)
+	if err != nil {
+		logging.Error(ctx, "Failed to create task scheduler: %v", err)
+		return err
+	}
+
+	taskID, err := taskScheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			"dataplane.MigrateSnapshotDatabaseTask_"+generateID(),
+		),
+		"dataplane.MigrateSnapshotDatabaseTask",
+		"",
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+func newMigrateSnapshotDatabaseCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &migrateSnapshotDatabaseCmd{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	return &cobra.Command{
+		Use: "schedule_migrate_snapshot_task",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newSnapshotsCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
