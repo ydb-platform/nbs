@@ -74,7 +74,7 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 			taskID, err := m.scheduler.ScheduleTask(
 				headers.SetIncomingIdempotencyKey(
 					ctx,
-					"dataplane.MigrateSnapshotTask_"+snapshotId+"_"+execCtx.GetTaskId(),
+					"dataplane.MigrateSnapshotTask_"+snapshotId+"_"+execCtx.GetTaskID(),
 				),
 				"dataplane.MigrateSnapshotTask",
 				"",

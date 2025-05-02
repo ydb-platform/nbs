@@ -475,6 +475,7 @@ func (c *migrateSnapshotDatabaseCmd) run() error {
 	fmt.Printf("Task: %v\n", taskID)
 	return nil
 }
+
 func newMigrateSnapshotDatabaseCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
