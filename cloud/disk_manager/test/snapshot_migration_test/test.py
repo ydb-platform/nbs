@@ -263,7 +263,27 @@ class _MigrationTestSetup:
 
             time.sleep(1)
 
-    def checksum_disk(self, disk_id: str):
+    def start_database_migration(self):
+        stdout = self.admin(
+            "snapshots",
+            "schedule_migrate_snapshot_database_task",
+        )
+        task_id = stdout.replace("Task: ", "").replace("\n", "")
+        return task_id
+
+    def finish_database_migration(self, task_id: str):
+        self.admin("tasks", "cancel", task_id)
+
+    def dependencies_finished(self, task_id: str) -> bool:
+        stdout = self.admin("tasks", "get", task_id)
+        dependencies = json.loads(stdout)["dependencies"]
+        return len(dependencies) == 0
+
+    def list_snapshots(self) -> list[str]:
+        stdout = self.admin("snapshots", "list")
+        return stdout.splitlines()
+
+    def checksum_disk(self, disk_id: str) -> str:
         unique_test_dir = Path(get_unique_path_for_current_test(yatest_common.output_path(), ""))
         ensure_path_exists(str(unique_test_dir))
         data_file = unique_test_dir / "disk_data.bin"
@@ -313,7 +333,7 @@ class _MigrationTestSetup:
         (False, False),
     ]
 )
-def test_disk_manager_dataplane_migration(use_s3_as_src, use_s3_as_dst):
+def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
@@ -328,6 +348,61 @@ def test_disk_manager_dataplane_migration(use_s3_as_src, use_s3_as_dst):
         setup.switch_dataplane_to_new_db()
         new_disk = "new_example"
         setup.create_disk_from_snapshot(snapshot_id=snapshot_id, disk_id=new_disk, size=disk_size)
-        setup.checksum_disk(new_disk)
         new_checksum = setup.checksum_disk(new_disk)
         assert new_checksum == checksum
+
+@pytest.mark.parametrize(
+    "use_s3_as_src, use_s3_as_dst",
+    [
+        (True, False),
+        (False, True),
+        (True, True),
+        (False, False),
+    ]
+)
+def test_disk_manager_dataplane_database_migration(use_s3_as_src, use_s3_as_dst):
+    with _MigrationTestSetup(
+        use_s3_as_src=use_s3_as_src,
+        use_s3_as_dst=use_s3_as_dst,
+    ) as setup:
+        initial_data_count = 10
+        disks = [f"disk_{i}" for i in range(initial_data_count)]
+        snapshots = [f"snapshot_{i}" for i in range(initial_data_count)]
+        new_disks_for_initial = [f"new_disk_{i}" for i in range(initial_data_count)]
+        checksums = []
+        size = 16 * 1024 * 1024
+
+        # Create disks and snapshots before migration
+        for snapshot, disk in list(zip(snapshots, disks))[:initial_data_count // 2]:
+            setup.create_new_disk(disk, size)
+            checksums.append(setup.fill_disk(disk))
+            setup.create_snapshot(src_disk_id=disk, snapshot_id=snapshot)
+
+        # Wait for snapshots to be created
+        while len(setup.list_snapshots()) != initial_data_count // 2:
+            time.sleep(1)
+
+        # Prepare disks to create snapshots from during migration
+        for disk in disks[initial_data_count // 2:]:
+            setup.create_new_disk(disk, size)
+            checksums.append(setup.fill_disk(disk))
+
+        task_id = setup.start_database_migration()
+
+        # Create snapshots during migration
+        for snapshot, disk in list(zip(snapshots, disks))[:initial_data_count // 2]:
+            setup.create_snapshot(src_disk_id=disk, snapshot_id=snapshot)
+
+        # Wait for snapshots to be created
+        while len(setup.list_snapshots()) != initial_data_count:
+            time.sleep(1)
+
+        while not setup.dependencies_finished(task_id):
+            time.sleep(1)
+
+        setup.finish_database_migration(task_id)
+        setup.switch_dataplane_to_new_db()
+        for new_disk, checksum in zip(new_disks_for_initial, checksums):
+            setup.create_disk_from_snapshot(snapshot_id=snapshot, disk_id=new_disk, size=size)
+            new_checksum = setup.checksum_disk(new_disk)
+            assert new_checksum == checksum
