@@ -222,10 +222,10 @@ struct TYdbGroupRow
     static constexpr TStringBuf TimestampName = "Timestamp";
     static constexpr TDuration TtlDuration = TDuration::Days(7);
 
-    ui64 TabletId;
-    ui32 Channel;
-    ui32 GroupId;
-    ui32 Generation;
+    ui64 TabletId = 0;
+    ui32 Channel = 0;
+    ui32 GroupId = 0;
+    ui32 Generation = 0;
     TInstant Timestamp;
 
     NYdb::TValue GetYdbValues() const;
@@ -239,8 +239,8 @@ struct TYdbPartitionRow
     static constexpr TStringBuf TimestampName = "Timestamp";
     static constexpr TDuration TtlDuration = TDuration::Days(7);
 
-    ui64 PartitionTabletId;
-    ui64 VolumeTabletId;
+    ui64 PartitionTabletId = 0;
+    ui64 VolumeTabletId = 0;
     TString DiskId;
     TInstant Timestamp;
 
