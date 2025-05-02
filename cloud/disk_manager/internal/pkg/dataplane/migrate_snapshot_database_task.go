@@ -14,11 +14,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type migrateSnapshotDatabaseTask struct {
-	srcStorage                         storage.Storage
-	dstStorage                         storage.Storage
-	config                             *config.DataplaneConfig
-	scheduler                          tasks.Scheduler
-	inflightTransferringSnapshotsCount int
+	srcStorage storage.Storage
+	dstStorage storage.Storage
+	config     *config.DataplaneConfig
+	scheduler  tasks.Scheduler
 }
 
 func (m migrateSnapshotDatabaseTask) Save() ([]byte, error) {
@@ -37,6 +36,7 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 		// are created by disabling snapshot creation tasks.
 		// Disabling snapshot creation is error-prone, thus we should perform
 		// it manually by disabling respective tasks in config.
+		inflightSnapshotsCount := m.config.GetMigrationInflightTransferringSnapshotsCount()
 		srcSnapshots, err := m.srcStorage.ListAllSnapshots(ctx)
 		if err != nil {
 			return err
@@ -87,7 +87,7 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 			}
 
 			inflightTaskIDs = append(inflightTaskIDs, taskID)
-			inflightTasksLimitReached := len(inflightTaskIDs) == m.inflightTransferringSnapshotsCount
+			inflightTasksLimitReached := len(inflightTaskIDs) == int(inflightSnapshotsCount)
 			inflightTasksLimitReached = inflightTasksLimitReached || snapshotIDs.Empty()
 			if inflightTasksLimitReached {
 				finishedTaskIDs, err := m.scheduler.WaitAnyTasks(ctx, inflightTaskIDs)
