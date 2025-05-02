@@ -81,7 +81,7 @@ func checkChunks(
 		ctx,
 		dataplane_common.Milestone{},
 		processedChunkIndices,
-		common.ChannelWithCancellation{}, // holeChunkIndices
+		common.ChannelWithCancellation[uint32]{}, // holeChunkIndices
 	)
 
 	more := true
@@ -248,7 +248,7 @@ func TestInvalidImageReading(t *testing.T) {
 		ctx,
 		dataplane_common.Milestone{},
 		processedChunkIndices,
-		common.ChannelWithCancellation{}, // holeChunkIndices
+		common.ChannelWithCancellation[uint32]{}, // holeChunkIndices
 	)
 
 	var chunkIndex uint32

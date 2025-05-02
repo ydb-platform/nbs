@@ -23,7 +23,7 @@ type InflightQueue struct {
 	milestone       Milestone
 	milestoneHint   uint32
 	processedValues <-chan uint32
-	holeValues      ChannelWithCancellation
+	holeValues      ChannelWithCancellation[uint32]
 	inflightLimit   int
 	items           []item
 	inflightCount   int
@@ -113,7 +113,7 @@ func (q *InflightQueue) Close() {
 func NewInflightQueue(
 	milestone Milestone,
 	processedValues <-chan uint32,
-	holeValues ChannelWithCancellation,
+	holeValues ChannelWithCancellation[uint32],
 	inflightLimit int,
 ) *InflightQueue {
 

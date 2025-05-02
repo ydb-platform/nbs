@@ -61,7 +61,7 @@ func (c *ChannelWithInflightQueue) Close() {
 func NewChannelWithInflightQueue(
 	milestone Milestone,
 	processedValues <-chan uint32,
-	holeValues ChannelWithCancellation,
+	holeValues ChannelWithCancellation[uint32],
 	inflightLimit int,
 ) ChannelWithInflightQueue {
 

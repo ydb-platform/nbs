@@ -48,8 +48,8 @@ func (s *urlSource) ChunkIndices(
 	ctx context.Context,
 	milestone dataplane_common.Milestone,
 	processedChunkIndices <-chan uint32,
-	holeChunkIndices common.ChannelWithCancellation,
-) (<-chan uint32, common.ChannelWithCancellation, <-chan error) {
+	holeChunkIndices common.ChannelWithCancellation[uint32],
+) (<-chan uint32, common.ChannelWithCancellation[uint32], <-chan error) {
 
 	common.Assert(s.chunkIndices.Empty(), "should be called once")
 
@@ -102,7 +102,7 @@ func (s *urlSource) ChunkIndices(
 		}
 	}()
 
-	return s.chunkIndices.Channel(), common.ChannelWithCancellation{}, errors
+	return s.chunkIndices.Channel(), common.ChannelWithCancellation[uint32]{}, errors
 }
 
 func (s *urlSource) Read(

@@ -34,7 +34,7 @@ type diskSource struct {
 	duplicateChunkIndices            bool
 
 	chunkIndices           common.ChannelWithInflightQueue
-	duplicatedChunkIndices common.ChannelWithCancellation
+	duplicatedChunkIndices common.ChannelWithCancellation[uint32]
 
 	ignoreBaseDisk         bool
 	dontReadFromCheckpoint bool
@@ -135,8 +135,8 @@ func (s *diskSource) ChunkIndices(
 	ctx context.Context,
 	milestone dataplane_common.Milestone,
 	processedChunkIndices <-chan uint32,
-	holeChunkIndices common.ChannelWithCancellation,
-) (<-chan uint32, common.ChannelWithCancellation, <-chan error) {
+	holeChunkIndices common.ChannelWithCancellation[uint32],
+) (<-chan uint32, common.ChannelWithCancellation[uint32], <-chan error) {
 
 	common.Assert(s.chunkIndices.Empty(), "should be called once")
 
@@ -153,7 +153,7 @@ func (s *diskSource) ChunkIndices(
 	)
 
 	if s.duplicateChunkIndices {
-		s.duplicatedChunkIndices = common.NewChannelWithCancellation(
+		s.duplicatedChunkIndices = common.NewChannelWithCancellation[uint32](
 			inflightLimit,
 		)
 	}

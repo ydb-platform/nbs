@@ -29,7 +29,7 @@ func TestInflightQueueAdd(t *testing.T) {
 	queue := NewInflightQueue(
 		milestone,
 		processedValues,
-		ChannelWithCancellation{}, // holeValues
+		ChannelWithCancellation[uint32]{}, // holeValues
 		inflightLimit,
 	)
 
@@ -77,7 +77,7 @@ func TestInflightQueueMilestone(t *testing.T) {
 	queue := NewInflightQueue(
 		milestone,
 		processedValues,
-		ChannelWithCancellation{}, // holeValues
+		ChannelWithCancellation[uint32]{}, // holeValues
 		inflightLimit,
 	)
 

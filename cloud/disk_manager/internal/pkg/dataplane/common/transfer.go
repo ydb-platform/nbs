@@ -35,10 +35,10 @@ type baseSource interface {
 		ctx context.Context,
 		milestone Milestone,
 		processedChunkIndices <-chan uint32,
-		holeChunkIndices common.ChannelWithCancellation,
+		holeChunkIndices common.ChannelWithCancellation[uint32],
 	) (
 		chunkIndices <-chan uint32,
-		duplicatedChunkIndices common.ChannelWithCancellation,
+		duplicatedChunkIndices common.ChannelWithCancellation[uint32],
 		errors <-chan error,
 	)
 
@@ -106,7 +106,7 @@ func (t Transferer) Transfer(
 		ctx,
 		milestone,
 		transferredChunkIndices,
-		common.ChannelWithCancellation{}, // holeChunkIndices
+		common.ChannelWithCancellation[uint32]{}, // holeChunkIndices
 	)
 
 	var shallowCopyChunkIndicesErrors <-chan error
@@ -255,7 +255,7 @@ func (t Transferer) goShallowCopy(
 	ctx context.Context,
 	milestone Milestone,
 	copiedChunkIndices chan uint32,
-	holeChunkIndices common.ChannelWithCancellation,
+	holeChunkIndices common.ChannelWithCancellation[uint32],
 ) (<-chan error, <-chan error) {
 
 	chunkIndices, _, chunkIndicesErrors := t.ShallowSource.ChunkIndices(
