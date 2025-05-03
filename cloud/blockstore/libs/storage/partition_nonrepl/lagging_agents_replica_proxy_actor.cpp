@@ -1069,6 +1069,13 @@ void TLaggingAgentsReplicaProxyActor::HandleReadBlocksLocal(
     ReadBlocks<TEvService::TReadBlocksLocalMethod>(ev, ctx);
 }
 
+void TLaggingAgentsReplicaProxyActor::HandleChecksumBlocks(
+    const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ForwardMessageToActor(ev, ctx, NonreplPartitionActorId);
+}
+
 void TLaggingAgentsReplicaProxyActor::HandleRWClientIdChanged(
     const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
     const TActorContext& ctx)
@@ -1110,6 +1117,9 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteBlocks);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
         HFunc(TEvService::TEvZeroBlocksRequest, HandleZeroBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            HandleChecksumBlocks);
 
         HFunc(
             TEvNonreplPartitionPrivate::TEvAgentIsUnavailable,
@@ -1151,6 +1161,9 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
         HFunc(TEvService::TEvReadBlocksRequest, RejectReadBlocks);
         HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            RejectChecksumBlocks);
         HFunc(
             NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
             RejectWaitForInFlightWrites);
