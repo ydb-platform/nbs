@@ -284,6 +284,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
                 " error: %s",
                 FormatError(err).c_str());
 
+            NotifyDeviceTimedOutIfNeeded(ctx, r.Device.GetDeviceUUID());
+
             using TResponse = TEvService::TEvWriteBlocksResponse;
             NCloud::Reply(
                 ctx,
@@ -433,6 +435,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
                 "Failed to allocate rdma memory for WriteDeviceBlocksRequest"
                 ", error: %s",
                 FormatError(err).c_str());
+
+            NotifyDeviceTimedOutIfNeeded(ctx, r.Device.GetDeviceUUID());
 
             using TResponse = TEvService::TEvWriteBlocksLocalResponse;
             NCloud::Reply(

@@ -230,6 +230,8 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
                 ", error: %s",
                 FormatError(err).c_str());
 
+            NotifyDeviceTimedOutIfNeeded(ctx, r.Device.GetDeviceUUID());
+
             NCloud::Reply(
                 ctx,
                 *requestInfo,

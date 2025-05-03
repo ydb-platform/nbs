@@ -169,6 +169,10 @@ private:
         const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleDeviceTimedOutResponse(
+        const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);

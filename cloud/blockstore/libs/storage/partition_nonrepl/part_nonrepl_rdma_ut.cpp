@@ -34,6 +34,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EIOType {
+    Read = 0,
+    Write = 1,
+    Zero = 2,
+    Checksum = 3
+};
+
 struct TTestEnv
 {
     TTestActorRuntime& Runtime;
@@ -497,6 +504,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         }                                                                      \
 // READ_BLOCKS_E
 
+#define CHECKSUM_BLOCKS_E(error) {                                             \
+        client.SendChecksumBlocksRequest(blockRange1);                         \
+        auto response = client.RecvChecksumBlocksResponse();                   \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                            \
+            error.GetCode(),                                                   \
+            response->GetStatus(),                                             \
+            response->GetErrorReason());                                       \
+    }                                                                          \
+// CHECKSUM_BLOCKS_E
+
     Y_UNIT_TEST(ShouldLocalReadWriteWithErrors)
     {
         TTestBasicRuntime runtime;
@@ -578,7 +595,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         UNIT_ASSERT_VALUES_EQUAL(1, notificationCount);
     }
 
-    Y_UNIT_TEST(ShouldHandleRequestSendFailure)
+    Y_UNIT_TEST(ShouldSendDeviceTimedOutOnResponseError)
     {
         TTestBasicRuntime runtime;
 
@@ -639,6 +656,86 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOutCount);
+    }
+
+    void ShouldSendDeviceTimedOutOnAllocationError(EIOType ioType)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            false,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        TActorId notifiedActor;
+        ui32 deviceTimedOutCount = 0;
+        THashSet<TString> devices;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest: {
+                        if (event->Recipient != env.VolumeActorId) {
+                            break;
+                        }
+                        notifiedActor = event->Recipient;
+                        auto* ev = static_cast<
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest*>(
+                            event->GetBase());
+                        devices.emplace(ev->DeviceUUID);
+                        ++deviceTimedOutCount;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto error = MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable");
+        env.Rdma().InjectErrors(error, {}, {});
+        env.Rdma().InitAllEndpoints();
+
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
+
+        WRITE_BLOCKS_E(error);
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+
+        runtime.AdvanceCurrentTime(
+            env.Config->GetLaggingDeviceTimeoutThreshold() + 1ms);
+        switch (ioType) {
+            case EIOType::Read:
+                READ_BLOCKS_E(error, 0);
+                break;
+            case EIOType::Write:
+                WRITE_BLOCKS_E(error);
+                break;
+            case EIOType::Zero:
+                ZERO_BLOCKS_E(error);
+                break;
+            case EIOType::Checksum:
+                CHECKSUM_BLOCKS_E(error);
+                break;
+        }
+        runtime.DispatchEvents({}, 10ms);
+
+        THashSet<TString> expected = {"vasya"};
+        UNIT_ASSERT_VALUES_EQUAL(expected.size(), devices.size());
+        for (const auto& d: devices) {
+            UNIT_ASSERT(expected.contains(d));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, deviceTimedOutCount);
+    }
+
+    Y_UNIT_TEST(ShouldSendDeviceTimedOutOnAllocationError) {
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Read);
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Write);
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Zero);
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Checksum);
     }
 
     Y_UNIT_TEST(ShouldResetDeviceTimeoutInfoOnSucceededRequest)
