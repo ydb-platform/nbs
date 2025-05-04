@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+#include "contrib/ydb/core/base/blobstorage.h"
 
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
@@ -75,6 +76,26 @@ struct TEvStatsService
                 NProto::TVolume config)
             : DiskId(std::move(diskId))
             , Config(std::move(config))
+        {}
+    };
+
+    //
+    // PartBootExternal notification
+    //
+
+    struct TPartBootExternal
+    {
+        const TString DiskId;
+        const ui64 PartitionTabletId;
+        TVector<NKikimr::TTabletChannelInfo> ChannelInfos;
+
+        TPartBootExternal(
+                TString diskId,
+                ui64 partitionTabletId,
+                TVector<NKikimr::TTabletChannelInfo> channelInfos)
+            : DiskId(std::move(diskId))
+            , PartitionTabletId(partitionTabletId)
+            , ChannelInfos(std::move(channelInfos))
         {}
     };
 
@@ -186,6 +207,7 @@ struct TEvStatsService
         EvRegisterVolume,
         EvUnregisterVolume,
         EvVolumeConfigUpdated,
+        EvPartBootExternal,
         EvVolumePartCounters,
         EvVolumeSelfCounters,
         EvGetVolumeStatsRequest,
@@ -212,6 +234,11 @@ struct TEvStatsService
     using TEvVolumeConfigUpdated = TRequestEvent<
         TVolumeConfigUpdated,
         EvVolumeConfigUpdated
+    >;
+
+    using TEvPartBootExternal = TRequestEvent<
+        TPartBootExternal,
+        EvPartBootExternal
     >;
 
     using TEvVolumePartCounters = TRequestEvent<

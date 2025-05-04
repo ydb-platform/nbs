@@ -291,6 +291,24 @@ void TStatsServiceActor::HandleUnregisterVolume(
     }
 }
 
+void TStatsServiceActor::HandlePartBootExternal(
+    const TEvStatsService::TEvPartBootExternal::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    auto volume = State.GetVolume(msg->DiskId);
+    if (!volume) {
+        LOG_WARN(ctx, TBlockStoreComponents::STATS_SERVICE,
+            "Volume %s not found",
+            msg->DiskId.Quote().data());
+        return;
+    }
+
+    volume->ChannelInfos[msg->PartitionTabletId] =
+        std::move(msg->ChannelInfos);
+}
+
 void TStatsServiceActor::HandleVolumePartCounters(
     const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
     const TActorContext& ctx)

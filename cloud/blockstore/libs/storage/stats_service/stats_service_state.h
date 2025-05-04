@@ -1,5 +1,6 @@
 #pragma once
 
+#include "contrib/ydb/core/base/blobstorage.h"
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
@@ -133,6 +134,8 @@ struct TVolumeStatsInfo
     NBlobMetrics::TBlobLoadMetrics OffsetBlobMetrics;
     TInstant ApproximateStartTs;
     TDuration ApproximateBootstrapTime;
+
+    THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
     TVolumeStatsInfo(
             NProto::TVolume config,
