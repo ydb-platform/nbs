@@ -3,6 +3,7 @@ package driver
 //lint:file-ignore ST1003 protobuf generates names that break golang naming convention
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -24,6 +26,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/volume"
 	nfsapi "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
+	storagecoreapi "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -116,14 +119,15 @@ type nodeService struct {
 	socketsDir          string
 	targetFsPathRegexp  *regexp.Regexp
 	targetBlkPathRegexp *regexp.Regexp
-	localFsOverrides    LocalFilestoreOverrideMap
+	externalFsOverrides ExternalFsOverrideMap
 
-	nbsClient      nbsclient.ClientIface
-	nfsClient      nfsclient.EndpointClientIface
-	nfsLocalClient nfsclient.EndpointClientIface
-	mounter        mounter.Interface
-	volumeOps      *sync.Map
-	mountOptions   []string
+	nbsClient               nbsclient.ClientIface
+	nfsClient               nfsclient.EndpointClientIface
+	nfsLocalClient          nfsclient.EndpointClientIface
+	nfsLocalFilestoreClient nfsclient.ClientIface
+	mounter                 mounter.Interface
+	volumeOps               *sync.Map
+	mountOptions            []string
 
 	useDiscardForYDBBasedDisks bool
 }
@@ -135,10 +139,11 @@ func newNodeService(
 	socketsDir string,
 	targetFsPathPattern string,
 	targetBlkPathPattern string,
-	localFsOverrides LocalFilestoreOverrideMap,
+	externalFsOverrides ExternalFsOverrideMap,
 	nbsClient nbsclient.ClientIface,
 	nfsClient nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
+	nfsLocalFilestoreClient nfsclient.ClientIface,
 	mounter mounter.Interface,
 	mountOptions []string,
 	useDiscardForYDBBasedDisks bool) csi.NodeServer {
@@ -151,10 +156,11 @@ func newNodeService(
 		nbsClient:                  nbsClient,
 		nfsClient:                  nfsClient,
 		nfsLocalClient:             nfsLocalClient,
+		nfsLocalFilestoreClient:    nfsLocalFilestoreClient,
 		mounter:                    mounter,
 		targetFsPathRegexp:         regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp:        regexp.MustCompile(targetBlkPathPattern),
-		localFsOverrides:           localFsOverrides,
+		externalFsOverrides:        externalFsOverrides,
 		volumeOps:                  new(sync.Map),
 		mountOptions:               mountOptions,
 		useDiscardForYDBBasedDisks: useDiscardForYDBBasedDisks,
@@ -871,7 +877,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 }
 
 func (s *nodeService) getNfsClient(fileSystemId string) nfsclient.EndpointClientIface {
-	_, ok := s.localFsOverrides[fileSystemId]
+	_, ok := s.externalFsOverrides[fileSystemId]
 	if !ok {
 		return s.nfsClient
 	}
@@ -922,6 +928,152 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	return s.mountSocketDir(endpointDir, req)
 }
 
+func (s *nodeService) nodeStageFileStoreStartEndpoint(
+	ctx context.Context,
+	instanceId string,
+	filesystemId string,
+	endpointDir string) error {
+	if s.nfsClient == nil {
+		return fmt.Errorf("NFS client wasn't created")
+	}
+
+	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
+		Endpoint: &nfsapi.TEndpointConfig{
+			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
+			FileSystemId:     filesystemId,
+			ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
+			VhostQueuesCount: 8,
+			Persistent:       true,
+		},
+	})
+	if err != nil {
+		if s.IsGrpcTimeoutError(err, true /* nfs */) {
+			s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+				SocketPath: filepath.Join(endpointDir, nfsSocketName),
+			})
+		}
+
+		return fmt.Errorf("failed to start NFS endpoint: %w", err)
+	}
+	return nil
+}
+
+func runMountHelper(helperCmd string, helperCmdArgs []string, localFsId string, externalFsId string) error {
+	cmd := exec.Command(helperCmd, helperCmdArgs...)
+	cmd.Env = append(cmd.Environ(),
+		fmt.Sprintf("LOCAL_FS_ID=%s", localFsId),
+		fmt.Sprintf("EXTERNAL_FS_ID=%s", externalFsId))
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	log.Printf("MountHelper: Running cmd: %v", cmd.Args)
+	if err := cmd.Run(); err != nil {
+		log.Printf("MountHelper: Command failed: %v", err)
+		log.Printf("MountHelper: Stderr: %s", stderrBuf.String())
+		log.Printf("MountHelper: Stdout: %s", stdoutBuf.String())
+		return err
+	}
+
+	log.Printf("MountHelper: Stdout: %s", stdoutBuf.String())
+	log.Printf("MountHelper: Stderr: %s", stderrBuf.String())
+
+	return nil
+}
+
+func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
+	ctx context.Context,
+	instanceId string,
+	fsConfig ExternalFsConfig,
+	endpointDir string) error {
+
+	log.Printf("csi.nodeStageLocalFileStoreStartEndpoint: instanceId=%s, fsConfig=%+v, endpointDir=%s",
+		instanceId,
+		fsConfig,
+		endpointDir)
+
+	if fsConfig.SizeGb == 0 {
+		// legacy local filestore config - passthrough StartEndpoint to nfs-local service
+		if s.nfsLocalClient == nil {
+			return fmt.Errorf("nfs local client wasn't created")
+		}
+		_, err := s.nfsLocalClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
+			Endpoint: &nfsapi.TEndpointConfig{
+				SocketPath:       filepath.Join(endpointDir, nfsSocketName),
+				FileSystemId:     fsConfig.Id,
+				ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
+				VhostQueuesCount: 8,
+				Persistent:       true,
+			},
+		})
+		if err != nil {
+			if s.IsGrpcTimeoutError(err, true /* nfs */) {
+				s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+					SocketPath: filepath.Join(endpointDir, nfsSocketName),
+				})
+			}
+
+			return fmt.Errorf("failed to start nfs local endpoint: %w", err)
+		}
+
+		return nil
+	}
+
+	if s.nfsLocalClient == nil || s.nfsLocalFilestoreClient == nil {
+		return fmt.Errorf("nfs local clients weren't created")
+	}
+
+	localFsId := fmt.Sprintf("%s-%s", fsConfig.Id, instanceId)
+	createReq := &nfsapi.TCreateFileStoreRequest{
+		FileSystemId:     localFsId,
+		CloudId:          fsConfig.CloudId,
+		FolderId:         fsConfig.FolderId,
+		BlockSize:        4096,
+		BlocksCount:      (fsConfig.SizeGb << 30) / 4096,
+		StorageMediaKind: storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
+	}
+
+	log.Printf("local CreateFileStore: %+v", createReq)
+
+	_, err := s.nfsLocalFilestoreClient.CreateFileStore(ctx, createReq)
+	if err != nil {
+		return fmt.Errorf("failed to create nfs local fs: %w", err)
+	}
+
+	if fsConfig.MountCmd != "" {
+		err := runMountHelper(fsConfig.MountCmd, fsConfig.MountArgs, localFsId, fsConfig.Id)
+		if err != nil {
+			return fmt.Errorf("failed to mount nfs local fs: %w", err)
+		}
+	}
+
+	startReq := &nfsapi.TStartEndpointRequest{
+		Endpoint: &nfsapi.TEndpointConfig{
+			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
+			FileSystemId:     localFsId,
+			ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
+			VhostQueuesCount: 8,
+			Persistent:       true,
+		},
+	}
+
+	log.Printf("local StartEndpoint: %+v", startReq)
+
+	_, err = s.nfsLocalClient.StartEndpoint(ctx, startReq)
+	if err != nil {
+		if s.IsGrpcTimeoutError(err, true /* nfs */) {
+			s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+				SocketPath: filepath.Join(endpointDir, nfsSocketName),
+			})
+		}
+
+		return fmt.Errorf("failed to start nfs local endpoint: %w", err)
+	}
+
+	return nil
+}
+
 func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	ctx context.Context,
 	instanceId string,
@@ -934,29 +1086,15 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 		return err
 	}
 
-	nfsClient := s.getNfsClient(filesystemId)
-
-	if nfsClient == nil {
-		return fmt.Errorf("NFS client wasn't created")
+	var err error
+	externalFsConfig, isExternalFs := s.externalFsOverrides[filesystemId]
+	if isExternalFs {
+		err = s.nodeStageLocalFileStoreStartEndpoint(ctx, instanceId, externalFsConfig, endpointDir)
+	} else {
+		err = s.nodeStageFileStoreStartEndpoint(ctx, instanceId, filesystemId, endpointDir)
 	}
-
-	_, err := nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
-		Endpoint: &nfsapi.TEndpointConfig{
-			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
-			FileSystemId:     filesystemId,
-			ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
-			VhostQueuesCount: 8,
-			Persistent:       true,
-		},
-	})
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, true /* nfs */) {
-			nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-				SocketPath: filepath.Join(endpointDir, nfsSocketName),
-			})
-		}
-
-		return fmt.Errorf("failed to start NFS endpoint: %w", err)
+		return err
 	}
 
 	return s.createDummyImgFile(endpointDir)
@@ -1125,6 +1263,86 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 	return nil
 }
 
+func (s *nodeService) nodeUnstageFileStoreStopEndpoint(
+	ctx context.Context,
+	stageData *StageData) error {
+	if s.nfsClient == nil {
+		return fmt.Errorf("NFS client wasn't created")
+	}
+
+	_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+		SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to stop nfs endpoint (%T): %w", s.nfsClient, err)
+	}
+
+	return nil
+}
+
+func (s *nodeService) nodeUnstageLocalFileStoreStopEndpoint(
+	ctx context.Context,
+	fsConfig ExternalFsConfig,
+	stageData *StageData) error {
+
+	log.Printf("csi.nodeUnstageLocalFileStoreStopEndpoint: fsConfig=%+v, stageData=%+v", fsConfig, stageData)
+
+	if fsConfig.SizeGb == 0 {
+		// legacy local filestore config - passthrough StopEndpoint to nfs-local service
+		if s.nfsLocalClient == nil {
+			return fmt.Errorf("NFS local clients wasn't created")
+		}
+
+		_, err := s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+			SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to stop local nfs endpoint (%T): %w", s.nfsLocalClient, err)
+		}
+
+		return nil
+	}
+
+	if s.nfsLocalClient == nil || s.nfsLocalFilestoreClient == nil {
+		return fmt.Errorf("NFS local clients weren't created")
+	}
+
+	localFsId := fmt.Sprintf("%s-%s", fsConfig.Id, stageData.InstanceId)
+
+	stopReq := &nfsapi.TStopEndpointRequest{
+		SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
+	}
+
+	log.Printf("local StopEndpoint: %+v", stopReq)
+
+	_, err := s.nfsLocalClient.StopEndpoint(ctx, stopReq)
+	if err != nil {
+		return fmt.Errorf("failed to stop local nfs endpoint (%T): %w", s.nfsLocalClient, err)
+	}
+
+	if fsConfig.UmountCmd != "" {
+		err := runMountHelper(fsConfig.UmountCmd, fsConfig.UmountArgs, localFsId, fsConfig.Id)
+		if err != nil {
+			return fmt.Errorf("failed to umount nfs local fs: %w", err)
+		}
+	}
+
+	destroyReq := &nfsapi.TDestroyFileStoreRequest{
+		FileSystemId: localFsId,
+	}
+
+	log.Printf("local DestroyFileStore: %+v", destroyReq)
+
+	_, err = s.nfsLocalFilestoreClient.DestroyFileStore(ctx, &nfsapi.TDestroyFileStoreRequest{
+		FileSystemId: localFsId,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to destroy local nfs (%T): %w", s.nfsLocalFilestoreClient, err)
+	}
+
+	return nil
+}
+
 func (s *nodeService) nodeUnstageVhostSocket(
 	ctx context.Context,
 	nbsId string,
@@ -1141,17 +1359,15 @@ func (s *nodeService) nodeUnstageVhostSocket(
 			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
 		}
 	} else if stageData.Backend == "nfs" {
-		nfsClient := s.getNfsClient(nbsId)
-
-		if nfsClient == nil {
-			return fmt.Errorf("NFS client wasn't created")
+		var err error
+		externalFsConfig, isExternalFs := s.externalFsOverrides[nbsId]
+		if isExternalFs {
+			err = s.nodeUnstageLocalFileStoreStopEndpoint(ctx, externalFsConfig, stageData)
+		} else {
+			err = s.nodeUnstageFileStoreStopEndpoint(ctx, stageData)
 		}
-
-		_, err := nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
-		})
 		if err != nil {
-			return fmt.Errorf("failed to stop nfs endpoint (%T): %w", nfsClient, err)
+			return err
 		}
 	}
 

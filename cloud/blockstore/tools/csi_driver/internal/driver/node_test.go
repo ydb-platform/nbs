@@ -35,6 +35,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsEndpointClientMock()
 	nfsLocalClient := mocks.NewNfsEndpointClientMock()
+	nfsLocalFilestoreClient := mocks.NewNfsClientMock()
 	mounter := csimounter.NewMock()
 
 	ctx := context.Background()
@@ -55,11 +56,10 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
 	nfsSocketPath := filepath.Join(sourcePath, "nfs.sock")
 
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	localFsOverrides := make(ExternalFsOverrideMap)
 	if isLocalFsOverride {
-		localFsOverrides[diskId] = LocalFilestoreOverride{
-			FsId:           diskId,
-			LocalMountPath: "/tmp/mnt/local_mount",
+		localFsOverrides[diskId] = ExternalFsConfig{
+			Id: diskId,
 		}
 	}
 
@@ -74,6 +74,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 		nbsClient,
 		nfsClient,
 		nfsLocalClient,
+		nfsLocalFilestoreClient,
 		mounter,
 		[]string{},
 		true, // enable discard
@@ -234,6 +235,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsEndpointClientMock()
 	nfsLocalClient := mocks.NewNfsEndpointClientMock()
+	nfsLocalFilestoreClient := mocks.NewNfsClientMock()
 	mounter := csimounter.NewMock()
 
 	ctx := context.Background()
@@ -259,11 +261,10 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
 	nfsSocketPath := filepath.Join(sourcePath, "nfs.sock")
 
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	localFsOverrides := make(ExternalFsOverrideMap)
 	if isLocalFsOverride {
-		localFsOverrides[diskId] = LocalFilestoreOverride{
-			FsId:           diskId,
-			LocalMountPath: "/tmp/mnt/local_mount",
+		localFsOverrides[diskId] = ExternalFsConfig{
+			Id: diskId,
 		}
 	}
 
@@ -278,6 +279,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 		nbsClient,
 		nfsClient,
 		nfsLocalClient,
+		nfsLocalFilestoreClient,
 		mounter,
 		[]string{},
 		false,
@@ -490,7 +492,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	sourcePath := filepath.Join(socketsDir, diskId)
 	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
 	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	localFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
 		nodeId,
@@ -503,6 +505,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient
+		nil, // nfsLocalFilestoreClient
 		mounter,
 		[]string{"grpid"},
 		true,
@@ -647,7 +650,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	sourcePath := filepath.Join(socketsDir, diskId)
 	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
 	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	localFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
 		nodeId,
@@ -660,6 +663,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient
+		nil, // nfsLocalFilestoreClient
 		mounter,
 		[]string{},
 		false,
@@ -802,7 +806,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	require.NoError(t, err)
 	err = os.MkdirAll(targetPath, info.Mode())
 	require.NoError(t, err)
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	localFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -815,6 +819,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient
+		nil, // nfsLocalFilestoreClient
 		mounter,
 		[]string{},
 		false,
@@ -870,7 +875,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	targetBlkPathPattern := filepath.Join(tempDir,
 		"volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
 	socketsDir := filepath.Join(tempDir, "sockets")
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	localFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -883,6 +888,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient
+		nil, // nfsLocalFilestoreClient
 		mounter,
 		[]string{},
 		false,
@@ -928,7 +934,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	volumeContext := map[string]string{
 		backendVolumeContextKey: "nbs",
 	}
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	localFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -941,6 +947,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient
+		nil, // nfsLocalFilestoreClient
 		mounter,
 		[]string{},
 		false,
@@ -994,6 +1001,7 @@ func TestGrpcTimeoutForIKubevirt(t *testing.T) {
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsEndpointClientMock()
 	nfsLocalClient := mocks.NewNfsEndpointClientMock()
+	nfsLocalFilestoreClient := mocks.NewNfsClientMock()
 	mounter := csimounter.NewMock()
 
 	ctx := context.Background()
@@ -1019,10 +1027,11 @@ func TestGrpcTimeoutForIKubevirt(t *testing.T) {
 		socketsDir,
 		targetFsPathPattern,
 		"",
-		make(LocalFilestoreOverrideMap),
+		make(ExternalFsOverrideMap),
 		nbsClient,
 		nfsClient,
 		nfsLocalClient,
+		nfsLocalFilestoreClient,
 		mounter,
 		[]string{},
 		false,
@@ -1107,10 +1116,11 @@ func TestGrpcTimeoutForInfrakuber(t *testing.T) {
 		socketsDir,
 		targetFsPathPattern,
 		"",
-		make(LocalFilestoreOverrideMap),
+		make(ExternalFsOverrideMap),
 		nbsClient,
 		nil,
-		nil,
+		nil, // nfsLocalClient
+		nil, // nfsLocalFilestoreClient
 		mounter,
 		[]string{},
 		false,
@@ -1158,4 +1168,172 @@ func TestGrpcTimeoutForInfrakuber(t *testing.T) {
 		VolumeContext:     volumeContext,
 	})
 	require.Error(t, err)
+}
+
+func TestExternaFs(t *testing.T) {
+	tempDir := t.TempDir()
+
+	nbsClient := mocks.NewNbsClientMock()
+	nfsClient := mocks.NewNfsEndpointClientMock()
+	nfsLocalClient := mocks.NewNfsEndpointClientMock()
+	nfsLocalFilestoreClient := mocks.NewNfsClientMock()
+	mounter := csimounter.NewMock()
+
+	ctx := context.Background()
+	nodeId := "testNodeId"
+	clientId := "testClientId"
+	podId := "test-pod-id-13"
+	instanceId := "testInstanceId"
+	actualClientId := "testClientId-" + instanceId
+	nfsId := "test-nfs"
+	volumeId := nfsId + "#" + instanceId
+	stagingTargetPath := filepath.Join(tempDir, "testStagingTargetPath")
+	socketsDir := filepath.Join(tempDir, "sockets")
+	sourcePath := filepath.Join(socketsDir, instanceId, nfsId)
+	targetPath := filepath.Join(tempDir, "pods", podId, "volumes", nfsId, "mount")
+	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
+	nfsSocketPath := filepath.Join(sourcePath, "nfs.sock")
+
+	mountFilePath := filepath.Join(tempDir, "mountDone")
+
+	fsConfig := ExternalFsConfig{
+		Id:       nfsId,
+		Type:     "external",
+		SizeGb:   100,
+		CloudId:  "cloud",
+		FolderId: "folder",
+		MountCmd: "bash",
+		MountArgs: []string{
+			"-c",
+			fmt.Sprintf("echo LOCAL_FS_ID=$LOCAL_FS_ID; echo EXTERNAL_FS_ID=$EXTERNAL_FS_ID; touch %s", mountFilePath),
+		},
+		UmountCmd: "bash",
+		UmountArgs: []string{
+			"-c",
+			fmt.Sprintf("rm %s", mountFilePath),
+		},
+	}
+
+	localFsOverrides := ExternalFsOverrideMap{
+		nfsId: fsConfig,
+	}
+
+	nodeService := newNodeService(
+		nodeId,
+		clientId,
+		true, // vmMode
+		socketsDir,
+		targetFsPathPattern,
+		"", // targetBlkPathPattern
+		localFsOverrides,
+		nbsClient,
+		nfsClient,
+		nfsLocalClient,
+		nfsLocalFilestoreClient,
+		mounter,
+		[]string{},
+		false,
+	)
+
+	accessMode := csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
+
+	volumeCapability := csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{
+			Mount: &csi.VolumeCapability_MountVolume{},
+		},
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: accessMode,
+		},
+	}
+
+	volumeContext := map[string]string{
+		backendVolumeContextKey: "nfs",
+		instanceIdKey:           instanceId,
+	}
+
+	nfsLocalFilestoreClient.On("CreateFileStore", ctx, &nfs.TCreateFileStoreRequest{
+		FileSystemId:     fmt.Sprintf("%s-%s", nfsId, instanceId),
+		CloudId:          fsConfig.CloudId,
+		FolderId:         fsConfig.FolderId,
+		BlockSize:        4096,
+		BlocksCount:      (fsConfig.SizeGb << 30) / 4096,
+		StorageMediaKind: storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
+	}).Return(&nfs.TCreateFileStoreResponse{}, nil)
+
+	nfsLocalClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
+		Endpoint: &nfs.TEndpointConfig{
+			SocketPath:       nfsSocketPath,
+			FileSystemId:     fmt.Sprintf("%s-%s", nfsId, instanceId),
+			ClientId:         actualClientId,
+			VhostQueuesCount: 8,
+			Persistent:       true,
+		},
+	}).Return(&nfs.TStartEndpointResponse{}, nil)
+
+	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+		VolumeId:          volumeId,
+		StagingTargetPath: stagingTargetPath,
+		VolumeCapability:  &volumeCapability,
+		VolumeContext:     volumeContext,
+	})
+	require.NoError(t, err)
+
+	fileInfo, err := os.Stat(mountFilePath)
+	require.NoError(t, err)
+	assert.True(t, fileInfo.Mode().IsRegular())
+
+	fileInfo, err = os.Stat(sourcePath)
+	assert.False(t, os.IsNotExist(err))
+	assert.True(t, fileInfo.IsDir())
+	assert.Equal(t, fs.FileMode(0755), fileInfo.Mode().Perm())
+
+	fileInfo, err = os.Stat(filepath.Join(sourcePath, "disk.img"))
+	assert.False(t, os.IsNotExist(err))
+	assert.False(t, fileInfo.IsDir())
+	assert.Equal(t, fs.FileMode(0644), fileInfo.Mode().Perm())
+
+	mounter.On("IsMountPoint", targetPath).Return(false, nil)
+	mounter.On("Mount", sourcePath, targetPath, "", []string{"bind"}).Return(nil)
+
+	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
+		VolumeId:          volumeId,
+		StagingTargetPath: stagingTargetPath,
+		TargetPath:        targetPath,
+		VolumeCapability:  &volumeCapability,
+		VolumeContext:     volumeContext,
+	})
+	require.NoError(t, err)
+
+	fileInfo, err = os.Stat(targetPath)
+	assert.False(t, os.IsNotExist(err))
+	assert.True(t, fileInfo.IsDir())
+	assert.Equal(t, fs.FileMode(0775), fileInfo.Mode().Perm())
+
+	mounter.On("CleanupMountPoint", targetPath).Return(nil)
+
+	_, err = nodeService.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
+		VolumeId:   volumeId,
+		TargetPath: targetPath,
+	})
+	require.NoError(t, err)
+
+	nfsLocalClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
+		SocketPath: nfsSocketPath,
+	}).Return(&nfs.TStopEndpointResponse{}, nil)
+
+	nfsLocalFilestoreClient.On("DestroyFileStore", ctx, &nfs.TDestroyFileStoreRequest{
+		FileSystemId: fmt.Sprintf("%s-%s", nfsId, instanceId),
+	}).Return(&nfs.TDestroyFileStoreResponse{}, nil)
+
+	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
+		VolumeId:          volumeId,
+		StagingTargetPath: stagingTargetPath,
+	})
+	require.NoError(t, err)
+
+	_, err = os.Stat(mountFilePath)
+	assert.True(t, os.IsNotExist(err))
+
+	_, err = os.Stat(filepath.Join(socketsDir, instanceId))
+	assert.True(t, os.IsNotExist(err))
 }
