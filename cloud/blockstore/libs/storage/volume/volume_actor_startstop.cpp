@@ -573,6 +573,18 @@ void TVolumeActor::HandleRetryStartPartition(
     }
 }
 
+void TVolumeActor::SendPartBootExternalToStatsService(
+    const TActorContext& ctx,
+    ui64 partTabletId,
+    const TVector<TTabletChannelInfo>& channels)
+{
+    auto request = std::make_unique<TEvStatsService::TEvPartBootExternal>(
+        State->GetDiskId(),
+        partTabletId,
+        channels);
+    NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
+}
+
 void TVolumeActor::HandleBootExternalResponse(
     const TEvHiveProxy::TEvBootExternalResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -635,6 +647,11 @@ void TVolumeActor::HandleBootExternalResponse(
         "Tablet IDs mismatch: %lu vs %lu",
         msg->StorageInfo->TabletID,
         partTabletId);
+
+    SendPartBootExternalToStatsService(
+        ctx,
+        partTabletId,
+        msg->StorageInfo->Channels);
 
     if (msg->SuggestedGeneration > part->SuggestedGeneration) {
         part->SuggestedGeneration = msg->SuggestedGeneration;

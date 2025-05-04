@@ -236,6 +236,49 @@ NYdbStats::TYdbBlobLoadMetricRow BuildBlobLoadMetricsForUpload(
     return {FQDNHostName(), ctx.Now(), result.Str()};
 }
 
+TVector<NYdbStats::TYdbGroupRow> BuildGroupsInfoForUpload(
+    const TActorContext& ctx,
+    const TVolumeStatsInfo& volume)
+{
+    TVector<NYdbStats::TYdbGroupRow> rows;
+
+    auto timestamp = ctx.Now();
+
+    for (const auto& [partitionTabletId, channels] : volume.ChannelInfos) {
+        for (const auto& channel : channels) {
+            for (const auto& historyEntry : channel.History) {
+                rows.emplace_back(
+                    partitionTabletId,
+                    channel.Channel,
+                    historyEntry.GroupID,
+                    historyEntry.FromGeneration,
+                    timestamp);
+            }
+        }
+    }
+
+    return rows;
+}
+
+TVector<NYdbStats::TYdbPartitionRow> BuildPartitionsInfoForUpload(
+    const TActorContext& ctx,
+    const TVolumeStatsInfo& volume)
+{
+    TVector<NYdbStats::TYdbPartitionRow> rows;
+
+    auto timestamp = ctx.Now();
+
+    for (const auto& [partitionTabletId, _]: volume.ChannelInfos) {
+        rows.emplace_back(
+            partitionTabletId,
+            volume.VolumeTabletId,
+            volume.VolumeInfo.GetDiskId(),
+            timestamp);
+    }
+
+    return rows;
+}
+
 }    // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -420,6 +463,14 @@ void TStatsServiceActor::HandleUploadDisksStats(
 
         volumeInfoPtr->PerfCounters.YdbDiskCounters.Reset();
         volumeInfoPtr->PerfCounters.YdbVolumeSelfCounters.Reset();
+
+        for (auto& row: BuildGroupsInfoForUpload(ctx, *volumeInfoPtr)) {
+            result.first.Groups.push_back(std::move(row));
+        }
+
+        for (auto& row: BuildPartitionsInfoForUpload(ctx, *volumeInfoPtr)) {
+            result.first.Partitions.push_back(std::move(row));
+        }
     }
 
     if (((ctx.Now() - YdbMetricsRequestSentTs) > Config->GetStatsUploadInterval())

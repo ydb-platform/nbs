@@ -43,7 +43,7 @@ static const TString DefaultFolderId = "test_folder";
 ////////////////////////////////////////////////////////////////////////////////
 
 using TYdbStatsCallback =
-    std::function<NThreading::TFuture<NProto::TError>(const TVector<TYdbStatsRow>& stats)>;
+    std::function<NThreading::TFuture<NProto::TError>(const TYdbRowData& rows)>;
 
 class TYdbStatsMock:
     public IYdbVolumesStatsUploader
@@ -61,7 +61,7 @@ public:
     NThreading::TFuture<NProto::TError> UploadStats(
         const TYdbRowData& rows) override
     {
-        return Callback(rows.Stats);
+        return Callback(rows);
     }
 
     void Start() override
@@ -130,7 +130,8 @@ void RegisterVolume(
     TTestActorRuntime& runtime,
     const TString& diskId,
     NProto::EStorageMediaKind kind,
-    bool isSystem)
+    bool isSystem,
+    ui64 volumeTabletID = 0)
 {
     NProto::TVolume volume;
     volume.SetDiskId(diskId);
@@ -142,7 +143,7 @@ void RegisterVolume(
 
     auto registerMsg = std::make_unique<TEvStatsService::TEvRegisterVolume>(
         diskId,
-        0,
+        volumeTabletID,
         std::move(volume));
     runtime.Send(
         new IEventHandle(
@@ -156,9 +157,38 @@ void RegisterVolume(
 
 void RegisterVolume(
     TTestActorRuntime& runtime,
+    const TString& diskId,
+    ui64 volumeTabletId)
+{
+    RegisterVolume(runtime, diskId, NProto::STORAGE_MEDIA_SSD, false, volumeTabletId);
+}
+
+void RegisterVolume(
+    TTestActorRuntime& runtime,
     const TString& diskId)
 {
-    RegisterVolume(runtime, diskId, NProto::STORAGE_MEDIA_SSD, false);
+    RegisterVolume(runtime, diskId, 0);
+}
+
+void PartBootExternal(
+    TTestActorRuntime& runtime,
+    const TString& diskId,
+    const ui64 partitionTabletId,
+    TVector<NKikimr::TTabletChannelInfo> channels)
+{
+    auto partBootExternalResponseMsg =
+        std::make_unique<TEvStatsService::TEvPartBootExternal>(
+            diskId,
+            partitionTabletId,
+            std::move(channels));
+    runtime.Send(
+        new IEventHandle(
+            MakeStorageStatsServiceId(),
+            MakeStorageStatsServiceId(),
+            partBootExternalResponseMsg.release(),
+            0, // flags
+            0),
+            0);
 }
 
 void SendDiskStats(
@@ -899,9 +929,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
     Y_UNIT_TEST(ShouldReportYdbStatsInBatches)
     {
-        auto callback = [] (const TVector<TYdbStatsRow>& stats)
+        auto callback = [] (const TYdbRowData& rows)
         {
-            Y_UNUSED(stats);
+            Y_UNUSED(rows);
             return NThreading::MakeFuture(MakeError(S_OK));
         };
 
@@ -923,9 +953,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldRetryStatsUploadInCaseOfFailure)
     {
         ui32 attemptCount = 0;
-        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
+        auto callback = [&] (const TYdbRowData& rows)
         {
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, rows.Stats.size());
 
             if (++attemptCount == 1) {
                 return NThreading::MakeFuture(MakeError(E_REJECTED));
@@ -955,9 +985,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         bool failUpload = true;
         ui32 callCnt = 0;
 
-        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
+        auto callback = [&] (const TYdbRowData& rows)
         {
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, rows.Stats.size());
 
             if (failUpload) {
                 return NThreading::MakeFuture(MakeError(E_REJECTED));
@@ -999,10 +1029,10 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldCorrectlyPrepareYdbStatsRequests)
     {
         TVector<TVector<TString>> batches;
-        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
+        auto callback = [&] (const TYdbRowData& rows)
         {
             TVector<TString> batch;
-            for (const auto& x: stats) {
+            for (const auto& x: rows.Stats) {
                 batch.push_back(x.DiskId);
             }
 
@@ -1047,13 +1077,123 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(diskIds, observedDiskIds);
     }
 
+    Y_UNIT_TEST(ShouldCorrectlyPrepareGroupsAndPartitionsRequests)
+    {
+        THashSet<std::tuple<ui64, ui32, ui32, ui32>> groups;
+        THashMap<ui64, std::pair<ui64, TString>> partitions;
+
+        auto callback = [&] (const TYdbRowData& rows)
+        {
+            for (const auto& x : rows.Groups) {
+                groups.insert(std::make_tuple(
+                    x.TabletId, x.Channel, x.GroupId, x.Generation));
+            }
+            for (const auto& x : rows.Partitions) {
+                partitions[x.PartitionTabletId] = {x.VolumeTabletId, x.DiskId};
+            }
+
+            return NThreading::MakeFuture(MakeError(S_OK));
+        };
+
+        IYdbVolumesStatsUploaderPtr ydbStats = std::make_shared<TYdbStatsMock>(callback);
+
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetStatsUploadDiskCount(4);
+        storageServiceConfig.SetStatsUploadInterval(TDuration::Seconds(300).MilliSeconds());
+        storageServiceConfig.SetStatsUploadRetryTimeout(TDuration::Seconds(20).MilliSeconds());
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
+
+        RegisterVolume(runtime, "vol0", 0 /* volumeTabletId */);
+        RegisterVolume(runtime, "vol1", 10 /* volumeTabletId */);
+        RegisterVolume(runtime, "vol2", 20 /* volumeTabletId */);
+        RegisterVolume(runtime, "vol3", 30 /* volumeTabletId */);
+
+        {
+            TVector<NKikimr::TTabletChannelInfo> channels9(2);
+            channels9[0].Channel = 0;
+            channels9[0].History = TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
+                {0 /* fromGeneration */, 0 /* groupId*/},
+                {1 /* fromGeneration */, 1 /* groupId*/}};
+            channels9[1].Channel = 1;
+            channels9[1].History = TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
+                {0 /* fromGeneration */, 2 /* groupId*/},
+                {1 /* fromGeneration */, 0 /* groupId*/}};
+
+            TVector<NKikimr::TTabletChannelInfo> channels18(1);
+            channels18[0].Channel = 0;
+            channels18[0].History = TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
+                {0 /* fromGeneration */, 1 /* groupId*/}};
+
+            TVector<NKikimr::TTabletChannelInfo> channels19(1);
+            channels19[0].Channel = 0;
+            channels19[0].History = TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
+                {0 /* fromGeneration */, 3 /* groupId*/},
+                {2 /* fromGeneration */, 2 /* groupId*/}};
+
+            PartBootExternal(
+                runtime,
+                "vol1",
+                9, // partitionTabletId
+                std::move(channels9));
+            PartBootExternal(
+                runtime,
+                "vol2",
+                18, // partitionTabletId
+                std::move(channels18));
+            PartBootExternal(
+                runtime,
+                "vol2",
+                19, // partitionTabletId
+                std::move(channels19));
+            PartBootExternal(
+                runtime,
+                "vol3",
+                29, // partitionTabletId
+                TVector<NKikimr::TTabletChannelInfo>{});
+        }
+
+        ForceYdbStatsUpdate(runtime, {"vol0", "vol1", "vol2", "vol3"}, 1, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(4, partitions.size());
+        UNIT_ASSERT(partitions.contains(9));
+        UNIT_ASSERT_VALUES_EQUAL(10, partitions[9].first);
+        UNIT_ASSERT_VALUES_EQUAL("vol1", partitions[9].second);
+        UNIT_ASSERT(partitions.contains(18));
+        UNIT_ASSERT_VALUES_EQUAL(20, partitions[18].first);
+        UNIT_ASSERT_VALUES_EQUAL("vol2", partitions[18].second);
+        UNIT_ASSERT(partitions.contains(19));
+        UNIT_ASSERT_VALUES_EQUAL(20, partitions[19].first);
+        UNIT_ASSERT_VALUES_EQUAL("vol2", partitions[19].second);
+        UNIT_ASSERT(partitions.contains(29));
+        UNIT_ASSERT_VALUES_EQUAL(30, partitions[29].first);
+        UNIT_ASSERT_VALUES_EQUAL("vol3", partitions[29].second);
+
+        UNIT_ASSERT_VALUES_EQUAL(7, groups.size());
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(9, 0, 0, 0)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(9, 0, 1, 1)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(9, 1, 2, 0)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(9, 1, 0, 1)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(18, 0, 1, 0)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(19, 0, 3, 0)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(19, 0, 2, 2)));
+    }
+
     Y_UNIT_TEST(ShouldNotTryToPushStatsIfNothingToReportToYDB)
     {
         TVector<TVector<TString>> batches;
         bool uploadSeen = false;
-        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
+        auto callback = [&] (const TYdbRowData& rows)
         {
-            Y_UNUSED(stats);
+            Y_UNUSED(rows);
             uploadSeen = true;
             return NThreading::MakeFuture(MakeError(S_OK));
         };
@@ -1091,7 +1231,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        RegisterVolume(runtime, "vol0", mediaKind, true);
+        RegisterVolume(runtime, "vol0", mediaKind, true /* isSystem */);
 
         auto counters = CreatePartitionDiskCounters(
             publishingPolicy,
