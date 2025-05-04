@@ -12,7 +12,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
@@ -188,7 +187,7 @@ func TestCreateExternalFilesystemTask(t *testing.T) {
 		FolderId:    "folder",
 		BlockSize:   456,
 		BlocksCount: 123,
-		Kind:        types.FilesystemKind_FILESYSTEM_KIND_EXTERNAL,
+		IsExternal:  true,
 	}
 
 	task := &createFilesystemTask{
@@ -217,14 +216,14 @@ func TestCreateExternalFilesystemTask(t *testing.T) {
 	).Return(mock.Anything, nil)
 
 	storage.On("CreateFilesystem", ctx, mock.Anything).Return(&resources.FilesystemMeta{
-		ID:   "filesystem",
-		Kind: "external",
+		ID:         "filesystem",
+		IsExternal: true,
 	}, nil)
 	storage.On("FilesystemCreated", ctx, mock.Anything).Return(nil)
 
 	err := task.Run(ctx, execCtx)
 	require.Error(t, err)
-	require.True(t, errors.Is(err, errors.NewRetriableErrorWithIgnoreRetryLimit(nil)))
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
 	mock.AssertExpectationsForObjects(t, scheduler, nfsFactory, execCtx)
 }

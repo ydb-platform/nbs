@@ -40,8 +40,6 @@ func fsKindToString(kind types.FilesystemKind) string {
 		return "ssd"
 	case types.FilesystemKind_FILESYSTEM_KIND_HDD:
 		return "hdd"
-	case types.FilesystemKind_FILESYSTEM_KIND_EXTERNAL:
-		return "external"
 	}
 	return "unknown"
 }
@@ -126,6 +124,7 @@ func (s *service) CreateFilesystem(
 			BlockSize:   blockSize,
 			BlocksCount: blocksCount,
 			Kind:        kind,
+			IsExternal:  req.IsExternal,
 		},
 	)
 }

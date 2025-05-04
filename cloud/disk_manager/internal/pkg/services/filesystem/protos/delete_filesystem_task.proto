@@ -10,8 +10,8 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 message DeleteFilesystemRequest {
     FilesystemId Filesystem = 1;
+    bool IsExternal = 2;
 }
 
 message DeleteFilesystemTaskState {
-    string DeleteExternalFilesystemTaskID = 1;
 }

@@ -59,6 +59,7 @@ func (t *createFilesystemTask) Run(
 		CreateTaskID:  selfTaskID,
 		CreatingAt:    time.Now(),
 		CreatedBy:     "", // TODO: Extract CreatedBy from execCtx
+		IsExternal:    t.request.IsExternal,
 	})
 	if err != nil {
 		return err
@@ -71,9 +72,9 @@ func (t *createFilesystemTask) Run(
 		)
 	}
 
-	if filesystemMeta.Kind == "external" {
+	if filesystemMeta.IsExternal {
 		taskID, err := t.scheduler.ScheduleTask(
-			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
+			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_create_external"),
 			"filesystem.CreateExternalFilesystem",
 			"",
 			t.request,
@@ -82,9 +83,7 @@ func (t *createFilesystemTask) Run(
 			return err
 		}
 
-		t.state.CreateExternalFilesystemTaskID = taskID
-
-		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+		err = t.scheduler.WaitTaskEnded(ctx, taskID)
 		if err != nil {
 			return err
 		}
@@ -116,6 +115,12 @@ func (t *createFilesystemTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	client, err := t.factory.NewClient(ctx, t.request.Filesystem.ZoneId)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
 	selfTaskID := execCtx.GetTaskID()
 
 	fs, err := t.storage.DeleteFilesystem(
@@ -135,10 +140,10 @@ func (t *createFilesystemTask) Cancel(
 		)
 	}
 
-	if fs.Kind == "external" {
+	if fs.IsExternal {
 		taskID, err := t.scheduler.ScheduleTask(
-			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
-			"filesystem.CreateExternalFilesystem",
+			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_delete_external"),
+			"filesystem.DeleteExternalFilesystem",
 			"",
 			t.request,
 		)
@@ -146,19 +151,11 @@ func (t *createFilesystemTask) Cancel(
 			return err
 		}
 
-		t.state.CreateExternalFilesystemTaskID = taskID
-
 		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
 		if err != nil {
 			return err
 		}
 	} else {
-		client, err := t.factory.NewClient(ctx, t.request.Filesystem.ZoneId)
-		if err != nil {
-			return err
-		}
-		defer client.Close()
-
 		err = client.Delete(ctx, t.request.Filesystem.FilesystemId)
 		if err != nil {
 			return err

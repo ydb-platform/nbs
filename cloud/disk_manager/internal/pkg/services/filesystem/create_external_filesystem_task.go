@@ -2,7 +2,6 @@ package filesystem
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -42,13 +41,14 @@ func (t *createExternalFilesystemTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return errors.NewRetriableErrorWithIgnoreRetryLimit(fmt.Errorf("Waiting for manual task completion"))
+	return errors.NewInterruptExecutionError()
 }
 
 func (t *createExternalFilesystemTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
 	return nil
 }
 
