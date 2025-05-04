@@ -133,13 +133,13 @@ func TestDeleteExternalFilesystemTaskRun(t *testing.T) {
 		mock.Anything,
 	).Return(&resources.FilesystemMeta{
 		DeleteTaskID: "toplevel_task_id",
-		Kind:         "external",
+		IsExternal:   true,
 	}, nil)
 	storage.On("FilesystemDeleted", ctx, "filesystem", mock.Anything).Return(nil)
 
 	err := task.Run(ctx, execCtx)
 	require.Error(t, err)
-	require.True(t, errors.Is(err, errors.NewRetriableErrorWithIgnoreRetryLimit(nil)))
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
 	mock.AssertExpectationsForObjects(t, scheduler, nfsFactory, execCtx)
 }

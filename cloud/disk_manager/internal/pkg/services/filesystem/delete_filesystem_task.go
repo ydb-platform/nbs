@@ -73,7 +73,7 @@ func (t *deleteFilesystemTask) deleteFilesystem(
 		return t.storage.FilesystemDeleted(ctx, filesystemID, time.Now())
 	}
 
-	if filesystemMeta.Kind == "external" {
+	if filesystemMeta.IsExternal {
 		taskID, err := t.scheduler.ScheduleTask(
 			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
 			"filesystem.DeleteExternalFilesystem",
@@ -84,9 +84,7 @@ func (t *deleteFilesystemTask) deleteFilesystem(
 			return err
 		}
 
-		t.state.DeleteExternalFilesystemTaskID = taskID
-
-		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+		err = t.scheduler.WaitTaskEnded(ctx, taskID)
 		if err != nil {
 			return err
 		}

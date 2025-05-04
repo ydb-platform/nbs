@@ -67,6 +67,8 @@ type filesystemState struct {
 	deletedAt     time.Time
 
 	status filesystemStatus
+
+	isExternal bool
 }
 
 func (s *filesystemState) toFilesystemMeta() *FilesystemMeta {
@@ -83,6 +85,7 @@ func (s *filesystemState) toFilesystemMeta() *FilesystemMeta {
 		CreatedAt:    s.createdAt,
 		CreatedBy:    s.createdBy,
 		DeleteTaskID: s.deleteTaskID,
+		IsExternal:   s.isExternal,
 	}
 }
 
@@ -105,6 +108,8 @@ func (s *filesystemState) structValue() persistence.Value {
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
 
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
+
+		persistence.StructFieldValue("is_external", persistence.BoolValue(s.isExternal)),
 	)
 }
 
@@ -126,6 +131,7 @@ func scanFilesystemState(res persistence.Result) (state filesystemState, err err
 		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
 		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
 		persistence.OptionalWithDefault("status", &state.status),
+		persistence.OptionalWithDefault("is_external", &state.isExternal),
 	)
 	return
 }
@@ -167,7 +173,8 @@ func filesystemStateStructTypeString() string {
 		delete_task_id: Utf8,
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
-		status: Int64>`
+		status: Int64,
+        is_external: Bool>`
 }
 
 func filesystemStateTableDescription() persistence.CreateTableDescription {
@@ -189,6 +196,8 @@ func filesystemStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
 
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
+
+		persistence.WithColumn("is_external", persistence.Optional(persistence.TypeBool)),
 
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -314,6 +323,8 @@ func (s *storageYDB) createFilesystem(
 		createdBy:     filesystem.CreatedBy,
 
 		status: filesystemStatusCreating,
+
+		isExternal: filesystem.IsExternal,
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
