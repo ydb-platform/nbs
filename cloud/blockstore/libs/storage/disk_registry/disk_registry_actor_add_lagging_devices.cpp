@@ -62,9 +62,9 @@ void TDiskRegistryActor::HandleGetLaggingDevicesAllowed(
 
     // State->GetAgents()
 
-    auto response = std::make_unique<
-        TEvDiskRegistry::TEvGetLaggingDevicesAllowedResponse>();
-    NCloud::Reply(ctx, *ev, std::move(response));
+    // auto response = std::make_unique<
+    //     TEvDiskRegistry::TEvGetLaggingDevicesAllowedResponse>();
+    // NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

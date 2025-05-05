@@ -64,15 +64,19 @@ double TClusterHealth::GetDisconnectedAgentsRatio() const
     const ui32 disconnectedAgentCount = DisconnectedAgents.size();
     const ui32 unavailableAgentCount = UnavailableAgents.size();
     Y_DEBUG_ABORT_UNLESS(
-        agentCount > unavailableAgentCount,
+        agentCount >= unavailableAgentCount,
         "%u should be greater than %u",
         agentCount,
         unavailableAgentCount);
 
+    const ui32 connectedAgentCount = agentCount - unavailableAgentCount;
+    if (connectedAgentCount == 0) {
+        return 0;
+    }
+
     return Max<double>(
         0,
-        static_cast<double>(disconnectedAgentCount) /
-            (agentCount - unavailableAgentCount));
+        static_cast<double>(disconnectedAgentCount) / connectedAgentCount);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
