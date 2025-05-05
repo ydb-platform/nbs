@@ -16,7 +16,6 @@ void TDiskRegistryActor::HandleGetClusterCapacity(
     BLOCKSTORE_DISK_REGISTRY_COUNTER(GetClusterCapacity);
 
     const auto* msg = ev->Get();
-    const TString& diskId = msg->Record.GetDiskId();
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "Received GetClusterCapacity request");
