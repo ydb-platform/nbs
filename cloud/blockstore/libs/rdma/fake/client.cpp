@@ -153,6 +153,8 @@ public:
     void CancelRequest(ui64 reqId) override;
 
     TFuture<void> Stop() override;
+
+    void TryForceReconnect() override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -213,6 +215,8 @@ TFuture<void> TClientEndpoint::Stop()
 
     return future;
 }
+
+void TClientEndpoint::TryForceReconnect() {}
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -19,6 +19,7 @@ struct TRdmaClientTest: NRdma::IClient
 
     using TMessageObserver =
         std::function<void(NRdma::TProtoMessageSerializer::TParseResult&)>;
+    using TForceReconnectObserver = std::function<void()>;
 
     struct TEndpointInfo
     {
@@ -27,7 +28,6 @@ struct TRdmaClientTest: NRdma::IClient
     };
 
     THashMap<TString, TEndpointInfo> Endpoints;
-    TMessageObserver MessageObserver;
 
     NThreading::TFuture<NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
@@ -58,7 +58,9 @@ struct TRdmaClientTest: NRdma::IClient
     ui32 InitAllEndpoints();
     ui32 InitAllEndpointsWithError();
 
-    void SetMessageObserver(TMessageObserver messageObserver);
+    void SetMessageObserver(const TMessageObserver& messageObserver);
+    void SetForceReconnectObserver(
+        const TForceReconnectObserver& forceReconnectObserver);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

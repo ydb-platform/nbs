@@ -53,7 +53,8 @@ struct TRdmaClientTest::TRdmaEndpointImpl
     NProto::TError AllocationError;
     NProto::TError RdmaResponseError;
     NProto::TError ResponseError;
-    TRdmaClientTest::TMessageObserver MessageObserver;
+    TMessageObserver MessageObserver;
+    TForceReconnectObserver ForceReconnectObserver;
 
     TRdmaEndpointImpl() = default;
 
@@ -260,6 +261,13 @@ struct TRdmaClientTest::TRdmaEndpointImpl
         return NThreading::MakeFuture();
     }
 
+    void TryForceReconnect() override
+    {
+        if (ForceReconnectObserver) {
+            ForceReconnectObserver();
+        }
+    }
+
     TDeque<TString>& GetDeviceBlocks(
         const TString& deviceUUID,
         size_t minBlockCount)
@@ -317,11 +325,19 @@ ui32 TRdmaClientTest::InitAllEndpointsWithError()
     return Endpoints.size();
 }
 
-void TRdmaClientTest::SetMessageObserver(TMessageObserver messageObserver)
+void TRdmaClientTest::SetMessageObserver(
+    const TMessageObserver& messageObserver)
 {
-    MessageObserver = messageObserver;
     for (auto& [_, endpointInfo]: Endpoints) {
-        endpointInfo.Endpoint->MessageObserver = MessageObserver;
+        endpointInfo.Endpoint->MessageObserver = messageObserver;
+    }
+}
+
+void TRdmaClientTest::SetForceReconnectObserver(
+    const TForceReconnectObserver& forceReconnectObserver)
+{
+    for (auto& [_, endpointInfo]: Endpoints) {
+        endpointInfo.Endpoint->ForceReconnectObserver = forceReconnectObserver;
     }
 }
 
