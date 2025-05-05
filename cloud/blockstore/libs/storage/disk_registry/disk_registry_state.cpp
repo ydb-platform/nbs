@@ -420,6 +420,8 @@ TDiskRegistryState::TDiskRegistryState(
     }
 }
 
+TDiskRegistryState::~TDiskRegistryState() = default;
+
 void TDiskRegistryState::AllowNotifications(
     const TDiskId& diskId,
     const TDiskState& disk)

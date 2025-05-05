@@ -486,8 +486,9 @@ void TPartitionActor::WriteFreshBlocks(
 
         for (auto& r: requestsInBuffer) {
             LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Writing fresh blocks @%lu (range: %s)",
+                "[%lu][d:%s] Writing fresh blocks @%lu (range: %s)",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 commitId,
                 DescribeRange(r.Data.Range).data()
             );
@@ -653,8 +654,9 @@ void TPartitionActor::CompleteWriteBlocks(
 
     ui64 commitId = args.CommitId;
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete write blocks @%lu",
+        "[%lu][d:%s] Complete write blocks @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     if (args.Requests.size()) {
@@ -697,11 +699,9 @@ void TPartitionActor::CompleteWriteBlocks(
         execCycles += args.Requests[0].RequestInfo->GetExecCycles() + cycles;
         waitCycles += args.Requests[0].RequestInfo->GetWaitCycles();
 
-        UpdateCPUUsageStat(CyclesToDurationSafe(execCycles).MicroSeconds());
+        UpdateCPUUsageStat(ctx.Now(), execCycles);
         UpdateNetworkStat(ctx.Now(), totalBytes);
     }
-
-    UpdateExecutorStats(ctx);
 
     NProto::TPartitionStats stats;
     {

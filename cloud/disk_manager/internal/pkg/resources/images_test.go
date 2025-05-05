@@ -343,9 +343,6 @@ func TestImagesGetImage(t *testing.T) {
 		requireImagesAreEqual(t, expectedImage, *actualImage)
 	}
 	checkImage()
-	actualImage, err = storage.GetImageMeta(ctx, imageID)
-	require.Equal(t, imageID, actualImage.ID)
-	require.Equal(t, "folder", actualImage.FolderID)
 
 	err = storage.ImageCreated(
 		ctx,

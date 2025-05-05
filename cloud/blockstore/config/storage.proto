@@ -1204,4 +1204,32 @@ message TStorageServiceConfig
     // migration. Resync is started with a special flag and will emit critical
     // events for any mismatch it finds.
     optional bool ResyncAfterLaggingAgentMigration = 422;
+
+    // Hive sends notifications when locks are lost. If the flag is set, then
+    // the volume will not be stopped.
+    optional bool DoNotStopVolumeTabletOnLockLost = 423;
+
+    // Percentage of mixed channels from the merged total
+    optional uint32 MixedChannelsPercentageFromMerged = 424;
+
+    // For mirror-disk write requests sends to only one disk-agent, and he
+    // propagate write requests to the rest disk-agents.
+    optional bool MultiAgentWriteEnabled = 425;
+
+    // The minimum size of the request starting from which the MultiAgentWrite
+    // is enabled.
+    optional uint32 MultiAgentWriteRequestSizeThreshold = 426;
+
+    // Minimum write request size (in bytes) that lets us write the data directly
+    // to the mixed channel.
+    // It'll be ignored if 0 or more than (equal to) WriteBlobThreshold.
+    optional uint32 WriteMixedBlobThresholdHDD = 427;
+
+    // Max bandwidth (in MiB/s) used during the lagging migration after the
+    // replica becomes online.
+    optional uint32 LaggingDeviceMaxMigrationBandwidth = 428;
+
+    // Max migration io depth used during the lagging migration after the
+    // replica becomes online
+    optional uint32 LaggingDeviceMaxMigrationIoDepth = 429;
 }

@@ -36,7 +36,9 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
     TString writerClientId,
     IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::EResyncPolicy resyncPolicy,
-    EBlockRangeChecksumStatus checksumStatus)
+    EBlockRangeChecksumStatus checksumStatus,
+    NActors::TActorId volumeActorId,
+    bool assignVolumeRequestId)
 {
     if (resyncPolicy == NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB ||
         resyncPolicy ==
@@ -49,7 +51,9 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
             std::move(replicas),
             std::move(writerClientId),
             std::move(blockDigestGenerator),
-            resyncPolicy);
+            resyncPolicy,
+            volumeActorId,
+            assignVolumeRequestId);
     }
 
     return std::make_unique<TResyncRangeBlockByBlockActor>(
@@ -60,7 +64,9 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
         std::move(writerClientId),
         std::move(blockDigestGenerator),
         resyncPolicy,
-        checksumStatus == EBlockRangeChecksumStatus::Unknown);
+        checksumStatus == EBlockRangeChecksumStatus::Unknown,
+        volumeActorId,
+        assignVolumeRequestId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

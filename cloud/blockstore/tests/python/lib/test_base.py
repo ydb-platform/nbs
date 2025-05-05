@@ -292,6 +292,10 @@ def is_grpc_error(exception):
     return False
 
 
+def is_request_error(exception):
+    return isinstance(exception, requests.exceptions.RequestException)
+
+
 @retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
 def wait_for_nbs_server(port):
     '''
@@ -330,6 +334,7 @@ def wait_for_disk_agent(mon_port):
         raise RuntimeError("Failed to connect to disk agent")
 
 
+@retrying.retry(stop_max_delay=60000, wait_fixed=3000, retry_on_exception=is_request_error)
 def get_nbs_counters(mon_port):
     r = requests.get(counters_url('localhost', mon_port), timeout=10)
     r.raise_for_status()
@@ -425,7 +430,7 @@ def wait_for_free_bytes(mon_port, pool='default'):
 
 
 # wait for DA & secure erase of all available devices
-def wait_for_secure_erase(mon_port, pool='default'):
+def wait_for_secure_erase(mon_port, pool='default', expectedAgents=1):
     seen_zero_free_bytes = False
 
     while True:
@@ -433,7 +438,7 @@ def wait_for_secure_erase(mon_port, pool='default'):
         time.sleep(1)
         sensors = get_nbs_counters(mon_port)['sensors']
         agents = get_sensor_by_name(sensors, 'disk_registry', 'AgentsInOnlineState', 0)
-        if agents == 0:
+        if agents < expectedAgents:
             continue
 
         logging.info("Agents: {}".format(agents))

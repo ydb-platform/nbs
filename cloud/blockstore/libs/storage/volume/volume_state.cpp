@@ -22,38 +22,6 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString TPartitionInfo::GetStatus() const
-{
-    TStringStream out;
-
-    switch (State) {
-        default:
-        case UNKNOWN:
-            out << "UNKNOWN";
-            break;
-        case STOPPED:
-            out << "STOPPED";
-            break;
-        case STARTED:
-            out << "STARTED";
-            break;
-        case FAILED:
-            out << "FAILED";
-            break;
-        case READY:
-            out << "READY";
-            break;
-    }
-
-    if (Message) {
-        out << ": " << Message;
-    }
-
-    return out.Str();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 bool THistoryLogKey::operator == (const THistoryLogKey& rhs) const
 {
     return std::tie(Timestamp, SeqNo) == std::tie(rhs.Timestamp, rhs.SeqNo);
@@ -499,22 +467,22 @@ TPartitionInfo* TVolumeState::GetPartition(ui64 tabletId)
     return nullptr;
 }
 
-std::optional<ui32>
-TVolumeState::FindPartitionIndex(NActors::TActorId owner) const
+std::optional<ui32> TVolumeState::FindPartitionIndex(
+    NActors::TActorId partitionActorId) const
 {
     for (ui32 i = 0; i < Partitions.size(); ++i) {
-        if (Partitions[i].Owner == owner) {
+        if (Partitions[i].IsKnownActorId(partitionActorId)) {
             return i;
         }
     }
     return std::nullopt;
 }
 
-std::optional<ui64>
-TVolumeState::FindPartitionTabletId(NActors::TActorId owner) const
+std::optional<ui64> TVolumeState::FindPartitionTabletId(
+    NActors::TActorId partitionActorId) const
 {
     for (const auto& partition: Partitions) {
-        if (partition.Owner == owner) {
+        if (partition.IsKnownActorId(partitionActorId)) {
             return partition.TabletId;
         }
     }
@@ -538,7 +506,8 @@ TPartitionInfo::EState TVolumeState::UpdatePartitionsState()
 
         const bool allocated =
             bytes >= Config->GetBlockSize() * Config->GetBlocksCount();
-        const bool actorStarted = !!DiskRegistryBasedPartitionActor;
+        const bool actorStarted =
+            DiskRegistryBasedPartitionActor.GetTop() != TActorId();
         if (allocated && actorStarted) {
             PartitionsState = TPartitionInfo::READY;
         } else {
@@ -601,10 +570,10 @@ TString TVolumeState::GetPartitionsError() const
 }
 
 void TVolumeState::SetDiskRegistryBasedPartitionActor(
-    const NActors::TActorId& actor,
+    TActorsStack actors,
     TNonreplicatedPartitionConfigPtr config)
 {
-    DiskRegistryBasedPartitionActor = actor;
+    DiskRegistryBasedPartitionActor = std::move(actors);
     NonreplicatedPartitionConfig = std::move(config);
 }
 
@@ -986,6 +955,20 @@ std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerByDiskId(
         }
     }
     return std::nullopt;
+}
+
+void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)
+{
+    ScrubbingInfo.FullScanCount +=
+        ScrubbingInfo.CurrentRange.Start > counters.CurrentRange.Start ? 1 : 0;
+    ScrubbingInfo.Running = counters.Running;
+    ScrubbingInfo.CurrentRange = counters.CurrentRange;
+    ScrubbingInfo.Minors.insert(counters.Minors.begin(), counters.Minors.end());
+    ScrubbingInfo.Majors.insert(counters.Majors.begin(), counters.Majors.end());
+    ScrubbingInfo.Fixed.insert(counters.Fixed.begin(), counters.Fixed.end());
+    ScrubbingInfo.FixedPartial.insert(
+        counters.FixedPartial.begin(),
+        counters.FixedPartial.end());
 }
 
 bool TVolumeState::CanPreemptClient(

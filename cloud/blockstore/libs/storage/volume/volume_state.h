@@ -181,6 +181,19 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TScrubbingInfo
+{
+    size_t FullScanCount = 0;
+    bool Running = false;
+    TBlockRange64 CurrentRange;
+    TBlockRangeSet64 Minors;
+    TBlockRangeSet64 Majors;
+    TBlockRangeSet64 Fixed;
+    TBlockRangeSet64 FixedPartial;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TVolumeState
 {
 private:
@@ -196,7 +209,7 @@ private:
 
     TPartitionInfoList Partitions;
     TPartitionInfo::EState PartitionsState = TPartitionInfo::UNKNOWN;
-    NActors::TActorId DiskRegistryBasedPartitionActor;
+    TActorsStack DiskRegistryBasedPartitionActor;
     TNonreplicatedPartitionConfigPtr NonreplicatedPartitionConfig;
 
     TVector<TPartitionStatInfo> PartitionStatInfos;
@@ -251,6 +264,8 @@ private:
     };
     THashMap<TString, TLaggingAgentMigrationInfo>
         CurrentlyMigratingLaggingAgents;
+
+    TScrubbingInfo ScrubbingInfo;
 
 public:
     TVolumeState(
@@ -401,8 +416,10 @@ public:
     }
 
     TPartitionInfo* GetPartition(ui64 tabletId);
-    std::optional<ui32> FindPartitionIndex(NActors::TActorId owner) const;
-    std::optional<ui64> FindPartitionTabletId(NActors::TActorId owner) const;
+    std::optional<ui32> FindPartitionIndex(
+        NActors::TActorId partitionActorId) const;
+    std::optional<ui64> FindPartitionTabletId(
+        NActors::TActorId partitionActorId) const;
 
     //
     // State
@@ -434,12 +451,12 @@ public:
     TString GetPartitionsError() const;
 
     void SetDiskRegistryBasedPartitionActor(
-        const NActors::TActorId& actor,
+        TActorsStack actors,
         TNonreplicatedPartitionConfigPtr config);
 
-    const NActors::TActorId& GetDiskRegistryBasedPartitionActor() const
+    NActors::TActorId GetDiskRegistryBasedPartitionActor() const
     {
-        return DiskRegistryBasedPartitionActor;
+        return DiskRegistryBasedPartitionActor.GetTop();
     }
 
     const TNonreplicatedPartitionConfigPtr& GetNonreplicatedPartitionConfig() const
@@ -780,6 +797,17 @@ public:
     {
         return FollowerDisks;
     }
+
+    //
+    // Scrubbing
+    //
+
+    const TScrubbingInfo& GetScrubbingInfo() const
+    {
+        return ScrubbingInfo;
+    }
+
+    void UpdateScrubberCounters(TScrubbingInfo counters);
 
 private:
     bool CanPreemptClient(

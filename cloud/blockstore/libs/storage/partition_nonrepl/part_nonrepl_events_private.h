@@ -139,6 +139,15 @@ struct TEvNonreplPartitionPrivate
 
     struct TRangeResynced
     {
+        enum class EStatus
+        {
+            Healthy,         // Range OK.
+            HealedAll,       // All blocks in range resynced
+            HealedPartial,   // Only a part of the blocks in the range were
+                             // resynced
+            HealedNone,      // Not a single block was resynced.
+        };
+
         TBlockRange64 Range;
         TInstant ChecksumStartTs;
         TDuration ChecksumDuration;
@@ -146,7 +155,9 @@ struct TEvNonreplPartitionPrivate
         TDuration ReadDuration;
         TInstant WriteStartTs;
         TDuration WriteDuration;
+        ui64 ExecCycles;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
+        EStatus Status;
 
         TRangeResynced(
                 TBlockRange64 range,
@@ -156,7 +167,9 @@ struct TEvNonreplPartitionPrivate
                 TDuration readDuration,
                 TInstant writeStartTs,
                 TDuration writeDuration,
-                TVector<IProfileLog::TBlockInfo> affectedBlockInfos)
+                ui64 execCycles,
+                TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
+                EStatus status)
             : Range(range)
             , ChecksumStartTs(checksumStartTs)
             , ChecksumDuration(checksumDuration)
@@ -164,7 +177,9 @@ struct TEvNonreplPartitionPrivate
             , ReadDuration(readDuration)
             , WriteStartTs(writeStartTs)
             , WriteDuration(writeDuration)
+            , ExecCycles(execCycles)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
+            , Status(status)
         {
         }
     };
@@ -202,8 +217,11 @@ struct TEvNonreplPartitionPrivate
         // Request execution total time.
         TDuration ExecutionTime;
 
-        // Indexes of devices that participated in the request.
+        // Indices of devices that participated in the request.
         TStackVec<ui32, 2> DeviceIndices;
+
+        // Indices of devices where requests have resulted in errors.
+        TStackVec<ui32, 2> ErrorDeviceIndices;
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;
@@ -304,8 +322,47 @@ struct TEvNonreplPartitionPrivate
         {}
     };
 
+    //
+    // LaggingMigrationDisabled
+    //
+
+    struct TLaggingMigrationDisabled
+    {
+        const TString AgentId;
+
+        explicit TLaggingMigrationDisabled(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    //
+    // LaggingMigrationEnabled
+    //
+
+    struct TLaggingMigrationEnabled
+    {
+        const TString AgentId;
+
+        explicit TLaggingMigrationEnabled(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
     struct TStartLaggingAgentMigration
     {
+    };
+
+    //
+    // Inconsistent disk agent behavior for multi-agent write request.
+    //
+
+    struct TInconsistentDiskAgent
+    {
+        const TString AgentId;
+
+        explicit TInconsistentDiskAgent(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
     };
 
     //
@@ -337,6 +394,9 @@ struct TEvNonreplPartitionPrivate
         EvAgentIsUnavailable,
         EvAgentIsBackOnline,
         EvStartLaggingAgentMigration,
+        EvLaggingMigrationDisabled,
+        EvLaggingMigrationEnabled,
+        EvInconsistentDiskAgent,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -423,6 +483,19 @@ struct TEvNonreplPartitionPrivate
         TStartLaggingAgentMigration,
         EvStartLaggingAgentMigration
     >;
+
+    using TEvLaggingMigrationDisabled = TRequestEvent<
+        TLaggingMigrationDisabled,
+        EvLaggingMigrationDisabled
+    >;
+
+    using TEvLaggingMigrationEnabled = TRequestEvent<
+        TLaggingMigrationEnabled,
+        EvLaggingMigrationEnabled
+    >;
+
+    using TEvInconsistentDiskAgent =
+        TRequestEvent<TInconsistentDiskAgent, EvInconsistentDiskAgent>;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
 

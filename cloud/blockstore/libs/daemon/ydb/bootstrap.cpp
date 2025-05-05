@@ -520,10 +520,13 @@ void TBootstrapYdb::InitKikimrService()
             statsConfig,
             logging,
             YdbStorage,
-            NYdbStats::CreateStatsTableScheme(statsConfig->GetStatsTableTtl()),
-            NYdbStats::CreateHistoryTableScheme(),
-            NYdbStats::CreateArchiveStatsTableScheme(statsConfig->GetArchiveStatsTableTtl()),
-            NYdbStats::CreateBlobLoadMetricsTableScheme());
+            NYdbStats::TYDBTableSchemes(
+                NYdbStats::CreateStatsTableScheme(statsConfig->GetStatsTableTtl()),
+                NYdbStats::CreateHistoryTableScheme(),
+                NYdbStats::CreateArchiveStatsTableScheme(statsConfig->GetArchiveStatsTableTtl()),
+                NYdbStats::CreateBlobLoadMetricsTableScheme(),
+                NYdbStats::CreateGroupsTableScheme(),
+                NYdbStats::CreatePartitionsTableScheme()));
     } else {
         StatsUploader = NYdbStats::CreateVolumesStatsUploaderStub();
     }

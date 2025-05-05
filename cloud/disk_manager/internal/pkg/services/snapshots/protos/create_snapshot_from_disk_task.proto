@@ -16,6 +16,7 @@ message CreateSnapshotFromDiskRequest {
     string FolderId = 3;
     bool UseS3 = 8;
     bool UseProxyOverlayDisk = 9;
+    bool RetryBrokenDRBasedDiskCheckpoint = 10;
 }
 
 message CreateSnapshotFromDiskTaskState {

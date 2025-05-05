@@ -4,6 +4,7 @@ import logging
 import subprocess
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
+from cloud.blockstore.config.client_pb2 import TClientAppConfig
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig
 from cloud.blockstore.config.root_kms_pb2 import TRootKmsConfig
@@ -49,6 +50,7 @@ class LocalNbs(Daemon):
             kikimr_binary_path=None,
             nbs_binary_path=None,
             features_config_patch=None,
+            client_config_patch=None,
             grpc_trace=None,
             ydbstats_config=None,
             compute_config=None,
@@ -111,6 +113,7 @@ class LocalNbs(Daemon):
         self.contract_validation = contract_validation
         self.storage_config_patches = storage_config_patches
         self.features_config_patch = features_config_patch
+        self.client_config_patch = client_config_patch
         self.tracking_enabled = tracking_enabled
         self.ydbstats_config = ydbstats_config
         self.compute_config = compute_config
@@ -127,6 +130,7 @@ class LocalNbs(Daemon):
             "dyn_ns.txt": self.__generate_dyn_ns_txt(),
             "dr_proxy.txt": self.__generate_dr_proxy_txt(),
             "location.txt": self.__generate_location_txt(),
+            "client.txt": self.__generate_client_txt(),
         }
 
         if ydbstats_config is not None:
@@ -290,6 +294,7 @@ ModifyScheme {
             b"BLOCKSTORE_BOOTSTRAPPER",
             b"BLOCKSTORE_CLIENT",
             b"BLOCKSTORE_NBD",
+            b"BLOCKSTORE_PARTITION_WORKER",
             b"BLOCKSTORE_SCHEDULER",
             b"BLOCKSTORE_SERVER",
             b"BLOCKSTORE_SERVICE",
@@ -439,6 +444,12 @@ ModifyScheme {
         configs = TLocation()
         configs.Rack = self.__rack
         return configs
+
+    def __generate_client_txt(self):
+        config = TClientAppConfig()
+        if self.client_config_patch is not None:
+            config.CopyFrom(self.client_config_patch)
+        return config
 
     def config_path(self):
         config_path = get_unique_path_for_current_test(
@@ -600,6 +611,8 @@ ModifyScheme {
 
         append_conf_file_arg(command, self.config_path(),
                              "--location-file", "location.txt")
+        append_conf_file_arg(command, self.config_path(),
+                             "--client-file", "client.txt")
 
         if not self.__load_configs_from_cms:
             config_files = {

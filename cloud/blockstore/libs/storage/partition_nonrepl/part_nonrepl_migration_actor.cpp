@@ -25,7 +25,8 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         TNonreplicatedPartitionConfigPtr srcConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
-        NActors::TActorId statActorId)
+        NActors::TActorId statActorId,
+        NActors::TActorId migrationSrcActorId)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
@@ -38,18 +39,22 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
           initialMigrationIndex,
           std::move(rwClientId),
           statActorId,
-          config->GetMaxMigrationIoDepth())
+          config->GetMaxMigrationIoDepth(),
+          srcConfig->GetParentActorId())
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
+    , MigrationSrcActorId(migrationSrcActorId)
 {}
 
 void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     const NActors::TActorContext& ctx)
 {
+    auto srcActorId = CreateSrcActor(ctx);
     InitWork(
         ctx,
-        CreateSrcActor(ctx),
+        MigrationSrcActorId ? MigrationSrcActorId : srcActorId,
+        srcActorId,
         CreateDstActor(ctx),
         true,   // takeOwnershipOverActors
         std::make_unique<TMigrationTimeoutCalculator>(
@@ -77,6 +82,12 @@ bool TNonreplicatedPartitionMigrationActor::OnMessage(
         HFunc(
             TEvDiskRegistry::TEvFinishMigrationResponse,
             HandleFinishMigrationResponse);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvAgentIsUnavailable,
+            HandleAgentIsUnavailable);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvAgentIsBackOnline,
+            HandleAgentIsBackOnline);
         default:
             return false;
             break;
@@ -117,6 +128,12 @@ void TNonreplicatedPartitionMigrationActor::OnMigrationProgress(
             GetBlockCountNeedToBeProcessed()));
 
     UpdatingMigrationState = true;
+}
+
+NActors::TActorId
+TNonreplicatedPartitionMigrationActor::GetActorToLockAndDrainRange() const
+{
+    return MigrationSrcActorId;
 }
 
 void TNonreplicatedPartitionMigrationActor::FinishMigration(
@@ -161,12 +178,19 @@ void TNonreplicatedPartitionMigrationActor::FinishMigration(
 NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
     const NActors::TActorContext& ctx)
 {
+    auto devices = SrcConfig->GetDevices();
+    for (auto& device: devices) {
+        if (IsMigrationTarget(device)) {
+            device.ClearDeviceUUID();
+        }
+    }
+
     return NCloud::Register(
         ctx,
         CreateNonreplicatedPartition(
             GetConfig(),
             GetDiagnosticsConfig(),
-            SrcConfig,
+            SrcConfig->Fork(std::move(devices)),
             SelfId(),
             RdmaClient));
 }
@@ -191,7 +215,10 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
         auto* migration = FindIfPtr(
             Migrations,
             [&](const NProto::TDeviceMigration& m)
-            { return m.GetSourceDeviceId() == device.GetDeviceUUID(); });
+            {
+                return m.GetSourceDeviceId() &&
+                       m.GetSourceDeviceId() == device.GetDeviceUUID();
+            });
 
         if (migration) {
             const auto& target = migration->GetTargetDevice();
@@ -213,7 +240,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             }
 
             device.CopyFrom(migration->GetTargetDevice());
-        } else {
+        } else if (!IsMigrationTarget(device)) {
             // Skip this device for migration
             MarkMigratedBlocks(
                 TBlockRange64::WithLength(blockIndex, device.GetBlocksCount()));
@@ -305,6 +332,71 @@ void TNonreplicatedPartitionMigrationActor::HandlePreparePartitionMigrationRespo
     }
 
     StartWork(ctx);
+}
+
+void TNonreplicatedPartitionMigrationActor::HandleAgentIsUnavailable(
+    const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    NCloud::Send(
+        ctx,
+        GetSrcActorId(),
+        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
+            msg->LaggingAgent));
+    NCloud::Send(
+        ctx,
+        GetDstActorId(),
+        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
+            msg->LaggingAgent));
+
+    const bool migrationTargetIsLagging = AllOf(
+        Migrations,
+        [&laggingAgentId = msg->LaggingAgent.GetAgentId()](
+            const NProto::TDeviceMigration& migration)
+        { return migration.GetTargetDevice().GetAgentId() == laggingAgentId; });
+
+    if (migrationTargetIsLagging) {
+        SetTargetMigrationIsLagging(true);
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvNonreplPartitionPrivate::TEvLaggingMigrationDisabled>(
+                msg->LaggingAgent.GetAgentId()));
+    }
+}
+
+void TNonreplicatedPartitionMigrationActor::HandleAgentIsBackOnline(
+    const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    NCloud::Send(
+        ctx,
+        GetSrcActorId(),
+        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
+            msg->AgentId));
+    NCloud::Send(
+        ctx,
+        GetDstActorId(),
+        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
+            msg->AgentId));
+
+    const bool migrationTargetIsBackOnline = AllOf(
+        Migrations,
+        [&laggingAgentId =
+             msg->AgentId](const NProto::TDeviceMigration& migration)
+        { return migration.GetTargetDevice().GetAgentId() == laggingAgentId; });
+    if (migrationTargetIsBackOnline && GetTargetMigrationIsLagging()) {
+        SetTargetMigrationIsLagging(false);
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvNonreplPartitionPrivate::TEvLaggingMigrationEnabled>(
+                msg->AgentId));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

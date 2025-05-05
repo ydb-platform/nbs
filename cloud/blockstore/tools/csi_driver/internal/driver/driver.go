@@ -2,7 +2,6 @@ package driver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -68,38 +67,6 @@ type Config struct {
 	NfsLocalEndpointSocket     string
 	MountOptions               string
 	UseDiscardForYDBBasedDisks bool
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type LocalFilestoreOverride struct {
-	FsId           string `json:"fs_id"`
-	LocalMountPath string `json:"local_mount_path"`
-}
-
-type LocalFilestoreOverrideMap map[string]LocalFilestoreOverride
-
-func LoadLocalFilestoreOverrides(filePath string) (LocalFilestoreOverrideMap, error) {
-	if filePath == "" {
-		return make(LocalFilestoreOverrideMap), nil
-	}
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("reading file: %w", err)
-	}
-
-	var fsOverrides []LocalFilestoreOverride
-	if err := json.Unmarshal(data, &fsOverrides); err != nil {
-		return nil, fmt.Errorf("unmarshalling JSON: %w", err)
-	}
-
-	overrideMap := make(LocalFilestoreOverrideMap)
-	for _, fsOverride := range fsOverrides {
-		overrideMap[fsOverride.FsId] = fsOverride
-	}
-
-	return overrideMap, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -189,7 +156,7 @@ func createClients(cfg Config) (*driverClients, error) {
 }
 
 func NewDriver(cfg Config) (*Driver, error) {
-	localFsOverrides, err := LoadLocalFilestoreOverrides(cfg.LocalFilestoreOverridePath)
+	externalFsOverrides, err := LoadExternalFsOverrides(cfg.LocalFilestoreOverridePath)
 	if err != nil {
 		return nil, err
 	}
@@ -238,10 +205,8 @@ func NewDriver(cfg Config) (*Driver, error) {
 	csi.RegisterControllerServer(
 		grpcServer,
 		newNBSServerControllerService(
-			localFsOverrides,
 			clients.nbsClient,
-			clients.nfsFilestoreClient,
-			clients.nfsLocalFilestoreClient))
+			clients.nfsFilestoreClient))
 
 	csi.RegisterNodeServer(
 		grpcServer,
@@ -252,10 +217,11 @@ func NewDriver(cfg Config) (*Driver, error) {
 			cfg.SocketsDir,
 			NodeFsTargetPathPattern,
 			NodeBlkTargetPathPattern,
-			localFsOverrides,
+			externalFsOverrides,
 			clients.nbsClient,
 			clients.nfsEndpointClient,
 			clients.nfsLocalEndpointClient,
+			clients.nfsLocalFilestoreClient,
 			mounter.NewMounter(),
 			strings.Split(cfg.MountOptions, ","),
 			cfg.UseDiscardForYDBBasedDisks))

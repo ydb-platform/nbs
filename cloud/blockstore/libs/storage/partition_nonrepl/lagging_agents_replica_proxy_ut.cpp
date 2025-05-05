@@ -62,6 +62,8 @@ struct TTestEnv
     TVector<TDiskAgentStatePtr> DiskAgentStates;
     TVector<TActorId> ReplicaActors;
     TVector<TActorId> DiskAgentActors;
+    TBlockRangeSet64 Locks;
+    TRequestBoundsTracker LocksBoundsTracker{DefaultBlockSize};
 
     TNonreplicatedPartitionConfigPtr PartConfig;
     THashMap<ui32, TActorId> Controllers;
@@ -100,7 +102,10 @@ struct TTestEnv
         return devices;
     }
 
-    explicit TTestEnv(TTestBasicRuntime& runtime, bool localRequests)
+    TTestEnv(
+        TTestBasicRuntime& runtime,
+        bool localRequests,
+        NProto::TStorageServiceConfig configBase = {})
         : TTestEnv(
               runtime,
               ReplicaDevices(runtime, 0),
@@ -112,19 +117,18 @@ struct TTestEnv
               localRequests,
               {},   // freshDeviceIds
               {},   // outdatedDeviceIds
-              {}    // configBase
-          )
+              std::move(configBase))
     {}
 
     TTestEnv(
-        TTestBasicRuntime& runtime,
-        TDevices devices,
-        TVector<TDevices> replicas,
-        TMigrations migrations,
-        bool localRequests,
-        THashSet<TString> freshDeviceIds,
-        THashSet<TString> outdatedDeviceIds,
-        NProto::TStorageServiceConfig configBase)
+            TTestBasicRuntime& runtime,
+            TDevices devices,
+            TVector<TDevices> replicas,
+            TMigrations migrations,
+            bool localRequests,
+            THashSet<TString> freshDeviceIds,
+            THashSet<TString> outdatedDeviceIds,
+            NProto::TStorageServiceConfig configBase)
         : Runtime(runtime)
         , Devices(std::move(devices))
         , Replicas(std::move(replicas))
@@ -135,6 +139,9 @@ struct TTestEnv
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
     {
         SetupLogging();
+
+        Runtime.SetObserverFunc([this](auto& event)
+                                { return DefaultObserver(event); });
 
         Runtime.SetRegistrationObserverFunc(
             [&](TTestActorRuntimeBase& runtime,
@@ -170,7 +177,9 @@ struct TTestEnv
 
         NProto::TStorageServiceConfig storageConfig = std::move(configBase);
         storageConfig.SetMaxMigrationBandwidth(1);
+        storageConfig.SetLaggingDeviceMaxMigrationBandwidth(1);
         storageConfig.SetMaxMigrationIoDepth(1);
+        storageConfig.SetLaggingDeviceMaxMigrationIoDepth(1);
         storageConfig.SetLaggingDevicePingInterval(
             TDuration::Seconds(5).MilliSeconds());
         storageConfig.SetLaggingDeviceTimeoutThreshold(
@@ -352,6 +361,21 @@ struct TTestEnv
         ReadAndCheckContents(ReplicaActors[replicaIndex], range, content);
     }
 
+    auto ChecksumFromController(ui32 index, TBlockRange64 range)
+    {
+        auto actorId = GetControllerActorId(index);
+        TPartitionClient client(Runtime, MirrorPartActorId);
+
+        auto request = client.CreateChecksumBlocksRequest(range);
+        client.SendRequest(actorId, std::move(request));
+        auto response = client.RecvResponse<
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>();
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+        return response;
+    }
+
     const TDevices& GetReplicaDevices(ui32 replicaIndex)
     {
         if (replicaIndex == 0) {
@@ -444,6 +468,61 @@ struct TTestEnv
                 {.FinalEvents = {
                      {TEvVolumePrivate::EvLaggingAgentMigrationFinished}}});
         }
+    }
+
+    void SetObserverFunc(TTestActorRuntimeBase::TEventObserver observer)
+    {
+        Runtime.SetObserverFunc(
+            [&, observer = std::move(observer)](TAutoPtr<IEventHandle>& event)
+            {
+                auto action = observer(event);
+                if (action == TTestActorRuntimeBase::EEventAction::PROCESS) {
+                    return DefaultObserver(event);
+                }
+
+                return action;
+            });
+    }
+
+    // We need to simulate the behavior of a mirror partition with range locks
+    // because in these tests we use some replica as a migration source and not
+    // a mirror partition. A non-replicated partition does not know anything
+    // about range locking and tests will crash if this partition receives a
+    // lock message.
+    TTestActorRuntimeBase::EEventAction DefaultObserver(
+        TAutoPtr<IEventHandle>& event)
+    {
+        switch (event->GetTypeRewrite()) {
+            case NPartition::TEvPartition::EvLockAndDrainRangeRequest: {
+                auto* ev = static_cast<
+                    NPartition::TEvPartition::TEvLockAndDrainRangeRequest*>(
+                    event->GetBase());
+                NProto::TError error;
+                if (LocksBoundsTracker.OverlapsWithRequest(ev->Range)) {
+                    error = MakeError(E_REJECTED);
+                } else {
+                    Locks.emplace(ev->Range);
+                    LocksBoundsTracker.AddRequest(ev->Range);
+                }
+                Runtime.Send(
+                    event->Sender,
+                    event->Recipient,
+                    new NPartition::TEvPartition::TEvLockAndDrainRangeResponse(
+                        std::move(error)));
+                return TTestActorRuntimeBase::EEventAction::DROP;
+            }
+            case NPartition::TEvPartition::EvReleaseRange: {
+                auto* ev =
+                    static_cast<NPartition::TEvPartition::TEvReleaseRange*>(
+                        event->GetBase());
+                UNIT_ASSERT(Locks.contains(ev->Range));
+                Locks.erase(ev->Range);
+                LocksBoundsTracker.RemoveRequest(ev->Range);
+                return TTestActorRuntimeBase::EEventAction::DROP;
+            }
+        }
+
+        return TTestActorRuntime::DefaultObserverFunc(event);
     }
 
 private:
@@ -583,11 +662,11 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                         auto clientId = msg->Record.GetHeaders().GetClientId();
                         if (clientId == BackgroundOpsClientId) {
                             UNIT_ASSERT_VALUES_EQUAL(
-                                ProcessingRangeSize,
+                                MigrationRangeSize,
                                 msg->Record.GetBlocksCount() *
                                     DefaultBlockSize);
                             const ui64 rangeSize =
-                                ProcessingRangeSize / DefaultBlockSize;
+                                MigrationRangeSize / DefaultBlockSize;
                             UNIT_ASSERT_VALUES_EQUAL(
                                 0,
                                 msg->Record.GetStartIndex() % rangeSize);
@@ -610,10 +689,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                             const auto range =
                                 BuildRequestBlockRange(*msg, DefaultBlockSize);
                             UNIT_ASSERT_VALUES_EQUAL(
-                                ProcessingRangeSize,
+                                MigrationRangeSize,
                                 range.Size() * DefaultBlockSize);
                             const ui64 rangeSize =
-                                ProcessingRangeSize / DefaultBlockSize;
+                                MigrationRangeSize / DefaultBlockSize;
                             UNIT_ASSERT_VALUES_EQUAL(
                                 0,
                                 range.Start % rangeSize);
@@ -700,6 +779,28 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
     {
         ShouldNotWriteToLaggingDevices(false);
         ShouldNotWriteToLaggingDevices(true);
+    }
+
+    Y_UNIT_TEST(ShouldHandleChecksumBlocks)
+    {
+        TTestBasicRuntime runtime(AgentCount);
+        TTestEnv env(runtime, false);
+        TPartitionClient client(runtime, env.MirrorPartActorId);
+
+        const auto fullDiskRange = TBlockRange64::WithLength(
+            0,
+            DeviceBlockCount * DeviceCountPerReplica);
+        env.WriteBlocksToPartition(fullDiskRange, 'A');
+
+        // Second row in the first column is lagging.
+        env.AddLaggingAgent(runtime.GetNodeId(1), 0);
+
+        const auto range = TBlockRange64::WithLength(0, DeviceBlockCount);
+        auto response = env.ChecksumFromController(0, range);
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            FormatError(response->GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(297130258ULL, response->Record.GetChecksum());
     }
 
     void LaggingAgentTwice(bool localRequests)
@@ -1006,6 +1107,65 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
     {
         ShouldDrainBeforeMigration(false);
         ShouldDrainBeforeMigration(true);
+    }
+
+    Y_UNIT_TEST(ShouldReportMigrationIndexOnlyAfterSufficientProgress)
+    {
+        NProto::TStorageServiceConfig cfg;
+        cfg.SetMigrationIndexCachingInterval(2048);
+
+        TTestBasicRuntime runtime(AgentCount);
+        TTestEnv env(runtime, false, std::move(cfg));
+        TPartitionClient client(runtime, env.MirrorPartActorId);
+
+        const auto fullDiskRange = TBlockRange64::WithLength(
+            0,
+            DeviceBlockCount * DeviceCountPerReplica);
+        env.WriteBlocksToPartition(fullDiskRange, 'A');
+
+        // Second row in the first column is lagging.
+        env.AddLaggingAgent(runtime.GetNodeId(1), 0);
+
+        for (size_t blockIndex = DeviceBlockCount;
+             blockIndex < 2 * DeviceBlockCount;
+             blockIndex += 2048)
+        {
+            auto range = TBlockRange64::WithLength(blockIndex, 512);
+            env.WriteBlocksToController(0, range, 'B');
+            env.WriteBlocksToReplica(1, range, 'B');
+            env.WriteBlocksToReplica(2, range, 'B');
+        }
+
+        ui64 lastCleanBlocksAmountReported = 0;
+        env.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvUpdateLaggingAgentMigrationState: {
+                        auto* ev = static_cast<
+                            TEvVolumePrivate::
+                                TEvUpdateLaggingAgentMigrationState*>(
+                            event->GetBase());
+
+                        if (lastCleanBlocksAmountReported) {
+                            UNIT_ASSERT(
+                                ev->CleanBlockCount -
+                                        lastCleanBlocksAmountReported >
+                                    2048 ||
+                                !ev->DirtyBlockCount);
+                        }
+
+                        lastCleanBlocksAmountReported = ev->CleanBlockCount;
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Wait for migration finish of the first row.
+        env.WaitForMigrationFinishEvent();
+        UNIT_ASSERT(lastCleanBlocksAmountReported);
     }
 }
 

@@ -29,7 +29,8 @@ TNonreplicatedPartitionMigrationCommonActor::
         ui64 initialMigrationIndex,
         TString rwClientId,
         NActors::TActorId statActorId,
-        ui32 maxIoDepth)
+        ui32 maxIoDepth,
+        NActors::TActorId volumeActorId)
     : MigrationOwner(migrationOwner)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -39,9 +40,10 @@ TNonreplicatedPartitionMigrationCommonActor::
     , BlockCount(blockCount)
     , BlockDigestGenerator(std::move(digestGenerator))
     , MaxIoDepth(maxIoDepth)
+    , VolumeActorId(volumeActorId)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
-    , NonZeroRangesMap(blockCount, blockSize, ProcessingRangeSize)
+    , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
 {
@@ -60,7 +62,8 @@ TNonreplicatedPartitionMigrationCommonActor::
         TCompressedBitmap migrationBlockMap,
         TString rwClientId,
         NActors::TActorId statActorId,
-        ui32 maxIoDepth)
+        ui32 maxIoDepth,
+        NActors::TActorId volumeActorId)
     : MigrationOwner(migrationOwner)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -70,9 +73,10 @@ TNonreplicatedPartitionMigrationCommonActor::
     , BlockCount(blockCount)
     , BlockDigestGenerator(std::move(digestGenerator))
     , MaxIoDepth(maxIoDepth)
+    , VolumeActorId(volumeActorId)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, std::move(migrationBlockMap))
-    , NonZeroRangesMap(blockCount, blockSize, ProcessingRangeSize)
+    , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
 {
@@ -119,40 +123,6 @@ void TNonreplicatedPartitionMigrationCommonActor::HandlePoisonPill(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-void TNonreplicatedPartitionMigrationCommonActor::HandleAgentIsUnavailable(
-    const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    NCloud::Send(
-        ctx,
-        SrcActorId,
-        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
-            msg->LaggingAgent));
-    NCloud::Send(
-        ctx,
-        DstActorId,
-        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
-            msg->LaggingAgent));
-}
-
-void TNonreplicatedPartitionMigrationCommonActor::HandleAgentIsBackOnline(
-    const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    NCloud::Send(
-        ctx,
-        SrcActorId,
-        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
-            msg->AgentId));
-    NCloud::Send(
-        ctx,
-        DstActorId,
-        std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
-            msg->AgentId));
-}
 
 void TNonreplicatedPartitionMigrationCommonActor::ScheduleCountersUpdate(
     const TActorContext& ctx)
@@ -235,9 +205,6 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
         HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, HandleChecksumBlocks);
-
-        HFunc(TEvNonreplPartitionPrivate::TEvAgentIsUnavailable, HandleAgentIsUnavailable);
-        HFunc(TEvNonreplPartitionPrivate::TEvAgentIsBackOnline, HandleAgentIsBackOnline);
 
         HFunc(
             NPartition::TEvPartition::TEvDrainRequest,

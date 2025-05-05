@@ -470,6 +470,7 @@ struct TServer: IEndpointProxyServer
 
                 auto ep = std::make_shared<TEndpoint>();
                 ep->UnixSocketPath = e.GetUnixSocketPath();
+                TFsPath(ep->UnixSocketPath).Parent().MkDirs();
 
                 NProto::TStartProxyEndpointRequest request;
                 request.SetUnixSocketPath(e.GetUnixSocketPath());
@@ -480,16 +481,20 @@ struct TServer: IEndpointProxyServer
 
                 try {
                     DoProcessRequest(request, *ep, response);
+                    if (HasError(response)) {
+                        STORAGE_ERROR(
+                            "Couldn't restore endpoint "
+                            << e.GetUnixSocketPath() << ", error: "
+                            << FormatError(response.GetError()).Quote());
+                    } else {
+                        Socket2Endpoint[ep->UnixSocketPath] = std::move(ep);
+                        STORAGE_INFO("Restored endpoint from " << f.GetPath());
+                    }
                 } catch (...) {
                     STORAGE_ERROR("Couldn't restore endpoint "
                         << e.GetUnixSocketPath()
-                        << ", error: " << CurrentExceptionMessage());
-                    continue;
+                        << ", exception: " << CurrentExceptionMessage());
                 }
-
-                Socket2Endpoint[ep->UnixSocketPath] = std::move(ep);
-
-                STORAGE_INFO("Restored endpoint from " << f.GetPath());
             }
         }
     }

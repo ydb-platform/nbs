@@ -101,10 +101,16 @@ TESTS = [
         dump_block_digests=True,
         max_migration_bandwidth=1
     ),
+    TestCase(
+        "mirror2-fresh-device-migration",
+        "cloud/blockstore/tests/loadtest/local-mirror/local-mirror2-fresh-device-migration.txt",
+        agent_count=6,
+        dump_block_digests=True,
+    ),
 ]
 
 
-def __cleanup_file_devices(devices):
+def __remove_file_devices(devices):
     logging.info("Remove temporary device files")
     for d in devices:
         if d.path is not None:
@@ -299,7 +305,7 @@ def __run_test(test_case, use_rdma):
             nbs.stop()
             kikimr_cluster.stop()
     finally:
-        __cleanup_file_devices(devices)
+        __remove_file_devices(devices)
 
     return ret
 

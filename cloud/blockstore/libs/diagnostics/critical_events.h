@@ -72,6 +72,7 @@ namespace NCloud::NBlockStore {
     xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
     xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
     xxx(MirroredDiskResyncChecksumMismatch)                                    \
+    xxx(DiskAgentInconsistentMultiWriteResponse)                               \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \

@@ -14,7 +14,7 @@ using namespace NDiskRegistryStateTest;
 
 namespace {
 
-TDiskRegistryState CreateDiskRegistryState()
+std::unique_ptr<TDiskRegistryState> CreateDiskRegistryState()
 {
     auto agentConfig1 = AgentConfig(
         1,
@@ -120,7 +120,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
-        auto state = CreateDiskRegistryState();
+        auto statePtr = CreateDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
         CreateMirror3Disk(executor, state);
 
         // Request with wrong disk id should return an error.
@@ -321,7 +322,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
-        auto state = CreateDiskRegistryState();
+        auto statePtr = CreateDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
         CreateMirror3Disk(executor, state);
 
         // Migrate devices from the first agent.
@@ -467,7 +469,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
-        auto state = CreateDiskRegistryState();
+        auto statePtr = CreateDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
         CreateMirror3Disk(executor, state);
 
         // Migrate devices from the first agent.
@@ -588,7 +591,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
-        auto state = CreateDiskRegistryState();
+        auto statePtr = CreateDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
         CreateMirror3Disk(executor, state);
 
         // Migrate devices from the second replica.
@@ -773,9 +777,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                         Sprintf("rack-%u", i + 1)),
                 }));
         }
-        auto state = TDiskRegistryStateBuilder()
+        auto statePtr = TDiskRegistryStateBuilder()
                          .WithKnownAgents(std::move(agents))
                          .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)

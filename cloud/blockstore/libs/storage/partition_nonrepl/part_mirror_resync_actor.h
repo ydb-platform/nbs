@@ -62,8 +62,8 @@ private:
 
     bool ResyncFinished = false;
 
-    TRequestsInProgress<ui64, TBlockRange64> WriteAndZeroRequestsInProgress{
-        EAllowedRequests::WriteOnly};
+    TRequestsInProgress<EAllowedRequests::WriteOnly, ui64, TBlockRange64>
+        WriteAndZeroRequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         PartConfig->GetName()};
@@ -155,6 +155,10 @@ private:
 
     void HandlePartCounters(
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleScrubberCounters(
+        const TEvVolume::TEvScrubberCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleUpdateCounters(

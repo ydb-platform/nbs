@@ -22,6 +22,8 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+using namespace NPartition;
+
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -65,16 +67,17 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , StatActorId(statActorId)
     , ResyncActorId(resyncActorId)
     , State(
-        Config,
-        rwClientId,
-        std::move(partConfig),
-        std::move(migrations),
-        std::move(replicas))
+          Config,
+          rwClientId,
+          std::move(partConfig),
+          std::move(migrations),
+          std::move(replicas))
+    , MultiAgentWriteEnabled(Config->GetMultiAgentWriteEnabled())
+    , MultiAgentWriteRequestSizeThreshold(
+          Config->GetMultiAgentWriteRequestSizeThreshold())
 {}
 
-TMirrorPartitionActor::~TMirrorPartitionActor()
-{
-}
+TMirrorPartitionActor::~TMirrorPartitionActor() = default;
 
 void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
 {
@@ -113,17 +116,21 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
     for (const auto& replicaInfo: State.GetReplicaInfos()) {
         IActorPtr actor;
         if (replicaInfo.Migrations.size()) {
+            auto migrationSrcActorId = State.IsMigrationConfigPreparedForFresh()
+                                           ? SelfId()
+                                           : TActorId();
             actor = CreateNonreplicatedPartitionMigration(
                 Config,
                 DiagnosticsConfig,
                 ProfileLog,
                 BlockDigestGenerator,
-                0,  // initialMigrationIndex
+                0,   // initialMigrationIndex
                 State.GetRWClientId(),
                 replicaInfo.Config,
                 replicaInfo.Migrations,
                 RdmaClient,
-                SelfId());
+                SelfId(),
+                migrationSrcActorId);
         } else {
             actor = CreateNonreplicatedPartition(
                 Config,
@@ -261,6 +268,12 @@ void TMirrorPartitionActor::StartResyncRange(
         DescribeRange(GetScrubbingRange()).c_str());
     ResyncRangeStarted = true;
 
+    if (isMinor) {
+        Minors.insert(GetScrubbingRange());
+    } else {
+        Majors.insert(GetScrubbingRange());
+    }
+
     auto requestInfo = CreateRequestInfo(
         SelfId(),
         0,  // cookie
@@ -290,7 +303,9 @@ void TMirrorPartitionActor::StartResyncRange(
         BlockDigestGenerator,
         resyncPolicy,
         isMinor ? EBlockRangeChecksumStatus::MinorError
-                : EBlockRangeChecksumStatus::MajorError);
+                : EBlockRangeChecksumStatus::MajorError,
+        State.GetReplicaInfos()[0].Config->GetParentActorId(),
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled());
     ctx.Register(resyncActor.release());
 }
 
@@ -319,6 +334,12 @@ void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
 auto TMirrorPartitionActor::TakeNextRequestIdentifier() -> ui64
 {
     return RequestIdentifierCounter++;
+}
+
+bool TMirrorPartitionActor::CanMakeMultiAgentWrite(TBlockRange64 range) const
+{
+    return MultiAgentWriteEnabled && range.Size() * State.GetBlockSize() >=
+                                         MultiAgentWriteRequestSizeThreshold;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -417,10 +438,10 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
     auto scrubbingRange = GetScrubbingRange();
 
     for (const auto& [key, requestInfo]: RequestsInProgress.AllRequests()) {
-        if (!requestInfo.Write) {
+        if (!requestInfo.IsWrite) {
             continue;
         }
-        const auto& requestRange = requestInfo.Value.BlockRange;
+        const auto& requestRange = requestInfo.BlockRange;
         if (scrubbingRange.Overlaps(requestRange)) {
             LOG_DEBUG(
                 ctx,
@@ -518,13 +539,26 @@ void TMirrorPartitionActor::HandleRangeResynced(
     const TEvNonreplPartitionPrivate::TEvRangeResynced::TPtr& ev,
     const TActorContext& ctx)
 {
+    using EStatus = TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus;
+
     const auto* msg = ev->Get();
 
+    if (!HasError(msg->Error)) {
+        if (msg->Status == EStatus::HealedAll) {
+            Fixed.insert(msg->Range);
+        } else if (msg->Status == EStatus::HealedPartial) {
+            FixedPartial.insert(msg->Range);
+        }
+    }
+
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Range %s resync finished: %s",
+        "[%s] Range %s resync finished: %s %s",
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str(),
-        FormatError(msg->GetError()).c_str());
+        FormatError(msg->GetError()).c_str(),
+        ToString(msg->Status).c_str());
+
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     ResyncRangeStarted = false;
     StartScrubbingRange(ctx, ScrubbingRangeId + 1);
@@ -581,7 +615,7 @@ void TMirrorPartitionActor::HandleRemoveLaggingAgent(
         TBlockStoreComponents::PARTITION,
         "[%s] Removing lagging agent: %s, replica index: %u",
         DiskId.c_str(),
-        msg->LaggingAgent.GetAgentId().c_str(),
+        msg->LaggingAgent.GetAgentId().Quote().c_str(),
         msg->LaggingAgent.GetReplicaIndex());
 
     State.RemoveLaggingAgent(msg->LaggingAgent);
@@ -594,6 +628,25 @@ void TMirrorPartitionActor::HandleRemoveLaggingAgent(
         State.ResetLaggingReplicaProxy(replicaIndex);
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, proxy);
     }
+}
+
+void TMirrorPartitionActor::HandleInconsistentDiskAgent(
+    const TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Disable multi-agent writes due to bad response from %s.",
+        DiskId.c_str(),
+        msg->AgentId.Quote().c_str());
+
+    ReportDiskAgentInconsistentMultiWriteResponse(
+        TStringBuilder() << "DiskId: " << DiskId.Quote()
+                         << ", DiskAgent: " << msg->AgentId.Quote());
+    MultiAgentWriteEnabled = false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -637,6 +690,58 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
         "[%s] %s tag added for disk",
         DiskId.c_str(),
         IntermediateWriteBufferTagName);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TMirrorPartitionActor::HandleLockAndDrainRange(
+    const TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (BlockRangeRequests.OverlapsWithRequest(msg->Range)) {
+        auto response =
+            std::make_unique<TEvPartition::TEvLockAndDrainRangeResponse>(
+                MakeError(
+                    E_REJECTED,
+                    "request overlaps with other block range request"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+    BlockRangeRequests.AddRequest(msg->Range);
+
+    auto reqInfo = CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    DrainActorCompanion.AddDrainRangeRequest(
+        ctx,
+        std::move(reqInfo),
+        msg->Range);
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Range %s is blocked for writing requests",
+        DiskId.c_str(),
+        DescribeRange(msg->Range).c_str());
+}
+
+void TMirrorPartitionActor::HandleReleaseRange(
+    const TEvPartition::TEvReleaseRange::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    auto* msg = ev->Get();
+
+    BlockRangeRequests.RemoveRequest(msg->Range);
+
+    DrainActorCompanion.RemoveDrainRangeRequest(ctx, msg->Range);
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Releasing range %s for writing requests",
+        DiskId.c_str(),
+        DescribeRange(msg->Range).c_str());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -692,14 +797,17 @@ STFUNC(TMirrorPartitionActor::StateWork)
 
         HFunc(TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest, HandleAddLaggingAgent);
         HFunc(TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest, HandleRemoveLaggingAgent);
-        HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
+        HFunc(TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
         HFunc(
-            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            TEvPartition::TEvWaitForInFlightWritesRequest,
             DrainActorCompanion.HandleWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             HandleGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent,
+            HandleInconsistentDiskAgent);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, HandleGetCompactionStatus);
@@ -729,6 +837,12 @@ STFUNC(TMirrorPartitionActor::StateWork)
             TEvService::TEvAddTagsResponse,
             HandleAddTagsResponse);
 
+        HFunc(
+            TEvPartition::TEvLockAndDrainRangeRequest,
+            HandleLockAndDrainRange);
+
+        HFunc(TEvPartition::TEvReleaseRange, HandleReleaseRange);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         IgnoreFunc(TEvents::TEvPoisonTaken);
 
@@ -754,14 +868,15 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
-        HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(TEvPartition::TEvDrainRequest, RejectDrain);
         HFunc(
-            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            TEvPartition::TEvWaitForInFlightWritesRequest,
             RejectWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.RejectGetDeviceForRange);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent)
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);
@@ -778,6 +893,10 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 
         IgnoreFunc(TEvService::TEvAddTagsResponse);
+
+        IgnoreFunc(TEvPartition::TEvLockAndDrainRangeRequest);
+
+        IgnoreFunc(TEvPartition::TEvReleaseRange);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

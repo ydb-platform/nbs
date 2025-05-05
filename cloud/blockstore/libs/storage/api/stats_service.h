@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
+#include <contrib/ydb/core/protos/tablet.pb.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/generic/string.h>
@@ -89,6 +90,7 @@ struct TEvStatsService
         ui64 VolumeUserCpu;
         bool HasCheckpoint;
         NBlobMetrics::TBlobLoadMetrics BlobLoadMetrics;
+        NKikimrTabletBase::TMetrics TabletMetrics;
 
         TVolumePartCounters(
                 TString diskId,
@@ -96,13 +98,15 @@ struct TEvStatsService
                 ui64 volumeSystemCpu,
                 ui64 volumeUserCpu,
                 bool hasCheckpoint,
-                NBlobMetrics::TBlobLoadMetrics metrics)
+                NBlobMetrics::TBlobLoadMetrics metrics,
+                NKikimrTabletBase::TMetrics tabletMetrics)
             : DiskId(std::move(diskId))
             , DiskCounters(std::move(diskCounters))
             , VolumeSystemCpu(volumeSystemCpu)
             , VolumeUserCpu(volumeUserCpu)
             , HasCheckpoint(hasCheckpoint)
             , BlobLoadMetrics(std::move(metrics))
+            , TabletMetrics(std::move(tabletMetrics))
         {}
     };
 

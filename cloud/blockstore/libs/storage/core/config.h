@@ -75,6 +75,7 @@ public:
     TString GetSchemeShardDir() const;
     ui32 GetWriteBlobThreshold() const;
     ui32 GetWriteBlobThresholdSSD() const;
+    [[nodiscard]] ui32 GetWriteMixedBlobThresholdHDD() const;
     ui32 GetFlushThreshold() const;
     ui32 GetFreshBlobCountFlushThreshold() const;
     ui32 GetFreshBlobByteCountFlushThreshold() const;
@@ -275,6 +276,7 @@ public:
     TString GetHybridFreshChannelPoolKind() const;
     bool GetAllocateSeparateMixedChannels() const;
     bool GetPoolKindChangeAllowed() const;
+    [[nodiscard]] ui32 GetMixedChannelsPercentageFromMerged() const;
 
     TString GetFolderId() const;
 
@@ -639,7 +641,11 @@ public:
     [[nodiscard]] bool GetLaggingDevicesForMirror3DisksEnabled() const;
     [[nodiscard]] TDuration GetLaggingDeviceTimeoutThreshold() const;
     [[nodiscard]] TDuration GetLaggingDevicePingInterval() const;
+    [[nodiscard]] ui32 GetLaggingDeviceMaxMigrationBandwidth() const;
+    [[nodiscard]] ui32 GetLaggingDeviceMaxMigrationIoDepth() const;
     [[nodiscard]] bool GetResyncAfterLaggingAgentMigration() const;
+    [[nodiscard]] bool GetMultiAgentWriteEnabled() const;
+    [[nodiscard]] ui32 GetMultiAgentWriteRequestSizeThreshold() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 
@@ -671,6 +677,8 @@ public:
 
     [[nodiscard]] bool GetDisableZeroBlocksThrottlingForYDBBasedDisks() const;
     [[nodiscard]] bool GetLocalDiskAsyncDeallocationEnabled() const;
+
+    [[nodiscard]] bool GetDoNotStopVolumeTabletOnLockLost() const;
 
     [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
     GetLinkedDiskFillBandwidth() const;

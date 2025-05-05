@@ -188,8 +188,9 @@ void TPartitionActor::ConfirmBlobs(const TActorContext& ctx)
     }
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] ConfirmBlobs: register actor",
-        TabletID());
+        "[%lu][d:%s] ConfirmBlobs: register actor",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     TVector<TRequest> requests;
 
@@ -232,8 +233,9 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
     Actors.Erase(ev->Sender);
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] ConfirmBlobs: start tx",
-        TabletID());
+        "[%lu][d:%s] ConfirmBlobs: start tx",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     ExecuteTx<TConfirmBlobs>(
         ctx,
@@ -250,8 +252,9 @@ bool TPartitionActor::PrepareConfirmBlobs(
     Y_UNUSED(args);
 
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] ConfirmBlobs: prepare tx",
-        TabletID());
+        "[%lu][d:%s] ConfirmBlobs: prepare tx",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     return true;
 }
@@ -262,8 +265,9 @@ void TPartitionActor::ExecuteConfirmBlobs(
     TTxPartition::TConfirmBlobs& args)
 {
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] ConfirmBlobs: execute tx",
-        TabletID());
+        "[%lu][d:%s] ConfirmBlobs: execute tx",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     TPartitionDatabase db(tx.DB);
     State->ConfirmBlobs(db, args.UnrecoverableBlobs);
@@ -274,8 +278,9 @@ void TPartitionActor::CompleteConfirmBlobs(
     TTxPartition::TConfirmBlobs& args)
 {
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] ConfirmBlobs: complete tx",
-        TabletID());
+        "[%lu][d:%s] ConfirmBlobs: complete tx",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     BlobsConfirmed(ctx);
 

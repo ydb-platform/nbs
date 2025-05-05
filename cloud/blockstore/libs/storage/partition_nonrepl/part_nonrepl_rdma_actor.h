@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -27,11 +28,19 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceReadRequestContext: public NRdma::TNullContext
+struct TDeviceRequestContext: public NRdma::TNullContext
+{
+    ui32 DeviceIdx = 0;
+};
+
+struct TDeviceReadRequestContext: public TDeviceRequestContext
 {
     ui64 StartIndexOffset = 0;
     ui64 BlockCount = 0;
 };
+////////////////////////////////////////////////////////////////////////////////
+
+bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -47,7 +56,7 @@ private:
 
     // TODO implement DeviceStats and similar stuff
 
-    TRequestsInProgress<ui64> RequestsInProgress{EAllowedRequests::ReadWrite};
+    TRequestsInProgress<EAllowedRequests::ReadWrite, ui64> RequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         PartConfig->GetName()};
@@ -67,6 +76,11 @@ private:
 
     TRequestInfoPtr Poisoner;
 
+    struct TTimedOutDeviceCtx {
+        TInstant FirstErrorTs;
+        bool VolumeWasNotified = false;
+    };
+    THashMap<TString, TTimedOutDeviceCtx> TimedOutDeviceCtxByDeviceUUID;
     bool SentRdmaUnavailableNotification = false;
 
     const bool AssignIdToWriteAndZeroRequestsEnabled{
@@ -89,6 +103,12 @@ private:
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
+    void NotifyDeviceTimedOutIfNeeded(
+        const NActors::TActorContext& ctx,
+        const TString& deviceUUID);
+    void ProcessOperationCompleted(
+        const NActors::TActorContext& ctx,
+        const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted);
     void SendRdmaUnavailableIfNeeded(const NActors::TActorContext& ctx);
     void UpdateStats(const NProto::TPartitionStats& update);
 
@@ -139,6 +159,18 @@ private:
 
     void HandleChecksumBlocksCompleted(
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAgentIsUnavailable(
+        const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAgentIsBackOnline(
+        const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDeviceTimedOutResponse(
+        const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

@@ -989,8 +989,9 @@ void TPartitionActor::ReadBlocks(
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start read blocks @%lu (range: %s)",
+        "[%lu][d:%s] Start read blocks @%lu (range: %s)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId,
         DescribeRange(readRange).data());
 
@@ -1259,8 +1260,9 @@ void TPartitionActor::FinalizeReadBlocks(
 {
     ui64 commitId = operation.CommitId;
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete read blocks @%lu",
+        "[%lu][d:%s] Complete read blocks @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     const auto& stats = operation.Stats;
@@ -1271,9 +1273,7 @@ void TPartitionActor::FinalizeReadBlocks(
 
     const ui64 requestBytes = State->GetBlockSize() * blocksCount;
 
-    UpdateNetworkStat(ctx.Now(), requestBytes);
-    UpdateCPUUsageStat(CyclesToDurationSafe(operation.ExecCycles).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), operation.ExecCycles);
 
     State->GetCleanupQueue().ReleaseBarrier(commitId);
 

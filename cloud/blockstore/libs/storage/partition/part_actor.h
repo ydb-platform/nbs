@@ -363,8 +363,7 @@ private:
         ui64 value);
 
     void UpdateStorageStat(i64 value);
-    void UpdateCPUUsageStat(ui64 value);
-    void UpdateExecutorStats(const NActors::TActorContext& ctx);
+    void UpdateCPUUsageStat(TInstant now, ui64 value);
 
     void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx);
     void UpdateYellowState(const NActors::TActorContext& ctx);

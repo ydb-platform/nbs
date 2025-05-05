@@ -16,6 +16,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
+using namespace NPartition;
+
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
@@ -34,13 +36,19 @@ TDirectCopyRangeActor::TDirectCopyRangeActor(
         TActorId source,
         TActorId target,
         TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator)
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId,
+        TActorId actorToLockAndDrainRange)
     : BlockSize(blockSize)
     , Range(range)
     , SourceActor(source)
     , TargetActor(target)
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , VolumeActorId(volumeActorId)
+    , AssignVolumeRequestId(assignVolumeRequestId)
+    , ActorToLockAndDrainRange(actorToLockAndDrainRange)
     , RequestInfo(std::move(requestInfo))
 {}
 
@@ -56,7 +64,33 @@ void TDirectCopyRangeActor::Bootstrap(const TActorContext& ctx)
         "DirectCopyRange",
         RequestInfo->CallContext->RequestId);
 
+    if (ActorToLockAndDrainRange) {
+        LockAndDrainRange(ctx);
+        return;
+    }
+
+    if (AssignVolumeRequestId) {
+        GetVolumeRequestId(ctx);
+        return;
+    }
     GetDevicesInfo(ctx);
+}
+
+void TDirectCopyRangeActor::GetVolumeRequestId(
+    const NActors::TActorContext& ctx)
+{
+    NCloud::Send(
+        ctx,
+        VolumeActorId,
+        std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdRequest>());
+}
+
+void TDirectCopyRangeActor::LockAndDrainRange(const TActorContext& ctx)
+{
+    NCloud::Send(
+        ctx,
+        ActorToLockAndDrainRange,
+        std::make_unique<TEvPartition::TEvLockAndDrainRangeRequest>(Range));
 }
 
 void TDirectCopyRangeActor::GetDevicesInfo(const TActorContext& ctx)
@@ -89,6 +123,7 @@ void TDirectCopyRangeActor::DirectCopy(const NActors::TActorContext& ctx)
 
     rec.MutableHeaders()->SetIsBackgroundRequest(true);
     rec.MutableHeaders()->SetClientId(TString(BackgroundOpsClientId));
+    rec.MutableHeaders()->SetVolumeRequestId(VolumeRequestId);
     rec.SetSourceDeviceUUID(SourceInfo->Device.GetDeviceUUID());
     rec.SetSourceStartIndex(SourceInfo->DeviceBlockRange.Start);
     rec.SetBlockSize(BlockSize);
@@ -115,8 +150,21 @@ void TDirectCopyRangeActor::DirectCopy(const NActors::TActorContext& ctx)
         new TEvents::TEvWakeup());
 }
 
+void TDirectCopyRangeActor::ReleaseRangeIfNeeded(
+    const NActors::TActorContext& ctx)
+{
+    if (NeedToReleaseRange) {
+        NCloud::Send(
+            ctx,
+            ActorToLockAndDrainRange,
+            std::make_unique<TEvPartition::TEvReleaseRange>(Range));
+    }
+}
+
 void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
 {
+    ReleaseRangeIfNeeded(ctx);
+
     NCloud::Register<TCopyRangeActor>(
         ctx,
         std::move(RequestInfo),
@@ -125,20 +173,29 @@ void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
         SourceActor,
         TargetActor,
         WriterClientId,
-        BlockDigestGenerator);
+        BlockDigestGenerator,
+        VolumeActorId,
+        AssignVolumeRequestId,
+        ActorToLockAndDrainRange);
 
     Die(ctx);
 }
 
 void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
 {
+    ReleaseRangeIfNeeded(ctx);
+
     using EExecutionSide =
         TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
 
-    ProcessError(
-        *NActors::TActorContext::ActorSystem(),
-        *TargetInfo->PartConfig,
-        error);
+    if (TargetInfo) {
+        // If the target info is null, it means that we have failed before the
+        // reading stage and there is no need to process errors.
+        ProcessError(
+            *NActors::TActorContext::ActorSystem(),
+            *TargetInfo->PartConfig,
+            error);
+    }
 
     const auto writeTs = StartTs + ReadDuration;
     auto response =
@@ -164,6 +221,38 @@ void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
+}
+
+void TDirectCopyRangeActor::HandleVolumeRequestId(
+    const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        Done(ctx, msg->GetError());
+        return;
+    }
+    VolumeRequestId = msg->VolumeRequestId;
+
+    GetDevicesInfo(ctx);
+}
+
+void TDirectCopyRangeActor::HandleLockAndDrainRangeResponse(
+    const TEvPartition::TEvLockAndDrainRangeResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        Done(ctx, msg->GetError());
+        return;
+    }
+    NeedToReleaseRange = true;
+
+    if (AssignVolumeRequestId) {
+        GetVolumeRequestId(ctx);
+        return;
+    }
+    GetDevicesInfo(ctx);
 }
 
 void TDirectCopyRangeActor::HandleGetDeviceForRange(
@@ -246,6 +335,12 @@ STFUNC(TDirectCopyRangeActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
+        HFunc(
+            TEvVolumePrivate::TEvTakeVolumeRequestIdResponse,
+            HandleVolumeRequestId);
+        HFunc(
+            TEvPartition::TEvLockAndDrainRangeResponse,
+            HandleLockAndDrainRangeResponse);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse,
             HandleGetDeviceForRange);

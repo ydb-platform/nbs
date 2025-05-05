@@ -34,8 +34,14 @@ void TPartitionActor::HandleProcessWriteQueue(
     auto& requests = guard.Get();
 
     // building mixed blob requests
-    const auto writeBlobThreshold =
-        GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
+    const auto mediaKind = PartitionConfig.GetStorageMediaKind();
+    const auto writeMixedBlobThreshold =
+        GetWriteMixedBlobThreshold(*Config, mediaKind);
+    auto writeBlobThreshold = GetWriteBlobThreshold(*Config, mediaKind);
+    if (writeMixedBlobThreshold && writeMixedBlobThreshold < writeBlobThreshold)
+    {
+        writeBlobThreshold = writeMixedBlobThreshold;
+    }
 
     auto g = GroupRequests(
         requests,

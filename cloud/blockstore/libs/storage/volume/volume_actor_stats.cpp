@@ -16,6 +16,26 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Partitions report metrics every "UpdateCounterInterval" seconds. YDB counters
+// are averaged over "DurationToCalculate" seconds. To calculate the correct raw
+// value needed for incrementing volume counters, we need to multiply the
+// averaged values by this multiplier.
+template <
+    TTimeBase<TInstant>::TValue DurationToStore,
+    TTimeBase<TInstant>::TValue DurationToCalculate>
+constexpr double GetMetricsMultiplicator(
+    NMetrics::TDecayingAverageValue<ui64, DurationToStore, DurationToCalculate>)
+{
+    return static_cast<double>(UpdateCountersInterval.GetValue()) /
+           DurationToCalculate;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_CACHED_COUNTERS(xxx, ...)                                   \
@@ -91,12 +111,108 @@ void TVolumeActor::UpdateActorStats(const TActorContext& ctx)
     }
 }
 
+void TVolumeActor::UpdateTabletMetrics(
+    const NActors::TActorContext& ctx,
+    const NKikimrTabletBase::TMetrics& metrics)
+{
+    auto* resourceMetrics = GetResourceMetrics();
+    if (!resourceMetrics) {
+        return;
+    }
+
+    if (metrics.HasCPU()) {
+        resourceMetrics->CPU.Increment(
+            metrics.GetCPU() * GetMetricsMultiplicator(resourceMetrics->CPU),
+            ctx.Now());
+    }
+    if (metrics.HasNetwork()) {
+        resourceMetrics->Network.Increment(
+            metrics.GetNetwork() *
+                GetMetricsMultiplicator(resourceMetrics->Network),
+            ctx.Now());
+    }
+    if (metrics.HasStorage()) {
+        resourceMetrics->StorageUser.Increment(metrics.GetStorage());
+    }
+    if (metrics.GroupReadThroughputSize() > 0) {
+        for (const auto& v: metrics.GetGroupReadThroughput()) {
+            auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+            auto& readThroughput = resourceMetrics->ReadThroughput[id];
+            readThroughput.Increment(
+                v.GetThroughput() * GetMetricsMultiplicator(readThroughput),
+                ctx.Now());
+        }
+    }
+    if (metrics.GroupWriteThroughputSize() > 0) {
+        for (const auto& v: metrics.GetGroupWriteThroughput()) {
+            auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+            auto& writeThroughput = resourceMetrics->WriteThroughput[id];
+            writeThroughput.Increment(
+                v.GetThroughput() * GetMetricsMultiplicator(writeThroughput),
+                ctx.Now());
+        }
+    }
+    if (metrics.GroupReadIopsSize() > 0) {
+        for (const auto& v: metrics.GetGroupReadIops()) {
+            auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+            auto& readIops = resourceMetrics->ReadIops[id];
+            readIops.Increment(
+                v.GetIops() * GetMetricsMultiplicator(readIops),
+                ctx.Now());
+        }
+    }
+    if (metrics.GroupWriteIopsSize() > 0) {
+        for (const auto& v: metrics.GetGroupWriteIops()) {
+            auto id = std::make_pair(v.GetChannel(), v.GetGroupID());
+            auto& writeIops = resourceMetrics->WriteIops[id];
+            writeIops.Increment(
+                v.GetIops() * GetMetricsMultiplicator(writeIops),
+                ctx.Now());
+        }
+    }
+
+    NKikimrTabletBase::TMetrics volumeMetrics;
+    const bool changed = GetResourceMetrics()->FillChanged(
+        volumeMetrics,
+        ctx.Now(),
+        true   // forceAll
+    );
+    if (!changed) {
+        return;
+    }
+
+    ctx.Send(
+        LauncherActorID,
+        new TEvLocal::TEvTabletMetrics(
+            TabletID(),
+            0,   // followerId
+            volumeMetrics));
+}
+
 void TVolumeActor::HandlePartStatsSaved(
     const TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     Y_UNUSED(ctx);
+}
+
+void TVolumeActor::HandleScrubberCounters(
+    const TEvVolume::TEvScrubberCounters::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    auto* msg = ev->Get();
+
+    TScrubbingInfo scrubbingInfo{
+        .Running = msg->Running,
+        .CurrentRange = msg->CurrentRange,
+        .Minors = std::move(msg->Minors),
+        .Majors = std::move(msg->Majors),
+        .Fixed = std::move(msg->Fixed),
+        .FixedPartial = std::move(msg->FixedPartial)};
+    State->UpdateScrubberCounters(std::move(scrubbingInfo));
 }
 
 void TVolumeActor::HandleDiskRegistryBasedPartCounters(
@@ -192,6 +308,8 @@ void TVolumeActor::HandlePartCounters(
             State->GetDiskId().Quote().c_str());
         return;
     }
+
+    UpdateTabletMetrics(ctx, msg->TabletMetrics);
 
     if (!statInfo->LastCounters) {
         statInfo->LastCounters = CreatePartitionDiskCounters(
@@ -349,7 +467,8 @@ void TVolumeActor::DoSendPartStatsToService(
         systemCpu,
         userCpu,
         State->GetCheckpointStore().GetActiveCheckpoints().size(),
-        std::move(offsetLoadMetrics));
+        std::move(offsetLoadMetrics),
+        NKikimrTabletBase::TMetrics());
 
     PrevMetrics = std::move(blobLoadMetrics);
 
@@ -475,9 +594,7 @@ void TVolumeActor::HandleLongRunningBlobOperation(
 
     const auto& msg = *ev->Get();
 
-    if (ev->Get()->Reason ==
-        TEvLongRunningOperation::EReason::LongRunningDetected)
-    {
+    if (msg.Reason == TEvLongRunningOperation::EReason::LongRunningDetected) {
         if (msg.FirstNotify) {
             LongRunningActors.Insert(ev->Sender);
             LongRunningActors.MarkLongRunning(ev->Sender, msg.Operation);
@@ -504,7 +621,7 @@ void TVolumeActor::HandleLongRunningBlobOperation(
             "[%lu] For volume %s %s %s (actor %s, group %u) detected after %s",
             TabletID(),
             State->GetDiskId().Quote().c_str(),
-            ToString(ev->Get()->Reason).c_str(),
+            ToString(msg.Reason).c_str(),
             ToString(msg.Operation).c_str(),
             ev->Sender.ToString().c_str(),
             msg.GroupId,

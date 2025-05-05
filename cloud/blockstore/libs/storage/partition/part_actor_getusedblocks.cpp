@@ -92,8 +92,7 @@ void TPartitionActor::CompleteGetUsedBlocks(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     UpdateNetworkStat(ctx.Now(), responseBytes);
-    UpdateCPUUsageStat(CyclesToDurationSafe(args.RequestInfo->GetExecCycles()).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

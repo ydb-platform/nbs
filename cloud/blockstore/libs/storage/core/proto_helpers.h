@@ -156,6 +156,10 @@ ui32 GetWriteBlobThreshold(
     const TStorageConfig& config,
     const NCloud::NProto::EStorageMediaKind mediaKind);
 
+ui32 GetWriteMixedBlobThreshold(
+    const TStorageConfig& config,
+    const NCloud::NProto::EStorageMediaKind mediaKind);
+
 inline bool RequiresCheckpointSupport(const NProto::TReadBlocksRequest& request)
 {
     return !request.GetCheckpointId().empty();
@@ -230,6 +234,12 @@ TBlockRange64 BuildRequestBlockRange(
 ui64 GetVolumeRequestId(const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request);
 ui64 GetVolumeRequestId(const NProto::TWriteDeviceBlocksRequest& request);
 ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
+
+ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksRequest& request);
+ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksLocalRequest& request);
+ui64 GetVolumeRequestId(const TEvService::TEvZeroBlocksRequest& request);
+ui64 GetVolumeRequestId(
+    const TEvDiskAgent::TEvDirectCopyBlocksRequest& request);
 
 TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
 
