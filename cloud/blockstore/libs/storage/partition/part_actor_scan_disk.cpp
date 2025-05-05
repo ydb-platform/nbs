@@ -86,6 +86,7 @@ private:
     const ui32 BlobsPerBatch = 0;
     const TPartialBlobId FinalBlobId;
     const TDuration RetryTimeout;
+    const TDuration ReadBlobTimeout;
 
     TPartialBlobId BlobIdToRead;
 
@@ -102,6 +103,7 @@ public:
         ui32 blobsPerBatch,
         ui64 finalCommitId,
         TDuration retryTimeout,
+        TDuration readBlobTimeout,
         TBlockBuffer blockBuffer);
 
     void Bootstrap(const TActorContext& ctx);
@@ -142,11 +144,13 @@ TScanDiskActor::TScanDiskActor(
         ui32 blobsPerBatch,
         ui64 finalCommitId,
         TDuration retryTimeout,
+        TDuration readBlobTimeout,
         TBlockBuffer blockBuffer)
     : Tablet(tablet)
     , BlobsPerBatch(blobsPerBatch)
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
     , RetryTimeout(retryTimeout)
+    , ReadBlobTimeout(readBlobTimeout)
     , GuardedBuffer(std::move(blockBuffer))
 {}
 
@@ -191,16 +195,17 @@ void TScanDiskActor::SendReadBlobRequest(
     const auto& blobMark = RequestsInCurrentBatch[requestIndex];
     TVector<ui16> blobOffsets{0};
 
-    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-        blobMark.BlobId,
-        MakeBlobStorageProxyID(blobMark.BSGroupId),
-        std::move(blobOffsets),
-        std::move(subSgList),
-        blobMark.BSGroupId,
-        false,           // async
-        TInstant::Max(), // deadline
-        false            // shouldCalculateChecksums
-    );
+    auto request =
+        std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+            blobMark.BlobId,
+            MakeBlobStorageProxyID(blobMark.BSGroupId),
+            std::move(blobOffsets),
+            std::move(subSgList),
+            blobMark.BSGroupId,
+            false,                         // async
+            ctx.Now() + ReadBlobTimeout,   // deadline
+            false                          // shouldCalculateChecksums
+        );
 
     NCloud::Send(
         ctx,
@@ -594,6 +599,7 @@ IActorPtr TPartitionActor::CreateScanDiskActor(
         blobsPerBatch,
         finalCommitId,
         retryTimeout,
+        Config->GetReadBlobTimeout(),
         std::move(blockBuffer));
 }
 

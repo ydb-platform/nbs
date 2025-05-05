@@ -35,6 +35,7 @@ class TFlushActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const TDuration WriteBlobTimeout;
 
     const TActorId Tablet;
     TVector<TWriteBlob> Requests;
@@ -50,6 +51,7 @@ public:
     TFlushActor(
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
+        TDuration writeBlobTimeout,
         const TActorId& tablet,
         TVector<TWriteBlob> requests);
 
@@ -87,10 +89,12 @@ private:
 TFlushActor::TFlushActor(
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
+        TDuration writeBlobTimeout,
         const TActorId& tablet,
         TVector<TWriteBlob> requests)
     : RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
+    , WriteBlobTimeout(writeBlobTimeout)
     , Tablet(tablet)
     , Requests(std::move(requests))
 {}
@@ -137,10 +141,13 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
     for (auto& req: Requests) {
         BlockCount += req.Blocks.size();
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            req.BlobContent.GetGuardedSgList(),
-            true);  // async
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                req.BlobContent.GetGuardedSgList(),
+                true,                          // async
+                ctx.Now() + WriteBlobTimeout   // deadline
+            );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -540,6 +547,7 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
         ctx,
         std::move(flushCtx.RequestInfo),
         BlockDigestGenerator,
+        Config->GetWriteBlobTimeout(),
         SelfId(),
         std::move(blobs));
 

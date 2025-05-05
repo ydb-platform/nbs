@@ -1232,4 +1232,10 @@ message TStorageServiceConfig
     // Max migration io depth used during the lagging migration after the
     // replica becomes online
     optional uint32 LaggingDeviceMaxMigrationIoDepth = 429;
+
+    // Timeout for TEvPut requests (in milliseconds)
+    optional uint32 WriteBlobTimeout = 430;
+
+    // Timeout for TEvGet requests (in milliseconds)
+    optional uint32 ReadBlobTimeout = 431;
 }

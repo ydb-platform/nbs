@@ -271,6 +271,8 @@ private:
 
     const ui64 CommitId;
 
+    const TDuration ReadBlobTimeout;
+
     TVector<TCallContextPtr> ForkedCallContexts;
 
     TReadBlocksRequests OwnRequests;
@@ -294,6 +296,7 @@ public:
         bool replyLocal,
         bool checksumsEnabled,
         ui64 commitId,
+        TDuration readBlobTimeout,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
         bool waitBaseDiskRequests);
@@ -348,6 +351,7 @@ TReadBlocksActor::TReadBlocksActor(
         bool replyLocal,
         bool checksumsEnabled,
         ui64 commitId,
+        TDuration readBlobTimeout,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
         bool waitBaseDiskRequests)
@@ -361,6 +365,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReplyLocal(replyLocal)
     , ChecksumsEnabled(checksumsEnabled)
     , CommitId(commitId)
+    , ReadBlobTimeout(readBlobTimeout)
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
     , WaitBaseDiskRequests(waitBaseDiskRequests)
@@ -434,15 +439,16 @@ void TReadBlocksActor::ReadBlocks(
 
         RequestsScheduled += batch.Requests.size();
 
-        auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-            batch.BlobId,
-            batch.Proxy,
-            batch.BlobOffsets,
-            ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
-            batch.GroupId,
-            false,           // async
-            TInstant::Max(), // deadline
-            ChecksumsEnabled);
+        auto request =
+            std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                batch.BlobId,
+                batch.Proxy,
+                batch.BlobOffsets,
+                ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
+                batch.GroupId,
+                false,                         // async
+                ctx.Now() + ReadBlobTimeout,   // deadline
+                ChecksumsEnabled);
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -1140,6 +1146,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReplyLocal,
             args.ChecksumsEnabled,
             args.CommitId,
+            Config->GetReadBlobTimeout(),
             std::move(requests),
             std::move(args.BlockInfos),
             describeBlocksRange.Defined());

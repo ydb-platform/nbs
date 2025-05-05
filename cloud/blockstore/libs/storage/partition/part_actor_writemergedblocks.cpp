@@ -63,6 +63,7 @@ private:
     const bool ShouldAddUnconfirmedBlobs = false;
     const IWriteBlocksHandlerPtr WriteHandler;
     const ui32 BlockSizeForChecksums;
+    const TDuration WriteBlobTimeout;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     size_t WriteBlobRequestsCompleted = 0;
@@ -83,7 +84,8 @@ public:
         bool replyLocal,
         bool shouldAddUnconfirmedBlobs,
         IWriteBlocksHandlerPtr writeHandler,
-        ui32 blockSizeForChecksums);
+        ui32 blockSizeForChecksums,
+        TDuration writeBlobTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -135,7 +137,8 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
         bool replyLocal,
         bool shouldAddUnconfirmedBlobs,
         IWriteBlocksHandlerPtr writeHandler,
-        ui32 blockSizeForChecksums)
+        ui32 blockSizeForChecksums,
+        TDuration writeBlobTimeout)
     : TabletId(tabletId)
     , Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -146,6 +149,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
     , ShouldAddUnconfirmedBlobs(shouldAddUnconfirmedBlobs)
     , WriteHandler(std::move(writeHandler))
     , BlockSizeForChecksums(blockSizeForChecksums)
+    , WriteBlobTimeout(writeBlobTimeout)
 {}
 
 void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -197,11 +201,14 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
         auto& req = WriteBlobRequests[i];
         auto guardedSglist = BuildBlobContentAndComputeChecksums(req);
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            std::move(guardedSglist),
-            BlockSizeForChecksums,
-            false); // async
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                std::move(guardedSglist),
+                BlockSizeForChecksums,
+                false,                         // async
+                ctx.Now() + WriteBlobTimeout   // deadline
+            );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -564,8 +571,8 @@ void TPartitionActor::WriteMergedBlocks(
         requestInBuffer.Data.ReplyLocal,
         shouldAddUnconfirmedBlobs,
         std::move(requestInBuffer.Data.Handler),
-        checksumsEnabled ? State->GetBlockSize() : 0
-    );
+        checksumsEnabled ? State->GetBlockSize() : 0,
+        Config->GetWriteBlobTimeout());
     Actors.Insert(actor);
 }
 

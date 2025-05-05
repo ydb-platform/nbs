@@ -71,6 +71,7 @@ private:
     const ui64 CommitId;
     const TVector<TRequest> Requests;
     const IWriteBlocksHandlerPtr WriteHandler;
+    const TDuration WriteBlobTimeout;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     size_t RequestsCompleted = 0;
@@ -84,7 +85,8 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui64 commitId,
         TVector<TRequest> requests,
-        IWriteBlocksHandlerPtr writeHandler);
+        IWriteBlocksHandlerPtr writeHandler,
+        TDuration writeBlobTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -128,12 +130,14 @@ TWriteMixedBlocksActor::TWriteMixedBlocksActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui64 commitId,
         TVector<TRequest> requests,
-        IWriteBlocksHandlerPtr writeHandler)
+        IWriteBlocksHandlerPtr writeHandler,
+        TDuration writeBlobTimeout)
     : Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , CommitId(commitId)
     , Requests(std::move(requests))
     , WriteHandler(std::move(writeHandler))
+    , WriteBlobTimeout(writeBlobTimeout)
 {}
 
 void TWriteMixedBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -249,9 +253,13 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
         const auto& req = Requests[i];
         auto guardedSglist = BuildBlobContent(req);
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            std::move(guardedSglist));
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                std::move(guardedSglist),
+                false,                         // async
+                ctx.Now() + WriteBlobTimeout   // deadline
+            );
 
         for (const auto& sr: req.SubRequests) {
             if (!sr.RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -531,8 +539,8 @@ bool TPartitionActor::WriteMixedBlocks(
         BlockDigestGenerator,
         commitId,
         std::move(requests),
-        std::move(writeHandler)
-    );
+        std::move(writeHandler),
+        Config->GetWriteBlobTimeout());
     Actors.insert(actor);
 
     return true;
