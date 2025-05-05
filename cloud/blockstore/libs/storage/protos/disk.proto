@@ -1815,3 +1815,22 @@ message TPartiallySuspendAgentResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// GetClusterCapacity request/response.
+
+message TClusterCapacityInfo
+{
+    NCloud.NProto.EStorageMediaKind Kind = 1;
+    uint64 free = 2;
+    uint64 total = 3;
+}
+
+message TGetClusterCapacityRequest
+{
+}
+
+message TGetClusterCapacityResponse
+{
+    repeated TClusterCapacityInfo Capacity = 1;
+}
