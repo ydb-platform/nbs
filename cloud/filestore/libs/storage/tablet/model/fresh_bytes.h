@@ -94,7 +94,7 @@ public:
         return TotalBytes;
     }
 
-    std::size_t GetTotalDeletedBytes() const
+    size_t GetTotalDeletedBytes() const
     {
         return TotalDeletedBytes;
     }
