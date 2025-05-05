@@ -15,11 +15,8 @@ void TDiskRegistryActor::HandleGetClusterCapacity(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(GetClusterCapacity);
 
-    const auto* msg = ev->Get();
-
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "Received GetClusterCapacity request");
-
 
     auto response = std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityResponse>();
 

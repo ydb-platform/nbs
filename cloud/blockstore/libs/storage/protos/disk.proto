@@ -1817,13 +1817,18 @@ message TPartiallySuspendAgentResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// GetClusterCapacity request/response.
+// Get Cluster Capacity.
 
 message TClusterCapacityInfo
 {
+    // Kind of described space.
     NCloud.NProto.EStorageMediaKind Kind = 1;
-    uint64 free = 2;
-    uint64 total = 3;
+
+    // Free space in bytes.
+    uint64 Free = 2;
+
+    // Total space in bytes.
+    uint64 Total = 3;
 }
 
 message TGetClusterCapacityRequest
@@ -1832,5 +1837,9 @@ message TGetClusterCapacityRequest
 
 message TGetClusterCapacityResponse
 {
-    repeated TClusterCapacityInfo Capacity = 1;
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of capacities.
+    repeated TClusterCapacityInfo Capacity = 2;
 }

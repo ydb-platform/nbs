@@ -1,5 +1,7 @@
 #include "service_actor.h"
 
+#include <cloud/blockstore/libs/storage/api/disk_registry.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
@@ -44,10 +46,10 @@ private:
     void HandleEmptyList(const TActorContext& ctx);
 
 private:
-    STFUNC(StateWork);
+    STFUNC(StateGetDiskRegistryCapacity);
 
-    void HandleNameserviceConfig(
-        const TEvInterconnect::TEvNodesInfo::TPtr& ev,
+    void HandleDiskRegistyCapacity(
+        const TEvDiskRegistry::TEvGetClusterCapacityResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -60,7 +62,7 @@ TGetCapacityActor::TGetCapacityActor(
 
 void TGetCapacityActor::Bootstrap(const TActorContext& ctx)
 {
-    Become(&TThis::StateWork);
+    Become(&TThis::StateGetDiskRegistryCapacity);
 
     LOG_DEBUG(
         ctx,
@@ -108,21 +110,31 @@ void TGetCapacityActor::HandleEmptyList(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetCapacityActor::HandleNameserviceConfig(
-    const TEvInterconnect::TEvNodesInfo::TPtr& ev,
+void TGetCapacityActor::HandleDiskRegistyCapacity(
+    const TEvDiskRegistry::TEvGetClusterCapacityResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    if (msg->Nodes.empty()) {
+    const auto& error = msg->GetError();
+
+    if (HasError(error)) {
+        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
+            "Getting Disk Registry capacity failed: "
+            << error.GetMessage());
+    }
+
+    if (msg->Record.GetCapacity().empty()) {
         HandleEmptyList(ctx);
         return;
     }
 
     NPrivateProto::TGetClusterCapacityResponse result;
-    for (const TEvInterconnect::TNodeInfo& nodeInfo: msg->Nodes) {
-        NPrivateProto::TClusterCapacityInfo info;
+    for (const NProto::TClusterCapacityInfo& capacityInfo: msg->Record.GetCapacity()) {
 
-        *result.AddCapacity() = std::move(info);
+        NPrivateProto::TClusterCapacityInfo info;
+        info.SetFree(capacityInfo.GetFree());
+        auto* capacity = result.AddCapacity();
+        *capacity = std::move(info);
     }
     TString output;
     google::protobuf::util::MessageToJsonString(result, &output);
@@ -131,10 +143,10 @@ void TGetCapacityActor::HandleNameserviceConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TGetCapacityActor::StateWork)
+STFUNC(TGetCapacityActor::StateGetDiskRegistryCapacity)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvInterconnect::TEvNodesInfo, HandleNameserviceConfig);
+        HFunc(TEvDiskRegistry::TEvGetClusterCapacityResponse, HandleDiskRegistyCapacity);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);

@@ -332,8 +332,8 @@ message TCheckRangeResponse
 message TClusterCapacityInfo
 {
     NCloud.NProto.EStorageMediaKind Kind = 1;
-    uint64 free = 2;
-    uint64 total = 3;
+    uint64 Free = 2;
+    uint64 Total = 3;
 }
 
 message TGetClusterCapacityRequest
