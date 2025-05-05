@@ -25,8 +25,9 @@ namespace NCloud::NBlockStore::NStorage {
     ui32 rowIndex,
     ui32 timedOutDeviceReplicaIndex);
 
-[[nodiscard]] bool HaveCommonRows(
-    const TVector<NProto::TLaggingDevice>& laggingCandidates,
+[[nodiscard]] bool GetHaveCommonRows(
+    const google::protobuf::RepeatedPtrField<NProto::TLaggingDevice>&
+        laggingCandidates,
     const google::protobuf::RepeatedPtrField<NProto::TLaggingDevice>&
         alreadyLagging);
 

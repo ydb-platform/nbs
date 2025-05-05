@@ -723,6 +723,8 @@ struct TTxVolume
         const TRequestInfoPtr RequestInfo;
         const NProto::TLaggingAgent Agent;
 
+        NProto::TError Error;
+
         TAddLaggingAgent(
                 TRequestInfoPtr requestInfo,
                 NProto::TLaggingAgent agent)
@@ -731,7 +733,9 @@ struct TTxVolume
         {}
 
         void Clear()
-        {}
+        {
+            Error.Clear();
+        }
     };
 
     //
