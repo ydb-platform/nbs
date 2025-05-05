@@ -18,6 +18,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/history.h>
 #include <cloud/storage/core/libs/common/thread.h>
@@ -354,7 +355,7 @@ class TReconnect
 private:
     const TDuration MaxDelay;
 
-    TDuration Delay;
+    std::optional<TBackoffDelayProvider> DelayProvider;
     TTimerHandle Timer;
     TAdaptiveLock Lock;
 
@@ -392,8 +393,10 @@ public:
     bool Hanging() const
     {
         auto guard = Guard(Lock);
-
-        return Delay >= MaxDelay / 2;
+        if (!DelayProvider) {
+            return false;
+        }
+        return DelayProvider->GetDelay() >= MaxDelay / 2;
     }
 
     int Handle() const
@@ -404,14 +407,18 @@ public:
 private:
     void CancelLocked()
     {
-        Delay = TDuration::Zero();
+        DelayProvider.reset();
         Timer.Clear();
     }
 
     void ScheduleLocked(TDuration minDelay, TDuration initialDelay)
     {
-        Delay = Min(Delay ? Delay * 2 : minDelay, MaxDelay);
-        Timer.Set(initialDelay ? initialDelay : Delay);
+        if (!DelayProvider) {
+            DelayProvider.emplace(minDelay, MaxDelay);
+        }
+        const auto delay =
+            initialDelay ? initialDelay : DelayProvider->GetDelayAndIncrease();
+        Timer.Set(delay);
     }
 };
 
