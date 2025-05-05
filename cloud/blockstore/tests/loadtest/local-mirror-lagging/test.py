@@ -368,8 +368,8 @@ def __run_test(test_case, use_rdma):
     return ret
 
 
+@pytest.mark.parametrize("use_rdma", [True, False], ids=['rdma', 'interconnect'])
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-@pytest.mark.parametrize("use_rdma", [True, False], ids=['rdma', 'no-rdma'])
 def test_load(test_case: TestCase, use_rdma):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
     return __run_test(test_case, use_rdma)

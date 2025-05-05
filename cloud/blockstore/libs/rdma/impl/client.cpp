@@ -373,8 +373,7 @@ public:
 
     void Schedule()
     {
-        auto guard = Guard(Lock);
-        ScheduleLocked(MIN_RECONNECT_DELAY, TDuration());
+        Schedule(MIN_RECONNECT_DELAY);
     }
 
     void Schedule(TDuration minDelay)
