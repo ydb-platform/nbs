@@ -89,7 +89,7 @@ public:
     TFreshBytes(IAllocator* allocator);
     ~TFreshBytes();
 
-    std::size_t GetTotalBytes() const
+    size_t GetTotalBytes() const
     {
         return TotalBytes;
     }
