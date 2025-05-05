@@ -255,18 +255,42 @@ bool TNonreplicatedPartitionActor::InitRequests(
     TRequestTimeoutPolicy* timeoutPolicy,
     TRequestData* requestData)
 {
-    auto reply = [=] (
-        const TActorContext& ctx,
-        const TRequestInfo& requestInfo,
-        NProto::TError error)
+    return InitRequests<
+        typename TMethod::TRequest,
+        typename TMethod::TResponse>(
+        TMethod::Name,
+        IsWriteMethod<TMethod>,
+        msg,
+        ctx,
+        requestInfo,
+        blockRange,
+        deviceRequests,
+        timeoutPolicy,
+        requestData);
+}
+
+template <typename TRequest, typename TResponse>
+bool TNonreplicatedPartitionActor::InitRequests(
+    const char* methodName,
+    const bool isWriteMethod,
+    const TRequest& msg,
+    const NActors::TActorContext& ctx,
+    const TRequestInfo& requestInfo,
+    const TBlockRange64& blockRange,
+    TVector<TDeviceRequest>* deviceRequests,
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequestData* requestData)
+{
+    auto reply = [=](const TActorContext& ctx,
+                     const TRequestInfo& requestInfo,
+                     NProto::TError error)
     {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            std::move(error));
+        auto response = std::make_unique<TResponse>(std::move(error));
 
         LWTRACK(
             ResponseSent_Partition,
             requestInfo.CallContext->LWOrbit,
-            TMethod::Name,
+            methodName,
             requestInfo.CallContext->RequestId);
 
         NCloud::Reply(ctx, requestInfo, std::move(response));
@@ -284,11 +308,10 @@ bool TNonreplicatedPartitionActor::InitRequests(
         reply(
             ctx,
             requestInfo,
-            PartConfig->MakeError(E_ARGUMENT, TStringBuilder()
-                << "invalid block range ["
-                << "index: " << blockRange.Start
-                << ", count: " << blockRange.Size()
-                << "]"));
+            PartConfig->MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "invalid block range " << blockRange.Print()));
         return false;
     }
 
@@ -308,7 +331,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         return false;
     }
 
-    if (IsWriteMethod<TMethod> && PartConfig->IsReadOnly() &&
+    if (isWriteMethod && PartConfig->IsReadOnly() &&
         !msg.Record.GetHeaders().GetIsBackgroundRequest())
     {
         reply(
@@ -418,6 +441,19 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocks
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
     const TEvNonreplPartitionPrivate::TChecksumBlocksMethod::TRequest& msg,
+    const TActorContext& ctx,
+    const TRequestInfo& requestInfo,
+    const TBlockRange64& blockRange,
+    TVector<TDeviceRequest>* deviceRequests,
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequestData* requestData);
+
+template bool TNonreplicatedPartitionActor::InitRequests<
+    TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+    TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
+    const char* methodName,
+    const bool isWriteRequest,
+    const TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest& msg,
     const TActorContext& ctx,
     const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
@@ -592,6 +628,28 @@ void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
     }
 }
 
+void TNonreplicatedPartitionActor::HandleGetDeviceForRange(
+    const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx) const
+{
+    const auto* msg = ev->Get();
+
+    auto requests = PartConfig->ToDeviceRequests(msg->BlockRange);
+    if (requests.size() != 1) {
+        GetDeviceForRangeCompanion.ReplyCanNotUseDirectCopy(ev, ctx);
+        return;
+    }
+
+    for (const auto& request: requests) {
+        if (DeviceStats[request.DeviceIdx].DeviceStatus != EDeviceStatus::Ok) {
+            GetDeviceForRangeCompanion.ReplyCanNotUseDirectCopy(ev, ctx);
+            return;
+        }
+    }
+
+    GetDeviceForRangeCompanion.HandleGetDeviceForRange(ev, ctx);
+}
+
 void TNonreplicatedPartitionActor::ReplyAndDie(const NActors::TActorContext& ctx)
 {
     NCloud::Reply(ctx, *Poisoner, std::make_unique<TEvents::TEvPoisonTaken>());
@@ -667,10 +725,16 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
-            GetDeviceForRangeCompanion.HandleGetDeviceForRange);
+            HandleGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+            HandleMultiAgentWrite);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted,
+            HandleMultiAgentWriteBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
 
         HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, HandleChecksumBlocks);

@@ -161,6 +161,18 @@ private:
         TRequestTimeoutPolicy* timeoutPolicy,
         TRequestData* requestData);
 
+    template <typename TRequest, typename TResponse>
+    bool InitRequests(
+        const char* methodName,
+        const bool isWriteMethod,
+        const TRequest& msg,
+        const NActors::TActorContext& ctx,
+        const TRequestInfo& requestInfo,
+        const TBlockRange64& blockRange,
+        TVector<TDeviceRequest>* deviceRequests,
+        TRequestTimeoutPolicy* timeoutPolicy,
+        TRequestData* requestData);
+
     void OnRequestCompleted(
         const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
         TInstant now);
@@ -185,6 +197,11 @@ private:
         const TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleMultiAgentWriteBlocksCompleted(
+        const TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted::
+            TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleZeroBlocksCompleted(
         const TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -205,6 +222,10 @@ private:
         const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleGetDeviceForRange(
+        const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx) const;
+
     bool HandleRequests(STFUNC_SIG);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
@@ -214,6 +235,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ChecksumBlocks, TEvNonreplPartitionPrivate);
+    BLOCKSTORE_IMPLEMENT_REQUEST(MultiAgentWrite, TEvNonreplPartitionPrivate);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
     BLOCKSTORE_IMPLEMENT_REQUEST(
         WaitForInFlightWrites,
