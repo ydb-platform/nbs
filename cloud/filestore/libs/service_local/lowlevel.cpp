@@ -46,7 +46,7 @@ ui32 GetSystemErrorCode()
     return MAKE_FILESTORE_ERROR(error);
 }
 
-TFileStat GetFileStat(struct stat fs)
+TFileStat GetFileStat(const struct stat& fs)
 {
     TFileStat st;
     st.Mode = fs.st_mode;
@@ -63,20 +63,19 @@ TFileStat GetFileStat(struct stat fs)
 
 TFileSystemStat GetFileSystemStat(const struct statfs& fs)
 {
-    TFileSystemStat st;
-    st.Type = fs.f_type;
-    st.BlockSize = fs.f_bsize;
-    st.TotalBlocks = fs.f_blocks;
-    st.FreeBlocks = fs.f_bfree;
-    st.AvailBlocks = fs.f_bavail;
-    st.TotalFiles = fs.f_files;
-    st.FreeFiles = fs.f_ffree;
-    st.FsId[0] = fs.f_fsid.__val[0];
-    st.FsId[1] = fs.f_fsid.__val[1];
-    st.MaxNameLen = fs.f_namelen;
-    st.FragmentSize = fs.f_frsize;
-    st.MountFlags = fs.f_flags;
-    return st;
+    return TFileSystemStat{
+        .Type = fs.f_type,
+        .BlockSize = fs.f_bsize,
+        .TotalBlocks = fs.f_blocks,
+        .FreeBlocks = fs.f_bfree,
+        .AvailBlocks = fs.f_bavail,
+        .TotalFiles = fs.f_files,
+        .FreeFiles = fs.f_ffree,
+        .FsId = {fs.f_fsid.__val[0], fs.f_fsid.__val[1]},
+        .MaxNameLen = fs.f_namelen,
+        .FragmentSize = fs.f_frsize,
+        .MountFlags = fs.f_flags,
+    };
 }
 
 TVector<TString> SplitStrings(const char* buf, size_t len)

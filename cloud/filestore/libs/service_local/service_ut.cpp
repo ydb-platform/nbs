@@ -942,17 +942,18 @@ TVector<TString> ListNames(TTestBootstrap& bootstrap, ui64 node)
 std::pair<NProto::TStatFileStoreResponse, struct statfs> GetFileSystemStat(
     TTestBootstrap& bootstrap)
 {
-    struct statfs stfs1, stfs2;
-    NProto::TStatFileStoreResponse response;
-
     // Retry to avoid inconsistent statfs results due to concurrent filesystem
     // modifications by other processes
     uint64_t retryCount = 0;
     while (true) {
+        struct statfs stfs1 = {};
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             statfs(bootstrap.Cwd->GetName().c_str(), &stfs1));
-        response = bootstrap.StatFileStore();
+
+        auto response = bootstrap.StatFileStore();
+
+        struct statfs stfs2 = {};
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             statfs(bootstrap.Cwd->GetName().c_str(), &stfs2));
