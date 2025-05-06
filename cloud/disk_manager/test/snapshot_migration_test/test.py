@@ -403,7 +403,7 @@ def test_disk_manager_dataplane_database_migration(use_s3_as_src, use_s3_as_dst)
         time.sleep(20)
         setup.finish_database_migration(task_id)
         setup.switch_dataplane_to_new_db()
-        for new_disk, checksum in zip(new_disks_for_initial, checksums):
+        for new_disk, checksum, snapshot in zip(new_disks_for_initial, checksums, snapshots):
             setup.create_disk_from_snapshot(snapshot_id=snapshot, disk_id=new_disk, size=size)
             new_checksum = setup.checksum_disk(new_disk)
             assert new_checksum == checksum
