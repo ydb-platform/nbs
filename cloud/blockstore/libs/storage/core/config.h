@@ -683,8 +683,8 @@ public:
     [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
     GetLinkedDiskFillBandwidth() const;
 
-    [[nodiscard]] TDuration GetWriteBlobTimeout() const;
-    [[nodiscard]] TDuration GetReadBlobTimeout() const;
+    [[nodiscard]] TDuration GetBlobStorageRequestsTimeoutHDD() const;
+    [[nodiscard]] TDuration GetBlobStorageRequestsTimeoutSSD() const;
 };
 
 ui64 GetAllocationUnit(

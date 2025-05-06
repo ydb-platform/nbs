@@ -58,7 +58,7 @@ private:
     const TVector<TRequest> Requests;
     const bool ReplyLocal;
     const IWriteBlocksHandlerPtr WriteHandler;
-    const TDuration WriteBlobTimeout;
+    const TDuration BlobStorageRequestTimeout;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     size_t RequestsCompleted = 0;
@@ -75,7 +75,7 @@ public:
         TVector<TRequest> requests,
         bool replyLocal,
         IWriteBlocksHandlerPtr writeHandler,
-        TDuration writeBlobTimeout);
+        TDuration blobStorageRequestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -122,7 +122,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
         TVector<TRequest> requests,
         bool replyLocal,
         IWriteBlocksHandlerPtr writeHandler,
-        TDuration writeBlobTimeout)
+        TDuration blobStorageRequestTimeout)
     : Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , CommitId(commitId)
@@ -130,7 +130,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
     , Requests(std::move(requests))
     , ReplyLocal(replyLocal)
     , WriteHandler(std::move(writeHandler))
-    , WriteBlobTimeout(writeBlobTimeout)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
 {}
 
 void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -198,8 +198,8 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
             std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                 req.BlobId,
                 std::move(guardedSglist),
-                false,                         // async
-                ctx.Now() + WriteBlobTimeout   // deadline
+                false,                                  // async
+                ctx.Now() + BlobStorageRequestTimeout   // deadline
             );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -444,7 +444,7 @@ void TPartitionActor::WriteMergedBlocks(
         std::move(requests),
         requestInBuffer.Data.ReplyLocal,
         std::move(requestInBuffer.Data.Handler),
-        Config->GetWriteBlobTimeout());
+        GetBlobStorageRequestTimeout());
 
     Actors.insert(actor);
 }

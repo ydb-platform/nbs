@@ -71,7 +71,7 @@ private:
     const ui64 CommitId;
     const TVector<TRequest> Requests;
     const IWriteBlocksHandlerPtr WriteHandler;
-    const TDuration WriteBlobTimeout;
+    const TDuration BlobStorageRequestTimeout;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     size_t RequestsCompleted = 0;
@@ -86,7 +86,7 @@ public:
         ui64 commitId,
         TVector<TRequest> requests,
         IWriteBlocksHandlerPtr writeHandler,
-        TDuration writeBlobTimeout);
+        TDuration blobStorageRequestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -131,13 +131,13 @@ TWriteMixedBlocksActor::TWriteMixedBlocksActor(
         ui64 commitId,
         TVector<TRequest> requests,
         IWriteBlocksHandlerPtr writeHandler,
-        TDuration writeBlobTimeout)
+        TDuration blobStorageRequestTimeout)
     : Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , CommitId(commitId)
     , Requests(std::move(requests))
     , WriteHandler(std::move(writeHandler))
-    , WriteBlobTimeout(writeBlobTimeout)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
 {}
 
 void TWriteMixedBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -257,8 +257,8 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
             std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                 req.BlobId,
                 std::move(guardedSglist),
-                false,                         // async
-                ctx.Now() + WriteBlobTimeout   // deadline
+                false,                                  // async
+                ctx.Now() + BlobStorageRequestTimeout   // deadline
             );
 
         for (const auto& sr: req.SubRequests) {
@@ -540,7 +540,7 @@ bool TPartitionActor::WriteMixedBlocks(
         commitId,
         std::move(requests),
         std::move(writeHandler),
-        Config->GetWriteBlobTimeout());
+        GetBlobStorageRequestTimeout());
     Actors.insert(actor);
 
     return true;

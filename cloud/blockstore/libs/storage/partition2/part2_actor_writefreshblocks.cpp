@@ -62,7 +62,7 @@ private:
     const TVector<IWriteBlocksHandlerPtr> WriteHandlers;
     const ui64 FirstRequestDeletionId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
-    const TDuration WriteBlobTimeout;
+    const TDuration BlobStorageRequestTimeout;
 
     TString BlobContent;
 
@@ -85,7 +85,7 @@ public:
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         ui64 firstRequestDeletionId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        TDuration writeBlobTimeout);
+        TDuration blobStorageRequestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -136,7 +136,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         ui64 firstRequestDeletionId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        TDuration writeBlobTimeout)
+        TDuration blobStorageRequestTimeout)
     : PartitionActorId(partitionActorId)
     , CommitId(commitId)
     , Channel(channel)
@@ -147,7 +147,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , WriteHandlers(std::move(writeHandlers))
     , FirstRequestDeletionId(firstRequestDeletionId)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
-    , WriteBlobTimeout(writeBlobTimeout)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
 {
     Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
 }
@@ -247,8 +247,8 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         CombinedContext,
         blobId,
         std::move(BlobContent),
-        false,                         // async
-        ctx.Now() + WriteBlobTimeout   // deadline
+        false,                                  // async
+        ctx.Now() + BlobStorageRequestTimeout   // deadline
     );
 
     NCloud::Send(
@@ -538,7 +538,7 @@ void TPartitionActor::WriteFreshBlocks(
         std::move(writeHandlers),
         firstRequestDeletionId,
         BlockDigestGenerator,
-        Config->GetWriteBlobTimeout());
+        GetBlobStorageRequestTimeout());
 
     Actors.insert(actor);
 }

@@ -7096,7 +7096,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     Y_UNIT_TEST(ShouldAbortReadRequestsToBlobstorageIfDeadlineExceeded)
     {
         NProto::TStorageServiceConfig config;
-        config.SetReadBlobTimeout(TDuration::Seconds(1).MilliSeconds());
+        config.SetBlobStorageRequestsTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -7146,7 +7146,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     Y_UNIT_TEST(ShouldAbortWriteRequestsToBlobstorageIfDeadlineExceeded)
     {
         NProto::TStorageServiceConfig config;
-        config.SetWriteBlobTimeout(TDuration::Seconds(1).MilliSeconds());
+        config.SetBlobStorageRequestsTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
         config.SetFreshChannelWriteRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
 

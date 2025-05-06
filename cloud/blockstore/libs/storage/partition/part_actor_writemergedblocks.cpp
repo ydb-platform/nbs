@@ -63,7 +63,7 @@ private:
     const bool ShouldAddUnconfirmedBlobs = false;
     const IWriteBlocksHandlerPtr WriteHandler;
     const ui32 BlockSizeForChecksums;
-    const TDuration WriteBlobTimeout;
+    const TDuration BlobStorageRequestTimeout;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     size_t WriteBlobRequestsCompleted = 0;
@@ -85,7 +85,7 @@ public:
         bool shouldAddUnconfirmedBlobs,
         IWriteBlocksHandlerPtr writeHandler,
         ui32 blockSizeForChecksums,
-        TDuration writeBlobTimeout);
+        TDuration blobStorageRequestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -138,7 +138,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
         bool shouldAddUnconfirmedBlobs,
         IWriteBlocksHandlerPtr writeHandler,
         ui32 blockSizeForChecksums,
-        TDuration writeBlobTimeout)
+        TDuration blobStorageRequestTimeout)
     : TabletId(tabletId)
     , Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -149,7 +149,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
     , ShouldAddUnconfirmedBlobs(shouldAddUnconfirmedBlobs)
     , WriteHandler(std::move(writeHandler))
     , BlockSizeForChecksums(blockSizeForChecksums)
-    , WriteBlobTimeout(writeBlobTimeout)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
 {}
 
 void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -206,8 +206,8 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
                 req.BlobId,
                 std::move(guardedSglist),
                 BlockSizeForChecksums,
-                false,                         // async
-                ctx.Now() + WriteBlobTimeout   // deadline
+                false,                                  // async
+                ctx.Now() + BlobStorageRequestTimeout   // deadline
             );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -572,7 +572,7 @@ void TPartitionActor::WriteMergedBlocks(
         shouldAddUnconfirmedBlobs,
         std::move(requestInBuffer.Data.Handler),
         checksumsEnabled ? State->GetBlockSize() : 0,
-        Config->GetWriteBlobTimeout());
+        GetBlobStorageRequestTimeout());
     Actors.Insert(actor);
 }
 

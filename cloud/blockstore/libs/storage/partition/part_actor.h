@@ -441,6 +441,8 @@ private:
         TDuration retryTimeout,
         TBlockBuffer blockBuffer);
 
+    [[nodiscard]] TDuration GetBlobStorageRequestTimeout() const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);

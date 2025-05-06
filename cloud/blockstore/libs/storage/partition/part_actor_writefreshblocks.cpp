@@ -58,7 +58,7 @@ private:
     const TVector<TBlockRange32> BlockRanges;
     const TVector<IWriteBlocksHandlerPtr> WriteHandlers;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
-    const TDuration WriteBlobTimeout;
+    const TDuration BlobStoragerequestTimeout;
 
     TString BlobContent;
     ui64 BlobSize = 0;
@@ -77,7 +77,7 @@ public:
         TVector<TBlockRange32> blockRanges,
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        TDuration writeBlobTimeout);
+        TDuration blobStorageRequestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -116,7 +116,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         TVector<TBlockRange32> blockRanges,
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        TDuration writeBlobTimeout)
+        TDuration blobStorageRequestTimeout)
     : PartitionActorId(partitionActorId)
     , CommitId(commitId)
     , Channel(channel)
@@ -125,7 +125,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , BlockRanges(std::move(blockRanges))
     , WriteHandlers(std::move(writeHandlers))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
-    , WriteBlobTimeout(writeBlobTimeout)
+    , BlobStoragerequestTimeout(blobStorageRequestTimeout)
 {
     Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
 }
@@ -222,9 +222,9 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         CombinedContext,
         blobId,
         std::move(BlobContent),
-        0,                             // blockSizeForChecksums
-        false,                         // async
-        ctx.Now() + WriteBlobTimeout   // deadline
+        0,                                      // blockSizeForChecksums
+        false,                                  // async
+        ctx.Now() + BlobStoragerequestTimeout   // deadline
     );
 
     NCloud::Send(
@@ -483,7 +483,7 @@ void TPartitionActor::WriteFreshBlocks(
             std::move(blockRanges),
             std::move(writeHandlers),
             BlockDigestGenerator,
-            Config->GetWriteBlobTimeout());
+            GetBlobStorageRequestTimeout());
 
         Actors.Insert(actor);
     } else {

@@ -271,7 +271,7 @@ private:
 
     const ui64 CommitId;
 
-    const TDuration ReadBlobTimeout;
+    const TDuration BlobStorageRequestTimeout;
 
     TVector<TCallContextPtr> ForkedCallContexts;
 
@@ -296,7 +296,7 @@ public:
         bool replyLocal,
         bool checksumsEnabled,
         ui64 commitId,
-        TDuration readBlobTimeout,
+        TDuration blobStorageRequestTimeout,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
         bool waitBaseDiskRequests);
@@ -351,7 +351,7 @@ TReadBlocksActor::TReadBlocksActor(
         bool replyLocal,
         bool checksumsEnabled,
         ui64 commitId,
-        TDuration readBlobTimeout,
+        TDuration blobStorageRequestTimeout,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
         bool waitBaseDiskRequests)
@@ -365,7 +365,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReplyLocal(replyLocal)
     , ChecksumsEnabled(checksumsEnabled)
     , CommitId(commitId)
-    , ReadBlobTimeout(readBlobTimeout)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
     , WaitBaseDiskRequests(waitBaseDiskRequests)
@@ -446,8 +446,8 @@ void TReadBlocksActor::ReadBlocks(
                 batch.BlobOffsets,
                 ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
                 batch.GroupId,
-                false,                         // async
-                ctx.Now() + ReadBlobTimeout,   // deadline
+                false,                                   // async
+                ctx.Now() + BlobStorageRequestTimeout,   // deadline
                 ChecksumsEnabled);
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -1146,7 +1146,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReplyLocal,
             args.ChecksumsEnabled,
             args.CommitId,
-            Config->GetReadBlobTimeout(),
+            GetBlobStorageRequestTimeout(),
             std::move(requests),
             std::move(args.BlockInfos),
             describeBlocksRange.Defined());

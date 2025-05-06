@@ -74,7 +74,7 @@ private:
     TVector<TRequest> Requests;
     const IWriteBlocksHandlerPtr WriteHandler;
     const ui32 BlockSizeForChecksums;
-    const TDuration WriteBlobTimeout;
+    const TDuration BlobStorageRequestTimeout;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     size_t RequestsCompleted = 0;
@@ -91,7 +91,7 @@ public:
         TVector<TRequest> requests,
         IWriteBlocksHandlerPtr writeHandler,
         ui32 blockSizeForChecksums,
-        TDuration writeBlobTimeout);
+        TDuration blobStorageRequestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -137,7 +137,7 @@ TWriteMixedBlocksActor::TWriteMixedBlocksActor(
         TVector<TRequest> requests,
         IWriteBlocksHandlerPtr writeHandler,
         ui32 blockSizeForChecksums,
-        TDuration writeBlobTimeout)
+        TDuration blobStorageRequestTimeout)
     : TabletId(tabletId)
     , Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -145,7 +145,7 @@ TWriteMixedBlocksActor::TWriteMixedBlocksActor(
     , Requests(std::move(requests))
     , WriteHandler(std::move(writeHandler))
     , BlockSizeForChecksums(blockSizeForChecksums)
-    , WriteBlobTimeout(writeBlobTimeout)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
 {}
 
 void TWriteMixedBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -238,8 +238,8 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
                 req.BlobId,
                 std::move(guardedSglist),
                 BlockSizeForChecksums,
-                false,                         // async
-                ctx.Now() + WriteBlobTimeout   // deadline
+                false,                                  // async
+                ctx.Now() + BlobStorageRequestTimeout   // deadline
             );
 
         for (const auto& sr: req.SubRequests) {
@@ -560,7 +560,7 @@ bool TPartitionActor::WriteMixedBlocks(
         std::move(requests),
         std::move(writeHandler),
         checksumsEnabled ? State->GetBlockSize() : 0,
-        Config->GetWriteBlobTimeout());
+        GetBlobStorageRequestTimeout());
     Actors.Insert(actor);
 
     return true;

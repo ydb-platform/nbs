@@ -253,7 +253,7 @@ private:
     const TBlockRange32 ReadRange;
     const bool ReplyLocal;
 
-    const TDuration ReadBlobTimeout;
+    const TDuration BlobStorageRequestTimeout;
 
     TBlockMarks BlockMarks;
 
@@ -283,7 +283,7 @@ public:
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
-        TDuration readBlobTimeout,
+        TDuration blobStorageRequestTimeout,
         TBlockMarks blockMarks,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos);
@@ -338,7 +338,7 @@ TReadBlocksActor::TReadBlocksActor(
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
-        TDuration readBlobTimeout,
+        TDuration blobStorageRequestTimeout,
         TBlockMarks blockMarks,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos)
@@ -354,7 +354,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReadHandler(std::move(readHandler))
     , ReadRange(readRange)
     , ReplyLocal(replyLocal)
-    , ReadBlobTimeout(readBlobTimeout)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
     , BlockMarks(std::move(blockMarks))
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
@@ -524,8 +524,8 @@ void TReadBlocksActor::ReadBlocks(
                 std::move(batch.BlobOffsets),
                 ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
                 batch.GroupId,
-                false,                        // async
-                ctx.Now() + ReadBlobTimeout   // deadline
+                false,                                  // async
+                ctx.Now() + BlobStorageRequestTimeout   // deadline
             );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -1064,7 +1064,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReadHandler,
             args.ReadRange,
             args.ReplyLocal,
-            Config->GetReadBlobTimeout(),
+            GetBlobStorageRequestTimeout(),
             std::move(blocks),
             std::move(requests),
             std::move(args.BlockInfos));

@@ -86,7 +86,7 @@ private:
     const ui32 BlobsPerBatch = 0;
     const TPartialBlobId FinalBlobId;
     const TDuration RetryTimeout;
-    const TDuration ReadBlobTimeout;
+    const TDuration BlobStorageRequestTimeout;
 
     TPartialBlobId BlobIdToRead;
 
@@ -103,7 +103,7 @@ public:
         ui32 blobsPerBatch,
         ui64 finalCommitId,
         TDuration retryTimeout,
-        TDuration readBlobTimeout,
+        TDuration blobStorageRequestTimeout,
         TBlockBuffer blockBuffer);
 
     void Bootstrap(const TActorContext& ctx);
@@ -144,13 +144,13 @@ TScanDiskActor::TScanDiskActor(
         ui32 blobsPerBatch,
         ui64 finalCommitId,
         TDuration retryTimeout,
-        TDuration readBlobTimeout,
+        TDuration blobStorageRequestTimeout,
         TBlockBuffer blockBuffer)
     : Tablet(tablet)
     , BlobsPerBatch(blobsPerBatch)
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
     , RetryTimeout(retryTimeout)
-    , ReadBlobTimeout(readBlobTimeout)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
     , GuardedBuffer(std::move(blockBuffer))
 {}
 
@@ -202,9 +202,9 @@ void TScanDiskActor::SendReadBlobRequest(
             std::move(blobOffsets),
             std::move(subSgList),
             blobMark.BSGroupId,
-            false,                         // async
-            ctx.Now() + ReadBlobTimeout,   // deadline
-            false                          // shouldCalculateChecksums
+            false,                                   // async
+            ctx.Now() + BlobStorageRequestTimeout,   // deadline
+            false                                    // shouldCalculateChecksums
         );
 
     NCloud::Send(
@@ -599,7 +599,7 @@ IActorPtr TPartitionActor::CreateScanDiskActor(
         blobsPerBatch,
         finalCommitId,
         retryTimeout,
-        Config->GetReadBlobTimeout(),
+        GetBlobStorageRequestTimeout(),
         std::move(blockBuffer));
 }
 
