@@ -617,7 +617,7 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(
     if (!ep) {
         return;
     }
-    // Agent is back online via interconnect. We should force the recconnect
+    // Agent is back online via interconnect. We should force the reconnect
     // attempt via RDMA.
     ep->get()->TryForceReconnect();
 
