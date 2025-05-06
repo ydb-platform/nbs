@@ -82,6 +82,7 @@ runs:
         CACHE_UPDATE: ${{ inputs.cache_update }}
       run: |
         function grep_ya_tc() {
+          # shellcheck disable=SC2009
           ps aux | grep "[y]a-tc" || true
         }
 
@@ -161,6 +162,7 @@ runs:
           ya_bin_path=$(find /home/github/.ya/tools/ -type f -name "ya-bin")
           if [ ! -s "$ya_bin_path" ]; then
             echo "ya-bin exists but is empty, lets look for ya-tc process and kill it if it's running somehow."
+            # shellcheck disable=SC2009
             ps auxf | grep -vE "]$"
             ls -lsha "$ya_bin_path"
             du -h -d 1 /home/github/.ya/
@@ -171,14 +173,14 @@ runs:
             start_time=$(date +%s)
 
             while true; do
-              pgrep -x "$process_name" && {
+              if pgrep -x "$process_name"; then
                   echo "$process_name is still running."
                   grep_ya_tc
-              } || {
+              else
                   echo "$process_name is not running."
                   grep_ya_tc
                   break
-              }
+              fi
 
               current_time=$(date +%s)
               elapsed_time=$((current_time - start_time))
@@ -196,6 +198,7 @@ runs:
 
             echo "ya-bin exists but is empty, recovering by removing it."
             ls -lsha "$ya_bin_path"
+            # shellcheck disable=SC2009
             ps auxf | grep -vE "]$"
             rm -rf $ya_bin_path
           fi

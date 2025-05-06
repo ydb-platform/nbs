@@ -290,7 +290,7 @@ runs:
       if: ${{ !cancelled() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        sudo cp /var/log/kern.log "$LOG_DIR/kern.log" &&
+        sudo cp /var/log/kern.log "$LOG_DIR/kern.log" || true
         sudo chown -R github:github "$LOG_DIR/kern.log" || true
 
     - name: archive unitest reports (orig)
@@ -473,6 +473,7 @@ runs:
       if: success() && inputs.upload_ya_dir == 'yes'
       run: |
         function grep_ya_tc() {
+          # shellcheck disable=SC2009
           ps aux | grep "[y]a-tc" || true
         }
         process_name="ya-tc"
@@ -480,14 +481,14 @@ runs:
         timeout=360
         start_time=$(date +%s)
         while true; do
-            pgrep -x "$process_name" && {
+            if pgrep -x "$process_name"; then
                 echo "$process_name is still running."
                 grep_ya_tc
-            } || {
+            else
                 echo "$process_name is not running."
                 grep_ya_tc
                 break
-            }
+            fi
 
             current_time=$(date +%s)
             elapsed_time=$((current_time - start_time))
@@ -502,7 +503,8 @@ runs:
 
             sleep 5
         done
-
+        
+        # shellcheck disable=SC2009
         ps aux | grep ya
         # checking if files are not corrupted
         echo "::group::ya-files-empty"
