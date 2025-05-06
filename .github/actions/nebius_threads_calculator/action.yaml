@@ -95,7 +95,7 @@ runs:
             ;;
           esac
         else
-          case "$vm_preset" in
+          case "$VM_PRESET" in
             "256vcpu-1024gb")
                 test_threads=64
                 build_threads=256

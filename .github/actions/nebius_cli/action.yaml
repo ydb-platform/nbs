@@ -24,7 +24,7 @@ runs:
         then 
           curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
           cat <<EOF > sa.json
-        ${sa_json}
+        ${SA_JSON}
         EOF
         else
           echo "Nebius CLI already installed"
@@ -48,4 +48,4 @@ runs:
             echo "Nebius profile already created"
           fi
       env:
-        sa_json: ${{ inputs.sa_json }}
+        SA_JSON: ${{ inputs.sa_json }}
