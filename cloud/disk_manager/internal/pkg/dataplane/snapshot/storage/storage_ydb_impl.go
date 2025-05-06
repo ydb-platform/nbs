@@ -1447,7 +1447,7 @@ func (s *storageYDB) listAllSnapshots(
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			var id string
-			err := res.Scan("id", &id)
+			err := res.Scan(&id)
 			if err != nil {
 				return result, err
 			}
