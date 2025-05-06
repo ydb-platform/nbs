@@ -964,8 +964,8 @@ std::pair<NProto::TStatFileStoreResponse, struct statfs> GetFileSystemStat(
         retryCount++;
         Sleep(TDuration::MilliSeconds(100));
         if (retryCount % 100 == 0) {
-            Cerr << "unable to get consisten statfs, retry count:" << retryCount
-                 << Endl;
+            Cerr << "unable to get consistent statfs, retry count:"
+                 << retryCount << Endl;
         }
     }
 
