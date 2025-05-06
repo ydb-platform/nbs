@@ -26,9 +26,11 @@ runs:
         curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
     - name: configure nebius cli
       shell: bash
+      with:
+        SA_JSON: ${{ inputs.sa_json }}
       run: |
         cat <<EOF > sa.json
-        ${sa_json}
+        ${SA_JSON}
         EOF
 
         jq -r '."subject-credentials"."private-key"' sa.json > private.pem

@@ -51,7 +51,7 @@ jobs:
       run: |
         curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
         cat <<EOF > sa.json
-        ${sa_json}
+        ${SA_JSON}
         EOF
 
         jq -r '."subject-credentials"."private-key"'  sa.json > private.pem
@@ -67,7 +67,7 @@ jobs:
                               --private-key-file private.pem \
                               --service-account-id "${service_account_id}"
       env:
-        sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+        SA_JSON: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
 
     - name: Get latest image ID from Nebius
       id: get-image-id
