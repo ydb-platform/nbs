@@ -201,16 +201,6 @@ runs:
         # shellcheck disable=SC2153
         readarray -d ',' -t test_type < <(printf "%s" "$TEST_TYPE")
 
-        echo "::group::empty-files"
-        [ -d  /home/github/.ya/tools/ ] && {
-          find /home/github/.ya/tools/ -type f -exec file {} \; | grep empty;
-          ya_bin_path=$(find /home/github/.ya/tools/ -type f -name "ya-bin")
-          if [ ! -s "$ya_bin_path" ]; then
-            echo "ya-bin exists but is empty, recovering by removing ya-bin"
-            rm -rf $ya_bin_path
-          fi
-        }
-        echo "::endgroup::"
         date
         ./ya --version
         RETRIES="${NUMBER_OF_RETRIES}"
@@ -219,8 +209,8 @@ runs:
         RETRY_FLAG=""
         i=0
         while [ "$RETRIES" -gt 0 ]; do
-          ((RETRIES--))
-          ((i++))
+          RETRIES=$((RETRIES - 1))
+          i=$((i + 1))
           echo "::group::ya-make-test-${i}"
           set +e
           (
@@ -254,7 +244,9 @@ runs:
               else
                 DO_RETRY=1
                 OOM_CAN_BE_RETRIED=0
-                echo "Retrying once because OOM killer killed ya-bin"
+                RETRIES=$((RETRIES + 1 ))
+                echo "RETRIES=$((RETRIES + 1 ))" | tee -a "$GITHUB_ENV"
+                echo "Retrying once because OOM killer killed ya-bin, increasing retry count by 1"
               fi
               ;;
             *)
@@ -503,7 +495,7 @@ runs:
 
             sleep 5
         done
-        
+
         # shellcheck disable=SC2009
         ps aux | grep ya
         # checking if files are not corrupted
