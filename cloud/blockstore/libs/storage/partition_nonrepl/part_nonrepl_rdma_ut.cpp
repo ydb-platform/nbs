@@ -774,6 +774,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
+        UNIT_ASSERT_VALUES_UNEQUAL(0, env.Rdma().Endpoints.size());
         const auto error = MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable");
         env.Rdma().InjectErrors(error, {}, {});
         ui32 forceReconnectCount = 0;
@@ -807,12 +808,19 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         client.SendRequest(
             env.ActorId,
             std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
-                "agent-1"));
-        runtime.DispatchEvents({}, 10ms);
-        UNIT_ASSERT_VALUES_EQUAL(1, forceReconnectCount);
+                Sprintf("agent-%u", runtime.GetNodeId(0))));
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&forceReconnectCount]()
+            {
+                return 1 == forceReconnectCount;
+            };
+            runtime.DispatchEvents(options);
+        }
 
         devices.clear();
         testDeviceTimedOutRoutine();
+        UNIT_ASSERT_VALUES_EQUAL(1, forceReconnectCount);
     }
 
     Y_UNIT_TEST(ShouldResetDeviceTimeoutInfoOnSucceededRequest)
