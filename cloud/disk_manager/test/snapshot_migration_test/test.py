@@ -390,7 +390,7 @@ def test_disk_manager_dataplane_database_migration(use_s3_as_src, use_s3_as_dst)
         task_id = setup.start_database_migration()
 
         # Create snapshots during migration
-        for snapshot, disk in list(zip(snapshots, disks))[:initial_data_count // 2]:
+        for snapshot, disk in list(zip(snapshots, disks))[initial_data_count // 2:]:
             setup.create_snapshot(src_disk_id=disk, snapshot_id=snapshot)
 
         # Wait for snapshots to be created
