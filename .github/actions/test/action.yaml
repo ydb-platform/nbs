@@ -214,9 +214,13 @@ runs:
         date
         ./ya --version
         RETRIES="${NUMBER_OF_RETRIES}"
+        OOM_CAN_BE_RETRIED=1
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
         RETRY_FLAG=""
-        for i in $(seq 1 $RETRIES); do
+        i=0
+        while [ "$RETRIES" -gt 0 ]; do
+          ((RETRIES--))
+          ((i++))
           echo "::group::ya-make-test-${i}"
           set +e
           (
@@ -245,10 +249,12 @@ runs:
               ;;
             137)
               echo "ya test returned $RC it was killed by OOM killer"
-              DO_RETRY=1
-              if [ "$i" -eq "$RETRY_COUNT" ];
-              then
+              if [ $OOM_CAN_BE_RETRIED -eq 0 ]; then
                 DO_RETRY=0
+              else
+                DO_RETRY=1
+                OOM_CAN_BE_RETRIED=0
+                echo "Retrying once because OOM killer killed ya-bin"
               fi
               ;;
             *)
