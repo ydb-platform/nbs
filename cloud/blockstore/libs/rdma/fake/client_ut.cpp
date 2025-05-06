@@ -29,6 +29,7 @@ using namespace NKikimr;
 using namespace NMonitoring;
 using namespace NStorage;
 using namespace std::chrono_literals;
+using namespace NThreading;
 
 namespace {
 
@@ -496,6 +497,97 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
             const auto& buf = deviceResponse->GetBlocks().GetBuffers(i);
             UNIT_ASSERT_EQUAL(TString(DefaultBlockSize, 'a' + i), buf);
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldCancelRequest, TFixture)
+    {
+        NProto::TWriteDeviceBlocksRequest deviceRequest;
+        deviceRequest.MutableHeaders()->SetClientId("client");
+        deviceRequest.SetDeviceUUID("uuid");
+        deviceRequest.SetStartIndex(42);
+        deviceRequest.SetBlockSize(DefaultBlockSize);
+
+        const TString requestBuffer{DefaultBlockSize, 'X'};
+        TSgList sglist{
+            TBlockDataRef{requestBuffer.data(), requestBuffer.size()}};
+
+        HandleGetAgentNodeId = [&](const auto& ev)
+        {
+            auto response =
+                std::make_unique<TEvDiskRegistry::TEvGetAgentNodeIdResponse>();
+            response->Record.SetNodeId(100500);
+
+            Runtime->SendAsync(new IEventHandle{
+                ev->Sender,
+                TActorId{},
+                response.release(),
+                0,   // flags
+                ev->Cookie});
+
+            return true;
+        };
+
+        auto writeSentPromise = NewPromise<void>();
+        auto writeSent = writeSentPromise.GetFuture();
+
+        HandleWriteDeviceBlocks =
+            [writeSentPromise =
+                 std::move(writeSentPromise)](const auto& ev) mutable
+        {
+            Y_UNUSED(ev);
+
+            writeSentPromise.SetValue();
+            return true;
+        };
+
+        auto future = RdmaClient->StartEndpoint("node-0001.nbs-dev.net", 10022);
+        Runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(future.Wait(15s));
+        NRdma::IClientEndpointPtr ep = future.GetValueSync();
+        UNIT_ASSERT(ep);
+
+        NProto::TError responseError;
+
+        auto handler = Handler(
+            [&](NRdma::TClientRequestPtr request, ui32 status, size_t len)
+            {
+                UNIT_ASSERT_EQUAL(NRdma::RDMA_PROTO_FAIL, status);
+
+                const bool parsed = responseError.ParseFromArray(
+                    request->ResponseBuffer.Data(),
+                    len);
+
+                UNIT_ASSERT(parsed);
+            });
+
+        auto [request, error] = ep->AllocateRequest(
+            handler,
+            nullptr,   // context
+            NRdma::TProtoMessageSerializer::MessageByteSize(
+                deviceRequest,
+                DefaultBlockSize),
+            4_KB);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        NRdma::TProtoMessageSerializer::SerializeWithData(
+            request->RequestBuffer,
+            TBlockStoreProtocol::WriteDeviceBlocksRequest,
+            0,   // flags
+            deviceRequest,
+            sglist);
+
+        auto reqId =
+            ep->SendRequest(std::move(request), MakeIntrusive<TCallContext>());
+
+        Runtime->DispatchEvents({}, 10ms);
+        writeSent.Wait();
+
+        ep->CancelRequest(reqId);
+        Runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, responseError.GetCode());
     }
 }
 
