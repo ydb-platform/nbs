@@ -24,7 +24,13 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
 {
-    return err.GetCode() == E_RDMA_UNAVAILABLE || err.GetCode() == E_TIMEOUT;
+    switch (err.GetCode()) {
+        case E_RDMA_UNAVAILABLE:
+        case E_TIMEOUT:
+        case E_REJECTED:
+            return true;
+    }
+    return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -606,6 +612,20 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(
         "[%s] Lagging agent %s is back online",
         PartConfig->GetName().c_str(),
         agentId.Quote().c_str());
+
+    const auto* ep = AgentId2Endpoint.FindPtr(agentId);
+    if (!ep) {
+        return;
+    }
+    // Agent is back online via interconnect. We should force the reconnect
+    // attempt via RDMA.
+    ep->get()->TryForceReconnect();
+
+    for (const auto& device: PartConfig->GetDevices()) {
+        if (device.GetAgentId() == msg->AgentId) {
+            TimedOutDeviceCtxByDeviceUUID.erase(device.GetDeviceUUID());
+        }
+    }
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleDeviceTimedOutResponse(

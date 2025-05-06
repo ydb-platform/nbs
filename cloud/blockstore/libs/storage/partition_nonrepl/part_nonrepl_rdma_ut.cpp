@@ -738,6 +738,91 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         ShouldSendDeviceTimedOutOnAllocationError(EIOType::Checksum);
     }
 
+    Y_UNIT_TEST(ShouldResetDeviceTimedOutContextOnAgentIsBackOnline)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            false,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        TActorId notifiedActor;
+        ui32 deviceTimedOutCount = 0;
+        THashSet<TString> devices;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest: {
+                        if (event->Recipient != env.VolumeActorId) {
+                            break;
+                        }
+                        notifiedActor = event->Recipient;
+                        auto* ev = static_cast<
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest*>(
+                            event->GetBase());
+                        devices.emplace(ev->DeviceUUID);
+                        ++deviceTimedOutCount;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, env.Rdma().Endpoints.size());
+        const auto error = MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable");
+        env.Rdma().InjectErrors(error, {}, {});
+        ui32 forceReconnectCount = 0;
+        env.Rdma().SetForceReconnectObserver([&forceReconnectCount]()
+                                             { forceReconnectCount++; });
+        env.Rdma().InitAllEndpoints();
+
+        auto testDeviceTimedOutRoutine = [&]() {
+            const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
+
+            WRITE_BLOCKS_E(error);
+            runtime.DispatchEvents({}, 10ms);
+            UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+
+            runtime.AdvanceCurrentTime(
+                env.Config->GetLaggingDeviceTimeoutThreshold() + 1ms);
+            READ_BLOCKS_E(error, 0);
+            runtime.DispatchEvents({}, 10ms);
+
+            const THashSet<TString> expected = {"vasya"};
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), devices.size());
+            for (const auto& d: devices) {
+                UNIT_ASSERT(expected.contains(d));
+            }
+        };
+
+        testDeviceTimedOutRoutine();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, deviceTimedOutCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, forceReconnectCount);
+        client.SendRequest(
+            env.ActorId,
+            std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
+                Sprintf("agent-%u", runtime.GetNodeId(0))));
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&forceReconnectCount]()
+            {
+                return 1 == forceReconnectCount;
+            };
+            runtime.DispatchEvents(options);
+        }
+
+        devices.clear();
+        testDeviceTimedOutRoutine();
+        UNIT_ASSERT_VALUES_EQUAL(1, forceReconnectCount);
+    }
+
     Y_UNIT_TEST(ShouldResetDeviceTimeoutInfoOnSucceededRequest)
     {
         TTestBasicRuntime runtime;
