@@ -31,7 +31,7 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
+    auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
 
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
@@ -88,7 +88,7 @@ void TCheckRangeActor::HandlePoisonPill(
 }
 
 void TCheckRangeActor::HandleReadBlocksResponse(
-    const TEvService::TEvReadBlocksResponse::TPtr& ev,
+    const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();

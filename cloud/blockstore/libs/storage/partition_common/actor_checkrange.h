@@ -39,7 +39,7 @@ private:
         std::unique_ptr<TEvVolume::TEvCheckRangeResponse>);
 
     void HandleReadBlocksResponse(
-        const TEvService::TEvReadBlocksResponse::TPtr& ev,
+        const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
