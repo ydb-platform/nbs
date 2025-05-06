@@ -241,7 +241,7 @@ void TFileSystem::ReplyAttr(
         error,
         req,
         &entry.attr,
-        Config->GetAttrTimeout().SecondsFloat());
+        0);
 }
 
 void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)

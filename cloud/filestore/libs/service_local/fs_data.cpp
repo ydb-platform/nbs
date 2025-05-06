@@ -100,33 +100,8 @@ TFuture<NProto::TReadDataLocalResponse> TLocalFileSystem::ReadDataLocalAsync(
 {
     STORAGE_TRACE("ReadDataLocal " << DumpMessage(request));
 
-    auto session = GetSession(request);
-    auto* handle = session->LookupHandle(request.GetHandle());
-    if (!handle || !handle->IsOpen()) {
-        return MakeFuture<NProto::TReadDataLocalResponse>(
-            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
-    }
-
-    auto promise = NewPromise<NProto::TReadDataLocalResponse>();
-    FileIOService->AsyncReadV(*handle, request.GetOffset(), request.Buffers)
-        .Subscribe(
-            [&logRequest, promise](const TFuture<ui32>& f) mutable
-            {
-                NProto::TReadDataLocalResponse response;
-                try {
-                    auto bytesRead = f.GetValue();
-                    response.BytesRead = bytesRead;
-                } catch (const TServiceError& e) {
-                    *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
-                        ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
-                } catch (...) {
-                    *response.MutableError() =
-                        MakeError(E_IO, CurrentExceptionMessage());
-                }
-                FinalizeProfileLogRequestInfo(logRequest, response);
-                promise.SetValue(std::move(response));
-            });
-    return promise;
+    Y_UNUSED(logRequest);
+    return MakeFuture<NProto::TReadDataLocalResponse>();
 }
 
 TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
@@ -134,39 +109,8 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     NProto::TProfileLogRequestInfo& logRequest)
 {
     STORAGE_TRACE("ReadData " << DumpMessage(request));
-
-    auto session = GetSession(request);
-    auto* handle = session->LookupHandle(request.GetHandle());
-    if (!handle || !handle->IsOpen()) {
-        return MakeFuture<NProto::TReadDataResponse>(
-            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
-    }
-
-    auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
-    auto b = std::make_shared<TAlignedBuffer>(request.GetLength(), align);
-    NSan::Unpoison(b->Begin(), b->Size());
-
-    TArrayRef<char> data(b->Begin(), b->End());
-    auto promise = NewPromise<NProto::TReadDataResponse>();
-    FileIOService->AsyncRead(*handle, request.GetOffset(), data).Subscribe(
-        [&logRequest, b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
-            NProto::TReadDataResponse response;
-            try {
-                auto bytesRead = f.GetValue();
-                b->TrimSize(bytesRead);
-                response.SetBufferOffset(b->AlignedDataOffset());
-                response.SetBuffer(b->TakeBuffer());
-            } catch (const TServiceError& e) {
-                *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
-                    ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
-            } catch (...) {
-                *response.MutableError() =
-                    MakeError(E_IO, CurrentExceptionMessage());
-            }
-            FinalizeProfileLogRequestInfo(logRequest, response);
-            promise.SetValue(std::move(response));
-        });
-    return promise;
+    Y_UNUSED(logRequest);
+    return MakeFuture<NProto::TReadDataResponse>();
 }
 
 TFuture<NProto::TWriteDataLocalResponse> TLocalFileSystem::WriteDataLocalAsync(
@@ -174,44 +118,8 @@ TFuture<NProto::TWriteDataLocalResponse> TLocalFileSystem::WriteDataLocalAsync(
     NProto::TProfileLogRequestInfo& logRequest)
 {
     STORAGE_TRACE("WriteDataLocal " << DumpMessage(request));
-
-    auto session = GetSession(request);
-    auto* handle = session->LookupHandle(request.GetHandle());
-    if (!handle || !handle->IsOpen()) {
-        return MakeFuture<NProto::TWriteDataLocalResponse>(
-            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
-    }
-
-    auto promise = NewPromise<NProto::TWriteDataLocalResponse>();
-    FileIOService->AsyncWriteV(*handle, request.GetOffset(), request.Buffers)
-        .Subscribe(
-            [this,
-             &logRequest,
-             promise,
-             bytesExpected = request.BytesToWrite](
-                const TFuture<ui32>& f) mutable
-            {
-                NProto::TWriteDataLocalResponse response;
-                try {
-                    auto bytesWritten = f.GetValue();
-                    if (bytesWritten != bytesExpected) {
-                        STORAGE_ERROR(
-                            "WriteData bytesWritten=" << bytesWritten
-                                                      << " != bytesExpected="
-                                                      << bytesExpected);
-                        *response.MutableError() = MakeError(E_REJECTED);
-                    }
-                } catch (const TServiceError& e) {
-                    *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
-                        ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
-                } catch (...) {
-                    *response.MutableError() =
-                        MakeError(E_IO, CurrentExceptionMessage());
-                }
-                FinalizeProfileLogRequestInfo(logRequest, response);
-                promise.SetValue(std::move(response));
-            });
-    return promise;
+    Y_UNUSED(logRequest);
+    return MakeFuture<NProto::TWriteDataLocalResponse>();
 }
 
 TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
@@ -219,38 +127,8 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     NProto::TProfileLogRequestInfo& logRequest)
 {
     STORAGE_TRACE("WriteData " << DumpMessage(request));
-
-    auto session = GetSession(request);
-    auto* handle = session->LookupHandle(request.GetHandle());
-    if (!handle || !handle->IsOpen()) {
-        return MakeFuture<NProto::TWriteDataResponse>(
-            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
-    }
-
-    auto b = std::move(*request.MutableBuffer());
-    auto offset = request.GetBufferOffset();
-    TArrayRef<char> data(b.begin() + offset, b.vend());
-    auto promise = NewPromise<NProto::TWriteDataResponse>();
-    FileIOService->AsyncWrite(*handle, request.GetOffset(), data)
-        .Subscribe(
-            [&logRequest, b = std::move(b), promise](
-                const TFuture<ui32>& f) mutable
-            {
-                NProto::TWriteDataResponse response;
-                try {
-                    f.GetValue();
-                } catch (const TServiceError& e) {
-                    *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
-                        ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
-                } catch (...) {
-                    *response.MutableError() =
-                        MakeError(E_IO, CurrentExceptionMessage());
-                }
-                FinalizeProfileLogRequestInfo(logRequest, response);
-                promise.SetValue(std::move(response));
-            });
-
-    return promise;
+    Y_UNUSED(logRequest);
+    return MakeFuture<NProto::TWriteDataResponse>();
 }
 
 NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(

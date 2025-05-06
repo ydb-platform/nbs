@@ -4,6 +4,7 @@
 
 #include <cloud/contrib/vhost/include/vhost/fs.h>
 #include <cloud/contrib/vhost/include/vhost/server.h>
+#include <cloud/contrib/vhost/include/vhost/types.h>
 #include <cloud/contrib/vhost/logging.h>
 #include <cloud/contrib/vhost/platform.h>
 
@@ -13,6 +14,8 @@
 #include <contrib/libs/virtiofsd/fuse_virtio.h>
 
 #include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -412,6 +415,17 @@ void virtio_session_exit(struct fuse_session* se)
     vhd_unregister_fs(dev->vdev, unregister_complete, se);
 }
 
+void print_current_time_with_ms() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    struct tm *tm_info = localtime(&tv.tv_sec);
+    char buffer[64];
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", tm_info);
+
+    printf("=== Metrics (Current time: %s.%03ld) ===\n", buffer, tv.tv_usec / 1000);
+}
+
 int virtio_session_loop(struct fuse_session* se)
 {
     struct fuse_virtio_dev* dev = se->virtio_dev;
@@ -427,8 +441,35 @@ int virtio_session_loop(struct fuse_session* se)
         }
 
         struct vhd_request req;
+        //struct timespec startTime, endTime;
+        //double duration;
         while (vhd_dequeue_request(dev->rq, &req)) {
+            struct vhd_rq_metrics metrics_rq;
+            vhd_get_rq_stat(dev->rq, &metrics_rq);
+
+            struct vhd_vq_metrics metrics_vq;
+            vhd_vdev_get_queue_stat(dev->vdev, 0, &metrics_vq);
+
+            //print_current_time_with_ms();
+
+            /*printf("vhd_rq_metrics: \n");
+            printf("  Enqueued:              %lu\n", metrics_rq.enqueued);
+            printf("  Dequeued:              %lu\n", metrics_rq.dequeued);
+            printf("  Completions Received:  %lu\n", metrics_rq.completions_received);
+            printf("  Completed:             %lu\n", metrics_rq.completed);
+            printf("  Cancelled:             %lu\n", metrics_rq.cancelled);
+            printf("\n");
+*/
+            //clock_gettime(CLOCK_MONOTONIC, &startTime);
+
             res = process_request(se, req.io);
+
+            //clock_gettime(CLOCK_MONOTONIC, &endTime);
+            //duration = (endTime.tv_sec - startTime.tv_sec) +
+            //   (endTime.tv_nsec - startTime.tv_nsec) / 1e9;
+            //printf("Duration of funс process_request %.6f ms\n", duration * 1000);
+
+
             if (res < 0) {
                 VHD_LOG_WARN("request processing failure %d", -res);
             }
