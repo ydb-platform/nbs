@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes/empty"
+
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
@@ -131,9 +133,9 @@ func (m migrateSnapshotDatabaseTask) Cancel(ctx context.Context, execCtx tasks.E
 }
 
 func (m migrateSnapshotDatabaseTask) GetMetadata(ctx context.Context) (proto.Message, error) {
-	return nil, nil
+	return &empty.Empty{}, nil
 }
 
 func (m migrateSnapshotDatabaseTask) GetResponse() proto.Message {
-	return nil
+	return &empty.Empty{}
 }
