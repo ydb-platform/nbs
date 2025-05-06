@@ -400,6 +400,7 @@ def test_disk_manager_dataplane_database_migration(use_s3_as_src, use_s3_as_dst)
         while not setup.dependencies_finished(task_id):
             time.sleep(1)
 
+        time.sleep(10)
         setup.finish_database_migration(task_id)
         setup.switch_dataplane_to_new_db()
         for new_disk, checksum in zip(new_disks_for_initial, checksums):
