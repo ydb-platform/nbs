@@ -369,6 +369,8 @@ void TVolumeActor::CompleteAddLaggingAgent(
     RemoveTransaction(*args.RequestInfo);
 
     if (!HasError(args.Error)) {
+        State->ResetLaggingAgentMigrationState(args.Agent.GetAgentId());
+
         const auto& partActorId = State->GetDiskRegistryBasedPartitionActor();
         Y_DEBUG_ABORT_UNLESS(partActorId);
         NCloud::Send(

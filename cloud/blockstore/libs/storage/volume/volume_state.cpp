@@ -180,7 +180,8 @@ void TVolumeState::AddLaggingAgent(NProto::TLaggingAgent agent)
 std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
     const TString& agentId)
 {
-    CurrentlyMigratingLaggingAgents.erase(agentId);
+    ResetLaggingAgentMigrationState(agentId);
+
     auto agentIdPredicate = [&agentId](const auto& info)
     {
         return info.GetAgentId() == agentId;
@@ -232,6 +233,11 @@ void TVolumeState::UpdateLaggingAgentMigrationState(
         .CleanBlocks = cleanBlocks,
         .DirtyBlocks = dirtyBlocks,
     };
+}
+
+void TVolumeState::ResetLaggingAgentMigrationState(const TString& agentId)
+{
+    CurrentlyMigratingLaggingAgents.erase(agentId);
 }
 
 auto TVolumeState::GetLaggingAgentsMigrationInfo() const
