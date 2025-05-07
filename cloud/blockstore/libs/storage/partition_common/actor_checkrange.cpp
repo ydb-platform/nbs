@@ -17,10 +17,12 @@ using namespace NActors;
 TCheckRangeActor::TCheckRangeActor(
     const TActorId& partition,
     NProto::TCheckRangeRequest&& request,
-    TRequestInfoPtr&& requestInfo)
+    TRequestInfoPtr&& requestInfo,
+    ui64 blockSize)
     : Partition(partition)
     , Request(std::move(request))
     , RequestInfo(std::move(requestInfo))
+    , BlockSize(blockSize)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -31,10 +33,24 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
+    TBlockRange64 range = TBlockRange64::MakeHalfOpenInterval(
+        Request.GetStartIndex(),
+        Request.GetBlocksCount());
+
+    Buffer = TGuardedBuffer(TString::Uninitialized(range.Size() * BlockSize));
+
+    auto sgList = Buffer.GetGuardedSgList();
+    auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
+    Y_ABORT_UNLESS(!HasError(sgListOrError));
+    SgList.SetSgList(sgListOrError.ExtractResult());
+
+    Cerr<< "!!SetSgList size "<< SgList.Acquire().Get().size()<<Endl;
+
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
 
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
+    request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
 
@@ -50,6 +66,7 @@ void TCheckRangeActor::ReplyAndDie(
         std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(error));
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Cerr<<"!!  ReplyAndDie !!"<<Endl;
 
     Die(ctx);
 }
@@ -59,6 +76,7 @@ void TCheckRangeActor::ReplyAndDie(
     std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response)
 {
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Cerr<<"!!  ReplyAndDie2vers !!"<<Endl;
 
     Die(ctx);
 }
@@ -69,7 +87,7 @@ STFUNC(TCheckRangeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
+        HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksResponse);
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
             break;

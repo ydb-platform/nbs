@@ -78,7 +78,8 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
         ctx,
         SelfId(),
         std::move(record),
-        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
+        PartConfig->GetBlockSize());
 
     RequestsInProgress.AddReadRequest(actorId);
 }
