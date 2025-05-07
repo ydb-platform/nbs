@@ -47,7 +47,11 @@ const nbdIpc = nbsapi.EClientIpcType_IPC_NBD
 
 const backendVolumeContextKey = "backend"
 const deviceNameVolumeContextKey = "deviceName"
+const requestQueuesCountVolumeContextKey = "requestQueuesCount"
 const instanceIdKey = "instanceId"
+
+const defaultVhostQueuesCount = uint32(8)
+const maxQueuesCount = 65536
 
 const volumeOperationInProgress = "Another operation with volume %s is in progress"
 
@@ -106,6 +110,67 @@ var podModeCapabilities = []*csi.NodeServiceCapability{
 			},
 		},
 	},
+}
+
+type vhostSettings struct {
+	queuesCount uint32
+}
+
+func virtioBlkVhostQueuesCount(requestQueuesCount uint32) uint32 {
+	return requestQueuesCount
+}
+
+func virtioFsVhostQueuesCount(requestQueuesCount uint32) uint32 {
+	return requestQueuesCount + 1 // additional 1 for hiprio queue
+}
+
+func readVhostSettings(volumeContext map[string]string) (vhostSettings, error) {
+	settings := vhostSettings{
+		queuesCount: defaultVhostQueuesCount,
+	}
+
+	if volumeContext == nil { // return default settings
+		return settings, nil
+	}
+
+	nfsBackend := volumeContext[backendVolumeContextKey] == "nfs"
+
+	if requestQueuesCountCtx, found := volumeContext[requestQueuesCountVolumeContextKey]; found {
+		requestQueuesCountParsed, err := strconv.ParseUint(requestQueuesCountCtx, 10, 32)
+		if err != nil {
+			return vhostSettings{}, fmt.Errorf(
+				"failed to parse context attribute %q (=%q): %w",
+				requestQueuesCountVolumeContextKey,
+				requestQueuesCountCtx, err)
+		}
+		if requestQueuesCountParsed < 1 {
+			return vhostSettings{}, fmt.Errorf(
+				"context attribute %q must pass at least 1 request queue (=%d)",
+				requestQueuesCountVolumeContextKey,
+				requestQueuesCountParsed,
+			)
+		}
+
+		queuesCount := uint32(requestQueuesCountParsed)
+		if nfsBackend {
+			queuesCount = virtioFsVhostQueuesCount(queuesCount)
+		} else {
+			queuesCount = virtioBlkVhostQueuesCount(queuesCount)
+		}
+
+		if queuesCount > maxQueuesCount {
+			return vhostSettings{}, fmt.Errorf(
+				"result queues count exceeds limit of %d queues (%q=%d)",
+				maxQueuesCount,
+				requestQueuesCountVolumeContextKey,
+				queuesCount,
+			)
+		}
+
+		settings.queuesCount = queuesCount
+	}
+
+	return settings, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -222,7 +287,10 @@ func (s *nodeService) NodeStageVolume(
 		if s.vmMode {
 			nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
 
-			var err error
+			vhostSettings, err := readVhostSettings(req.VolumeContext)
+			if err != nil {
+				return nil, s.statusErrorf(codes.InvalidArgument, "%s", err.Error())
+			}
 			if instanceId := req.VolumeContext[instanceIdKey]; instanceId != "" {
 				nbsId, _ := parseVolumeId(req.VolumeId)
 				stageRecordPath := filepath.Join(req.StagingTargetPath, nbsId+".json")
@@ -241,14 +309,19 @@ func (s *nodeService) NodeStageVolume(
 				}
 
 				if nfsBackend {
-					err = s.nodeStageFileStoreAsVhostSocket(ctx, instanceId, nbsId)
+					err = s.nodeStageFileStoreAsVhostSocket(
+						ctx,
+						instanceId,
+						nbsId,
+						vhostSettings)
 				} else {
 					err = s.nodeStageDiskAsVhostSocket(
 						ctx,
 						instanceId,
 						nbsId,
 						req.VolumeContext,
-						req.VolumeCapability.GetMount())
+						req.VolumeCapability.GetMount(),
+						vhostSettings)
 				}
 
 				if err != nil {
@@ -382,12 +455,16 @@ func (s *nodeService) NodePublishVolume(
 			"ReadWriteMany access mode is supported only with nfs backend")
 	}
 
+	vhostSettings, err := readVhostSettings(req.VolumeContext)
+	if err != nil {
+		return nil, s.statusErrorf(codes.InvalidArgument, "%s", err.Error())
+	}
+
 	if _, opInProgress := s.volumeOps.LoadOrStore(req.VolumeId, nil); opInProgress {
 		return nil, s.statusErrorf(codes.Aborted, volumeOperationInProgress, req.VolumeId)
 	}
 	defer s.volumeOps.Delete(req.VolumeId)
 
-	var err error
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
 		if s.vmMode {
@@ -395,12 +472,13 @@ func (s *nodeService) NodePublishVolume(
 				err = s.nodePublishStagedVhostSocket(req, instanceId)
 			} else {
 				if nfsBackend {
-					err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
+					err = s.nodePublishFileStoreAsVhostSocket(ctx, req, vhostSettings)
 				} else {
 					err = s.nodePublishDiskAsVhostSocket(
 						ctx,
 						req,
 						req.VolumeCapability.GetMount(),
+						vhostSettings,
 					)
 				}
 			}
@@ -494,7 +572,8 @@ func (s *nodeService) NodeGetInfo(
 func (s *nodeService) nodePublishDiskAsVhostSocket(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest,
-	volumeCapabilities *csi.VolumeCapability_MountVolume) error {
+	volumeCapabilities *csi.VolumeCapability_MountVolume,
+	vhostSettings vhostSettings) error {
 
 	podId := s.getPodId(req)
 	diskId := req.VolumeId
@@ -518,7 +597,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		ClientId:         fmt.Sprintf("%s-%s", s.clientId, podId),
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
-		VhostQueuesCount: 8,
+		VhostQueuesCount: vhostSettings.queuesCount,
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -592,7 +671,8 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	instanceId string,
 	diskId string,
 	volumeContext map[string]string,
-	volumeCapabilities *csi.VolumeCapability_MountVolume) error {
+	volumeCapabilities *csi.VolumeCapability_MountVolume,
+	vhostSettings vhostSettings) error {
 
 	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, diskId, volumeContext)
 
@@ -614,7 +694,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
-		VhostQueuesCount: 8,
+		VhostQueuesCount: vhostSettings.queuesCount,
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -853,7 +933,6 @@ func (s *nodeService) startNbsEndpointForNBD(
 		ClientId:         fmt.Sprintf("%s-%s", s.clientId, nbsInstanceId),
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
-		VhostQueuesCount: 8,
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -885,7 +964,8 @@ func (s *nodeService) getNfsClient(fileSystemId string) nfsclient.EndpointClient
 
 func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	ctx context.Context,
-	req *csi.NodePublishVolumeRequest) error {
+	req *csi.NodePublishVolumeRequest,
+	vhostSettings vhostSettings) error {
 
 	filesystemId := req.VolumeId
 	podId := s.getPodId(req)
@@ -905,7 +985,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     filesystemId,
 			ClientId:         fmt.Sprintf("%s-%s", s.clientId, podId),
-			VhostQueuesCount: 8,
+			VhostQueuesCount: vhostSettings.queuesCount,
 			Persistent:       true,
 		},
 	})
@@ -930,7 +1010,8 @@ func (s *nodeService) nodeStageFileStoreStartEndpoint(
 	ctx context.Context,
 	instanceId string,
 	filesystemId string,
-	endpointDir string) error {
+	endpointDir string,
+	vhostSettings vhostSettings) error {
 	if s.nfsClient == nil {
 		return fmt.Errorf("NFS client wasn't created")
 	}
@@ -940,7 +1021,7 @@ func (s *nodeService) nodeStageFileStoreStartEndpoint(
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     filesystemId,
 			ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
-			VhostQueuesCount: 8,
+			VhostQueuesCount: vhostSettings.queuesCount,
 			Persistent:       true,
 		},
 	})
@@ -984,7 +1065,8 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 	ctx context.Context,
 	instanceId string,
 	fsConfig ExternalFsConfig,
-	endpointDir string) error {
+	endpointDir string,
+	vhostSettings vhostSettings) error {
 
 	log.Printf("csi.nodeStageLocalFileStoreStartEndpoint: instanceId=%s, fsConfig=%+v, endpointDir=%s",
 		instanceId,
@@ -1001,7 +1083,7 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 				SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 				FileSystemId:     fsConfig.Id,
 				ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
-				VhostQueuesCount: 8,
+				VhostQueuesCount: vhostSettings.queuesCount,
 				Persistent:       true,
 			},
 		})
@@ -1075,7 +1157,8 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	ctx context.Context,
 	instanceId string,
-	filesystemId string) error {
+	filesystemId string,
+	vhostSettings vhostSettings) error {
 
 	log.Printf("csi.nodeStageFileStoreAsVhostSocket: %s %s", instanceId, filesystemId)
 
@@ -1087,9 +1170,9 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	var err error
 	externalFsConfig, isExternalFs := s.externalFsOverrides[filesystemId]
 	if isExternalFs {
-		err = s.nodeStageLocalFileStoreStartEndpoint(ctx, instanceId, externalFsConfig, endpointDir)
+		err = s.nodeStageLocalFileStoreStartEndpoint(ctx, instanceId, externalFsConfig, endpointDir, vhostSettings)
 	} else {
-		err = s.nodeStageFileStoreStartEndpoint(ctx, instanceId, filesystemId, endpointDir)
+		err = s.nodeStageFileStoreStartEndpoint(ctx, instanceId, filesystemId, endpointDir, vhostSettings)
 	}
 	if err != nil {
 		return err
