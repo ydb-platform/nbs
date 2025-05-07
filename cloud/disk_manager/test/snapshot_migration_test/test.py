@@ -201,7 +201,7 @@ class _MigrationTestSetup:
             "--id", disk_id
         )
 
-    def get_disk(self, disk_id: str) -> _Disk:
+    def get_disk(self, disk_id: str) -> '_Disk':
         output = self.admin("disks", "get", "--id", disk_id)
         disk_info = json.loads(output)
         return self._Disk(
