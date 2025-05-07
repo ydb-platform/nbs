@@ -9,8 +9,8 @@ namespace NCloud::NBlockStore::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t PAGE_SIZE = 4*1024;
-constexpr size_t CHUNK_SIZE = PAGE_SIZE * 1024;
+constexpr size_t LOCAL_PAGE_SIZE = 4 * 1024;
+constexpr size_t CHUNK_SIZE = LOCAL_PAGE_SIZE * 1024;
 constexpr size_t MAX_CHUNK_ALLOC = CHUNK_SIZE / 4;
 constexpr size_t MAX_FREE_CHUNKS = 10;
 
