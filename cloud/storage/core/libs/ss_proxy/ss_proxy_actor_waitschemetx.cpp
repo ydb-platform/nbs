@@ -51,7 +51,7 @@ STFUNC(TReplyProxyActor::StateWork)
         HFunc(TEvSchemeShard::TEvNotifyTxCompletionResult, Handle);
 
         default:
-            HandleUnexpectedEvent(ev, LogComponent);
+            HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             break;
     }
 }

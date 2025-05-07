@@ -583,8 +583,10 @@ STFUNC(TDiskRegistryProxyActor::StateError)
 
         default:
             if (!ReplyWithError(ActorContext(), ev)) {
-                HandleUnexpectedEvent(ev,
-                    TBlockStoreComponents::DISK_REGISTRY_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY_PROXY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -616,8 +618,10 @@ STFUNC(TDiskRegistryProxyActor::StateLookup)
 
         default:
             if (!ReplyWithError(ActorContext(), ev)) {
-                HandleUnexpectedEvent(ev,
-                    TBlockStoreComponents::DISK_REGISTRY_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY_PROXY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -650,8 +654,10 @@ STFUNC(TDiskRegistryProxyActor::StateWork)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev,
-                    TBlockStoreComponents::DISK_REGISTRY_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY_PROXY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

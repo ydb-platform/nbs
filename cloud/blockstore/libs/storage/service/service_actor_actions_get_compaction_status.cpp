@@ -164,7 +164,10 @@ STFUNC(TGetCompactionStatusActionActor::StateWork)
         HFunc(TEvVolume::TEvGetCompactionStatusResponse, HandleGetCompactionStatusResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

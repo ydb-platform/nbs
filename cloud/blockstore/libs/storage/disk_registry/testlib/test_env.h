@@ -407,7 +407,10 @@ private:
             HFunc(TEvService::TEvDestroyVolumeRequest, HandleDestroyVolumeRequest);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
         }
     }
 
@@ -437,7 +440,10 @@ private:
             HFunc(TEvVolume::TEvReallocateDiskRequest, HandleReallocateDiskRequest);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
         }
     }
 

@@ -261,7 +261,10 @@ STFUNC(TFinishFillDiskActionActor::StateDescribeVolume)
         HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -272,7 +275,10 @@ STFUNC(TFinishFillDiskActionActor::StateAlterVolume)
         HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleAlterVolumeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -283,7 +289,10 @@ STFUNC(TFinishFillDiskActionActor::StateWaitReady)
         HFunc(TEvVolume::TEvWaitReadyResponse, HandleWaitReadyResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

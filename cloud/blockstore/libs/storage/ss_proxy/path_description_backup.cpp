@@ -191,7 +191,10 @@ STFUNC(TPathDescriptionBackup::StateWork)
         HFunc(TEvSSProxy::TEvBackupPathDescriptionsRequest, HandleBackupPathDescriptions);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
