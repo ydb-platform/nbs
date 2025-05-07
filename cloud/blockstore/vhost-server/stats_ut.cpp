@@ -20,7 +20,8 @@ Y_UNIT_TEST_SUITE(TStatsTest)
 {
     Y_UNIT_TEST(ShouldDumpStats)
     {
-        constexpr ui64 cyclesPerMs = 2000000;
+        constexpr ui64 cyclesPerSecond = 2000000000;
+        SetCyclesPerSecond(cyclesPerSecond);
 
         TSimpleStats prevStats;
         TSimpleStats completionStats;
@@ -36,13 +37,7 @@ Y_UNIT_TEST_SUITE(TStatsTest)
                 curStats.SimpleStats += s;
             }
 
-            DumpStats(
-                curStats,
-                prevStats,
-                dt,
-                ss,
-                cyclesPerMs
-            );
+            DumpStats(curStats, prevStats, dt, ss, GetCyclesPerMillisecond());
 
             NJson::TJsonValue stats;
             NJson::ReadJsonTree(ss.Str(), &stats, true);
@@ -50,15 +45,14 @@ Y_UNIT_TEST_SUITE(TStatsTest)
             return stats;
         };
 
-        auto completed = [&] (int req, ui64 size, auto dt) {;
+        auto completed = [&] (int req, ui64 size, TDuration dt) {
             queueStats[req].Dequeued += 1;
             queueStats[req].Submitted += 1;
 
             completionStats.Completed += 1;
             completionStats.Requests[req].Count += 1;
             completionStats.Requests[req].Bytes += size;
-            completionStats.Times[req].Increment(
-                TDuration {dt}.MicroSeconds() * cyclesPerMs / 1000);
+            completionStats.Times[req].Increment(DurationToCycles(dt));
             completionStats.Sizes[req].Increment(size);
         };
 
