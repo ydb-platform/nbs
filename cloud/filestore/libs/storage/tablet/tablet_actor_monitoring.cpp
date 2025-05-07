@@ -869,7 +869,10 @@ struct TIndexTabletMonitoringActor
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET_WORKER,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }

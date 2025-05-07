@@ -154,7 +154,7 @@ bool THiveProxyFallbackActor::HandleRequests(STFUNC_SIG)
 STFUNC(THiveProxyFallbackActor::StateWork)
 {
     if (!HandleRequests(ev)) {
-        LogUnexpectedEvent(ev, Config.LogComponent);
+        LogUnexpectedEvent(ev, Config.LogComponent, __PRETTY_FUNCTION__);
     }
 }
 
