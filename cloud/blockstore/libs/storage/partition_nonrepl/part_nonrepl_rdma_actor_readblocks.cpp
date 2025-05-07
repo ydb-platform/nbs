@@ -142,6 +142,7 @@ public:
             HandleResult(*reqCtx, buffer);
         } else {
             Error = NRdma::ParseError(buffer);
+            ConvertRdmaErrorIfNeeded(status, Error);
             if (NeedToNotifyAboutDeviceRequestError(Error)) {
                 ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
             }
@@ -248,7 +249,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         requestId,
         Config->GetOptimizeVoidBuffersTransferForReadsEnabled());
 
-    auto error = SendReadRequests(
+    auto [sentRequestCtx, error] = SendReadRequests(
         ctx,
         requestInfo->CallContext,
         msg->Record.GetHeaders(),
@@ -265,7 +266,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         return;
     }
 
-    RequestsInProgress.AddReadRequest(requestId);
+    RequestsInProgress.AddReadRequest(requestId, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

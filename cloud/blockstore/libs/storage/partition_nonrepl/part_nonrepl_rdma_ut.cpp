@@ -215,6 +215,16 @@ struct TTestEnv
     }
 };
 
+enum class EDataPlaneRequestType
+{
+    Read,
+    ReadLocal,
+    Write,
+    WriteLocal,
+    Zero,
+    Checksum,
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -899,6 +909,117 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOutCount);
+    }
+
+    void DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType requestType)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            false,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        auto promise = NThreading::NewPromise();
+        env.Rdma().InjectFutureToWaitBeforeRequestProcessing(promise.GetFuture());
+        env.Rdma().InitAllEndpoints();
+        const auto error = NProto::TError();
+
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 1);
+
+        TString data(DefaultBlockSize, 'A');
+
+        switch (requestType) {
+            case EDataPlaneRequestType::Read:
+                client.SendReadBlocksRequest(blockRange1);
+                break;
+            case EDataPlaneRequestType::ReadLocal:
+                client.SendReadBlocksLocalRequest(
+                    blockRange1,
+                    TGuardedSgList(
+                        {blockRange1.Size(),
+                         TBlockDataRef{data.data(), data.size()}}));
+                break;
+            case EDataPlaneRequestType::Write:
+                client.SendWriteBlocksRequest(blockRange1, 'a');
+                break;
+            case EDataPlaneRequestType::WriteLocal:
+                client.SendWriteBlocksLocalRequest(blockRange1, data);
+                break;
+            case EDataPlaneRequestType::Zero:
+                client.SendZeroBlocksRequest(blockRange1);
+                break;
+            case EDataPlaneRequestType::Checksum:
+                client.SendChecksumBlocksRequest(blockRange1);
+                break;
+        }
+
+        runtime.DispatchEvents({}, 10ms);
+        client.SendAgentIsUnavailable(
+            Sprintf("agent-%u", runtime.GetNodeId(0)));
+
+        auto checkResponse = [](const auto& resp)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, resp->GetError().GetCode());
+            UNIT_ASSERT(HasProtoFlag(
+                resp->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
+        };
+
+
+        switch (requestType) {
+            case EDataPlaneRequestType::Read:
+                checkResponse(client.RecvReadBlocksResponse());
+                break;
+            case EDataPlaneRequestType::ReadLocal:
+                checkResponse(client.RecvReadBlocksLocalResponse());
+                break;
+            case EDataPlaneRequestType::Write:
+                checkResponse(client.RecvWriteBlocksResponse());
+                break;
+            case EDataPlaneRequestType::WriteLocal:
+                checkResponse(client.RecvWriteBlocksLocalResponse());
+                break;
+            case EDataPlaneRequestType::Zero:
+                checkResponse(client.RecvZeroBlocksResponse());
+                break;
+            case EDataPlaneRequestType::Checksum:
+                checkResponse(client.RecvChecksumBlocksResponse());
+                break;
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableRead)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::Read);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableReadLocal)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::ReadLocal);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableWrite)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::Write);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableWriteLocal)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::WriteLocal);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableZero)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::Zero);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableChecksum)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::Checksum);
     }
 
     Y_UNIT_TEST(ShouldUpdateStats)
