@@ -539,7 +539,7 @@ void DisconnectAsync(TTestContextPtr context)
         RDMA_CM_EVENT_DISCONNECTED,
         static_cast<rdma_cm_id*>(context->Connection));
 
-    auto g = Guard(context->ConnectionLock);
+    auto g = Guard(context->CompletionLock);
 
     context->HandleCompletionEvent = [](ibv_wc* wc)
     {
