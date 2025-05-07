@@ -150,7 +150,7 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksUndelivery(
         TBlockStoreComponents::PARTITION_WORKER,
         "MultiAgentWriteBlocks request #"
             << GetRequestId(Request)
-            << " undelivered. Disk id: " << PartConfig->GetName()
+            << " undelivered. Disk id: " << PartConfig->GetName().Quote()
             << " Device: " << LogDevice(Request.DevicesAndRanges[0].Device));
 
     // Ignore undelivered event. Wait for TEvWakeup.
@@ -185,6 +185,7 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksResponse(
         return;
     }
 
+    Y_DEBUG_ABORT_UNLESS(error.GetCode() == S_OK);
     Done(ctx, MakeResponse(std::move(error)), EStatus::Success);
 }
 
@@ -304,9 +305,9 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWriteBlocksCompleted(
         msg->Stats.GetUserWriteCounters().GetBlocksCount() *
         PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
-    PartCounters->RequestCounters.WriteBlocks.AddRequest(time, requestBytes);
-    PartCounters->Interconnect.WriteBytes.Increment(requestBytes);
-    PartCounters->Interconnect.WriteCount.Increment(1);
+    PartCounters->RequestCounters.WriteBlocksMultiAgent.AddRequest(time, requestBytes);
+    PartCounters->Interconnect.WriteBytesMultiAgent.Increment(requestBytes);
+    PartCounters->Interconnect.WriteCountMultiAgent.Increment(1);
 
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);

@@ -434,6 +434,9 @@ struct THistogramRequestCounters
         ERequestCounterOption::HasVoidBytes,
         HistCounterOptions};
     THighResCounter WriteBlocks{EPublishingPolicy::All, HistCounterOptions};
+    THighResCounter WriteBlocksMultiAgent{
+        EPublishingPolicy::DiskRegistryBased,
+        HistCounterOptions};
     THighResCounter ZeroBlocks{EPublishingPolicy::All, HistCounterOptions};
     THighResCounter DescribeBlocks{EPublishingPolicy::All, HistCounterOptions};
     THighResCounter ChecksumBlocks{EPublishingPolicy::All, HistCounterOptions};
@@ -444,6 +447,7 @@ struct THistogramRequestCounters
     static constexpr THighResMeta AllHighResCounters[] = {
         MakeMeta<&THistogramRequestCounters::ReadBlocks>(),
         MakeMeta<&THistogramRequestCounters::WriteBlocks>(),
+        MakeMeta<&THistogramRequestCounters::WriteBlocksMultiAgent>(),
         MakeMeta<&THistogramRequestCounters::ZeroBlocks>(),
         MakeMeta<&THistogramRequestCounters::DescribeBlocks>(),
         MakeMeta<&THistogramRequestCounters::ChecksumBlocks>(),
@@ -731,8 +735,10 @@ struct TTransportCounters
 
     TCounter ReadBytes{EPublishingPolicy::All};
     TCounter WriteBytes{EPublishingPolicy::All};
+    TCounter WriteBytesMultiAgent{EPublishingPolicy::DiskRegistryBased};
     TCounter ReadCount{EPublishingPolicy::All};
     TCounter WriteCount{EPublishingPolicy::All};
+    TCounter WriteCountMultiAgent{EPublishingPolicy::DiskRegistryBased};
 
     static constexpr TMeta AllCounters[] = {
         MakeMetaWithTag<&TTransportCounters::ReadBytes>(
@@ -741,13 +747,18 @@ struct TTransportCounters
         MakeMetaWithTag<&TTransportCounters::WriteBytes>(
             "RequestBytes",
             "WriteBlocks"),
+        MakeMetaWithTag<&TTransportCounters::WriteBytesMultiAgent>(
+            "RequestBytesMultiAgent",
+            "WriteBlocks"),
         MakeMetaWithTag<&TTransportCounters::ReadCount>(
             "Count",
             "ReadBlocks"),
         MakeMetaWithTag<&TTransportCounters::WriteCount>(
             "Count",
             "WriteBlocks"),
-
+        MakeMetaWithTag<&TTransportCounters::WriteCountMultiAgent>(
+            "Count",
+            "WriteBlocksMultiAgent"),
     };
 };
 

@@ -106,7 +106,7 @@ private:
 
     bool MultiAgentWriteEnabled = true;
     const size_t MultiAgentWriteRequestSizeThreshold = 0;
-    size_t RoundRobinSeed = 0;
+    size_t MultiAgentWriteRoundRobinSeed = 0;
 
 public:
     TMirrorPartitionActor(
