@@ -102,6 +102,7 @@ RECURSE_FOR_TESTS(
     ut_allocation
     ut_cms
     ut_config
+    ut_capacity
     ut_checkpoint
     ut_create
     ut_migration
