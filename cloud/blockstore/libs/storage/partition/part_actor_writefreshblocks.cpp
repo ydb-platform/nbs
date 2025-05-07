@@ -58,7 +58,7 @@ private:
     const TVector<TBlockRange32> BlockRanges;
     const TVector<IWriteBlocksHandlerPtr> WriteHandlers;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
-    const TDuration BlobStoragerequestTimeout;
+    const TDuration BlobStorageRequestTimeout;
 
     TString BlobContent;
     ui64 BlobSize = 0;
@@ -125,7 +125,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , BlockRanges(std::move(blockRanges))
     , WriteHandlers(std::move(writeHandlers))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
-    , BlobStoragerequestTimeout(blobStorageRequestTimeout)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
 {
     Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
 }
@@ -224,7 +224,7 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         std::move(BlobContent),
         0,                                      // blockSizeForChecksums
         false,                                  // async
-        ctx.Now() + BlobStoragerequestTimeout   // deadline
+        ctx.Now() + BlobStorageRequestTimeout   // deadline
     );
 
     NCloud::Send(

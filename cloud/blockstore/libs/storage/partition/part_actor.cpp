@@ -810,8 +810,8 @@ bool TPartitionActor::IsFirstGarbageCollectionCompleted() const
 
 TDuration TPartitionActor::GetBlobStorageRequestTimeout() const {
     return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
-               ? Config->GetBlobStorageRequestsTimeoutSSD()
-               : Config->GetBlobStorageRequestsTimeoutHDD();
+               ? Config->GetBlobStorageRequestTimeoutSSD()
+               : Config->GetBlobStorageRequestTimeoutHDD();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

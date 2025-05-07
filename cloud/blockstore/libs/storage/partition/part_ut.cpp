@@ -11268,7 +11268,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldAbortReadRequestsToBlobstorageIfDeadlineExceeded)
     {
         NProto::TStorageServiceConfig config;
-        config.SetBlobStorageRequestsTimeoutHDD(
+        config.SetBlobStorageRequestTimeoutHDD(
             TDuration::Seconds(1).MilliSeconds());
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -11278,22 +11278,23 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(0, 33);
         partition.Flush();
 
-        ui32 failedReadBlob = 0;
-        runtime->SetEventFilter([&]
-            (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
-        {
-            Y_UNUSED(runtime);
-
-            if (ev->GetTypeRewrite() == TEvBlobStorage::EvVGet) {
-                return true;
-            } else if (ev->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters) {
-                auto* msg =
-                    ev->Get<TEvStatsService::TEvVolumePartCounters>();
-                failedReadBlob =
-                    msg->DiskCounters->Simple.ReadBlobDeadlineCount.Value;
-            }
-            return false;
-        });
+        ui32 readBlobHitDeadlinCount = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvBlobStorage::EvVGet) {
+                    return true;
+                } else if (
+                    ev->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+                {
+                    auto* msg =
+                        ev->Get<TEvStatsService::TEvVolumePartCounters>();
+                    readBlobHitDeadlinCount =
+                        msg->DiskCounters->Simple.ReadBlobDeadlineCount.Value;
+                }
+                return false;
+            });
 
         partition.SendReadBlocksRequest(0);
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
@@ -11309,13 +11310,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             options.FinalEvents.emplace_back(TEvStatsService::EvVolumePartCounters);
             runtime->DispatchEvents(options);
         }
-        UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
+        UNIT_ASSERT_VALUES_EQUAL(1, readBlobHitDeadlinCount);
     }
 
     Y_UNIT_TEST(ShouldAbortWriteRequestsToBlobstorageIfDeadlineExceeded)
     {
         NProto::TStorageServiceConfig config;
-        config.SetBlobStorageRequestsTimeoutHDD(
+        config.SetBlobStorageRequestTimeoutHDD(
             TDuration::Seconds(1).MilliSeconds());
         config.SetFreshChannelWriteRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
@@ -11326,10 +11327,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.SendWriteBlocksRequest(0, 33);
 
         runtime->SetEventFilter(
-            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
             {
-                Y_UNUSED(runtime);
-
                 if (ev->GetTypeRewrite() == TEvBlobStorage::EvVPut) {
                     return true;
                 }

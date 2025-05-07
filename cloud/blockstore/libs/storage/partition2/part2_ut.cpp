@@ -7096,7 +7096,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     Y_UNIT_TEST(ShouldAbortReadRequestsToBlobstorageIfDeadlineExceeded)
     {
         NProto::TStorageServiceConfig config;
-        config.SetBlobStorageRequestsTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
+        config.SetBlobStorageRequestTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -7105,12 +7105,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WriteBlocks(0, 33);
         partition.Flush();
 
-        ui32 failedReadBlob = 0;
+        ui32 readBlobHitDeadlineCount = 0;
         runtime->SetEventFilter(
-            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
             {
-                Y_UNUSED(runtime);
-
                 if (ev->GetTypeRewrite() == TEvBlobStorage::EvVGet) {
                     return true;
                 } else if (
@@ -7119,7 +7117,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                 {
                     auto* msg =
                         ev->Get<TEvStatsService::TEvVolumePartCounters>();
-                    failedReadBlob =
+                    readBlobHitDeadlineCount =
                         msg->DiskCounters->Simple.ReadBlobDeadlineCount.Value;
                 }
                 return false;
@@ -7140,13 +7138,13 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                 TEvStatsService::EvVolumePartCounters);
             runtime->DispatchEvents(options);
         }
-        UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
+        UNIT_ASSERT_VALUES_EQUAL(1, readBlobHitDeadlineCount);
     }
 
     Y_UNIT_TEST(ShouldAbortWriteRequestsToBlobstorageIfDeadlineExceeded)
     {
         NProto::TStorageServiceConfig config;
-        config.SetBlobStorageRequestsTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
+        config.SetBlobStorageRequestTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
         config.SetFreshChannelWriteRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -7156,10 +7154,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.SendWriteBlocksRequest(0, 33);
 
         runtime->SetEventFilter(
-            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
             {
-                Y_UNUSED(runtime);
-
                 if (ev->GetTypeRewrite() == TEvBlobStorage::EvVPut) {
                     return true;
                 }

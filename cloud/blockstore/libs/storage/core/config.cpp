@@ -600,8 +600,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )\
     xxx(DoNotStopVolumeTabletOnLockLost,                   bool,   false      )\
                                                                                \
-    xxx(BlobStorageRequestsTimeoutSSD,             TDuration, TDuration::Max())\
-    xxx(BlobStorageRequestsTimeoutHDD,             TDuration, TDuration::Max())
+    xxx(BlobStorageRequestTimeoutSSD,              TDuration, TDuration::Max())\
+    xxx(BlobStorageRequestTimeoutHDD,              TDuration, TDuration::Max())
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

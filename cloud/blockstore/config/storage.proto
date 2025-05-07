@@ -1233,11 +1233,11 @@ message TStorageServiceConfig
     // replica becomes online
     optional uint32 LaggingDeviceMaxMigrationIoDepth = 429;
 
-    // Timeout for TEvPut TEvPatch TEvGet requests to blob storage
+    // Timeout for TEvPut, TEvPatch, TEvGet requests to blob storage
     // for SSD disks (in milliseconds)
-    optional uint32 BlobStorageRequestsTimeoutSSD = 430;
+    optional uint32 BlobStorageRequestTimeoutSSD = 430;
 
-    // Timeout for TEvPut TEvPatch TEvGet requests to blob storage
+    // Timeout for TEvPut, TEvPatch, TEvGet requests to blob storage
     // for HDD disks (in milliseconds)
-    optional uint32 BlobStorageRequestsTimeoutHDD = 431;
+    optional uint32 BlobStorageRequestTimeoutHDD = 431;
 }
