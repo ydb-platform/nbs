@@ -208,11 +208,13 @@ runs:
         date
         ./ya --version
         RETRIES="${NUMBER_OF_RETRIES}"
+        echo "$RETRIES" | tee -a retry_count
         OOM_CAN_BE_RETRIED=1
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
         RETRY_FLAG=""
         i=0
-        while [ "$RETRIES" -gt 0 ]; do
+        while [ "$(< retry_count)" -gt 0 ]; do
+          echo "Still iterating RETRIES=$RETRIES"
           RETRIES=$((RETRIES - 1))
           i=$((i + 1))
           echo "::group::ya-make-test-${i}"
@@ -249,6 +251,7 @@ runs:
                 DO_RETRY=1
                 OOM_CAN_BE_RETRIED=0
                 RETRIES=$((RETRIES + 1 ))
+                echo "$RETRIES" > retry_count
                 echo "RETRIES=$((RETRIES + 1 ))" | tee -a "$GITHUB_ENV"
                 echo "Retrying once because OOM killer killed ya-bin, increasing retry count by 1"
               fi
