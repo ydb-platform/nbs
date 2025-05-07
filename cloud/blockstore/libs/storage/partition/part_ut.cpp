@@ -508,9 +508,13 @@ public:
     std::unique_ptr<TResponse> RecvResponse()
     {
         TAutoPtr<IEventHandle> handle;
+        Cerr<<"RecvResponse"<<Endl;
         Runtime.GrabEdgeEventRethrow<TResponse>(handle, WaitTimeout);
+        Cerr<<"RecvResponse2"<<Endl;
 
         UNIT_ASSERT_C(handle, TypeName<TResponse>() << " is expected");
+        Cerr<<"RecvResponse3"<<Endl;
+
         return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
     }
 
@@ -12051,6 +12055,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
+                Cerr<<"obs0"<<Endl;
+
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvCheckRangeResponse: {
                         using TEv = TEvVolume::TEvCheckRangeResponse;
@@ -12060,11 +12066,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
                         break;
                     }
-                    case TEvService::EvReadBlocksResponse: {
-                        using TEv = TEvService::TEvReadBlocksResponse;
+                    case TEvService::EvReadBlocksLocalResponse: {
+                        Cerr<<"obs1"<<Endl;
+                        using TEv = TEvService::TEvReadBlocksLocalResponse;
 
                         auto response = std::make_unique<TEv>(
                             MakeError(E_IO, "block is broken"));
+                        Cerr<<"obs response"<<Endl;
 
                         runtime->Send(
                             new IEventHandle(
@@ -12074,6 +12082,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                                 0,   // flags
                                 event->Cookie),
                             0);
+                            Cerr<<"obs sent"<<Endl;
 
                         return TTestActorRuntime::EEventAction::DROP;
 
@@ -12086,19 +12095,25 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         const auto checkRange = [&](ui32 idx, ui32 size)
         {
             status = -1;
-
             partition.SendCheckRangeRequest("id", idx, size);
+            Cerr<<"ping"<<Endl;
+
             const auto response =
                 partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
 
             TDispatchOptions options;
             options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
+            Cerr << "!!!!!! options.FinalEvents.emplace_back" << Endl;
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
+            Cerr << "!!!!!! UNIT_ASSERT_VALUES_EQUAL" << Endl;
+
         };
         checkRange(0, 1024);
+        Cerr << " checkRange#1" << Endl;
         checkRange(1024, 512);
+        Cerr << " checkRange#2" << Endl;
         checkRange(1, 1);
         checkRange(1000, 1000);
     }
