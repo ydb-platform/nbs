@@ -83,7 +83,7 @@ func (t *createFilesystemTask) Run(
 			return err
 		}
 
-		err = t.scheduler.WaitTaskEnded(ctx, taskID)
+		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
 		if err != nil {
 			return err
 		}
@@ -94,13 +94,16 @@ func (t *createFilesystemTask) Run(
 		}
 		defer client.Close()
 
-		err = client.Create(ctx, t.request.Filesystem.FilesystemId, nfs.CreateFilesystemParams{
-			CloudID:     t.request.CloudId,
-			FolderID:    t.request.FolderId,
-			BlocksCount: t.request.BlocksCount,
-			BlockSize:   t.request.BlockSize,
-			Kind:        t.request.Kind,
-		})
+		err = client.Create(
+			ctx,
+			t.request.Filesystem.FilesystemId,
+			nfs.CreateFilesystemParams{
+				CloudID:     t.request.CloudId,
+				FolderID:    t.request.FolderId,
+				BlocksCount: t.request.BlocksCount,
+				BlockSize:   t.request.BlockSize,
+				Kind:        t.request.Kind,
+			})
 		if err != nil {
 			return err
 		}

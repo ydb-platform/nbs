@@ -116,7 +116,6 @@ func TestDeleteExternalFilesystemTaskRun(t *testing.T) {
 	}
 
 	scheduler.On("WaitTask", mock.Anything, mock.Anything).Return(mock.Anything, externalTask.Run(ctx, execCtx))
-	scheduler.On("WaitTaskEnded", mock.Anything, mock.Anything).Maybe().Return(nil)
 	scheduler.On(
 		"ScheduleTask",
 		mock.Anything,

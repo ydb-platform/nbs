@@ -2,6 +2,8 @@ package tests
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +11,8 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
+	"github.com/ydb-platform/nbs/cloud/tasks/storage"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,6 +59,43 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func findExternalTask(
+	ctx context.Context,
+	taskStorage tasks_storage.Storage,
+	operationId string,
+	taskType string,
+) (*storage.TaskInfo, error) {
+
+	limit := ^uint64(0)
+	tasks, err := taskStorage.ListTasksRunning(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	for index := range tasks {
+		task := &tasks[index]
+		if task.TaskType != taskType {
+			continue
+		}
+
+		state, err := taskStorage.GetTask(ctx, task.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		if !strings.HasPrefix(state.IdempotencyKey, operationId) {
+			continue
+		}
+
+		return task, nil
+	}
+
+	return nil, fmt.Errorf(
+		"Failed to find external task, operationId=%s, taskType=%s",
+		operationId,
+		taskType)
+}
+
 func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	ctx := testcommon.NewContext()
 
@@ -87,7 +128,8 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 		msg string,
 		shouldTimeout bool,
 		timeout time.Duration,
-		opId string) {
+		opId string,
+	) {
 
 		opCtx, _ := context.WithTimeout(ctx, timeout)
 		err = internal_client.WaitOperation(opCtx, client, operation.Id)
@@ -103,14 +145,14 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	waitOperationWithTimeout(
 		"CreateFilesystem.1",
 		true, /* should timeout */
-		60*time.Second, operation.Id)
+		10*time.Second, operation.Id)
 
 	// Force finish CreateExternalFilesystem task
-	externalTask, err := testcommon.FindRunningTaskByType(
+	externalTask, err := findExternalTask(
 		ctx,
 		taskStorage,
-		"filesystem.CreateExternalFilesystem",
-		100)
+		operation.Id,
+		"filesystem.CreateExternalFilesystem")
 	require.NoError(t, err)
 
 	err = taskStorage.ForceFinishTask(ctx, externalTask.ID)
@@ -137,13 +179,13 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	waitOperationWithTimeout(
 		"DeleteFilesystem.1",
 		true, /* should timeout */
-		60*time.Second, operation.Id)
+		10*time.Second, operation.Id)
 
-	externalTask, err = testcommon.FindRunningTaskByType(
+	externalTask, err = findExternalTask(
 		ctx,
 		taskStorage,
-		"filesystem.DeleteExternalFilesystem",
-		100)
+		operation.Id,
+		"filesystem.DeleteExternalFilesystem")
 	require.NoError(t, err)
 
 	// Force finish DeleteExternalFilesystem task
