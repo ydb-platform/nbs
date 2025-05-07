@@ -202,9 +202,10 @@ void TScanDiskActor::SendReadBlobRequest(
             std::move(blobOffsets),
             std::move(subSgList),
             blobMark.BSGroupId,
-            false,                                   // async
-            ctx.Now() + BlobStorageRequestTimeout,   // deadline
-            false                                    // shouldCalculateChecksums
+            false,   // async
+            BlobStorageRequestTimeout ? ctx.Now() + BlobStorageRequestTimeout
+                                      : TInstant::Max(),   // deadline
+            false   // shouldCalculateChecksums
         );
 
     NCloud::Send(

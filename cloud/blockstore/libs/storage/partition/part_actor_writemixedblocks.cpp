@@ -238,8 +238,10 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
                 req.BlobId,
                 std::move(guardedSglist),
                 BlockSizeForChecksums,
-                false,                                  // async
-                ctx.Now() + BlobStorageRequestTimeout   // deadline
+                false,   // async
+                BlobStorageRequestTimeout
+                    ? ctx.Now() + BlobStorageRequestTimeout
+                    : TInstant::Max()   // deadline
             );
 
         for (const auto& sr: req.SubRequests) {

@@ -415,7 +415,9 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             current.GroupId);
     }
 
-    const auto readBlobDeadline = ctx.Now() + BlobStorageRequestTimeout;
+    const auto readBlobDeadline = BlobStorageRequestTimeout
+                                      ? ctx.Now() + BlobStorageRequestTimeout
+                                      : TInstant::Max();
 
     for (ui32 batchIndex = 0; batchIndex < BatchRequests.size(); ++batchIndex) {
         auto& batch = BatchRequests[batchIndex];
@@ -507,7 +509,9 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 {
     InitBlockDigests();
 
-    auto writeBlobDeadline = ctx.Now() + BlobStorageRequestTimeout;
+    auto writeBlobDeadline = BlobStorageRequestTimeout
+                                 ? ctx.Now() + BlobStorageRequestTimeout
+                                 : TInstant::Max();
 
     for (auto& rc: RangeCompactionInfos) {
         if (!rc.DataBlobId) {
@@ -2035,11 +2039,17 @@ void TPartitionActor::CompleteCompaction(
         }
     }
 
-    const auto blobStorageRequestTimeout =
-        Min(PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
-                ? Config->GetBlobStorageAsyncGetTimeoutSSD()
-                : Config->GetBlobStorageAsyncGetTimeoutHDD(),
-            GetBlobStorageRequestTimeout());
+    auto blobStorageRequestTimeout =
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+            ? Config->GetBlobStorageAsyncGetTimeoutSSD()
+            : Config->GetBlobStorageAsyncGetTimeoutHDD();
+
+    if (auto generalTimeout = GetBlobStorageRequestTimeout()) {
+        blobStorageRequestTimeout =
+            blobStorageRequestTimeout
+                ? Min(generalTimeout, blobStorageRequestTimeout)
+                : generalTimeout;
+    }
 
     const auto compactionType =
         args.CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?

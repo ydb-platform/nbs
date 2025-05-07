@@ -198,8 +198,10 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
             std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                 req.BlobId,
                 std::move(guardedSglist),
-                false,                                  // async
-                ctx.Now() + BlobStorageRequestTimeout   // deadline
+                false,   // async
+                BlobStorageRequestTimeout
+                    ? ctx.Now() + BlobStorageRequestTimeout
+                    : TInstant::Max()   // deadline
             );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {

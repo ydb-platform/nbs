@@ -575,9 +575,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
     xxx(AllowLiteDiskReallocations,                     bool,      false         )\
     xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
-                                                                                  \
-    xxx(BlobStorageAsyncGetTimeoutHDD,                TDuration, TDuration::Max())\
-    xxx(BlobStorageAsyncGetTimeoutSSD,                TDuration, TDuration::Max())\
+    xxx(BlobStorageAsyncGetTimeoutHDD,                  TDuration, Seconds(0)    )\
+    xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
                                                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
     xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\
@@ -600,8 +599,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )\
     xxx(DoNotStopVolumeTabletOnLockLost,                   bool,   false      )\
                                                                                \
-    xxx(BlobStorageRequestTimeoutSSD,              TDuration, TDuration::Max())\
-    xxx(BlobStorageRequestTimeoutHDD,              TDuration, TDuration::Max())
+    xxx(BlobStorageRequestTimeoutSSD,                   TDuration, Seconds(0) )\
+    xxx(BlobStorageRequestTimeoutHDD,                   TDuration, Seconds(0) )
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

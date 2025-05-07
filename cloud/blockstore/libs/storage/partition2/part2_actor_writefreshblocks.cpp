@@ -247,8 +247,9 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         CombinedContext,
         blobId,
         std::move(BlobContent),
-        false,                                  // async
-        ctx.Now() + BlobStorageRequestTimeout   // deadline
+        false,   // async
+        BlobStorageRequestTimeout ? ctx.Now() + BlobStorageRequestTimeout
+                                  : TInstant::Max()   // deadline
     );
 
     NCloud::Send(

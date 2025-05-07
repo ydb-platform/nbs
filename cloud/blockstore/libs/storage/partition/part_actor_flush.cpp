@@ -199,9 +199,11 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
             std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                 req.BlobId,
                 req.BlobContent.GetGuardedSgList(),
-                0,                                      // blockSizeForChecksums
-                true,                                   // async
-                ctx.Now() + BlobStorageRequestTimeout   // deadline
+                0,      // blockSizeForChecksums
+                true,   // async
+                BlobStorageRequestTimeout
+                    ? ctx.Now() + BlobStorageRequestTimeout
+                    : TInstant::Max()   // deadline
             );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {

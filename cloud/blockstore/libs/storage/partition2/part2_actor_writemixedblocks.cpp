@@ -257,8 +257,10 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
             std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                 req.BlobId,
                 std::move(guardedSglist),
-                false,                                  // async
-                ctx.Now() + BlobStorageRequestTimeout   // deadline
+                false,   // async
+                BlobStorageRequestTimeout
+                    ? ctx.Now() + BlobStorageRequestTimeout
+                    : TInstant::Max()   // deadline
             );
 
         for (const auto& sr: req.SubRequests) {

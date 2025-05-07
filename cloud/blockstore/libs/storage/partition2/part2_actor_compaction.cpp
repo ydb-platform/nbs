@@ -277,7 +277,9 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 {
     bool readBlobSent = false;
 
-    const auto readBlobDeadline = ctx.Now() + BlobStorageRequestTimeout;
+    const auto readBlobDeadline = BlobStorageRequestTimeout
+                                      ? ctx.Now() + BlobStorageRequestTimeout
+                                      : TInstant::Max();
 
     ui32 requestIndex = 0;
     for (auto& req: ReadRequests) {
@@ -334,8 +336,10 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                     req.BlobId,
                     BuildBlobContent(req),
-                    false,                                  // async
-                    ctx.Now() + BlobStorageRequestTimeout   // deadline
+                    false,   // async
+                    BlobStorageRequestTimeout
+                        ? ctx.Now() + BlobStorageRequestTimeout
+                        : TInstant::Max()   // deadline
                 );
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -1188,10 +1192,16 @@ void TPartitionActor::CompleteCompaction(
     }
 
     auto blobStorageRequestTimeout =
-        Min(PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
-                ? Config->GetBlobStorageAsyncGetTimeoutSSD()
-                : Config->GetBlobStorageAsyncGetTimeoutHDD(),
-            GetBlobStorageRequestTimeout());
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+            ? Config->GetBlobStorageAsyncGetTimeoutSSD()
+            : Config->GetBlobStorageAsyncGetTimeoutHDD();
+
+    if (auto generalTimeout = GetBlobStorageRequestTimeout()) {
+        blobStorageRequestTimeout =
+            blobStorageRequestTimeout
+                ? Min(generalTimeout, blobStorageRequestTimeout)
+                : generalTimeout;
+    }
 
     const auto compactionType =
         args.CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
