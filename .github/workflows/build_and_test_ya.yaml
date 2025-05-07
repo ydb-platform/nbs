@@ -207,6 +207,7 @@ jobs:
           sleep 30
         done &
 
+
     - name: Build
       uses: ./.github/actions/build
       if: inputs.run_build
@@ -221,6 +222,11 @@ jobs:
         link_threads: ${{ steps.calculate-threads.outputs.link_threads }}
         clean_ya_dir: ${{ inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
+
+    - name: kill ya-bin after 60s
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      run: |
+        (sleep 5; pkill -9 -f ya-bin) &
 
     - name: Run tests
       uses: ./.github/actions/test
