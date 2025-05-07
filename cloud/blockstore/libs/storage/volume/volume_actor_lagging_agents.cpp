@@ -290,7 +290,7 @@ void TVolumeActor::ExecuteAddLaggingAgent(
 
         // Intersect row indexes of known lagging devices and a new one. We only
         // allow one lagging device per row.
-        const bool intersects = GetHaveCommonRows(
+        const bool intersects = HaveCommonRows(
             args.Agent.GetDevices(),
             laggingAgent.GetDevices());
         if (intersects) {

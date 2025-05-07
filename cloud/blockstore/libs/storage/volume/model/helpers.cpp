@@ -211,7 +211,7 @@ TVector<NProto::TLaggingDevice> CollectLaggingDevices(
     return result;
 }
 
-bool GetHaveCommonRows(
+bool HaveCommonRows(
     const RepeatedPtrField<NProto::TLaggingDevice>& laggingCandidates,
     const RepeatedPtrField<NProto::TLaggingDevice>& alreadyLagging)
 {
