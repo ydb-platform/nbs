@@ -27,7 +27,12 @@ func Run(
 		Use:   use,
 		Short: "Admin console for Disk Manager service",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Name() == "__complete" || cmd.Name() == "__completeNoDesc" {
+			helperCommands := map[string]struct{}{
+				"__complete":       {},
+				"__completeNoDesc": {},
+				"completion":       {},
+			}
+			if _, ok := helperCommands[cmd.Name()]; ok {
 				return nil
 			}
 
