@@ -2039,15 +2039,15 @@ void TPartitionActor::CompleteCompaction(
         }
     }
 
-    auto blobStorageRequestTimeout =
+    auto blobStorageRequestTimeout = GetBlobStorageRequestTimeout();
+
+    auto getAsyncTimeout =
         PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
             ? Config->GetBlobStorageAsyncGetTimeoutSSD()
             : Config->GetBlobStorageAsyncGetTimeoutHDD();
 
-    if (auto generalTimeout = GetBlobStorageRequestTimeout()) {
-        blobStorageRequestTimeout = blobStorageRequestTimeout
-                                        ? blobStorageRequestTimeout
-                                        : generalTimeout;
+    if (getAsyncTimeout) {
+        blobStorageRequestTimeout = getAsyncTimeout;
     }
 
     const auto compactionType =
