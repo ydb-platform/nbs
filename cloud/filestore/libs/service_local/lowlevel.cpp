@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/xattr.h>
@@ -45,7 +46,7 @@ ui32 GetSystemErrorCode()
     return MAKE_FILESTORE_ERROR(error);
 }
 
-TFileStat GetFileStat(struct stat fs)
+TFileStat GetFileStat(const struct stat& fs)
 {
     TFileStat st;
     st.Mode = fs.st_mode;
@@ -58,6 +59,23 @@ TFileStat GetFileStat(struct stat fs)
     st.CTime = fs.st_ctime;
     st.INode = fs.st_ino;
     return st;
+}
+
+TFileSystemStat GetFileSystemStat(const struct statfs& fs)
+{
+    return TFileSystemStat{
+        .Type = fs.f_type,
+        .BlockSize = fs.f_bsize,
+        .TotalBlocks = fs.f_blocks,
+        .FreeBlocks = fs.f_bfree,
+        .AvailBlocks = fs.f_bavail,
+        .TotalFiles = fs.f_files,
+        .FreeFiles = fs.f_ffree,
+        .FsId = {fs.f_fsid.__val[0], fs.f_fsid.__val[1]},
+        .MaxNameLen = fs.f_namelen,
+        .FragmentSize = fs.f_frsize,
+        .MountFlags = fs.f_flags,
+    };
 }
 
 TVector<TString> SplitStrings(const char* buf, size_t len)
@@ -228,6 +246,16 @@ TFileStat StatAt(const TFileHandle& handle, const TString& name)
         << ": " << LastSystemErrorText());
 
     return GetFileStat(fs);
+}
+
+TFileSystemStat StatFs(const TFileHandle& handle)
+{
+    struct statfs fs = {};
+    int res = fstatfs(Fd(handle), &fs);
+    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
+        << "failed to fstatfs: " << LastSystemErrorText());
+
+    return GetFileSystemStat(fs);
 }
 
 TVector<std::pair<TString, TFileStat>> ListDirAt(
