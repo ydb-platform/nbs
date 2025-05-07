@@ -35,7 +35,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
-	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"google.golang.org/grpc"
 	grpc_codes "google.golang.org/grpc/codes"
@@ -591,25 +590,6 @@ func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
 		metrics.NewEmptyRegistry(),
 		db,
 	)
-}
-
-func FindRunningTaskByType(
-	ctx context.Context,
-	taskStorage tasks_storage.Storage,
-	taskType string, limit uint64) (*storage.TaskInfo, error) {
-
-	tasks, err := taskStorage.ListTasksRunning(ctx, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	for index := range tasks {
-		if tasks[index].TaskType == taskType {
-			return &tasks[index], nil
-		}
-	}
-
-	return nil, fmt.Errorf("Running task of type %s was not found", taskType)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

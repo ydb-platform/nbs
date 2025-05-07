@@ -84,7 +84,7 @@ func (t *deleteFilesystemTask) deleteFilesystem(
 			return err
 		}
 
-		err = t.scheduler.WaitTaskEnded(ctx, taskID)
+		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
 		if err != nil {
 			return err
 		}

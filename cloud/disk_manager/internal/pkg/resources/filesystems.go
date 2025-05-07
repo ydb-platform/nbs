@@ -174,7 +174,7 @@ func filesystemStateStructTypeString() string {
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
 		status: Int64,
-        is_external: Bool>`
+		is_external: Bool>`
 }
 
 func filesystemStateTableDescription() persistence.CreateTableDescription {
