@@ -21,40 +21,6 @@ using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-///////////////////////////////////////////////////////////////////////////////
-
-TDuration TNonreplicatedPartitionActor::TDeviceStat::WorstRequestTime() const
-{
-    TDuration result;
-    for (ui32 i = ResponseTimes.FirstIndex(); i < ResponseTimes.TotalSize();
-         ++i)
-    {
-        result = Max(result, ResponseTimes[i]);
-    }
-    return result;
-}
-
-TDuration TNonreplicatedPartitionActor::TDeviceStat::GetTimedOutStateDuration(
-    TInstant now) const
-{
-    return FirstTimedOutRequestStartTs ? (now - FirstTimedOutRequestStartTs) : TDuration();
-}
-
-bool TNonreplicatedPartitionActor::TDeviceStat::CooldownPassed(
-    TInstant now,
-    TDuration cooldownTimeout) const
-{
-    switch (DeviceStatus) {
-        case EDeviceStatus::Ok:
-        case EDeviceStatus::Unavailable:
-            return false;
-        case EDeviceStatus::SilentBroken:
-            return BrokenTransitionTs + cooldownTimeout < now;
-        case EDeviceStatus::Broken:
-            return true;
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
@@ -628,28 +594,6 @@ void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
     }
 }
 
-void TNonreplicatedPartitionActor::HandleGetDeviceForRange(
-    const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
-    const NActors::TActorContext& ctx) const
-{
-    const auto* msg = ev->Get();
-
-    auto requests = PartConfig->ToDeviceRequests(msg->BlockRange);
-    if (requests.size() != 1) {
-        GetDeviceForRangeCompanion.ReplyCanNotUseDirectCopy(ev, ctx);
-        return;
-    }
-
-    for (const auto& request: requests) {
-        if (DeviceStats[request.DeviceIdx].DeviceStatus != EDeviceStatus::Ok) {
-            GetDeviceForRangeCompanion.ReplyCanNotUseDirectCopy(ev, ctx);
-            return;
-        }
-    }
-
-    GetDeviceForRangeCompanion.HandleGetDeviceForRange(ev, ctx);
-}
-
 void TNonreplicatedPartitionActor::ReplyAndDie(const NActors::TActorContext& ctx)
 {
     NCloud::Reply(ctx, *Poisoner, std::make_unique<TEvents::TEvPoisonTaken>());
@@ -725,7 +669,7 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
-            HandleGetDeviceForRange);
+            GetDeviceForRangeCompanion.HandleGetDeviceForRange);
         HFunc(
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
             HandleMultiAgentWrite);

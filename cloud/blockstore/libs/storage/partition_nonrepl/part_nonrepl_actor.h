@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/device_stats.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
@@ -22,7 +23,6 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
-#include <library/cpp/containers/ring_buffer/ring_buffer.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -49,45 +49,13 @@ class TNonreplicatedPartitionActor final
     : public NActors::TActorBootstrapped<TNonreplicatedPartitionActor>
 {
 private:
+    using EDeviceStatus = TDeviceStat::EDeviceStatus;
+
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId StatActorId;
 
-    enum class EDeviceStatus
-    {
-        Ok,
-        Unavailable,
-        SilentBroken,
-        Broken,
-    };
-
-    struct TDeviceStat
-    {
-        // The start time of the first timed out request.
-        TInstant FirstTimedOutRequestStartTs;
-
-        // The start time of the last successful request.
-        TInstant LastSuccessfulRequestStartTs;
-
-        // Execution times of the last 10 requests.
-        TSimpleRingBuffer<TDuration> ResponseTimes{10};
-
-        // The current status of the device.
-        EDeviceStatus DeviceStatus = EDeviceStatus::Ok;
-
-        // When the device was considered broken.
-        TInstant BrokenTransitionTs;
-
-        // Returns the maximum request execution time among the latest.
-        [[nodiscard]] TDuration WorstRequestTime() const;
-
-        [[nodiscard]] TDuration GetTimedOutStateDuration(TInstant now) const;
-
-        [[nodiscard]] bool CooldownPassed(
-            TInstant now,
-            TDuration cooldownTimeout) const;
-    };
     TVector<TDeviceStat> DeviceStats;
 
     struct TRequestData
@@ -105,7 +73,8 @@ private:
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite,
         Config,
-        PartConfig};
+        PartConfig,
+        &DeviceStats};
 
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr PartCounters;
@@ -221,10 +190,6 @@ private:
     void HandleAgentIsBackOnline(
         const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
-
-    void HandleGetDeviceForRange(
-        const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
-        const NActors::TActorContext& ctx) const;
 
     bool HandleRequests(STFUNC_SIG);
 

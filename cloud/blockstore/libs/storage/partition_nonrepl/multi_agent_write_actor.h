@@ -1,7 +1,6 @@
 #pragma once
 
 #include "part_nonrepl_events_private.h"
-#include "util/random/shuffle.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
