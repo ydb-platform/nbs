@@ -769,7 +769,8 @@ STFUNC(TDiskRegistryActor::StateRestore)
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
                     ev,
-                    TBlockStoreComponents::DISK_REGISTRY);
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -836,7 +837,8 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
                     ev,
-                    TBlockStoreComponents::DISK_REGISTRY);
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

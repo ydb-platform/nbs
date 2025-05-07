@@ -192,7 +192,10 @@ STFUNC(TDestroyCheckpointActor::StateMarkCheckpointDeleted)
             MarkCheckpointDeleted_HandleDeleteCheckpointResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -207,7 +210,10 @@ STFUNC(TDestroyCheckpointActor::StateRemoveCheckpointNodes)
             RemoveCheckpointNodes_HandleDeleteCheckpointResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -222,7 +228,10 @@ STFUNC(TDestroyCheckpointActor::StateRemoveCheckpointBlobs)
             RemoveCheckpointBlobs_HandleDeleteCheckpointResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -237,7 +246,10 @@ STFUNC(TDestroyCheckpointActor::StateRemoveCheckpoint)
             RemoveCheckpoint_HandleDeleteCheckpointResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

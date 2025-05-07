@@ -87,7 +87,10 @@ STFUNC(TDescribeFileStoreActor::StateWork)
         HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -139,7 +142,10 @@ STFUNC(TSSProxyFallbackActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SS_PROXY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

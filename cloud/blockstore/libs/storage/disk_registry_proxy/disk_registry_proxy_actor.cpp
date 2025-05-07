@@ -282,8 +282,10 @@ void TDiskRegistryProxyActor::HandleResponse(
     if (it == ActiveRequests.end()) {
         // ActiveRequests are cleared upon connection reset
         if (!LogLateMessage(ev)) {
-            LogUnexpectedEvent(ev,
-                TBlockStoreComponents::DISK_REGISTRY_PROXY);
+            LogUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_PROXY,
+                __PRETTY_FUNCTION__);
         }
         return;
     }

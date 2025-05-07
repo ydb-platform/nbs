@@ -380,7 +380,10 @@ STFUNC(TCreateNodeInShardActor::StateWork)
         HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
