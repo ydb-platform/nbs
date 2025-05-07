@@ -183,7 +183,9 @@ public:
         , CallContext(std::move(callContext))
         , Request(std::move(request))
         , Promise(promise)
-    {}
+    {
+        Context.set_wait_for_ready(true);
+    }
 
     static void Start(
         TAppContext& appCtx,
