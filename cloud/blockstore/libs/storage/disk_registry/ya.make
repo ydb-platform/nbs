@@ -17,6 +17,7 @@ SRCS(
     disk_registry_actor_describe.cpp
     disk_registry_actor_destroy.cpp
     disk_registry_actor_get_agent_node_id.cpp
+    disk_registry_actor_get_cluster_capacity.cpp
     disk_registry_actor_get_dependent_disks.cpp
     disk_registry_actor_initiate_realloc.cpp
     disk_registry_actor_initschema.cpp
@@ -101,6 +102,7 @@ RECURSE_FOR_TESTS(
     ut_allocation
     ut_cms
     ut_config
+    ut_capacity
     ut_checkpoint
     ut_create
     ut_migration
