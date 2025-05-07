@@ -41,7 +41,10 @@ public:
             HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteBlocks);
             IgnoreFunc(TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted);
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }

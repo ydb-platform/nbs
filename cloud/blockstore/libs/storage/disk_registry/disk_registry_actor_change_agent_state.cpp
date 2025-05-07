@@ -162,7 +162,8 @@ STFUNC(TChangeAgentStateActor::StateWork)
         default:
             HandleUnexpectedEvent(
                 ev,
-                TBlockStoreComponents::DISK_REGISTRY_WORKER);
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

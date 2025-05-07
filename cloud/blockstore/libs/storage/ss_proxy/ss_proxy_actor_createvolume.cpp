@@ -558,7 +558,10 @@ STFUNC(TCreateVolumeActor::StateDescribeVolumeBeforeCreate)
         HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeVolumeBeforeCreateResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -569,7 +572,10 @@ STFUNC(TCreateVolumeActor::StateCreateVolume)
         HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleCreateVolumeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -580,7 +586,10 @@ STFUNC(TCreateVolumeActor::StateCreateNextDir)
         HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleMkDirResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -591,7 +600,10 @@ STFUNC(TCreateVolumeActor::StateDescribeVolumeAfterCreate)
         HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeVolumeAfterCreateResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

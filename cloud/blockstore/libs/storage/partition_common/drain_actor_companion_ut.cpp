@@ -130,7 +130,10 @@ public:
                 HandleWaitForInFlightWrites);
             HFunc(TEvSetWriteInProgressCount, HandleSetWriteCount);
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
         }
     }
 

@@ -264,7 +264,10 @@ STFUNC(TDescribeVolumeActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

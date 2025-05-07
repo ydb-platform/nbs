@@ -272,7 +272,10 @@ STFUNC(TSplitRequestSenderActor<TMethod>::StateWork)
         HFunc(TMethod::TRequest, HandleUndelivery);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -1148,7 +1151,10 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -1177,7 +1183,10 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

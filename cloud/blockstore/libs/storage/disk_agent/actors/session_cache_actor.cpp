@@ -96,7 +96,8 @@ private:
             default:
                 HandleUnexpectedEvent(
                     ev,
-                    TBlockStoreComponents::DISK_AGENT_WORKER);
+                    TBlockStoreComponents::DISK_AGENT_WORKER,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }

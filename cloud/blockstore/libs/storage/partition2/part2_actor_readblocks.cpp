@@ -690,7 +690,10 @@ STFUNC(TReadBlocksActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

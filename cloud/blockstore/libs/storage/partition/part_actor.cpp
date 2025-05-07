@@ -858,7 +858,10 @@ STFUNC(TPartitionActor::StateInit)
             if (!RejectRequests(ev) &&
                 !HandleDefaultEvents(ev, SelfId()))
             {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -913,7 +916,10 @@ STFUNC(TPartitionActor::StateWork)
             if (!HandleRequests(ev) &&
                 !HandleDefaultEvents(ev, SelfId()))
             {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -961,7 +967,10 @@ STFUNC(TPartitionActor::StateZombie)
 
         default:
             if (!RejectRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

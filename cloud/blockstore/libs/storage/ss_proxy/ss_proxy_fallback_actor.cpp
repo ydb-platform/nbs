@@ -135,7 +135,10 @@ STFUNC(TReadPathDescriptionBackupActor<TResponse>::StateWork)
         HFunc(TReadCacheResponse, HandleReadCacheResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -182,7 +185,10 @@ STFUNC(TSSProxyFallbackActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::SS_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SS_PROXY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

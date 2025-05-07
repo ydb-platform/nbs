@@ -91,7 +91,10 @@ STFUNC(TInitFreshZonesActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvInitIndexResponse, HandleInitIndexResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

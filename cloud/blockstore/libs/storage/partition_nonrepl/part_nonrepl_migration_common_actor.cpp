@@ -251,7 +251,10 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_NONREPL);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_NONREPL,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -311,7 +314,10 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_NONREPL);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_NONREPL,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
