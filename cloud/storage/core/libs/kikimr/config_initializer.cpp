@@ -58,8 +58,8 @@ void AdjustActorSystemThreadsAccordingToAvailableCpus(
     }
 
     const auto availableCores = TAffinity::Current().GetCores().size();
-    // 3 stands for number of thread pools (System, User, IC)
-    const double scalingFactor = (1.0 * availableCpuCoresPercentage) / 100 / 3;
+    const double scalingFactor =
+        (1.0 * availableCpuCoresPercentage) / (100 * executors.size());
     const auto newThreadCount = std::ceil(availableCores * scalingFactor);
 
     for (auto* executor: executors) {
