@@ -44,7 +44,7 @@ jobs:
 
     - name: install dependencies
       run: |
-        pip install PyGithub==2.5.0 nebius==0.2.6
+        pip install PyGithub==2.5.0 nebius==0.2.28
         echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
 
     - name: Set up Nebius CLI
