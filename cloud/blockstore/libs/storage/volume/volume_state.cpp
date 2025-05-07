@@ -273,17 +273,7 @@ bool TVolumeState::ShouldTrackUsedBlocks() const
     }
 
     const bool overlay = !GetBaseDiskId().empty();
-    if (overlay) {
-        return true;
-    }
-
-    // TODO(drbasic)
-    // For encrypted disk-registry based disks, we will continue to
-    // write a map of encrypted blocks for a while.
-    const auto mode = Meta.GetVolumeConfig().GetEncryptionDesc().GetMode();
-
-    return mode != NProto::NO_ENCRYPTION &&
-           mode != NProto::ENCRYPTION_AT_REST;
+    return overlay;
 }
 
 void TVolumeState::Reset()
