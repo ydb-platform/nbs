@@ -1197,10 +1197,9 @@ void TPartitionActor::CompleteCompaction(
             : Config->GetBlobStorageAsyncGetTimeoutHDD();
 
     if (auto generalTimeout = GetBlobStorageRequestTimeout()) {
-        blobStorageRequestTimeout =
-            blobStorageRequestTimeout
-                ? Min(generalTimeout, blobStorageRequestTimeout)
-                : generalTimeout;
+        blobStorageRequestTimeout = blobStorageRequestTimeout
+                                        ? blobStorageRequestTimeout
+                                        : generalTimeout;
     }
 
     const auto compactionType =
