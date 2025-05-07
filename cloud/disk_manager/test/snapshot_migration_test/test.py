@@ -351,6 +351,7 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
         new_checksum = setup.checksum_disk(new_disk)
         assert new_checksum == checksum
 
+
 @pytest.mark.parametrize(
     "use_s3_as_src, use_s3_as_dst",
     [
