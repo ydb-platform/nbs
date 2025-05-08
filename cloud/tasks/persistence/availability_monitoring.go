@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -20,9 +21,14 @@ type AvailabilityMonitoring struct {
 	registry                         metrics.Registry
 	successRateReportingInterval     time.Duration
 	successRateAvailabilityTrasehold float64
+
+	mutex sync.Mutex
 }
 
 func (m *AvailabilityMonitoring) AccountQuery(err error) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
 	m.queriesCount++
 	if err == nil {
 		m.successQueriesCount++
@@ -32,6 +38,9 @@ func (m *AvailabilityMonitoring) AccountQuery(err error) {
 ////////////////////////////////////////////////////////////////////////////////
 
 func (m *AvailabilityMonitoring) reportSuccessRate(ctx context.Context) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
 	if m.queriesCount == 0 {
 		m.registry.Gauge("successRate").Set(1)
 		logging.Info(ctx, "updated successRate 1!!! for host %v component %v", m.host, m.component)
