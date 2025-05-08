@@ -105,6 +105,7 @@ func RegisterForExecution(
 
 		err = taskRegistry.RegisterForExecution("dataplane.MigrateSnapshotDatabaseTask", func() tasks.Task {
 			return &migrateSnapshotDatabaseTask{
+				registry:   metricsRegistry,
 				srcStorage: storage,
 				dstStorage: migrationDstStorage,
 				config:     config,
