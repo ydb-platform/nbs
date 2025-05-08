@@ -65,7 +65,10 @@ func (c *ChannelWithCancellation[T]) Close() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewChannelWithCancellation[T any](capacity int) ChannelWithCancellation[T] {
+func NewChannelWithCancellation[T any](
+	capacity int,
+) ChannelWithCancellation[T] {
+
 	c := ChannelWithCancellation[T]{
 		channel: make(chan T, capacity),
 	}
