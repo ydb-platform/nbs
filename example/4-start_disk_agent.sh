@@ -52,6 +52,10 @@ start_nbs_agent 3
 pid3=$!
 echo "Agent 3 started with pid $pid3"
 
+start_nbs_agent 4
+pid4=$!
+echo "Agent 4 started with pid $pid4"
+
 # trap ctrl-c and call ctrl_c()
 trap ctrl_c INT
 
@@ -60,6 +64,7 @@ function ctrl_c() {
     kill $pid1
     kill $pid2
     kill $pid3
+    kill $pid4
     exit 0
 }
 

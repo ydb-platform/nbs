@@ -74,7 +74,8 @@ private:
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite,
         Config,
-        PartConfig};
+        PartConfig,
+        nullptr};
 
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr PartCounters;
