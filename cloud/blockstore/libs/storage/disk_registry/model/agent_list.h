@@ -86,7 +86,8 @@ public:
     struct TAgentRegistrationResult
     {
         std::reference_wrapper<NProto::TAgentConfig> Agent;
-        THashSet<TDeviceId> NewDevices;
+        THashSet<TDeviceId> NewDeviceIds;
+        THashSet<TDeviceId> LostDeviceIds;
         TNodeId PrevNodeId = 0;
         THashMap<TDeviceId, NProto::TDeviceConfig> OldConfigs;
     };

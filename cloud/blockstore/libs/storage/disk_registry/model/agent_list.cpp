@@ -161,7 +161,12 @@ auto TAgentList::AddNewAgent(
         newDevices.insert(device.GetDeviceUUID());
     }
 
-    return { AddAgent(std::move(agentConfig)), std::move(newDevices), 0, {} };
+    return {
+        .Agent = AddAgent(std::move(agentConfig)),
+        .NewDeviceIds = std::move(newDevices),
+        .LostDeviceIds = {},
+        .PrevNodeId = 0,
+        .OldConfigs = {}};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -427,6 +432,7 @@ auto TAgentList::RegisterAgent(
     agent->MutableDevices()->Clear();
 
     THashSet<TDeviceId> newDeviceIds;
+    THashSet<TDeviceId> lostDeviceIds;
     THashMap<TDeviceId, NProto::TDeviceConfig> oldConfigs;
 
     int i = 0;
@@ -466,6 +472,7 @@ auto TAgentList::RegisterAgent(
         }
 
         if (IsAllowedDevice(*agent, oldDevice)) {
+            lostDeviceIds.emplace(oldDevice.GetDeviceUUID());
             AddLostDevice(*agent, timestamp, std::move(oldDevice));
         }
 
@@ -482,6 +489,7 @@ auto TAgentList::RegisterAgent(
     for (; j < oldList.size(); ++j) {
         auto& oldDevice = oldList[j];
         if (IsAllowedDevice(*agent, oldDevice)) {
+            lostDeviceIds.emplace(oldDevice.GetDeviceUUID());
             AddLostDevice(*agent, timestamp, std::move(oldDevice));
         }
     }
@@ -491,7 +499,12 @@ auto TAgentList::RegisterAgent(
 
     RegisterCounters(*agent);
 
-    return { *agent, std::move(newDeviceIds), prevNodeId, std::move(oldConfigs) };
+    return {
+        .Agent = *agent,
+        .NewDeviceIds = std::move(newDeviceIds),
+        .LostDeviceIds = std::move(lostDeviceIds),
+        .PrevNodeId = prevNodeId,
+        .OldConfigs = std::move(oldConfigs)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

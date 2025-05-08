@@ -781,7 +781,8 @@ public:
         return ForceMirrorResync;
     }
 
-    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
+    TVector<NProto::TDeviceConfig> GetDevicesForAcquire() const;
+    TVector<NProto::TDeviceConfig> GetDevicesForRelease() const;
 
     //
     // Followers
@@ -824,6 +825,9 @@ private:
     THashSet<TString> MakeFilteredDeviceIds() const;
 
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
+
+    TVector<NProto::TDeviceConfig> GetDevicesForAcquireOrRelease(
+        bool ignoreLostDevices) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

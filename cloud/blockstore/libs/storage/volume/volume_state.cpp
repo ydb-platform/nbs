@@ -891,29 +891,14 @@ const THashMultiMap<TActorId, TString>& TVolumeState::GetPipeServerId2ClientId()
     return ClientIdsByPipeServerId;
 }
 
-TVector<NProto::TDeviceConfig>
-TVolumeState::GetAllDevicesForAcquireRelease() const
+TVector<NProto::TDeviceConfig> TVolumeState::GetDevicesForAcquire() const
 {
-    const size_t allDevicesCount =
-        ((Meta.ReplicasSize() + 1) * Meta.DevicesSize()) +
-        GetMeta().MigrationsSize();
+    return GetDevicesForAcquireOrRelease(true);
+}
 
-    TVector<NProto::TDeviceConfig> resultDevices;
-    resultDevices.reserve(allDevicesCount);
-
-    for (const auto& device: Meta.GetDevices()) {
-        resultDevices.emplace_back(device);
-    }
-    for (const auto& replica: Meta.GetReplicas()) {
-        for (const auto& device: replica.GetDevices()) {
-            resultDevices.emplace_back(device);
-        }
-    }
-    for (const auto& migration: Meta.GetMigrations()) {
-        resultDevices.emplace_back(migration.GetTargetDevice());
-    }
-
-    return resultDevices;
+TVector<NProto::TDeviceConfig> TVolumeState::GetDevicesForRelease() const
+{
+    return GetDevicesForAcquireOrRelease(false);
 }
 
 void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
@@ -1189,6 +1174,46 @@ void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& block
         return;
     }
     CheckpointLight->Set(blockRange);
+}
+
+TVector<NProto::TDeviceConfig> TVolumeState::GetDevicesForAcquireOrRelease(
+    bool ignoreLostDevices) const
+{
+    const size_t allDevicesCount =
+        ((Meta.ReplicasSize() + 1) * Meta.DevicesSize()) +
+        GetMeta().MigrationsSize();
+
+    TVector<NProto::TDeviceConfig> resultDevices;
+    resultDevices.reserve(allDevicesCount);
+
+    THashSet<TString> deviceIdsToIgnore;
+    if (ignoreLostDevices) {
+        deviceIdsToIgnore.insert(
+            Meta.GetLostDeviceIds().begin(),
+            Meta.GetLostDeviceIds().end());
+    }
+
+    auto addDeviceIfNeeded = [&](const auto& d)
+    {
+        if (deviceIdsToIgnore.contains(d.GetDeviceUUID())) {
+            return;
+        }
+        resultDevices.emplace_back(d);
+    };
+
+    for (const auto& device: Meta.GetDevices()) {
+        addDeviceIfNeeded(device);
+    }
+    for (const auto& replica: Meta.GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            addDeviceIfNeeded(device);
+        }
+    }
+    for (const auto& migration: Meta.GetMigrations()) {
+        addDeviceIfNeeded(migration.GetTargetDevice());
+    }
+
+    return resultDevices;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

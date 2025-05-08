@@ -266,6 +266,7 @@ class TDiskRegistryState
         NProto::TCheckpointReplica CheckpointReplica;
 
         TVector<TDeviceId> DeviceReplacementIds;
+        THashSet<TString> LostDeviceIds;
 
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
@@ -893,6 +894,8 @@ public:
         const TString& poolName,
         const ui64 totalByteCount) const;
 
+    const THashSet<TDiskId>* GetLostDevicesForDisk(const TString& diskId) const;
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
@@ -1359,6 +1362,11 @@ private:
     static bool MigrationCanBeStarted(
         const TDiskState& disk,
         const TString& deviceUUID);
+
+    void ReallocateDisksWithLostOrReappearedDevices(
+        TDiskRegistryDatabase& db,
+        const TAgentList::TAgentRegistrationResult& r,
+        TVector<TDiskId>& disksToReallocate);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
