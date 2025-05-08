@@ -162,7 +162,7 @@ class _MigrationTestSetup:
                 _logger.error(
                     "Unexpected %s occurred while stopping Disk-Manager pids: '%s'",
                     e.__class__.__name__,
-                    ",".join(pids)
+                    ",".join(map(str, pids))
                 )
                 raise e
             [pid] = pids
