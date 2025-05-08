@@ -844,13 +844,13 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                         makeHeaderCells(i + 1);
                     }
                 }
-                for (ui32 i = 0; i < info.Devices.size(); ++i) {
-                    TABLER() {
-                        makeDeviceCells(info.Devices[i]);
-                        for (const auto& replica: info.Replicas) {
-                            makeDeviceCells(i < replica.size()
-                                ? replica[i] : NProto::TDeviceConfig());
-                        }
+            }
+            for (ui32 i = 0; i < info.Devices.size(); ++i) {
+                TABLER() {
+                    makeDeviceCells(info.Devices[i]);
+                    for (const auto& replica: info.Replicas) {
+                        makeDeviceCells(i < replica.size()
+                            ? replica[i] : NProto::TDeviceConfig());
                     }
                 }
             }
@@ -866,32 +866,31 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                         TABLEH() { out << "TargetDeviceId"; }
                         TABLEH() { out << "Node"; }
                     }
+                }
+                auto dumpLink = [&] (const auto& uuid) {
+                    DumpDeviceLink(out, TabletID(), uuid);
+                };
 
-                    auto dumpLink = [&] (const auto& uuid) {
-                        DumpDeviceLink(out, TabletID(), uuid);
-                    };
-
-                    for (const auto& migration: info.Migrations) {
-                        TABLER() {
-                            TABLED() {
-                                dumpLink(migration.GetSourceDeviceId());
-                            }
-                            TABLED() {
-                                const auto& d = migration.GetTargetDevice();
-                                dumpLink(d.GetDeviceUUID());
-                            }
-                            TABLED() {
-                                const auto& d = migration.GetTargetDevice();
-                                auto* agent = State->FindAgent(d.GetNodeId());
-                                if (agent) {
-                                    out << " <a href='?action=agent&TabletID="
-                                        << TabletID()
-                                        << "&AgentID=" << d.GetAgentId() << "'>"
-                                        << d.GetAgentId() << "</a>"
-                                        << " <font color=gray>#"
-                                        << d.GetNodeId()
-                                        << "</font>";
-                                }
+                for (const auto& migration: info.Migrations) {
+                    TABLER() {
+                        TABLED() {
+                            dumpLink(migration.GetSourceDeviceId());
+                        }
+                        TABLED() {
+                            const auto& d = migration.GetTargetDevice();
+                            dumpLink(d.GetDeviceUUID());
+                        }
+                        TABLED() {
+                            const auto& d = migration.GetTargetDevice();
+                            auto* agent = State->FindAgent(d.GetNodeId());
+                            if (agent) {
+                                out << " <a href='?action=agent&TabletID="
+                                    << TabletID()
+                                    << "&AgentID=" << d.GetAgentId() << "'>"
+                                    << d.GetAgentId() << "</a>"
+                                    << " <font color=gray>#"
+                                    << d.GetNodeId()
+                                    << "</font>";
                             }
                         }
                     }
@@ -911,12 +910,12 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                         TABLEH() { out << "DeviceId"; }
                         TABLEH() { out << "SeqNo"; }
                     }
+                }
 
-                    for (const auto& [uuid, seqNo, _]: info.FinishedMigrations) {
-                        TABLER() {
-                            TABLED() { DumpDeviceLink(out, TabletID(), uuid); }
-                            TABLED() { out << seqNo; }
-                        }
+                for (const auto& [uuid, seqNo, _]: info.FinishedMigrations) {
+                    TABLER() {
+                        TABLED() { DumpDeviceLink(out, TabletID(), uuid); }
+                        TABLED() { out << seqNo; }
                     }
                 }
             }
@@ -934,17 +933,17 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                     TABLEH() { out << "Timestamp"; }
                     TABLEH() { out << "Message"; }
                 }
+            }
 
-                for (const auto& hi: info.History) {
-                    TABLER() {
-                        TABLED() {
-                            out << TInstant::MicroSeconds(hi.GetTimestamp())
-                                << " (" << hi.GetTimestamp() << ")";
-                        }
-                        TABLED() {
-                            PRE() {
-                                out << hi.GetMessage();
-                            }
+            for (const auto& hi: info.History) {
+                TABLER() {
+                    TABLED() {
+                        out << TInstant::MicroSeconds(hi.GetTimestamp())
+                            << " (" << hi.GetTimestamp() << ")";
+                    }
+                    TABLED() {
+                        PRE() {
+                            out << hi.GetMessage();
                         }
                     }
                 }
@@ -1356,51 +1355,50 @@ void TDiskRegistryActor::RenderPoolRacks(
                     TABLEH() { out << "Total"; }
                     TABLEH() { out << "Free / Occupied"; }
                 }
-
-                TABLER() {
-                    TABLED() { out << "Overall"; }
-                    TABLED() { out << FormatByteSize(totalFreeBytes); }
-                    TABLED() { out << FormatByteSize(totalBytes); }
-                    TABLED() {
-                        makeBar(
-                            totalFreeBytes,
-                            totalBytes,
-                            freeColor,
-                            occupiedColor
-                        );
-                    }
+            }
+            TABLER() {
+                TABLED() { out << "Overall"; }
+                TABLED() { out << FormatByteSize(totalFreeBytes); }
+                TABLED() { out << FormatByteSize(totalBytes); }
+                TABLED() {
+                    makeBar(
+                        totalFreeBytes,
+                        totalBytes,
+                        freeColor,
+                        occupiedColor
+                    );
                 }
+            }
 
-                TABLER() {
-                    TABLED() { out << "Most Occupied Rack"; }
-                    TABLED() { out << FormatByteSize(minFreeBytesAmongRacks); }
-                    TABLED() {
-                        out << FormatByteSize(totalBytesInTheMostOccupiedRack);
-                    }
-                    TABLED() {
-                        makeBar(
-                            minFreeBytesAmongRacks,
-                            totalBytesInTheMostOccupiedRack,
-                            freeColor,
-                            occupiedColor
-                        );
-                    }
+            TABLER() {
+                TABLED() { out << "Most Occupied Rack"; }
+                TABLED() { out << FormatByteSize(minFreeBytesAmongRacks); }
+                TABLED() {
+                    out << FormatByteSize(totalBytesInTheMostOccupiedRack);
                 }
+                TABLED() {
+                    makeBar(
+                        minFreeBytesAmongRacks,
+                        totalBytesInTheMostOccupiedRack,
+                        freeColor,
+                        occupiedColor
+                    );
+                }
+            }
 
-                TABLER() {
-                    TABLED() { out << "Least Occupied Rack"; }
-                    TABLED() { out << FormatByteSize(maxFreeBytesAmongRacks); }
-                    TABLED() {
-                        out << FormatByteSize(totalBytesInTheLeastOccupiedRack);
-                    }
-                    TABLED() {
-                        makeBar(
-                            maxFreeBytesAmongRacks,
-                            totalBytesInTheLeastOccupiedRack,
-                            freeColor,
-                            occupiedColor
-                        );
-                    }
+            TABLER() {
+                TABLED() { out << "Least Occupied Rack"; }
+                TABLED() { out << FormatByteSize(maxFreeBytesAmongRacks); }
+                TABLED() {
+                    out << FormatByteSize(totalBytesInTheLeastOccupiedRack);
+                }
+                TABLED() {
+                    makeBar(
+                        maxFreeBytesAmongRacks,
+                        totalBytesInTheLeastOccupiedRack,
+                        freeColor,
+                        occupiedColor
+                    );
                 }
             }
         }
@@ -1564,36 +1562,36 @@ void TDiskRegistryActor::RenderPoolRacks(
                     TABLEH() { out << "Meaning"; }
                     TABLEH() { out << "Color"; }
                 }
+            }
 
-                TABLER() {
-                    TABLED() { out << "Free"; }
-                    TABLED() { makeLegendBar(freeColor); }
-                }
+            TABLER() {
+                TABLED() { out << "Free"; }
+                TABLED() { makeLegendBar(freeColor); }
+            }
 
-                TABLER() {
-                    TABLED() { out << "Dirty"; }
-                    TABLED() { makeLegendBar(dirtyColor); }
-                }
+            TABLER() {
+                TABLED() { out << "Dirty"; }
+                TABLED() { makeLegendBar(dirtyColor); }
+            }
 
-                TABLER() {
-                    TABLED() { out << "Occupied"; }
-                    TABLED() { makeLegendBar(occupiedColor); }
-                }
+            TABLER() {
+                TABLED() { out << "Occupied"; }
+                TABLED() { makeLegendBar(occupiedColor); }
+            }
 
-                TABLER() {
-                    TABLED() { out << "Warning"; }
-                    TABLED() { makeLegendBar(warningColor); }
-                }
+            TABLER() {
+                TABLED() { out << "Warning"; }
+                TABLED() { makeLegendBar(warningColor); }
+            }
 
-                TABLER() {
-                    TABLED() { out << "Unavailable"; }
-                    TABLED() { makeLegendBar(unavailableColor); }
-                }
+            TABLER() {
+                TABLED() { out << "Unavailable"; }
+                TABLED() { makeLegendBar(unavailableColor); }
+            }
 
-                TABLER() {
-                    TABLED() { out << "Broken"; }
-                    TABLED() { makeLegendBar(brokenColor); }
-                }
+            TABLER() {
+                TABLED() { out << "Broken"; }
+                TABLED() { makeLegendBar(brokenColor); }
             }
         }
     }
@@ -1855,82 +1853,82 @@ void TDiskRegistryActor::RenderAgentListDetailed(
                     TABLEH() { out << "State message"; }
                     TABLEH() { out << "Device states"; }
                 }
+            }
 
-                for (const auto& config: State->GetAgents()) {
-                    ui32 onlineDevs = 0;
-                    ui32 warningDevs = 0;
-                    ui32 errorDevs = 0;
-                    for (const auto& device: config.GetDevices()) {
-                        switch (device.GetState()) {
-                            case NProto::DEVICE_STATE_ONLINE: {
-                                ++onlineDevs;
-                                break;
-                            }
-                            case NProto::DEVICE_STATE_WARNING: {
-                                ++warningDevs;
-                                break;
-                            }
-                            case NProto::DEVICE_STATE_ERROR: {
-                                ++errorDevs;
-                                break;
-                            }
-                            default: {}
+            for (const auto& config: State->GetAgents()) {
+                ui32 onlineDevs = 0;
+                ui32 warningDevs = 0;
+                ui32 errorDevs = 0;
+                for (const auto& device: config.GetDevices()) {
+                    switch (device.GetState()) {
+                        case NProto::DEVICE_STATE_ONLINE: {
+                            ++onlineDevs;
+                            break;
                         }
+                        case NProto::DEVICE_STATE_WARNING: {
+                            ++warningDevs;
+                            break;
+                        }
+                        case NProto::DEVICE_STATE_ERROR: {
+                            ++errorDevs;
+                            break;
+                        }
+                        default: {}
                     }
+                }
 
-                    TABLER() {
-                        TABLED() {
-                            out << "<a href='?action=agent&TabletID="
-                                << TabletID()
-                                << "&AgentID="
-                                << config.GetAgentId()
-                                << "'>"
-                                << config.GetAgentId()
-                                << "</a>";
-                        }
-                        TABLED() {
-                            out << config.GetNodeId();
-                        }
-                        TABLED() {
-                            out << config.GetSeqNumber();
-                        }
-                        TABLED() {
-                            auto it = AgentRegInfo.find(config.GetAgentId());
-                            const bool connected = it != AgentRegInfo.end()
-                                && it->second.Connected;
-                            DumpAgentState(out, config.GetState(), connected);
-                        }
-                        TABLED() {
-                            out << (config.GetDedicatedDiskAgent()
-                                    ? "true" : "false");
-                        }
-                        TABLED() {
-                            out << TInstant::MicroSeconds(config.GetStateTs());
-                        }
-                        TABLED() { out << config.GetStateMessage(); }
+                TABLER() {
+                    TABLED() {
+                        out << "<a href='?action=agent&TabletID="
+                            << TabletID()
+                            << "&AgentID="
+                            << config.GetAgentId()
+                            << "'>"
+                            << config.GetAgentId()
+                            << "</a>";
+                    }
+                    TABLED() {
+                        out << config.GetNodeId();
+                    }
+                    TABLED() {
+                        out << config.GetSeqNumber();
+                    }
+                    TABLED() {
+                        auto it = AgentRegInfo.find(config.GetAgentId());
+                        const bool connected = it != AgentRegInfo.end()
+                            && it->second.Connected;
+                        DumpAgentState(out, config.GetState(), connected);
+                    }
+                    TABLED() {
+                        out << (config.GetDedicatedDiskAgent()
+                                ? "true" : "false");
+                    }
+                    TABLED() {
+                        out << TInstant::MicroSeconds(config.GetStateTs());
+                    }
+                    TABLED() { out << config.GetStateMessage(); }
 
-                        TABLED() {
+                    TABLED() {
+                        DumpDeviceState(
+                            out,
+                            NProto::DEVICE_STATE_ONLINE,
+                            EDeviceStateFlags::NONE,
+                            TStringBuilder() << " " << onlineDevs);
+                        if (warningDevs) {
+                            out << " / ";
                             DumpDeviceState(
                                 out,
-                                NProto::DEVICE_STATE_ONLINE,
+                                NProto::DEVICE_STATE_WARNING,
                                 EDeviceStateFlags::NONE,
-                                TStringBuilder() << " " << onlineDevs);
-                            if (warningDevs) {
-                                out << " / ";
-                                DumpDeviceState(
-                                    out,
-                                    NProto::DEVICE_STATE_WARNING,
-                                    EDeviceStateFlags::NONE,
-                                    TStringBuilder() << " " << warningDevs);
-                            }
-                            if (errorDevs) {
-                                out << " / ";
-                                DumpDeviceState(
-                                    out,
-                                    NProto::DEVICE_STATE_ERROR,
-                                    EDeviceStateFlags::NONE,
-                                    TStringBuilder() << " " << errorDevs);
-                            }
+                                TStringBuilder() << " " << warningDevs);
+                        }
+                        if (errorDevs) {
+                            out << " / ";
+                            DumpDeviceState(
+                                out,
+                                NProto::DEVICE_STATE_ERROR,
+                                EDeviceStateFlags::NONE,
+                                TStringBuilder() << " " << errorDevs);
                         }
                     }
                 }
@@ -1945,23 +1943,22 @@ void TDiskRegistryActor::RenderAgentListDetailed(
                     TABLEH() { out << "Agent"; }
                     TABLEH() { out << "RejectAgentTimeout (" << now << ")"; }
                 }
-
+            }
+            TABLER() {
+                TABLED() {
+                    out << "default";
+                }
+                TABLED() {
+                    out << State->GetRejectAgentTimeout(now, "");
+                }
+            }
+            for (const auto& agentId: State->GetAgentIdsWithOverriddenListParams()) {
                 TABLER() {
                     TABLED() {
-                        out << "default";
+                        out << agentId << " (overridden)";
                     }
                     TABLED() {
-                        out << State->GetRejectAgentTimeout(now, "");
-                    }
-                }
-                for (const auto& agentId: State->GetAgentIdsWithOverriddenListParams()) {
-                    TABLER() {
-                        TABLED() {
-                            out << agentId << " (overridden)";
-                        }
-                        TABLED() {
-                            out << State->GetRejectAgentTimeout(now, agentId);
-                        }
+                        out << State->GetRejectAgentTimeout(now, agentId);
                     }
                 }
             }
@@ -2245,25 +2242,25 @@ void TDiskRegistryActor::RenderAutomaticallyReplacedDeviceList(
                     TABLEH() { out << "ReplacementTs"; }
                     TABLEH() { out << "Time to erase"; }
                 }
-                TDuration freezeDuration =
-                    Config->GetAutomaticallyReplacedDevicesFreezePeriod();
-                for (const auto& deviceInfo: deviceInfos) {
-                    TABLER() {
-                        TABLED() {
-                            DumpDeviceLink(out, TabletID(), deviceInfo.DeviceId);
-                        }
-                        TABLED() {
-                            out << deviceInfo.ReplacementTs;
-                        }
-                        TABLED() {
-                            if (freezeDuration) {
-                                auto timeToClean = (deviceInfo.ReplacementTs +
-                                                    freezeDuration) -
-                                                   TInstant::Now();
-                                out << timeToClean;
-                            } else {
-                                out << "+inf. (AutomaticallyReplacedDevicesFreezePeriod not set)";
-                            }
+            }
+            TDuration freezeDuration =
+                Config->GetAutomaticallyReplacedDevicesFreezePeriod();
+            for (const auto& deviceInfo: deviceInfos) {
+                TABLER() {
+                    TABLED() {
+                        DumpDeviceLink(out, TabletID(), deviceInfo.DeviceId);
+                    }
+                    TABLED() {
+                        out << deviceInfo.ReplacementTs;
+                    }
+                    TABLED() {
+                        if (freezeDuration) {
+                            auto timeToClean = (deviceInfo.ReplacementTs +
+                                                freezeDuration) -
+                                                TInstant::Now();
+                            out << timeToClean;
+                        } else {
+                            out << "+inf. (AutomaticallyReplacedDevicesFreezePeriod not set)";
                         }
                     }
                 }

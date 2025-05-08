@@ -5630,8 +5630,12 @@ bool TDiskRegistryState::TryUpdateDiskStateImpl(
 
     NProto::TDiskHistoryItem historyItem;
     historyItem.SetTimestamp(timestamp.MicroSeconds());
-    historyItem.SetMessage(TStringBuilder() << "state changed: "
-        << static_cast<int>(oldState) << " -> " << static_cast<int>(newState));
+    historyItem.SetMessage(
+        TStringBuilder() << "state changed: "
+                         << NProto::EDiskState_Name(oldState) << " ("
+                         << static_cast<int>(oldState) << ") -> "
+                         << NProto::EDiskState_Name(newState) << " ("
+                         << static_cast<int>(newState) << ")");
     disk.History.push_back(std::move(historyItem));
 
     UpdateAndReallocateDisk(db, diskId, disk);
