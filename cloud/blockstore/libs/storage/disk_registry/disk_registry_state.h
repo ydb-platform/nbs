@@ -893,6 +893,8 @@ public:
         const TString& poolName,
         const ui64 totalByteCount) const;
 
+    TVector<TAgentId> GetUnavailableAgentsForDisk(const TDiskId& diskId);
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
@@ -924,8 +926,8 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         TInstant timestamp,
-        TVector<TDiskId>* affectedDisks,
-        TVector<TDiskId>* disksToReallocate);
+        TVector<TDiskId>& affectedDisks,
+        THashSet<TDiskId>& disksToReallocate);
 
     [[nodiscard]] TString GetDiskIdToNotify(const TString& diskId) const;
 

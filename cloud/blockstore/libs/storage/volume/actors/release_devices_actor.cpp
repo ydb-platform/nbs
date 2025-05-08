@@ -39,6 +39,11 @@ void TReleaseDevicesActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
+    if (Devices.empty()) {
+        ReplyAndDie(ctx, {});
+        return;
+    }
+
     SortBy(Devices, [](auto& d) { return d.GetNodeId(); });
 
     auto it = Devices.begin();
@@ -135,11 +140,12 @@ void TReleaseDevicesActor::HandleTimeout(
     Y_UNUSED(ev);
 
     const auto err = TStringBuilder()
-                     << "TReleaseDiskActor timeout." << " DiskId: " << DiskId
+                     << "TReleaseDevicesActor timeout." << " DiskId: " << DiskId
                      << " ClientId: " << ClientId
                      << " Targets: " << LogTargets()
                      << " VolumeGeneration: " << VolumeGeneration
-                     << " PendingRequests: " << PendingRequests;
+                     << " PendingRequests: " << PendingRequests
+                     << " MuteIoErrors: " << MuteIOErrors;
 
     LOG_WARN(ctx, TBlockStoreComponents::VOLUME, err);
 

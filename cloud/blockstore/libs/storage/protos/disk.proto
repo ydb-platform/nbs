@@ -691,6 +691,9 @@ message TAllocateDiskResponse
 
     // Devices that had been lagging.
     repeated TLaggingDevice RemovedLaggingDevices = 9;
+
+    // Ids of unavailable agents.
+    repeated string UnavailableAgentIds = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

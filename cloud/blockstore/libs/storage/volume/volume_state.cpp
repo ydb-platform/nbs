@@ -901,16 +901,28 @@ TVolumeState::GetAllDevicesForAcquireRelease() const
     TVector<NProto::TDeviceConfig> resultDevices;
     resultDevices.reserve(allDevicesCount);
 
-    for (const auto& device: Meta.GetDevices()) {
+    THashSet<TString> unavailableAgentIds(
+        Meta.GetUnavailableAgentIds().begin(),
+        Meta.GetUnavailableAgentIds().end());
+
+    auto addDeviceIfNeeded = [&](const NProto::TDeviceConfig& device)
+    {
+        if (unavailableAgentIds.contains(device.GetAgentId())) {
+            return;
+        }
         resultDevices.emplace_back(device);
+    };
+
+    for (const auto& device: Meta.GetDevices()) {
+        addDeviceIfNeeded(device);
     }
     for (const auto& replica: Meta.GetReplicas()) {
         for (const auto& device: replica.GetDevices()) {
-            resultDevices.emplace_back(device);
+            addDeviceIfNeeded(device);
         }
     }
     for (const auto& migration: Meta.GetMigrations()) {
-        resultDevices.emplace_back(migration.GetTargetDevice());
+        addDeviceIfNeeded(migration.GetTargetDevice());
     }
 
     return resultDevices;

@@ -209,6 +209,7 @@ struct TEvVolumePrivate
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
         TVector<TString> RemovedLaggingDevices;
+        TVector<TString> UnavailableAgentIds;
         NProto::EVolumeIOMode IOMode;
         TInstant IOModeTs;
         bool MuteIOErrors;
@@ -219,6 +220,7 @@ struct TEvVolumePrivate
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
                 TVector<TString> removedLaggingDevices,
+                TVector<TString> unavailableAgentIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
@@ -227,6 +229,7 @@ struct TEvVolumePrivate
             , Replicas(std::move(replicas))
             , FreshDeviceIds(std::move(freshDeviceIds))
             , RemovedLaggingDevices(std::move(removedLaggingDevices))
+            , UnavailableAgentIds(std::move(unavailableAgentIds))
             , IOMode(ioMode)
             , IOModeTs(ioModeTs)
             , MuteIOErrors(muteIOErrors)

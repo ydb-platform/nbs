@@ -899,8 +899,8 @@ void TDiskRegistryState::RemoveAgentFromNode(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
     TInstant timestamp,
-    TVector<TDiskId>* affectedDisks,
-    TVector<TDiskId>* disksToReallocate)
+    TVector<TDiskId>& affectedDisks,
+    THashSet<TDiskId>& disksToReallocate)
 {
     Y_DEBUG_ABORT_UNLESS(agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE);
 
@@ -912,8 +912,6 @@ void TDiskRegistryState::RemoveAgentFromNode(
         timestamp,
         "lost");
 
-    THashSet<TDiskId> diskIds;
-
     for (auto& d: *agent.MutableDevices()) {
         d.SetNodeId(0);
 
@@ -921,21 +919,16 @@ void TDiskRegistryState::RemoveAgentFromNode(
         auto diskId = DeviceList.FindDiskId(uuid);
 
         if (!diskId.empty()) {
-            diskIds.emplace(std::move(diskId));
+            disksToReallocate.emplace(std::move(diskId));
         }
     }
 
     AgentList.RemoveAgentFromNode(nodeId);
     DeviceList.UpdateDevices(agent, DevicePoolConfigs, nodeId);
 
-    for (const auto& id: diskIds) {
-        AddReallocateRequest(db, id);
-        disksToReallocate->push_back(id);
-    }
-
     db.UpdateAgent(agent);
 
-    ApplyAgentStateChange(db, agent, timestamp, *affectedDisks);
+    ApplyAgentStateChange(db, agent, timestamp, affectedDisks);
 }
 
 auto TDiskRegistryState::RegisterAgent(
@@ -948,7 +941,7 @@ auto TDiskRegistryState::RegisterAgent(
     }
 
     TVector<TDiskId> affectedDisks;
-    TVector<TDiskId> disksToReallocate;
+    THashSet<TDiskId> disksToReallocate;
     TVector<TString> devicesToDisableIO;
 
     try {
@@ -967,8 +960,8 @@ auto TDiskRegistryState::RegisterAgent(
                 db,
                 *buddy,
                 timestamp,
-                &affectedDisks,
-                &disksToReallocate);
+                affectedDisks,
+                disksToReallocate);
         }
 
         const auto& knownAgent = KnownAgents.Value(
@@ -1079,10 +1072,7 @@ auto TDiskRegistryState::RegisterAgent(
         }
 
         if (r.PrevNodeId != agent.GetNodeId()) {
-            for (const auto& id: diskIds) {
-                AddReallocateRequest(db, id);
-                disksToReallocate.push_back(id);
-            }
+            disksToReallocate.insert(diskIds.begin(), diskIds.end());
         }
 
         if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
@@ -1094,6 +1084,8 @@ auto TDiskRegistryState::RegisterAgent(
                 "back from unavailable");
 
             ApplyAgentStateChange(db, agent, timestamp, affectedDisks);
+
+            disksToReallocate.insert(diskIds.begin(), diskIds.end());
         }
 
         UpdateAgent(db, agent);
@@ -1103,9 +1095,14 @@ auto TDiskRegistryState::RegisterAgent(
         return MakeError(E_FAIL, CurrentExceptionMessage());
     }
 
+    for (const auto& diskId: disksToReallocate) {
+        AddReallocateRequest(db, diskId);
+    }
+
     return TAgentRegistrationResult{
         .AffectedDisks = std::move(affectedDisks),
-        .DisksToReallocate = std::move(disksToReallocate),
+        .DisksToReallocate =
+            {disksToReallocate.begin(), disksToReallocate.end()},
         .DevicesToDisableIO = std::move(devicesToDisableIO)};
 }
 
@@ -5079,7 +5076,14 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
 
     ChangeAgentState(*agent, newState, timestamp, std::move(reason));
 
+    size_t sizeBefore = affectedDisks.size();
     ApplyAgentStateChange(db, *agent, timestamp, affectedDisks);
+
+    if (newState == NProto::AGENT_STATE_UNAVAILABLE && newState != oldState) {
+        for (auto i = sizeBefore; i < affectedDisks.size(); ++i) {
+            AddReallocateRequest(db, affectedDisks[i]);
+        }
+    }
 
     return error;
 }
@@ -7956,6 +7960,32 @@ bool TDiskRegistryState::MigrationCanBeStarted(
     }
 
     return true;
+}
+
+auto TDiskRegistryState::GetUnavailableAgentsForDisk(const TDiskId& diskId)
+    -> TVector<TAgentId>
+{
+    auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return {};
+    }
+
+    TVector<TAgentId> unavailableAgents;
+
+    for (const auto& uuid: disk->Devices) {
+        auto agentId = DeviceList.FindAgentId(uuid);
+        const auto* agent = AgentList.FindAgent(agentId);
+        if (!agent) {
+            continue;
+        }
+
+        if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
+            unavailableAgents.emplace_back(agentId);
+        }
+    }
+
+    SortUnique(unavailableAgents);
+    return unavailableAgents;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
