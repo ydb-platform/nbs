@@ -26,9 +26,11 @@ runs:
         curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
     - name: configure nebius cli
       shell: bash
+      with:
+        SA_JSON: ${{ inputs.sa_json }}
       run: |
         cat <<EOF > sa.json
-        ${sa_json}
+        ${SA_JSON}
         EOF
 
         jq -r '."subject-credentials"."private-key"' sa.json > private.pem
@@ -47,9 +49,11 @@ runs:
     - id: result
       name: print ipv4 address of the vm
       shell: bash
+      env:
+        INSTANCE_ID: ${{ inputs.instance_id }}
       run: |
-        export GITHUB_RUNNER_IPV4=$(nebius compute instance get ${{ inputs.instance_id }} --format json | jq -r .network_interfaces[].primary_v4_address.one_to_one_nat.address)
-        export GITHUB_RUNNER_IPV4=$(nebius compute instance get --id ${{ inputs.instance_id }} --format json | jq -r '.status.network_interfaces[0].public_ip_address.address')
-        echo "GITHUB_RUNNER_IPV4=${GITHUB_RUNNER_IPV4}" >> $GITHUB_ENV
+        export GITHUB_RUNNER_IPV4=$(nebius compute instance get "${INSTANCE_ID}" --format json | jq -r .network_interfaces[].primary_v4_address.one_to_one_nat.address)
+        export GITHUB_RUNNER_IPV4=$(nebius compute instance get --id "${INSTANCE_ID}" --format json | jq -r '.status.network_interfaces[0].public_ip_address.address')
+        echo "GITHUB_RUNNER_IPV4=${GITHUB_RUNNER_IPV4}" | tee -a $GITHUB_ENV
         echo "runner_ipv4=${GITHUB_RUNNER_IPV4}" >> $GITHUB_OUTPUT
         echo "ssh github@${GITHUB_RUNNER_IPV4}" | tee -a $GITHUB_SUMMARY

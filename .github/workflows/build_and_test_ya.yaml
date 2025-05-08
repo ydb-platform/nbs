@@ -86,6 +86,10 @@ on:
         type: string
         default: "yes"
         description: "Truncate enabled"
+      number_of_retries:
+        type: string
+        default: "1"
+        description: "Number of retries for tests"
     outputs:
       sleep_after_tests:
         description: "sleep_after_tests"
@@ -144,6 +148,23 @@ jobs:
         echo "ALGO=lz4" | sudo tee -a /etc/default/zramswap
         sudo systemctl restart zramswap
 
+    - name: Create background process that will adjust oom_score_adj for selection of processes
+      shell: bash
+      run: |
+        set -x
+        while true; do
+          echo "$(date) done sleeping" | tee -a /tmp/oom_score_adj.log
+          for pid in $(pgrep -f ydbd) $(pgrep -f qemu-system-x86_64); do
+            # check if process is already having oom_score_adj set to 500 if not then set it
+            if [ "$(cat /proc/$pid/oom_score_adj)" != "1000" ]; then
+              echo 1000 | sudo tee /proc/$pid/oom_score_adj
+              echo "set oom_score_adj=1000 for pid: $pid" | tee -a /tmp/oom_score_adj.log
+            fi
+          done
+          echo "$(date) sleeping for 30s" | tee -a /tmp/oom_score_adj.log
+          sleep 30
+        done &
+
     - name: Build
       uses: ./.github/actions/build
       if: inputs.run_build
@@ -177,6 +198,7 @@ jobs:
         upload_ya_dir: ${{ inputs.upload_ya_dir }}
         clean_ya_dir: ${{ inputs.run_build && 'no' || inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
+        number_of_retries: ${{ inputs.number_of_retries }}
         truncate_enabled: ${{ inputs.truncate_enabled }}
     - id: failure
       name: set sleep_after_tests in case of failure
