@@ -162,6 +162,10 @@ public:
     void DeleteCompactionMap(ui32 blockIndex);
 
     bool ReadCompactionMap(TVector<TCompactionCounter>& compactionMap);
+    bool ReadCompactionMap(
+        TVector<TCompactionCounter>& compactionMap,
+        ui32 firstRangeId,
+        ui32 rangeCount);
 
     //
     // UsedBlocks
