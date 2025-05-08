@@ -212,7 +212,7 @@ jobs:
       clean_ya_dir: ${{ github.event_name == 'workflow_dispatch' && 'no' || inputs.clean_ya_dir }}
       use_network_cache: ${{ github.event_name == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
       truncate_enabled: ${{ contains(github.event.pull_request.labels.*.name, 'disable_truncate') && 'no' || 'yes' }}
-      number_of_retries: ${{ github.event_name == 'pull_request_target' && '1' || inputs.number_of_retries }}
+      number_of_retries: ${{ inputs.number_of_retries }}
     secrets: inherit
 
   sleep-if-needed:
