@@ -9,10 +9,9 @@ namespace NCloud::NBlockStore::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t LOCAL_PAGE_SIZE = 4 * 1024;
-constexpr size_t CHUNK_SIZE = LOCAL_PAGE_SIZE * 1024;
-constexpr size_t MAX_CHUNK_ALLOC = CHUNK_SIZE / 4;
-constexpr size_t MAX_FREE_CHUNKS = 10;
+constexpr size_t ChunkSize = 4 * 1024 * 1024;
+constexpr size_t MaxChunkAlloc = ChunkSize / 4;
+constexpr size_t MaxFreeChunks = 10;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -134,7 +133,7 @@ public:
         size_t allocSize = AlignUp(bytesCount, GetPlatformPageSize());
 
         TChunk* chunk;
-        if (!ignoreCache && allocSize <= MAX_CHUNK_ALLOC) {
+        if (!ignoreCache && allocSize <= MaxChunkAlloc) {
             chunk = AcquireChunk(allocSize);
         } else {
             // allocate custom chunk
@@ -199,7 +198,7 @@ private:
             --Stats.FreeChunksCount;
         } else {
             // allocate new chunk
-            chunk = AllocateChunk(CHUNK_SIZE, false);
+            chunk = AllocateChunk(ChunkSize, false);
         }
 
         ActiveChunks.PushFront(chunk);
@@ -213,7 +212,7 @@ private:
         ActiveChunks.Remove(chunk);
         --Stats.ActiveChunksCount;
 
-        if (Stats.FreeChunksCount < MAX_FREE_CHUNKS) {
+        if (Stats.FreeChunksCount < MaxFreeChunks) {
             // keep chunk cached
             chunk->Reset();
 
