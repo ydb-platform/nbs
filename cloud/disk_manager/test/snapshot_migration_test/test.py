@@ -145,30 +145,15 @@ class _MigrationTestSetup:
         self.client_config_path = self.initial_cpl_disk_manager.client_config_file
         self.server_config_path = self.initial_cpl_disk_manager.config_file
         self.secondary_dpl_disk_manager = None
-        self.initial_dpl_pid = self.initial_dpl_disk_manager.pid
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        try:
-            DiskManagerLauncher.stop()
-        except ProcessLookupError as e:
-            # stop() tries to terminate all disk-manager processes created with DiskManagerLauncher
-            # and raises ProcessLookupError, since one of processes is already terminated.
-            # Compare pids list for terminated process pid to ensure we do not miss process crashes.
-            pids = getattr(e, "pids", [])
-            if len(pids) != 1:
-                _logger.error(
-                    "Unexpected %s occurred while stopping Disk-Manager pids: '%s'",
-                    e.__class__.__name__,
-                    ",".join(map(str, pids))
-                )
-                raise e
-            [pid] = pids
-            if self.initial_dpl_pid != pid:
-                raise e
-
+        self.initial_cpl_disk_manager.stop_daemon()
+        self.initial_dpl_disk_manager.stop_daemon()
+        if self.secondary_dpl_disk_manager is not None:
+            self.secondary_dpl_disk_manager.stop_daemon()
         MetadataServiceLauncher.stop()
         NbsLauncher.stop()
         YDBLauncher.stop()
