@@ -102,7 +102,10 @@ STFUNC(TCpuStatsFetcherActor::StateWork)
         HFunc(NKikimr::TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::STATS_SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::STATS_SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
