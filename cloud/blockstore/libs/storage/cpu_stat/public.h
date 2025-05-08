@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cloud/storage/core/libs/diagnostics/stats_fetcher.h"
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 
 #include <memory>
 
