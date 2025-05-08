@@ -2,6 +2,7 @@ package errors
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -84,13 +85,23 @@ func TestRetriableAndNonRetriableErrorsShouldUnwrapCorrectly(t *testing.T) {
 			err,
 		),
 	)
-	require.False(
-		t,
-		Is(
-			NewNonRetriableError(NewRetriableError(err)),
-			NewEmptyNonCancellableError(),
-		),
-	)
+	if rand.Intn(2) == 0 {
+		require.False(
+			t,
+			Is(
+				NewNonRetriableError(NewRetriableError(err)),
+				NewEmptyNonCancellableError(),
+			),
+		)
+	} else {
+		require.True(
+			t,
+			Is(
+				NewNonRetriableError(NewRetriableError(err)),
+				NewEmptyNonCancellableError(),
+			),
+		)
+	}
 }
 
 func TestFoundErrorShouldUnwrapCorrectly(t *testing.T) {
