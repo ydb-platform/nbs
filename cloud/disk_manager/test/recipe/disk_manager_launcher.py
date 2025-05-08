@@ -535,7 +535,10 @@ class DiskManagerLauncher:
         register_process(SERVICE_NAME, self.__daemon.pid)
 
     def stop_daemon(self):
-        self.__daemon.stop()
+        try:
+            self.__daemon.stop()
+        except ProcessLookupError:
+            pass
 
     @staticmethod
     def stop():
