@@ -296,7 +296,10 @@ STFUNC(TWriteBlobActor::StateWork)
         HFunc(TEvBlobStorage::TEvPutResult, HandlePutResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

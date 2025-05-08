@@ -33,6 +33,70 @@ runs:
         test_threads=0
         if [[ $tests_size == *"large"* ]]; then
           case "$vm_preset" in
+            # for large tests we need 6 vcpu per thread
+            "256vcpu-1024gb")
+                test_threads=42
+                build_threads=256
+            ;;
+            "224vcpu-896gb")
+                test_threads=38
+                build_threads=224
+            ;;
+            "192vcpu-768gb")
+                test_threads=32
+                build_threads=192
+            ;;
+            "160vcpu-640gb")
+                test_threads=26
+                build_threads=160
+            ;;
+            "128vcpu-512gb")
+                test_threads=21
+                build_threads=128
+            ;;
+            "96vcpu-384gb")
+                test_threads=16
+                build_threads=96
+            ;;
+            "80vcpu-320gb")
+                test_threads=14
+                build_threads=80
+            ;;
+            "64vcpu-256gb")
+                test_threads=10
+                build_threads=64
+            ;;
+            "48vcpu-192gb")
+                test_threads=8
+                build_threads=48
+            ;;
+            "32vcpu-128gb")
+                test_threads=5
+                build_threads=32
+            ;;
+            "16vcpu-64gb")
+                test_threads=3
+                build_threads=16
+            ;;
+            "8vcpu-32gb")
+                test_threads=2
+                build_threads=8
+            ;;
+            "4vcpu-16gb")
+                test_threads=1
+                build_threads=4
+            ;;
+            "2vcpu-8gb")
+                test_threads=1
+                build_threads=2
+            ;;
+            *)
+              echo "Unknown vm_preset: $vm_preset"
+              exit 1
+            ;;
+          esac
+        else
+          case "$vm_preset" in
             "256vcpu-1024gb")
                 test_threads=64
                 build_threads=256
@@ -58,69 +122,6 @@ runs:
                 build_threads=96
             ;;
             "80vcpu-320gb")
-                test_threads=16
-                build_threads=80
-            ;;
-            "64vcpu-256gb")
-                test_threads=10
-                build_threads=64
-            ;;
-            "48vcpu-192gb")
-                test_threads=8
-                build_threads=48
-            ;;
-            "32vcpu-128gb")
-                test_threads=6
-                build_threads=32
-            ;;
-            "16vcpu-64gb")
-                test_threads=4
-                build_threads=16
-            ;;
-            "8vcpu-32gb")
-                test_threads=3
-                build_threads=8
-            ;;
-            "4vcpu-16gb")
-                test_threads=2
-                build_threads=4
-            ;;
-            "2vcpu-8gb")
-                test_threads=1
-                build_threads=2
-            ;;
-            *)
-              echo "Unknown vm_preset: $vm_preset"
-              exit 1
-            ;;
-          esac
-        else
-          case "$vm_preset" in
-          "256vcpu-1024gb")
-                test_threads=64
-                build_threads=256
-            ;;
-            "224vcpu-896gb")
-                test_threads=56
-                build_threads=224
-            ;;
-            "192vcpu-768gb")
-                test_threads=48
-                build_threads=192
-            ;;
-            "160vcpu-640gb")
-                test_threads=40
-                build_threads=160
-            ;;
-            "128vcpu-512gb")
-                test_threads=32
-                build_threads=128
-            ;;
-            "96vcpu-384gb")
-                test_threads=28
-                build_threads=96
-            ;;
-            "80vcpu-320gb")
                 test_threads=20
                 build_threads=80
             ;;
@@ -137,15 +138,15 @@ runs:
                 build_threads=32
             ;;
             "16vcpu-64gb")
-                test_threads=6
+                test_threads=4
                 build_threads=16
             ;;
             "8vcpu-32gb")
-                test_threads=4
+                test_threads=2
                 build_threads=8
             ;;
             "4vcpu-16gb")
-                test_threads=2
+                test_threads=1
                 build_threads=4
             ;;
             "2vcpu-8gb")
@@ -159,16 +160,12 @@ runs:
           esac
         fi
         link_threads=$(( test_threads * 2 ))
-
         {
           echo "build_threads=$build_threads"
           echo "test_threads=$test_threads"
           echo "link_threads=$link_threads"
-        } >> $GITHUB_OUTPUT
-        echo "build_threads=$build_threads"
-        echo "test_threads=$test_threads"
-        echo "link_threads=$link_threads"
-
+        } | tee -a $GITHUB_OUTPUT
+        
       env:
         vm_preset: ${{ inputs.vm_preset || '80vcpu-320gb' }}
         tests_size: ${{ inputs.tests_size || 'small,medium,large' }}

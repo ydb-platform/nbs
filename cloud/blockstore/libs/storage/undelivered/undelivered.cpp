@@ -92,7 +92,10 @@ STFUNC(TUndeliveredHandlerActor::StateWork)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

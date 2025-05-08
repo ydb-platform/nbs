@@ -1,3 +1,7 @@
+# Setup VSCode
+
+./ya ide vscode-go -P workspace/csi-driver --no-gopls-fix cloud/blockstore/tools/csi_driver
+
 # Install local k8s cluster (using Minikube)
 
 \# Install kubectl

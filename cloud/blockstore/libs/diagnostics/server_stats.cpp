@@ -323,6 +323,7 @@ void TServerStats::RequestStarted(
         static_cast<ui32>(req.MediaKind),
         callContext.RequestId,
         req.DiskId,
+        req.StartIndex,
         req.RequestBytes);
 
     req.RequestTimestamp = TInstant::Now();

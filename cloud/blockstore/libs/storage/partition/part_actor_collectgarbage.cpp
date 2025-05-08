@@ -295,7 +295,10 @@ STFUNC(TCollectGarbageActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvDeleteGarbageResponse, HandleDeleteGarbageResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -510,7 +513,10 @@ STFUNC(TCollectGarbageHardActor::StateWork)
         HFunc(TEvBlobStorage::TEvCollectGarbageResult, HandleCollectGarbageResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

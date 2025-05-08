@@ -120,7 +120,10 @@ STFUNC(TDescribeSessionsActionActor::StateWork)
             HandleDescribeSessionsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

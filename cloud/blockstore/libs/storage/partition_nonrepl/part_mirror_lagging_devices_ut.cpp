@@ -202,6 +202,7 @@ struct TTestEnv
 
         NProto::TStorageServiceConfig storageConfig = std::move(configBase);
         storageConfig.SetMaxMigrationIoDepth(4);
+        storageConfig.SetLaggingDeviceMaxMigrationIoDepth(4);
         storageConfig.SetLaggingDevicePingInterval(
             TDuration::Seconds(30).MilliSeconds());
         Config = std::make_shared<TStorageConfig>(
@@ -967,8 +968,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         env.ReadAndCheckContents(secondRow, 'B');
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            Count(readActors, env.ReplicaActors[1]) +
-                Count(readActors, env.ReplicaActors[2]));
+            Count(readActors, env.ReplicaActors[0]) +
+                Count(readActors, env.ReplicaActors[1]));
         readActors.clear();
 
         env.ReadAndCheckContents(
@@ -985,8 +986,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             'A');
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            Count(readActors, env.ReplicaActors[1]) +
-                Count(readActors, env.ReplicaActors[2]));
+            Count(readActors, env.ReplicaActors[0]) +
+                Count(readActors, env.ReplicaActors[1]));
         readActors.clear();
 
         // uuid-3 is ok now.
@@ -1005,8 +1006,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         env.ReadAndCheckContents(firstAndSecondRows, 'B');
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            Count(readActors, env.ReplicaActors[1]) +
-                Count(readActors, env.ReplicaActors[2]));
+            Count(readActors, env.ReplicaActors[0]) +
+                Count(readActors, env.ReplicaActors[1]));
         readActors.clear();
 
         // Poison pill has killed the proxy actor.

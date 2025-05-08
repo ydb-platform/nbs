@@ -163,7 +163,10 @@ private:
             HFunc(TEvents::TEvWakeup, HandleTimeout);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SERVICE_PROXY,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }

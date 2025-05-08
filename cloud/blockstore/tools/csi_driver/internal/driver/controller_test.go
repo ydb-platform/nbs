@@ -15,25 +15,16 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string, isLocalFsOverride bool) {
+func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string) {
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsClientMock()
-	nfsLocalClient := mocks.NewNfsClientMock()
 
 	ctx := context.Background()
 	volumeID := "test-volume-id-42"
 	var blockSize uint32 = 4096
 	var blockCount uint64 = 1024
 
-	localFsOverrides := make(LocalFilestoreOverrideMap)
-	if isLocalFsOverride {
-		localFsOverrides[volumeID] = LocalFilestoreOverride{
-			FsId:           volumeID,
-			LocalMountPath: "/tmp/mnt/local_mount",
-		}
-	}
-
-	controller := newNBSServerControllerService(localFsOverrides, nbsClient, nfsClient, nfsLocalClient)
+	controller := newNBSServerControllerService(nbsClient, nfsClient)
 
 	if parameters["backend"] == "nbs" {
 		nbsClient.On("CreateVolume", ctx, &nbs.TCreateVolumeRequest{
@@ -48,13 +39,8 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string, isLoca
 		}).Return(&nbs.TCreateVolumeResponse{}, nil)
 	}
 
-	expectedNfsClient := nfsClient
-	if isLocalFsOverride {
-		expectedNfsClient = nfsLocalClient
-	}
-
 	if parameters["backend"] == "nfs" {
-		expectedNfsClient.On("CreateFileStore", ctx, &nfs.TCreateFileStoreRequest{
+		nfsClient.On("CreateFileStore", ctx, &nfs.TCreateFileStoreRequest{
 			FileSystemId:     volumeID,
 			CloudId:          "monitoring",
 			FolderId:         "monitoring",
@@ -78,7 +64,7 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string, isLoca
 		DiskId: volumeID,
 	}).Return(&nbs.TDestroyVolumeResponse{}, nil)
 
-	expectedNfsClient.On("DestroyFileStore", ctx, &nfs.TDestroyFileStoreRequest{
+	nfsClient.On("DestroyFileStore", ctx, &nfs.TDestroyFileStoreRequest{
 		FileSystemId: volumeID,
 	}).Return(&nfs.TDestroyFileStoreResponse{}, nil)
 
@@ -97,7 +83,6 @@ func TestCreateDeleteNbsDisk(t *testing.T) {
 			"base-disk-checkpoint-id":          "testBaseCheckpointId",
 			"csi.storage.k8s.io/pvc/namespace": "nbs",
 		},
-		false, // don't override local fs
 	)
 
 	doTestCreateDeleteVolume(
@@ -107,7 +92,6 @@ func TestCreateDeleteNbsDisk(t *testing.T) {
 			"storage-media-kind":               "ssd_nonrepl",
 			"csi.storage.k8s.io/pvc/namespace": "nbs",
 		},
-		false, // don't override local fs
 	)
 }
 
@@ -118,7 +102,6 @@ func TestCreateDeleteNfsFilesystem(t *testing.T) {
 			"backend":                          "nfs",
 			"csi.storage.k8s.io/pvc/namespace": "monitoring",
 		},
-		false, // don't override local fs
 	)
 }
 
@@ -129,7 +112,6 @@ func TestCreateDeleteNfsLocalFilesystem(t *testing.T) {
 			"backend":                          "nfs",
 			"csi.storage.k8s.io/pvc/namespace": "monitoring",
 		},
-		true, // override local fs
 	)
 }
 

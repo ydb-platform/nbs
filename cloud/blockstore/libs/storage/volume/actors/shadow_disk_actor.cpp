@@ -383,7 +383,10 @@ STFUNC(TAcquireShadowDiskActor::Work)
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -851,6 +854,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         InitWork(
             ctx,
             SrcActorId,
+            SrcActorId,
             DstActorId,
             true,   // takeOwnershipOverActors
             std::make_unique<TMigrationTimeoutCalculator>(
@@ -1215,9 +1219,16 @@ void TShadowDiskActor::HandleGetChangedBlocks(
 
         auto response =
             std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
-        *response->Record.MutableError() = MakeError(
-            E_REJECTED,
-            "Can't GetChangedBlocks when shadow disk is not ready.");
+
+        if (State == EActorState::Error) {
+            *response->Record.MutableError() = MakeError(
+                E_INVALID_STATE,
+                "Can't GetChangedBlocks when shadow disk is broken.");
+        } else {
+            *response->Record.MutableError() = MakeError(
+                E_REJECTED,
+                "Can't GetChangedBlocks when shadow disk is not ready.");
+        }
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;

@@ -980,6 +980,18 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             0,
             counters->GetSubgroup("type", "ssd")
                 ->GetCounter("DownDisks")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test1")
+                ->GetSubgroup("instance", "instance")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetCounter("HasDowntime")
+                ->Val());
 
         volumeStats->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("DownDisks")->Val());
@@ -987,6 +999,18 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             1,
             counters->GetSubgroup("type", "ssd")
                 ->GetCounter("DownDisks")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test1")
+                ->GetSubgroup("instance", "instance")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetCounter("HasDowntime")
+                ->Val());
     }
 
     Y_UNIT_TEST(ShouldTrackDownDisksForIncompleteRequests)

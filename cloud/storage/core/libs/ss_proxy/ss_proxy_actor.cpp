@@ -121,7 +121,10 @@ STFUNC(TSSProxyActor::StateWork)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, Config.LogComponent);
+                HandleUnexpectedEvent(
+                    ev,
+                    Config.LogComponent,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

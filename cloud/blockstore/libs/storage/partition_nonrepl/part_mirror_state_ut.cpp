@@ -184,7 +184,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             1024,
             replica0.Config->GetDevices()[0].GetBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(
-            "4_1",
+            "1_2",
             replica0.Config->GetDevices()[1].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             1024,
@@ -205,7 +205,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
         const auto& migrations0 = replica0.Migrations;
         UNIT_ASSERT_VALUES_EQUAL(1, migrations0.size());
 
-        UNIT_ASSERT_VALUES_EQUAL("4_1", migrations0[0].GetSourceDeviceId());
+        UNIT_ASSERT_VALUES_EQUAL(TString(), migrations0[0].GetSourceDeviceId());
         UNIT_ASSERT_VALUES_EQUAL(
             "1_2",
             migrations0[0].GetTargetDevice().GetDeviceUUID());
@@ -221,7 +221,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             1024,
             replica1.Config->GetDevices()[0].GetBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(
-            "",
+            "4_1",
             replica1.Config->GetDevices()[1].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             1024,
@@ -289,7 +289,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         const auto& replica0 = state.GetReplicaInfos()[0];
         UNIT_ASSERT_VALUES_EQUAL(
-            "3_1",
+            "1_1",
             replica0.Config->GetDevices()[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             1024,
@@ -316,7 +316,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
         const auto& migrations0 = replica0.Migrations;
         UNIT_ASSERT_VALUES_EQUAL(1, migrations0.size());
 
-        UNIT_ASSERT_VALUES_EQUAL("3_1", migrations0[0].GetSourceDeviceId());
+        UNIT_ASSERT_VALUES_EQUAL(TString(), migrations0[0].GetSourceDeviceId());
         UNIT_ASSERT_VALUES_EQUAL(
             "1_1",
             migrations0[0].GetTargetDevice().GetDeviceUUID());
@@ -326,7 +326,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         const auto& replica1 = state.GetReplicaInfos()[1];
         UNIT_ASSERT_VALUES_EQUAL(
-            "",
+            "3_1",
             replica1.Config->GetDevices()[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             1024,
@@ -384,7 +384,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         const auto& replica0 = state.GetReplicaInfos()[0];
         UNIT_ASSERT_VALUES_EQUAL(
-            "3_1",
+            "1_1",
             replica0.Config->GetDevices()[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             1024,
@@ -411,7 +411,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
         const auto& migrations0 = replica0.Migrations;
         UNIT_ASSERT_VALUES_EQUAL(1, migrations0.size());
 
-        UNIT_ASSERT_VALUES_EQUAL("3_1", migrations0[0].GetSourceDeviceId());
+        UNIT_ASSERT_VALUES_EQUAL(TString(), migrations0[0].GetSourceDeviceId());
         UNIT_ASSERT_VALUES_EQUAL(
             "1_1",
             migrations0[0].GetTargetDevice().GetDeviceUUID());
@@ -421,7 +421,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         const auto& replica1 = state.GetReplicaInfos()[1];
         UNIT_ASSERT_VALUES_EQUAL(
-            "",
+            "3_1",
             replica1.Config->GetDevices()[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             1024,

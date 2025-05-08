@@ -89,7 +89,7 @@ public:
         auto guard = Guard(Lock);
 
         auto buffer = req->ResponseBuffer.Head(responseBytes);
-        auto* reqCtx = static_cast<TDeviceRequestContext*>(req->Context.get());
+        auto* reqCtx = static_cast<TDeviceRequestRdmaContext*>(req->Context.get());
 
         DeviceIndices.emplace_back(reqCtx->DeviceIdx);
 
@@ -97,6 +97,7 @@ public:
             HandleResult(buffer);
         } else {
             Error = NRdma::ParseError(buffer);
+            ConvertRdmaErrorIfNeeded(status, Error);
             if (NeedToNotifyAboutDeviceRequestError(Error)) {
                 ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
             }
@@ -198,10 +199,13 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
     };
 
     TVector<TDeviceRequestInfo> requests;
+    TRequestContext sentRequestCtx;
 
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
+
+        sentRequestCtx.emplace_back(r.DeviceIdx);
 
         NProto::TZeroDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
@@ -215,7 +219,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
 
-        auto context = std::make_unique<TDeviceRequestContext>();
+        auto context = std::make_unique<TDeviceRequestRdmaContext>();
         context->DeviceIdx = r.DeviceIdx;
 
         auto [req, err] = ep->AllocateRequest(
@@ -229,6 +233,8 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
                 "Failed to allocate rdma memory for ZeroDeviceBlocksRequest"
                 ", error: %s",
                 FormatError(err).c_str());
+
+            NotifyDeviceTimedOutIfNeeded(ctx, r.Device.GetDeviceUUID());
 
             NCloud::Reply(
                 ctx,
@@ -247,13 +253,14 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         requests.push_back({std::move(ep), std::move(req)});
     }
 
-    for (auto& request: requests) {
-        request.Endpoint->SendRequest(
+    for (size_t i = 0; i < requests.size(); ++i) {
+        auto& request = requests[i];
+        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId);
+    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -250,7 +250,10 @@ STFUNC(TVolumeSessionActor::StateDescribe)
             PostponeChangeVolumeBindingRequest);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -302,8 +305,11 @@ STFUNC(TVolumeSessionActor::StateWork)
         IgnoreFunc(TEvService::TEvUnmountVolumeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
-        break;
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
+            break;
     }
 }
 

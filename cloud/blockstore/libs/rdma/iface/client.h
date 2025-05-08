@@ -111,6 +111,10 @@ struct IClientEndpoint
     virtual void CancelRequest(ui64 reqId) = 0;
 
     virtual NThreading::TFuture<void> Stop() = 0;
+
+    // Attempts to do an instant reconnect. Does nothing if the connection is
+    // established.
+    virtual void TryForceReconnect() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

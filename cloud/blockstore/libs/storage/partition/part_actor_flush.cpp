@@ -374,7 +374,10 @@ STFUNC(TFlushActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

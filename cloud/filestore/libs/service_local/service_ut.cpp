@@ -21,6 +21,7 @@
 #include <util/random/random.h>
 
 #include <algorithm>
+#include <sys/statfs.h>
 
 namespace NCloud::NFileStore {
 
@@ -746,6 +747,12 @@ struct TTestBootstrap
         return request;
     }
 
+    auto CreateStatFileStoreRequest()
+    {
+        auto request = CreateRequest<NProto::TStatFileStoreRequest>();
+        return request;
+    }
+
 #define FILESTORE_DECLARE_METHOD(name, ns)                                         \
     template <typename... Args>                                                    \
     NProto::T##name##Response name(Args&&... args)                                 \
@@ -930,6 +937,41 @@ TVector<TString> ListNames(TTestBootstrap& bootstrap, ui64 node)
         });
 
     return names;
+}
+
+std::pair<NProto::TStatFileStoreResponse, struct statfs> GetFileSystemStat(
+    TTestBootstrap& bootstrap)
+{
+    // Retry to avoid inconsistent statfs results due to concurrent filesystem
+    // modifications by other processes
+    uint64_t retryCount = 0;
+    while (true) {
+        struct statfs stfs1 = {};
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statfs(bootstrap.Cwd->GetName().c_str(), &stfs1));
+
+        auto response = bootstrap.StatFileStore();
+
+        struct statfs stfs2 = {};
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statfs(bootstrap.Cwd->GetName().c_str(), &stfs2));
+
+        if (memcmp(&stfs1, &stfs2, sizeof(stfs1)) == 0) {
+            return {response, stfs1};
+        }
+
+        retryCount++;
+        Sleep(TDuration::MilliSeconds(100));
+        if (retryCount % 100 == 0) {
+            Cerr << "unable to get consistent statfs, retry count:"
+                 << retryCount << Endl;
+        }
+    }
+
+    UNIT_ASSERT_C(false, "unable to get consistent statfs, fs keeps changing");
+    return {};
 }
 
 }   // namespace
@@ -2188,6 +2230,29 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         CheckReadAndWriteDataWithDirectIo(4096);
     }
 
+    Y_UNIT_TEST(ShouldStatFileStore)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        auto [response, stfs] = GetFileSystemStat(bootstrap);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetFileStore().GetBlockSize(),
+            stfs.f_bsize);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetFileStore().GetBlocksCount(),
+            stfs.f_blocks);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetFileStore().GetNodesCount(),
+            stfs.f_files);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetFileStore().GetBlocksCount() -
+                response.GetStats().GetUsedBlocksCount(),
+            stfs.f_bfree);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetFileStore().GetNodesCount() -
+                response.GetStats().GetUsedNodesCount(),
+            stfs.f_ffree);
+    }
 };
 
 }   // namespace NCloud::NFileStore

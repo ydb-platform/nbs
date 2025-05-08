@@ -55,6 +55,14 @@ runs:
           echo "Cleaning ya dir"
           rm -rf /home/github/.ya/
         fi
+    - name: Setup cache password file
+      shell: bash
+      run: |
+        export BAZEL_REMOTE_PASSWORD_FILE=$(mktemp)
+        echo -n "${{ inputs.bazel_remote_password }}" > "$BAZEL_REMOTE_PASSWORD_FILE"
+        echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
+        chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
+        chown github:github "$BAZEL_REMOTE_PASSWORD_FILE"
 
     - name: build
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -83,7 +91,7 @@ runs:
           # shellcheck disable=SC2157
           if [ -n "${{ inputs.bazel_remote_username }}" ]; then
             extra_params+=(--bazel-remote-username "${{ inputs.bazel_remote_username }}")
-            extra_params+=(--bazel-remote-password "${{ inputs.bazel_remote_password }}")
+            extra_params+=(--bazel-remote-password-file="$BAZEL_REMOTE_PASSWORD_FILE")
             extra_params+=(--add-result .o)
           fi
 
@@ -174,7 +182,7 @@ runs:
           echo "/home/github/.ya/tools/ not found"
         fi
         date
-        choom -n 1 -- sudo -E -H -u github ./ya make -k -j${{ inputs.build_threads }} --build "${build_type}" --force-build-depends -T --stat  \
+        sudo -E -H -u github ./ya make -k -j${{ inputs.build_threads }} --build "${build_type}" --force-build-depends -T --stat  \
           --log-file "$TMP_DIR/ya_log.txt" --evlog-file "$TMP_DIR/ya_evlog.jsonl" \
           --dump-graph --dump-graph-to-file "$TMP_DIR/ya_graph.json" \
           --cache-size 512G --link-threads "${{ inputs.link_threads }}" \

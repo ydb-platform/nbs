@@ -23,7 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceChecksumRequestContext: public TDeviceRequestContext
+struct TDeviceChecksumRequestContext: public TDeviceRequestRdmaContext
 {
     ui64 RangeStartIndex = 0;
     ui32 RangeSize = 0;
@@ -124,6 +124,7 @@ public:
             HandleResult(*reqCtx, buffer);
         } else {
             Error = NRdma::ParseError(buffer);
+            ConvertRdmaErrorIfNeeded(status, Error);
             if (NeedToNotifyAboutDeviceRequestError(Error)) {
                 ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
             }
@@ -233,6 +234,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
     };
 
     TVector<TDeviceRequestInfo> requests;
+    TRequestContext sentRequestCtx;
 
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
@@ -241,6 +243,8 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         dc->RangeStartIndex = r.BlockRange.Start;
         dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
         dc->DeviceIdx = r.DeviceIdx;
+
+        sentRequestCtx.emplace_back(r.DeviceIdx);
 
         NProto::TChecksumDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
@@ -261,6 +265,8 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
                 ", error: %s",
                 FormatError(err).c_str());
 
+            NotifyDeviceTimedOutIfNeeded(ctx, r.Device.GetDeviceUUID());
+
             NCloud::Reply(
                 ctx,
                 *requestInfo,
@@ -278,13 +284,14 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         requests.push_back({std::move(ep), std::move(req)});
     }
 
-    for (auto& request: requests) {
-        request.Endpoint->SendRequest(
+    for (size_t i = 0; i < requests.size(); ++i) {
+        auto& request = requests[i];
+        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddReadRequest(requestId);
+    RequestsInProgress.AddReadRequest(requestId, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

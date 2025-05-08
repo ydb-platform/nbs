@@ -37,7 +37,7 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
           // Since this actor doesn't own source or destination actors, it won't
           // receive any stats and shouldn't send any either.
           TActorId(),   //  statActorId
-          config->GetMaxMigrationIoDepth(),
+          config->GetLaggingDeviceMaxMigrationIoDepth(),
           partConfig->GetParentActorId())
     , Config(std::move(config))
     , PartConfig(std::move(partConfig))
@@ -56,10 +56,11 @@ void TLaggingAgentMigrationActor::OnBootstrap(const TActorContext& ctx)
     InitWork(
         ctx,
         SourceActorId,
+        SourceActorId,
         TargetActorId,
         false,   // takeOwnershipOverActors
         std::make_unique<TMigrationTimeoutCalculator>(
-            Config->GetMaxMigrationBandwidth(),
+            Config->GetLaggingDeviceMaxMigrationBandwidth(),
             Config->GetExpectedDiskAgentSize(),
             PartConfig));
 }
@@ -139,6 +140,12 @@ void TLaggingAgentMigrationActor::OnMigrationError(const TActorContext& ctx)
         "[%s] Lagging agent %s migration failed",
         PartConfig->GetName().c_str(),
         AgentId.c_str());
+}
+
+NActors::TActorId
+TLaggingAgentMigrationActor::GetActorToLockAndDrainRange() const
+{
+    return SourceActorId;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -132,7 +132,10 @@ private:
             HFunc(TResponseEvent, HandleResponse);
 
             default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE_PROXY,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -238,7 +241,10 @@ private:
             HFunc(TEvents::TEvCompleted, HandleCompleted)
 
             default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE_PROXY,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }

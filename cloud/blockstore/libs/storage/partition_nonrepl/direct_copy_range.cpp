@@ -188,10 +188,14 @@ void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
     using EExecutionSide =
         TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
 
-    ProcessError(
-        *NActors::TActorContext::ActorSystem(),
-        *TargetInfo->PartConfig,
-        error);
+    if (TargetInfo) {
+        // If the target info is null, it means that we have failed before the
+        // reading stage and there is no need to process errors.
+        ProcessError(
+            *NActors::TActorContext::ActorSystem(),
+            *TargetInfo->PartConfig,
+            error);
+    }
 
     const auto writeTs = StartTs + ReadDuration;
     auto response =
@@ -350,7 +354,10 @@ STFUNC(TDirectCopyRangeActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleRangeMigrationTimeout);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -251,7 +251,10 @@ STFUNC(TCreateDiskRegistryActor::StateWork)
         HFunc(TEvHiveProxy::TEvCreateTabletResponse, HandleCreateTablet);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
