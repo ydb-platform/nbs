@@ -99,6 +99,9 @@ runs:
           --dump-graph-to-file "$TMP_DIR/ya_graph.json" 
           --cache-size 512G
         )
+        # strip quotes from the string
+        # TODO: remove it when pr.yaml gets updated
+        BUILD_TARGET=${BUILD_TARGET//\"/}
 
         if [ -n "$BUILD_TARGET" ]; then
           readarray -d ',' -t targets < <(printf "%s" "$BUILD_TARGET")

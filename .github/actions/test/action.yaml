@@ -173,6 +173,10 @@ runs:
             ;;
         esac
 
+        # strip quotes from the string
+        # TODO: remove it when pr.yaml gets updated
+        TEST_TARGET=${TEST_TARGET//\"/}
+
         if [ -n "$TEST_TARGET" ]; then
           readarray -d ',' -t targets < <(printf "%s" "$TEST_TARGET")
           for target in "${targets[@]}"; do
