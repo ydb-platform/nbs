@@ -39,10 +39,14 @@ class _MigrationTestSetup:
         blocks_count: int
         id: str
 
-    def __init__(self, use_s3_as_src: bool = False, use_s3_as_dst: bool = False):
+    def __init__(
+        self,
+        use_s3_as_src: bool = False,
+        use_s3_as_dst: bool = False,
+        migration_inflight_transferring_snapshots_count=1000,
+    ):
         self.use_s3_as_src = use_s3_as_src
         self.use_s3_as_dst = use_s3_as_dst
-
         certs_dir = Path(yatest_common.source_path("cloud/blockstore/tests/certs"))
         self._root_certs_file = certs_dir / "server.crt"
         _logger.info(certs_dir.exists())
@@ -133,6 +137,7 @@ class _MigrationTestSetup:
             s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
             migration_dst_s3_port=self.dst_s3.port if self.dst_s3 is not None else None,
             migration_dst_s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
+            migration_inflight_transferring_snapshots_count=migration_inflight_transferring_snapshots_count,
         )
 
         self.initial_cpl_disk_manager.start()
@@ -325,7 +330,7 @@ class _MigrationTestSetup:
 
 
 @pytest.mark.parametrize(
-    "use_s3_as_src, use_s3_as_dst",
+    ["use_s3_as_src", "use_s3_as_dst"],
     [
         (True, False),
         (False, True),
@@ -353,18 +358,25 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
 
 
 @pytest.mark.parametrize(
-    "use_s3_as_src, use_s3_as_dst",
+    ["use_s3_as_src", "use_s3_as_dst", "migration_inflight_transferring_snapshots_count"],
     [
-        (True, False),
-        (False, True),
-        (True, True),
-        (False, False),
+        (True, False, 1000),
+        (False, True, 1000),
+        (True, True, 1000),
+        (False, False, 14),
+        (False, False, 15),
+        (False, False, 1000),
     ]
 )
-def test_disk_manager_dataplane_database_migration(use_s3_as_src, use_s3_as_dst):
+def test_disk_manager_dataplane_database_migration(
+    use_s3_as_src,
+    use_s3_as_dst,
+    migration_inflight_transferring_snapshots_count,
+):
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
+        migration_inflight_transferring_snapshots_count=migration_inflight_transferring_snapshots_count,
     ) as setup:
         initial_data_count = 10
         disks = [f"disk_{i}" for i in range(initial_data_count)]

@@ -330,6 +330,7 @@ MIGRATION_CONFIG_TEMPLATE = """
         S3Bucket: "snapshot"
         ChunkBlobsS3KeyPrefix: "snapshot/chunks"
     >
+    MigrationInflightTransferringSnapshotsCount: {migration_inflight_transferring_snapshots_count}
 """
 
 SERVICE_NAME = "disk_manager"
@@ -403,6 +404,7 @@ class DiskManagerLauncher:
         migration_dst_ydb_port=None,
         migration_dst_s3_port=None,
         migration_dst_s3_credentials_file=None,
+        migration_inflight_transferring_snapshots_count=1000,
         retry_broken_disk_registry_based_disk_checkpoint=False,
     ):
         self.__idx = idx
@@ -458,7 +460,8 @@ class DiskManagerLauncher:
                         s3_config="" if migration_dst_s3_port is None else S3_CONFIG_TEMPLATE.format(
                             s3_port=migration_dst_s3_port,
                             s3_credentials_file=migration_dst_s3_credentials_file,
-                        )
+                        ),
+                        migration_inflight_transferring_snapshots_count=migration_inflight_transferring_snapshots_count,
                     ),
                 ))
         else:

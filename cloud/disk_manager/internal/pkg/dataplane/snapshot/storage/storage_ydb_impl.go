@@ -1426,6 +1426,7 @@ func (s *storageYDB) listAllSnapshots(
 	ctx context.Context,
 	session *persistence.Session,
 ) (task_storage.StringSet, error) {
+
 	result := task_storage.NewStringSet()
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1

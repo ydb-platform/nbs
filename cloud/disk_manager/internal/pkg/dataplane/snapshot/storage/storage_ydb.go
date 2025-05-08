@@ -260,7 +260,6 @@ func (s *storageYDB) GetIncremental(
 }
 
 func (s *storageYDB) ListAllSnapshots(ctx context.Context) (ids task_storage.StringSet, err error) {
-
 	err = s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {

@@ -102,8 +102,7 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 
 			inflightTaskIDs = append(inflightTaskIDs, taskID)
 			inflightTasksLimitReached := len(inflightTaskIDs) == int(inflightSnapshotsCount)
-			inflightTasksLimitReached = inflightTasksLimitReached || snapshotIDs.Empty()
-			if inflightTasksLimitReached {
+			if inflightTasksLimitReached || snapshotIDs.Empty() {
 				finishedTaskIDs, err := m.scheduler.WaitAnyTasksWithTimeout(ctx, inflightTaskIDs, taskTimeout)
 				if err != nil {
 					return err
@@ -111,9 +110,7 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 
 				newInflightTaskIds := make([]string, len(inflightTaskIDs))
 				for _, inflightTaskID := range inflightTaskIDs {
-					if common.Find(finishedTaskIDs, inflightTaskID) {
-
-					} else {
+					if !common.Find(finishedTaskIDs, inflightTaskID) {
 						newInflightTaskIds = append(newInflightTaskIds, inflightTaskID)
 					}
 				}

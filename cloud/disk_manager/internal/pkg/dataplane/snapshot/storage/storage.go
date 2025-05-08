@@ -21,7 +21,7 @@ type SnapshotMeta struct {
 	BaseCheckpointID string
 	// Snapshot virtual size, i.e. the minimum amount of disk space needed to restore.
 	Size uint64
-	// Snapshot real size, i.e. the amount of disk space occupied in task_storage.
+	// Snapshot real size, i.e. the amount of disk space occupied in storage.
 	StorageSize uint64
 	LockTaskID  string
 	ChunkCount  uint32
@@ -144,5 +144,6 @@ type Storage interface {
 		ctx context.Context,
 		disk *types.Disk,
 	) (snapshotID string, checkpointID string, err error)
+
 	ListAllSnapshots(ctx context.Context) (task_storage.StringSet, error)
 }
