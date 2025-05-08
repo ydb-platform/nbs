@@ -154,11 +154,23 @@ class _MigrationTestSetup:
         self.initial_dpl_disk_manager.stop_daemon()
         if self.secondary_dpl_disk_manager is not None:
             self.secondary_dpl_disk_manager.stop_daemon()
-        MetadataServiceLauncher.stop()
-        NbsLauncher.stop()
-        YDBLauncher.stop()
+        try:
+            MetadataServiceLauncher.stop()
+        except ProcessLookupError:
+            pass
+        try:
+            NbsLauncher.stop()
+        except ProcessLookupError:
+            pass
+        try:
+            YDBLauncher.stop()
+        except ProcessLookupError:
+            pass
         if self.src_s3 is not None or self.dst_s3 is not None:
-            S3Launcher.stop()
+            try:
+                S3Launcher.stop()
+            except ProcessLookupError:
+                pass
 
     def admin(self, *args: str):
         return subprocess.check_output(
@@ -348,8 +360,12 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
         (True, False, 1000),
         (False, True, 1000),
         (True, True, 1000),
+        (False, False, 9),
+        (False, False, 10),
+        (False, False, 11),
         (False, False, 14),
         (False, False, 15),
+        (False, False, 16),
         (False, False, 1000),
     ]
 )

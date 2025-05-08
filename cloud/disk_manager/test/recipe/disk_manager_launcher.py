@@ -461,7 +461,7 @@ class DiskManagerLauncher:
                             s3_port=migration_dst_s3_port,
                             s3_credentials_file=migration_dst_s3_credentials_file,
                         ),
-                        migration_inflight_transferring_snapshots_count=str(migration_inflight_transferring_snapshots_count),
+                        migration_inflight_transferring_snapshots_count=migration_inflight_transferring_snapshots_count,
                     ),
                 ))
         else:

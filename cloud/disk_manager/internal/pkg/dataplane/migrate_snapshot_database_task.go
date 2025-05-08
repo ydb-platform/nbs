@@ -80,7 +80,7 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 		subregistry.Gauge("snapshots/migratingCount").Set(float64(snapshotsToTransferCount))
 		var inflightTaskIDs []string
 
-		for !snapshotIDs.Empty() {
+		for {
 			snapshotId, ok, err := snapshotIDs.Receive(ctx)
 			if !ok {
 				break
