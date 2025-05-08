@@ -327,25 +327,19 @@ ui64 TDiskInfo::GetBlocksCount() const
     return result;
 }
 
-TBlockRange64 TDiskInfo::GetDeviceRange(size_t deviceIdx) const
+TVector<TBlockRange64> TDiskInfo::GetDeviceRanges() const
 {
-    if (deviceIdx >= Devices.size()) {
-        return {};
-    }
-
+    TVector<TBlockRange64> result;
+    result.reserve(Devices.size());
     ui64 startOffset = 0;
-    for (size_t i = 0; i < deviceIdx; ++i) {
-        const auto& device = Devices[i];
+    for (const auto& device: Devices) {
         const ui64 logicalBlockCount =
             device.GetBlockSize() * device.GetBlocksCount() / LogicalBlockSize;
+        result.push_back(
+            TBlockRange64::WithLength(startOffset, logicalBlockCount));
         startOffset += logicalBlockCount;
     }
-
-    const auto& device = Devices[deviceIdx];
-    const ui64 logicalBlockCount =
-        device.GetBlockSize() * device.GetBlocksCount() / LogicalBlockSize;
-
-    return TBlockRange64::WithLength(startOffset, logicalBlockCount);
+    return result;
 }
 
 TString TDiskInfo::GetPoolName() const

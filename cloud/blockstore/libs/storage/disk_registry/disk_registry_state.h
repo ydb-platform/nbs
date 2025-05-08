@@ -59,7 +59,7 @@ struct TDiskInfo
     TVector<NProto::TDiskHistoryItem> History;
 
     ui64 GetBlocksCount() const;
-    TBlockRange64 GetDeviceRange(size_t deviceIdx) const;
+    TVector<TBlockRange64> GetDeviceRanges() const;
     TString GetPoolName() const;
 };
 

@@ -849,18 +849,20 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                     }
                 }
             }
+            const auto ranges = info.GetDeviceRanges();
             for (ui32 i = 0; i < info.Devices.size(); ++i) {
                 TABLER() {
                     TABLED() {
                         out << i;
                     }
                     TABLED() {
-                        out << info.GetDeviceRange(i).Print();
+                        out << ranges[i].Print();
                     }
                     makeDeviceCells(info.Devices[i]);
                     for (const auto& replica: info.Replicas) {
-                        makeDeviceCells(i < replica.size()
-                            ? replica[i] : NProto::TDeviceConfig());
+                        makeDeviceCells(
+                            i < replica.size() ? replica[i]
+                                               : NProto::TDeviceConfig());
                     }
                 }
             }
@@ -884,24 +886,24 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             DumpSize(out, allAgents);
         }
 
-        TABLE_SORTABLE_CLASS ("table table-bordered") {
-            TABLEHEAD () {
-                TABLER () {
-                    TABLEH () {
+        TABLE_SORTABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() {
                         out << "Agent";
                     }
-                    TABLEH () {
+                    TABLEH() {
                         out << "Devices";
                     }
                 }
             }
 
             for (const auto& [nodeId, count]: allAgents) {
-                TABLER () {
-                    TABLED () {
+                TABLER() {
+                    TABLED() {
                         dumpAgent(nodeId);
                     }
-                    TABLED () {
+                    TABLED() {
                         out << count;
                     }
                 }
