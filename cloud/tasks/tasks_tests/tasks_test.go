@@ -1542,8 +1542,7 @@ func TestTasksShouldNotFilterComponentsIfNoComponentsInAvailabilityMonitoringSto
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -1559,7 +1558,7 @@ func TestTasksShouldNotFilterComponentsIfNoComponentsInAvailabilityMonitoringSto
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
 
-	err = registerLongTask(s.registry)
+	err := registerLongTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1577,24 +1576,16 @@ func TestTasksShouldNotFilterComponentsIfNoComponentsInConfig(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
 
 	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
 
-	// componentsByTaskTypes := map[string]*tasks_config.ComponentsByTaskType{
-	// 	"long": {
-	// 		Components: []string{"component1", "component2", "component3"},
-	// 	},
-	// }
-	// config.ComponentsByTaskTypes = componentsByTaskTypes
-
 	s := createServicesWithConfig(t, ctx, db, config, registry)
 
-	err = registerLongTask(s.registry)
+	err := registerLongTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component1", false)
@@ -1615,8 +1606,7 @@ func TestTasksShouldNotFilterComponentsIfNotAllComponentsAreInStorage(t *testing
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -1632,7 +1622,7 @@ func TestTasksShouldNotFilterComponentsIfNotAllComponentsAreInStorage(t *testing
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
 
-	err = registerLongTask(s.registry)
+	err := registerLongTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component1", true)
@@ -1653,8 +1643,7 @@ func TestTasksShouldNotFilterComponentsIfAllComponentsAreAvailable(t *testing.T)
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -1670,7 +1659,7 @@ func TestTasksShouldNotFilterComponentsIfAllComponentsAreAvailable(t *testing.T)
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
 
-	err = registerLongTask(s.registry)
+	err := registerLongTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component1", true)
@@ -1695,8 +1684,7 @@ func TestTasksShouldFilterComponents(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -1712,7 +1700,7 @@ func TestTasksShouldFilterComponents(t *testing.T) {
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
 
-	err = registerLongTask(s.registry)
+	err := registerLongTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component1", true)
