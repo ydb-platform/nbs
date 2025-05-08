@@ -35,9 +35,8 @@ func Run(
 			}
 
 			helperCommands := map[string]struct{}{
-				"__complete":       {},
-				"__completeNoDesc": {},
-				"completion":       {},
+				"__complete": {},
+				"completion": {},
 			}
 			if _, ok := helperCommands[command.Name()]; ok {
 				return nil
