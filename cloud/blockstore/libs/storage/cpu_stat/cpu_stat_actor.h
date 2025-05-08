@@ -7,6 +7,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 // Actor that fetches CPU wait stats periodically
 // and updates the corresponding counter.
 class TCpuStatsFetcherActor final
@@ -22,11 +24,11 @@ private:
     TInstant LastCpuWaitQuery;
 
 public:
-    explicit TCpuStatsFetcherActor(
+    TCpuStatsFetcherActor(
         TStorageConfigPtr storageConfig,
         NCloud::NStorage::IStatsFetcherPtr statsFetcher);
 
-    ~TCpuStatsFetcherActor() override;
+    ~TCpuStatsFetcherActor() override = default;
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

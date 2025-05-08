@@ -5,21 +5,26 @@
 #include "cloud/storage/core/libs/actors/helpers.h"
 #include "contrib/ydb/core/base/appdata_fwd.h"
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Timeout for fetching CPU wait stats
 constexpr TDuration CpuFetchWakeupTimeout = TDuration::Seconds(15);
 // Mulitiplier for converting CPU wait time to percents
 constexpr ui32 CpuLackPercentsMultiplier = 100;
 
+}   // namespace
+
 namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
 
 TCpuStatsFetcherActor::TCpuStatsFetcherActor(
     TStorageConfigPtr storageConfig,
     NCloud::NStorage::IStatsFetcherPtr statsFetcher)
     : StorageConfig(std::move(storageConfig))
     , StatsFetcher(std::move(statsFetcher))
-{}
-
-TCpuStatsFetcherActor::~TCpuStatsFetcherActor()
 {}
 
 // @brief Initializes the actor
@@ -30,7 +35,8 @@ void TCpuStatsFetcherActor::Bootstrap(const NKikimr::TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-// @brief Registers counters in the monitoring system and schedules the first wakeup
+// @brief Registers counters in the monitoring system and schedules the first
+// wakeup
 // @param ctx Actor context
 void TCpuStatsFetcherActor::RegisterCounters(const NKikimr::TActorContext& ctx)
 {
