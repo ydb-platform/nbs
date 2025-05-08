@@ -3,6 +3,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 NActors::IActorPtr CreateCpuStatsFetcherActor(
     TStorageConfigPtr storageConfig,
     NCloud::NStorage::IStatsFetcherPtr statsFetcher)
