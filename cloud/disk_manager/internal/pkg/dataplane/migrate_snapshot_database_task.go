@@ -11,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
@@ -18,6 +19,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type migrateSnapshotDatabaseTask struct {
+	registry   metrics.Registry
 	srcStorage storage.Storage
 	dstStorage storage.Storage
 	config     *config.DataplaneConfig
@@ -33,6 +35,9 @@ func (m migrateSnapshotDatabaseTask) Load(request []byte, state []byte) error {
 }
 
 func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	subregistry := m.registry.WithTags(map[string]string{
+		"id": execCtx.GetTaskID(),
+	})
 	for {
 		// Infinite loop to synchronize state between src and dst storages.
 		// The task implies manual forceful finish, after all snapshots are migrated,
@@ -58,6 +63,7 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 
 		var snapshotIDs = common.NewChannelWithCancellation[string](srcSnapshots.Size())
 
+		snapshotsToTransferCount := 0
 		for snapshotId, _ := range srcSnapshots.Vals() {
 			if dstSnapshots.Has(snapshotId) {
 				continue
@@ -67,8 +73,11 @@ func (m migrateSnapshotDatabaseTask) Run(ctx context.Context, execCtx tasks.Exec
 			if err != nil {
 				return err
 			}
+
+			snapshotsToTransferCount++
 		}
 
+		subregistry.Gauge("snapshots/migratingCount").Set(float64(snapshotsToTransferCount))
 		var inflightTaskIDs []string
 
 		for !snapshotIDs.Empty() {
