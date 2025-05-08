@@ -2,12 +2,12 @@
 
 #include "public.h"
 
-#include "disk_registry_state_notification.h"
-
 #include "disk_registry_database.h"
 #include "disk_registry_private.h"
 #include "disk_registry_self_counters.h"
+#include "disk_registry_state_notification.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/agent_list.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
@@ -59,6 +59,7 @@ struct TDiskInfo
     TVector<NProto::TDiskHistoryItem> History;
 
     ui64 GetBlocksCount() const;
+    TBlockRange64 GetDeviceRange(size_t deviceIdx) const;
     TString GetPoolName() const;
 };
 

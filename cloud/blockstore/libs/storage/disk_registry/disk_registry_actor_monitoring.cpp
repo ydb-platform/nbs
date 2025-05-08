@@ -762,7 +762,29 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             }
         };
 
-        auto makeDeviceCells = [&] (const NProto::TDeviceConfig& device) {
+        auto dumpAgent = [&](const ui32 nodeId)
+        {
+            const auto* agent = State->FindAgent(nodeId);
+            if (agent) {
+                out << "<a href='?action=agent&TabletID=" << TabletID()
+                    << "&AgentID=" << agent->GetAgentId() << "'>"
+                    << agent->GetAgentId() << "</a>"
+                    << " <font color=gray>#" << nodeId << "</font>";
+                if (agent->GetState() != NProto::AGENT_STATE_ONLINE) {
+                    out << " ";
+
+                    auto it = AgentRegInfo.find(agent->GetAgentId());
+                    const bool connected =
+                        it != AgentRegInfo.end() && it->second.Connected;
+                    DumpAgentState(out, agent->GetState(), connected);
+                }
+            } else {
+                out << nodeId;
+            }
+        };
+
+        auto makeDeviceCells = [&](const NProto::TDeviceConfig& device)
+        {
             TABLED() {
                 DumpDeviceLink(
                     out,
@@ -770,31 +792,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                     device.GetDeviceUUID());
             }
             TABLED() {
-                const auto* agent =
-                    State->FindAgent(device.GetNodeId());
-
-                if (agent) {
-                    out << "<a href='?action=agent&TabletID="
-                        << TabletID()
-                        << "&AgentID=" << agent->GetAgentId()
-                        << "'>"
-                        << agent->GetAgentId() << "</a>"
-                        << " <font color=gray>#"
-                        << device.GetNodeId()
-                        << "</font>";
-                    if (agent->GetState()
-                            != NProto::AGENT_STATE_ONLINE)
-                    {
-                        out << " ";
-
-                        auto it = AgentRegInfo.find(agent->GetAgentId());
-                        const bool connected =
-                            it != AgentRegInfo.end() && it->second.Connected;
-                        DumpAgentState(out, agent->GetState(), connected);
-                    }
-                } else {
-                    out << device.GetNodeId();
-                }
+                dumpAgent(device.GetNodeId());
             }
             TABLED() {
                 EDeviceStateFlags flags =
@@ -839,6 +837,12 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
         TABLE_SORTABLE_CLASS("table table-bordered") {
             TABLEHEAD() {
                 TABLER() {
+                    TABLEH() {
+                        out << "Row";
+                    }
+                    TABLEH() {
+                        out << "Range";
+                    }
                     makeHeaderCells(0);
                     for (ui32 i = 0; i < info.Replicas.size(); ++i) {
                         makeHeaderCells(i + 1);
@@ -847,10 +851,58 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             }
             for (ui32 i = 0; i < info.Devices.size(); ++i) {
                 TABLER() {
+                    TABLED() {
+                        out << i;
+                    }
+                    TABLED() {
+                        out << info.GetDeviceRange(i).Print();
+                    }
                     makeDeviceCells(info.Devices[i]);
                     for (const auto& replica: info.Replicas) {
                         makeDeviceCells(i < replica.size()
                             ? replica[i] : NProto::TDeviceConfig());
+                    }
+                }
+            }
+        }
+
+        TMap<ui32, size_t> allAgents;
+        for (const auto& device: info.Devices) {
+            ++allAgents[device.GetNodeId()];
+        }
+        for (const auto& replica: info.Replicas) {
+            for (const auto& device: replica) {
+                ++allAgents[device.GetNodeId()];
+            }
+        }
+        for (const auto& migration: info.Migrations) {
+            ++allAgents[migration.GetTargetDevice().GetNodeId()];
+        }
+
+        TAG (TH3) {
+            out << "Agents";
+            DumpSize(out, allAgents);
+        }
+
+        TABLE_SORTABLE_CLASS ("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Agent";
+                    }
+                    TABLEH () {
+                        out << "Devices";
+                    }
+                }
+            }
+
+            for (const auto& [nodeId, count]: allAgents) {
+                TABLER () {
+                    TABLED () {
+                        dumpAgent(nodeId);
+                    }
+                    TABLED () {
+                        out << count;
                     }
                 }
             }
@@ -882,16 +934,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                         }
                         TABLED() {
                             const auto& d = migration.GetTargetDevice();
-                            auto* agent = State->FindAgent(d.GetNodeId());
-                            if (agent) {
-                                out << " <a href='?action=agent&TabletID="
-                                    << TabletID()
-                                    << "&AgentID=" << d.GetAgentId() << "'>"
-                                    << d.GetAgentId() << "</a>"
-                                    << " <font color=gray>#"
-                                    << d.GetNodeId()
-                                    << "</font>";
-                            }
+                            dumpAgent(d.GetNodeId());
                         }
                     }
                 }

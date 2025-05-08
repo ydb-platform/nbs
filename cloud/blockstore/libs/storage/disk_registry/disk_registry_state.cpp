@@ -327,6 +327,27 @@ ui64 TDiskInfo::GetBlocksCount() const
     return result;
 }
 
+TBlockRange64 TDiskInfo::GetDeviceRange(size_t deviceIdx) const
+{
+    if (deviceIdx >= Devices.size()) {
+        return {};
+    }
+
+    ui64 startOffset = 0;
+    for (size_t i = 0; i < deviceIdx; ++i) {
+        const auto& device = Devices[i];
+        const ui64 logicalBlockCount =
+            device.GetBlockSize() * device.GetBlocksCount() / LogicalBlockSize;
+        startOffset += logicalBlockCount;
+    }
+
+    const auto& device = Devices[deviceIdx];
+    const ui64 logicalBlockCount =
+        device.GetBlockSize() * device.GetBlocksCount() / LogicalBlockSize;
+
+    return TBlockRange64::WithLength(startOffset, logicalBlockCount);
+}
+
 TString TDiskInfo::GetPoolName() const
 {
     for (const auto& replica: Replicas) {
