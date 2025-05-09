@@ -327,6 +327,21 @@ ui64 TDiskInfo::GetBlocksCount() const
     return result;
 }
 
+TVector<TBlockRange64> TDiskInfo::GetDeviceRanges() const
+{
+    TVector<TBlockRange64> result;
+    result.reserve(Devices.size());
+    ui64 startOffset = 0;
+    for (const auto& device: Devices) {
+        const ui64 logicalBlockCount =
+            device.GetBlockSize() * device.GetBlocksCount() / LogicalBlockSize;
+        result.push_back(
+            TBlockRange64::WithLength(startOffset, logicalBlockCount));
+        startOffset += logicalBlockCount;
+    }
+    return result;
+}
+
 TString TDiskInfo::GetPoolName() const
 {
     for (const auto& replica: Replicas) {
@@ -5630,8 +5645,12 @@ bool TDiskRegistryState::TryUpdateDiskStateImpl(
 
     NProto::TDiskHistoryItem historyItem;
     historyItem.SetTimestamp(timestamp.MicroSeconds());
-    historyItem.SetMessage(TStringBuilder() << "state changed: "
-        << static_cast<int>(oldState) << " -> " << static_cast<int>(newState));
+    historyItem.SetMessage(
+        TStringBuilder() << "state changed: "
+                         << NProto::EDiskState_Name(oldState) << " ("
+                         << static_cast<int>(oldState) << ") -> "
+                         << NProto::EDiskState_Name(newState) << " ("
+                         << static_cast<int>(newState) << ")");
     disk.History.push_back(std::move(historyItem));
 
     UpdateAndReallocateDisk(db, diskId, disk);
