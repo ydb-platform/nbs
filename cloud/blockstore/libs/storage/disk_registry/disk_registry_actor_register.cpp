@@ -131,9 +131,15 @@ void TDiskRegistryActor::ExecuteAddAgent(
 
     ServerToAgentId[args.RegisterActorId] = args.Config.GetAgentId();
 
-    auto& info = AgentRegInfo[args.Config.GetAgentId()];
-    info.Connected = true;
-    info.SeqNo += 1;
+    auto [it, inserted] =
+        AgentRegInfo.emplace(args.Config.GetAgentId(), TAgentRegInfo{});
+    if (!inserted && !it->second.Connected) {
+        Y_DEBUG_ABORT_UNLESS(DisconnectedAgentCount > 0);
+        DisconnectedAgentCount =
+            DisconnectedAgentCount ? DisconnectedAgentCount - 1 : 0;
+    }
+    it->second.Connected = true;
+    it->second.SeqNo += 1;
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Execute register agent: NodeId=%u, AgentId=%s"
@@ -141,7 +147,7 @@ void TDiskRegistryActor::ExecuteAddAgent(
         TabletID(),
         args.Config.GetNodeId(),
         args.Config.GetAgentId().c_str(),
-        info.SeqNo);
+        it->second.SeqNo);
 }
 
 void TDiskRegistryActor::CompleteAddAgent(
