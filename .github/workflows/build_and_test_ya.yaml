@@ -131,6 +131,7 @@ jobs:
         id: check
         shell: bash --noprofile --norc -eo pipefail -x {0}
         env:
+          GH_TOKEN: ${{ github.token }}
           OWNER: ${{ github.event.repository.owner.login }}
           REPO: ${{ github.event.repository.name }}
         run: |
