@@ -25,14 +25,14 @@ on:
     inputs:
       max_vms_to_create:
         description: 'Max VMs to create'
-        type: number
+        type: string
         required: true
-        default: 1
+        default: "1"
       vms_ttl:
         description: 'VMs TTL (seconds)'
-        type: number
+        type: string
         required: true
-        default: 60
+        default: "60"
       flavor:
         description: 'Runner flavor'
         type: string
