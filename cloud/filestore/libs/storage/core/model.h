@@ -20,8 +20,7 @@ struct TMultiShardFileStoreConfig
 
 ui32 ComputeShardCount(
     const ui64 blocksCount,
-    const ui32 blockSize,
-    const ui64 shardAllocationUnit);
+    const ui64 shardAllocationUnitBlocks);
 
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const TStorageConfig& config,
