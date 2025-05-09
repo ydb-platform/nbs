@@ -413,6 +413,55 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotSliceZeroRequest)
+    {
+        const auto diskId = "disk1";
+        const auto clientId = "testClientId";
+        const ui32 blockSize = DefaultBlockSize;
+        const ui64 deviceBlocksCount = 8 * 1024;
+        const ui64 blocksCountLimit = deviceBlocksCount / 4;
+        const ui32 maxZeroBlocksSubRequestSize = 512 * 1024 * 1024;
+
+        auto storage = std::make_shared<TTestStorage>();
+
+        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto deviceHandler = factory->CreateDeviceHandler(
+            storage,
+            diskId,
+            clientId,
+            blockSize,
+            false,   // unalignedRequestsDisabled,
+            false,   // checkBufferModificationDuringWriting
+            false,   // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
+
+        std::array<bool, deviceBlocksCount> zeroBlocks;
+        for (auto& zeroBlock: zeroBlocks) {
+            zeroBlock = false;
+        }
+
+        ui32 requestCounter = 0;
+
+        storage->ZeroBlocksHandler = [&] (
+            TCallContextPtr callContext,
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            ++requestCounter;
+            return MakeFuture<NProto::TZeroBlocksResponse>();
+        };
+
+        auto future = deviceHandler->Zero(
+            MakeIntrusive<TCallContext>(),
+            0,
+            deviceBlocksCount * blockSize);
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(response));
+        UNIT_ASSERT_EQUAL_C(1, requestCounter, requestCounter);
+    }
+
     Y_UNIT_TEST(ShouldHandleAlignedRequestsWhenUnalignedRequestsDisabled)
     {
         const auto diskId = "disk1";
