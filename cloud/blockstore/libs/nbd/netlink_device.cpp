@@ -408,12 +408,10 @@ public:
         const TNetworkAddress& connectAddress,
         TString deviceName,
         ui64 blockCount,
-        ui32 blockSize,
-        ui32 maxZeroBlocksSubRequestSize) override
+        ui32 blockSize) override
     {
         Y_UNUSED(blockCount);
         Y_UNUSED(blockSize);
-        Y_UNUSED(maxZeroBlocksSubRequestSize);
 
         return CreateNetlinkDevice(
             Logging,

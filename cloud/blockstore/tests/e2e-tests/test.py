@@ -39,6 +39,7 @@ def init(
         nbd_request_timeout=None,
         nbd_reconnect_delay=None,
         proxy_restart_events=None,
+        max_zeroblocks_subrequest_size=None
 ):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
@@ -65,6 +66,8 @@ def init(
     server.ServerConfig.CopyFrom(server_config_patch)
     server.ServerConfig.ThreadsCount = thread_count()
     server.ServerConfig.StrictContractValidation = True
+    if max_zeroblocks_subrequest_size:
+        server.ServerConfig.MaxZeroBlocksSubRequestSize = max_zeroblocks_subrequest_size
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     subprocess.check_call(["modprobe", "nbd"], timeout=20)
     if stored_endpoints_path:
@@ -317,16 +320,20 @@ def test_stop_start():
                          [(True, False), (True, True), (False, False), (False, True)])
 def test_resize_device(with_netlink, with_endpoint_proxy):
     stored_endpoints_path = Path(common.output_path()) / "stored_endpoints"
-    env, run = init(with_netlink, with_endpoint_proxy, stored_endpoints_path)
+    env, run = init(
+        with_netlink,
+        with_endpoint_proxy,
+        stored_endpoints_path,
+        max_zeroblocks_subrequest_size=512 * 1024 * 1024
+    )
 
     volume_name = "example-disk"
     block_size = 4096
-    blocks_count = 2621440
+    blocks_count = 1310720
     volume_size = blocks_count * block_size
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
     stored_endpoint_path = stored_endpoints_path / socket_path.replace("/", "_")
-    max_zeroblocks_subrequest_size = 512 * 1024 * 1024
     try:
         result = run(
             "createvolume",
@@ -350,8 +357,6 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             "--persistent",
             "--nbd-device",
             nbd_device,
-            "--max-zeroblocks-subrequest-size",
-            str(max_zeroblocks_subrequest_size),
         )
         assert result.returncode == 0
 

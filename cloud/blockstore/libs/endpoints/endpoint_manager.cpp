@@ -115,7 +115,7 @@ bool CompareRequests(
     const NProto::TStartEndpointRequest& left,
     const NProto::TStartEndpointRequest& right)
 {
-    Y_DEBUG_ABORT_UNLESS(28 == GetFieldCount<NProto::TStartEndpointRequest>());
+    Y_DEBUG_ABORT_UNLESS(27 == GetFieldCount<NProto::TStartEndpointRequest>());
     return left.GetUnixSocketPath() == right.GetUnixSocketPath()
         && left.GetDiskId() == right.GetDiskId()
         && left.GetInstanceId() == right.GetInstanceId()
@@ -145,8 +145,7 @@ bool CompareRequests(
         && left.GetPersistent() == right.GetPersistent()
         && left.GetNbdDeviceFile() == right.GetNbdDeviceFile()
         && left.GetUseFreeNbdDeviceFile() == right.GetUseFreeNbdDeviceFile()
-        && left.GetVhostDiscardEnabled() == right.GetVhostDiscardEnabled()
-        && left.GetMaxZeroBlocksSubRequestSize() == right.GetMaxZeroBlocksSubRequestSize();
+        && left.GetVhostDiscardEnabled() == right.GetVhostDiscardEnabled();
 }
 
 bool CompareRequests(
@@ -1463,8 +1462,7 @@ TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
             address,
             request->GetNbdDeviceFile(),
             volume.GetBlocksCount(),
-            volume.GetBlockSize(),
-            request->GetMaxZeroBlocksSubRequestSize());
+            volume.GetBlockSize());
         auto startFuture = device->Start();
         const auto& startError = Executor->WaitFor(startFuture);
         if (HasError(startError)) {

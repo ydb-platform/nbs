@@ -44,8 +44,7 @@ struct IDeviceFactory
         const TNetworkAddress& connectAddress,
         TString deviceName,
         ui64 blockCount,
-        ui32 blockSize,
-        ui32 maxZeroBlocksSubRequestSize) = 0;
+        ui32 blockSize) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
