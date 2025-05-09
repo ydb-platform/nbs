@@ -22,7 +22,7 @@ while read -r vm_creation_date vm_id name state label labels; do
     if [ $((DATE - vm_creation_date_ts)) -gt "$VMS_OLDER_THAN" ]; then
         echo "VM $vm_id is older than $VMS_OLDER_THAN seconds"
         echo "Checking if vm is idle in GH"
-        gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/librarian-test/nbs/actions/runners?per_page=100 | jq -r --arg vm_id "$vm_id" '.runners[] | select(.name == $vm_id)' | tee -a "gh_vm_${vm_id}_status.json"
+        gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "/repos/$OWNER/$REPO/actions/runners?per_page=100" | jq -r --arg vm_id "$vm_id" '.runners[] | select(.name == $vm_id)' | tee -a "gh_vm_${vm_id}_status.json"
         gh_vm_status=$(jq -r '.busy' "gh_vm_${vm_id}_status.json")
         if [ "$gh_vm_status" == "false" ]; then
             echo "VM $vm_id is idle in GH"
@@ -46,7 +46,7 @@ if [ $NUMBER_VMS_TO_CREATE -le 0 ]; then
     echo "[]" >vms_to_create.json
 else
     for i in $(seq 1 $NUMBER_VMS_TO_CREATE); do
-        echo "${FLAVOR}-${GITHUB_REPOSITORY_OWNER}-${REPOSITORY_NAME}-$DATE-$i"
+        echo "${FLAVOR}-${OWNER}-${REPO}-$DATE-$i"
     done | jq -R -s -c 'split("\n") | map(select(. != ""))' >vms_to_create.json
 fi
 {

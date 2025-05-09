@@ -62,5 +62,4 @@ runs:
         MAX_VMS_TO_CREATE: ${{ inputs.max_vms_to_create }}
         FLAVOR: ${{ inputs.flavor }}
         VMS_OLDER_THAN: ${{ inputs.vms_ttl }}
-        REPOSITORY_NAME: ${{ github.event.repository.name }}
         GH_TOKEN: ${{ inputs.token }}

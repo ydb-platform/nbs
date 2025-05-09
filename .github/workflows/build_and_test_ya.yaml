@@ -74,10 +74,6 @@ on:
         type: string
         default: "1"
         description: "Number of retries for tests"
-    outputs:
-      sleep_after_tests:
-        description: "sleep_after_tests"
-        value: ${{ jobs.build-and-test.outputs.sleep_after_tests }}
 
 jobs:
   calculate-runs-on:
@@ -101,12 +97,72 @@ jobs:
             LABELS_LIST=$(echo "${LABELS_LIST}" | jq  -c --arg gh_label "${RUNNER_LABEL}" '. + [$gh_label]')
           fi
           echo "LABELS_LIST=${LABELS_LIST}" | tee -a "$GITHUB_OUTPUT"
+  
+  check-if-we-need-additional-runner:
+    name: Check if we need additional runner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha != ''
+        with:
+          submodules: true
+          sparse-checkout: '.github'
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+      - name: Rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          git config user.email "robot-nbs@nebius.com"
+          git config user.name "Robot NBS"
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git rebase origin/${{ github.event.pull_request.base.ref }}
+      - name: Checkout
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: true
+          sparse-checkout: '.github'
+      - name: set up gh cli
+        id: gh
+        uses: ./.github/actions/gh_cli
+      - name: check how many runners we have and how many are busy
+        id: check
+        shell: bash --noprofile --norc -eo pipefail -x {0}
+        env:
+          OWNER: ${{ github.event.repository.owner.login }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "/repos/$OWNER/$REPO/actions/runners?per_page=100" > runners.json
+          RUNNERS_COUNT=$(jq -r '.total_count' runners.json)
+          RUNNERS_OFFLINE=$(jq '.runners | map(select(.status == "offline")) | length' runners.json)
+          RUNNERS_BUSY=$(jq '.runners | map(select(.status == "busy")) | length' runners.json)
+          RUNNERS_AVAILABLE=$((RUNNERS_COUNT - RUNNERS_BUSY - RUNNERS_OFFLINE))
+          RUNNERS_WITHOUT_OFFLINE=$((RUNNERS_COUNT - RUNNERS_OFFLINE))
+          RUNNERS_WITHOUT_OFFLINE_PLUS_ONE=$((RUNNERS_WITHOUT_OFFLINE + 1))
+          {
+            echo "RUNNERS_COUNT=${RUNNERS_COUNT}"
+            echo "RUNNERS_BUSY_OR_OFFLINE=${RUNNERS_BUSY_OR_OFFLINE}"
+            echo "RUNNERS_AVAILABLE=${RUNNERS_AVAILABLE}"
+          } | tee -a "$GITHUB_OUTPUT"
+      - name: if we have 1 or less runners we need to create new one
+        if: ${{ steps.check.outputs.RUNNERS_AVAILABLE <= '0' }}
+        id: populate
+        uses: ./.github/workflows/populate.yaml
+        with:
+          vms_ttl: 60
+          max_vms_to_create: ${{ steps.check.outputs.RUNNERS_WITHOUT_OFFLINE_PLUS_ONE }}
+          flavor: ${{ inputs.runner_flavor }}
+          
 
   build-and-test:
     name: Build and test ${{ inputs.build_preset }}
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
     timeout-minutes: 420
-    needs: calculate-runs-on
+    needs: 
+      - calculate-runs-on
+      - check-if-we-need-additional-runner
     steps:
     - name: Checkout PR
       uses: actions/checkout@v4

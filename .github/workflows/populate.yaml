@@ -1,5 +1,5 @@
 name: Populate VMs
-run-name: Populate VMs ${{  inputs.flavor }}
+run-name: Populate VMs ${{ inputs.flavor }}
 on:
   workflow_dispatch:
     inputs:
@@ -21,6 +21,27 @@ on:
           - light
         required: true
         default: 'light'
+  workflow_call:
+    inputs:
+      max_vms_to_create:
+        description: 'Max VMs to create'
+        type: number
+        required: true
+        default: 1
+      vms_ttl:
+        description: 'VMs TTL (seconds)'
+        type: number
+        required: true
+        default: 60
+      flavor:
+        description: 'Runner flavor'
+        type: string
+        required: true
+        default: 'light'
+
+concurrency:
+  group: 'populate-vms-${{ github.event.inputs.flavor }}'
+  
 
 env:
   disk_size: ${{ inputs.flavor == 'heavy' && 1023 || 93 }}
