@@ -126,6 +126,7 @@ struct TStorageOptions
     bool SendMinBlockSize = false;
     bool CheckBufferModificationDuringWriting = false;
     bool IsReliableMediaKind = false;
+    ui64 MaxZeroBlocksSubRequestSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -52,6 +52,7 @@ private:
     const TString ClientId;
     const ui32 BlockSize;
     const ui32 MaxBlockCount;
+    const ui32 MaxBlockCountForZeroBlocksRequest;
     const bool IsReliableMediaKind;
 
     std::atomic<bool> CriticalErrorReported = false;
@@ -63,6 +64,7 @@ public:
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
+        ui32 maxZeroBlocksSubRequestSize,
         bool checkBufferModificationDuringWriting,
         bool isReliableMediaKind);
 

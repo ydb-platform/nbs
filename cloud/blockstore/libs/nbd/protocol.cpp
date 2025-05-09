@@ -165,7 +165,7 @@ void TRequestWriter::WriteRequest(
 {
     Y_DEBUG_ABORT_UNLESS(request.Magic == NBD_REQUEST_MAGIC);
 
-    if (request.Type != NBD_CMD_TRIM) {
+    if (request.Type != NBD_CMD_TRIM && request.Type != NBD_CMD_WRITE_ZEROES) {
         Y_DEBUG_ABORT_UNLESS(request.Length <= NBD_MAX_BUFFER_SIZE);
     }
 
@@ -191,7 +191,9 @@ void TRequestWriter::WriteRequest(
     const TSgList& requestData)
 {
     Y_DEBUG_ABORT_UNLESS(request.Magic == NBD_REQUEST_MAGIC);
-    Y_DEBUG_ABORT_UNLESS(request.Length <= NBD_MAX_BUFFER_SIZE);
+    if (request.Type != NBD_CMD_WRITE_ZEROES) {
+        Y_DEBUG_ABORT_UNLESS(request.Length <= NBD_MAX_BUFFER_SIZE);
+    }
 
     Write<ui32>(request.Magic);
     Write<ui16>(request.Flags);
@@ -424,7 +426,9 @@ bool TRequestReader::ReadRequest(TRequest& request)
         ReadOrFail(request.From);
         ReadOrFail(request.Length);
 
-        if (request.Type != NBD_CMD_TRIM) {
+        if (request.Type != NBD_CMD_TRIM &&
+            request.Type != NBD_CMD_WRITE_ZEROES)
+        {
             Y_ENSURE(request.Length <= NBD_MAX_BUFFER_SIZE);
         }
 
