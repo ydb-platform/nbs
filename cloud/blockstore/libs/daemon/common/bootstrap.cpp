@@ -417,7 +417,6 @@ void TBootstrapBase::Init()
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
             Configs->ServerConfig->GetChecksumFlags(),
-            Configs->ServerConfig->GetVhostDiscardEnabled(),
             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize());
 
         if (Configs->ServerConfig->GetVhostServerPath()
