@@ -104,7 +104,8 @@ constexpr TDuration Seconds(int s)
     xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
-    xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )
+    xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
+    xxx(VhostDiscardEnabled,         bool,                   false            )
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \

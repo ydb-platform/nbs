@@ -19,13 +19,16 @@ class TVhostEndpointListener final
 private:
     const NVhost::IServerPtr Server;
     const NProto::TChecksumFlags ChecksumFlags;
+    const bool VhostDiscardEnabled;
 
 public:
     TVhostEndpointListener(
             NVhost::IServerPtr server,
-            NProto::TChecksumFlags checksumFlags)
+            NProto::TChecksumFlags checksumFlags,
+            bool vhostDiscardEnabled)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
+        , VhostDiscardEnabled(vhostDiscardEnabled)
     {}
 
     TFuture<NProto::TError> StartEndpoint(
@@ -46,7 +49,9 @@ public:
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.IsReliableMediaKind =
             IsReliableMediaKind(volume.GetStorageMediaKind());
-        options.DiscardEnabled = request.GetVhostDiscardEnabled();
+        options.DiscardEnabled =
+            VhostDiscardEnabled &&
+            !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
 
         return Server->StartEndpoint(
             request.GetUnixSocketPath(),
@@ -95,11 +100,13 @@ public:
 
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
-    const NProto::TChecksumFlags& checksumFlags)
+    const NProto::TChecksumFlags& checksumFlags,
+    bool vhostDiscardEnabled)
 {
     return std::make_shared<TVhostEndpointListener>(
         std::move(server),
-        checksumFlags);
+        checksumFlags,
+        vhostDiscardEnabled);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

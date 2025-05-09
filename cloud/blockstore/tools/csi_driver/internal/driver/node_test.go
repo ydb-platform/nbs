@@ -138,7 +138,6 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 			ClientProfile: &nbs.TClientProfile{
 				HostType: &hostType,
 			},
-			VhostDiscardEnabled: true,
 		}).Return(&nbs.TStartEndpointResponse{}, nil)
 	}
 
