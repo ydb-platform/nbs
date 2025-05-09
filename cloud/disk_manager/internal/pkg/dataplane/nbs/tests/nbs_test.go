@@ -190,7 +190,7 @@ func TestChunkIndices(t *testing.T) {
 			ctx,
 			dataplane_common.Milestone{ChunkIndex: milestoneChunkIndex},
 			processedChunkIndices,
-			common.ChannelWithCancellation[uint32]{}, // holeChunkIndices
+			common.ChannelWithCancellation{}, // holeChunkIndices
 		)
 
 		for chunkIndex := range chunkIndices {

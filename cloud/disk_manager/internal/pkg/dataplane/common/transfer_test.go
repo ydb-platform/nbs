@@ -27,11 +27,11 @@ func (m *sourceMock) ChunkIndices(
 	ctx context.Context,
 	milestone Milestone,
 	processedChunkIndices <-chan uint32,
-	holeChunkIndices common.ChannelWithCancellation[uint32],
-) (<-chan uint32, common.ChannelWithCancellation[uint32], <-chan error) {
+	holeChunkIndices common.ChannelWithCancellation,
+) (<-chan uint32, common.ChannelWithCancellation, <-chan error) {
 
 	args := m.Called(ctx, milestone, processedChunkIndices, holeChunkIndices)
-	return args.Get(0).(chan uint32), args.Get(1).(common.ChannelWithCancellation[uint32]), args.Get(2).(chan error)
+	return args.Get(0).(chan uint32), args.Get(1).(common.ChannelWithCancellation), args.Get(2).(chan error)
 }
 
 func (m *sourceMock) Read(ctx context.Context, chunk *Chunk) error {
@@ -68,11 +68,11 @@ func (m *shallowSourceMock) ChunkIndices(
 	ctx context.Context,
 	milestone Milestone,
 	processedChunkIndices <-chan uint32,
-	holeChunkIndices common.ChannelWithCancellation[uint32],
-) (<-chan uint32, common.ChannelWithCancellation[uint32], <-chan error) {
+	holeChunkIndices common.ChannelWithCancellation,
+) (<-chan uint32, common.ChannelWithCancellation, <-chan error) {
 
 	args := m.Called(ctx, milestone, processedChunkIndices, holeChunkIndices)
-	return args.Get(0).(chan uint32), args.Get(1).(common.ChannelWithCancellation[uint32]), args.Get(2).(chan error)
+	return args.Get(0).(chan uint32), args.Get(1).(common.ChannelWithCancellation), args.Get(2).(chan error)
 }
 
 func (m *shallowSourceMock) ShallowCopy(
@@ -151,7 +151,7 @@ func TestTransfer(t *testing.T) {
 
 	milestone := Milestone{ChunkIndex: 42}
 	chunkIndices := make(chan uint32, 100500)
-	duplicatedChunkIndices := common.NewChannelWithCancellation[uint32](100500)
+	duplicatedChunkIndices := common.NewChannelWithCancellation(100500)
 	chunkIndicesErrors := make(chan error)
 
 	source.On("Milestone").Return(milestone)
@@ -235,7 +235,7 @@ func TestTransferWithShallowCopy(t *testing.T) {
 
 	milestone := Milestone{ChunkIndex: 42}
 	chunkIndices := make(chan uint32, 100500)
-	duplicatedChunkIndices := common.NewChannelWithCancellation[uint32](100500)
+	duplicatedChunkIndices := common.NewChannelWithCancellation(100500)
 	chunkIndicesErrors := make(chan error)
 
 	source.On("Milestone").Return(milestone)
@@ -266,7 +266,7 @@ func TestTransferWithShallowCopy(t *testing.T) {
 	shallowSource.On("Milestone").Return(milestone)
 	shallowSource.On("ChunkIndices", mock.Anything, milestone, mock.Anything, mock.Anything).Return(
 		shallowCopyChunkIndices,
-		common.ChannelWithCancellation[uint32]{},
+		common.ChannelWithCancellation{},
 		shallowCopyChunkIndicesErrors,
 	).Run(func(args mock.Arguments) {
 		go func() {
@@ -344,7 +344,7 @@ func TestTransferShouldUpdateMilestoneWhenShallowCopyIsDoneSuccessfully(t *testi
 	chunkSize := 16
 	milestone := Milestone{ChunkIndex: 42}
 	chunkIndices := make(chan uint32, 100500)
-	duplicatedChunkIndices := common.NewChannelWithCancellation[uint32](100500)
+	duplicatedChunkIndices := common.NewChannelWithCancellation(100500)
 	chunkIndicesErrors := make(chan error)
 
 	source.On("Milestone").Return(milestone)
@@ -368,7 +368,7 @@ func TestTransferShouldUpdateMilestoneWhenShallowCopyIsDoneSuccessfully(t *testi
 	shallowSource.On("Milestone").Return(shallowCopyMilestone)
 	shallowSource.On("ChunkIndices", mock.Anything, milestone, mock.Anything, mock.Anything).Return(
 		shallowCopyChunkIndices,
-		common.ChannelWithCancellation[uint32]{},
+		common.ChannelWithCancellation{},
 		shallowCopyChunkIndicesErrors,
 	).Run(func(args mock.Arguments) {
 		go func() {
@@ -415,7 +415,7 @@ func TestTransferShouldNotUpdateMilestoneWhenShallowCopyIsFailed(t *testing.T) {
 	chunkSize := 16
 	milestone := Milestone{ChunkIndex: 42}
 	chunkIndices := make(chan uint32, 100500)
-	duplicatedChunkIndices := common.NewChannelWithCancellation[uint32](100500)
+	duplicatedChunkIndices := common.NewChannelWithCancellation(100500)
 	chunkIndicesErrors := make(chan error)
 
 	source.On("Milestone").Return(milestone)
@@ -439,7 +439,7 @@ func TestTransferShouldNotUpdateMilestoneWhenShallowCopyIsFailed(t *testing.T) {
 	shallowSource.On("Milestone").Return(shallowCopyMilestone)
 	shallowSource.On("ChunkIndices", mock.Anything, milestone, mock.Anything, mock.Anything).Return(
 		shallowCopyChunkIndices,
-		common.ChannelWithCancellation[uint32]{},
+		common.ChannelWithCancellation{},
 		shallowCopyChunkIndicesErrors,
 	).Run(func(args mock.Arguments) {
 		go func() {

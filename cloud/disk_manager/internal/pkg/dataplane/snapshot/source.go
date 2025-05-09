@@ -27,8 +27,8 @@ func (s *snapshotSource) ChunkIndices(
 	ctx context.Context,
 	milestone dataplane_common.Milestone,
 	processedChunkIndices <-chan uint32,
-	holeChunkIndices common.ChannelWithCancellation[uint32],
-) (<-chan uint32, common.ChannelWithCancellation[uint32], <-chan error) {
+	holeChunkIndices common.ChannelWithCancellation,
+) (<-chan uint32, common.ChannelWithCancellation, <-chan error) {
 
 	common.Assert(s.chunkIndices.Empty(), "should be called once")
 
@@ -90,7 +90,7 @@ func (s *snapshotSource) ChunkIndices(
 		}
 	}()
 
-	return s.chunkIndices.Channel(), common.ChannelWithCancellation[uint32]{}, errors
+	return s.chunkIndices.Channel(), common.ChannelWithCancellation{}, errors
 }
 
 func (s *snapshotSource) Read(

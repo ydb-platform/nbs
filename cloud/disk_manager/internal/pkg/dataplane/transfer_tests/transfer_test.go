@@ -335,7 +335,7 @@ func (r *Resource) checkChunks(
 		ctx,
 		dataplane_common.Milestone{},
 		processedChunkIndices,
-		common.ChannelWithCancellation[uint32]{}, // holeChunkIndices
+		common.ChannelWithCancellation{}, // holeChunkIndices
 	)
 	for chunkIndex := range chunkIndices {
 		processedChunkIndices <- chunkIndex

@@ -6,21 +6,21 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type ChannelWithCancellation[T any] struct {
-	channel         chan T
+type ChannelWithCancellation struct {
+	channel         chan uint32
 	cancellationCtx context.Context
 	cancel          func()
 }
 
-func (c *ChannelWithCancellation[T]) Empty() bool {
+func (c *ChannelWithCancellation) Empty() bool {
 	return c.channel == nil
 }
 
 // Used by the sender.
 // Returns true if sending was successful, otherwise returns false.
-func (c *ChannelWithCancellation[T]) Send(
+func (c *ChannelWithCancellation) Send(
 	ctx context.Context,
-	value T,
+	value uint32,
 ) (bool, error) {
 
 	select {
@@ -35,29 +35,28 @@ func (c *ChannelWithCancellation[T]) Send(
 
 // Used by the receiver.
 // Should not be called after Cancel.
-func (c *ChannelWithCancellation[T]) Receive(
+func (c *ChannelWithCancellation) Receive(
 	ctx context.Context,
-) (T, bool, error) {
+) (uint32, bool, error) {
 
 	select {
 	case value, more := <-c.channel:
 		return value, more, nil
 	case <-ctx.Done():
-		var zero T
-		return zero, false, ctx.Err()
+		return 0, false, ctx.Err()
 	}
 }
 
 // Used by the receiver to indicate that sending is no longer needed,
 // afterwards Send will always return false.
-func (c *ChannelWithCancellation[T]) Cancel() {
+func (c *ChannelWithCancellation) Cancel() {
 	if c.cancel != nil {
 		c.cancel()
 	}
 }
 
 // Used by the sender to indicate that sending is finished.
-func (c *ChannelWithCancellation[T]) Close() {
+func (c *ChannelWithCancellation) Close() {
 	if c.channel != nil {
 		close(c.channel)
 	}
@@ -65,12 +64,9 @@ func (c *ChannelWithCancellation[T]) Close() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewChannelWithCancellation[T any](
-	capacity int,
-) ChannelWithCancellation[T] {
-
-	c := ChannelWithCancellation[T]{
-		channel: make(chan T, capacity),
+func NewChannelWithCancellation(capacity int) ChannelWithCancellation {
+	c := ChannelWithCancellation{
+		channel: make(chan uint32, capacity),
 	}
 	c.cancellationCtx, c.cancel = context.WithCancel(context.Background())
 	return c

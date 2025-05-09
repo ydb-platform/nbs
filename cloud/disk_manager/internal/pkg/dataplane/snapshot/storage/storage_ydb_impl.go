@@ -741,7 +741,7 @@ func (s *storageYDB) shallowCopySnapshot(
 	inflightQueue := common.NewInflightQueue(
 		common.Milestone{Value: milestoneChunkIndex},
 		processedIndices,
-		common.ChannelWithCancellation[uint32]{}, // holeValues
+		common.ChannelWithCancellation{}, // holeValues
 		s.shallowCopyInflightLimit,
 	)
 	defer inflightQueue.Close()
