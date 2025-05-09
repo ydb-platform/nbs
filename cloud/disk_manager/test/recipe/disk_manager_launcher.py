@@ -1,6 +1,8 @@
 import logging
 import os
 import time
+import typing
+import urllib.request
 
 from yatest.common import process
 
@@ -336,6 +338,12 @@ MIGRATION_CONFIG_TEMPLATE = """
 SERVICE_NAME = "disk_manager"
 
 
+class Metric(typing.NamedTuple):
+    name: str
+    labels: dict[str, str]
+    value: float
+
+
 class DiskManagerServer(Daemon):
 
     def __init__(self,
@@ -559,3 +567,21 @@ class DiskManagerLauncher:
     @property
     def pid(self) -> int:
         return self.__daemon.pid
+
+    def get_metrics(self) -> dict[str, 'Metric']:
+        result = {}
+        data = ""
+        with urllib.request.urlopen(f"http://localhost:{self.__monitoring_port}/metrics/") as response:
+            data = response.read().decode()
+        for line in data.splitlines():
+            if line.startswith("#"):
+                continue
+            selector, value = line.split(" ", 2)
+            name, labels = selector.split("{", 1)
+            labels = labels.rstrip("}")
+            labels = dict(
+                label.split("=") for label in labels.split(",")
+            )
+            result[name] = Metric(name, labels, float(value))
+
+        return result

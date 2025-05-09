@@ -14,7 +14,7 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 from cloud.disk_manager.test.recipe.common import get_ydb_binary_path
-from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher
+from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher, Metric
 from cloud.disk_manager.test.recipe.metadata_service_launcher import MetadataServiceLauncher
 from cloud.disk_manager.test.recipe.nbs_launcher import NbsLauncher
 from cloud.disk_manager.test.recipe.s3_launcher import S3Launcher
@@ -276,11 +276,6 @@ class _MigrationTestSetup:
     def finish_database_migration(self, task_id: str):
         self.admin("tasks", "cancel", task_id)
 
-    def dependencies_finished(self, task_id: str) -> bool:
-        stdout = self.admin("tasks", "get", task_id)
-        dependencies = json.loads(stdout)["dependencies"]
-        return len(dependencies) == 0
-
     def list_snapshots(self) -> list[str]:
         stdout = self.admin("snapshots", "list")
         return stdout.splitlines()
@@ -325,6 +320,18 @@ class _MigrationTestSetup:
         )
         self.secondary_dpl_disk_manager.start()
 
+    def wait_for_snapshot_metric_equals(self, value,  timeout_sec=360):
+        started_at = time.monotonic()
+        while True:
+            if time.monotonic() - started_at > timeout_sec:
+                raise TimeoutError("Timed out waiting for snapshot metric to be zeroed")
+            value = self.initial_dpl_disk_manager.get_metrics().get("snapshots_migratingCount")
+            time.sleep(1)
+            if value is None:
+                continue
+            if value.value == value:
+                break
+
 
 @pytest.mark.parametrize(
     ["use_s3_as_src", "use_s3_as_dst"],
@@ -360,12 +367,10 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
         (True, False, 1000),
         (False, True, 1000),
         (True, True, 1000),
+        (False, False, 4),
+        (False, False, 5),
         (False, False, 9),
         (False, False, 10),
-        (False, False, 11),
-        (False, False, 14),
-        (False, False, 15),
-        (False, False, 16),
         (False, False, 1000),
     ]
 )
@@ -403,6 +408,7 @@ def test_disk_manager_dataplane_database_migration(
 
         task_id = setup.start_database_migration()
 
+        setup.wait_for_snapshot_metric_equals(0)
         # Create snapshots during migration
         for snapshot, disk in list(zip(snapshots, disks))[initial_data_count // 2:]:
             setup.create_snapshot(src_disk_id=disk, snapshot_id=snapshot)
@@ -411,10 +417,7 @@ def test_disk_manager_dataplane_database_migration(
         while len(setup.list_snapshots()) != initial_data_count:
             time.sleep(1)
 
-        while not setup.dependencies_finished(task_id):
-            time.sleep(1)
-
-        time.sleep(20)
+        setup.wait_for_snapshot_metric_equals(0)
         setup.finish_database_migration(task_id)
         setup.switch_dataplane_to_new_db()
         for new_disk, checksum, snapshot in zip(new_disks_for_initial, checksums, snapshots):
