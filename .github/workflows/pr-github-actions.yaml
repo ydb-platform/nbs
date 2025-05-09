@@ -212,13 +212,13 @@ jobs:
         with:
           scandir: .github
         env:
-          SHELLCHECK_OPTS: "-e SC2155,SC2086,SC2154,SC2164,SC2009,SC2015"
+          SHELLCHECK_OPTS: "-e SC2155,SC2086"
 
 
       - name: shellcheck for github actions shell scripts in .temporary dir
         uses: ludeeus/action-shellcheck@master
         env:
-          SHELLCHECK_OPTS: "-e SC2155,SC2086,SC2154,SC2164,SC2009,SC2015"
+          SHELLCHECK_OPTS: "-e SC2155,SC2086"
         with:
           scandir: .temporary
 
@@ -329,4 +329,5 @@ jobs:
     with:
       allow_downgrade: ${{ needs.set-env.outputs.allow_downgrade }}
       large_tests: ${{ needs.set-env.outputs.large_tests }}
+      number_of_retries: 3
     secrets: inherit

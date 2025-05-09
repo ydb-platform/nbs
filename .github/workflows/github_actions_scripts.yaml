@@ -18,7 +18,7 @@ jobs:
         export GITHUB_REPOSITORY="ydb-platform/nbs"
 
         mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
-        cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
+        cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/ || exit
         wget "https://storage.eu-north1.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
         tar zxvf cloud.tar.gz
 
@@ -88,7 +88,7 @@ jobs:
       run: |
         set -x
         mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
-        cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
+        cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/ || exit
         wget "https://storage.eu-north1.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
         tar zxvf cloud.tar.gz
       env:
@@ -139,14 +139,14 @@ jobs:
         echo "::group::check-md5"
         # find . -type f -exec md5sum {} + > ../test-data/MD5SUMS
         cp .github/scripts/tests/test-data/MD5SUMS $TMP_DIR/MD5SUMS
-        cd $TMP_DIR
+        cd $TMP_DIR || exit
         md5sum -c MD5SUMS | tee -a RESULT
         echo "::endgroup::"
     - name: additional info in case of failure
       if: failure()
       shell: bash
       run: |
-        cd $TMP_DIR
+        cd $TMP_DIR || exit
         grep FAILED RESULT | awk -F: '{print $1}' | while read -r f;
         do
           echo "=========="

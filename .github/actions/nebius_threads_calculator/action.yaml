@@ -27,12 +27,12 @@ runs:
       id: calculate-threads
       shell: bash
       run: |
-        echo "vm_preset: ${vm_preset}"
-        echo "tests_size: ${tests_size}"
+        echo "vm_preset: ${VM_PRESET}"
+        echo "tests_size: ${TESTS_SIZE}"
         echo "checking size of the tests could be small, medium, large and combination of them"
         test_threads=0
-        if [[ $tests_size == *"large"* ]]; then
-          case "$vm_preset" in
+        if [[ $TESTS_SIZE == *"large"* ]]; then
+          case "$VM_PRESET" in
             # for large tests we need 6 vcpu per thread
             "256vcpu-1024gb")
                 test_threads=42
@@ -91,12 +91,12 @@ runs:
                 build_threads=2
             ;;
             *)
-              echo "Unknown vm_preset: $vm_preset"
+              echo "Unknown vm_preset: $VM_PRESET"
               exit 1
             ;;
           esac
         else
-          case "$vm_preset" in
+          case "$VM_PRESET" in
             "256vcpu-1024gb")
                 test_threads=64
                 build_threads=256
@@ -154,7 +154,7 @@ runs:
                 build_threads=2
             ;;
             *)
-              echo "Unknown vm_preset: $vm_preset"
+              echo "Unknown vm_preset: $VM_PRESET"
               exit 1
             ;;
           esac
@@ -167,5 +167,5 @@ runs:
         } | tee -a $GITHUB_OUTPUT
         
       env:
-        vm_preset: ${{ inputs.vm_preset || '80vcpu-320gb' }}
-        tests_size: ${{ inputs.tests_size || 'small,medium,large' }}
+        VM_PRESET: ${{ inputs.vm_preset || '80vcpu-320gb' }}
+        TESTS_SIZE: ${{ inputs.tests_size || 'small,medium,large' }}

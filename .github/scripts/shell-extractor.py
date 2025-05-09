@@ -1,4 +1,5 @@
 import os
+import re
 import yaml
 
 ACTIONS_DIR = ".github/actions"
@@ -50,54 +51,60 @@ def parse_command_blocks(run_content):
     """
     Parse the run content into command blocks.
 
-    Rules:
-    - If a line ends with a backslash, it continues the same command block.
-    - If we encounter a line with '<<EOF', we enter a heredoc block and continue
-      until we find a line that is exactly 'EOF'.
-    - Otherwise, each line not ending with a backslash or not part of a heredoc is its own block.
-
-    Returns a list of command blocks, where each block is a list of lines.
-
-    We need this to place shellcheck commands before blocks that contain GitHub variables.
+    Handles:
+    - Line continuations using backslash
+    - Heredocs starting with <<EOF and ending with EOF
+    - Bash arrays starting with name=( and ending with )
     """
     lines = run_content.splitlines()
     command_blocks = []
     current_block = []
-
     in_heredoc = False
+    in_array = False
 
     for line in lines:
-        # If we are currently in a heredoc block, we add lines until we find EOF
+        stripped = line.strip()
+
         if in_heredoc:
             current_block.append(line)
-            if line.strip() == "EOF":
-                # End of heredoc block
+            if stripped == "EOF":
                 command_blocks.append(current_block)
                 current_block = []
                 in_heredoc = False
-            # continue to next line
             continue
 
-        # Check if this line starts a heredoc
+        if in_array:
+            current_block.append(line)
+            if stripped == ")":
+                command_blocks.append(current_block)
+                current_block = []
+                in_array = False
+            continue
+
+        # Detect start of heredoc
         if "<<" in line and "EOF" in line:
-            # This starts a heredoc block
             if current_block:
-                # If we had a previous block (e.g. single line), finalize it first
                 command_blocks.append(current_block)
                 current_block = []
             in_heredoc = True
             current_block.append(line)
             continue
 
-        # If not heredoc, check if line ends with a backslash
-        stripped = line.strip()
+        # Detect start of bash array: var=( or var = (
+        if re.match(r"^\s*\w+\s*=\s*\($", line):
+            if current_block:
+                command_blocks.append(current_block)
+                current_block = []
+            in_array = True
+            current_block.append(line)
+            continue
+
+        # Default multiline via backslashes
         current_block.append(line)
         if not stripped.endswith("\\"):
-            # This block ends here
             command_blocks.append(current_block)
             current_block = []
 
-    # If there's any leftover block (should not typically happen if run_content is well-formed)
     if current_block:
         command_blocks.append(current_block)
 

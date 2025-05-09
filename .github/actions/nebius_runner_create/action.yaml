@@ -91,9 +91,9 @@ runs:
       run: |
         export SERVICE_ACCOUNT_KEY=$(mktemp)
         echo "SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}" >> $GITHUB_ENV
-        echo "${key_contents}" > $SERVICE_ACCOUNT_KEY
+        echo "${KEY_CONTENTS}" > $SERVICE_ACCOUNT_KEY
       env:
-        key_contents: ${{ inputs.service_account_key }}
+        KEY_CONTENTS: ${{ inputs.service_account_key }}
     - name: install dependencies
       shell: bash
       run: |

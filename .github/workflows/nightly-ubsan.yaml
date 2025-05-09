@@ -22,3 +22,4 @@ jobs:
       cache_update_build: true
       cache_update_tests: false
       sleep_after_tests: 1
+      number_of_retries: 1

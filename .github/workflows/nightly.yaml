@@ -46,6 +46,7 @@ jobs:
       cache_update_build: true
       cache_update_tests: false
       sleep_after_tests: 1
+      number_of_retries: 1
   build_schedule:
     name: Build/test x86_64 using YA (relwithdebinfo) (schedule)
     if: github.event_name == 'schedule'
@@ -58,3 +59,4 @@ jobs:
       cache_update_build: true
       cache_update_tests: false
       sleep_after_tests: 1
+      number_of_retries: 1

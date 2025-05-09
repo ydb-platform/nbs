@@ -38,99 +38,124 @@ inputs:
     default: "yes"
     description: "use network cache"
 
-
 runs:
   using: composite
   steps:
     - name: Init
       id: init
       shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
       run: |
         export TMP_DIR=/home/github/tmp_build
         echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
         rm -rf $TMP_DIR && mkdir $TMP_DIR && chown -R github:github $TMP_DIR $GITHUB_WORKSPACE
 
-        # shellcheck disable=SC2193
-        if [ "${{ inputs.clean_ya_dir }}" == "yes" ] && [ -d /home/github/.ya/ ]; then
+        
+        if [ "$CLEAN_YA_DIR" == "yes" ] && [ -d /home/github/.ya/ ]; then
           echo "Cleaning ya dir"
           rm -rf /home/github/.ya/
         fi
+
     - name: Setup cache password file
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        BAZEL_REMOTE_PASSWORD: ${{ inputs.bazel_remote_password }}
       run: |
         export BAZEL_REMOTE_PASSWORD_FILE=$(mktemp)
-        echo -n "${{ inputs.bazel_remote_password }}" > "$BAZEL_REMOTE_PASSWORD_FILE"
+        echo -n "$BAZEL_REMOTE_PASSWORD" > "$BAZEL_REMOTE_PASSWORD_FILE"
         echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
         chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
         chown github:github "$BAZEL_REMOTE_PASSWORD_FILE"
 
     - name: build
       shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
+        BUILD_PRESET: ${{ inputs.build_preset }}
+        BUILD_TARGET: ${{ inputs.build_target }}
+        BUILD_THREADS: ${{ inputs.build_threads }}
+        LINK_THREADS: ${{ inputs.link_threads }}
+        BAZEL_REMOTE_USERNAME: ${{ inputs.bazel_remote_username }}
+        BAZEL_REMOTE_URI: ${{ inputs.bazel_remote_uri }}
+        USE_NETWORK_CACHE: ${{ inputs.use_network_cache }}
+        CACHE_UPDATE: ${{ inputs.cache_update }}
       run: |
         function grep_ya_tc() {
+          # shellcheck disable=SC2009
           ps aux | grep "[y]a-tc" || true
         }
 
-        extra_params=()
+        extra_params=(
+          --keep-going
+          --threads="$BUILD_THREADS"
+          --link-threads "${LINK_THREADS}" 
+          --force-build-depends
+          -T
+          --stat
+          --log-file "$TMP_DIR/ya_log.txt"
+          --evlog-file "$TMP_DIR/ya_evlog.jsonl"
+          --dump-graph
+          --dump-graph-to-file "$TMP_DIR/ya_graph.json" 
+          --cache-size 512G
+        )
+        # strip quotes from the string
+        # TODO: remove it when pr.yaml gets updated
+        BUILD_TARGET=${BUILD_TARGET//\"/}
 
-        # shellcheck disable=SC2157
-        if [ -n "${{ inputs.build_target }}" ]; then
-          readarray -d ',' -t targets < <(printf "%s" "${{ inputs.build_target }}")
+        if [ -n "$BUILD_TARGET" ]; then
+          readarray -d ',' -t targets < <(printf "%s" "$BUILD_TARGET")
           for target in "${targets[@]}"; do
             extra_params+=(--target="${target}")
           done
         fi
 
-        # shellcheck disable=SC2157,SC2193
-        if [ "${{ inputs.use_network_cache }}" == "yes" ]; then
-          if [ -n "${{ inputs.bazel_remote_uri }}" ]; then
+        if [ "$USE_NETWORK_CACHE" == "yes" ]; then
+          if [ -n "$BAZEL_REMOTE_URI" ]; then
             extra_params+=(--bazel-remote-store)
-            extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
+            extra_params+=(--bazel-remote-base-uri "$BAZEL_REMOTE_URI")
           fi
 
-          # shellcheck disable=SC2157
-          if [ -n "${{ inputs.bazel_remote_username }}" ]; then
-            extra_params+=(--bazel-remote-username "${{ inputs.bazel_remote_username }}")
-            extra_params+=(--bazel-remote-password-file="$BAZEL_REMOTE_PASSWORD_FILE")
+          if [ -n "$BAZEL_REMOTE_USERNAME" ]; then
+            extra_params+=(--bazel-remote-username "$BAZEL_REMOTE_USERNAME")
+            extra_params+=(--bazel-remote-password-file "$BAZEL_PASSWORD_FILE")
             extra_params+=(--add-result .o)
           fi
 
-          # shellcheck disable=SC2193
-          if [ "${{ inputs.cache_update }}" == "true" ]; then
+          if [ "$CACHE_UPDATE" == "true" ]; then
             extra_params+=(--bazel-remote-put)
           fi
         fi
 
-        # shellcheck disable=SC2195
-        case "${{ inputs.build_preset }}" in
+        case "$BUILD_PRESET" in
           debug)
-            build_type=debug
+            extra_params+=(--build "debug")
             ;;
           relwithdebinfo)
-            build_type=relwithdebinfo
+            extra_params+=(--build "relwithdebinfo")
             ;;
           release-asan)
-            build_type=release
+            extra_params+=(--build "release")
             extra_params+=(--sanitize="address")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
             ;;
           release-tsan)
-            build_type=release
+            extra_params+=(--build "release")
             extra_params+=(--sanitize="thread")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
             ;;
           release-msan)
-            build_type=release
+            extra_params+=(--build "release")
             extra_params+=(--sanitize="memory")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
             ;;
           release-ubsan)
-            build_type=release
+            extra_params+=(--build "release")
             extra_params+=(--sanitize="undefined")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
             ;;
           *)
-            echo "Invalid preset: ${{ inputs.build_preset }}"
+            echo "Invalid preset: $BUILD_PRESET"
             exit 1
             ;;
         esac
@@ -140,6 +165,7 @@ runs:
           ya_bin_path=$(find /home/github/.ya/tools/ -type f -name "ya-bin")
           if [ ! -s "$ya_bin_path" ]; then
             echo "ya-bin exists but is empty, lets look for ya-tc process and kill it if it's running somehow."
+            # shellcheck disable=SC2009
             ps auxf | grep -vE "]$"
             ls -lsha "$ya_bin_path"
             du -h -d 1 /home/github/.ya/
@@ -150,14 +176,14 @@ runs:
             start_time=$(date +%s)
 
             while true; do
-              pgrep -x "$process_name" && {
+              if pgrep -x "$process_name"; then
                   echo "$process_name is still running."
                   grep_ya_tc
-              } || {
+              else
                   echo "$process_name is not running."
                   grep_ya_tc
                   break
-              }
+              fi
 
               current_time=$(date +%s)
               elapsed_time=$((current_time - start_time))
@@ -175,6 +201,7 @@ runs:
 
             echo "ya-bin exists but is empty, recovering by removing it."
             ls -lsha "$ya_bin_path"
+            # shellcheck disable=SC2009
             ps auxf | grep -vE "]$"
             rm -rf $ya_bin_path
           fi
@@ -182,11 +209,7 @@ runs:
           echo "/home/github/.ya/tools/ not found"
         fi
         date
-        sudo -E -H -u github ./ya make -k -j${{ inputs.build_threads }} --build "${build_type}" --force-build-depends -T --stat  \
-          --log-file "$TMP_DIR/ya_log.txt" --evlog-file "$TMP_DIR/ya_evlog.jsonl" \
-          --dump-graph --dump-graph-to-file "$TMP_DIR/ya_graph.json" \
-          --cache-size 512G --link-threads "${{ inputs.link_threads }}" \
-          "${extra_params[@]}"
+        sudo -E -H -u github ./ya make "${extra_params[@]}"
         date
 
     - name: Sync logs to S3
