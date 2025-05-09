@@ -49,9 +49,7 @@ public:
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.IsReliableMediaKind =
             IsReliableMediaKind(volume.GetStorageMediaKind());
-        options.DiscardEnabled =
-            VhostDiscardEnabled &&
-            !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
+        options.DiscardEnabled = request.GetVhostDiscardEnabled();
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
 
         return Server->StartEndpoint(
