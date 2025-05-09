@@ -101,6 +101,13 @@ jobs:
   check-if-we-need-additional-runner:
     name: Check if we need additional runner
     runs-on: ubuntu-latest
+    outputs:
+      RUNNERS_COUNT: ${{ steps.check.outputs.RUNNERS_COUNT }}
+      RUNNERS_OFFLINE: ${{ steps.check.outputs.RUNNERS_OFFLINE }}
+      RUNNERS_BUSY: ${{ steps.check.outputs.RUNNERS_BUSY }}
+      RUNNERS_AVAILABLE: ${{ steps.check.outputs.RUNNERS_AVAILABLE }}
+      RUNNERS_WITHOUT_OFFLINE: ${{ steps.check.outputs.RUNNERS_WITHOUT_OFFLINE }}
+      RUNNERS_WITHOUT_OFFLINE_PLUS_ONE: ${{ steps.check.outputs.RUNNERS_WITHOUT_OFFLINE_PLUS_ONE }}
     steps:
       - name: Checkout PR
         uses: actions/checkout@v4
@@ -151,15 +158,17 @@ jobs:
             echo "RUNNERS_WITHOUT_OFFLINE=${RUNNERS_WITHOUT_OFFLINE}"
             echo "RUNNERS_WITHOUT_OFFLINE_PLUS_ONE=${RUNNERS_WITHOUT_OFFLINE_PLUS_ONE}"
           } | tee -a "$GITHUB_OUTPUT"
-      - name: if we have 1 or less runners we need to create new one
-        if: ${{ steps.check.outputs.RUNNERS_AVAILABLE <= '0' }}
-        id: populate
-        uses: ./.github/workflows/populate.yaml
-        with:
-          vms_ttl: 60
-          max_vms_to_create: ${{ steps.check.outputs.RUNNERS_WITHOUT_OFFLINE_PLUS_ONE }}
-          flavor: ${{ inputs.runner_flavor }}
-          
+
+  launch-populate:
+    name: if we have 1 or less runners we need to create new one
+    needs: check-if-we-need-additional-runner
+    if: ${{ needs.check-if-we-need-additional-runner.outputs.RUNNERS_AVAILABLE <= '0' }}
+    uses: ./.github/workflows/populate.yaml
+    with:
+      vms_ttl: 60
+      max_vms_to_create: ${{ needs.check-if-we-need-additional-runner.outputs.RUNNERS_WITHOUT_OFFLINE_PLUS_ONE }}
+      flavor: ${{ inputs.runner_flavor }}
+    secrets: inherit
 
   build-and-test:
     name: Build and test ${{ inputs.build_preset }}
@@ -167,7 +176,7 @@ jobs:
     timeout-minutes: 420
     needs: 
       - calculate-runs-on
-      - check-if-we-need-additional-runner
+      - launch-populate
     steps:
     - name: Checkout PR
       uses: actions/checkout@v4
