@@ -1,0 +1,89 @@
+name: Select nebius runner
+description: Select nebius runner and display its parameters
+inputs:
+  parent_id:
+    required: true
+    description: "parent id"
+  instance_name:
+    required: false
+    description: "new instance name"
+  flavor:
+    required: false
+    default: "heavy"
+    description: "required flavor"
+  token:
+    required: true
+    description: "github token"
+outputs:
+  RUNNER_IPV4:
+    value: ${{ steps.result.outputs.RUNNER_IPV4 }}
+    description: "runner ipv4"
+  RUNNER_LOCAL_IPV4:
+    value: ${{ steps.result.outputs.RUNNER_LOCAL_IPV4 }}
+    description: "runner local ipv4"
+  INSTANCE_ID:
+    value: ${{ steps.result.outputs.INSTANCE_ID }}
+    description: "runner instance id"
+  INSTANCE_NAME:
+    value: ${{ steps.result.outputs.INSTANCE_NAME }}
+    description: "runner instance name"
+  RUNNER_FLAVOR:
+    value: ${{ steps.result.outputs.RUNNER_FLAVOR }}
+    description: "runner flavor"
+  LABEL:
+    value: ${{ steps.result.outputs.LABEL }}
+    description: "runner label"
+  OLD_INSTANCE_NAME:
+    value: ${{ steps.result.outputs.OLD_INSTANCE_NAME }}
+    description: "old instance name"
+  VM_PRESET:
+    value: ${{ steps.result.outputs.VM_PRESET }}
+    description: "vm preset"
+
+runs:
+  using: composite
+  steps:
+    - name: set up home
+      shell: bash
+      run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+    - name: set up path
+      shell: bash
+      run: echo "PATH=$PATH:$HOME/.nebius/bin" >> $GITHUB_ENV
+
+    - name: Check Nebius CLI
+      shell: bash
+      run: |
+        set -x
+         [ ! -f "$HOME/.nebius/bin/nebius" ] && {
+          echo "Nebius CLI not installed"
+          exit 1
+        } || echo "Nebius CLI already installed"
+        [ ! -f "$HOME/.nebius/config.yaml" ] && {
+          echo "Nebius CLI not configured"
+          exit 1
+        } || echo "Nebius CLI already configured"
+    - name: Select nebius runner
+      shell: bash
+      id: select
+      run: |
+        bash ${GITHUB_ACTION_PATH}/select.sh
+      env:
+        PARENT_ID: ${{ inputs.parent_id }}
+        PROJECT_FILTER: ${{ format('{0}-{1}', github.repository_owner, github.event.repository.name) }}
+        OWNER: ${{ github.repository_owner }}
+        REPO: ${{ github.event.repository.name }}
+        FLAVOR: ${{ inputs.flavor }}
+        GH_TOKEN: ${{ inputs.token }}
+
+    - name: Update VM name and get runner settings
+      shell: bash
+      if: ${{ steps.select.outputs.INSTANCE_ID != '' }}
+      id: result
+      run: bash ${GITHUB_ACTION_PATH}/result.sh
+      env:
+        INSTANCE_ID: ${{ steps.select.outputs.INSTANCE_ID }}
+        INSTANCE_LABELS: ${{ steps.select.outputs.INSTANCE_LABELS }}
+        NEW_INSTANCE_NAME: ${{ inputs.instance_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number &&  github.event.pull_request.number || 'no' }}
+        REPOSITORY_NAME: ${{ github.event.repository.name }}

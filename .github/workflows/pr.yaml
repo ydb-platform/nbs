@@ -221,7 +221,7 @@ jobs:
           add_components "blockstore" "$CONTAINS_BLOCKSTORE" "cloud/blockstore/apps/" "cloud/blockstore/"
           add_components "filestore" "$CONTAINS_FILESTORE" "cloud/filestore/apps/" "cloud/filestore/"
           add_components "disk_manager" "$CONTAINS_DISK_MANAGER" "cloud/disk_manager/" "cloud/disk_manager/"
-          add_components "tasks" "$CONTAINS_TASKS" "cloud/tasks/errors/" "cloud/tasks/errors/"
+          add_components "tasks" "$CONTAINS_TASKS" "cloud/tasks/" "cloud/tasks/"
           add_components "storage" "$CONTAINS_STORAGE" "cloud/storage/" "cloud/storage/"
 
           # Remove trailing commas

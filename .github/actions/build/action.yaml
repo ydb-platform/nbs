@@ -51,7 +51,6 @@ runs:
         echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
         rm -rf $TMP_DIR && mkdir $TMP_DIR && chown -R github:github $TMP_DIR $GITHUB_WORKSPACE
 
-        
         if [ "$CLEAN_YA_DIR" == "yes" ] && [ -d /home/github/.ya/ ]; then
           echo "Cleaning ya dir"
           rm -rf /home/github/.ya/
@@ -232,3 +231,12 @@ runs:
       if: always()
       shell: bash
       run: df -h
+    
+    - name: clean up
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::cleanup"
+        sudo -E -H -u github rm -rf "$TMP_DIR"
+        chown -R root:root $GITHUB_WORKSPACE
+        echo "::endgroup::"

@@ -1,0 +1,124 @@
+name: Populate VMs
+run-name: Populate VMs ${{  inputs.flavor }}
+on:
+  workflow_dispatch:
+    inputs:
+      max_vms_to_create:
+        description: 'Max VMs to create'
+        type: number
+        required: true
+        default: 1
+      vms_ttl:
+        description: 'VMs TTL (seconds)'
+        type: number
+        required: true
+        default: 60
+      flavor:
+        description: 'Runner flavor'
+        type: choice
+        options:
+          - heavy
+          - light
+        required: true
+        default: 'light'
+
+env:
+  disk_size: ${{ inputs.flavor == 'heavy' && 1023 || 93 }}
+  preset: ${{ inputs.flavor == 'heavy' && '32vcpu-128gb' || '4vcpu-16gb' }}
+
+
+jobs:
+  calculate_missing_vms:
+    name: Calculate missing VMs
+    runs-on: ubuntu-latest
+    outputs:
+      running_vms: ${{ steps.list.outputs.RUNNING_VMS_COUNT }}
+      vms_to_create: ${{ steps.list.outputs.VMS_TO_CREATE }}
+      vms_to_remove: ${{ steps.list.outputs.VMS_TO_REMOVE }}
+      date: ${{ steps.list.outputs.DATE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: '.github'
+      - name: set up cli
+        id: get-runner
+        uses: ./.github/actions/nebius_cli
+        with:
+          sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+      - name: set up gh cli
+        id: get-gh
+        uses: ./.github/actions/gh_cli   
+      - name: List VMs and prepare removal (vms older than 24h) and creation lists
+        id: list
+        uses: ./.github/actions/nebius_runner_populate
+        with:
+          parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          max_vms_to_create: ${{ inputs.max_vms_to_create }}
+          vms_ttl: ${{ inputs.vms_ttl }}
+          flavor: ${{ inputs.flavor }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+  remove_vms:
+    needs: calculate_missing_vms
+    name: Remove VMs
+    if: needs.calculate_missing_vms.outputs.vms_to_remove != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 2
+      matrix:
+        vms_to_remove: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_remove) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: '.github'
+      - name: Remove VM ${{ matrix.vms_to_remove }}
+        id: remove-runner
+        uses: ./.github/actions/nebius_runner_remove
+        timeout-minutes: 60
+        with:
+          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_id: ${{ matrix.vms_to_remove }}
+  populate_vms:
+    needs: calculate_missing_vms
+    name: Populate VMs
+    if: needs.calculate_missing_vms.outputs.vms_to_create != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 2
+      matrix:
+        vms_to_create: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_create) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: '.github'
+      - name: Create VM ${{ matrix.vms_to_create }}
+        id: start-runner
+        uses: ./.github/actions/nebius_runner_create
+        timeout-minutes: 60
+        with:
+          org: ydb-platform
+          team: nbs
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_name: ${{ matrix.vms_to_create }}
+          vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
+          vm_preset: ${{ env.preset }}
+          vm_disk_type: 'network-ssd-nonreplicated'
+          vm_disk_size: ${{ env.disk_size }}
+          vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
+          vm_image: ${{ vars.NEBIUS_IMAGE_ID_2204 }}
+          vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}',github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
+          vm_flavor: ${{ inputs.flavor }}
+          vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+          vm_allow_downgrade: 'no'
+    
+    

@@ -12,7 +12,7 @@ on:
         description: "VM image to use"
       disk_type:
         type: string
-        default: "network-ssd-nonreplicated"
+        default: ""
         description: "Disk type for VM"
       allow_downgrade:
         type: choice
@@ -66,20 +66,15 @@ env:
 
 jobs:
   provide-runner:
-    name: Start self-hosted runner [image=${{ inputs.vm_image || vars.IMAGE_ID_2204 }}]
+    name: Create runner 
     timeout-minutes: 60
     if: always()
     runs-on: ubuntu-latest
     outputs:
-      label: ${{ steps.start-runner.outputs.label }}
-      instance-id: ${{ steps.start-runner.outputs.instance-id }}
-      runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 }}
-      runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 }}
+      label: ${{ steps.start-runner.outputs.LABEL }}
+      instance-id: ${{ steps.start-runner.outputs.INSTANCE_ID }}
       allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
       large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
-      build_threads: ${{ steps.calculate-threads.outputs.build_threads || '60' }}
-      test_threads: ${{ steps.calculate-threads.outputs.test_threads || '32' }}
-      link_threads: ${{ steps.calculate-threads.outputs.link_threads || '24' }}
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
@@ -103,9 +98,8 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
-      - name: Start runner
+      - name: Create VM
         id: start-runner
-        if: always()
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
@@ -118,31 +112,25 @@ jobs:
           vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
           vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
-          vm_preset: ${{ env.large_tests == 'true' && vars.NEBIUS_VM_PRESET || '16vcpu-64gb' }}
-          vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
+          vm_preset: ${{ env.large_tests == 'true' && '80vcpu-320gb' || '16vcpu-64gb' }}
+          vm_disk_type: ${{ inputs.disk_type == '' && 'network-ssd-nonreplicated' || inputs.disk_type }}
           vm_disk_size: 1023
           vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
-          vm_image: ${{ inputs.vm_image || vars.NEBIUS_IMAGE_ID_2204 }}
+          vm_image: ${{ inputs.vm_image == '' && vars.NEBIUS_IMAGE_ID_2204 || inputs.vm_image }}
           vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
+          vm_flavor: "none"
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
-          vm_allow_downgrade: ${{ env.allow_downgrade == 'true' && 'yes' || 'no' }}
-      - name: Calculate threads
-        id: calculate-threads
-        if: always()
-        uses: ./.github/actions/nebius_threads_calculator
-        with:
-          vm_preset: ${{ steps.start-runner.outputs.vm-preset }}
-          tests_size: ${{ env.large_tests == 'false' && 'small' || 'small,medium,large' }}
+          vm_allow_downgrade: 'no'
+
   build-and-test:
-    name: Build and test NBS (relwithdebinfo) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
+    name: Build and test NBS (relwithdebinfo)
     uses: ./.github/workflows/build_and_test_ya.yaml
     needs:
       - provide-runner
     with:
       runner_kind: self-hosted
+      runner_flavor: "none"
       runner_label: ${{ needs.provide-runner.outputs.label }}
-      runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
-      runner_ipv4: ${{ needs.provide-runner.outputs.runner_ipv4 }}
       build_target: ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/' || 'cloud/tasks' }}
       test_target:  ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/' || 'cloud/tasks' }}
       build_preset: "relwithdebinfo"
@@ -150,9 +138,6 @@ jobs:
       run_tests: true
       test_size: ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'small,medium,large' || 'small' }}
       test_type: ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt' || 'go_test' }}
-      build_threads: ${{ needs.provide-runner.outputs.build_threads || '16' }}
-      link_threads: ${{ needs.provide-runner.outputs.link_threads || '16' }}
-      test_threads: ${{ needs.provide-runner.outputs.test_threads || '4' }}
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
       cache_update_build: false
       cache_update_tests: false
@@ -164,7 +149,7 @@ jobs:
     secrets: inherit
 
   release-runner:
-    name: Release self-hosted runner [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }} vm_image=${{ inputs.vm_image || vars.IMAGE_ID_2204 }}]
+    name: Release self-hosted runner
     needs:
       - provide-runner  # required to get output from the start-runner job
       - build-and-test
@@ -193,14 +178,14 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
-      - name: Stop runner
+      - name: Release VM
+        id: release
         uses: ./.github/actions/nebius_runner_remove
-        if: always()
-        timeout-minutes: 60
         with:
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          vm_id: ${{ needs.provide-runner.outputs.instance-id }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
           vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
-          vm_id: ${{ needs.provide-runner.outputs.instance-id }}
+  

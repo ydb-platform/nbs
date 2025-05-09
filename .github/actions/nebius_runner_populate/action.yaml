@@ -1,0 +1,66 @@
+name: Manage nebius runners
+description: Create and delete nebius runners to achieve desired amount of runners
+inputs:
+  parent_id:
+    required: true
+    description: "parent id"
+  vms_ttl:
+    required: true
+    description: "vms ttl"
+  max_vms_to_create:
+    required: true
+    description: "max vms to create"
+  flavor:
+    required: true
+    description: "required flavor"
+  token:
+    required: true
+    description: "github token"
+outputs:
+  RUNNING_VMS_COUNT:
+    value: ${{ steps.populate.outputs.RUNNING_VMS_COUNT }}
+    description: "running vms count"
+  VMS_TO_CREATE:
+    value: ${{ steps.populate.outputs.VMS_TO_CREATE }}
+    description: "vms to create"
+  VMS_TO_REMOVE:
+    value: ${{ steps.populate.outputs.VMS_TO_REMOVE }}
+    description: "vms to remove"
+
+runs:
+  using: composite
+  steps:
+    - name: set up home
+      shell: bash
+      run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+    - name: set up path
+      shell: bash
+      run: echo "PATH=$PATH:$HOME/.nebius/bin" >> $GITHUB_ENV
+
+    - name: Check Nebius CLI
+      shell: bash
+      run: |
+        set -x
+         [ ! -f "$HOME/.nebius/bin/nebius" ] && {
+          echo "Nebius CLI not installed"
+          exit 1
+        } || echo "Nebius CLI already installed"
+        [ ! -f "$HOME/.nebius/config.yaml" ] && {
+          echo "Nebius CLI not configured"
+          exit 1
+        } || echo "Nebius CLI already configured"
+    - name: Select nebius runner
+      shell: bash
+      id: populate
+      run: |
+        bash ${GITHUB_ACTION_PATH}/populate.sh
+      env:
+        OWNER: ${{ github.event.repository.owner.login }}
+        REPO: ${{ github.event.repository.name }}
+        PARENT_ID: ${{ inputs.parent_id }}
+        MAX_VMS_TO_CREATE: ${{ inputs.max_vms_to_create }}
+        FLAVOR: ${{ inputs.flavor }}
+        VMS_OLDER_THAN: ${{ inputs.vms_ttl }}
+        REPOSITORY_NAME: ${{ github.event.repository.name }}
+        GH_TOKEN: ${{ inputs.token }}

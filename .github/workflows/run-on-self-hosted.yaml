@@ -1,0 +1,83 @@
+name: Run on self-hosted
+on:
+  workflow_dispatch:
+    inputs:
+      flavor:
+        type: choice
+        default: "heavy"
+        description: "Runner flavor"
+        options:
+          - heavy
+          - light
+
+jobs:
+  get:
+    runs-on: [ self-hosted, "self-hosted", "runner_${{ inputs.flavor }}" ]
+    outputs:
+      label: ${{ steps.get-runner.outputs.LABEL }}
+      runner_flavor: ${{ steps.get-runner.outputs.RUNNER_FLAVOR }}
+      instance-id: ${{ steps.get-runner.outputs.INSTANCE_ID }}
+      vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
+      old-instance-name: ${{ steps.get-runner.outputs.OLD_INSTANCE_NAME }}
+      runner_ipv4: ${{ steps.get-runner.outputs.RUNNER_IPV4 }}
+      runner_local_ipv4: ${{ steps.get-runner.outputs.RUNNER_LOCAL_IPV4 }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        sparse-checkout: '.github'
+    - name: set up nebius cli
+      id: cli
+      uses: ./.github/actions/nebius_cli
+      with:
+        sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+    - name: set up gh cli
+      id: gh
+      uses: ./.github/actions/gh_cli  
+    - name: Select nebius runner
+      id: get-runner
+      uses: ./.github/actions/nebius_runner_select
+      with:
+        parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+        instance_name: ${{ format('running-{0}-{1}-run-{1}-{2}', github.event.repository.owner.login, github.event.repository.name, github.run_id, github.run_attempt) }}
+        flavor: "heavy"
+        token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+    - name: Calculate threads
+      id: calculate-threads
+      uses: ./.github/actions/nebius_threads_calculator
+      with:
+        vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
+        tests_size: 'small,medium,large'
+  dummy:
+    name: Dummy workload [id=${{ needs.get.outputs.instance-id }} local_ip=${{ needs.get.outputs.runner_local_ipv4 }} ip=${{ needs.get.outputs.runner_ipv4 }}]
+    if: ${{ needs.get.outputs.instance-id != '' }}
+    needs: 
+      - get
+    runs-on: [ self-hosted, "self-hosted", "${{ needs.get.outputs.label }}", "runner_${{ needs.get.outputs.runner_flavor }}" ]
+    steps:
+      - name: dummy workload
+        id: dummy
+        run: |
+          sleep 60
+  remove:
+    needs: 
+      - dummy
+      - get
+    runs-on: [ self-hosted, "self-hosted", "${{ needs.get.outputs.label }}", "runner_${{ needs.get.outputs.runner_flavor }}" ]
+    if: ${{ needs.get.outputs.instance-id != '' && always() }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        sparse-checkout: '.github'
+    - name: Setup nebius cli
+      id: rename
+      uses: ./.github/actions/nebius_cli
+      with:
+        sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+    - name: Release VM
+      id: release
+      uses: ./.github/actions/nebius_runner_release
+      with:
+        instance_id: ${{ needs.get.outputs.instance-id }}
+        instance_name: ${{ needs.get.outputs.old-instance-name }}

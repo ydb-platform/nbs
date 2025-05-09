@@ -68,7 +68,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       id: init
       run: |
-        export TMP_DIR=/home/github/tmp
+        export TMP_DIR=/home/github/tmp-${GITHUB_RUN_ID}
         {
           echo "TMP_DIR=$TMP_DIR"
           echo "LOG_DIR=$TMP_DIR/logs"
@@ -151,21 +151,25 @@ runs:
             extra_params+=(--build "release")
             extra_params+=(--sanitize="address")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            RETRY_COUNT=1
             ;;
           release-tsan)
             extra_params+=(--build "release")
             extra_params+=(--sanitize="thread")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            RETRY_COUNT=1
             ;;
           release-msan)
             extra_params+=(--build "release")
             extra_params+=(--sanitize="memory")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            RETRY_COUNT=1
             ;;
           release-ubsan)
             extra_params+=(--build "release")
             extra_params+=(--sanitize="undefined")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+            RETRY_COUNT=1
             ;;
           *)
             echo "Invalid preset: $BUILD_PRESET"
@@ -552,3 +556,12 @@ runs:
       if: always()
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: df -h
+
+    - name: clean up
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::clean-up"
+        sudo -E -H -u github rm -rf $TMP_DIR $SUMMARY_LINKS
+        chown -R root:root $GITHUB_WORKSPACE
+        echo "::endgroup::"

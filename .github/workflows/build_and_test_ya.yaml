@@ -19,16 +19,12 @@ on:
         description: "self-hosted or provisioned"
       runner_label:
         type: string
-        default: "linux"
+        default: "none"
         description: "runner label"
-      runner_instance_id:
+      runner_flavor:
         type: string
-        default: ""
-        description: "runner instance id"
-      runner_ipv4:
-        type: string
-        default: ""
-        description: "runner ipv4"
+        default: "none"
+        description: "runner flavor"
       run_build:
         type: boolean
         default: true
@@ -37,18 +33,6 @@ on:
         type: boolean
         default: true
         description: "run tests"
-      build_threads:
-        type: string
-        default: '60'
-        description: "Build threads count"
-      test_threads:
-        type: string
-        default: '64'
-        description: "Test threads count"
-      link_threads:
-        type: string
-        default: '32'
-        description: "link threads count"
       sleep_after_tests:
         type: string
         default: "0"
@@ -96,12 +80,33 @@ on:
         value: ${{ jobs.build-and-test.outputs.sleep_after_tests }}
 
 jobs:
-  build-and-test:
-    name: Build and test ${{ inputs.build_preset }} [id=${{ inputs.runner_instance_id }} ip=${{ inputs.runner_ipv4 }}]
-    runs-on: [ self-hosted, "${{ inputs.runner_kind }}", "${{ inputs.runner_label }}" ]
+  calculate-runs-on:
+    name: Calculate runs-on
+    runs-on: [ self-hosted, "${{ inputs.runner_kind }}", "runner_${{ inputs.runner_flavor }}" ]
     outputs:
-        sleep_after_tests: ${{ steps.failure.outputs.sleep_after_tests }}
-    timeout-minutes: 1440
+      runs-on: ${{ steps.set-runs-on.outputs.LABELS_LIST }}
+    steps:
+      - name: set up runs on
+        id: set-runs-on
+        shell: bash --noprofile --norc -eo pipefail -x {0}
+        env:
+          RUNNER_LABEL: ${{ inputs.runner_label }}
+          RUNNER_FLAVOR: ${{ inputs.runner_flavor }}
+          RUNNER_KIND: ${{ inputs.runner_kind }}
+        run: |
+          LABELS_LIST='[]'
+          LABELS_LIST=$(echo "${LABELS_LIST}" | jq -c --arg gh_label "self-hosted" '. + [$gh_label]')
+          LABELS_LIST=$(echo "${LABELS_LIST}" | jq -c --arg gh_label "runner_${RUNNER_FLAVOR}" '. + [$gh_label]')
+          if [ "${RUNNER_LABEL}" != "none" ]; then
+            LABELS_LIST=$(echo "${LABELS_LIST}" | jq  -c --arg gh_label "${RUNNER_LABEL}" '. + [$gh_label]')
+          fi
+          echo "LABELS_LIST=${LABELS_LIST}" | tee -a "$GITHUB_OUTPUT"
+
+  build-and-test:
+    name: Build and test ${{ inputs.build_preset }}
+    runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
+    timeout-minutes: 420
+    needs: calculate-runs-on
     steps:
     - name: Checkout PR
       uses: actions/checkout@v4
@@ -123,6 +128,42 @@ jobs:
       if: github.event.pull_request.head.sha == ''
       with:
         submodules: true
+    - name: set up nebius cli
+      id: cli
+      uses: ./.github/actions/nebius_cli
+      with:
+        sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+    - name: set up gh cli
+      id: gh
+      uses: ./.github/actions/gh_cli
+    - name: get runner info
+      id: get-runner
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        RUNNER_NAME: ${{ runner.name }}
+      run: |
+        nebius compute instance get --id "${RUNNER_NAME}" --format json > instance.json
+        LABEL=$(jq -r '.metadata.labels."runner-label"' instance.json)
+        RUNNER_FLAVOR=$(jq -r '.metadata.labels."runner-flavor"' instance.json)
+        EXTERNAL_IPV4=$(jq -r '.status.network_interfaces[0].public_ip_address.address' instance.json | sed -e 's/\/32//g')
+        LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
+        VM_PRESET=$(jq -r '.spec.resources.preset' instance.json)
+        {
+          echo "LABEL=${LABEL}"
+          echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
+          echo "INSTANCE_ID=${INSTANCE_ID}"
+          echo "RUNNER_IPV4=${EXTERNAL_IPV4}"
+          echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
+          echo "VM_PRESET=${VM_PRESET}"
+        } | tee -a "$GITHUB_OUTPUT"
+
+    - name: Calculate threads
+      id: calculate-threads
+      if: always()
+      uses: ./.github/actions/nebius_threads_calculator
+      with:
+        vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
+        tests_size: ${{ inputs.test_size }}
 
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
@@ -137,10 +178,11 @@ jobs:
         install: false
 
     - name: set up zramswap
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        sudo apt-get update
-        sudo apt-get install -y zram-tools
+        [ -f /etc/default/zramswap ] && echo "zramswap already installed" && exit 0
+        sudo apt-get -o DPkg::Lock::Timeout=60 update
+        sudo apt-get -o DPkg::Lock::Timeout=60 install -y zram-tools
         echo "vm.swappiness=1" | sudo tee -a /etc/sysctl.conf
         sudo sysctl -p
         echo "SIZE=102400" | sudo tee -a /etc/default/zramswap
@@ -149,9 +191,9 @@ jobs:
         sudo systemctl restart zramswap
 
     - name: Create background process that will adjust oom_score_adj for selection of processes
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        set -x
+        [ -f /tmp/oom_score_adj.log ] && echo "oom_score_adj already running" && exit 0
         while true; do
           echo "$(date) done sleeping" | tee -a /tmp/oom_score_adj.log
           for pid in $(pgrep -f ydbd) $(pgrep -f qemu-system-x86_64); do
@@ -165,6 +207,7 @@ jobs:
           sleep 30
         done &
 
+
     - name: Build
       uses: ./.github/actions/build
       if: inputs.run_build
@@ -175,10 +218,15 @@ jobs:
         bazel_remote_uri: ${{ vars.NEBIUS_BAZEL_REMOTE_CACHE_URL }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
-        build_threads: ${{ inputs.build_threads }}
-        link_threads: ${{ inputs.link_threads }}
+        build_threads: ${{ steps.calculate-threads.outputs.build_threads }}
+        link_threads: ${{ steps.calculate-threads.outputs.link_threads }}
         clean_ya_dir: ${{ inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
+
+    - name: kill ya-bin after 60s
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      run: |
+        (sleep 5; pkill -9 -f ya-bin) &
 
     - name: Run tests
       uses: ./.github/actions/test
@@ -192,17 +240,19 @@ jobs:
         bazel_remote_uri: ${{ vars.NEBIUS_BAZEL_REMOTE_CACHE_URL }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
-        link_threads: ${{ inputs.link_threads }}
-        test_threads: ${{ inputs.test_threads }}
+        link_threads: ${{ steps.calculate-threads.outputs.link_threads }}
+        test_threads: ${{ steps.calculate-threads.outputs.test_threads }}
         sync_to_s3: ${{ vars.SYNC_TO_S3 }}
         upload_ya_dir: ${{ inputs.upload_ya_dir }}
         clean_ya_dir: ${{ inputs.run_build && 'no' || inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
         number_of_retries: ${{ inputs.number_of_retries }}
         truncate_enabled: ${{ inputs.truncate_enabled }}
-    - id: failure
-      name: set sleep_after_tests in case of failure
-      if: failure()
-      uses: ./.github/actions/sleep
-      with:
-        sleep_after_tests: ${{ inputs.sleep_after_tests != '0' && inputs.sleep_after_tests || '7200' }}
+    - id: sleep
+      name: Sleep after failed tests
+      if: ${{ inputs.sleep_after_tests != '0' && failure() }}
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        SLEEP_AFTER_TESTS: ${{ inputs.sleep_after_tests || '7200' }}
+      run: |
+        sleep "$SLEEP_AFTER_TESTS"

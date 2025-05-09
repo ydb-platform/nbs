@@ -19,7 +19,6 @@ outputs:
     description: "Number of threads used for linking"
     value: ${{ steps.calculate-threads.outputs.link_threads }}
 
-
 runs:
   using: composite
   steps:
@@ -31,8 +30,8 @@ runs:
         echo "tests_size: ${TESTS_SIZE}"
         echo "checking size of the tests could be small, medium, large and combination of them"
         test_threads=0
-        if [[ $TESTS_SIZE == *"large"* ]]; then
-          case "$VM_PRESET" in
+        if [[ $tests_size == *"large"* ]]; then
+          case "$vm_preset" in
             # for large tests we need 6 vcpu per thread
             "256vcpu-1024gb")
                 test_threads=42
@@ -91,7 +90,7 @@ runs:
                 build_threads=2
             ;;
             *)
-              echo "Unknown vm_preset: $VM_PRESET"
+              echo "Unknown vm_preset: $vm_preset"
               exit 1
             ;;
           esac
@@ -165,7 +164,7 @@ runs:
           echo "test_threads=$test_threads"
           echo "link_threads=$link_threads"
         } | tee -a $GITHUB_OUTPUT
-        
+
       env:
         VM_PRESET: ${{ inputs.vm_preset || '80vcpu-320gb' }}
         TESTS_SIZE: ${{ inputs.tests_size || 'small,medium,large' }}

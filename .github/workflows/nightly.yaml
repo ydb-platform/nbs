@@ -44,7 +44,7 @@ jobs:
       test_target: ${{ inputs.test_target }}
       build_preset: relwithdebinfo
       cache_update_build: true
-      cache_update_tests: false
+      cache_update_tests: true
       sleep_after_tests: 1
       number_of_retries: 1
   build_schedule:
@@ -57,6 +57,6 @@ jobs:
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
       build_preset: relwithdebinfo
       cache_update_build: true
-      cache_update_tests: false
+      cache_update_tests: true
       sleep_after_tests: 1
       number_of_retries: 1
