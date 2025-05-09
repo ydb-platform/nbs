@@ -341,7 +341,7 @@ private:
             logRequest.GetNodeInfo().GetNodeId());
 
         try {
-            ui64 wantSize = 0;
+            ui64 targetSize = 0;
             ui64 requestLastByte = 0;
 
             if (Spec.GetCreateOnRead() == NProto::TReplaySpec_ECreateOnRead::
@@ -369,12 +369,12 @@ private:
                     }
 
                     if (actualSize < requestLastByte) {
-                        wantSize = requestLastByte;
+                        targetSize = requestLastByte;
                     }
                 }
             }
 
-            if (wantSize ||
+            if (targetSize ||
                 Spec.GetCreateOnRead() ==
                     NProto::TReplaySpec_ECreateOnRead::
                         TReplaySpec_ECreateOnRead_FullSize ||
@@ -385,10 +385,10 @@ private:
                      GreedyMinimumAlwaysCreateBytes))
             {
                 TFile fileResize(fullName, WrOnly | OpenAlways);
-                if (!wantSize) {
-                    wantSize = logRequest.GetNodeInfo().GetSize();
+                if (!targetSize) {
+                    targetSize = logRequest.GetNodeInfo().GetSize();
                 }
-                fileResize.Resize(wantSize);
+                fileResize.Resize(targetSize);
             }
 
             EOpenMode modeInit{};
@@ -424,7 +424,7 @@ private:
 
             OpenHandles[fh] = {
                 .File = file,
-                .Size = wantSize,
+                .Size = targetSize,
                 .Path = fullName,
                 .Mode = mode};
 

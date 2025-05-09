@@ -29,11 +29,13 @@ IReplayRequestGenerator::IReplayRequestGenerator(
     NEventLog::TOptions options;
     options.FileName = Spec.GetFileName();
     options.ForceStrongOrdering = true;
+
     if (const auto sleep = Spec.GetMaxSleepMcs()) {
-        MaxSleepMcs = sleep;
+        MaxSleepUs = sleep;
     }
 
     CurrentEvent = CreateIterator(options);
+    NextStatusAt = TInstant::Now() + StatusEverySeconds;
 }
 
 bool IReplayRequestGenerator::HasNextRequest()
@@ -163,11 +165,11 @@ IReplayRequestGenerator::ExecuteNextRequest()
                     (request.GetTimestampMcs() - TimestampMicroSeconds) *
                                 Spec.GetTimeScale();
                 TimestampMicroSeconds = request.GetTimestampMcs();
-                if (timediff > MaxSleepMcs) {
+                if (timediff > MaxSleepUs) {
                     STORAGE_DEBUG(
                         "Ignore too long timediff=%lu MaxSleepMcs=%lu ",
                         timediff,
-                        MaxSleepMcs);
+                        MaxSleepUs);
 
                     timediff = 0;
                 }
@@ -177,7 +179,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 if (NextStatusAt <= currentInstant) {
                     NextStatusAt = currentInstant + StatusEverySeconds;
                     STORAGE_INFO(
-                        "Current event=%zu Skipped=%zu Msg=%zd TotalMsg=%zu "
+                        "Current event=%zu Skipped=%zu Msg=%d TotalMsg=%zu "
                         "Skipped=%zu "
                         "Sleeps=%f "
                         "Time=%s",
@@ -186,7 +188,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         EventMessageNumber,
                         MessagesProcessed,
                         MessagesSkipped,
-                        Sleeps,
+                        TimeInSleepBetweenEventsSeconds,
                         TInstant::MicroSeconds(TimestampMicroSeconds)
                             .ToString()
                             .c_str())
@@ -230,7 +232,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         }
 
                         auto sleep = TDuration::MicroSeconds(sleepMcs);
-                        Sleeps += sleep.SecondsFloat();
+                        TimeInSleepBetweenEventsSeconds += sleep.SecondsFloat();
                         Sleep(sleep);
                     }
                 }
@@ -246,14 +248,14 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         diff.MicroSeconds());
 
                     Sleep(sleep);
-                    Sleeps += sleep.SecondsFloat();
+                    TimeInSleepBetweenEventsSeconds += sleep.SecondsFloat();
                 }
 
                 Started = currentInstant;
             }
 
             STORAGE_DEBUG(
-                "Event=%zu Msg=%zd Mcs=%lu T=%s: Processing typename=%s "
+                "Event=%zu Msg=%d Mcs=%lu T=%s: Processing typename=%s "
                 "type=%d name=%s "
                 "data=%s",
                 EventsProcessed,
@@ -279,7 +281,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
     }
 
     STORAGE_INFO(
-        "Profile log finished n=%zd hasPtr=%d",
+        "Profile log finished n=%d hasPtr=%d",
         EventMessageNumber,
         !!EventPtr);
 
