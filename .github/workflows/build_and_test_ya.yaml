@@ -166,7 +166,7 @@ jobs:
     if: ${{ needs.check-if-we-need-additional-runner.outputs.RUNNERS_AVAILABLE <= '1' }}
     uses: ./.github/workflows/populate.yaml
     with:
-      vms_ttl: 60
+      vms_ttl: 86400
       max_vms_to_create: ${{ needs.check-if-we-need-additional-runner.outputs.RUNNERS_WITHOUT_OFFLINE_PLUS_ONE }}
       flavor: ${{ inputs.runner_flavor }}
     secrets: inherit

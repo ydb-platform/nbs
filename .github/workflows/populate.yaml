@@ -12,7 +12,7 @@ on:
         description: 'VMs TTL (seconds)'
         type: number
         required: true
-        default: 60
+        default: 86400
       flavor:
         description: 'Runner flavor'
         type: choice
@@ -32,7 +32,7 @@ on:
         description: 'VMs TTL (seconds)'
         type: string
         required: true
-        default: "60"
+        default: "86400"
       flavor:
         description: 'Runner flavor'
         type: string
