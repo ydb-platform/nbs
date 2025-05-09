@@ -90,7 +90,7 @@ runs:
                 build_threads=2
             ;;
             *)
-              echo "Unknown vm_preset: $vm_preset"
+              echo "Unknown vm_preset: $VM_PRESET"
               exit 1
             ;;
           esac
