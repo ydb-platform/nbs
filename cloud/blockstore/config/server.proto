@@ -220,6 +220,9 @@ message TServerConfig
 
     // Use fake RDMA client (over Interconnect). For use in tests.
     optional bool UseFakeRdmaClient = 120;
+
+    // Enable Discard/ZeroBlocks features for vhost devices
+     optional bool VhostDiscardEnabled = 121;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
