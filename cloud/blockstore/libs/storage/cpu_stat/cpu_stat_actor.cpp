@@ -20,6 +20,8 @@ constexpr ui32 CpuLackPercentsMultiplier = 100;
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NKikimr;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TCpuStatsFetcherActor::TCpuStatsFetcherActor(
@@ -31,7 +33,7 @@ TCpuStatsFetcherActor::TCpuStatsFetcherActor(
 
 // @brief Initializes the actor
 // @param ctx Actor context
-void TCpuStatsFetcherActor::Bootstrap(const NKikimr::TActorContext& ctx)
+void TCpuStatsFetcherActor::Bootstrap(const TActorContext& ctx)
 {
     RegisterCounters(ctx);
     Become(&TThis::StateWork);
@@ -40,9 +42,9 @@ void TCpuStatsFetcherActor::Bootstrap(const NKikimr::TActorContext& ctx)
 // @brief Registers counters in the monitoring system and schedules the first
 // wakeup
 // @param ctx Actor context
-void TCpuStatsFetcherActor::RegisterCounters(const NKikimr::TActorContext& ctx)
+void TCpuStatsFetcherActor::RegisterCounters(const TActorContext& ctx)
 {
-    auto counters = NKikimr::AppData(ctx)->Counters;
+    auto counters = AppData(ctx)->Counters;
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
     auto serverCounters = rootGroup->GetSubgroup("component", "server");
 
@@ -50,7 +52,7 @@ void TCpuStatsFetcherActor::RegisterCounters(const NKikimr::TActorContext& ctx)
     CpuWaitFailure = serverCounters->GetCounter("CpuWaitFailure", false);
 
     // Schedule the first wakeup event
-    ctx.Schedule(CpuFetchWakeupTimeout, new NKikimr::TEvents::TEvWakeup);
+    ctx.Schedule(CpuFetchWakeupTimeout, new TEvents::TEvWakeup);
 }
 
 // @brief Handles the wakeup event
@@ -58,8 +60,8 @@ void TCpuStatsFetcherActor::RegisterCounters(const NKikimr::TActorContext& ctx)
 // @param ctx Actor context
 // @details This method is called periodically to fetch CPU wait stats
 void TCpuStatsFetcherActor::HandleWakeup(
-    const NKikimr::TEvents::TEvWakeup::TPtr& ev,
-    const NKikimr::TActorContext& ctx)
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
@@ -90,7 +92,7 @@ void TCpuStatsFetcherActor::HandleWakeup(
     }
 
     // Schedule the next wakeup event
-    ctx.Schedule(CpuFetchWakeupTimeout, new NKikimr::TEvents::TEvWakeup());
+    ctx.Schedule(CpuFetchWakeupTimeout, new TEvents::TEvWakeup());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -99,7 +101,7 @@ void TCpuStatsFetcherActor::HandleWakeup(
 STFUNC(TCpuStatsFetcherActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(NKikimr::TEvents::TEvWakeup, HandleWakeup);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
             HandleUnexpectedEvent(
