@@ -143,8 +143,11 @@ jobs:
           RUNNERS_WITHOUT_OFFLINE_PLUS_ONE=$((RUNNERS_WITHOUT_OFFLINE + 1))
           {
             echo "RUNNERS_COUNT=${RUNNERS_COUNT}"
-            echo "RUNNERS_BUSY_OR_OFFLINE=${RUNNERS_BUSY_OR_OFFLINE}"
+            echo "RUNNERS_OFFLINE=${RUNNERS_OFFLINE}"
+            echo "RUNNERS_BUSY=${RUNNERS_BUSY}"
             echo "RUNNERS_AVAILABLE=${RUNNERS_AVAILABLE}"
+            echo "RUNNERS_WITHOUT_OFFLINE=${RUNNERS_WITHOUT_OFFLINE}"
+            echo "RUNNERS_WITHOUT_OFFLINE_PLUS_ONE=${RUNNERS_WITHOUT_OFFLINE_PLUS_ONE}"
           } | tee -a "$GITHUB_OUTPUT"
       - name: if we have 1 or less runners we need to create new one
         if: ${{ steps.check.outputs.RUNNERS_AVAILABLE <= '0' }}
