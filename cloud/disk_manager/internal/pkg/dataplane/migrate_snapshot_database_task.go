@@ -73,7 +73,7 @@ func (m migrateSnapshotDatabaseTask) Run(
 		).Set(float64(snapshotsToProcessCount))
 		var inflightTaskIDs []string
 
-		for snapshotId, _ := range snapshotsToProcess.Vals() {
+		for snapshotId := range snapshotsToProcess.Vals() {
 			idempotencyKey := headers.SetIncomingIdempotencyKey(
 				ctx,
 				fmt.Sprintf(
