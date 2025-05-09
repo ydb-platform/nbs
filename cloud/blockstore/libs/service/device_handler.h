@@ -49,7 +49,7 @@ struct IDeviceHandlerFactory
         bool unalignedRequestsDisabled,
         bool checkBufferModificationDuringWriting,
         bool isReliableMediaKind,
-        ui32 MaxZeroBlocksSubRequestSize) = 0;
+        ui64 MaxZeroBlocksSubRequestSize) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -17,6 +17,9 @@ constexpr ui32 MaxUnalignedRequestSize = 32_MB;
 // cloud/blockstore/libs/rdma/iface/client.h
 constexpr ui32 MaxSubRequestSize = 4_MB;
 
+
+constexpr ui64 MaxZeroBlocksSubRequestSize = 2048_MB;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TDefaultDeviceHandlerFactory final
@@ -36,8 +39,14 @@ struct TDefaultDeviceHandlerFactory final
         bool unalignedRequestsDisabled,
         bool checkBufferModificationDuringWriting,
         bool isReliableMediaKind,
-        ui32 maxZeroBlocksSubRequestSize) override
+        ui64 maxZeroBlocksSubRequestSize) override
     {
+        auto maxZeroBlocksSubRequest = maxZeroBlocksSubRequestSize != 0
+                                           ? static_cast<ui32>(std::min(
+                                                 MaxZeroBlocksSubRequestSize,
+                                                 maxZeroBlocksSubRequestSize))
+                                           : MaxSubRequestSize;
+
         if (unalignedRequestsDisabled) {
             return std::make_shared<TAlignedDeviceHandler>(
                 std::move(storage),
@@ -45,8 +54,7 @@ struct TDefaultDeviceHandlerFactory final
                 std::move(clientId),
                 blockSize,
                 MaxSubRequestSize,
-                maxZeroBlocksSubRequestSize != 0 ? maxZeroBlocksSubRequestSize
-                                                 : MaxSubRequestSize,
+                maxZeroBlocksSubRequest,
                 checkBufferModificationDuringWriting,
                 isReliableMediaKind);
         }
@@ -57,8 +65,7 @@ struct TDefaultDeviceHandlerFactory final
             std::move(clientId),
             blockSize,
             MaxSubRequestSize,
-            maxZeroBlocksSubRequestSize != 0 ? maxZeroBlocksSubRequestSize
-                                             : MaxSubRequestSize,
+            maxZeroBlocksSubRequest,
             MaxUnalignedRequestSize,
             checkBufferModificationDuringWriting,
             isReliableMediaKind);
