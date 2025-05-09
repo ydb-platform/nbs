@@ -62,6 +62,7 @@ private:
     const TVector<IWriteBlocksHandlerPtr> WriteHandlers;
     const ui64 FirstRequestDeletionId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const TDuration BlobStorageRequestTimeout;
 
     TString BlobContent;
 
@@ -83,7 +84,8 @@ public:
         TVector<TBlockRange32> uninitializedBlockRanges,
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         ui64 firstRequestDeletionId,
-        IBlockDigestGeneratorPtr blockDigestGenerator);
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        TDuration blobStorageRequestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -133,7 +135,8 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         TVector<TBlockRange32> uninitializedBlockRanges,
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         ui64 firstRequestDeletionId,
-        IBlockDigestGeneratorPtr blockDigestGenerator)
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        TDuration blobStorageRequestTimeout)
     : PartitionActorId(partitionActorId)
     , CommitId(commitId)
     , Channel(channel)
@@ -144,6 +147,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , WriteHandlers(std::move(writeHandlers))
     , FirstRequestDeletionId(firstRequestDeletionId)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
 {
     Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
 }
@@ -243,7 +247,10 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         CombinedContext,
         blobId,
         std::move(BlobContent),
-        false);  // async
+        false,   // async
+        BlobStorageRequestTimeout ? ctx.Now() + BlobStorageRequestTimeout
+                                  : TInstant::Max()   // deadline
+    );
 
     NCloud::Send(
         ctx,
@@ -534,7 +541,8 @@ void TPartitionActor::WriteFreshBlocks(
         std::move(uninitializedBlockRanges),
         std::move(writeHandlers),
         firstRequestDeletionId,
-        BlockDigestGenerator);
+        BlockDigestGenerator,
+        GetBlobStorageRequestTimeout());
 
     Actors.insert(actor);
 }

@@ -253,6 +253,8 @@ private:
     const TBlockRange32 ReadRange;
     const bool ReplyLocal;
 
+    const TDuration BlobStorageRequestTimeout;
+
     TBlockMarks BlockMarks;
 
     TReadBlocksRequests OwnRequests;
@@ -281,6 +283,7 @@ public:
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
+        TDuration blobStorageRequestTimeout,
         TBlockMarks blockMarks,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos);
@@ -335,6 +338,7 @@ TReadBlocksActor::TReadBlocksActor(
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
+        TDuration blobStorageRequestTimeout,
         TBlockMarks blockMarks,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos)
@@ -350,6 +354,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReadHandler(std::move(readHandler))
     , ReadRange(readRange)
     , ReplyLocal(replyLocal)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
     , BlockMarks(std::move(blockMarks))
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
@@ -512,15 +517,18 @@ void TReadBlocksActor::ReadBlocks(
 
         RequestsScheduled += batch.Requests.size();
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvReadBlobRequest>(
-            batch.BlobId,
-            batch.Proxy,
-            std::move(batch.BlobOffsets),
-            ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
-            batch.GroupId,
-            false,          // async
-            TInstant::Max() // deadline
-        );
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvReadBlobRequest>(
+                batch.BlobId,
+                batch.Proxy,
+                std::move(batch.BlobOffsets),
+                ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
+                batch.GroupId,
+                false,   // async
+                BlobStorageRequestTimeout
+                    ? ctx.Now() + BlobStorageRequestTimeout
+                    : TInstant::Max()   // deadline
+            );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -1061,6 +1069,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReadHandler,
             args.ReadRange,
             args.ReplyLocal,
+            GetBlobStorageRequestTimeout(),
             std::move(blocks),
             std::move(requests),
             std::move(args.BlockInfos));

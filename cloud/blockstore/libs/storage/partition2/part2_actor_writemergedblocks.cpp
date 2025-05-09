@@ -58,6 +58,7 @@ private:
     const TVector<TRequest> Requests;
     const bool ReplyLocal;
     const IWriteBlocksHandlerPtr WriteHandler;
+    const TDuration BlobStorageRequestTimeout;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     size_t RequestsCompleted = 0;
@@ -73,7 +74,8 @@ public:
         TRequestInfoPtr requestInfo,
         TVector<TRequest> requests,
         bool replyLocal,
-        IWriteBlocksHandlerPtr writeHandler);
+        IWriteBlocksHandlerPtr writeHandler,
+        TDuration blobStorageRequestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -119,7 +121,8 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
         TRequestInfoPtr requestInfo,
         TVector<TRequest> requests,
         bool replyLocal,
-        IWriteBlocksHandlerPtr writeHandler)
+        IWriteBlocksHandlerPtr writeHandler,
+        TDuration blobStorageRequestTimeout)
     : Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , CommitId(commitId)
@@ -127,6 +130,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
     , Requests(std::move(requests))
     , ReplyLocal(replyLocal)
     , WriteHandler(std::move(writeHandler))
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
 {}
 
 void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -190,9 +194,15 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
         const auto& req = Requests[i];
         auto guardedSglist = BuildBlobContent(req);
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            std::move(guardedSglist));
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                std::move(guardedSglist),
+                false,   // async
+                BlobStorageRequestTimeout
+                    ? ctx.Now() + BlobStorageRequestTimeout
+                    : TInstant::Max()   // deadline
+            );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -438,8 +448,8 @@ void TPartitionActor::WriteMergedBlocks(
         requestInBuffer.Data.RequestInfo,
         std::move(requests),
         requestInBuffer.Data.ReplyLocal,
-        std::move(requestInBuffer.Data.Handler)
-    );
+        std::move(requestInBuffer.Data.Handler),
+        GetBlobStorageRequestTimeout());
 
     Actors.insert(actor);
 }

@@ -53,6 +53,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const ui32 BlockSize;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const TDuration BlobStorageRequestTimeout;
 
     const TActorId Tablet;
     const ui64 CommitId;
@@ -75,6 +76,7 @@ public:
         TRequestInfoPtr requestInfo,
         ui32 blockSize,
         IBlockDigestGeneratorPtr blockDigestGenerator,
+        TDuration blobStorageRequestTimeout,
         const TActorId& tablet,
         ui64 commitId,
         TFlushedCommitIds flushedCommitIdsFromChannel,
@@ -117,6 +119,7 @@ TFlushActor::TFlushActor(
         TRequestInfoPtr requestInfo,
         ui32 blockSize,
         IBlockDigestGeneratorPtr blockDigestGenerator,
+        TDuration blobStorageRequestTimeout,
         const TActorId& tablet,
         ui64 commitId,
         TFlushedCommitIds flushedCommitIdsFromChannel,
@@ -126,6 +129,7 @@ TFlushActor::TFlushActor(
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
     , Tablet(tablet)
     , CommitId(commitId)
     , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
@@ -191,11 +195,16 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
             continue;
         }
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            req.BlobContent.GetGuardedSgList(),
-            0,      // blockSizeForChecksums
-            true);  // async
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                req.BlobContent.GetGuardedSgList(),
+                0,      // blockSizeForChecksums
+                true,   // async
+                BlobStorageRequestTimeout
+                    ? ctx.Now() + BlobStorageRequestTimeout
+                    : TInstant::Max()   // deadline
+            );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -753,6 +762,7 @@ void TPartitionActor::HandleFlush(
             requestInfo,
             State->GetBlockSize(),
             BlockDigestGenerator,
+            GetBlobStorageRequestTimeout(),
             SelfId(),
             commitId,
             std::move(flushedCommitIdsFromChannel),

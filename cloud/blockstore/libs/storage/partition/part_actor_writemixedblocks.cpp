@@ -74,6 +74,7 @@ private:
     TVector<TRequest> Requests;
     const IWriteBlocksHandlerPtr WriteHandler;
     const ui32 BlockSizeForChecksums;
+    const TDuration BlobStorageRequestTimeout;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     size_t RequestsCompleted = 0;
@@ -89,7 +90,8 @@ public:
         ui64 commitId,
         TVector<TRequest> requests,
         IWriteBlocksHandlerPtr writeHandler,
-        ui32 blockSizeForChecksums);
+        ui32 blockSizeForChecksums,
+        TDuration blobStorageRequestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -134,7 +136,8 @@ TWriteMixedBlocksActor::TWriteMixedBlocksActor(
         ui64 commitId,
         TVector<TRequest> requests,
         IWriteBlocksHandlerPtr writeHandler,
-        ui32 blockSizeForChecksums)
+        ui32 blockSizeForChecksums,
+        TDuration blobStorageRequestTimeout)
     : TabletId(tabletId)
     , Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -142,6 +145,7 @@ TWriteMixedBlocksActor::TWriteMixedBlocksActor(
     , Requests(std::move(requests))
     , WriteHandler(std::move(writeHandler))
     , BlockSizeForChecksums(blockSizeForChecksums)
+    , BlobStorageRequestTimeout(blobStorageRequestTimeout)
 {}
 
 void TWriteMixedBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -229,11 +233,16 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
         const auto& req = Requests[i];
         auto guardedSglist = BuildBlobContent(req);
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            std::move(guardedSglist),
-            BlockSizeForChecksums,
-            false); // async
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                std::move(guardedSglist),
+                BlockSizeForChecksums,
+                false,   // async
+                BlobStorageRequestTimeout
+                    ? ctx.Now() + BlobStorageRequestTimeout
+                    : TInstant::Max()   // deadline
+            );
 
         for (const auto& sr: req.SubRequests) {
             if (!sr.RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -555,8 +564,8 @@ bool TPartitionActor::WriteMixedBlocks(
         commitId,
         std::move(requests),
         std::move(writeHandler),
-        checksumsEnabled ? State->GetBlockSize() : 0
-    );
+        checksumsEnabled ? State->GetBlockSize() : 0,
+        GetBlobStorageRequestTimeout());
     Actors.Insert(actor);
 
     return true;

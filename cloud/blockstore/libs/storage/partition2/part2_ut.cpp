@@ -7096,6 +7096,80 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
     }
 
+    Y_UNIT_TEST(ShouldAbortReadRequestsToBlobstorageIfDeadlineExceeded)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetBlobStorageRequestTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(0, 33);
+        partition.Flush();
+
+        ui32 readBlobHitDeadlineCount = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvBlobStorage::EvVGet) {
+                    return true;
+                } else if (
+                    ev->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+                {
+                    auto* msg =
+                        ev->Get<TEvStatsService::TEvVolumePartCounters>();
+                    readBlobHitDeadlineCount =
+                        msg->DiskCounters->Simple.ReadBlobDeadlineCount.Value;
+                }
+                return false;
+            });
+
+        partition.SendReadBlocksRequest(0);
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        auto response = partition.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, readBlobHitDeadlineCount);
+    }
+
+    Y_UNIT_TEST(ShouldAbortWriteRequestsToBlobstorageIfDeadlineExceeded)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetBlobStorageRequestTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendWriteBlocksRequest(0, 33);
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvBlobStorage::EvVPut) {
+                    return true;
+                }
+                return false;
+            });
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        auto response = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+    }
+
     Y_UNIT_TEST(ShouldAllowForcedCompactionRequestsInPresenseOfTabletCompaction)
     {
         constexpr ui32 rangesCount = 5;
