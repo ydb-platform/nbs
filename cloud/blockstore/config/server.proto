@@ -224,6 +224,9 @@ message TServerConfig
     // Enable Discard/ZeroBlocks features for vhost device
     optional bool VhostDiscardEnabled = 121;
 
+    // Maximum request size for ZeroBlocks.
+    // Requests exceeding this size will be split into smaller sub-requests,
+    // each with a size up to MaxZeroBlocksSubRequestSize.
     optional uint64 MaxZeroBlocksSubRequestSize = 122;
 }
 
