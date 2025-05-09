@@ -19,8 +19,8 @@ func (s *snapshotShallowSource) ChunkIndices(
 	ctx context.Context,
 	milestone dataplane_common.Milestone,
 	processedChunkIndices <-chan uint32,
-	holeChunkIndices common.ChannelWithCancellation[uint32],
-) (<-chan uint32, common.ChannelWithCancellation[uint32], <-chan error) {
+	holeChunkIndices common.ChannelWithCancellation,
+) (<-chan uint32, common.ChannelWithCancellation, <-chan error) {
 
 	return s.source.ChunkIndices(
 		ctx,
