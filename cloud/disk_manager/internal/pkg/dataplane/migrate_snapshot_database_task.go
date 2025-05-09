@@ -2,6 +2,7 @@ package dataplane
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -65,39 +66,24 @@ func (m migrateSnapshotDatabaseTask) Run(
 			return err
 		}
 
-		var snapshotIDs = common.NewChannelWithCancellation[string](srcSnapshots.Size())
-
-		snapshotsToTransferCount := 0
-		for snapshotId, _ := range srcSnapshots.Vals() {
-			if dstSnapshots.Has(snapshotId) {
-				continue
-			}
-
-			_, err := snapshotIDs.Send(ctx, snapshotId)
-			if err != nil {
-				return err
-			}
-
-			snapshotsToTransferCount++
-		}
-
-		subregistry.Gauge("snapshots/migratingCount").Set(float64(snapshotsToTransferCount))
+		snapshotsToProcess := srcSnapshots.Subtract(dstSnapshots)
+		snapshotsToProcessCount := snapshotsToProcess.Size()
+		subregistry.Gauge(
+			"snapshots/migratingCount",
+		).Set(float64(snapshotsToProcessCount))
 		var inflightTaskIDs []string
 
-		for {
-			snapshotId, ok, err := snapshotIDs.Receive(ctx)
-			if !ok {
-				break
-			}
-			if err != nil {
-				return err
-			}
-
-			taskID, err := m.scheduler.ScheduleTask(
-				headers.SetIncomingIdempotencyKey(
-					ctx,
-					"dataplane.MigrateSnapshotTask_"+snapshotId+"_"+execCtx.GetTaskID(),
+		for snapshotId, _ := range snapshotsToProcess.Vals() {
+			idempotencyKey := headers.SetIncomingIdempotencyKey(
+				ctx,
+				fmt.Sprintf(
+					"dataplane.MigrateSnapshotTask_%s_%s",
+					snapshotId,
+					execCtx.GetTaskID(),
 				),
+			)
+			taskID, err := m.scheduler.ScheduleTask(
+				idempotencyKey,
 				"dataplane.MigrateSnapshotTask",
 				"",
 				&dataplane_protos.MigrateSnapshotRequest{
@@ -115,7 +101,7 @@ func (m migrateSnapshotDatabaseTask) Run(
 
 			inflightTaskIDs = append(inflightTaskIDs, taskID)
 			inflightTasksLimitReached := len(inflightTaskIDs) == int(inflightSnapshotsCount)
-			if inflightTasksLimitReached || snapshotIDs.Empty() {
+			if inflightTasksLimitReached || snapshotsToProcessCount == 1 {
 				finishedTaskIDs, err := m.scheduler.WaitAnyTasksWithTimeout(
 					ctx,
 					inflightTaskIDs,
@@ -137,7 +123,7 @@ func (m migrateSnapshotDatabaseTask) Run(
 
 				inflightTaskIDs = newInflightTaskIds
 			}
-
+			snapshotsToProcessCount--
 		}
 	}
 
