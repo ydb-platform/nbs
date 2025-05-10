@@ -258,6 +258,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         auto& device1 = *agentStats.AddDeviceStats();
         device1.SetDeviceUUID("uuid-1");
+        device1.SetDeviceName("dev-1");
         device1.SetBytesRead(10000);
         device1.SetNumReadOps(100);
         device1.SetBytesWritten(3000000);
@@ -277,6 +278,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         auto& device2 = *agentStats.AddDeviceStats();
         device2.SetDeviceUUID("uuid-2");
+        device2.SetDeviceName("dev-2");
         device2.SetBytesRead(20000);
         device2.SetNumReadOps(200);
         device2.SetBytesWritten(6000000);
