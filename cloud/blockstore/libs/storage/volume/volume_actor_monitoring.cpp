@@ -441,6 +441,136 @@ void OutputClientInfo(
     }
 }
 
+void RenderLatencyTable(
+    IOutputStream& out,
+    const TString& parentId,
+    const TRequestsTimeTracker& timeTracker)
+{
+    HTML (out) {
+        TABLE_CLASS("table-latency")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Time";
+                    }
+                    TABLEH () {
+                        out << "Ok";
+                    }
+                    TABLEH () {
+                        out << "Fail";
+                    }
+                    TABLEH () {
+                        out << "Inflight";
+                    }
+                }
+            }
+
+            for (const auto& time: timeTracker.GetTimeBuckets()) {
+                TABLER () {
+                    TABLED () {
+                        const auto us = TryFromString<ui64>(time);
+                        out
+                            << (us ? FormatDuration(
+                                         TDuration::MicroSeconds(*us))
+                                   : time);
+                    }
+                    TABLED_ATTRS({{"id", parentId + "_ok_" + time}})
+                    {}
+                    TABLED_ATTRS({{"id", parentId + "_fail_" + time}})
+                    {}
+                    TABLED_ATTRS({{"id", parentId + "_inflight_" + time}})
+                    {}
+                }
+            }
+        }
+    }
+}
+
+void RenderSizeTable(
+    IOutputStream& out,
+    const TRequestsTimeTracker& timeTracker,
+    ui32 blockSize)
+{
+    const TString style = R"(
+        <style>
+            .table-latency {
+                width: 100%;
+                border-collapse: collapse;
+                padding: 0;
+            }
+
+            .table-latency th,
+            .table-latency td {
+                padding: 0 8px 0 8px;
+                border: none;
+            }
+
+            .table-latency th {
+                font-weight: bold;
+                text-align: center;
+            }
+
+            .table-latency td {
+                text-align: right;
+            }
+
+            .table-latency th:not(:last-child),
+            .table-latency td:not(:last-child) {
+                border-right: 1px solid black;
+            }
+
+            .table-latency td:first-child {
+                text-align: left;
+            }
+        </style>
+        )";
+
+    HTML (out) {
+        out << style;
+        TABLE_CLASS("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Size";
+                    }
+                    TABLEH () {
+                        out << "Read";
+                    }
+                    TABLEH () {
+                        out << "Write";
+                    }
+                    TABLEH () {
+                        out << "Zero";
+                    }
+                }
+            }
+            for (const auto& size: timeTracker.GetSizeBuckets()) {
+                TABLER () {
+                    TABLED () {
+                        const auto blockCount = TryFromString<ui64>(size);
+                        if (blockCount) {
+                            out << FormatByteSize(*blockCount * blockSize);
+                        } else {
+                            out << size;
+                        }
+                    }
+                    TABLED () {
+                        RenderLatencyTable(out, "R_" + size, timeTracker);
+                    }
+                    TABLED_ATTRS()
+                    {
+                        RenderLatencyTable(out, "W_" + size, timeTracker);
+                    }
+                    TABLED_ATTRS()
+                    {
+                        RenderLatencyTable(out, "Z_" + size, timeTracker);
+                    }
+                }
+            }
+        }
+    }
+}
 
 } // namespace
 
@@ -480,6 +610,7 @@ void TVolumeActor::HandleHttpInfo(
 
     const THttpHandlers getActions {{
         {"rendernpinfo", &TActor::HandleHttpInfo_RenderNonreplPartitionInfo },
+        {"getLatency", &TActor::HandleHttpInfo_RenderLatency },
     }};
 
     auto* msg = ev->Get();
@@ -505,7 +636,7 @@ void TVolumeActor::HandleHttpInfo(
         auto params = GatherHttpParameters(*msg);
         const auto& action = params.Get("action");
 
-        if (auto* handler = postActions.FindPtr(action)) {
+        if (const auto* handler = postActions.FindPtr(action)) {
             if (methodType != HTTP_METHOD_POST) {
                 RejectHttpRequest(ctx, *requestInfo, "Wrong HTTP method");
                 return;
@@ -515,7 +646,7 @@ void TVolumeActor::HandleHttpInfo(
             return;
         }
 
-        if (auto* handler = getActions.FindPtr(action)) {
+        if (const auto* handler = getActions.FindPtr(action)) {
             std::invoke(*handler, this, ctx, params, std::move(requestInfo));
             return;
         }
@@ -582,6 +713,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* historyTabName = "History";
     const char* checkpointsTabName = "Checkpoints";
     const char* linksTabName = "Links";
+    const char* latencyTabName = "Latency";
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
     const char* rawVolumeConfigTabName = "RawVolumeConfig";
@@ -593,6 +725,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* historyTab = inactiveTab;
     const char* checkpointsTab = inactiveTab;
     const char* linksTab = inactiveTab;
+    const char* latencyTab = inactiveTab;
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
@@ -605,6 +738,8 @@ void TVolumeActor::HandleHttpInfo_Default(
         checkpointsTab = activeTab;
     } else if (tabName == linksTabName) {
         linksTab = activeTab;
+    } else if (tabName == latencyTabName) {
+        latencyTab = activeTab;
     } else if (tabName == tracesTabName) {
         tracesTab = activeTab;
     } else if (tabName == storageConfigTabName) {
@@ -635,6 +770,10 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(linksTab, linksTabName) {
                     RenderLinks(out);
+                }
+
+                DIV_CLASS_ID(latencyTab, latencyTabName) {
+                    RenderLatency(out);
                 }
 
                 DIV_CLASS_ID(tracesTab, tracesTabName) {
@@ -903,10 +1042,55 @@ void TVolumeActor::RenderLinks(IOutputStream& out) const
     }
 }
 
+void TVolumeActor::RenderLatency(IOutputStream& out) const {
+    using namespace NMonitoringUtils;
+
+    if (!State) {
+        return;
+    }
+
+    const TString script = R"(
+        <script>
+            function renderLatency(stat) {
+                for (let key in stat) {
+                    const element = document.getElementById(key);
+                    if (element) {
+                        element.textContent = stat[key];
+                    }
+                }
+            }
+
+            function loadLatency() {
+                var url = '?action=getLatency';
+                url += '&TabletID=)" + ToString(TabletID()) + R"(';
+                $.ajax({
+                    url: url,
+                    success: function(result) {
+                        renderLatency(result.stat);
+                    },
+                    error: function(jqXHR, status) {
+                        console.log('error');
+                    }
+                });
+            }
+
+            setInterval(function() { loadLatency(); }, 3000);
+            loadLatency();
+        </script>
+        )";
+
+    HTML (out) {
+        out << script;
+        DIV_CLASS ("row") {
+            RenderSizeTable(out, RequestTimeTracker, State->GetBlockSize());
+        }
+    }
+}
+
 void TVolumeActor::RenderTraces(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
-    const auto& diskId = State->GetMeta().GetVolumeConfig().GetDiskId();
+    const auto& diskId = State->GetDiskId();
     HTML(out) {
         DIV_CLASS("row") {
             TAG(TH3) {
@@ -2157,6 +2341,19 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
+void TVolumeActor::HandleHttpInfo_RenderLatency(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            RequestTimeTracker.GetStatJson()));
+}
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::RejectHttpRequest(
