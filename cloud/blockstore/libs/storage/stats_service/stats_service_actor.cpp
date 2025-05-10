@@ -122,6 +122,7 @@ STFUNC(TStatsServiceActor::StateWork)
         HFunc(TEvStatsService::TEvRegisterVolume, HandleRegisterVolume);
         HFunc(TEvStatsService::TEvUnregisterVolume, HandleUnregisterVolume);
         HFunc(TEvStatsService::TEvVolumeConfigUpdated, HandleVolumeConfigUpdated);
+        HFunc(TEvStatsService::TEvPartBootExternal, HandlePartBootExternal);
         HFunc(TEvStatsService::TEvVolumePartCounters, HandleVolumePartCounters);
         HFunc(TEvStatsService::TEvVolumeSelfCounters, HandleVolumeSelfCounters);
         HFunc(TEvStatsService::TEvGetVolumeStatsRequest, HandleGetVolumeStats);

@@ -137,6 +137,10 @@ private:
         const TEvStatsService::TEvUnregisterVolume::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandlePartBootExternal(
+        const TEvStatsService::TEvPartBootExternal::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleVolumePartCounters(
         const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
