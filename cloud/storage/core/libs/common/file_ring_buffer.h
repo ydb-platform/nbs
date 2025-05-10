@@ -3,6 +3,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <functional>
+
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -17,6 +19,8 @@ public:
         ui32 ActualChecksum = 0;
     };
 
+    using TVisitor = std::function<void(ui32 checksum, TStringBuf entry)>;
+
 private:
     class TImpl;
     std::unique_ptr<TImpl> Impl;
@@ -28,10 +32,12 @@ public:
 public:
     bool Push(TStringBuf data);
     TStringBuf Front() const;
+    TStringBuf Back() const;
     void Pop();
     ui32 Size() const;
     bool Empty() const;
     TVector<TBrokenFileEntry> Validate() const;
+    void Visit(const TVisitor& visitor) const;
 };
 
 }   // namespace NCloud
