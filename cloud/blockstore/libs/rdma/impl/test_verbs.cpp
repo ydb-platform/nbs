@@ -233,8 +233,10 @@ struct TTestVerbs
                 .status = IBV_WC_SUCCESS,
                 .opcode = opcode,
             };
-            if (TestContext->HandleCompletionEvent) {
-                TestContext->HandleCompletionEvent(&wc);
+            with_lock (TestContext->CompletionLock) {
+                if (TestContext->HandleCompletionEvent) {
+                    TestContext->HandleCompletionEvent(&wc);
+                }
             }
             handler->HandleCompletionEvent(&wc);
         };
@@ -526,27 +528,32 @@ IVerbsPtr CreateTestVerbs(TTestContextPtr context)
 
 void Disconnect(TTestContextPtr context)
 {
+    DisconnectAsync(context);
+    context->CompletionHandle.Set();
+}
+
+void DisconnectAsync(TTestContextPtr context)
+{
     EnqueueConnectionEvent(
         context,
         RDMA_CM_EVENT_DISCONNECTED,
         static_cast<rdma_cm_id*>(context->Connection));
 
-    with_lock (context->CompletionLock) {
-        context->HandleCompletionEvent = [] (ibv_wc* wc) {
-            wc->status = IBV_WC_WR_FLUSH_ERR;
-            wc->opcode = static_cast<ibv_wc_opcode>(0);
-        };
+    auto g = Guard(context->CompletionLock);
 
-        std::move(
-            context->RecvEvents.begin(),
-            context->RecvEvents.end(),
-            std::back_inserter(context->ProcessedRecvEvents));
+    context->HandleCompletionEvent = [](ibv_wc* wc)
+    {
+        wc->status = IBV_WC_WR_FLUSH_ERR;
+        wc->opcode = static_cast<ibv_wc_opcode>(0);
+    };
 
-        context->RecvEvents.clear();
-        context->ReqIds.clear();
-    }
+    std::move(
+        context->RecvEvents.begin(),
+        context->RecvEvents.end(),
+        std::back_inserter(context->ProcessedRecvEvents));
 
-    context->CompletionHandle.Set();
+    context->RecvEvents.clear();
+    context->ReqIds.clear();
 }
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

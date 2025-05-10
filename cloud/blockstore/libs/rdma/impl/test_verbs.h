@@ -40,5 +40,6 @@ using TTestContextPtr = TIntrusivePtr<TTestContext>;
 IVerbsPtr CreateTestVerbs(TTestContextPtr context);
 
 void Disconnect(TTestContextPtr context);
+void DisconnectAsync(TTestContextPtr context);
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

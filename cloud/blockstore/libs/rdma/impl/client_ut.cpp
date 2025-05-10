@@ -529,9 +529,10 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         auto ep = clientEndpoint.GetValue(TDuration::Seconds(5));
 
         // Increase reconnect timer delay up to "MaxReconnectDelay".
-        for (int i = 0; i < 10; i++) {
-            Disconnect(testContext);
+        for (int i = 0; i < 9; i++) {
+            DisconnectAsync(testContext);
         }
+        Disconnect(testContext);
 
         const auto now = TInstant::Now();
         ep->TryForceReconnect();
