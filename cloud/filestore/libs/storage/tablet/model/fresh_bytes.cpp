@@ -118,9 +118,12 @@ void TFreshBytes::AddBytes(
     buffer.assign(data.begin(), data.end());
 
     c.TotalBytes += buffer.size();
+    TotalBytes += buffer.size();
 
     TBytes descriptor{nodeId, offset, buffer.size(), commitId, InvalidCommitId};
     c.Data.emplace_back(descriptor, std::move(buffer));
+
+    TotalDataSize++;
 
     const auto& storage = c.Data.back().Data;
     TKey key{nodeId, offset + storage.size()};
@@ -143,6 +146,7 @@ void TFreshBytes::AddDeletionMarker(
     }
 
     c.TotalDeletedBytes += len;
+    TotalDeletedBytes += len;
 
     c.DeletionMarkers.push_back({
         nodeId,
@@ -229,6 +233,8 @@ bool TFreshBytes::FinishCleanup(
     const auto dataSize = chunk.Data.size();
     const auto deletionSize = chunk.DeletionMarkers.size();
     if (dataItemCount == dataSize && deletionMarkerCount == deletionSize) {
+        TotalBytes -= chunk.TotalBytes;
+        TotalDeletedBytes -= chunk.TotalDeletedBytes;
         Chunks.pop_front();
         return true;
     }
@@ -244,6 +250,8 @@ bool TFreshBytes::FinishCleanup(
     chunk.DeletionMarkers.erase(
         chunk.DeletionMarkers.begin(),
         std::next(chunk.DeletionMarkers.begin(), deletionMarkerCount));
+
+    TotalDataSize -= dataItemCount;
 
     return false;
 }

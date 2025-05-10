@@ -455,11 +455,17 @@ TFlushBytesStats TIndexTabletState::FinishFlushBytes(
         cnt,
         deletedCnt);
 
-    auto [freshBytes, deletedFreshBytes] = Impl->FreshBytes.GetTotalBytes();
+    auto freshBytes = Impl->FreshBytes.GetTotalBytes();
+    auto deletedFreshBytes = Impl->FreshBytes.GetTotalDeletedBytes();
     SetFreshBytesCount(db, freshBytes);
     SetDeletedFreshBytesCount(db, deletedFreshBytes);
 
     return {sz + deletedSz, completed};
+}
+
+ui32 TIndexTabletState::GetFreshBytesEntriesCount() const
+{
+    return Impl->FreshBytes.GetTotalDataSize();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
