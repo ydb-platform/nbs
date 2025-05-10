@@ -102,6 +102,19 @@ func RegisterForExecution(
 		if err != nil {
 			return err
 		}
+
+		err = taskRegistry.RegisterForExecution("dataplane.MigrateSnapshotDatabaseTask", func() tasks.Task {
+			return &migrateSnapshotDatabaseTask{
+				registry:   metricsRegistry,
+				srcStorage: storage,
+				dstStorage: migrationDstStorage,
+				config:     config,
+				scheduler:  taskScheduler,
+			}
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	err = taskRegistry.RegisterForExecution("dataplane.TransferFromSnapshotToDisk", func() tasks.Task {

@@ -1,6 +1,8 @@
 import logging
 import os
 import time
+import typing
+import urllib.request
 
 from yatest.common import process
 
@@ -330,9 +332,16 @@ MIGRATION_CONFIG_TEMPLATE = """
         S3Bucket: "snapshot"
         ChunkBlobsS3KeyPrefix: "snapshot/chunks"
     >
+    MigrationInflightTransferringSnapshotsCount: {migration_inflight_transferring_snapshots_count}
 """
 
 SERVICE_NAME = "disk_manager"
+
+
+class Metric(typing.NamedTuple):
+    name: str
+    labels: dict[str, str]
+    value: float
 
 
 class DiskManagerServer(Daemon):
@@ -403,6 +412,7 @@ class DiskManagerLauncher:
         migration_dst_ydb_port=None,
         migration_dst_s3_port=None,
         migration_dst_s3_credentials_file=None,
+        migration_inflight_transferring_snapshots_count=1000,
         retry_broken_disk_registry_based_disk_checkpoint=False,
     ):
         self.__idx = idx
@@ -458,7 +468,8 @@ class DiskManagerLauncher:
                         s3_config="" if migration_dst_s3_port is None else S3_CONFIG_TEMPLATE.format(
                             s3_port=migration_dst_s3_port,
                             s3_credentials_file=migration_dst_s3_credentials_file,
-                        )
+                        ),
+                        migration_inflight_transferring_snapshots_count=migration_inflight_transferring_snapshots_count,
                     ),
                 ))
         else:
@@ -532,7 +543,10 @@ class DiskManagerLauncher:
         register_process(SERVICE_NAME, self.__daemon.pid)
 
     def stop_daemon(self):
-        self.__daemon.stop()
+        try:
+            self.__daemon.stop()
+        except ProcessLookupError:
+            pass
 
     @staticmethod
     def stop():
@@ -553,3 +567,21 @@ class DiskManagerLauncher:
     @property
     def pid(self) -> int:
         return self.__daemon.pid
+
+    def get_metrics(self) -> dict[str, 'Metric']:
+        result = {}
+        data = ""
+        with urllib.request.urlopen(f"http://localhost:{self.__monitoring_port}/metrics/") as response:
+            data = response.read().decode()
+        for line in data.splitlines():
+            if line.startswith("#"):
+                continue
+            selector, value = line.split(" ", 2)
+            name, labels = selector.split("{", 1)
+            labels = labels.rstrip("}")
+            labels = dict(
+                label.split("=") for label in labels.split(",")
+            )
+            result[name] = Metric(name, labels, float(value))
+
+        return result

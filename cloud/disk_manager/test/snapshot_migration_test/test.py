@@ -39,10 +39,14 @@ class _MigrationTestSetup:
         blocks_count: int
         id: str
 
-    def __init__(self, use_s3_as_src: bool = False, use_s3_as_dst: bool = False):
+    def __init__(
+        self,
+        use_s3_as_src: bool = False,
+        use_s3_as_dst: bool = False,
+        migration_inflight_transferring_snapshots_count=1000,
+    ):
         self.use_s3_as_src = use_s3_as_src
         self.use_s3_as_dst = use_s3_as_dst
-
         certs_dir = Path(yatest_common.source_path("cloud/blockstore/tests/certs"))
         self._root_certs_file = certs_dir / "server.crt"
         _logger.info(certs_dir.exists())
@@ -133,6 +137,7 @@ class _MigrationTestSetup:
             s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
             migration_dst_s3_port=self.dst_s3.port if self.dst_s3 is not None else None,
             migration_dst_s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
+            migration_inflight_transferring_snapshots_count=migration_inflight_transferring_snapshots_count,
         )
 
         self.initial_cpl_disk_manager.start()
@@ -140,35 +145,32 @@ class _MigrationTestSetup:
         self.client_config_path = self.initial_cpl_disk_manager.client_config_file
         self.server_config_path = self.initial_cpl_disk_manager.config_file
         self.secondary_dpl_disk_manager = None
-        self.initial_dpl_pid = self.initial_dpl_disk_manager.pid
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self.initial_cpl_disk_manager.stop_daemon()
+        self.initial_dpl_disk_manager.stop_daemon()
+        if self.secondary_dpl_disk_manager is not None:
+            self.secondary_dpl_disk_manager.stop_daemon()
         try:
-            DiskManagerLauncher.stop()
-        except ProcessLookupError as e:
-            # stop() tries to terminate all disk-manager processes created with DiskManagerLauncher
-            # and raises ProcessLookupError, since one of processes is already terminated.
-            # Compare pids list for terminated process pid to ensure we do not miss process crashes.
-            pids = getattr(e, "pids", [])
-            if len(pids) != 1:
-                _logger.error(
-                    "Unexpected %s occurred while stopping Disk-Manager pids: '%s'",
-                    e.__class__.__name__,
-                    ",".join(pids)
-                )
-                raise e
-            [pid] = pids
-            if self.initial_dpl_pid != pid:
-                raise e
-
-        MetadataServiceLauncher.stop()
-        NbsLauncher.stop()
-        YDBLauncher.stop()
+            MetadataServiceLauncher.stop()
+        except ProcessLookupError:
+            pass
+        try:
+            NbsLauncher.stop()
+        except ProcessLookupError:
+            pass
+        try:
+            YDBLauncher.stop()
+        except ProcessLookupError:
+            pass
         if self.src_s3 is not None or self.dst_s3 is not None:
-            S3Launcher.stop()
+            try:
+                S3Launcher.stop()
+            except ProcessLookupError:
+                pass
 
     def admin(self, *args: str):
         return subprocess.check_output(
@@ -201,7 +203,7 @@ class _MigrationTestSetup:
             "--id", disk_id
         )
 
-    def get_disk(self, disk_id: str) -> _Disk:
+    def get_disk(self, disk_id: str) -> '_Disk':
         output = self.admin("disks", "get", "--id", disk_id)
         disk_info = json.loads(output)
         return self._Disk(
@@ -263,7 +265,22 @@ class _MigrationTestSetup:
 
             time.sleep(1)
 
-    def checksum_disk(self, disk_id: str):
+    def start_database_migration(self):
+        stdout = self.admin(
+            "snapshots",
+            "schedule_migrate_snapshot_database_task",
+        )
+        task_id = stdout.replace("Task: ", "").replace("\n", "")
+        return task_id
+
+    def finish_database_migration(self, task_id: str):
+        self.admin("tasks", "cancel", task_id)
+
+    def list_snapshots(self) -> list[str]:
+        stdout = self.admin("snapshots", "list")
+        return stdout.splitlines()
+
+    def checksum_disk(self, disk_id: str) -> str:
         unique_test_dir = Path(get_unique_path_for_current_test(yatest_common.output_path(), ""))
         ensure_path_exists(str(unique_test_dir))
         data_file = unique_test_dir / "disk_data.bin"
@@ -303,9 +320,21 @@ class _MigrationTestSetup:
         )
         self.secondary_dpl_disk_manager.start()
 
+    def wait_for_snapshot_metric_equals(self, value,  timeout_sec=360):
+        started_at = time.monotonic()
+        while True:
+            if time.monotonic() - started_at > timeout_sec:
+                raise TimeoutError("Timed out waiting for snapshot metric to be zeroed")
+            metric = self.initial_dpl_disk_manager.get_metrics().get("snapshots_migratingCount")
+            time.sleep(1)
+            if metric is None:
+                continue
+            if metric.value == value:
+                break
+
 
 @pytest.mark.parametrize(
-    "use_s3_as_src, use_s3_as_dst",
+    ["use_s3_as_src", "use_s3_as_dst"],
     [
         (True, False),
         (False, True),
@@ -313,7 +342,7 @@ class _MigrationTestSetup:
         (False, False),
     ]
 )
-def test_disk_manager_dataplane_migration(use_s3_as_src, use_s3_as_dst):
+def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
@@ -328,6 +357,70 @@ def test_disk_manager_dataplane_migration(use_s3_as_src, use_s3_as_dst):
         setup.switch_dataplane_to_new_db()
         new_disk = "new_example"
         setup.create_disk_from_snapshot(snapshot_id=snapshot_id, disk_id=new_disk, size=disk_size)
-        setup.checksum_disk(new_disk)
         new_checksum = setup.checksum_disk(new_disk)
         assert new_checksum == checksum
+
+
+@pytest.mark.parametrize(
+    ["use_s3_as_src", "use_s3_as_dst", "migration_inflight_transferring_snapshots_count"],
+    [
+        (True, False, 1000),
+        (False, True, 1000),
+        (True, True, 1000),
+        (False, False, 4),
+        (False, False, 5),
+        (False, False, 9),
+        (False, False, 10),
+        (False, False, 1000),
+    ]
+)
+def test_disk_manager_dataplane_database_migration(
+    use_s3_as_src,
+    use_s3_as_dst,
+    migration_inflight_transferring_snapshots_count,
+):
+    with _MigrationTestSetup(
+        use_s3_as_src=use_s3_as_src,
+        use_s3_as_dst=use_s3_as_dst,
+        migration_inflight_transferring_snapshots_count=migration_inflight_transferring_snapshots_count,
+    ) as setup:
+        initial_data_count = 10
+        disks = [f"disk_{i}" for i in range(initial_data_count)]
+        snapshots = [f"snapshot_{i}" for i in range(initial_data_count)]
+        new_disks_for_initial = [f"new_disk_{i}" for i in range(initial_data_count)]
+        checksums = []
+        size = 16 * 1024 * 1024
+
+        # Create disks and snapshots before migration
+        for snapshot, disk in list(zip(snapshots, disks))[:initial_data_count // 2]:
+            setup.create_new_disk(disk, size)
+            checksums.append(setup.fill_disk(disk))
+            setup.create_snapshot(src_disk_id=disk, snapshot_id=snapshot)
+
+        # Wait for snapshots to be created
+        while len(setup.list_snapshots()) != initial_data_count // 2:
+            time.sleep(1)
+
+        # Prepare disks to create snapshots from during migration
+        for disk in disks[initial_data_count // 2:]:
+            setup.create_new_disk(disk, size)
+            checksums.append(setup.fill_disk(disk))
+
+        task_id = setup.start_database_migration()
+
+        setup.wait_for_snapshot_metric_equals(0)
+        # Create snapshots during migration
+        for snapshot, disk in list(zip(snapshots, disks))[initial_data_count // 2:]:
+            setup.create_snapshot(src_disk_id=disk, snapshot_id=snapshot)
+
+        # Wait for snapshots to be created
+        while len(setup.list_snapshots()) != initial_data_count:
+            time.sleep(1)
+
+        setup.wait_for_snapshot_metric_equals(0)
+        setup.finish_database_migration(task_id)
+        setup.switch_dataplane_to_new_db()
+        for new_disk, checksum, snapshot in zip(new_disks_for_initial, checksums, snapshots):
+            setup.create_disk_from_snapshot(snapshot_id=snapshot, disk_id=new_disk, size=size)
+            new_checksum = setup.checksum_disk(new_disk)
+            assert new_checksum == checksum
