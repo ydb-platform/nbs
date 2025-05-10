@@ -1,6 +1,7 @@
 #include "shard_balancer.h"
 
 #include <util/generic/algorithm.h>
+#include <util/random/random.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -18,15 +19,15 @@ ui64 FreeSpace(const TShardStats& s)
 struct TShardMetaComp
 {
     bool operator()(
-        const TShardBalancer::TShardMeta& lhs,
-        const TShardBalancer::TShardMeta& rhs)
+        const TShardBalancerBase::TShardMeta& lhs,
+        const TShardBalancerBase::TShardMeta& rhs)
     {
         return FreeSpace(lhs.Stats) == FreeSpace(rhs.Stats)
             ? lhs.ShardIdx < rhs.ShardIdx
             : FreeSpace(lhs.Stats) > FreeSpace(rhs.Stats);
     }
 
-    bool operator()(ui64 lhs, const TShardBalancer::TShardMeta& rhs)
+    bool operator()(ui64 lhs, const TShardBalancerBase::TShardMeta& rhs)
     {
         return lhs > FreeSpace(rhs.Stats);
     }
@@ -34,42 +35,41 @@ struct TShardMetaComp
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TShardBalancer::SetParameters(
-    ui32 blockSize,
-    ui64 desiredFreeSpaceReserve,
-    ui64 minFreeSpaceReserve)
-{
-    BlockSize = blockSize;
-    DesiredFreeSpaceReserve = desiredFreeSpaceReserve;
-    MinFreeSpaceReserve = minFreeSpaceReserve;
-}
+TShardBalancerBase::TShardBalancerBase(
+        ui32 blockSize,
+        ui64 desiredFreeSpaceReserve,
+        ui64 minFreeSpaceReserve)
+    : BlockSize(blockSize)
+    , DesiredFreeSpaceReserve(desiredFreeSpaceReserve)
+    , MinFreeSpaceReserve(minFreeSpaceReserve)
+{}
 
-void TShardBalancer::UpdateShards(TVector<TString> shardIds)
+void TShardBalancerBase::UpdateShards(TVector<TString> shardIds)
 {
     Ids = std::move(shardIds);
     Metas.clear();
     for (ui32 i = 0; i < Ids.size(); ++i) {
-        Metas.emplace_back(i, TShardStats{DesiredFreeSpaceReserve, 0, 0, 0});
+        Metas.emplace_back(
+            i,
+            TShardStats{
+                .TotalBlocksCount = DesiredFreeSpaceReserve,
+                .UsedBlocksCount = 0,
+                .CurrentLoad = 0,
+                .Suffer = 0,
+            });
     }
-    ShardSelector = 0;
 }
 
-void TShardBalancer::UpdateShardStats(const TVector<TShardStats>& stats)
+void TShardBalancerBase::UpdateShardStats(const TVector<TShardStats>& stats)
 {
     Y_DEBUG_ABORT_UNLESS(stats.size() == Metas.size());
-    ui32 cnt = Min(stats.size(), Metas.size());
-    for (ui32 i = 0; i < cnt; ++i) {
-        Metas[i].Stats = {};
+    for (ui32 i = 0; i < Metas.size(); ++i) {
+        Metas[i] = TShardMeta(i, stats[i]);
     }
     Sort(Metas.begin(), Metas.end(), TShardMetaComp());
-    for (ui32 i = 0; i < cnt; ++i) {
-        Metas[i].Stats = stats[i];
-    }
-    Sort(Metas.begin(), Metas.end(), TShardMetaComp());
-    ShardSelector = 0;
 }
 
-NProto::TError TShardBalancer::SelectShard(ui64 fileSize, TString* shardId)
+std::optional<size_t> TShardBalancerBase::FindPrefix(ui64 fileSize) const
 {
     auto* e = UpperBound(
         Metas.begin(),
@@ -85,16 +85,84 @@ NProto::TError TShardBalancer::SelectShard(ui64 fileSize, TString* shardId)
     }
 
     if (e == Metas.begin()) {
+        return std::nullopt;
+    }
+
+    return std::distance(Metas.begin(), e);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TShardBalancerRoundRobin::UpdateShards(TVector<TString> shardIds)
+{
+    TShardBalancerBase::UpdateShards(std::move(shardIds));
+    ShardSelector = 0;
+}
+
+void TShardBalancerRoundRobin::UpdateShardStats(
+    const TVector<TShardStats>& stats)
+{
+    TShardBalancerBase::UpdateShardStats(stats);
+    ShardSelector = 0;
+}
+
+NProto::TError TShardBalancerRoundRobin::SelectShard(
+    ui64 fileSize,
+    TString* shardId)
+{
+    const auto endIdx = FindPrefix(fileSize);
+    if (!endIdx) {
         return MakeError(E_FS_NOSPC, "all shards are full");
     }
 
-    const auto endIdx = std::distance(Metas.begin(), e);
-    if (ShardSelector >= endIdx) {
+    if (ShardSelector >= endIdx.value()) {
         ShardSelector = 0;
     }
 
     *shardId = Ids[Metas[ShardSelector++].ShardIdx];
     return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TShardBalancerRandom::SelectShard(
+    ui64 fileSize,
+    TString* shardId)
+{
+    const auto endIdx = FindPrefix(fileSize);
+    if (!endIdx) {
+        return MakeError(E_FS_NOSPC, "all shards are full");
+    }
+
+    const auto idx = RandomNumber<ui32>(endIdx.value());
+    *shardId = Ids[Metas[idx].ShardIdx];
+    return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+IShardBalancerPtr CreateShardBalancer(
+    NProto::EShardBalancerPolicy policy,
+    ui32 blockSize,
+    ui64 desiredFreeSpaceReserve,
+    ui64 minFreeSpaceReserve)
+{
+    switch (policy) {
+        case NProto::SBP_ROUND_ROBIN:
+            return std::make_shared<TShardBalancerRoundRobin>(
+                blockSize,
+                desiredFreeSpaceReserve,
+                minFreeSpaceReserve);
+        case NProto::SBP_RANDOM:
+            return std::make_shared<TShardBalancerRandom>(
+                blockSize,
+                desiredFreeSpaceReserve,
+                minFreeSpaceReserve);
+        default:
+            Y_ABORT(
+                "unsupported shard balancer policy: %d",
+                static_cast<int>(policy));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

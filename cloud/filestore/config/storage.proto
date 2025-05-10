@@ -33,6 +33,17 @@ enum EGuestCachingType
     GCT_ANY_READ = 2;
 }
 
+enum EShardBalancerPolicy
+{
+    // Shard balancer will use round robin policy and periodically reset the
+    // round robin pointer to the least loaded shard.
+    SBP_ROUND_ROBIN = 0;
+
+    // Shard balancer will randomly select a shard from the list of shards
+    // that have enough free space for a new file.
+    SBP_RANDOM = 1;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //  !!!IMPORTANT!!!
@@ -573,4 +584,8 @@ message TStorageConfig
     // if background operations should run but have been throttled.
     // (e.g. cleanup operation due to CleanupCpuThrottlingThresholdPercentage)
     optional uint32 EnqueueBlobIndexOpIfNeededScheduleInterval = 427; // in ms
+
+    // Specifies the shard balancer policy to be used for the shard balancing.
+    // Has no effect if ShardBalancerEnabled is false.
+    optional EShardBalancerPolicy ShardBalancerPolicy = 428;
 }
