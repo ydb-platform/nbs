@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/cpu_stat/cpu_stat.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/disk_registry_proxy.h>
@@ -127,6 +128,20 @@ public:
                     TMailboxType::TinyReadAsFilled,
                     appData->UserPoolId));
         }
+
+        //
+        // CpuStatsFetcher Actor
+        //
+
+        auto daCpuStat =
+            CreateCpuStatsFetcherActor(Args.StorageConfig, Args.StatsFetcher);
+
+        setup->LocalServices.emplace_back(
+            TActorId(),
+            TActorSetupCmd(
+                daCpuStat.release(),
+                TMailboxType::Revolving,
+                appData->UserPoolId));
     }
 };
 

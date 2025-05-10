@@ -2,6 +2,7 @@ RECURSE(
     api
     bootstrapper
     core
+    cpu_stat
     disk_agent
     disk_common
     disk_registry

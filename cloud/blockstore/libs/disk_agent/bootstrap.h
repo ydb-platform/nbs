@@ -63,6 +63,7 @@ private:
     TVector<ITraceReaderPtr> TraceReaders;
     ITraceProcessorPtr TraceProcessor;
     IProfileLogPtr ProfileLog;
+    NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IFileIOServiceProviderPtr FileIOServiceProvider;
     NSpdk::ISpdkEnvPtr Spdk;
