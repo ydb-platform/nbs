@@ -61,9 +61,14 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ShardAllocationUnit,                                    ui64,   4_TB  )\
     xxx(AutomaticallyCreatedShardSize,                          ui64,   5_TB  )\
     xxx(EnforceCorrectFileSystemShardCountUponSessionCreation,  bool,   false )\
+                                                                               \
     xxx(ShardIdSelectionInLeaderEnabled,                        bool,   false )\
     xxx(ShardBalancerDesiredFreeSpaceReserve,                   ui64,   1_TB  )\
     xxx(ShardBalancerMinFreeSpaceReserve,                       ui64,   1_MB  )\
+    xxx(ShardBalancerPolicy,                                                   \
+            NProto::EShardBalancerPolicy,                                      \
+            NProto::SBP_ROUND_ROBIN                                           )\
+                                                                               \
     xxx(DirectoryCreationInShardsEnabled,                       bool,   false )\
                                                                                \
     xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
@@ -355,6 +360,15 @@ IOutputStream& operator <<(
 {
     return out << EGuestCachingType_Name(gct);
 }
+
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::EShardBalancerPolicy policy)
+{
+    return out << EShardBalancerPolicy_Name(policy);
+}
+
 
 template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
