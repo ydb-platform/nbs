@@ -449,6 +449,19 @@ public:
         return request;
     }
 
+    std::unique_ptr<TEvService::TEvSetNodeAttrRequest> CreateSetNodeAttrRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const TSetNodeAttrArgs& args)
+    {
+        auto request = std::make_unique<TEvService::TEvSetNodeAttrRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+
+        args.Fill(request->Record);
+        return request;
+    }
+
     std::unique_ptr<TEvService::TEvDestroyHandleRequest> CreateDestroyHandleRequest(
         const THeaders& headers,
         const TString& fileSystemId,
