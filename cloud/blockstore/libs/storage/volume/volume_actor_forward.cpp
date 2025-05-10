@@ -235,6 +235,23 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
         ++MultipartitionWriteAndZeroRequestsInProgress;
     }
 
+    if constexpr (IsReadMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStart(
+            TRequestsTimeTracker::ERequestType::Read,
+            volumeRequestId,
+            BuildRequestBlockRange(*msg, State->GetBlockSize()));
+    } else if constexpr (IsExactlyWriteMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStart(
+            TRequestsTimeTracker::ERequestType::Write,
+            volumeRequestId,
+            BuildRequestBlockRange(*msg, State->GetBlockSize()));
+    } else if constexpr (IsZeroMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStart(
+            TRequestsTimeTracker::ERequestType::Zero,
+            volumeRequestId,
+            BuildRequestBlockRange(*msg, State->GetBlockSize()));
+    }
+
     return newEvent;
 }
 
@@ -408,6 +425,7 @@ bool TVolumeActor::ReplyToOriginalRequest(
     ui64 volumeRequestId,
     std::unique_ptr<typename TMethod::TResponse> response)
 {
+    const bool success = !HasError(response->Record.GetError());
     if constexpr (IsWriteMethod<TMethod>) {
         ReplyToDuplicateRequests(
             ctx,
@@ -448,6 +466,7 @@ bool TVolumeActor::ReplyToOriginalRequest(
     }
 
     VolumeRequests.erase(it);
+    RequestTimeTracker.OnRequestFinished(volumeRequestId, success);
 
     return true;
 }
