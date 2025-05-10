@@ -2,7 +2,9 @@ GO_LIBRARY()
 
 SRCS(
     clear_deleted_filesystems_task.go
+    create_external_filesystem_task.go
     create_filesystem_task.go
+    delete_external_filesystem_task.go
     delete_filesystem_task.go
     interface.go
     register.go

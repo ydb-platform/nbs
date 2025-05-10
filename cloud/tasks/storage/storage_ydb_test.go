@@ -4696,3 +4696,105 @@ func TestGetAliveNodes(t *testing.T) {
 		nodes,
 	)
 }
+
+func TestForceFinishTaskWithDependencies(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": "dep_task"},
+	).On("Add", int64(1)).Twice()
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": "task1"},
+	).On("Add", int64(1)).Once()
+
+	createdAt := time.Now()
+	modifiedAt := createdAt.Add(time.Hour)
+
+	depID1, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "dep_task",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     modifiedAt,
+		GenerationID:   42,
+		Status:         TaskStatusReadyToRun,
+		State:          []byte{},
+		Dependencies:   NewStringSet(),
+	})
+	require.NoError(t, err)
+
+	depID2, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "dep_task",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     modifiedAt,
+		GenerationID:   42,
+		Status:         TaskStatusReadyToRun,
+		State:          []byte{},
+		Dependencies:   NewStringSet(),
+	})
+	require.NoError(t, err)
+
+	taskID, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     modifiedAt,
+		GenerationID:   42,
+		Status:         TaskStatusReadyToRun,
+		State:          []byte{1, 2, 3},
+		Dependencies:   NewStringSet(depID1, depID2),
+	})
+	require.NoError(t, err)
+
+	err = storage.PauseTask(ctx, taskID)
+	require.NoError(t, err)
+
+	task, err := storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.Equal(t, task.Status, TaskStatusWaitingToRun)
+
+	// Force finish first dependency and make sure task still sleeping
+	err = storage.ForceFinishTask(ctx, depID1)
+	require.NoError(t, err)
+
+	task, err = storage.GetTask(ctx, depID1)
+	require.NoError(t, err)
+	require.Equal(t, task.Status, TaskStatusFinished)
+
+	task, err = storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.Equal(t, task.Status, TaskStatusWaitingToRun)
+
+	// Force finish first dependency and make sure task ready to run
+	err = storage.ForceFinishTask(ctx, depID2)
+	require.NoError(t, err)
+
+	task, err = storage.GetTask(ctx, depID2)
+	require.NoError(t, err)
+	require.Equal(t, task.Status, TaskStatusFinished)
+
+	task, err = storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.Equal(t, task.Status, TaskStatusReadyToRun)
+}

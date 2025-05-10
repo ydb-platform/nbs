@@ -124,6 +124,7 @@ func (s *service) CreateFilesystem(
 			BlockSize:   blockSize,
 			BlocksCount: blocksCount,
 			Kind:        kind,
+			IsExternal:  req.IsExternal,
 		},
 	)
 }

@@ -17,6 +17,8 @@ message CreateFilesystemRequest {
     uint32 BlockSize = 5;
     uint64 BlocksCount = 6;
     types.FilesystemKind Kind = 7;
+    bool IsExternal = 8;
 }
 
-message CreateFilesystemTaskState {}
+message CreateFilesystemTaskState {
+}

@@ -29,11 +29,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/config"
+	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_headers "github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"google.golang.org/grpc"
 	grpc_codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -574,6 +576,19 @@ func newSnapshotStorage(ctx context.Context) (snapshot_storage.Storage, error) {
 		metrics.NewEmptyRegistry(),
 		db,
 		nil, // do not need s3 here
+	)
+}
+
+func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
+	db, err := newYDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return tasks_storage.NewStorage(
+		&tasks_config.TasksConfig{},
+		metrics.NewEmptyRegistry(),
+		db,
 	)
 }
 

@@ -57,6 +57,7 @@ message CreateFilesystemRequest {
     int64 block_size = 4;
     int64 size = 5;
     FilesystemKind kind = 6;
+    bool is_external = 7;
 }
 
 message DeleteFilesystemRequest {

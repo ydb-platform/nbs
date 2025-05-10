@@ -35,6 +35,17 @@ func RegisterForExecution(
 
 	err = registry.RegisterForExecution("filesystem.CreateFilesystem", func() tasks.Task {
 		return &createFilesystemTask{
+			storage:   storage,
+			factory:   factory,
+			scheduler: taskScheduler,
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	err = registry.RegisterForExecution("filesystem.CreateExternalFilesystem", func() tasks.Task {
+		return &createExternalFilesystemTask{
 			storage: storage,
 			factory: factory,
 		}
@@ -45,6 +56,17 @@ func RegisterForExecution(
 
 	err = registry.RegisterForExecution("filesystem.DeleteFilesystem", func() tasks.Task {
 		return &deleteFilesystemTask{
+			storage:   storage,
+			factory:   factory,
+			scheduler: taskScheduler,
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	err = registry.RegisterForExecution("filesystem.DeleteExternalFilesystem", func() tasks.Task {
+		return &deleteExternalFilesystemTask{
 			storage: storage,
 			factory: factory,
 		}

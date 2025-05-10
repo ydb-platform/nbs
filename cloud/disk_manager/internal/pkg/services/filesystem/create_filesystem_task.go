@@ -11,15 +11,17 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type createFilesystemTask struct {
-	storage resources.Storage
-	factory nfs.Factory
-	request *protos.CreateFilesystemRequest
-	state   *protos.CreateFilesystemTaskState
+	storage   resources.Storage
+	factory   nfs.Factory
+	scheduler tasks.Scheduler
+	request   *protos.CreateFilesystemRequest
+	state     *protos.CreateFilesystemTaskState
 }
 
 func (t *createFilesystemTask) Save() ([]byte, error) {
@@ -42,12 +44,6 @@ func (t *createFilesystemTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.factory.NewClient(ctx, t.request.Filesystem.ZoneId)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
 	selfTaskID := execCtx.GetTaskID()
 
 	filesystemMeta, err := t.storage.CreateFilesystem(ctx, resources.FilesystemMeta{
@@ -63,6 +59,7 @@ func (t *createFilesystemTask) Run(
 		CreateTaskID:  selfTaskID,
 		CreatingAt:    time.Now(),
 		CreatedBy:     "", // TODO: Extract CreatedBy from execCtx
+		IsExternal:    t.request.IsExternal,
 	})
 	if err != nil {
 		return err
@@ -75,15 +72,41 @@ func (t *createFilesystemTask) Run(
 		)
 	}
 
-	err = client.Create(ctx, t.request.Filesystem.FilesystemId, nfs.CreateFilesystemParams{
-		CloudID:     t.request.CloudId,
-		FolderID:    t.request.FolderId,
-		BlocksCount: t.request.BlocksCount,
-		BlockSize:   t.request.BlockSize,
-		Kind:        t.request.Kind,
-	})
-	if err != nil {
-		return err
+	if filesystemMeta.IsExternal {
+		taskID, err := t.scheduler.ScheduleTask(
+			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_create_external"),
+			"filesystem.CreateExternalFilesystem",
+			"",
+			t.request,
+		)
+		if err != nil {
+			return err
+		}
+
+		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+		if err != nil {
+			return err
+		}
+	} else {
+		client, err := t.factory.NewClient(ctx, t.request.Filesystem.ZoneId)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+
+		err = client.Create(
+			ctx,
+			t.request.Filesystem.FilesystemId,
+			nfs.CreateFilesystemParams{
+				CloudID:     t.request.CloudId,
+				FolderID:    t.request.FolderId,
+				BlocksCount: t.request.BlocksCount,
+				BlockSize:   t.request.BlockSize,
+				Kind:        t.request.Kind,
+			})
+		if err != nil {
+			return err
+		}
 	}
 
 	filesystemMeta.CreatedAt = time.Now()
@@ -120,9 +143,26 @@ func (t *createFilesystemTask) Cancel(
 		)
 	}
 
-	err = client.Delete(ctx, t.request.Filesystem.FilesystemId)
-	if err != nil {
-		return err
+	if fs.IsExternal {
+		taskID, err := t.scheduler.ScheduleTask(
+			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_delete_external"),
+			"filesystem.DeleteExternalFilesystem",
+			"",
+			t.request,
+		)
+		if err != nil {
+			return err
+		}
+
+		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = client.Delete(ctx, t.request.Filesystem.FilesystemId)
+		if err != nil {
+			return err
+		}
 	}
 
 	return t.storage.FilesystemDeleted(
