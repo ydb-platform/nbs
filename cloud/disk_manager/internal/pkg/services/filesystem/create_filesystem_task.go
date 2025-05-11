@@ -44,6 +44,12 @@ func (t *createFilesystemTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	client, err := t.factory.NewClient(ctx, t.request.Filesystem.ZoneId)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
 	selfTaskID := execCtx.GetTaskID()
 
 	filesystemMeta, err := t.storage.CreateFilesystem(ctx, resources.FilesystemMeta{
@@ -88,12 +94,6 @@ func (t *createFilesystemTask) Run(
 			return err
 		}
 	} else {
-		client, err := t.factory.NewClient(ctx, t.request.Filesystem.ZoneId)
-		if err != nil {
-			return err
-		}
-		defer client.Close()
-
 		err = client.Create(
 			ctx,
 			t.request.Filesystem.FilesystemId,

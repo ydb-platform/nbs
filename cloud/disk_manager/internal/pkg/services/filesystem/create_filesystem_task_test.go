@@ -176,6 +176,7 @@ func TestCreateExternalFilesystemTask(t *testing.T) {
 	scheduler := tasks_mocks.NewSchedulerMock()
 	storage := resources_mocks.NewStorageMock()
 	nfsFactory := nfs_mocks.NewFactoryMock()
+	nfsClient := nfs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
 	request := &protos.CreateFilesystemRequest{
@@ -219,6 +220,8 @@ func TestCreateExternalFilesystemTask(t *testing.T) {
 		IsExternal: true,
 	}, nil)
 	storage.On("FilesystemCreated", ctx, mock.Anything).Return(nil)
+	nfsFactory.On("NewClient", ctx, "zone").Return(nfsClient, nil)
+	nfsClient.On("Close").Return(nil)
 
 	err := task.Run(ctx, execCtx)
 	require.Error(t, err)

@@ -73,6 +73,12 @@ func (t *deleteFilesystemTask) deleteFilesystem(
 		return t.storage.FilesystemDeleted(ctx, filesystemID, time.Now())
 	}
 
+	client, err := t.factory.NewClient(ctx, zoneID)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
 	if filesystemMeta.IsExternal {
 		taskID, err := t.scheduler.ScheduleTask(
 			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
@@ -89,12 +95,6 @@ func (t *deleteFilesystemTask) deleteFilesystem(
 			return err
 		}
 	} else {
-		client, err := t.factory.NewClient(ctx, zoneID)
-		if err != nil {
-			return err
-		}
-		defer client.Close()
-
 		err = client.Delete(ctx, filesystemID)
 		if err != nil {
 			return err

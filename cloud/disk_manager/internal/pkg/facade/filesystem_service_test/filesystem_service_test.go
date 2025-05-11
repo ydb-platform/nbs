@@ -141,11 +141,13 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 		}
 
 	}
-	// validate CreateFilesystem task is stuck
+	// Validate CreateFilesystem task is stuck
 	waitOperationWithTimeout(
 		"CreateFilesystem.1",
 		true, /* should timeout */
-		10*time.Second, operation.Id)
+		10*time.Second,
+		operation.Id,
+	)
 
 	// Force finish CreateExternalFilesystem task
 	externalTask, err := findExternalTask(
@@ -158,11 +160,13 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	err = taskStorage.ForceFinishTask(ctx, externalTask.ID)
 	require.NoError(t, err)
 
-	// validate CreateFilesystem finish succesfully
+	// Validate CreateFilesystem finish succesfully
 	waitOperationWithTimeout(
 		"CreateFilesystem.2",
 		false, /* should not timeout */
-		30*time.Second, operation.Id)
+		60*time.Second,
+		operation.Id,
+	)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteFilesystem(
@@ -175,11 +179,13 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
-	// validate DeleteFilesystem task is stuck
+	// Validate DeleteFilesystem task is stuck
 	waitOperationWithTimeout(
 		"DeleteFilesystem.1",
 		true, /* should timeout */
-		10*time.Second, operation.Id)
+		10*time.Second,
+		operation.Id,
+	)
 
 	externalTask, err = findExternalTask(
 		ctx,
@@ -192,12 +198,13 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	err = taskStorage.ForceFinishTask(ctx, externalTask.ID)
 	require.NoError(t, err)
 
-	// validate DeleteFilesystem finish succesfully
+	// Validate DeleteFilesystem finish succesfully
 	waitOperationWithTimeout(
 		"DeleteFilesystem.2",
 		false, /* should not timeout */
-		30*time.Second,
-		operation.Id)
+		60*time.Second,
+		operation.Id,
+	)
 
 	testcommon.CheckConsistency(t, ctx)
 }

@@ -95,6 +95,7 @@ func TestDeleteExternalFilesystemTaskRun(t *testing.T) {
 	scheduler := tasks_mocks.NewSchedulerMock()
 	storage := resources_mocks.NewStorageMock()
 	nfsFactory := nfs_mocks.NewFactoryMock()
+	nfsClient := nfs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
 	filesystem := &protos.FilesystemId{ZoneId: "zone", FilesystemId: "filesystem"}
@@ -135,6 +136,8 @@ func TestDeleteExternalFilesystemTaskRun(t *testing.T) {
 		IsExternal:   true,
 	}, nil)
 	storage.On("FilesystemDeleted", ctx, "filesystem", mock.Anything).Return(nil)
+	nfsFactory.On("NewClient", ctx, "zone").Return(nfsClient, nil)
+	nfsClient.On("Close").Return(nil)
 
 	err := task.Run(ctx, execCtx)
 	require.Error(t, err)
