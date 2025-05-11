@@ -42,6 +42,8 @@ private:
 
     struct TTimeHistogram: public THistogram<TRequestUsTimeBuckets>
     {
+        size_t BlockCount = 0;
+
         TTimeHistogram()
             : THistogram<TRequestUsTimeBuckets>(
                   EHistogramCounterOption::ReportSingleCounter)
@@ -88,7 +90,7 @@ public:
 
     void OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
-    [[nodiscard]] TString GetStatJson(ui64 now) const;
+    [[nodiscard]] TString GetStatJson(ui64 now, ui32 blockSize) const;
     [[nodiscard]] TVector<TBucketInfo> GetSizeBuckets(ui32 blockSize) const;
     [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
 };

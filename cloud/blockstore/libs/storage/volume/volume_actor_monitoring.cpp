@@ -2371,12 +2371,17 @@ void TVolumeActor::HandleHttpInfo_RenderLatency(
     TRequestInfoPtr requestInfo)
 {
     Y_UNUSED(params);
+    if (!State) {
+        return;
+    }
 
     NCloud::Reply(
         ctx,
         *requestInfo,
         std::make_unique<NMon::TEvRemoteJsonInfoRes>(
-            RequestTimeTracker.GetStatJson(GetCycleCount())));
+            RequestTimeTracker.GetStatJson(
+                GetCycleCount(),
+                State->GetBlockSize())));
 }
 ////////////////////////////////////////////////////////////////////////////////
 

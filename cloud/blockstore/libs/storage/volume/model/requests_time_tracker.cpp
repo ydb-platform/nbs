@@ -14,6 +14,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const auto* const TotalTimeBucketName = "Total";
+const auto* const TotalSizeBucketName = "TotalSize";
+
 constexpr size_t BlockCountBucketsCount = 12;
 constexpr size_t TotalSizeBucket = BlockCountBucketsCount;
 constexpr std::array<size_t, BlockCountBucketsCount> RequestSizeBuckets = {
@@ -60,7 +63,7 @@ TVector<TRequestsTimeTracker::TBucketInfo> MakeSizeBuckets(ui32 blockSize)
 
     size_t lastBucket = 0;
     for (size_t i = 0; i < RequestSizeBuckets.size() - 1; ++i) {
-        size_t sizeBucket = RequestSizeBuckets[i];
+        const size_t sizeBucket = RequestSizeBuckets[i];
         TRequestsTimeTracker::TBucketInfo bucket{.Key = ToString(sizeBucket)};
 
         if (lastBucket && lastBucket != sizeBucket) {
@@ -207,12 +210,14 @@ void TRequestsTimeTracker::OnRequestFinished(
         .RequestStatus =
             success ? ERequestStatus::Success : ERequestStatus::Fail};
     Histograms[key].Increment(duration.MicroSeconds());
+    Histograms[key].BlockCount += request.BlockRange.Size();
 
     key.SizeBucket = TotalSizeBucket;
     Histograms[key].Increment(duration.MicroSeconds());
+    Histograms[key].BlockCount += request.BlockRange.Size();
 }
 
-TString TRequestsTimeTracker::GetStatJson(ui64 now) const
+TString TRequestsTimeTracker::GetStatJson(ui64 now, ui32 blockSize) const
 {
     NJson::TJsonValue allStat(NJson::EJsonValueType::JSON_MAP);
 
@@ -227,7 +232,9 @@ TString TRequestsTimeTracker::GetStatJson(ui64 now) const
                 (histogram.Buckets[j] ? ToString(histogram.Buckets[j]) : "");
             total += histogram.Buckets[j];
         }
-        allStat[htmlPrefix + "Total"] = ToString(total);
+        allStat[htmlPrefix + TotalTimeBucketName] = ToString(total);
+        allStat[htmlPrefix + TotalSizeBucketName] =
+            FormatByteSize(histogram.BlockCount * blockSize);
     }
 
     // Build inflight requests counters
@@ -243,21 +250,33 @@ TString TRequestsTimeTracker::GetStatJson(ui64 now) const
     };
 
     TMap<TString, size_t> inflight;
+
     for (const auto& [requestId, request]: InflightRequests) {
         auto requestType = request.RequestType;
         const auto sizeBucket = GetSizeBucket(request.BlockRange);
         const auto& timeBucketName =
             GetTimeBucketName(CyclesToDurationSafe(now - request.StartAt));
-        const auto& totalTimeBucketName = "Total";
 
+        // Time
         ++inflight[getHtmlKey(sizeBucket, requestType, timeBucketName)];
-        ++inflight[getHtmlKey(sizeBucket, requestType, totalTimeBucketName)];
+        ++inflight[getHtmlKey(sizeBucket, requestType, TotalTimeBucketName)];
         ++inflight[getHtmlKey(TotalSizeBucket, requestType, timeBucketName)];
         ++inflight
-            [getHtmlKey(TotalSizeBucket, requestType, totalTimeBucketName)];
+            [getHtmlKey(TotalSizeBucket, requestType, TotalTimeBucketName)];
+
+        // Size
+        inflight[getHtmlKey(sizeBucket, requestType, TotalSizeBucketName)] +=
+            request.BlockRange.Size() * blockSize;
+        inflight
+            [getHtmlKey(TotalSizeBucket, requestType, TotalSizeBucketName)] +=
+            request.BlockRange.Size() * blockSize;
     }
     for (const auto& [key, count]: inflight) {
-        allStat[key] = ToString(count);
+        if (key.EndsWith(TotalSizeBucketName)) {
+            allStat[key] = FormatByteSize(count);
+        } else {
+            allStat[key] = ToString(count);
+        }
     }
 
     NJson::TJsonValue json;
@@ -293,7 +312,9 @@ TRequestsTimeTracker::GetTimeBuckets() const
         result.push_back(std::move(bucket));
     }
     result.push_back(
-        TBucketInfo{.Key = "Total", .Description = "Total", .Tooltip = ""});
+        TBucketInfo{.Key = TotalTimeBucketName, .Description = "Total"});
+    result.push_back(
+        TBucketInfo{.Key = TotalSizeBucketName, .Description = "Total Size"});
     return result;
 }
 
