@@ -194,7 +194,7 @@ func (s *AvailabilityMonitoringStorageYDB) updateSuccessRate(
 		return err
 	}
 
-	if len(results) > availabilityMonitoringResultsCountLimit {
+	if len(results) >= availabilityMonitoringResultsCountLimit {
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
