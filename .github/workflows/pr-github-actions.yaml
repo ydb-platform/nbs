@@ -49,7 +49,7 @@ concurrency:
 
 jobs:
   set-env:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
       large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
@@ -59,7 +59,7 @@ jobs:
         id: set-env
         run: echo
   check-running-allowed:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       result: ${{ steps.check-ownership-membership.outputs.result }}
     steps:
@@ -177,7 +177,7 @@ jobs:
   shell:
     needs: [set-env, check-running-allowed]
     if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
 
     steps:
       - name: checkout
@@ -227,7 +227,7 @@ jobs:
   python:
     needs: [set-env, check-running-allowed]
     if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
 
     steps:
       - name: checkout
@@ -272,7 +272,7 @@ jobs:
   workflows:
     needs: [set-env, check-running-allowed]
     if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
       - name: checkout
         uses: actions/checkout@v4

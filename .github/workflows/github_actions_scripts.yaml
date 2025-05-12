@@ -6,7 +6,7 @@ on:
 jobs:
   index:
     name: Test GA scripts
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
     - name: README
       run: |
