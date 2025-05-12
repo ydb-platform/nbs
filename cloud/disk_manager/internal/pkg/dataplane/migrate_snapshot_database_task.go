@@ -51,7 +51,7 @@ func (m migrateSnapshotDatabaseTask) Run(
 		// Disabling snapshot creation is error-prone, thus we should perform
 		// it manually by disabling respective tasks in config.
 		inflightSnapshotsCount := m.config.GetMigrationInflightTransferringSnapshotsCount()
-		taskTimeout, err := time.ParseDuration(m.config.GetMigrationSnapshotCollectionTimeout())
+		taskTimeout, err := time.ParseDuration(m.config.GetMigrationSnapshotsCollectionTimeout())
 		if err != nil {
 			return err
 		}
@@ -71,25 +71,10 @@ func (m migrateSnapshotDatabaseTask) Run(
 		subregistry.Gauge(
 			"snapshots/migratingCount",
 		).Set(float64(snapshotsToProcessCount))
-		var inflightTaskIDs []string
 
+		var inflightTaskIDs []string
 		for snapshotId := range snapshotsToProcess.Vals() {
-			idempotencyKey := headers.SetIncomingIdempotencyKey(
-				ctx,
-				fmt.Sprintf(
-					"dataplane.MigrateSnapshotTask_%s_%s",
-					snapshotId,
-					execCtx.GetTaskID(),
-				),
-			)
-			taskID, err := m.scheduler.ScheduleTask(
-				idempotencyKey,
-				"dataplane.MigrateSnapshotTask",
-				"",
-				&dataplane_protos.MigrateSnapshotRequest{
-					SrcSnapshotId: snapshotId,
-				},
-			)
+			taskID, err := m.scheduleMigrateSnapshotTask(ctx, execCtx, snapshotId)
 			if err != nil {
 				return err
 			}
@@ -102,23 +87,9 @@ func (m migrateSnapshotDatabaseTask) Run(
 			inflightTaskIDs = append(inflightTaskIDs, taskID)
 			inflightTasksLimitReached := len(inflightTaskIDs) == int(inflightSnapshotsCount)
 			if inflightTasksLimitReached || snapshotsToProcessCount == 1 {
-				finishedTaskIDs, err := m.scheduler.WaitAnyTasksWithTimeout(
-					ctx,
-					inflightTaskIDs,
-					taskTimeout,
-				)
+				newInflightTaskIds, err := m.processFinishedSnapshotMigrationTasks(ctx, inflightTaskIDs, taskTimeout)
 				if err != nil {
 					return err
-				}
-
-				newInflightTaskIds := make([]string, len(inflightTaskIDs))
-				for _, inflightTaskID := range inflightTaskIDs {
-					if !common.Find(finishedTaskIDs, inflightTaskID) {
-						newInflightTaskIds = append(
-							newInflightTaskIds,
-							inflightTaskID,
-						)
-					}
 				}
 
 				inflightTaskIDs = newInflightTaskIds
@@ -129,6 +100,57 @@ func (m migrateSnapshotDatabaseTask) Run(
 
 	//goland:noinspection GoUnreachableCode
 	return nil
+}
+
+func (m migrateSnapshotDatabaseTask) processFinishedSnapshotMigrationTasks(
+	ctx context.Context,
+	inflightTaskIDs []string,
+	taskTimeout time.Duration,
+) ([]string, error) {
+
+	finishedTaskIDs, err := m.scheduler.WaitAnyTasksWithTimeout(
+		ctx,
+		inflightTaskIDs,
+		taskTimeout,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	newInflightTaskIds := make([]string, len(inflightTaskIDs))
+	for _, inflightTaskID := range inflightTaskIDs {
+		if !common.Find(finishedTaskIDs, inflightTaskID) {
+			newInflightTaskIds = append(
+				newInflightTaskIds,
+				inflightTaskID,
+			)
+		}
+	}
+	return newInflightTaskIds, nil
+}
+
+func (m migrateSnapshotDatabaseTask) scheduleMigrateSnapshotTask(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	snapshotId string,
+) (string, error) {
+
+	idempotencyKey := headers.SetIncomingIdempotencyKey(
+		ctx,
+		fmt.Sprintf(
+			"dataplane.MigrateSnapshotTask_%s_%s",
+			snapshotId,
+			execCtx.GetTaskID(),
+		),
+	)
+	return m.scheduler.ScheduleTask(
+		idempotencyKey,
+		"dataplane.MigrateSnapshotTask",
+		"",
+		&dataplane_protos.MigrateSnapshotRequest{
+			SrcSnapshotId: snapshotId,
+		},
+	)
 }
 
 func (m migrateSnapshotDatabaseTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
