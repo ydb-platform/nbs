@@ -10,6 +10,10 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const availabilityMonitoringResultsCountLimit = 100
+
+////////////////////////////////////////////////////////////////////////////////
+
 func availabilityMonitoringTableDescription() CreateTableDescription {
 	return NewCreateTableDescription(
 		WithColumn("component", Optional(TypeUTF8)),
@@ -136,12 +140,7 @@ func (s *AvailabilityMonitoringStorageYDB) getAvailabilityMonitoringResultsTx(
 	}
 	defer res.Close()
 
-	results, err := scanAvailabilityMonitoringResults(ctx, res)
-	if err != nil {
-		return []availabilityMonitoringResult{}, err
-	}
-
-	return results, nil
+	return scanAvailabilityMonitoringResults(ctx, res)
 }
 
 func (s *AvailabilityMonitoringStorageYDB) getAvailabilityMonitoringResults(
@@ -195,7 +194,7 @@ func (s *AvailabilityMonitoringStorageYDB) updateSuccessRate(
 		return err
 	}
 
-	if len(results) > 100 {
+	if len(results) > availabilityMonitoringResultsCountLimit {
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";

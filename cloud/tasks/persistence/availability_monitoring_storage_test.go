@@ -11,7 +11,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestAvailabilityMonitoringStorageYDBUpdateSuccessRate(t *testing.T) {
+func TestAvailabilityMonitoringStorageUpdateSuccessRate(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
