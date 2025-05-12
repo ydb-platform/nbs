@@ -361,14 +361,12 @@ IOutputStream& operator <<(
     return out << EGuestCachingType_Name(gct);
 }
 
-
 IOutputStream& operator <<(
     IOutputStream& out,
     NProto::EShardBalancerPolicy policy)
 {
     return out << EShardBalancerPolicy_Name(policy);
 }
-
 
 template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)

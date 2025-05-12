@@ -28,7 +28,6 @@ class IShardBalancer
 public:
     virtual ~IShardBalancer() = default;
 
-    virtual void UpdateShards(TVector<TString> shardIds) = 0;
     virtual void UpdateShardStats(const TVector<TShardStats>& stats) = 0;
     virtual NProto::TError SelectShard(ui64 fileSize, TString* shardId) = 0;
 };
@@ -52,7 +51,8 @@ public:
     TShardBalancerBase(
         ui32 blockSize,
         ui64 desiredFreeSpaceReserve,
-        ui64 minFreeSpaceReserve);
+        ui64 minFreeSpaceReserve,
+        TVector<TString> shardIds);
 
 private:
     ui32 BlockSize = 4_KB;
@@ -76,10 +76,10 @@ protected:
      * @return The number of shards that can fit the file size, or
      * `std::nullopt` if no shard can fit the file size.
      */
-    [[nodiscard]] std::optional<size_t> FindPrefix(ui64 fileSize) const;
+    [[nodiscard]] std::optional<size_t> FindUpperBoundAmongAllShardsToFitFile(
+        ui64 fileSize) const;
 
 public:
-    void UpdateShards(TVector<TString> shardIds) override;
     void UpdateShardStats(const TVector<TShardStats>& stats) override;
 };
 
@@ -92,7 +92,6 @@ private:
 
 public:
     using TShardBalancerBase::TShardBalancerBase;
-    void UpdateShards(TVector<TString> shardIds) final;
     void UpdateShardStats(const TVector<TShardStats>& stats) final;
     NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
 };
@@ -108,10 +107,34 @@ public:
 
 /////////////////////////////////////////////////////////////////////////////////
 
+class TShardBalancerWeightedRandom: public TShardBalancerBase
+{
+private:
+    // To be able to perform weighed sampling from a list of weights, we store
+    // all weights prefix sums and use binary search to find the item
+    // corresponding with a random number selected from the range [0,
+    // sum(weights)).
+    TVector<ui64> PrefixSums;
+
+    void UpdatePrefixSums();
+
+public:
+    TShardBalancerWeightedRandom(
+        ui32 blockSize,
+        ui64 desiredFreeSpaceReserve,
+        ui64 minFreeSpaceReserve,
+        TVector<TString> shardIds);
+    void UpdateShardStats(const TVector<TShardStats>& stats) final;
+    NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
+};
+
+/////////////////////////////////////////////////////////////////////////////////
+
 IShardBalancerPtr CreateShardBalancer(
     NProto::EShardBalancerPolicy policy,
     ui32 blockSize,
     ui64 desiredFreeSpaceReserve,
-    ui64 minFreeSpaceReserve);
+    ui64 minFreeSpaceReserve,
+    TVector<TString> shardIds);
 
 }   // namespace NCloud::NFileStore::NStorage

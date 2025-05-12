@@ -38,16 +38,13 @@ struct TShardMetaComp
 TShardBalancerBase::TShardBalancerBase(
         ui32 blockSize,
         ui64 desiredFreeSpaceReserve,
-        ui64 minFreeSpaceReserve)
+        ui64 minFreeSpaceReserve,
+        TVector<TString> shardIds)
     : BlockSize(blockSize)
     , DesiredFreeSpaceReserve(desiredFreeSpaceReserve)
     , MinFreeSpaceReserve(minFreeSpaceReserve)
-{}
-
-void TShardBalancerBase::UpdateShards(TVector<TString> shardIds)
+    , Ids(std::move(shardIds))
 {
-    Ids = std::move(shardIds);
-    Metas.clear();
     for (ui32 i = 0; i < Ids.size(); ++i) {
         Metas.emplace_back(
             i,
@@ -63,15 +60,16 @@ void TShardBalancerBase::UpdateShards(TVector<TString> shardIds)
 void TShardBalancerBase::UpdateShardStats(const TVector<TShardStats>& stats)
 {
     Y_DEBUG_ABORT_UNLESS(stats.size() == Metas.size());
-    for (ui32 i = 0; i < Metas.size(); ++i) {
+    for (ui32 i = 0; i < stats.size(); ++i) {
         Metas[i] = TShardMeta(i, stats[i]);
     }
     Sort(Metas.begin(), Metas.end(), TShardMetaComp());
 }
 
-std::optional<size_t> TShardBalancerBase::FindPrefix(ui64 fileSize) const
+std::optional<size_t> TShardBalancerBase::FindUpperBoundAmongAllShardsToFitFile(
+    ui64 fileSize) const
 {
-    auto* e = UpperBound(
+    const auto* e = UpperBound(
         Metas.begin(),
         Metas.end(),
         (fileSize + DesiredFreeSpaceReserve) / BlockSize,
@@ -93,12 +91,6 @@ std::optional<size_t> TShardBalancerBase::FindPrefix(ui64 fileSize) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TShardBalancerRoundRobin::UpdateShards(TVector<TString> shardIds)
-{
-    TShardBalancerBase::UpdateShards(std::move(shardIds));
-    ShardSelector = 0;
-}
-
 void TShardBalancerRoundRobin::UpdateShardStats(
     const TVector<TShardStats>& stats)
 {
@@ -110,7 +102,7 @@ NProto::TError TShardBalancerRoundRobin::SelectShard(
     ui64 fileSize,
     TString* shardId)
 {
-    const auto endIdx = FindPrefix(fileSize);
+    const auto endIdx = FindUpperBoundAmongAllShardsToFitFile(fileSize);
     if (!endIdx) {
         return MakeError(E_FS_NOSPC, "all shards are full");
     }
@@ -129,7 +121,7 @@ NProto::TError TShardBalancerRandom::SelectShard(
     ui64 fileSize,
     TString* shardId)
 {
-    const auto endIdx = FindPrefix(fileSize);
+    const auto endIdx = FindUpperBoundAmongAllShardsToFitFile(fileSize);
     if (!endIdx) {
         return MakeError(E_FS_NOSPC, "all shards are full");
     }
@@ -141,23 +133,94 @@ NProto::TError TShardBalancerRandom::SelectShard(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TShardBalancerWeightedRandom::TShardBalancerWeightedRandom(
+        ui32 blockSize,
+        ui64 desiredFreeSpaceReserve,
+        ui64 minFreeSpaceReserve,
+        TVector<TString> shardIds)
+    : TShardBalancerBase(
+          blockSize,
+          desiredFreeSpaceReserve,
+          minFreeSpaceReserve,
+          std::move(shardIds))
+{
+    UpdatePrefixSums();
+}
+
+void TShardBalancerWeightedRandom::UpdatePrefixSums()
+{
+    PrefixSums.clear();
+    PrefixSums.push_back(0);
+    for (const auto& meta: Metas) {
+        PrefixSums.push_back(PrefixSums.back() + FreeSpace(meta.Stats));
+    }
+}
+
+void TShardBalancerWeightedRandom::UpdateShardStats(
+    const TVector<TShardStats>& stats)
+{
+    TShardBalancerBase::UpdateShardStats(stats);
+    UpdatePrefixSums();
+}
+
+NProto::TError TShardBalancerWeightedRandom::SelectShard(
+    ui64 fileSize,
+    TString* shardId)
+{
+    const auto endIdx = FindUpperBoundAmongAllShardsToFitFile(fileSize);
+    if (!endIdx) {
+        return MakeError(E_FS_NOSPC, "all shards are full");
+    }
+
+    // Now we need to select a random number from Metas[0...endIdx)
+    // proportionally to the free space of the shards.
+
+    const auto totalFreeSpace = PrefixSums[endIdx.value()];
+    if (totalFreeSpace == 0) {
+        return MakeError(E_FS_NOSPC, "all shards are full");
+    }
+    const auto randomValue = RandomNumber<ui64>(totalFreeSpace);
+
+    // For array [5, 3] the prefix sums will be [0, 5, 8, 9]
+    // random value in range [0, 5) will produce lower bound 1
+    // random value in range [5, 8) will produce lower bound 2
+    // random value in range [8, 9) will produce lower bound 3
+    auto* e = LowerBound(PrefixSums.begin(), PrefixSums.end(), randomValue);
+    Y_DEBUG_ABORT_UNLESS(e != PrefixSums.begin());
+    const size_t idx = std::distance(PrefixSums.begin(), e) - 1;
+    Y_DEBUG_ABORT_UNLESS(idx < Metas.size());
+    *shardId = Ids[Metas[idx].ShardIdx];
+    return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 IShardBalancerPtr CreateShardBalancer(
     NProto::EShardBalancerPolicy policy,
     ui32 blockSize,
     ui64 desiredFreeSpaceReserve,
-    ui64 minFreeSpaceReserve)
+    ui64 minFreeSpaceReserve,
+    const TVector<TString>& shardIds)
 {
     switch (policy) {
         case NProto::SBP_ROUND_ROBIN:
             return std::make_shared<TShardBalancerRoundRobin>(
                 blockSize,
                 desiredFreeSpaceReserve,
-                minFreeSpaceReserve);
+                minFreeSpaceReserve,
+                shardIds);
         case NProto::SBP_RANDOM:
             return std::make_shared<TShardBalancerRandom>(
                 blockSize,
                 desiredFreeSpaceReserve,
-                minFreeSpaceReserve);
+                minFreeSpaceReserve,
+                shardIds);
+        case NProto::SBP_WEIGHTED_RANDOM:
+            return std::make_shared<TShardBalancerWeightedRandom>(
+                blockSize,
+                desiredFreeSpaceReserve,
+                minFreeSpaceReserve,
+                shardIds);
         default:
             Y_ABORT(
                 "unsupported shard balancer policy: %d",

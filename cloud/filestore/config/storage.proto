@@ -42,6 +42,12 @@ enum EShardBalancerPolicy
     // Shard balancer will randomly select a shard from the list of shards
     // that have enough free space for a new file.
     SBP_RANDOM = 1;
+
+    // Shard balancer will randomly select a shard from the list of shards
+    // that have enough free space for a new file. The probability of
+    // selecting a shard is proportional to the amount of free space
+    // available on the shard.
+    SBP_WEIGHTED_RANDOM = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
