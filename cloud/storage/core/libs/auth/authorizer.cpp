@@ -224,9 +224,7 @@ private:
                 HandleParseTicketResult);
 
             default:
-                HandleUnexpectedEvent(
-                    ev,
-                    Component);
+                HandleUnexpectedEvent(ev, Component, __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -323,9 +321,7 @@ private:
                 HandleAuthorizationRequest);
 
             default:
-                HandleUnexpectedEvent(
-                    ev,
-                    Component);
+                HandleUnexpectedEvent(ev, Component, __PRETTY_FUNCTION__);
                 break;
         }
     }

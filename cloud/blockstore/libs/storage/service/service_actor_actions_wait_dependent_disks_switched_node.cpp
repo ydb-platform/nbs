@@ -405,7 +405,10 @@ STFUNC(TWaitDependentDisksToSwitchNodeActor::StateWork)
         HFunc(TEvVolume::TEvWaitReadyResponse, HandleWaitReadyResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

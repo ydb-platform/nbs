@@ -1,19 +1,78 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/storage/core/libs/common/affinity.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <contrib/ydb/core/protos/auth.pb.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/protos/shared_cache.pb.h>
 
-#include <cloud/storage/core/libs/common/proto_helpers.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
-
 namespace NCloud::NStorage {
+
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TConfigInitializerYdbBase::ApplyCMSConfigs(NKikimrConfig::TAppConfig cmsConfig)
+void AdjustActorSystemThreadsAccordingToAvailableCpus(
+    NKikimrConfig::TActorSystemConfig& config,
+    ui32 availableCpuCoresPercentage)
+{
+    if (availableCpuCoresPercentage == 0) {
+        // do nothing
+        return;
+    }
+
+    using TExecutor = NKikimrConfig::TActorSystemConfig::TExecutor;
+
+    const auto findPool = [&] (const auto& poolName) -> TExecutor* {
+        for (auto& executor: *config.MutableExecutor()) {
+            if (executor.GetName() == poolName) {
+                return &executor;
+            }
+        }
+
+        return nullptr;
+    };
+
+    const TVector<TExecutor*> executors = {
+        findPool("System"),
+        findPool("User"),
+        findPool("IC")
+    };
+    for (auto* executor: executors) {
+        if (!executor) {
+            // each pool should be set in actor system config
+            return;
+        }
+    }
+
+    const auto threadCount = executors.front()->GetThreads();
+    for (auto* executor: executors) {
+        if (executor->GetThreads() != threadCount) {
+            // each pool should have equal number of threads
+            return;
+        }
+    }
+
+    const auto availableCores = TAffinity::Current().GetCores().size();
+    const double scalingFactor =
+        (1.0 * availableCpuCoresPercentage) / (100 * executors.size());
+    const auto newThreadCount = std::ceil(availableCores * scalingFactor);
+
+    for (auto* executor: executors) {
+        executor->SetThreads(newThreadCount);
+    }
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TConfigInitializerYdbBase::ApplyCMSConfigs(
+    NKikimrConfig::TAppConfig cmsConfig)
 {
     if (cmsConfig.HasBlobStorageConfig()) {
         KikimrConfig->MutableBlobStorageConfig()
@@ -48,6 +107,9 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
     if (Options->SysConfig) {
         ParseProtoTextFromFile(Options->SysConfig, sysConfig);
     }
+    AdjustActorSystemThreadsAccordingToAvailableCpus(
+        sysConfig,
+        Options->ActorSystemAvailableCpuCoresPercentage);
 
     auto& interconnectConfig = *KikimrConfig->MutableInterconnectConfig();
     if (Options->InterconnectConfig) {

@@ -129,7 +129,7 @@ STFUNC(TDescribeSchemeActor::StateWork)
         HFunc(TReadBackupResponse, HandleReadBackupResponse);
 
         default:
-            HandleUnexpectedEvent(ev, LogComponent);
+            HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -178,7 +178,10 @@ STFUNC(TSSProxyFallbackActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, Config.LogComponent);
+                HandleUnexpectedEvent(
+                    ev,
+                    Config.LogComponent,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

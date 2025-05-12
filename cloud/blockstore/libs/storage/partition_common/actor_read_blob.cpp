@@ -312,7 +312,10 @@ STFUNC(TReadBlobActor::StateWork)
         HFunc(TEvents::TEvUndelivered, HandleUndelivered);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_COMMON);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_COMMON,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

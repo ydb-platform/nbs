@@ -22,5 +22,3 @@ jobs:
       cache_update_build: true
       cache_update_tests: false
       sleep_after_tests: 1
-      test_threads: 32
-      nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}

@@ -75,6 +75,7 @@ public:
 
     TFileStat Stat();
     TFileStat Stat(const TString& name);
+    NLowLevel::TFileSystemStat StatFs() const;
 
     TFileHandle OpenHandle(int flags);
     TFileHandle OpenHandle(const TString& name, int flags, int mode);

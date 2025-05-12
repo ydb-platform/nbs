@@ -19,15 +19,18 @@ class TVhostEndpointListener final
 private:
     const NVhost::IServerPtr Server;
     const NProto::TChecksumFlags ChecksumFlags;
+    const bool VhostDiscardEnabled;
     const ui64 MaxZeroBlocksSubRequestSize;
 
 public:
     TVhostEndpointListener(
             NVhost::IServerPtr server,
             NProto::TChecksumFlags checksumFlags,
+            bool vhostDiscardEnabled,
             ui64 maxZeroBlocksSubRequestSize)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
+        , VhostDiscardEnabled(vhostDiscardEnabled)
         , MaxZeroBlocksSubRequestSize(maxZeroBlocksSubRequestSize)
     {}
 
@@ -49,7 +52,9 @@ public:
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.IsReliableMediaKind =
             IsReliableMediaKind(volume.GetStorageMediaKind());
-        options.DiscardEnabled = request.GetVhostDiscardEnabled();
+        options.DiscardEnabled =
+            VhostDiscardEnabled &&
+            !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
 
         return Server->StartEndpoint(
@@ -100,11 +105,13 @@ public:
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
+    bool vhostDiscardEnabled,
     ui64 maxZeroBlocksSubRequestSize)
 {
     return std::make_shared<TVhostEndpointListener>(
         std::move(server),
         checksumFlags,
+        vhostDiscardEnabled,
         maxZeroBlocksSubRequestSize);
 }
 

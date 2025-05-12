@@ -20,6 +20,7 @@ SRCS(
 PEERDIR(
     cloud/storage/core/libs/actors
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/daemon
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/protos
 

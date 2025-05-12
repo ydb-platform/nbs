@@ -354,7 +354,10 @@ STFUNC(TDirectCopyRangeActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleRangeMigrationTimeout);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

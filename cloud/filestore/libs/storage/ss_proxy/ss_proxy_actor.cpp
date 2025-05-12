@@ -52,7 +52,10 @@ bool TSSProxyActor::HandleRequests(STFUNC_SIG)
 STFUNC(TSSProxyActor::StateWork)
 {
     if (!HandleRequests(ev)) {
-        HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
+        HandleUnexpectedEvent(
+            ev,
+            TFileStoreComponents::SS_PROXY,
+            __PRETTY_FUNCTION__);
     }
 }
 

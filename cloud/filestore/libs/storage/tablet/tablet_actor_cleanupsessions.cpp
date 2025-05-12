@@ -215,7 +215,10 @@ STFUNC(TSyncShardSessionsActor::StateWork)
             HandleSyncShardSessionsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -353,7 +356,10 @@ STFUNC(TCleanupSessionsActor::StateWork)
         HFunc(TEvIndexTablet::TEvDestroySessionResponse, HandleSessionDestroyed);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -172,9 +172,12 @@ STFUNC(TDescribeFileStoreActor::StateWork)
 
         CFunc(TEvents::TSystem::Wakeup, HandleWakeup)
 
-        default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
-            break;
+            default
+            : HandleUnexpectedEvent(
+                  ev,
+                  TFileStoreComponents::SS_PROXY,
+                  __PRETTY_FUNCTION__);
+        break;
     }
 }
 

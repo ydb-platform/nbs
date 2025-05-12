@@ -819,7 +819,10 @@ STFUNC(TMountRequestActor::StateWork)
         IgnoreFunc(TEvHiveProxy::TEvTabletLockLost);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -1247,4 +1250,3 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-

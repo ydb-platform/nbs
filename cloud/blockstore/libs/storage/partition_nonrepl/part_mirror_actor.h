@@ -45,12 +45,6 @@ TDuration CalculateScrubbingInterval(
 class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
-    struct TRequestCtx
-    {
-        TBlockRange64 BlockRange;
-        ui64 VolumeRequestId = 0;
-    };
-
 private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -106,6 +100,7 @@ private:
 
     bool MultiAgentWriteEnabled = true;
     const size_t MultiAgentWriteRequestSizeThreshold = 0;
+    size_t MultiAgentWriteRoundRobinSeed = 0;
 
 public:
     TMirrorPartitionActor(

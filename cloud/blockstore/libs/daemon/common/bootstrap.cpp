@@ -417,7 +417,8 @@ void TBootstrapBase::Init()
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
             Configs->ServerConfig->GetChecksumFlags(),
-            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize());
+            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
+            Configs->ServerConfig->GetVhostDiscardEnabled());
 
         if (Configs->ServerConfig->GetVhostServerPath()
                 && !Configs->Options->TemporaryServer)

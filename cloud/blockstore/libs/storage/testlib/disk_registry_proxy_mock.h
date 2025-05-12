@@ -154,7 +154,10 @@ private:
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY_PROXY,
+                    __PRETTY_FUNCTION__);
         }
     }
 

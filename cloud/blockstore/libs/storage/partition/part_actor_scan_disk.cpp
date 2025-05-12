@@ -225,7 +225,9 @@ STFUNC(TScanDiskActor::StateWork)
 
         default:
             HandleUnexpectedEvent(
-                ev, TBlockStoreComponents::PARTITION_WORKER);
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -105,6 +105,11 @@ TFileStat TIndexNode::Stat(const TString& name)
     return NLowLevel::StatAt(NodeFd, name);
 }
 
+NLowLevel::TFileSystemStat TIndexNode::StatFs() const
+{
+    return NLowLevel::StatFs(NodeFd);
+}
+
 TFileHandle TIndexNode::OpenHandle(int flags)
 {
     return NLowLevel::Open(NodeFd, flags, 0);

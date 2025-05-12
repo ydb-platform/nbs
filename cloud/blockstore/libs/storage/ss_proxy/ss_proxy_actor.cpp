@@ -137,7 +137,10 @@ STFUNC(TSSProxyActor::StateWork)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::SS_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SS_PROXY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

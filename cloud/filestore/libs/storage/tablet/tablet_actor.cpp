@@ -1034,7 +1034,10 @@ STFUNC(TIndexTabletActor::StateInit)
             if (!RejectRequests(ev) &&
                 !HandleDefaultEvents(ev, SelfId()))
             {
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1101,7 +1104,10 @@ STFUNC(TIndexTabletActor::StateWork)
 
         default:
             if (!HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1168,7 +1174,10 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         default:
             if (!HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1221,7 +1230,10 @@ STFUNC(TIndexTabletActor::StateBroken)
             HandleShardRequestCompleted);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

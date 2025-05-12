@@ -108,7 +108,10 @@ STFUNC(TForcedCleanupActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvCleanupResponse, HandleCleanupResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

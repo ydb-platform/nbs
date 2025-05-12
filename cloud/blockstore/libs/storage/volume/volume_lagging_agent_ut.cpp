@@ -932,6 +932,64 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
              }},
             TDuration::Seconds(1));
     }
+
+    Y_UNIT_TEST(ShouldLagOnlyOneDevicePerRow)
+    {
+        constexpr ui32 AgentCount = 3;
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->Devices = MakeDeviceList(AgentCount, 3);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = 2;
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < AgentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            std::move(storageServiceConfig),
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
+
+        // Create mirror-3 volume with a size of 1 device.
+        TVolumeClient volume(*runtime);
+        const ui64 blockCount =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,   // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            blockCount);
+
+        volume.WaitReady();
+
+        volume.SendDeviceTimedOutRequest("uuid-2.0");
+        volume.SendDeviceTimedOutRequest("uuid-3.0");
+
+        TVector<std::unique_ptr<TEvVolumePrivate::TEvDeviceTimedOutResponse>>
+            responses;
+        responses.push_back(volume.RecvDeviceTimedOutResponse());
+        responses.push_back(volume.RecvDeviceTimedOutResponse());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CountIf(
+                responses,
+                [](const auto& response)
+                { return response->GetError().GetCode() == S_OK; }));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CountIf(
+                responses,
+                [](const auto& response)
+                { return response->GetError().GetCode() == E_INVALID_STATE; }));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
