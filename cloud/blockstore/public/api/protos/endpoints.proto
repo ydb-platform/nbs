@@ -97,6 +97,7 @@ message TStartEndpointRequest
     }
 
     // Enable Discard/ZeroBlocks features for vhost device
+    // deprecated
     bool VhostDiscardEnabled = 27;
 }
 
