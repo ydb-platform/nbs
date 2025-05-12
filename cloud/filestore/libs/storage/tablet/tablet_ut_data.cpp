@@ -385,7 +385,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     TABLET_TEST(ShouldFlushFreshBytesByEntriesThreshold)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetFlushBytesThreshold(1000);
+        storageConfig.SetFlushBytesEntriesThreshold(1000);
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
@@ -405,22 +405,24 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         // Write 1 byte 999 times
         for (int i = 1; i <= 999; i++) {
-            tablet.WriteData(handle, i, 1, 'a');
+            tablet.WriteData(handle, i * 2, 2, 'a');
         }
 
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(999, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(1998, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(999, stats.GetFreshBytesEntriesCount());
         }
 
         // Write 1000th byte - FlushBytes should be triggered
-        tablet.WriteData(handle, 1000, 1, 'a');
+        tablet.WriteData(handle, 2000, 2, 'a');
 
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesEntriesCount());
         }
     }
 

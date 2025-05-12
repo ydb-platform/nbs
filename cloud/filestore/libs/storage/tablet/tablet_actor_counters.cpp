@@ -357,6 +357,7 @@ void TIndexTabletActor::TMetrics::Register(
         EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(FreshBytesEntriesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(DeletedFreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBlobsCount, EMetricType::MT_ABSOLUTE);
@@ -513,6 +514,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UsedLocksCount, stats.GetUsedLocksCount());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
+    Store(FreshBytesEntriesCount, stats.GetFreshBytesEntriesCount());
     Store(DeletedFreshBytesCount, stats.GetDeletedFreshBytesCount());
     Store(MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
     Store(MixedBlobsCount, stats.GetMixedBlobsCount());
@@ -882,6 +884,8 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetSuffer(Metrics.Suffer.load(std::memory_order_relaxed));
 
     stats->SetTotalBlocksCount(GetFileSystem().GetBlocksCount());
+
+    stats->SetFreshBytesEntriesCount(GetFreshBytesEntriesCount());
 }
 
 void TIndexTabletActor::HandleGetStorageStats(

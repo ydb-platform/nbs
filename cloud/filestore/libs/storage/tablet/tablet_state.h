@@ -863,6 +863,9 @@ public:
 
     ui32 GetFreshBytesEntriesCount() const;
 
+private:
+    void UpdateFreshBytesEntriesCount();
+
     //
     // FreshBlocks
     //

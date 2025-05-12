@@ -228,6 +228,8 @@ bool TFreshBytes::FinishCleanup(
     TABLET_VERIFY(Chunks.size() > 1);
     TABLET_VERIFY(Chunks.front().Id == chunkId);
 
+    TotalDataItemCount -= dataItemCount;
+
     auto& chunk = Chunks.front();
 
     const auto dataSize = chunk.Data.size();
@@ -250,8 +252,6 @@ bool TFreshBytes::FinishCleanup(
     chunk.DeletionMarkers.erase(
         chunk.DeletionMarkers.begin(),
         std::next(chunk.DeletionMarkers.begin(), deletionMarkerCount));
-
-    TotalDataItemCount -= dataItemCount;
 
     return false;
 }
