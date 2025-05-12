@@ -50,6 +50,9 @@ public:
     NThreading::TFuture<void> FlushAllData();
 
 private:
+    // only for testing purposes
+    friend struct TCalculateDataPartsToReadTestBootstrap;
+
     struct TWriteDataEntry
         : public TIntrusiveListItem<TWriteDataEntry>
     {
