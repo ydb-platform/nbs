@@ -199,7 +199,7 @@ jobs:
 
       - name: generate shellscripts from github actions
         run: |
-          python .github/scripts/shell-extractor.py
+          python3 .github/scripts/shell-extractor.py
           find .temporary/ -type f -name "*.sh";
 
       - name: shellcheck for .github dir

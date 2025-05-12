@@ -39,7 +39,7 @@ runs:
       id: remove-vm
       shell: bash
       run: |
-        python .github/scripts/nebius-manage-vm.py remove \
+        python3 .github/scripts/nebius-manage-vm.py remove \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
