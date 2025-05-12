@@ -150,23 +150,27 @@ func (s *AvailabilityMonitoringStorageYDB) getAvailabilityMonitoringResults(
 	host string,
 ) ([]availabilityMonitoringResult, error) {
 
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return []availabilityMonitoringResult{}, err
-	}
-	defer tx.Rollback(ctx)
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $component as Utf8;
+		declare $host as Utf8;
+		declare $created_at as Timestamp;
 
-	results, err := s.getAvailabilityMonitoringResultsTx(
-		ctx,
-		tx,
-		component,
-		host,
+		select *
+		from availability_monitoring
+		where component = $component and host = $host
+		order by created_at
+	`, s.tablesPath),
+		ValueParam("$component", UTF8Value(component)),
+		ValueParam("$host", UTF8Value(host)),
 	)
 	if err != nil {
 		return []availabilityMonitoringResult{}, err
 	}
+	defer res.Close()
 
-	return results, tx.Commit(ctx)
+	return scanAvailabilityMonitoringResults(ctx, res)
 }
 
 func (s *AvailabilityMonitoringStorageYDB) updateSuccessRate(
