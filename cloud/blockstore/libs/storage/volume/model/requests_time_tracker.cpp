@@ -14,8 +14,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const auto* const TotalTimeBucketName = "Total";
-const auto* const TotalSizeBucketName = "TotalSize";
+constexpr TStringBuf TotalTimeBucketName = "Total";
+constexpr TStringBuf TotalSizeBucketName = "TotalSize";
 
 constexpr size_t BlockCountBucketsCount = 12;
 constexpr size_t TotalSizeBucket = BlockCountBucketsCount;
@@ -82,17 +82,18 @@ TVector<TRequestsTimeTracker::TBucketInfo> MakeSizeBuckets(ui32 blockSize)
 
     result.emplace_back(TRequestsTimeTracker::TBucketInfo{
         .Key = "Inf",
-        .Description =
-            "[" + FormatByteSize(lastBucket * blockSize) + "..Inf]"});
+        .Description = "[" + FormatByteSize(lastBucket * blockSize) + "..Inf]",
+        .Tooltip = ""});
     result.emplace_back(TRequestsTimeTracker::TBucketInfo{
         .Key = "Total",
-        .Description = "Total"});
+        .Description = "Total",
+        .Tooltip = ""});
     return result;
 }
 
 }   // namespace
 
-//==============================================================================
+////////////////////////////////////////////////////////////////////////////////
 
 TString TRequestsTimeTracker::TKey::GetHtmlPrefix() const
 {
@@ -112,9 +113,6 @@ TString TRequestsTimeTracker::TKey::GetHtmlPrefix() const
             builder << "Z_";
             break;
         }
-        case TRequestsTimeTracker::ERequestType::Last: {
-            break;
-        }
     }
     builder << Sizes[SizeBucket].Key;
     switch (RequestStatus) {
@@ -128,9 +126,6 @@ TString TRequestsTimeTracker::TKey::GetHtmlPrefix() const
         }
         case ERequestStatus::Fail: {
             builder << "_fail_";
-            break;
-        }
-        case ERequestStatus::Last: {
             break;
         }
     }
@@ -155,13 +150,13 @@ bool TRequestsTimeTracker::TEqual::operator()(
     return makeTie(lhs) == makeTie(rhs);
 }
 
-//==============================================================================
+////////////////////////////////////////////////////////////////////////////////
 
 TRequestsTimeTracker::TRequestsTimeTracker()
 {
     for (size_t sizeBucket = 0; sizeBucket <= TotalSizeBucket; ++sizeBucket) {
         for (size_t requestType = 0;
-             requestType < static_cast<size_t>(ERequestType::Last);
+             requestType <= static_cast<size_t>(ERequestType::Last);
              ++requestType)
         {
             auto key = TKey{
@@ -238,9 +233,8 @@ TString TRequestsTimeTracker::GetStatJson(ui64 now, ui32 blockSize) const
     }
 
     // Build inflight requests counters
-    auto getHtmlKey = [](size_t sizeBucket,
-                         ERequestType requestType,
-                         const TString& timeBacket)
+    auto getHtmlKey =
+        [](size_t sizeBucket, ERequestType requestType, TStringBuf timeBacket)
     {
         auto key = TKey{
             .SizeBucket = sizeBucket,
@@ -301,20 +295,24 @@ TRequestsTimeTracker::GetTimeBuckets() const
     for (const auto& time: TRequestUsTimeBuckets::MakeNames()) {
         const auto us = TryFromString<ui64>(time);
 
-        TBucketInfo bucket{.Key = time};
-        bucket.Description =
-            us ? FormatDuration(TDuration::MicroSeconds(*us)) : time;
-
-        bucket.Tooltip =
-            "[" + FormatDuration(last) + ".." + bucket.Description + "]";
+        TBucketInfo bucket{
+            .Key = time,
+            .Description =
+                us ? FormatDuration(TDuration::MicroSeconds(*us)) : time,
+            .Tooltip =
+                "[" + FormatDuration(last) + ".." + bucket.Description + "]"};
 
         last = TDuration::MicroSeconds(us.GetOrElse(0));
         result.push_back(std::move(bucket));
     }
-    result.push_back(
-        TBucketInfo{.Key = TotalTimeBucketName, .Description = "Total"});
-    result.push_back(
-        TBucketInfo{.Key = TotalSizeBucketName, .Description = "Total Size"});
+    result.push_back(TBucketInfo{
+        .Key = TString(TotalTimeBucketName),
+        .Description = "Total",
+        .Tooltip = ""});
+    result.push_back(TBucketInfo{
+        .Key = TString(TotalSizeBucketName),
+        .Description = "Total Size",
+        .Tooltip = ""});
     return result;
 }
 

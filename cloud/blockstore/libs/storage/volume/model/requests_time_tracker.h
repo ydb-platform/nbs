@@ -18,10 +18,10 @@ class TRequestsTimeTracker
 public:
     enum class ERequestType
     {
-        Read,
-        Write,
-        Zero,
-        Last,
+        Read = 0,
+        Write = 1,
+        Zero = 2,
+        Last = Zero,
     };
 
     struct TBucketInfo
@@ -37,7 +37,6 @@ private:
         Inflight,
         Success,
         Fail,
-        Last,
     };
 
     struct TTimeHistogram: public THistogram<TRequestUsTimeBuckets>
