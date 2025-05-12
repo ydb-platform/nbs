@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -11,7 +10,6 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
-	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
@@ -59,41 +57,41 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func findExternalTask(
+func findExternalTaskId(
 	ctx context.Context,
 	taskStorage tasks_storage.Storage,
 	operationId string,
 	taskType string,
-) (*storage.TaskInfo, error) {
+) (string, error) {
 
-	limit := ^uint64(0)
-	tasks, err := taskStorage.ListTasksRunning(ctx, limit)
+	parentState, err := taskStorage.GetTask(ctx, operationId)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	for index := range tasks {
-		task := &tasks[index]
-		if task.TaskType != taskType {
-			continue
-		}
-
-		state, err := taskStorage.GetTask(ctx, task.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		if !strings.HasPrefix(state.IdempotencyKey, operationId) {
-			continue
-		}
-
-		return task, nil
+	dependenciesList := parentState.Dependencies.List()
+	if len(dependenciesList) == 0 {
+		return "", fmt.Errorf(
+			"Parent task has no dependencies, operationId=%s, taskType=%s",
+			operationId,
+			taskType,
+		)
 	}
 
-	return nil, fmt.Errorf(
-		"Failed to find external task, operationId=%s, taskType=%s",
-		operationId,
-		taskType)
+	externalTask, err := taskStorage.GetTask(ctx, dependenciesList[0])
+	if err != nil {
+		return "", err
+	}
+
+	if externalTask.TaskType != taskType {
+		return "", fmt.Errorf(
+			"External task has invalid type, operationId=%s, taskType=%s",
+			operationId,
+			taskType,
+		)
+	}
+
+	return externalTask.ID, nil
 }
 
 func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
@@ -150,14 +148,15 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	)
 
 	// Force finish CreateExternalFilesystem task
-	externalTask, err := findExternalTask(
+	externalTaskId, err := findExternalTaskId(
 		ctx,
 		taskStorage,
 		operation.Id,
-		"filesystem.CreateExternalFilesystem")
+		"filesystem.CreateExternalFilesystem",
+	)
 	require.NoError(t, err)
 
-	err = taskStorage.ForceFinishTask(ctx, externalTask.ID)
+	err = taskStorage.ForceFinishTask(ctx, externalTaskId)
 	require.NoError(t, err)
 
 	// Validate CreateFilesystem finish succesfully
@@ -187,15 +186,16 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 		operation.Id,
 	)
 
-	externalTask, err = findExternalTask(
+	externalTaskId, err = findExternalTaskId(
 		ctx,
 		taskStorage,
 		operation.Id,
-		"filesystem.DeleteExternalFilesystem")
+		"filesystem.DeleteExternalFilesystem",
+	)
 	require.NoError(t, err)
 
 	// Force finish DeleteExternalFilesystem task
-	err = taskStorage.ForceFinishTask(ctx, externalTask.ID)
+	err = taskStorage.ForceFinishTask(ctx, externalTaskId)
 	require.NoError(t, err)
 
 	// Validate DeleteFilesystem finish succesfully
