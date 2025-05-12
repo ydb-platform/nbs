@@ -511,7 +511,6 @@ public:
         Runtime.GrabEdgeEventRethrow<TResponse>(handle, WaitTimeout);
 
         UNIT_ASSERT_C(handle, TypeName<TResponse>() << " is expected");
-
         return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
     }
 
@@ -12088,7 +12087,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             status = -1;
             partition.SendCheckRangeRequest("id", idx, size);
-
             const auto response =
                 partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
 
@@ -12097,7 +12095,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
-
         };
         checkRange(0, 1024);
         checkRange(1024, 512);

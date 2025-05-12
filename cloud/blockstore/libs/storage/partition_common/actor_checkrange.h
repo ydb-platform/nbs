@@ -24,7 +24,6 @@ protected:
     TGuardedBuffer<TString> Buffer;
     TGuardedSgList SgList;
 
-
 public:
     TCheckRangeActor(
         const NActors::TActorId& partition,
