@@ -23,4 +23,5 @@ ServerConfig {
   ChecksumFlags {
     CheckBufferModificationForMirrorDisk: true
   }
+  # UseFakeRdmaClient: true
 }
