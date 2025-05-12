@@ -59,7 +59,7 @@ TShardBalancerBase::TShardBalancerBase(
 
 void TShardBalancerBase::UpdateShardStats(const TVector<TShardStats>& stats)
 {
-    Y_DEBUG_ABORT_UNLESS(stats.size() == Metas.size());
+    Y_ABORT_UNLESS(stats.size() == Metas.size());
     for (ui32 i = 0; i < stats.size(); ++i) {
         Metas[i] = TShardMeta(i, stats[i]);
     }
@@ -144,15 +144,16 @@ TShardBalancerWeightedRandom::TShardBalancerWeightedRandom(
           minFreeSpaceReserve,
           std::move(shardIds))
 {
-    UpdatePrefixSums();
+    UpdateWeightPrefixSums();
 }
 
-void TShardBalancerWeightedRandom::UpdatePrefixSums()
+void TShardBalancerWeightedRandom::UpdateWeightPrefixSums()
 {
-    PrefixSums.clear();
-    PrefixSums.push_back(0);
+    WeightPrefixSums.clear();
+    WeightPrefixSums.push_back(0);
     for (const auto& meta: Metas) {
-        PrefixSums.push_back(PrefixSums.back() + FreeSpace(meta.Stats));
+        WeightPrefixSums.push_back(
+            WeightPrefixSums.back() + FreeSpace(meta.Stats));
     }
 }
 
@@ -160,7 +161,7 @@ void TShardBalancerWeightedRandom::UpdateShardStats(
     const TVector<TShardStats>& stats)
 {
     TShardBalancerBase::UpdateShardStats(stats);
-    UpdatePrefixSums();
+    UpdateWeightPrefixSums();
 }
 
 NProto::TError TShardBalancerWeightedRandom::SelectShard(
@@ -175,20 +176,22 @@ NProto::TError TShardBalancerWeightedRandom::SelectShard(
     // Now we need to select a random number from Metas[0...endIdx)
     // proportionally to the free space of the shards.
 
-    const auto totalFreeSpace = PrefixSums[endIdx.value()];
+    const auto totalFreeSpace = WeightPrefixSums[endIdx.value()];
     if (totalFreeSpace == 0) {
         return MakeError(E_FS_NOSPC, "all shards are full");
     }
     const auto randomValue = RandomNumber<ui64>(totalFreeSpace);
 
-    // For array [5, 3] the prefix sums will be [0, 5, 8, 9]
+    // For array [5, 3] the prefix sums will be [0, 5, 8]
     // random value in range [0, 5) will produce lower bound 1
     // random value in range [5, 8) will produce lower bound 2
-    // random value in range [8, 9) will produce lower bound 3
-    auto* e = LowerBound(PrefixSums.begin(), PrefixSums.end(), randomValue);
-    Y_DEBUG_ABORT_UNLESS(e != PrefixSums.begin());
-    const size_t idx = std::distance(PrefixSums.begin(), e) - 1;
-    Y_DEBUG_ABORT_UNLESS(idx < Metas.size());
+    auto* it = LowerBound(
+        WeightPrefixSums.begin(),
+        WeightPrefixSums.end(),
+        randomValue);
+    Y_ABORT_UNLESS(it != WeightPrefixSums.begin());
+    const size_t idx = std::distance(WeightPrefixSums.begin(), it) - 1;
+    Y_ABORT_UNLESS(idx < Metas.size());
     *shardId = Ids[Metas[idx].ShardIdx];
     return {};
 }

@@ -114,9 +114,9 @@ private:
     // all weights prefix sums and use binary search to find the item
     // corresponding with a random number selected from the range [0,
     // sum(weights)).
-    TVector<ui64> PrefixSums;
+    TVector<ui64> WeightPrefixSums;
 
-    void UpdatePrefixSums();
+    void UpdateWeightPrefixSums();
 
 public:
     TShardBalancerWeightedRandom(
