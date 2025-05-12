@@ -24,6 +24,16 @@ struct IStorageProvider
         NProto::EVolumeAccessMode accessMode) = 0;
 };
 
+
+struct IRemoteServiceProvider
+{
+    virtual ~IRemoteServiceProvider() = default;
+
+    virtual NThreading::TFuture<IBlockStorePtr> CreateService(
+        const TString& host,
+        ui32 port) = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IStorageProviderPtr CreateDefaultStorageProvider(

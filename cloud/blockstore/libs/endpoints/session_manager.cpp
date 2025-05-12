@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/service_su/remote_storage_provider.h>
 #include <cloud/blockstore/libs/service_su/service_su.h>
 #include <cloud/blockstore/libs/validation/validation.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -22,6 +23,8 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+
+#include <cloud/blockstore/libs/rdma/impl/client.h>
 
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
@@ -304,8 +307,9 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IServerStatsPtr ServerStats;
     const IBlockStorePtr Service;
+    const IRemoteStorageProviderPtr RemoteStorageProvider;
     const IStorageProviderPtr StorageProvider;
-    NRdma::IClientPtr RdmaClient;
+    const NRdma::IClientPtr RdmaClient;
     const IThrottlerProviderPtr ThrottlerProvider;
     const IEncryptionClientFactoryPtr EncryptionClientFactory;
     const TExecutorPtr Executor;
@@ -316,7 +320,6 @@ private:
 
     TMutex EndpointLock;
     THashMap<TString, TEndpointPtr> Endpoints;
-    IRemoteSuServiceFactoryPtr RemoteSuServiceFactory;
 
     IBlockStorePtr ClientEndpoint;
 
@@ -330,6 +333,7 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             IBlockStorePtr service,
+            IRemoteStorageProviderPtr remoteStorageProvider,
             IStorageProviderPtr storageProvider,
             NRdma::IClientPtr rdmaClient,
             IThrottlerProviderPtr throttlerProvider,
@@ -345,6 +349,7 @@ public:
         , VolumeStats(std::move(volumeStats))
         , ServerStats(std::move(serverStats))
         , Service(std::move(service))
+        , RemoteStorageProvider(std::move(remoteStorageProvider))
         , StorageProvider(std::move(storageProvider))
         , RdmaClient(std::move(rdmaClient))
         , ThrottlerProvider(std::move(throttlerProvider))
@@ -352,14 +357,6 @@ public:
         , Executor(std::move(executor))
         , Options(std::move(options))
         , Config(std::move(config))
-        , RemoteSuServiceFactory(CreateRemoteSuServiceFactory(
-            Service,
-            Options.ShardId,
-            Timer,
-            Scheduler,
-            Logging,
-            Monitoring,
-            Config))
     {
         Log = Logging->CreateLog("BLOCKSTORE_SERVER");
     }
@@ -655,17 +652,30 @@ TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     const NProto::TStartEndpointRequest& request,
     const NProto::TVolume& volume,
-    const TString& suId)
+    const TString& shardId)
 {
     const auto clientId = request.GetClientId();
     auto accessMode = request.GetVolumeAccessMode();
 
-    //auto service = RemoteSuServiceFactory->GetSuService(suId);
-
     auto service = Service;
     IStoragePtr storage;
-    TClientAppConfigPtr clientConfig;
 
+    auto clientConfig = CreateClientConfig(request);
+
+    if (shardId != Config->GetShardId()) {
+        auto endpointResult = RemoteStorageProvider->CreateStorage(
+            shardId,
+            clientConfig,
+            clientId);
+        if (FAILED(endpointResult.GetError().GetCode())) {
+            return endpointResult.GetError();
+        }
+        auto endpoints = endpointResult.ExtractResult();
+        service = endpoints.Service;
+        storage = CreateRemoteEndpoint(endpoints.Storage);
+    }
+
+/*
     if (suId != Config->GetShardId()) {
         auto index = RandomNumber(Config->GetShardMap()[suId].size());
         if (Config->GetShardTransport() == NProto::GRPC) {
@@ -687,13 +697,15 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
 
             auto rdmaConfig = std::make_shared<NRdma::TClientConfig>();
 
-            RdmaClient = NRdma::CreateClient(
-                NRdma::NVerbs::CreateVerbs(),
-                Logging,
-                Monitoring,
-                std::move(rdmaConfig));
+            if (!RdmaClient) {
+                RdmaClient = NRdma::CreateClient(
+                    NRdma::NVerbs::CreateVerbs(),
+                    Logging,
+                    Monitoring,
+                    std::move(rdmaConfig));
 
-            RdmaClient->Start();
+                RdmaClient->Start();
+            }
 
             TRdmaEndpointConfig rdmaEndpoint {
                 .Address = Config->GetShardMap()[suId][index].GetFqdn(),
@@ -709,9 +721,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
 
             storage = CreateRemoteEndpoint(ClientEndpoint);
         }
-    } else {
-
-
+    }*/ else {
         auto future = StorageProvider->CreateStorage(volume, clientId, accessMode)
             .Apply([] (const auto& f) {
                 auto storage = f.GetValue();
@@ -893,6 +903,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
+    IRemoteStorageProviderPtr remoteStorageProvider,
     IStorageProviderPtr storageProvider,
     NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,
@@ -918,6 +929,7 @@ ISessionManagerPtr CreateSessionManager(
         std::move(volumeStats),
         std::move(serverStats),
         std::move(service),
+        std::move(remoteStorageProvider),
         std::move(storageProvider),
         std::move(rdmaClient),
         std::move(throttlerProvider),

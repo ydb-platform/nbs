@@ -90,6 +90,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
+    IRemoteStorageProviderPtr remoteStorageProvider,
     IStorageProviderPtr storageProvider,
     NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,

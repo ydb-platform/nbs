@@ -13,6 +13,8 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
+#include <cloud/blockstore/libs/rdma/iface/client.h>
+
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -67,7 +69,8 @@ private:
     const ISchedulerPtr Scheduler;
     const ILoggingServicePtr Logging;
     const IMonitoringServicePtr Monitoring;
-    const NProto::TShardHostInfo Config;
+    const TString Host;
+    const ui32 Port;
     NClient::TClientAppConfigPtr ClientConfig;
     NClient::IClientPtr Client;
     IBlockStorePtr Endpoint;
@@ -78,13 +81,15 @@ public:
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
             IMonitoringServicePtr monitoring,
-            const NProto::TShardHostInfo& config,
+            const TString& host,
+            ui32 port,
             std::optional<TString> clientId)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
         , Monitoring(std::move(monitoring))
-        , Config(config)
+        , Host(host)
+        , Port(port)
     {
         InitClientConfig(std::move(clientId));
 
@@ -115,11 +120,11 @@ public:
         NProto::TClientAppConfig appConfig;
 
         auto& clientConfig = *appConfig.MutableClientConfig();
-        clientConfig.SetHost(Config.GetFqdn());
+        clientConfig.SetHost(Host);
         if (DataService) {
-            clientConfig.SetPort(Config.GetDataPort());
+            clientConfig.SetPort(Port);
         } else {
-            clientConfig.SetInsecurePort(Config.GetControlPort());
+            clientConfig.SetInsecurePort(Port);
         }
         if (clientId.has_value()) {
             clientConfig.SetClientId(*clientId);
@@ -236,14 +241,15 @@ struct TSuDiscoveryService
     {
         Log = Logging->CreateLog("DISCOVERY_SERVICE");
         for (const auto& item: Config->GetShardMap()) {
-            NProto::TShardHostInfo host = item.second[0];
+            auto host = item.second.GetHosts(0);
 
             auto suService = CreateSuService(
                 Timer,
                 Scheduler,
                 Logging,
                 Monitoring,
-                host);
+                host,
+                item.second.GetGrpcPort());
 
             SuMap.emplace(
                 item.first,
@@ -399,7 +405,9 @@ struct TSuDiscoveryService
                     Scheduler,
                     Logging,
                     Monitoring,
-                    Config->GetShardMap()[response.GetShardId()][0]);
+                    Config->GetShardMap()[response.GetShardId()].GetHosts(0),
+                    Config->GetShardMap()[response.GetShardId()].GetGrpcPort()
+                );
                 suService->Start();
             } else {
                 suService = Service;
@@ -449,54 +457,6 @@ struct TSuDiscoveryService
     }
 };
 
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TRemoteSuServiceFactory
-    : public IRemoteSuServiceFactory
-{
-    IBlockStorePtr Service;
-    TString SuId;
-    ITimerPtr Timer;
-    ISchedulerPtr Scheduler;
-    ILoggingServicePtr Logging;
-    IMonitoringServicePtr Monitoring;
-    const TServerAppConfigPtr Config;
-
-    THashMap<TString, IBlockStorePtr> Cache;
-
-    TRemoteSuServiceFactory(
-            IBlockStorePtr service,
-            TString suId,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
-            const TServerAppConfigPtr& config)
-        : Service(std::move(service))
-        , SuId(std::move(suId))
-        , Timer(std::move(timer))
-        , Scheduler(std::move(scheduler))
-        , Logging(std::move(logging))
-        , Monitoring(std::move(monitoring))
-        , Config(std::move(config))
-    {
-    }
-
-    IBlockStorePtr GetSuService(TString suId) override
-    {
-        if (suId == SuId) {
-            return Service;
-        }
-        if (auto it = Cache.find(suId); it != Cache.end()) {
-            return it->second;
-        }
-        auto service = CreateSuService(Timer, Scheduler, Logging, Monitoring, Config->GetShardMap()[suId][0]);
-        Cache.emplace(suId, service);
-        service->Start();
-        return service;
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -562,7 +522,8 @@ IBlockStorePtr CreateSuService(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    const NProto::TShardHostInfo& config,
+    const TString& host,
+    ui32 port,
     std::optional<TString> clientId)
 {
     return std::make_shared<TSuProxyService<false>>(
@@ -570,7 +531,8 @@ IBlockStorePtr CreateSuService(
         std::move(scheduler),
         std::move(logging),
         std::move(monitoring),
-        config,
+        host,
+        port,
         std::move(clientId));
 }
 
@@ -584,7 +546,8 @@ IBlockStorePtr CreateSuDataService(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    const NProto::TShardHostInfo& config,
+    const TString& host,
+    ui32 port,
     std::optional<TString> clientId)
 {
     return std::make_shared<TSuProxyService<false>>(
@@ -592,7 +555,8 @@ IBlockStorePtr CreateSuDataService(
         std::move(scheduler),
         std::move(logging),
         std::move(monitoring),
-        config,
+        host,
+        port,
         std::move(clientId));
 }
 
@@ -615,23 +579,23 @@ ISuDiscoveryServicePtr CreateSuDiscoveryService(
     return srv;
 }
 
-IRemoteSuServiceFactoryPtr CreateRemoteSuServiceFactory(
-    IBlockStorePtr service,
-    TString suId,
+IBlockStorePtr CreateRemoteGrpcService(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    const TServerAppConfigPtr& config)
+    const TString& host,
+    ui64 port,
+    std::optional<TString> clientId)
 {
-    return std::make_shared<TRemoteSuServiceFactory>(
-        std::move(service),
-        std::move(suId),
+    return CreateSuDataService(
         std::move(timer),
         std::move(scheduler),
         std::move(logging),
         std::move(monitoring),
-        config);
+        host,
+        port,
+        std::move(clientId));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

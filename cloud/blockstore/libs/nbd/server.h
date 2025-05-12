@@ -38,6 +38,7 @@ struct TServerConfig
     size_t MaxInFlightBytesPerThread = 128_MB;
     ui32 SocketAccessMode = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     TAffinity Affinity;
+    ui32 NbdPort = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -14,7 +14,7 @@ namespace {
 
 using TStrings = TVector<TString>;
 
-using TShardMap = THashMap<TString, TVector<NProto::TShardHostInfo>>;
+using TShardMap = THashMap<TString, NProto::TShardInfo>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -155,15 +155,12 @@ TVector<TCertificate> ConvertValue(
 }
 
 template <>
-THashMap<TString, TVector<NProto::TShardHostInfo>> ConvertValue(
-    const google::protobuf::RepeatedPtrField<NProto::TShardHosts>& value)
+THashMap<TString, NProto::TShardInfo> ConvertValue(
+    const google::protobuf::RepeatedPtrField<NProto::TShardInfo>& value)
 {
-    THashMap<TString, TVector<NProto::TShardHostInfo>> v;
+    THashMap<TString, NProto::TShardInfo> v;
     for (const auto& item: value) {
-        TVector<NProto::TShardHostInfo> hostInfo {
-            item.GetHostInfo().begin(),
-            item.GetHostInfo().end()};
-        v.emplace(item.GetShardId(), std::move(hostInfo));
+        v.emplace(item.GetShardId(), item);
     }
     return v;
 }
@@ -211,7 +208,7 @@ void DumpImpl(const TVector<TCertificate>& value, IOutputStream& os)
 
 template <>
 void DumpImpl(
-    const THashMap<TString, TVector<NProto::TShardHostInfo>>& value,
+    const THashMap<TString, NProto::TShardInfo>& value,
     IOutputStream& os)
 {
     Y_UNUSED(value);

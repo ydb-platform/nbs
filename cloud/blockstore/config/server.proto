@@ -45,21 +45,16 @@ message TChecksumFlags
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TShardHostInfo
-{
-    string Fqdn = 1;
-    uint32 ControlPort = 2;
-    uint32 DataPort = 3;
-    uint32 RdmaPort = 4;
-    uint32 NbdPort = 5;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-message TShardHosts
+message TShardInfo
 {
     optional string ShardId = 1;
-    repeated TShardHostInfo HostInfo = 2;
+    optional uint32 GrpcPort = 2;
+    optional uint32 RdmaPort = 4;
+    optional uint32 NbdPort = 5;
+
+    optional EShardDataTransport Transport = 6;
+
+    repeated string Hosts = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -250,7 +245,7 @@ message TServerConfig
     optional bool UseFakeRdmaClient = 120;
 
     // Mapping from ShardId to fqdn hosts.
-    repeated TShardHosts ShardMap = 121;
+    repeated TShardInfo ShardMap = 121;
 
     // Shard Id, nbs belongs to.
     optional string ShardId = 122;

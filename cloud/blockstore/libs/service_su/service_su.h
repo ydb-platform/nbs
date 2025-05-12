@@ -52,7 +52,8 @@ IBlockStorePtr CreateSuService(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    const NProto::TShardHostInfo& config,
+    const TString& host,
+    ui32 port,
     std::optional<TString> clientId = {});
 
 IBlockStorePtr CreateSuDataService(
@@ -60,7 +61,8 @@ IBlockStorePtr CreateSuDataService(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    const NProto::TShardHostInfo& config,
+    const TString& host,
+    ui32 port,
     std::optional<TString> clientId = {});
 
 ISuDiscoveryServicePtr CreateSuDiscoveryService(
@@ -72,15 +74,15 @@ ISuDiscoveryServicePtr CreateSuDiscoveryService(
     const TServerAppConfigPtr& config);
 
 
-IRemoteSuServiceFactoryPtr CreateRemoteSuServiceFactory(
-    IBlockStorePtr service,
-    TString suId,
+IStoragePtr CreateRemoteEndpoint(IBlockStorePtr endpoint);
+
+IBlockStorePtr CreateRemoteGrpcService(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    const TServerAppConfigPtr& config);
-
-IStoragePtr CreateRemoteEndpoint(IBlockStorePtr endpoint);
+    const TString& host,
+    ui64 port,
+    std::optional<TString> clientId = {});
 
 }   // namespace NCloud::NBlockStore::NServer

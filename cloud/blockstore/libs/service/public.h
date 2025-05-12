@@ -23,6 +23,9 @@ using IStoragePtr = std::shared_ptr<IStorage>;
 struct IStorageProvider;
 using IStorageProviderPtr = std::shared_ptr<IStorageProvider>;
 
+struct IRemoteServiceProvider;
+using IRemoteServiceProviderPtr = std::shared_ptr<IRemoteServiceProvider>;
+
 struct IDeviceHandler;
 using IDeviceHandlerPtr = std::shared_ptr<IDeviceHandler>;
 

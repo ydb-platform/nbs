@@ -69,6 +69,7 @@
 #include <cloud/blockstore/libs/service_throttling/throttler_tracker.h>
 #include <cloud/blockstore/libs/service_throttling/throttling.h>
 #include <cloud/blockstore/libs/service_su/service_su.h>
+#include <cloud/blockstore/libs/service_su/remote_storage_provider.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
@@ -373,6 +374,15 @@ void TBootstrapBase::Init()
 
     ServiceWithDicovery = CreateSuDiscoveryService(Service, Timer,Scheduler,Logging,Monitoring, Configs->ServerConfig);
 
+    RemoteStorageProvider = CreateRemoteStorageProvider(
+        Configs->ServerConfig,
+        Timer,
+        Scheduler,
+        Logging,
+        Monitoring,
+        RdmaClient
+    );
+
     auto sessionManager = CreateSessionManager(
         Timer,
         Scheduler,
@@ -383,6 +393,7 @@ void TBootstrapBase::Init()
         ServerStats,
         //Service,
         ServiceWithDicovery,
+        RemoteStorageProvider,
         StorageProvider,
         RdmaClient,
         encryptionClientFactory,
