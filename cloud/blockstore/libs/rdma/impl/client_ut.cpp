@@ -513,6 +513,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         auto clientConfig = std::make_shared<TClientConfig>();
         clientConfig->MaxReconnectDelay = TDuration::Seconds(1);
         clientConfig->MaxResponseDelay = TDuration::Seconds(1);
+        clientConfig->WaitMode = EWaitMode::AdaptiveWait;
 
         auto logging =
             CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
