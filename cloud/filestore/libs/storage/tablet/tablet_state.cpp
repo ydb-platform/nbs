@@ -174,7 +174,7 @@ void TIndexTabletState::LoadState(
         GetBlockSize(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
         config.GetShardBalancerMinFreeSpaceReserve(),
-        shardIds);
+        TVector<TString>(shardIds.begin(), shardIds.end()));
 }
 
 void TIndexTabletState::UpdateConfig(

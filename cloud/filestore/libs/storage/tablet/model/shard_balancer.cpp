@@ -203,7 +203,7 @@ IShardBalancerPtr CreateShardBalancer(
     ui32 blockSize,
     ui64 desiredFreeSpaceReserve,
     ui64 minFreeSpaceReserve,
-    const TVector<TString>& shardIds)
+    TVector<TString> shardIds)
 {
     switch (policy) {
         case NProto::SBP_ROUND_ROBIN:
