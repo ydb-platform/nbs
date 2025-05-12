@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: 'populate-vms-schedule'
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   light:
