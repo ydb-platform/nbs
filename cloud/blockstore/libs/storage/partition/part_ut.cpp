@@ -12086,6 +12086,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         const auto checkRange = [&](ui32 idx, ui32 size)
         {
             status = -1;
+
             partition.SendCheckRangeRequest("id", idx, size);
             const auto response =
                 partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
