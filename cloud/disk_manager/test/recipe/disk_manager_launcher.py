@@ -4,6 +4,8 @@ import time
 import typing
 import urllib.request
 
+from collections import defaultdict
+
 from yatest.common import process
 
 from cloud.storage.core.tools.common.python.daemon import Daemon
@@ -568,12 +570,22 @@ class DiskManagerLauncher:
     def pid(self) -> int:
         return self.__daemon.pid
 
-    def get_metrics(self) -> dict[str, 'Metric']:
-        result = {}
+    def get_metrics(self) -> defaultdict[str, list['Metric']]:
+        """
+        Get metrics from the disk manager server.
+        Parses metrics in prometheus format e.g.
+
+        ydb_go_sdk_ydb_table_pool_inflight{component="ydb"} 0
+        # HELP ydb_go_sdk_ydb_table_pool_inflight_latency
+        """
+        result = defaultdict(list)
         data = ""
         with urllib.request.urlopen(f"http://localhost:{self.__monitoring_port}/metrics/") as response:
             data = response.read().decode()
+
         for line in data.splitlines():
+            if not line:
+                continue
             if line.startswith("#"):
                 continue
             selector, value = line.split(" ", 2)
@@ -582,6 +594,6 @@ class DiskManagerLauncher:
             labels = dict(
                 label.split("=") for label in labels.split(",")
             )
-            result[name] = Metric(name, labels, float(value))
+            result[name] += [Metric(name, labels, float(value))]
 
         return result

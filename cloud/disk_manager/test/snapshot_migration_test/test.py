@@ -325,7 +325,7 @@ class _MigrationTestSetup:
         while True:
             if time.monotonic() - started_at > timeout_sec:
                 raise TimeoutError("Timed out waiting for snapshot metric to be zeroed")
-            metric = self.initial_dpl_disk_manager.get_metrics().get("snapshots_migratingCount")
+            [metric] = self.initial_dpl_disk_manager.get_metrics().get("snapshots_migratingCount")
             time.sleep(1)
             if metric is None:
                 continue
