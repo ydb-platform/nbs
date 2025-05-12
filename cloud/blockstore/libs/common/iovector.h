@@ -19,6 +19,7 @@ struct TCopyStats
 
 TSgList ResizeIOVector(NProto::TIOVector& iov, ui32 blockCount, ui32 blockSize);
 
+TSgList GetSgList(const NProto::TIOVector& iov);
 TSgList GetSgList(const NProto::TWriteBlocksRequest& request);
 
 TResultOrError<TSgList>
