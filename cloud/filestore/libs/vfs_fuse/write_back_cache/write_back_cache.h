@@ -50,6 +50,9 @@ public:
     NThreading::TFuture<void> FlushAllData();
 
 private:
+    // only for testing purposes
+    friend struct TCalculateDataPartsToReadTestBootstrap;
+
     struct TWriteDataEntry
         : public TIntrusiveListItem<TWriteDataEntry>
     {
@@ -89,6 +92,12 @@ private:
         ui64 End() const
         {
             return Offset + Length;
+        }
+
+        bool operator==(const TWriteDataEntryPart& p) const
+        {
+            return std::tie(Source, OffsetInSource, Offset, Length) ==
+                std::tie(p.Source, p.OffsetInSource, p.Offset, p.Length);
         }
     };
 
