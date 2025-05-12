@@ -626,7 +626,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     }
 
     void DoShouldCheckAttrForNodeCreatedInShardViaLeader(
-        const NProto::TStorageConfig& config,
+        NProto::TStorageConfig& config,
         TSetNodeAttrArgs newArgs,
         bool shouldTriggerCriticalEvent)
     {
