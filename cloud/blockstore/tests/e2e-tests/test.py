@@ -39,7 +39,7 @@ def init(
         nbd_request_timeout=None,
         nbd_reconnect_delay=None,
         proxy_restart_events=None,
-        max_zeroblocks_subrequest_size=None
+        max_zero_blocks_sub_request_size=None
 ):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
@@ -66,8 +66,8 @@ def init(
     server.ServerConfig.CopyFrom(server_config_patch)
     server.ServerConfig.ThreadsCount = thread_count()
     server.ServerConfig.StrictContractValidation = True
-    if max_zeroblocks_subrequest_size:
-        server.ServerConfig.MaxZeroBlocksSubRequestSize = max_zeroblocks_subrequest_size
+    if max_zero_blocks_sub_request_size:
+        server.ServerConfig.MaxZeroBlocksSubRequestSize = max_zero_blocks_sub_request_size
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     subprocess.check_call(["modprobe", "nbd"], timeout=20)
     if stored_endpoints_path:
@@ -324,7 +324,7 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
         with_netlink,
         with_endpoint_proxy,
         stored_endpoints_path,
-        max_zeroblocks_subrequest_size=512 * 1024 * 1024
+        max_zero_blocks_sub_request_size=512 * 1024 * 1024
     )
 
     volume_name = "example-disk"

@@ -550,7 +550,8 @@ void TBootstrapBase::Init()
         const ui32 defaultSectorSize = 4_KB;
 
         nbdDeviceFactory = NClient::CreateProxyDeviceFactory(
-            {defaultSectorSize, Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize()},
+            {defaultSectorSize,
+             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize()},
             EndpointProxyClient);
     }
 
