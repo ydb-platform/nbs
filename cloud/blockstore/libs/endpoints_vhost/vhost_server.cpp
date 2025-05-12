@@ -20,14 +20,14 @@ private:
     const NVhost::IServerPtr Server;
     const NProto::TChecksumFlags ChecksumFlags;
     const bool VhostDiscardEnabled;
-    const ui64 MaxZeroBlocksSubRequestSize;
+    const ui32 MaxZeroBlocksSubRequestSize;
 
 public:
     TVhostEndpointListener(
             NVhost::IServerPtr server,
             NProto::TChecksumFlags checksumFlags,
             bool vhostDiscardEnabled,
-            ui64 maxZeroBlocksSubRequestSize)
+            ui32 maxZeroBlocksSubRequestSize)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
         , VhostDiscardEnabled(vhostDiscardEnabled)
