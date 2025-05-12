@@ -84,11 +84,6 @@ func (m migrateSnapshotDatabaseTask) Run(
 				return err
 			}
 
-			err = execCtx.AddTaskDependency(ctx, taskID)
-			if err != nil {
-				return err
-			}
-
 			err = execCtx.SaveState(ctx)
 			if err != nil {
 				return err
