@@ -83,7 +83,7 @@ private:
 
     ui64 TotalBytes = 0;
     ui64 TotalDeletedBytes = 0;
-    ui64 TotalDataSize = 0;
+    ui64 TotalDataItemCount = 0;
 
 public:
     TFreshBytes(IAllocator* allocator);
@@ -99,9 +99,9 @@ public:
         return TotalDeletedBytes;
     }
 
-    size_t GetTotalDataSize() const
+    size_t GetTotalDataItemCount() const
     {
-        return TotalDataSize;
+        return TotalDataItemCount;
     }
 
     void UpdateLogTag(TString logTag)

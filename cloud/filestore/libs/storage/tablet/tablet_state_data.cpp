@@ -465,7 +465,7 @@ TFlushBytesStats TIndexTabletState::FinishFlushBytes(
 
 ui32 TIndexTabletState::GetFreshBytesEntriesCount() const
 {
-    return Impl->FreshBytes.GetTotalDataSize();
+    return Impl->FreshBytes.GetTotalDataItemCount();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

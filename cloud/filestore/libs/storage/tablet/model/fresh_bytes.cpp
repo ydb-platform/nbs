@@ -123,7 +123,7 @@ void TFreshBytes::AddBytes(
     TBytes descriptor{nodeId, offset, buffer.size(), commitId, InvalidCommitId};
     c.Data.emplace_back(descriptor, std::move(buffer));
 
-    TotalDataSize++;
+    TotalDataItemCount++;
 
     const auto& storage = c.Data.back().Data;
     TKey key{nodeId, offset + storage.size()};
@@ -251,7 +251,7 @@ bool TFreshBytes::FinishCleanup(
         chunk.DeletionMarkers.begin(),
         std::next(chunk.DeletionMarkers.begin(), deletionMarkerCount));
 
-    TotalDataSize -= dataItemCount;
+    TotalDataItemCount -= dataItemCount;
 
     return false;
 }
