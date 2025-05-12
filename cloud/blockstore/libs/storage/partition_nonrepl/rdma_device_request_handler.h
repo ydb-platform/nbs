@@ -84,7 +84,8 @@ public:
             RequestsResult.back().Error = Error;
         }
 
-        return --ResponseCount == 0;
+        --ResponseCount;
+        return ResponseCount == 0;
     }
 
     void HandleResponse(
