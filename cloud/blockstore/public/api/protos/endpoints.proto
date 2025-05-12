@@ -250,7 +250,7 @@ message TStartProxyEndpointRequest
     // NBD StorageOptions.
     uint32 BlockSize = 4;
     uint64 BlocksCount = 5;
-    uint64 MaxZeroBlocksSubRequestSize = 6;
+    uint32 MaxZeroBlocksSubRequestSize = 6;
 }
 
 message TStartProxyEndpointResponse

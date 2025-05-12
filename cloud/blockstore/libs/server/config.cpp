@@ -106,7 +106,7 @@ constexpr TDuration Seconds(int s)
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
     xxx(VhostDiscardEnabled,         bool,                   false            )\
-    xxx(MaxZeroBlocksSubRequestSize, ui64,                   0                )
+    xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \

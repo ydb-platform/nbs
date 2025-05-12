@@ -16,6 +16,6 @@ IEndpointListenerPtr CreateNbdEndpointListener(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     NProto::TChecksumFlags checksumFlags,
-    ui64 maxZeroBlocksSubRequestSize);
+    ui32 maxZeroBlocksSubRequestSize);
 
 }   // namespace NCloud::NBlockStore::NServer

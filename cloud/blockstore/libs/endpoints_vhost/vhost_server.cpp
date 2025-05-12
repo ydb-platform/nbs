@@ -106,7 +106,7 @@ IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
     bool vhostDiscardEnabled,
-    ui64 maxZeroBlocksSubRequestSize)
+    ui32 maxZeroBlocksSubRequestSize)
 {
     return std::make_shared<TVhostEndpointListener>(
         std::move(server),

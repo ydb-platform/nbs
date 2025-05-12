@@ -17,7 +17,7 @@ constexpr ui32 MaxUnalignedRequestSize = 32_MB;
 // cloud/blockstore/libs/rdma/iface/client.h
 constexpr ui32 MaxSubRequestSize = 4_MB;
 
-constexpr ui64 MaxZeroBlocksSubRequestSize = 2048_MB;
+constexpr ui32 MaxZeroBlocksSubRequestSize = 2048_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -38,7 +38,7 @@ struct TDefaultDeviceHandlerFactory final
         bool unalignedRequestsDisabled,
         bool checkBufferModificationDuringWriting,
         bool isReliableMediaKind,
-        ui64 maxZeroBlocksSubRequestSize) override
+        ui32 maxZeroBlocksSubRequestSize) override
     {
         if (maxZeroBlocksSubRequestSize != 0) {
             maxZeroBlocksSubRequestSize = std::min(
@@ -55,7 +55,7 @@ struct TDefaultDeviceHandlerFactory final
                 std::move(clientId),
                 blockSize,
                 MaxSubRequestSize,
-                static_cast<ui32>(maxZeroBlocksSubRequestSize),
+                maxZeroBlocksSubRequestSize,
                 checkBufferModificationDuringWriting,
                 isReliableMediaKind);
         }

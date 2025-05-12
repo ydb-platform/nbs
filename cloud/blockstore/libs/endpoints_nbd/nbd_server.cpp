@@ -27,7 +27,7 @@ private:
     const ILoggingServicePtr Logging;
     const IServerStatsPtr ServerStats;
     const NProto::TChecksumFlags ChecksumFlags;
-    const ui64 MaxZeroBlocksSubRequestSize;
+    const ui32 MaxZeroBlocksSubRequestSize;
 
 public:
     TNbdEndpointListener(
@@ -35,7 +35,7 @@ public:
             ILoggingServicePtr logging,
             IServerStatsPtr serverStats,
             NProto::TChecksumFlags checksumFlags,
-            ui64 maxZeroBlocksSubRequestSize)
+            ui32 maxZeroBlocksSubRequestSize)
         : Server(std::move(server))
         , Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
@@ -124,7 +124,7 @@ IEndpointListenerPtr CreateNbdEndpointListener(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     NProto::TChecksumFlags checksumFlags,
-    ui64 maxZeroBlocksSubRequestSize)
+    ui32 maxZeroBlocksSubRequestSize)
 {
     return std::make_shared<TNbdEndpointListener>(
         std::move(server),

@@ -14,6 +14,6 @@ IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
     bool vhostDiscardEnabled,
-    ui64 maxZeroBlocksSubRequestSize);
+    ui32 maxZeroBlocksSubRequestSize);
 
 }   // namespace NCloud::NBlockStore::NServer

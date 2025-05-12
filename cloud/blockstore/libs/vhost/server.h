@@ -29,7 +29,7 @@ struct TStorageOptions
     bool CheckBufferModificationDuringWriting = false;
     bool IsReliableMediaKind = false;
     bool DiscardEnabled = false;
-    ui64 MaxZeroBlocksSubRequestSize = 0;
+    ui32 MaxZeroBlocksSubRequestSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
