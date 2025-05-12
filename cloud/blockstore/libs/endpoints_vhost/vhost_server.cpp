@@ -20,15 +20,18 @@ private:
     const NVhost::IServerPtr Server;
     const NProto::TChecksumFlags ChecksumFlags;
     const bool VhostDiscardEnabled;
+    const ui32 MaxZeroBlocksSubRequestSize;
 
 public:
     TVhostEndpointListener(
             NVhost::IServerPtr server,
             NProto::TChecksumFlags checksumFlags,
-            bool vhostDiscardEnabled)
+            bool vhostDiscardEnabled,
+            ui32 maxZeroBlocksSubRequestSize)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
         , VhostDiscardEnabled(vhostDiscardEnabled)
+        , MaxZeroBlocksSubRequestSize(maxZeroBlocksSubRequestSize)
     {}
 
     TFuture<NProto::TError> StartEndpoint(
@@ -52,6 +55,7 @@ public:
         options.DiscardEnabled =
             VhostDiscardEnabled &&
             !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
+        options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
 
         return Server->StartEndpoint(
             request.GetUnixSocketPath(),
@@ -101,12 +105,14 @@ public:
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
-    bool vhostDiscardEnabled)
+    bool vhostDiscardEnabled,
+    ui32 maxZeroBlocksSubRequestSize)
 {
     return std::make_shared<TVhostEndpointListener>(
         std::move(server),
         checksumFlags,
-        vhostDiscardEnabled);
+        vhostDiscardEnabled,
+        maxZeroBlocksSubRequestSize);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

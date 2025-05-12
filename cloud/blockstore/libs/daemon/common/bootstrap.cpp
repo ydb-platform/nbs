@@ -387,7 +387,8 @@ void TBootstrapBase::Init()
             NbdServer,
             Logging,
             ServerStats,
-            Configs->ServerConfig->GetChecksumFlags());
+            Configs->ServerConfig->GetChecksumFlags(),
+            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize());
 
         endpointListeners.emplace(
             NProto::IPC_NBD,
@@ -416,6 +417,7 @@ void TBootstrapBase::Init()
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
             Configs->ServerConfig->GetChecksumFlags(),
+            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
             Configs->ServerConfig->GetVhostDiscardEnabled());
 
         if (Configs->ServerConfig->GetVhostServerPath()
@@ -548,7 +550,8 @@ void TBootstrapBase::Init()
         const ui32 defaultSectorSize = 4_KB;
 
         nbdDeviceFactory = NClient::CreateProxyDeviceFactory(
-            {defaultSectorSize},
+            {defaultSectorSize,
+             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize()},
             EndpointProxyClient);
     }
 

@@ -472,6 +472,7 @@ TUnalignedDeviceHandler::TUnalignedDeviceHandler(
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
+        ui32 maxZeroBlocksSubRequestSize,
         ui32 maxUnalignedRequestSize,
         bool checkBufferModificationDuringWriting,
         bool isReliableMediaKind)
@@ -481,6 +482,7 @@ TUnalignedDeviceHandler::TUnalignedDeviceHandler(
           std::move(clientId),
           blockSize,
           maxSubRequestSize,
+          maxZeroBlocksSubRequestSize,
           checkBufferModificationDuringWriting,
           isReliableMediaKind))
     , BlockSize(blockSize)
