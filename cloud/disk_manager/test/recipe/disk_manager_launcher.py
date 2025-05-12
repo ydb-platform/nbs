@@ -3,6 +3,7 @@ import os
 import time
 import typing
 import urllib.request
+import urllib.error
 
 from collections import defaultdict
 
@@ -580,8 +581,11 @@ class DiskManagerLauncher:
         """
         result = defaultdict(list)
         data = ""
-        with urllib.request.urlopen(f"http://localhost:{self.__monitoring_port}/metrics/") as response:
-            data = response.read().decode()
+        try:
+            with urllib.request.urlopen(f"http://localhost:{self.__monitoring_port}/metrics/") as response:
+                data = response.read().decode()
+        except urllib.error.URLError:
+            return result
 
         for line in data.splitlines():
             if not line:
