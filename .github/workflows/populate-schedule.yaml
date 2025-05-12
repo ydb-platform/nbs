@@ -4,7 +4,7 @@ run-name: format('Scheduled maintaning of VMs count (schedule)')
 on:
   schedule:
     - cron: "*/15 * * * *"
-  
+  workflow_dispatch:
 jobs:
   light:
     name: Populate light VMs
