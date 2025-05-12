@@ -3,7 +3,7 @@ run-name: ${{ format('Scheduled maintaning of VMs count ({0})', github.event_nam
       
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "5,20,35,50 * * * *"
   workflow_dispatch:
 
 concurrency:
