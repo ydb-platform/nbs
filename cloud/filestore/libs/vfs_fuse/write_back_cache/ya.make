@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    calculate_data_parts_to_read.cpp
     session_sequencer.cpp
     write_back_cache.cpp
 )
