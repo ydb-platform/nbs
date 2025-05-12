@@ -228,7 +228,6 @@ def test_should_mount_volume_with_unknown_devices(
     configurator.files["disk-agent"].CachedConfigPath = ""
 
     agent = start_disk_agent(configurator, name=agent_id)
-    # assert false
     agent.wait_for_registration()
 
     r = client.add_host(agent_id)
