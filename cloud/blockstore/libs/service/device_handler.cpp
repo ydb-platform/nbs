@@ -66,7 +66,7 @@ struct TDefaultDeviceHandlerFactory final
             std::move(clientId),
             blockSize,
             MaxSubRequestSize,
-            static_cast<ui32>(maxZeroBlocksSubRequestSize),
+            maxZeroBlocksSubRequestSize,
             MaxUnalignedRequestSize,
             checkBufferModificationDuringWriting,
             isReliableMediaKind);
