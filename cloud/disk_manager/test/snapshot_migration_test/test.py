@@ -44,6 +44,7 @@ class _MigrationTestSetup:
         use_s3_as_src: bool = False,
         use_s3_as_dst: bool = False,
         migration_inflight_transferring_snapshots_count=1000,
+        with_nemesis: bool = False,
     ):
         self.use_s3_as_src = use_s3_as_src
         self.use_s3_as_dst = use_s3_as_dst
@@ -119,7 +120,7 @@ class _MigrationTestSetup:
             base_disk_id_prefix=self.base_disk_id_prefix,
             creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
             disable_disk_registry_based_disks=True,
-            with_nemesis=False,
+            with_nemesis=with_nemesis,
             metadata_url=self.metadata_service.url,
         )
 
@@ -362,34 +363,42 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
 
 
 @pytest.mark.parametrize(
-    ["use_s3_as_src", "use_s3_as_dst", "migration_inflight_transferring_snapshots_count"],
     [
-        (True, False, 1000),
-        (False, True, 1000),
-        (True, True, 1000),
-        (False, False, 4),
-        (False, False, 5),
-        (False, False, 9),
-        (False, False, 10),
-        (False, False, 1000),
+        "use_s3_as_src",
+        "use_s3_as_dst",
+        "migration_inflight_transferring_snapshots_count",
+        "with_nemesis",
+    ],
+    [
+        (True, False, 1000, False),
+        (False, True, 1000, False),
+        (True, True, 1000, False),
+        (False, False, 4, False),
+        (False, False, 5, False),
+        (False, False, 9, False),
+        (False, False, 10, False),
+        (False, False, 1000, False),
+        (False, False, 4, True),
     ]
 )
 def test_disk_manager_dataplane_database_migration(
     use_s3_as_src,
     use_s3_as_dst,
     migration_inflight_transferring_snapshots_count,
+    with_nemesis,
 ):
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
         migration_inflight_transferring_snapshots_count=migration_inflight_transferring_snapshots_count,
+        with_nemesis=with_nemesis,
     ) as setup:
         initial_data_count = 10
         disks = [f"disk_{i}" for i in range(initial_data_count)]
         snapshots = [f"snapshot_{i}" for i in range(initial_data_count)]
         new_disks_for_initial = [f"new_disk_{i}" for i in range(initial_data_count)]
         checksums = []
-        size = 16 * 1024 * 1024
+        size = 1024 * 1024 * 1024
 
         # Create disks and snapshots before migration
         for snapshot, disk in list(zip(snapshots, disks))[:initial_data_count // 2]:

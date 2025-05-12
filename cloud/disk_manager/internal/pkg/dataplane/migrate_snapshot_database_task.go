@@ -24,14 +24,16 @@ type migrateSnapshotDatabaseTask struct {
 	dstStorage storage.Storage
 	config     *config.DataplaneConfig
 	scheduler  tasks.Scheduler
+	state      *dataplane_protos.MigrateSnapshotDatabaseTaskState
 }
 
 func (m migrateSnapshotDatabaseTask) Save() ([]byte, error) {
-	return []byte{}, nil
+	return proto.Marshal(m.state)
 }
 
 func (m migrateSnapshotDatabaseTask) Load(request []byte, state []byte) error {
-	return nil
+	m.state = &dataplane_protos.MigrateSnapshotDatabaseTaskState{}
+	return proto.Unmarshal(state, m.state)
 }
 
 func (m migrateSnapshotDatabaseTask) Run(
@@ -72,7 +74,6 @@ func (m migrateSnapshotDatabaseTask) Run(
 			"snapshots/migratingCount",
 		).Set(float64(snapshotsToProcessCount))
 
-		var inflightTaskIDs []string
 		for snapshotID := range snapshotsToMigrate.Vals() {
 			taskID, err := m.scheduleMigrateSnapshotTask(
 				ctx,
@@ -88,8 +89,8 @@ func (m migrateSnapshotDatabaseTask) Run(
 				return err
 			}
 
-			inflightTaskIDs = append(inflightTaskIDs, taskID)
-			inflightTasksLimitReached := len(inflightTaskIDs) == int(inflightSnapshotsCount)
+			m.state.InflightTaskIDs = append(m.state.InflightTaskIDs, taskID)
+			inflightTasksLimitReached := len(m.state.InflightTaskIDs) == int(inflightSnapshotsCount)
 			if !inflightTasksLimitReached && snapshotsToProcessCount != 1 {
 				snapshotsToProcessCount--
 				continue
@@ -97,15 +98,15 @@ func (m migrateSnapshotDatabaseTask) Run(
 
 			finishedTaskIDs, err := m.scheduler.WaitAnyTasksWithTimeout(
 				ctx,
-				inflightTaskIDs,
+				m.state.InflightTaskIDs,
 				taskTimeout,
 			)
 			if err != nil {
 				return err
 			}
 
-			unfinishedTaskIDs := make([]string, len(inflightTaskIDs))
-			for _, inflightTaskID := range inflightTaskIDs {
+			unfinishedTaskIDs := make([]string, len(m.state.InflightTaskIDs))
+			for _, inflightTaskID := range m.state.InflightTaskIDs {
 				if !common.Find(finishedTaskIDs, inflightTaskID) {
 					unfinishedTaskIDs = append(
 						unfinishedTaskIDs,
@@ -117,7 +118,7 @@ func (m migrateSnapshotDatabaseTask) Run(
 				return err
 			}
 
-			inflightTaskIDs = unfinishedTaskIDs
+			m.state.InflightTaskIDs = unfinishedTaskIDs
 			snapshotsToProcessCount--
 		}
 	}
