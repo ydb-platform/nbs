@@ -137,7 +137,7 @@ public:
     TDuration GetVhostServerTimeoutAfterParentExit() const;
     TString GetNodeRegistrationToken() const;
     NProto::TChecksumFlags GetChecksumFlags() const;
-    THashMap<TString, TVector<NProto::TShardHostInfo>> GetShardMap() const;
+    THashMap<TString, NProto::TShardInfo> GetShardMap() const;
     TString GetShardId() const;
     NProto::EShardDataTransport GetShardTransport() const;
     ui32 GetNbdPort() const;

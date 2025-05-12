@@ -82,6 +82,7 @@ using TClientReadRequest = TClientRequestImpl<NProto::TReadBlocksLocalResponse>;
 using TClientWriteRequest = TClientRequestImpl<NProto::TWriteBlocksLocalResponse>;
 using TClientZeroRequest = TClientRequestImpl<NProto::TZeroBlocksResponse>;
 using TClientMountRequest = TClientRequestImpl<NProto::TError>;
+using TClientUnmountRequest = TClientRequestImpl<NProto::TError>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

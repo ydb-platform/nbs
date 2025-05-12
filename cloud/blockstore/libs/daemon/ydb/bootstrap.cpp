@@ -48,6 +48,10 @@
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstorage.h>
 
+#include <cloud/blockstore/libs/rdma/impl/client.h>
+#include <cloud/blockstore/libs/rdma/impl/server.h>
+#include <cloud/blockstore/libs/rdma/impl/verbs.h>
+
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -354,6 +358,16 @@ void TBootstrapYdb::InitRdmaClient()
                 Logging,
                 Monitoring,
                 CreateRdmaClientConfig(Configs->RdmaConfig));
+
+            if (!RdmaClient) {
+                auto rdmaConfig = CreateRdmaClientConfig(Configs->RdmaConfig);
+
+                RdmaClient = NRdma::CreateClient(
+                    NRdma::NVerbs::CreateVerbs(),
+                    Logging,
+                    Monitoring,
+                    std::move(rdmaConfig));
+            }
 
             STORAGE_INFO("RDMA client initialized");
         }

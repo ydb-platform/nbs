@@ -295,7 +295,9 @@ public:
         if (auto guard = GuardedSgList.Acquire()) {
             const auto& sglist = guard.Get();
 
-            Y_ABORT_UNLESS(index < sglist.size());
+            if (index < sglist.size()) {
+                Y_ABORT_UNLESS(index < sglist.size());
+            }
             TBlockDataRef block = sglist[index];
             Y_ABORT_UNLESS(block.Size() == BlockSize);
 
