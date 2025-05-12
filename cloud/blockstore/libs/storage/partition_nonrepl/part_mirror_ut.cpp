@@ -2421,8 +2421,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
                         break;
                     }
-                    case TEvService::EvReadBlocksResponse: {
-                        using TEv = TEvService::TEvReadBlocksResponse;
+                    case TEvService::EvReadBlocksLocalResponse: {
+                        using TEv = TEvService::TEvReadBlocksLocalResponse;
 
                         auto response = std::make_unique<TEv>(
                             MakeError(E_IO, "block is broken"));
@@ -2532,7 +2532,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                         actorIds[event->Recipient].insert(event->Sender);
                         break;
                     }
-                    case TEvService::EvReadBlocksResponse: {
+                    case TEvService::EvReadBlocksLocalResponse: {
                         actorIds[event->Recipient].insert(event->Sender);
                         break;
                     }

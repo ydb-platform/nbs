@@ -119,9 +119,10 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     } else {
         if (Request.GetCalculateChecksums()) {
             TBlockChecksum blockChecksum;
-            for (const auto& buffer: msg->Record.GetBlocks().GetBuffers()) {
+            for (ui64 i = 0; i < Request.GetBlocksCount(); i++) {
+                auto* data = Buffer.Get().data() + (i) * BlockSize;
                 const auto checksum =
-                    blockChecksum.Extend(buffer.data(), buffer.size());
+                    blockChecksum.Extend(data, BlockSize);
                 response->Record.MutableChecksums()->Add(checksum);
             }
         }

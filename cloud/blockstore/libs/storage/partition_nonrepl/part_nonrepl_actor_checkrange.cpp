@@ -39,10 +39,23 @@ private:
 void TNonreplCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     const TString clientId{CheckRangeClientId};
+
+    TBlockRange64 range = TBlockRange64::MakeHalfOpenInterval(
+        Request.GetStartIndex(),
+        Request.GetStartIndex() + Request.GetBlocksCount());
+
+    Buffer = TGuardedBuffer(TString::Uninitialized(range.Size() * BlockSize));
+
+    auto sgList = Buffer.GetGuardedSgList();
+    auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
+    Y_ABORT_UNLESS(!HasError(sgListOrError));
+    SgList.SetSgList(sgListOrError.ExtractResult());
+
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
 
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
+    request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetClientId(clientId);
