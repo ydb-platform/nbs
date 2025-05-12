@@ -6,7 +6,7 @@ select(.metadata.labels.repo == $repo) |
 select(.metadata.labels.owner == $owner) |
 select(.status.state == "RUNNING") |
 select(.metadata.labels."runner-flavor" == $flavor) |
-"\(.metadata.created_at) \(.metadata.id) \(.metadata.name) \(.status.state) \(.metadata.labels."runner-label") \((.metadata.labels | to_entries | map("\(.key)=\(.value)") | join(",")))"' >instances.list || touch instances.list
+"\(.metadata.created_at) \(.metadata.id) \(.metadata.name) \(.status.state) \(.metadata.labels."runner-label") \((.metadata.labels | to_entries | map("\(.key)=\(.value)") | join(",")))"'  | tee instances.list || touch instances.list
 
 RUNNING_VMS_COUNT=$(wc -l instances.list | awk '{print $1}')
 VMS_TO_REMOVE='[]'
@@ -14,7 +14,7 @@ echo "$VMS_TO_REMOVE" >vms_to_remove.json
 echo 0 >vms_count_to_remove
 VMS_COUNT_TO_REMOVE=0
 DATE=$(date +%s)
-while read -r vm_creation_date vm_id name state label labels; do
+while read -r vm_creation_date vm_id _ _ _ _; do
     echo "Checking $vm_id"
     vm_creation_date_ts=$(date -u -d "$vm_creation_date" +%s)
     echo "VM $vm_id created at $vm_creation_date ($vm_creation_date_ts)"

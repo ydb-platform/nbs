@@ -85,7 +85,7 @@ jobs:
     if: needs.calculate_missing_vms.outputs.vms_to_remove != '[]'
     runs-on: ubuntu-latest
     strategy:
-      max-parallel: 2
+      max-parallel: 5
       matrix:
         vms_to_remove: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_remove) }}
     steps:
@@ -110,7 +110,7 @@ jobs:
     if: needs.calculate_missing_vms.outputs.vms_to_create != '[]'
     runs-on: ubuntu-latest
     strategy:
-      max-parallel: 2
+      max-parallel: 5
       matrix:
         vms_to_create: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_create) }}
     steps:
