@@ -137,7 +137,7 @@ public:
     TDuration GetVhostServerTimeoutAfterParentExit() const;
     TString GetNodeRegistrationToken() const;
     NProto::TChecksumFlags GetChecksumFlags() const;
-    bool GetVhostDiscardEnabled() const;    
+    bool GetVhostDiscardEnabled() const;
     ui32 GetMaxZeroBlocksSubRequestSize() const;
 
     void Dump(IOutputStream& out) const override;
