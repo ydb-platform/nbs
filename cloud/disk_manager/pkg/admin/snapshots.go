@@ -10,7 +10,6 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/spf13/cobra"
-
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
@@ -71,6 +70,7 @@ func newCommandWithScheduler(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) commandWithScheduler {
+
 	return commandWithScheduler{
 		clientConfig: clientConfig,
 		serverConfig: serverConfig,
@@ -356,8 +356,9 @@ func newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
 	c := &scheduleCreateSnapshotFromLegacySnapshotTask{
-		commandWithScheduler: newCommandWithScheduler(clientConfig, serverConfig),
+		commandWithScheduler: cmdWithScheduler,
 	}
 
 	cmd := &cobra.Command{
@@ -418,8 +419,9 @@ func newScheduleMigrateSnapshotTaskCmd(
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
 	c := &scheduleMigrateSnapshotTaskCmd{
-		commandWithScheduler: newCommandWithScheduler(clientConfig, serverConfig),
+		commandWithScheduler: cmdWithScheduler,
 	}
 
 	cmd := &cobra.Command{
@@ -477,8 +479,9 @@ func newMigrateSnapshotDatabaseCmd(
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
 	c := &migrateSnapshotDatabaseCmd{
-		commandWithScheduler: newCommandWithScheduler(clientConfig, serverConfig),
+		commandWithScheduler: cmdWithScheduler,
 	}
 
 	return &cobra.Command{

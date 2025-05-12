@@ -74,7 +74,7 @@ type Scheduler interface {
 	WaitAnyTasksWithTimeout(
 		ctx context.Context,
 		taskIDs []string,
-		timout time.Duration,
+		timeout time.Duration,
 	) ([]string, error)
 
 	// Synchronously waits until task is finished successfully or cancelled.

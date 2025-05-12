@@ -244,7 +244,9 @@ func (s *StorageMock) GetIncremental(
 	return args.String(0), args.String(1), args.Error(2)
 }
 
-func (s *StorageMock) ListAllSnapshots(ctx context.Context) (task_storage.StringSet, error) {
+func (s *StorageMock) ListAllSnapshots(
+	ctx context.Context,
+) (task_storage.StringSet, error) {
 
 	args := s.Called(ctx)
 	return args.Get(0).(task_storage.StringSet), args.Error(1)

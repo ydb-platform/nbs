@@ -1427,7 +1427,7 @@ func (s *storageYDB) listAllSnapshots(
 	session *persistence.Session,
 ) (task_storage.StringSet, error) {
 
-	result := task_storage.NewStringSet()
+	snapshots := task_storage.NewStringSet()
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -1441,7 +1441,7 @@ func (s *storageYDB) listAllSnapshots(
 		),
 	)
 	if err != nil {
-		return result, err
+		return snapshots, err
 	}
 	defer res.Close()
 
@@ -1450,17 +1450,17 @@ func (s *storageYDB) listAllSnapshots(
 			var id *string
 			err := res.Scan(&id)
 			if err != nil {
-				return result, err
+				return snapshots, err
 			}
 
-			result.Add(*id)
+			snapshots.Add(*id)
 		}
 	}
 
 	err = res.Err()
 	if err != nil {
-		return result, task_errors.NewRetriableError(err)
+		return snapshots, task_errors.NewRetriableError(err)
 	}
 
-	return result, nil
+	return snapshots, nil
 }

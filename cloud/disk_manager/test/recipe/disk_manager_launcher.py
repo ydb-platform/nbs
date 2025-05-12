@@ -334,7 +334,7 @@ MIGRATION_CONFIG_TEMPLATE = """
         S3Bucket: "snapshot"
         ChunkBlobsS3KeyPrefix: "snapshot/chunks"
     >
-    MigrationInflightTransferringSnapshotsCount: {migration_inflight_transferring_snapshots_count}
+    MigratingSnapshotsInflightLimit: {migration_inflight_transferring_snapshots_count}
 """
 
 SERVICE_NAME = "disk_manager"
