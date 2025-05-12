@@ -1,0 +1,24 @@
+name: Scheduled maintaning of VMs count
+run-name: format('Scheduled maintaning of VMs count (schedule)')
+      
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  
+jobs:
+  light:
+    name: Populate light VMs
+    uses: ./.github/workflows/populate.yaml
+    secrets: inherit
+    with:
+      max_vms_to_create: 5
+      vms_ttl: 86400
+      flavor: light
+  heavy:
+    name: Populate heavy VMs
+    uses: ./.github/workflows/populate.yaml
+    secrets: inherit
+    with:
+      max_vms_to_create: 2
+      vms_ttl: 86400
+      flavor: heavy
