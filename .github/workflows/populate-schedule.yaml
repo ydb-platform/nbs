@@ -11,7 +11,7 @@ jobs:
     uses: ./.github/workflows/populate.yaml
     secrets: inherit
     with:
-      max_vms_to_create: 5
+      max_vms_to_create: 1
       vms_ttl: 3600
       flavor: light
   heavy:
@@ -19,6 +19,6 @@ jobs:
     uses: ./.github/workflows/populate.yaml
     secrets: inherit
     with:
-      max_vms_to_create: 2
+      max_vms_to_create: 1
       vms_ttl: 3600
       flavor: heavy
