@@ -35,7 +35,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     TBlockRange64 range = TBlockRange64::MakeHalfOpenInterval(
         Request.GetStartIndex(),
-        Request.GetBlocksCount());
+        Request.GetStartIndex() + Request.GetBlocksCount());
 
     Buffer = TGuardedBuffer(TString::Uninitialized(range.Size() * BlockSize));
 
