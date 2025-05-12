@@ -44,8 +44,6 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     Y_ABORT_UNLESS(!HasError(sgListOrError));
     SgList.SetSgList(sgListOrError.ExtractResult());
 
-    Cerr<< "!!SetSgList size "<< SgList.Acquire().Get().size()<<Endl;
-
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
 
     request->Record.SetStartIndex(Request.GetStartIndex());
@@ -66,7 +64,6 @@ void TCheckRangeActor::ReplyAndDie(
         std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(error));
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    Cerr<<"!!  ReplyAndDie !!"<<Endl;
 
     Die(ctx);
 }
@@ -76,7 +73,6 @@ void TCheckRangeActor::ReplyAndDie(
     std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response)
 {
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    Cerr<<"!!  ReplyAndDie2vers !!"<<Endl;
 
     Die(ctx);
 }
