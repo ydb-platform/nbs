@@ -1,5 +1,5 @@
 name: Scheduled maintaning of VMs count
-run-name: ${{ format('Scheduled maintaning of VMs count (schedule)') }}
+run-name: ${{ format('Scheduled maintaning of VMs count ({0})', github.event_name) }}
       
 on:
   schedule:
@@ -9,7 +9,7 @@ on:
 concurrency:
   group: 'populate-vms-schedule'
   cancel-in-progress: true
-  
+
 jobs:
   light:
     name: Populate light VMs
