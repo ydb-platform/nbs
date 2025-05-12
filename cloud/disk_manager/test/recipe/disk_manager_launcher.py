@@ -588,6 +588,7 @@ class DiskManagerLauncher:
                 continue
             if line.startswith("#"):
                 continue
+
             selector, value = line.split(" ", 2)
             name, labels = selector.split("{", 1)
             labels = labels.rstrip("}")

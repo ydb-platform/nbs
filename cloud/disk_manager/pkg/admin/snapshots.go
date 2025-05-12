@@ -20,6 +20,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,6 +30,7 @@ type commandWithScheduler struct {
 	serverConfig *server_config.ServerConfig
 	scheduler    tasks.Scheduler
 	ctx          context.Context
+	db           *persistence.YDBClient
 }
 
 func (t *commandWithScheduler) init() error {
@@ -37,8 +39,8 @@ func (t *commandWithScheduler) init() error {
 	if err != nil {
 		return err
 	}
-	defer db.Close(t.ctx)
 
+	t.db = db
 	logging.Info(t.ctx, "Creating task scheduler")
 	taskRegistry := tasks.NewRegistry()
 
@@ -57,6 +59,12 @@ func (t *commandWithScheduler) init() error {
 	}
 
 	return nil
+}
+
+func (t *commandWithScheduler) close() {
+	if t.db != nil {
+		t.db.Close(t.ctx)
+	}
 }
 
 func newCommandWithScheduler(
@@ -317,6 +325,7 @@ type scheduleCreateSnapshotFromLegacySnapshotTask struct {
 
 func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
 	err := c.init()
+	defer c.close()
 	if err != nil {
 		return err
 	}
@@ -380,6 +389,7 @@ type scheduleMigrateSnapshotTaskCmd struct {
 
 func (c *scheduleMigrateSnapshotTaskCmd) run() error {
 	err := c.init()
+	defer c.close()
 	if err != nil {
 		return err
 	}
@@ -440,6 +450,7 @@ type migrateSnapshotDatabaseCmd struct {
 
 func (c *migrateSnapshotDatabaseCmd) run() error {
 	err := c.init()
+	defer c.close()
 	if err != nil {
 		return err
 	}
