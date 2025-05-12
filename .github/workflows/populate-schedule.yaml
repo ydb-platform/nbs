@@ -1,5 +1,5 @@
 name: Scheduled maintaning of VMs count
-run-name: format('Scheduled maintaning of VMs count (schedule)')
+run-name: ${{ format('Scheduled maintaning of VMs count (schedule)') }}
       
 on:
   schedule:
