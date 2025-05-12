@@ -142,7 +142,7 @@ public:
 
     [[nodiscard]] bool IsAlignedDataEnabled() const override
     {
-        return Impl->IsAlignedDataEnabled();
+        return Impl ? Impl->IsAlignedDataEnabled() : false;
     }
 };
 
