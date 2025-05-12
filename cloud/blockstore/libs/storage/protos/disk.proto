@@ -577,6 +577,9 @@ message TReplicationTarget
 
     // Start block index on target device.
     uint64 StartIndex = 3;
+
+    // Operation timeout (in milliseconds)
+    uint32 Timeout = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

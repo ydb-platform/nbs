@@ -748,8 +748,8 @@ struct TTransportCounters
             "RequestBytes",
             "WriteBlocks"),
         MakeMetaWithTag<&TTransportCounters::WriteBytesMultiAgent>(
-            "RequestBytesMultiAgent",
-            "WriteBlocks"),
+            "RequestBytes",
+            "WriteBlocksMultiAgent"),
         MakeMetaWithTag<&TTransportCounters::ReadCount>(
             "Count",
             "ReadBlocks"),

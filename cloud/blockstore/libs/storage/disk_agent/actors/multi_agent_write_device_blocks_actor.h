@@ -33,9 +33,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    bool HandleError(
-        const NActors::TActorContext& ctx,
-        const NProto::TError& error);
+    bool IsAllResponsesHaveBeenReceived() const;
 
     void ReplyAndDie(const NActors::TActorContext& ctx, NProto::TError error);
 
