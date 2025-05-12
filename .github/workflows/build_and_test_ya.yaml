@@ -78,7 +78,7 @@ on:
 jobs:
   calculate-runs-on:
     name: Calculate runs-on
-    runs-on: [ self-hosted, "${{ inputs.runner_kind }}", "runner_${{ inputs.runner_flavor }}" ]
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     outputs:
       runs-on: ${{ steps.set-runs-on.outputs.LABELS_LIST }}
     steps:
