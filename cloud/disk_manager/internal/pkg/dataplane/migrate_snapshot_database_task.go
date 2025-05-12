@@ -89,6 +89,11 @@ func (m migrateSnapshotDatabaseTask) Run(
 				return err
 			}
 
+			err = execCtx.SaveState(ctx)
+			if err != nil {
+				return err
+			}
+
 			m.state.InflightTaskIDs = append(m.state.InflightTaskIDs, taskID)
 			inflightTasksLimitReached := len(m.state.InflightTaskIDs) == int(inflightSnapshotsCount)
 			if !inflightTasksLimitReached && snapshotsToProcessCount != 1 {
@@ -114,11 +119,13 @@ func (m migrateSnapshotDatabaseTask) Run(
 					)
 				}
 			}
+
+			m.state.InflightTaskIDs = unfinishedTaskIDs
+			err = execCtx.SaveState(ctx)
 			if err != nil {
 				return err
 			}
 
-			m.state.InflightTaskIDs = unfinishedTaskIDs
 			snapshotsToProcessCount--
 		}
 	}

@@ -398,7 +398,7 @@ def test_disk_manager_dataplane_database_migration(
         snapshots = [f"snapshot_{i}" for i in range(initial_data_count)]
         new_disks_for_initial = [f"new_disk_{i}" for i in range(initial_data_count)]
         checksums = []
-        size = 1024 * 1024 * 1024
+        size = 100 * 1024 * 1024
 
         # Create disks and snapshots before migration
         for snapshot, disk in list(zip(snapshots, disks))[:initial_data_count // 2]:

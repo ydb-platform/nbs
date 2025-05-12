@@ -8,13 +8,13 @@ DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/server
     cloud/blockstore/apps/disk_agent
-
-    cloud/filestore/apps/server
-
     cloud/disk_manager/cmd/disk-manager
     cloud/disk_manager/cmd/disk-manager-init-db
     cloud/disk_manager/cmd/disk-manager-admin
     cloud/disk_manager/test/mocks/metadata
+    cloud/filestore/apps/server
+
+    cloud/tasks/test/nemesis
     contrib/python/moto/bin
 )
 
