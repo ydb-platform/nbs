@@ -888,7 +888,7 @@ public:
         const TString& poolName,
         const ui64 totalByteCount) const;
 
-    const THashSet<TDiskId>* GetLostDevicesForDisk(const TString& diskId) const;
+    THashSet<TDeviceId> GetLostDevicesForDisk(const TString& diskId) const;
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);

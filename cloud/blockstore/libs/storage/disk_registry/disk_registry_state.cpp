@@ -1116,8 +1116,8 @@ void TDiskRegistryState::ReallocateDisksWithLostOrReappearedDevices(
 {
     const NProto::TAgentConfig& agent = r.Agent;
     THashSet<TString> disksWithLostOrReappearedDevices;
-    for (const auto& lostDevice: r.LostDeviceIds) {
-        auto diskId = DeviceList.FindDiskId(lostDevice);
+    for (const auto& lostDeviceId: r.LostDeviceIds) {
+        auto diskId = DeviceList.FindDiskId(lostDeviceId);
         if (!diskId) {
             continue;
         }
@@ -1128,7 +1128,7 @@ void TDiskRegistryState::ReallocateDisksWithLostOrReappearedDevices(
             continue;
         }
 
-        auto [_, inserted] = disk->LostDeviceIds.emplace(lostDevice);
+        auto [_, inserted] = disk->LostDeviceIds.emplace(lostDeviceId);
         if (!inserted) {
             continue;
         }
@@ -1152,11 +1152,9 @@ void TDiskRegistryState::ReallocateDisksWithLostOrReappearedDevices(
             continue;
         }
 
-        auto it = disk->LostDeviceIds.find(uuid);
-        if (it == disk->LostDeviceIds.end()) {
+        if (!disk->LostDeviceIds.erase(uuid)) {
             continue;
         }
-        disk->LostDeviceIds.erase(it);
 
         disksWithLostOrReappearedDevices.emplace(std::move(diskId));
     }
@@ -1167,16 +1165,16 @@ void TDiskRegistryState::ReallocateDisksWithLostOrReappearedDevices(
     }
 }
 
-const THashSet<TDiskRegistryState::TDeviceId>*
-TDiskRegistryState::GetLostDevicesForDisk(const TString& diskId) const
+auto TDiskRegistryState::GetLostDevicesForDisk(const TString& diskId) const
+    -> THashSet<TDeviceId>
 {
     const auto* disk = Disks.FindPtr(diskId);
     Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
     if (!disk) {
-        return nullptr;
+        return {};
     }
 
-    return &(disk->LostDeviceIds);
+    return disk->LostDeviceIds;
 }
 
 NProto::TError TDiskRegistryState::UnregisterAgent(

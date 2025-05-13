@@ -34,7 +34,6 @@ PY_SRCS(
     rdma.py
     stats.py
     test_base.py
-    test_client.py
     test_with_plugin.py
 )
 

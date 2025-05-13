@@ -392,9 +392,9 @@ void TVolumeActor::HandleAllocateDiskResponse(
         removedLaggingDevices.push_back(
             std::move(*removedLaggingDevice.MutableDeviceUUID()));
     }
-    std::ranges::move(
-        *msg->Record.MutableLostDeviceUUIDs(),
-        std::back_inserter(lostDeviceIds));
+    for (auto& lostDeviceId: *msg->Record.MutableLostDeviceUUIDs()) {
+        lostDeviceIds.push_back(std::move(lostDeviceId));
+    }
 
     if (!CheckAllocationResult(ctx, devices, replicas)) {
         return;

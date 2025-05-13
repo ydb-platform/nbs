@@ -1,12 +1,13 @@
 import logging
 import os
 import pytest
+import json
 import time
 
-from cloud.blockstore.public.sdk.python.client import Session
-from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED
+import cloud.blockstore.public.sdk.python.protos as protos
 
-from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
+from cloud.blockstore.public.sdk.python.client import CreateClient, Session
+from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
@@ -53,7 +54,7 @@ def start_nbs_daemon_with_dr(ydb):
 
     daemon = start_nbs(cfg)
 
-    client = CreateTestClient(f"localhost:{daemon.port}")
+    client = CreateClient(f"localhost:{daemon.port}")
     client.execute_action(
         action="DiskRegistrySetWritableState",
         input_bytes=str.encode('{"State": true}'))
@@ -165,6 +166,61 @@ def create_disk_agent_configurators(ydb, agent_ids, data_path):
     return configurators
 
 
+def backup_disk_registry_state(client):
+    response = client.execute_action(
+        action="BackupDiskRegistryState",
+        input_bytes=str.encode('{"BackupLocalDB": true}'))
+
+    return json.loads(response)["Backup"]
+
+
+def add_host(client, agent_id):
+    request = protos.TCmsActionRequest()
+    action = request.Actions.add()
+    action.Type = protos.TAction.ADD_HOST
+    action.Host = agent_id
+
+    return client.cms_action(request)
+
+
+def wait_for_devices_to_be_cleared(client, expected_dirty_count=0):
+    while True:
+        bkp = backup_disk_registry_state(client)
+        if len(bkp.get("DirtyDevices", [])) == expected_dirty_count:
+            break
+        time.sleep(1)
+
+
+def wait_agent_state(client, agent_id, desired_state):
+    while True:
+        bkp = backup_disk_registry_state(client)
+        agent = [x for x in bkp["Agents"] if x['AgentId'] == agent_id]
+        assert len(agent) == 1
+
+        if agent[0].get("State") == desired_state:
+            break
+        time.sleep(1)
+
+
+def kill_tablet(client, tabletId):
+    client.execute_action(
+        action='killtablet',
+        input_bytes=str.encode('{"TabletId": %s}' % tabletId))
+
+
+def get_volume_tablet_id(client, disk_id):
+    response = client.execute_action(
+        action="describevolume",
+        input_bytes=str.encode('{"DiskId": "%s"}' % (disk_id)))
+
+    return json.loads(response)["VolumeTabletId"]
+
+
+def restart_volume(client, disk_id):
+    tablet_id = get_volume_tablet_id(client, disk_id)
+    kill_tablet(client, tablet_id)
+
+
 def test_should_mount_volume_with_unknown_devices(
         nbs_with_dr,
         nbs,
@@ -175,7 +231,7 @@ def test_should_mount_volume_with_unknown_devices(
     logger = logging.getLogger("client")
     logger.setLevel(logging.DEBUG)
 
-    client = CreateTestClient(f"localhost:{nbs.port}", log=logger)
+    client = CreateClient(f"localhost:{nbs.port}", log=logger)
     agent_id = agent_ids[0]
     configurator = disk_agent_configurators[0]
 
@@ -188,11 +244,11 @@ def test_should_mount_volume_with_unknown_devices(
     agent = start_disk_agent(configurator, name=agent_id)
 
     agent.wait_for_registration()
-    r = client.add_host(agent_id)
+    r = add_host(client, agent_id)
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
-    client.wait_for_devices_to_be_cleared()
+    wait_for_devices_to_be_cleared(client)
 
     # create a volume
     client.create_volume(
@@ -202,7 +258,7 @@ def test_should_mount_volume_with_unknown_devices(
         storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
         cloud_id="test")
 
-    bkp = client.backup_disk_registry_state()
+    bkp = backup_disk_registry_state(client)
     assert len(bkp['Disks']) == 1
     assert len(bkp['Disks'][0]['DeviceUUIDs']) == 12
     assert len(bkp['Agents']) == 1
@@ -230,14 +286,14 @@ def test_should_mount_volume_with_unknown_devices(
     agent = start_disk_agent(configurator, name=agent_id)
     agent.wait_for_registration()
 
-    r = client.add_host(agent_id)
+    r = add_host(client, agent_id)
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
     time.sleep(1)
 
     nbs_with_dr.kill()
-    client.restart_volume("vol1")
+    restart_volume(client, "vol1")
 
     session.mount_volume()
     except_count = 0

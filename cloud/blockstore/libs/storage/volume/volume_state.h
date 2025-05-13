@@ -799,7 +799,7 @@ private:
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
 
     TVector<NProto::TDeviceConfig> GetDevicesForAcquireOrRelease(
-        bool ignoreLostDevices) const;
+        const THashSet<TString>& deviceIdsToIgnore) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
