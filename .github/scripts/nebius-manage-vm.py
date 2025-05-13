@@ -1,5 +1,4 @@
 import argparse
-import logging
 import math
 import os
 import random
@@ -11,6 +10,7 @@ import asyncio
 import requests
 import yaml
 import functools
+from .helpers import setup_logger, github_output, KeyValueAction, SENSITIVE_DATA_VALUES
 from github import Auth as GithubAuth
 from github import Github
 
@@ -36,35 +36,7 @@ from nebius.api.nebius.compute.v1 import (
     ExistingDisk,
 )
 
-SENSITIVE_DATA_VALUES = {}
-if os.environ.get("GITHUB_TOKEN"):
-    SENSITIVE_DATA_VALUES["github_token"] = os.environ.get("GITHUB_TOKEN")
-if os.environ.get("VM_USER_PASSWD"):
-    SENSITIVE_DATA_VALUES["passwd"] = os.environ.get("VM_USER_PASSWD")
-
-
-class MaskingFormatter(logging.Formatter):
-    @staticmethod
-    def mask_sensitive_data(msg):
-        # Iterate over the patterns and replace sensitive data with '***'
-        for pattern_name, pattern in SENSITIVE_DATA_VALUES.items():
-            msg = msg.replace(pattern, f"[{pattern_name}=***]")
-        return msg
-
-    def format(self, record):
-        original = logging.Formatter.format(self, record)
-        return self.mask_sensitive_data(original)
-
-
-formatter = MaskingFormatter("%(asctime)s: %(levelname)s: %(message)s")
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(formatter)
-
-logger = logging.getLogger()
-logger.addHandler(console_handler)
-logger.setLevel(logging.INFO)
-
+logger = setup_logger()
 
 DISK_NAME_PREFIX = "disk-"
 PRESETS = {
@@ -95,31 +67,12 @@ PRESETS = {
 }
 
 
-def github_output(key: str, value: str, is_secret: bool = False):
-    GITHUB_OUTPUT = os.environ.get("GITHUB_OUTPUT")
-
-    if GITHUB_OUTPUT:
-        with open(GITHUB_OUTPUT, "a") as fp:
-            fp.write(f"{key}={value}\n")
-
-    logger.info('echo "%s=%s" >> $GITHUB_OUTPUT', key, "******" if is_secret else value)
-
-
 def generate_github_label():
     generated_string = "".join(
         random.choices(string.ascii_lowercase + string.digits, k=8)
     )
     logger.info("Generated label: %s", generated_string)
     return generated_string
-
-
-class KeyValueAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):  # noqa: U100
-        kv_dict = {}
-        for item in values.split(","):
-            key, value = item.split("=")
-            kv_dict[key] = value
-        setattr(namespace, self.dest, kv_dict)
 
 
 def fetch_github_team_public_keys(gh: Github, github_org: str, team_slug: str):

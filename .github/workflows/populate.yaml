@@ -62,14 +62,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           sparse-checkout: '.github'
-      - name: set up cli
-        id: get-runner
-        uses: ./.github/actions/nebius_cli
-        with:
-          sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
-      - name: set up gh cli
-        id: get-gh
-        uses: ./.github/actions/gh_cli   
       - name: List VMs and prepare removal (vms older than 24h) and creation lists
         id: list
         uses: ./.github/actions/nebius_runner_populate
@@ -79,6 +71,7 @@ jobs:
           vms_ttl: ${{ inputs.vms_ttl }}
           flavor: ${{ inputs.flavor }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
   remove_vms:
     needs: calculate_missing_vms
     name: Remove VMs

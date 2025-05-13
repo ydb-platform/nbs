@@ -16,6 +16,9 @@ inputs:
   token:
     required: true
     description: "github token"
+  service_account_key:
+    required: true
+    description: "service account key"
 outputs:
   RUNNING_VMS_COUNT:
     value: ${{ steps.populate.outputs.RUNNING_VMS_COUNT }}
@@ -33,28 +36,31 @@ runs:
     - name: set up home
       shell: bash
       run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-
-    - name: set up path
-      shell: bash
-      run: echo "PATH=$PATH:$HOME/.nebius/bin" >> $GITHUB_ENV
-
-    - name: Check Nebius CLI
+    - name: write service account key to file
       shell: bash
       run: |
-        set -x
-         [ ! -f "$HOME/.nebius/bin/nebius" ] && {
-          echo "Nebius CLI not installed"
-          exit 1
-        } || echo "Nebius CLI already installed"
-        [ ! -f "$HOME/.nebius/config.yaml" ] && {
-          echo "Nebius CLI not configured"
-          exit 1
-        } || echo "Nebius CLI already configured"
+        export SERVICE_ACCOUNT_KEY=$(mktemp)
+        echo "SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}" >> $GITHUB_ENV
+        echo "${KEY_CONTENTS}" > $SERVICE_ACCOUNT_KEY
+      env:
+        KEY_CONTENTS: ${{ inputs.service_account_key }}
+    - name: install dependencies
+      shell: bash
+      run: |
+        pip install PyGithub==2.5.0 nebius==0.2.28
     - name: Select nebius runner
       shell: bash
       id: populate
       run: |
-        bash ${GITHUB_ACTION_PATH}/populate.sh
+        python3 .github/scripts/nebius-populate-vms.py \
+          --service-account-key "${SERVICE_ACCOUNT_KEY}" \
+          --github-repo-owner "${OWNER}" \
+          --github-repo "${REPO}" \
+          --parent-id "${PARENT_ID}" \
+          --max-vms-to-create "${MAX_VMS_TO_CREATE}" \
+          --flavor "${FLAVOR}" \
+          --vms-older-than "${VMS_OLDER_THAN}" \
+          --maximum-amount-of-vms-to-have "$((MAX_VMS_TO_CREATE*2))" 
       env:
         OWNER: ${{ github.event.repository.owner.login }}
         REPO: ${{ github.event.repository.name }}
@@ -62,4 +68,4 @@ runs:
         MAX_VMS_TO_CREATE: ${{ inputs.max_vms_to_create }}
         FLAVOR: ${{ inputs.flavor }}
         VMS_OLDER_THAN: ${{ inputs.vms_ttl }}
-        GH_TOKEN: ${{ inputs.token }}
+        GITHUB_TOKEN: ${{ inputs.token }}
