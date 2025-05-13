@@ -573,18 +573,6 @@ void TVolumeActor::HandleRetryStartPartition(
     }
 }
 
-void TVolumeActor::SendPartBootExternalToStatsService(
-    const TActorContext& ctx,
-    ui64 partTabletId,
-    const TVector<TTabletChannelInfo>& channels)
-{
-    auto request = std::make_unique<TEvStatsService::TEvPartBootExternal>(
-        State->GetDiskId(),
-        partTabletId,
-        channels);
-    NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
-}
-
 void TVolumeActor::HandleBootExternalResponse(
     const TEvHiveProxy::TEvBootExternalResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -648,10 +636,13 @@ void TVolumeActor::HandleBootExternalResponse(
         msg->StorageInfo->TabletID,
         partTabletId);
 
-    SendPartBootExternalToStatsService(
-        ctx,
-        partTabletId,
-        msg->StorageInfo->Channels);
+    {
+        auto request = std::make_unique<TEvStatsService::TEvPartitionBootExternalCompleted>(
+            State->GetDiskId(),
+            partTabletId,
+            msg->StorageInfo->Channels);
+        NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
+    }
 
     if (msg->SuggestedGeneration > part->SuggestedGeneration) {
         part->SuggestedGeneration = msg->SuggestedGeneration;

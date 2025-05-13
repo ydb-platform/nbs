@@ -291,8 +291,8 @@ void TStatsServiceActor::HandleUnregisterVolume(
     }
 }
 
-void TStatsServiceActor::HandlePartBootExternal(
-    const TEvStatsService::TEvPartBootExternal::TPtr& ev,
+void TStatsServiceActor::HandlePartitionBootExternalCompleted(
+    const TEvStatsService::TEvPartitionBootExternalCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();

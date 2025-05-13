@@ -170,14 +170,14 @@ void RegisterVolume(
     RegisterVolume(runtime, diskId, 0);
 }
 
-void PartBootExternal(
+void PartitionBootExternalCompleted(
     TTestActorRuntime& runtime,
     const TString& diskId,
     const ui64 partitionTabletId,
     TVector<NKikimr::TTabletChannelInfo> channels)
 {
-    auto partBootExternalResponseMsg =
-        std::make_unique<TEvStatsService::TEvPartBootExternal>(
+    auto partitionBootExternalCompletedMsg =
+        std::make_unique<TEvStatsService::TEvPartitionBootExternalCompleted>(
             diskId,
             partitionTabletId,
             std::move(channels));
@@ -185,7 +185,7 @@ void PartBootExternal(
         new IEventHandle(
             MakeStorageStatsServiceId(),
             MakeStorageStatsServiceId(),
-            partBootExternalResponseMsg.release(),
+            partitionBootExternalCompletedMsg.release(),
             0, // flags
             0),
             0);
@@ -1132,22 +1132,22 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 {0 /* fromGeneration */, 3 /* groupId*/},
                 {2 /* fromGeneration */, 2 /* groupId*/}};
 
-            PartBootExternal(
+            PartitionBootExternalCompleted(
                 runtime,
                 "vol1",
                 9, // partitionTabletId
                 std::move(channels9));
-            PartBootExternal(
+            PartitionBootExternalCompleted(
                 runtime,
                 "vol2",
                 18, // partitionTabletId
                 std::move(channels18));
-            PartBootExternal(
+            PartitionBootExternalCompleted(
                 runtime,
                 "vol2",
                 19, // partitionTabletId
                 std::move(channels19));
-            PartBootExternal(
+            PartitionBootExternalCompleted(
                 runtime,
                 "vol3",
                 29, // partitionTabletId

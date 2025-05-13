@@ -476,10 +476,6 @@ private:
     bool SendBootExternalRequest(
         const NActors::TActorContext& ctx,
         TPartitionInfo& partition);
-    void SendPartBootExternalToStatsService(
-        const NActors::TActorContext& ctx,
-        ui64 partTabletId,
-        const TVector<NKikimr::TTabletChannelInfo>& channels);
 
     void ScheduleRetryStartPartition(
         const NActors::TActorContext& ctx,

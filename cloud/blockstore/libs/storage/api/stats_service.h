@@ -80,16 +80,16 @@ struct TEvStatsService
     };
 
     //
-    // PartBootExternal notification
+    // PartitionBootExternalCompleted notification
     //
 
-    struct TPartBootExternal
+    struct TPartitionBootExternalCompleted
     {
         const TString DiskId;
         const ui64 PartitionTabletId;
         TVector<NKikimr::TTabletChannelInfo> ChannelInfos;
 
-        TPartBootExternal(
+        TPartitionBootExternalCompleted(
                 TString diskId,
                 ui64 partitionTabletId,
                 TVector<NKikimr::TTabletChannelInfo> channelInfos)
@@ -207,7 +207,7 @@ struct TEvStatsService
         EvRegisterVolume,
         EvUnregisterVolume,
         EvVolumeConfigUpdated,
-        EvPartBootExternal,
+        EvPartitionBootExternalCompleted,
         EvVolumePartCounters,
         EvVolumeSelfCounters,
         EvGetVolumeStatsRequest,
@@ -236,9 +236,9 @@ struct TEvStatsService
         EvVolumeConfigUpdated
     >;
 
-    using TEvPartBootExternal = TRequestEvent<
-        TPartBootExternal,
-        EvPartBootExternal
+    using TEvPartitionBootExternalCompleted = TRequestEvent<
+        TPartitionBootExternalCompleted,
+        EvPartitionBootExternalCompleted
     >;
 
     using TEvVolumePartCounters = TRequestEvent<
