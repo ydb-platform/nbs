@@ -6,10 +6,6 @@ on:
     - cron: "5,20,35,50 * * * *"
   workflow_dispatch:
 
-concurrency:
-  group: 'populate-vms-schedule'
-  cancel-in-progress: false
-
 jobs:
   light:
     name: Populate light VMs
