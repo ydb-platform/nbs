@@ -153,7 +153,7 @@ async def main():
 
         runner = next((r for r in runners if r.name == vm_id), None)
         logger.info(
-            "Runner %s found: %s (id: %s, status: %s, busy: %s, )",
+            "Runner %s found: %s (id: %s, status: %s, busy: %s)",
             vm_id,
             runner,
             runner.id if runner else "N/A",
