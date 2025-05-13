@@ -2,8 +2,8 @@ name: Scheduled maintaning of VMs count
 run-name: ${{ format('Scheduled maintaning of VMs count ({0})', github.event_name) }}
       
 on:
-  schedule:
-    - cron: "5,20,35,50 * * * *"
+#   schedule:
+#     - cron: "5,20,35,50 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -12,7 +12,7 @@ jobs:
     uses: ./.github/workflows/populate.yaml
     secrets: inherit
     with:
-      max_vms_to_create: 3
+      max_vms_to_create: 1
       vms_ttl: 3600
       flavor: light
   heavy:
@@ -20,6 +20,6 @@ jobs:
     uses: ./.github/workflows/populate.yaml
     secrets: inherit
     with:
-      max_vms_to_create: 5
+      max_vms_to_create: 1
       vms_ttl: 3600
       flavor: heavy
