@@ -40,7 +40,7 @@ on:
         default: 'light'
 
 concurrency:
-  group: 'populate-vms-${{ github.event.inputs.flavor }}'
+  group: 'populate-vms-${{ inputs.flavor }}'
   
 
 env:
