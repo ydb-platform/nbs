@@ -289,6 +289,7 @@ TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
+        ui32 replicaIndex,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,
@@ -298,6 +299,7 @@ TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
     , Migrations(std::move(migrations))
+    , ReplicaIndex(replicaIndex)
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , RwClientId(std::move(rwClientId))
@@ -746,17 +748,11 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
         std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
             msg->LaggingAgent));
 
-    const auto& laggingAgentId = msg->LaggingAgent.GetAgentId();
-
-    bool dependsOnLaggingAgent = AnyOf(
-        PartConfig->GetDevices(),
-        [laggingAgentId](const NProto::TDeviceConfig& device) -> bool
-        { return device.GetAgentId() == laggingAgentId; });
-
-    if (!dependsOnLaggingAgent) {
+    if (ReplicaIndex != msg->LaggingAgent.GetReplicaIndex()) {
         return;
     }
 
+    const auto& laggingAgentId = msg->LaggingAgent.GetAgentId();
     if (TAgentState* state = AgentState.FindPtr(laggingAgentId);
         state && state->State == EAgentState::Unavailable)
     {

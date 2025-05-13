@@ -421,6 +421,7 @@ struct TTestEnv
                     CreateDiagnosticsConfig(),
                     PartConfig->Fork(GetReplicaDevices(replicaIndex)),
                     Migrations,
+                    replicaIndex,
                     CreateProfileLogStub(),
                     CreateBlockDigestGeneratorStub(),
                     "",   // rwClientId

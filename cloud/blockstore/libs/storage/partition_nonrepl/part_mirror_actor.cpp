@@ -589,6 +589,7 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
                 DiagnosticsConfig,
                 replicaInfo.Config,
                 replicaInfo.Migrations,
+                replicaIndex,
                 ProfileLog,
                 BlockDigestGenerator,
                 State.GetRWClientId(),
