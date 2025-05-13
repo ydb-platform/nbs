@@ -119,7 +119,7 @@ async def main():
         labels = instance.metadata.labels
         logger.info(
             "Instance labels: %s, instance state: %s",
-            json.dumps(labels),
+            ",".join([f"{k}={v}" for k, v in labels.items()]),
             instance.status.state.name,
         )
 
