@@ -42,7 +42,7 @@ func getAndCheckDependencyTask(
 		t,
 		task.TaskType,
 		taskType,
-		"External task has invalid type, operationID=%s, expectedType=%s, actualType=%s",
+		"Dependency task has invalid type, operationID=%s, expectedType=%s, actualType=%s",
 		operationID,
 		taskType,
 		task.TaskType,
