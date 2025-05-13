@@ -67,6 +67,13 @@ async def main():
         default=1,
         help="Minimum number of idle VMs to maintain before creating more",
     )
+    parser.add_argument(
+        "--extra-vm-if-needed",
+        type=int,
+        default=1,
+        help="Number of additional VMs to create when max already reached but still below hard limit",
+    )
+
     args = parser.parse_args()
     logger.info("Parsed arguments: %s", args)
 
