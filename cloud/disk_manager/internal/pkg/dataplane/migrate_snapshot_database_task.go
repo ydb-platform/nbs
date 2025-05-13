@@ -39,6 +39,7 @@ func (m migrateSnapshotDatabaseTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
 	// WARNING: we expect the destination database to be empty and not
 	// attached to any other disk-manager instance as a main storage
 	subregistry := m.registry.WithTags(map[string]string{
