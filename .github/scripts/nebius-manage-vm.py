@@ -209,7 +209,8 @@ until [ $exit_code -eq 0 ] || [ $i -gt 3 ]; do
     [ $exit_code -eq 0 ] || find /actions-runner -name *.log -print -exec cat {{}} \; # noqa: W605
 done
 # exit code 0 to skip the error and to boot vm correctly
-./run.sh || exit 0
+./svc.sh install
+./svc.sh start
 """
 
     cloud_init = {
