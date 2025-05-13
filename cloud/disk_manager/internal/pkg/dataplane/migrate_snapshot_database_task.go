@@ -3,7 +3,6 @@ package dataplane
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -52,11 +51,8 @@ func (m migrateSnapshotDatabaseTask) Run(
 		// are created by disabling snapshot creation tasks.
 		// Disabling snapshot creation is error-prone, thus we should perform
 		// it manually by disabling respective tasks in config.
-		inflightSnapshotsCount := m.config.GetMigratingSnapshotsInflightLimit()
-		taskTimeout, err := time.ParseDuration(m.config.GetSnapshotMigrationTimeout())
-		if err != nil {
-			return err
-		}
+		cfg := m.config
+		inflightSnapshotsLimit := int(cfg.GetMigratingSnapshotsInflightLimit())
 
 		srcSnapshots, err := m.srcStorage.ListAllSnapshots(ctx)
 		if err != nil {
@@ -90,22 +86,22 @@ func (m migrateSnapshotDatabaseTask) Run(
 			}
 
 			m.state.InflightTaskIDs = append(m.state.InflightTaskIDs, taskID)
-			inflightTasksLimitReached := len(m.state.InflightTaskIDs) == int(inflightSnapshotsCount)
+			tasksCount := len(m.state.InflightTaskIDs)
+			inflightTasksLimitReached := tasksCount == inflightSnapshotsLimit
 			if !inflightTasksLimitReached && snapshotsToProcessCount != 1 {
 				snapshotsToProcessCount--
 				continue
 			}
 
-			finishedTaskIDs, err := m.scheduler.WaitAnyTasksWithTimeout(
+			finishedTaskIDs, err := m.scheduler.WaitAnyTasks(
 				ctx,
 				m.state.InflightTaskIDs,
-				taskTimeout,
 			)
 			if err != nil {
 				return err
 			}
 
-			unfinishedTaskIDs := make([]string, len(m.state.InflightTaskIDs))
+			unfinishedTaskIDs := make([]string, tasksCount)
 			for _, inflightTaskID := range m.state.InflightTaskIDs {
 				if !common.Find(finishedTaskIDs, inflightTaskID) {
 					unfinishedTaskIDs = append(

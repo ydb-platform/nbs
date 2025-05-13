@@ -78,17 +78,6 @@ func (s *SchedulerMock) WaitAnyTasks(
 	return res, args.Error(1)
 }
 
-func (s *SchedulerMock) WaitAnyTasksWithTimeout(
-	ctx context.Context,
-	taskIDs []string,
-	timeout time.Duration,
-) ([]string, error) {
-
-	args := s.Called(ctx, taskIDs, timeout)
-	res, _ := args.Get(0).([]string)
-	return res, args.Error(1)
-}
-
 func (s *SchedulerMock) WaitTaskEnded(
 	ctx context.Context,
 	taskID string,
