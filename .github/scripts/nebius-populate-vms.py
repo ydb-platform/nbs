@@ -72,13 +72,17 @@ async def main():
     repo = github.get_repo(f"{args.github_repo_owner}/{args.github_repo}")
     instance_client = InstanceServiceClient(sdk)
 
+    instances = []
     try:
-        logger.info("Listing instances from Nebius...")
+        logger.info("Listing instances from Nebius (with pagination)...")
         async with sdk:
-            response = await instance_client.list(
-                ListInstancesRequest(parent_id=args.parent_id)
-            )
-        instances = response.instances
+            request = ListInstancesRequest(parent_id=args.parent_id)
+            while True:
+                response = await instance_client.list(request)
+                instances.extend(response.items)
+                if not response.next_page_token:
+                    break
+                request.page_token = response.next_page_token
     except RequestError as err:
         logger.error("Failed to fetch instances from Nebius: %s", err)
         github_output("RUNNING_VMS_COUNT", "0")
