@@ -2,8 +2,6 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 
-#include <ranges>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
