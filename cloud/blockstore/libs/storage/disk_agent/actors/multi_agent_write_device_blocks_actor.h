@@ -33,7 +33,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    bool IsAllResponsesHaveBeenReceived() const;
+    bool AllResponsesHaveBeenReceived() const;
 
     void ReplyAndDie(const NActors::TActorContext& ctx, NProto::TError error);
 

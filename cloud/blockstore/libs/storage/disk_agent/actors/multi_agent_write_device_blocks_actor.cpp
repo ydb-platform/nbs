@@ -91,7 +91,7 @@ void TMultiAgentWriteDeviceBlocksActor::Bootstrap(const TActorContext& ctx)
     }
 }
 
-bool TMultiAgentWriteDeviceBlocksActor::IsAllResponsesHaveBeenReceived() const
+bool TMultiAgentWriteDeviceBlocksActor::AllResponsesHaveBeenReceived() const
 {
     return AllOf(
         Responses,
@@ -134,7 +134,7 @@ void TMultiAgentWriteDeviceBlocksActor::HandleWriteBlocksResponse(
         return;
     }
 
-    if (IsAllResponsesHaveBeenReceived()) {
+    if (AllResponsesHaveBeenReceived()) {
         ReplyAndDie(ctx, MakeError(S_OK));
     }
 }
@@ -173,7 +173,7 @@ void TMultiAgentWriteDeviceBlocksActor::HandleTimeout(
         TStringBuilder() << "Subrequest #" << requestId << " timeout "
                          << FormatDuration(timeout));
 
-    if (!IsAllResponsesHaveBeenReceived()) {
+    if (!AllResponsesHaveBeenReceived()) {
         // Not all responses have been received, continue to wait.
         return;
     }

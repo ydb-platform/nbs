@@ -20,20 +20,16 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The time required to receive a response from the DiskAgent through which the
-// request was executed.
-constexpr auto NetworkForwardingTimeout = TDuration::MilliSeconds(100);
-
-////////////////////////////////////////////////////////////////////////////////
-
-TDuration CalcOverallTimeout(const NProto::TMultiAgentWriteRequest& request)
+TDuration CalcOverallTimeout(
+    const NProto::TMultiAgentWriteRequest& request,
+    TDuration networkForwardingTimeout)
 {
     TDuration maxRequestTimeout;
     for (const auto& deviceInfo: request.DevicesAndRanges) {
         maxRequestTimeout = Max(maxRequestTimeout, deviceInfo.RequestTimeout);
     }
 
-    return maxRequestTimeout + NetworkForwardingTimeout;
+    return maxRequestTimeout + networkForwardingTimeout;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -296,7 +292,8 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         return;
     }
 
-    timeoutPolicy.Timeout = CalcOverallTimeout(msg->Record);
+    timeoutPolicy.Timeout =
+        CalcOverallTimeout(msg->Record, Config->GetNetworkForwardingTimeout());
 
     auto actorId = NCloud::Register<TDiskAgentMultiWriteActor>(
         ctx,
