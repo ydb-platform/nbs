@@ -9,6 +9,7 @@ from nebius.api.nebius.compute.v1 import InstanceServiceClient, ListInstancesReq
 from nebius.aio.service_error import RequestError
 from .helpers import setup_logger, github_output
 
+RUNNING = InstanceServiceClient.Status.State.RUNNING
 logger = setup_logger()
 
 
@@ -61,6 +62,7 @@ async def main():
         help="Hard cap on total number of VMs allowed",
     )
     args = parser.parse_args()
+    logger.info("Parsed arguments: %s", args)
 
     github_token = os.environ.get("GITHUB_TOKEN")
     if not github_token:
@@ -100,19 +102,48 @@ async def main():
         logger.info("Processing instance %s", instance.metadata.name)
         labels = instance.metadata.labels
         logger.info("Instance labels: %s", labels)
+
         logger.info(
-            "Instance condition: repo: %s, owner: %s, runner-flavor: %s, status: %s",
-            labels.get("repo", "") == args.github_repo,
-            labels.get("owner", "") == args.github_repo_owner,
-            labels.get("runner-flavor", "") == args.flavor,
-            instance.status.state == "RUNNING",
+            "Owner: %s == %s = %s",
+            labels.get("owner"),
+            args.github_repo_owner,
+            labels.get("owner") == args.github_repo_owner,
         )
-        if not (
+        logger.info(
+            "Repo: %s == %s = %s",
+            labels.get("repo"),
+            args.github_repo,
+            labels.get("repo") == args.github_repo,
+        )
+        logger.info(
+            "Flavor: %s == %s = %s",
+            labels.get("runner-flavor"),
+            args.flavor,
+            labels.get("runner-flavor") == args.flavor,
+        )
+        logger.info(
+            "Status: %s == %s = %s",
+            instance.status.state,
+            RUNNING,
+            instance.status.state == RUNNING,
+        )
+
+        condition = (
             labels.get("repo", "") == args.github_repo
             and labels.get("owner", "") == args.github_repo_owner  # noqa: W503
             and labels.get("runner-flavor", "") == args.flavor  # noqa: W503
-            and instance.status.state == "RUNNING"  # noqa: W503
-        ):
+            and instance.status.state == RUNNING  # noqa: W503
+        )
+        logger.info(
+            "Instance condition: repo: %s, owner: %s, runner-flavor: %s, status: %s overall: %s, not: %s",
+            labels.get("repo", "") == args.github_repo,
+            labels.get("owner", "") == args.github_repo_owner,
+            labels.get("runner-flavor", "") == args.flavor,
+            instance.status.state == RUNNING,
+            condition,
+            not condition,
+        )
+        if not condition:
             logger.info(
                 "Instance %s does not match criteria, skipping", instance.metadata.name
             )
