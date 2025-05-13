@@ -89,6 +89,7 @@ void TServiceActor::HandleExecuteAction(
         {"getstorageconfig",                  &TServiceActor::CreateGetStorageConfigActor                  },
         {"backuppathdescriptions",            &TServiceActor::CreateBackupPathDescriptionsActor            },
         {"backuptabletbootinfos",             &TServiceActor::CreateBackupTabletBootInfosActor             },
+        {"getcapacity",                       &TServiceActor::CreateGetCapacityActor                       },
     };
 
     NProto::TError error;
