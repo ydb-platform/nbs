@@ -161,7 +161,14 @@ async def main():
 
         if age > args.vms_older_than:
             runner = next((r for r in runners if r.name == vm_id), None)
-            logger.info("Runner %s found: %s", vm_id, runner)
+            logger.info(
+                "Runner %s found: %s (id: %s, status: %s, busy: %s, )",
+                vm_id,
+                runner,
+                runner.id if runner else "N/A",
+                runner.status if runner else "N/A",
+                runner.busy if runner else "N/A",
+            )
             if runner and not runner.busy:
                 logger.info("Marking VM %s as idle and eligible for removal", vm_name)
                 vms_to_remove.append(vm_id)
