@@ -119,7 +119,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     } else {
         if (Request.GetCalculateChecksums()) {
             TBlockChecksum blockChecksum;
-            for (ui64 offset = 0, ui64 i = 0; i < Request.GetBlocksCount();
+            for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
                  offset += BlockSize, ++i)
             {
                 auto* data = Buffer.Get().data() + offset;
