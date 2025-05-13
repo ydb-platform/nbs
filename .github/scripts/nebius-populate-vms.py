@@ -181,11 +181,20 @@ async def main():
     to_create = args.max_vms_to_create - available_after_removal
 
     total_if_created = running_count + to_create - remove_count
+    logger.info(
+        "Total VMs if created: %d (running: %d, to create: %d, to remove: %d)",
+        total_if_created,
+        running_count,
+        to_create,
+        remove_count,
+    )
     if total_if_created > args.maximum_amount_of_vms_to_have:
         to_create = max(
             0, args.maximum_amount_of_vms_to_have - running_count + remove_count
         )
         logger.info("Capping creation to avoid exceeding maximum VM count")
+    else:
+        logger.info("No cap on VM creation needed")
 
     vms_to_create = (
         [
