@@ -7,11 +7,11 @@
 
 #include <library/cpp/json/json_writer.h>
 
+#include <contrib/ydb/core/sys_view/common/events.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
-#include <contrib/ydb/library/actors/interconnect/interconnect.h>
 #include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -26,11 +26,24 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NPrivateProto::TClusterCapacityInfo ToResponse(
+    const NProto::TClusterCapacityInfo& capacityInfo) {
+    NPrivateProto::TClusterCapacityInfo info;
+    info.SetFree(capacityInfo.GetFree());
+    info.SetTotal(capacityInfo.GetTotal());
+    info.SetKind(capacityInfo.GetKind());
+
+    return info;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TGetCapacityActor final
     : public TActorBootstrapped<TGetCapacityActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
+    TVector<NPrivateProto::TClusterCapacityInfo> Capacities;
 
 public:
     explicit TGetCapacityActor(TRequestInfoPtr requestInfo);
@@ -47,9 +60,14 @@ private:
 
 private:
     STFUNC(StateGetDiskRegistryCapacity);
+    STFUNC(StateGetYDBCapacity);
 
     void HandleDiskRegistyCapacity(
         const TEvDiskRegistry::TEvGetClusterCapacityResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleGetYDBCapacity(
+        const NSysView::TEvSysView::TEvGetStorageStatsResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -69,11 +87,10 @@ void TGetCapacityActor::Bootstrap(const TActorContext& ctx)
         TBlockStoreComponents::SERVICE,
         "Sending get nameservice config request");
 
-    // NCloud::Send(
-    //     ctx,
-    //     GetNameserviceActorId(),
-    //     std::make_unique<TEvInterconnect::TEvListNodes>(
-    //         /*SubscribeToStaticNodeChanges=*/false));
+    NCloud::Send(
+        ctx,
+        MakeDiskRegistryProxyServiceId(),
+        std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityRequest>());
 }
 
 void TGetCapacityActor::ReplyAndDie(
@@ -102,7 +119,7 @@ void TGetCapacityActor::HandleSuccess(
 void TGetCapacityActor::HandleEmptyList(const TActorContext& ctx)
 {
     NProto::TError error;
-    error.SetMessage("Nameserivce config is empty.");
+    error.SetMessage("Got empty capacity response from .");
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
         std::move(error));
     ReplyAndDie(ctx, std::move(response));
@@ -128,14 +145,70 @@ void TGetCapacityActor::HandleDiskRegistyCapacity(
         return;
     }
 
-    NPrivateProto::TGetClusterCapacityResponse result;
     for (const NProto::TClusterCapacityInfo& capacityInfo: msg->Record.GetCapacity()) {
-
-        NPrivateProto::TClusterCapacityInfo info;
-        info.SetFree(capacityInfo.GetFree());
-        auto* capacity = result.AddCapacity();
-        *capacity = std::move(info);
+        NPrivateProto::TClusterCapacityInfo capacity = ToResponse(capacityInfo);
+        Capacities.push_back(std::move(capacity));
     }
+
+    Become(&TThis::StateGetYDBCapacity);
+    NCloud::Send(
+        ctx,
+        MakeBlobStorageProxyID(0),
+        std::make_unique<NSysView::TEvSysView::TEvGetStorageStatsRequest>());
+    // TString output;
+    // google::protobuf::util::MessageToJsonString(result, &output);
+    // HandleSuccess(ctx, output);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TGetCapacityActor::HandleGetYDBCapacity(
+    const NSysView::TEvSysView::TEvGetStorageStatsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (msg->Record.GetEntries().empty()) {
+        HandleEmptyList(ctx);
+    }
+
+    ui64 totalBytesSSD = 0;
+    ui64 freeBytesSSD = 0;
+    ui64 totalBytesHDD = 0;
+    ui64 freeBytesHDD = 0;
+
+    for (auto& entry: msg->Record.GetEntries()) {
+        if (!entry.HasPDiskFilter()) {
+            continue;
+        }
+
+        if (entry.GetPDiskFilter().find("ssd") != TString::npos) {
+            freeBytesSSD += entry.GetCurrentAvailableSize();
+            totalBytesSSD += entry.GetCurrentAllocatedSize();
+        } else if (entry.GetPDiskFilter().find("hdd") != TString::npos) {
+            freeBytesHDD += entry.GetCurrentAvailableSize();
+            totalBytesHDD += entry.GetCurrentAllocatedSize();
+        } else {
+            LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE,
+                "Unknown PDiskFilter for YDB group entry");
+        }
+    }
+
+    auto& ssd_capacity = Capacities.emplace_back();
+    ssd_capacity.SetKind(NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+    ssd_capacity.SetFree(freeBytesSSD);
+    ssd_capacity.SetTotal(totalBytesSSD);
+
+    auto& hdd_capacity = Capacities.emplace_back();
+    hdd_capacity.SetKind(NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
+    hdd_capacity.SetFree(freeBytesHDD);
+    hdd_capacity.SetTotal(totalBytesHDD);
+
+    NPrivateProto::TGetClusterCapacityResponse result;
+    for (auto& capacity: Capacities) {
+        *result.AddCapacity() = std::move(capacity);
+    }
+
     TString output;
     google::protobuf::util::MessageToJsonString(result, &output);
     HandleSuccess(ctx, output);
@@ -147,6 +220,19 @@ STFUNC(TGetCapacityActor::StateGetDiskRegistryCapacity)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvDiskRegistry::TEvGetClusterCapacityResponse, HandleDiskRegistyCapacity);
+
+        default:
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            break;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(TGetCapacityActor::StateGetYDBCapacity)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(NSysView::TEvSysView::TEvGetStorageStatsResponse, HandleGetYDBCapacity);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
