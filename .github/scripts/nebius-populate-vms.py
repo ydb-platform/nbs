@@ -101,23 +101,19 @@ async def main():
         labels = instance.metadata.labels
         logger.info("Instance labels: %s", labels)
         logger.info(
-            "Instance condition: repo: %s", labels.get("repo", "") != args.github_repo
+            "Instance condition: repo: %s, owner: %s, runner-flavor: %s, status: %s",
+            labels.get("repo", "") == args.github_repo,
+            labels.get("owner", "") == args.github_repo_owner,
+            labels.get("runner-flavor", "") == args.flavor,
+            instance.status.state == "RUNNING",
         )
-        logger.info(
-            "Instance condition: owner: %s",
-            labels.get("owner", "") != args.github_repo_owner,
-        )
-        logger.info(
-            "Instance condition: flavor: %s",
-            labels.get("runner-flavor", "") != args.flavor,
-        )
-        logger.info("Instance condition: state: %s", instance.status.state != "RUNNING")
-        if (
-            labels.get("repo", "") != args.github_repo
-            and labels.get("owner", "") != args.github_repo_owner  # noqa: W503
-            and labels.get("runner-flavor", "") != args.flavor  # noqa: W503
-            and instance.status.state != "RUNNING"  # noqa: W503
+        if not (
+            labels.get("repo", "") == args.github_repo
+            and labels.get("owner", "") == args.github_repo_owner  # noqa: W503
+            and labels.get("runner-flavor", "") == args.flavor  # noqa: W503
+            and instance.status.state == "RUNNING"  # noqa: W503
         ):
+            continue
             continue
         logger.info("Instance %s matches criteria", instance.metadata.name)
 
