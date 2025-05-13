@@ -41,6 +41,7 @@ func (t *createExternalFilesystemTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	// External fs creation is currently implemented with a hanging task
 	return errors.NewInterruptExecutionError()
 }
 

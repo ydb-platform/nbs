@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -12,6 +11,45 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func getAndCheckDependencyTask(
+	t *testing.T,
+	ctx context.Context,
+	storage tasks_storage.Storage,
+	operationID string,
+	taskType string,
+) string {
+
+	dependentTask, err := storage.GetTask(ctx, operationID)
+	require.NoError(t, err)
+
+	dependencies := dependentTask.Dependencies.List()
+	require.True(
+		t,
+		len(dependencies) == 1,
+		"Invalid parent task dependencies, operationID=%s, taskType=%s, dependencies=%+v",
+		operationID,
+		taskType,
+		dependencies,
+	)
+
+	task, err := storage.GetTask(ctx, dependencies[0])
+	require.NoError(t, err)
+
+	require.Equal(
+		t,
+		task.TaskType,
+		taskType,
+		"External task has invalid type, operationID=%s, expectedType=%s, actualType=%s",
+		operationID,
+		taskType,
+		task.TaskType,
+	)
+
+	return task.ID
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -57,43 +95,6 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func findExternalTaskId(
-	ctx context.Context,
-	taskStorage tasks_storage.Storage,
-	operationId string,
-	taskType string,
-) (string, error) {
-
-	parentState, err := taskStorage.GetTask(ctx, operationId)
-	if err != nil {
-		return "", err
-	}
-
-	dependenciesList := parentState.Dependencies.List()
-	if len(dependenciesList) == 0 {
-		return "", fmt.Errorf(
-			"Parent task has no dependencies, operationId=%s, taskType=%s",
-			operationId,
-			taskType,
-		)
-	}
-
-	externalTask, err := taskStorage.GetTask(ctx, dependenciesList[0])
-	if err != nil {
-		return "", err
-	}
-
-	if externalTask.TaskType != taskType {
-		return "", fmt.Errorf(
-			"External task has invalid type, operationId=%s, taskType=%s",
-			operationId,
-			taskType,
-		)
-	}
-
-	return externalTask.ID, nil
-}
-
 func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	ctx := testcommon.NewContext()
 
@@ -101,7 +102,7 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	taskStorage, err := testcommon.NewTaskStorage(ctx)
+	storage, err := testcommon.NewTaskStorage(ctx)
 	require.NoError(t, err)
 
 	filesystemID := t.Name()
@@ -122,25 +123,30 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
-	waitOperationWithTimeout := func(
-		msg string,
+	waitOperationOrTimeout := func(
+		errorMesssage string,
 		shouldTimeout bool,
 		timeout time.Duration,
-		opId string,
+		operationID string,
 	) {
 
 		opCtx, _ := context.WithTimeout(ctx, timeout)
-		err = internal_client.WaitOperation(opCtx, client, operation.Id)
+		err = internal_client.WaitOperation(opCtx, client, operationID)
 		if shouldTimeout {
-			require.Error(t, err, msg)
-			require.Contains(t, err.Error(), "context deadline exceeded", msg)
+			require.Error(t, err, errorMesssage)
+			require.Contains(
+				t,
+				err.Error(),
+				"context deadline exceeded",
+				errorMesssage,
+			)
 		} else {
-			require.NoError(t, err, msg)
+			require.NoError(t, err, errorMesssage)
 		}
-
 	}
+
 	// Validate CreateFilesystem task is stuck
-	waitOperationWithTimeout(
+	waitOperationOrTimeout(
 		"CreateFilesystem.1",
 		true, /* should timeout */
 		10*time.Second,
@@ -148,19 +154,19 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	)
 
 	// Force finish CreateExternalFilesystem task
-	externalTaskId, err := findExternalTaskId(
+	externalTaskId := getAndCheckDependencyTask(
+		t,
 		ctx,
-		taskStorage,
+		storage,
 		operation.Id,
 		"filesystem.CreateExternalFilesystem",
 	)
-	require.NoError(t, err)
 
-	err = taskStorage.ForceFinishTask(ctx, externalTaskId)
+	err = storage.ForceFinishTask(ctx, externalTaskId)
 	require.NoError(t, err)
 
 	// Validate CreateFilesystem finish succesfully
-	waitOperationWithTimeout(
+	waitOperationOrTimeout(
 		"CreateFilesystem.2",
 		false, /* should not timeout */
 		60*time.Second,
@@ -179,27 +185,27 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	require.NotEmpty(t, operation)
 
 	// Validate DeleteFilesystem task is stuck
-	waitOperationWithTimeout(
+	waitOperationOrTimeout(
 		"DeleteFilesystem.1",
 		true, /* should timeout */
 		10*time.Second,
 		operation.Id,
 	)
 
-	externalTaskId, err = findExternalTaskId(
+	externalTaskId = getAndCheckDependencyTask(
+		t,
 		ctx,
-		taskStorage,
+		storage,
 		operation.Id,
 		"filesystem.DeleteExternalFilesystem",
 	)
-	require.NoError(t, err)
 
 	// Force finish DeleteExternalFilesystem task
-	err = taskStorage.ForceFinishTask(ctx, externalTaskId)
+	err = storage.ForceFinishTask(ctx, externalTaskId)
 	require.NoError(t, err)
 
 	// Validate DeleteFilesystem finish succesfully
-	waitOperationWithTimeout(
+	waitOperationOrTimeout(
 		"DeleteFilesystem.2",
 		false, /* should not timeout */
 		60*time.Second,
