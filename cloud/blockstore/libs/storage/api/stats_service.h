@@ -1,7 +1,6 @@
 #pragma once
 
 #include "public.h"
-#include "contrib/ydb/core/base/blobstorage.h"
 
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
@@ -10,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/protos/tablet.pb.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
 
