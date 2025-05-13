@@ -111,6 +111,7 @@ async def main():
     runners = list(repo.get_self_hosted_runners())
     vms_to_remove = []
     running_vm_names = []
+    idle_vm_ids = []
     idle_vm_names = []
 
     for instance in instances:
@@ -184,6 +185,7 @@ async def main():
 
         if runner and not runner.busy:
             idle_vm_names.append(vm_name)
+            idle_vm_ids.append(vm_id)
 
         if age > args.vms_older_than:
             if runner and not runner.busy:
@@ -194,8 +196,7 @@ async def main():
 
     running_count = len(running_vm_names)
     idle_count = len(idle_vm_names)
-    remove_count = len(vms_to_remove)
-    available_after_removal = running_count - remove_count
+    available_after_removal = running_count - len(vms_to_remove)
     to_create = 0
 
     if running_count < args.max_vms_to_create:
@@ -219,12 +220,25 @@ async def main():
     else:
         logger.info("VM count already at or above hard limit, no creation allowed")
 
-    total_if_created = running_count + to_create - remove_count
+    total_if_created = running_count + to_create - len(vms_to_remove)
     if total_if_created > args.maximum_amount_of_vms_to_have:
         to_create = max(
-            0, args.maximum_amount_of_vms_to_have - running_count + remove_count
+            0, args.maximum_amount_of_vms_to_have - running_count + len(vms_to_remove)
         )
         logger.info("Capping creation to avoid exceeding maximum VM count")
+
+    # Remove excess idle VMs above max_vms_to_create
+    excess_idle = idle_count - args.max_vms_to_create
+    if excess_idle > 0:
+        logger.info(
+            "Too many idle VMs (%d), removing %d to match max_vms_to_create=%d",
+            idle_count,
+            excess_idle,
+            args.max_vms_to_create,
+        )
+        for vm_id in idle_vm_ids[:excess_idle]:
+            if vm_id not in vms_to_remove:
+                vms_to_remove.append(vm_id)
 
     vms_to_create = (
         [
@@ -236,7 +250,7 @@ async def main():
     )
 
     logger.info("RUNNING_VMS_COUNT=%d", running_count)
-    logger.info("VMS_COUNT_TO_REMOVE=%d", remove_count)
+    logger.info("VMS_COUNT_TO_REMOVE=%d", len(vms_to_remove))
     logger.info("IDLE_VMS_COUNT=%d", idle_count)
     logger.info("MAX_VMS_TO_CREATE=%d", args.max_vms_to_create)
     logger.info("NUMBER_VMS_TO_CREATE=%d", to_create)
