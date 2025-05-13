@@ -451,6 +451,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->WriteBlocksHandler =
@@ -462,12 +463,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetDataPort(port)
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         // mismatched Client/DataClient
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
+            .SetPort(dataPort)
             .BuildClient();
 
         server->Start();
