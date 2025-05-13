@@ -631,9 +631,11 @@ async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name:
 
     except Exception as e:
         logger.exception(
-            "Failed to get Disk with name %s", instance_name, exc_info=True
+            "Failed to get Disk with name %s, response: %s",
+            instance_name,
+            response,
+            exc_info=True,
         )
-        logger.error("Response: %s", response, exc_info=True)
         raise e
 
     await remove_disk_by_id(sdk, args, disk_id)
