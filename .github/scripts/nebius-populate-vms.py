@@ -9,7 +9,7 @@ from nebius.api.nebius.compute.v1 import InstanceServiceClient, ListInstancesReq
 from nebius.aio.service_error import RequestError
 from .helpers import setup_logger, github_output
 
-RUNNING = InstanceServiceClient.Status.State.RUNNING
+
 logger = setup_logger()
 
 
@@ -123,23 +123,23 @@ async def main():
         )
         logger.info(
             "Status: %s == %s = %s",
-            instance.status.state,
-            RUNNING,
-            instance.status.state == RUNNING,
+            instance.status.state.name,
+            "RUNNING",
+            instance.status.state.name == "RUNNING",
         )
 
         condition = (
             labels.get("repo", "") == args.github_repo
             and labels.get("owner", "") == args.github_repo_owner  # noqa: W503
             and labels.get("runner-flavor", "") == args.flavor  # noqa: W503
-            and instance.status.state == RUNNING  # noqa: W503
+            and instance.status.state.name == "RUNNING"  # noqa: W503
         )
         logger.info(
             "Instance condition: repo: %s, owner: %s, runner-flavor: %s, status: %s overall: %s, not: %s",
             labels.get("repo", "") == args.github_repo,
             labels.get("owner", "") == args.github_repo_owner,
             labels.get("runner-flavor", "") == args.flavor,
-            instance.status.state == RUNNING,
+            instance.status.state.name == "RUNNING",
             condition,
             not condition,
         )
