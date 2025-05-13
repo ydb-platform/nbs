@@ -23,3 +23,8 @@ The code style is based on https://go.dev/doc/effective_go and https://github.co
 - Named function result arguments are allowed wherever desired, not only where they add readability to the API
 - Writer functions to channels are not logically separated from Readers in some multithreaded code
 - Mixing receiver arguments in struct methods is allowed
+
+## Linter
+We use [golangci-lint](https://golangci-lint.run/) as a linter. The configuration is in the `.golangci.yml` file in the root of the repository.
+For the specific codestyle we use [nbs-go-lint](github.com/jkuradobery/nbs-go-lint).
+To run the linter locally, use the `run_golangcilint.sh` script in the root of the repository. It uses docker, so make sure you can run docker as a user.
