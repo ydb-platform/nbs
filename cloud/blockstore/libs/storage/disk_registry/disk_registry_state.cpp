@@ -1035,19 +1035,21 @@ auto TDiskRegistryState::RegisterAgent(
             }
 
             AdjustDeviceIfNeeded(d, timestamp);
-            if (r.NewDevices.contains(uuid)) {
+            if (r.NewDeviceIds.contains(uuid)) {
                 SuspendDeviceIfNeeded(db, d);
             }
         }
 
         DeviceList.UpdateDevices(agent, DevicePoolConfigs, r.PrevNodeId);
 
-        for (const auto& uuid: r.NewDevices) {
+        for (const auto& uuid: r.NewDeviceIds) {
             if (!DeviceList.FindDiskId(uuid)) {
                 DeviceList.MarkDeviceAsDirty(uuid);
                 db.UpdateDirtyDevice(uuid, {});
             }
         }
+
+        ReallocateDisksWithLostOrReappearedDevices(db, r, disksToReallocate);
 
         THashSet<TDiskId> diskIds;
 
@@ -1122,6 +1124,74 @@ auto TDiskRegistryState::RegisterAgent(
         .AffectedDisks = std::move(affectedDisks),
         .DisksToReallocate = std::move(disksToReallocate),
         .DevicesToDisableIO = std::move(devicesToDisableIO)};
+}
+
+void TDiskRegistryState::ReallocateDisksWithLostOrReappearedDevices(
+    TDiskRegistryDatabase& db,
+    const TAgentList::TAgentRegistrationResult& r,
+    TVector<TDiskId>& disksToReallocate)
+{
+    const NProto::TAgentConfig& agent = r.Agent;
+    THashSet<TString> disksWithLostOrReappearedDevices;
+    for (const auto& lostDeviceId: r.LostDeviceIds) {
+        auto diskId = DeviceList.FindDiskId(lostDeviceId);
+        if (!diskId) {
+            continue;
+        }
+
+        auto* disk = Disks.FindPtr(diskId);
+        Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
+        if (!disk) {
+            continue;
+        }
+
+        auto [_, inserted] = disk->LostDeviceIds.emplace(lostDeviceId);
+        if (!inserted) {
+            continue;
+        }
+        disksWithLostOrReappearedDevices.emplace(diskId);
+    }
+
+    for (const auto& d: agent.GetDevices()) {
+        const auto& uuid = d.GetDeviceUUID();
+        if (r.LostDeviceIds.contains(uuid)) {
+            continue;
+        }
+
+        auto diskId = DeviceList.FindDiskId(uuid);
+        if (!diskId) {
+            continue;
+        }
+
+        auto* disk = Disks.FindPtr(diskId);
+        Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
+        if (!disk) {
+            continue;
+        }
+
+        if (!disk->LostDeviceIds.erase(uuid)) {
+            continue;
+        }
+
+        disksWithLostOrReappearedDevices.emplace(std::move(diskId));
+    }
+
+    for (const auto& diskId: disksWithLostOrReappearedDevices) {
+        AddReallocateRequest(db, diskId);
+        disksToReallocate.emplace_back(diskId);
+    }
+}
+
+auto TDiskRegistryState::GetLostDevicesForDisk(const TString& diskId) const
+    -> THashSet<TDeviceId>
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
+    if (!disk) {
+        return {};
+    }
+
+    return disk->LostDeviceIds;
 }
 
 NProto::TError TDiskRegistryState::UnregisterAgent(

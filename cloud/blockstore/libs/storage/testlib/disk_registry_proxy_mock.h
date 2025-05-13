@@ -325,6 +325,17 @@ private:
             response->Record.SetMuteIOErrors(disk.MuteIOErrors);
         }
 
+        for (const auto& lostDevice: State->LostDeviceUUIDs) {
+            bool belongsToDisk = AnyOf(
+                disk.Devices,
+                [&](const auto& diskDevice)
+                { return diskDevice.GetDeviceUUID() == lostDevice; });
+
+            if (belongsToDisk) {
+                response->Record.AddLostDeviceUUIDs(lostDevice);
+            }
+        }
+
        return response;
     }
 

@@ -259,6 +259,12 @@ void TDiskRegistryActor::CompleteAddDisk(
         response->Record.SetIOMode(args.IOMode);
         response->Record.SetIOModeTs(args.IOModeTs.MicroSeconds());
         response->Record.SetMuteIOErrors(args.MuteIOErrors);
+
+        auto lostDevicesForDisk = State->GetLostDevicesForDisk(args.DiskId);
+
+        response->Record.MutableLostDeviceUUIDs()->Add(
+            std::make_move_iterator(lostDevicesForDisk.begin()),
+            std::make_move_iterator(lostDevicesForDisk.end()));
     }
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
