@@ -113,8 +113,11 @@ async def main():
             and labels.get("runner-flavor", "") == args.flavor  # noqa: W503
             and instance.status.state == "RUNNING"  # noqa: W503
         ):
+            logger.info(
+                "Instance %s does not match criteria, skipping", instance.metadata.name
+            )
             continue
-            continue
+
         logger.info("Instance %s matches criteria", instance.metadata.name)
 
         vm_name = instance.metadata.name
