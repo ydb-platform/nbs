@@ -16,7 +16,7 @@ from github import Github
 
 from nebius.sdk import SDK
 from nebius.aio.service_error import RequestError
-from nebius.api.nebius.common.v1 import ResourceMetadata
+from nebius.api.nebius.common.v1 import ResourceMetadata, GetByNameRequest
 from nebius.api.nebius.compute.v1 import (
     DiskServiceClient,
     DiskSpec,
@@ -32,7 +32,6 @@ from nebius.api.nebius.compute.v1 import (
     GetInstanceRequest,
     DeleteInstanceRequest,
     DeleteDiskRequest,
-    ListDisksRequest,
     ExistingDisk,
 )
 
@@ -619,22 +618,12 @@ async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name:
     disk_id = None
     service = DiskServiceClient(sdk)
     try:
-        result = []
-        request = ListDisksRequest(parent_id=args.parent_id)
-        while True:
-            response = await service.list(request)
-            result.extend(response.items)
-            if not response.next_page_token:
-                break
-            request.page_token = response.next_page_token
-
-        for disk in result:
-            if disk.metadata.name == DISK_NAME_PREFIX + instance_name:
-                disk_id = disk.metadata.id
-                break
-
+        request = GetByNameRequest(
+            parent_id=args.parent_id, name=DISK_NAME_PREFIX + instance_name
+        )
+        response = await service.get_by_name(request)
+        disk_id = response.metadata.id
         if disk_id is None:
-            logger.info("Response: %s", result)
             logger.error(
                 "Failed to find disk with name %s", DISK_NAME_PREFIX + instance_name
             )
@@ -644,7 +633,7 @@ async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name:
         logger.exception(
             "Failed to get Disk with name %s", instance_name, exc_info=True
         )
-        logger.error("Response: %s", result, exc_info=True)
+        logger.error("Response: %s", response, exc_info=True)
         raise e
 
     await remove_disk_by_id(sdk, args, disk_id)
