@@ -42,6 +42,7 @@ func (t *deleteExternalFilesystemTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	// External fs deletion is currently implemented with a hanging task
 	return errors.NewInterruptExecutionError()
 }
 
