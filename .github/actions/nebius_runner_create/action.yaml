@@ -109,7 +109,8 @@ runs:
       id: create-vm
       shell: bash
       run: |
-        python3 .github/scripts/nebius-manage-vm.py create ${ORG} ${TEAM} ${VM_ALLOW_DOWNGRADE} \
+        export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+        python3 -m scripts.nebius-manage-vm create ${ORG} ${TEAM} ${VM_ALLOW_DOWNGRADE} \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \

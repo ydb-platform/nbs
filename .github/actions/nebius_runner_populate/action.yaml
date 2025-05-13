@@ -52,7 +52,8 @@ runs:
       shell: bash
       id: populate
       run: |
-        python3 .github/scripts/nebius-populate-vms.py \
+        export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+        python3 -m scripts.nebius-populate-vms \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
           --github-repo-owner "${OWNER}" \
           --github-repo "${REPO}" \
