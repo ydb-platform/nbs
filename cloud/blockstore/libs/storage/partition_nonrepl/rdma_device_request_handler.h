@@ -111,8 +111,7 @@ public:
 
         ProcessError(*ActorSystem, *PartConfig, Error);
 
-        auto completion =
-            static_cast<const TDerived*>(this)->CreateCompletionEvent();
+        auto completion = static_cast<TDerived*>(this)->CreateCompletionEvent();
         auto completionEvent = std::make_unique<NActors::IEventHandle>(
             ParentActorId,
             NActors::TActorId(),
