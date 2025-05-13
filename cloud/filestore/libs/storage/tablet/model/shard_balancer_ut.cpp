@@ -188,7 +188,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             {5_TB / 4_KB, 3_TB / 4_KB, 0, 0},
         });
 
-        // 1_TiB can fit in any shard
+        // 1 TiB can fit in any shard
 
         ASSERT_NO_SB_ERROR(1_TB, "s1");
         ASSERT_NO_SB_ERROR(1_TB, "s3");
@@ -201,19 +201,19 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         ASSERT_NO_SB_ERROR(1_TB, "s2");
         ASSERT_NO_SB_ERROR(1_TB, "s5");
 
-        // 3_TiB can fit in s1, s3, s4
-        // but s1 is selected because it has >= 1_TiB reserve
+        // 3 TiB can fit in s1, s3, s4
+        // but s1 is selected because it has >= 1 TiB reserve
 
         ASSERT_NO_SB_ERROR(3_TB, "s1");
 
-        // 3_TiB + 600_GiB can't fit with a 1_TiB reserve but can physically
+        // 3 TiB + 600 GiB can't fit with a 1 TiB reserve but can physically
         // fit in s1, s3, s4
 
         ASSERT_NO_SB_ERROR(3_TB + 600_GB, "s3");
         ASSERT_NO_SB_ERROR(3_TB + 600_GB, "s4");
         ASSERT_NO_SB_ERROR(3_TB + 600_GB, "s1");
 
-        // 4_TiB + 512_GiB can't fit at all
+        // 4 TiB + 512 GiB can't fit at all
 
         ASSERT_SB_ERROR(4_TB + 512_GB, E_FS_NOSPC);
         ASSERT_SB_ERROR(4_TB + 512_GB, E_FS_NOSPC);
@@ -229,7 +229,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             {"s1", "s2", "s3", "s4", "s5"});
         const ui64 shardCount = 5;
 
-        // 1_TiB can fit in any shard
+        // 1 TiB can fit in any shard
 
         const ui64 iterations = 5000;
         // After 5000 random samples we expect each of five shards to be
@@ -263,7 +263,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
         });
 
-        // 1_TiB can now fit only in s1 or s2
+        // 1 TiB can now fit only in s1 or s2
         hitCount.clear();
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
@@ -292,7 +292,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             {"s1", "s2", "s3", "s4", "s5"});
         const ui64 shardCount = 5;
 
-        // 1_TiB can fit in any shard
+        // 1 TiB can fit in any shard
 
         const ui64 iterations = 5000;
         // After 5000 random samples we expect each of five shards to be
@@ -354,7 +354,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             }
         }
 
-        // If we fill up all the shards with less than 1_TiB left it should not
+        // If we fill up all the shards with less than 1 TiB left it should not
         // be possible to select any shard
         balancer.UpdateShardStats(
             TVector<TShardStats>(
@@ -373,8 +373,8 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         const auto error = balancer.SelectShard(500_GB, &shardId);
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
-        // For a situation where in every shard there is less than 1_TiB left, we
-        // should disregard additional 1_TiB reserve
+        // For a situation where in every shard there is less than 1 TiB left,
+        // we should disregard additional 1 TiB reserve
         balancer.UpdateShardStats({
             {5_TB / 4_KB, (5_TB - 1_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 2_GB) / 4_KB, 0, 0},
@@ -382,8 +382,8 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             {5_TB / 4_KB, (5_TB - 4_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 5_GB) / 4_KB, 0, 0},
         });
-        // Trying to allocate 3_GiB should result in s3, s4, s5 being selected in
-        // a 3:4:5 ratio
+        // Trying to allocate 3 GiB should result in s3, s4, s5 being selected
+        // in a 3:4:5 ratio
         hitCount.clear();
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
@@ -409,7 +409,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
                 UNIT_ASSERT_LE(count, (iterations * 5) / 12 + rangeToleration);
             }
         }
-        // For 5_GiB file though it should be possible to select only s5
+        // For 5 GiB file though it should be possible to select only s5
         shardId.clear();
         for (ui64 i = 0; i < iterations; ++i) {
             const auto error = balancer.SelectShard(5_GB, &shardId);
@@ -420,7 +420,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             UNIT_ASSERT_VALUES_EQUAL("s5", shardId);
         }
 
-        // For 6_GiB file it should not be possible to select any shard
+        // For 6 GiB file it should not be possible to select any shard
         for (ui64 i = 0; i < iterations; ++i) {
             const auto error = balancer.SelectShard(6_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
