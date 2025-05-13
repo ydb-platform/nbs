@@ -619,13 +619,22 @@ async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name:
     disk_id = None
     service = DiskServiceClient(sdk)
     try:
-        result = await service.list(ListDisksRequest(parent_id=args.parent_id))
-        for disk in result.items:
+        result = []
+        request = ListDisksRequest(parent_id=args.parent_id)
+        while True:
+            response = await service.list(request)
+            result.extend(response.items)
+            if not response.next_page_token:
+                break
+            request.page_token = response.next_page_token
+
+        for disk in result:
             if disk.metadata.name == DISK_NAME_PREFIX + instance_name:
                 disk_id = disk.metadata.id
                 break
 
         if disk_id is None:
+            logger.info("Response: %s", result)
             logger.error(
                 "Failed to find disk with name %s", DISK_NAME_PREFIX + instance_name
             )
