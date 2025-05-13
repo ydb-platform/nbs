@@ -41,7 +41,9 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 
     auto sgList = Buffer.GetGuardedSgList();
     auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
-    Y_ABORT_UNLESS(!HasError(sgListOrError));
+    if (HasError(sgListOrError)) {
+        ReplyAndDie(ctx, sgListOrError.GetError());
+    }
     SgList.SetSgList(sgListOrError.ExtractResult());
 
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
