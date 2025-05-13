@@ -90,13 +90,28 @@ async def main():
         github_output("VMS_TO_CREATE", "[]")
         github_output("DATE", str(now_ts))
         return
-
+    logger.info("Fetched %d instances", len(instances))
+    logger.info("Instances: %s", instances)
     runners = list(repo.get_self_hosted_runners())
     vms_to_remove = []
     running_vm_names = []
 
     for instance in instances:
+        logger.info("Processing instance %s", instance.metadata.name)
         labels = instance.metadata.labels
+        logger.info("Instance labels: %s", labels)
+        logger.info(
+            "Instance condition: repo: %s", labels.get("repo", "") != args.github_repo
+        )
+        logger.info(
+            "Instance condition: owner: %s",
+            labels.get("owner", "") != args.github_repo_owner,
+        )
+        logger.info(
+            "Instance condition: flavor: %s",
+            labels.get("runner-flavor", "") != args.flavor,
+        )
+        logger.info("Instance condition: state: %s", instance.status.state != "RUNNING")
         if (
             labels.get("repo", "") != args.github_repo
             or labels.get("owner", "") != args.github_repo_owner  # noqa: W503
@@ -104,6 +119,7 @@ async def main():
             or instance.status.state != "RUNNING"  # noqa: W503
         ):
             continue
+        logger.info("Instance %s matches criteria", instance.metadata.name)
 
         vm_name = instance.metadata.name
         vm_id = instance.metadata.id
