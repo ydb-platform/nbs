@@ -132,7 +132,7 @@ message TStorageStats
     uint64 LastCollectCommitId = 112;
     uint64 DeletedFreshBytesCount = 113;
     uint64 LargeDeletionMarkersCount = 114;
-    uint64 FreshBytesEntriesCount = 115;
+    uint64 FreshBytesItemCount = 115;
 
     // channel stats
     uint64 TabletChannelCount = 1000;

@@ -597,5 +597,8 @@ message TStorageConfig
 
     // The amount of data entries in the fresh bytes table that triggers
     // flushing
-    optional uint32 FlushBytesEntriesThreshold = 429;
+    optional uint32 FlushBytesItemCountThreshold = 429;
+
+    // Enable triggering FlushBytes by reaching FlushBytesItemCountThreshold
+    optional bool FlushBytesByItemCountEnabled = 430;
 }

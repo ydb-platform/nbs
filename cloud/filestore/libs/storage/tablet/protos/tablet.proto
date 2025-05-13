@@ -82,7 +82,7 @@ message TFileSystemStats
     uint64 AttrsUsedBytesCount = 210;
     uint64 DeletedFreshBytesCount = 211;
     uint64 LargeDeletionMarkersCount = 212;
-    uint64 FreshBytesEntriesCount = 213;
+    uint64 FreshBytesItemCount = 213;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -861,10 +861,10 @@ public:
         ui64 chunkId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
 
-    ui32 GetFreshBytesEntriesCount() const;
+    ui32 GetFreshBytesItemCount() const;
 
 private:
-    void UpdateFreshBytesEntriesCount();
+    void UpdateFreshBytesItemCount();
 
     //
     // FreshBlocks

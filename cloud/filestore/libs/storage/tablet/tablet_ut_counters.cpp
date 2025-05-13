@@ -134,7 +134,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"component", "storage_fs"},
                 {"host", "cluster"},
                 {"filesystem", "test"},
-                {"sensor", "FreshBytesEntriesCount"}}, 0},
+                {"sensor", "FreshBytesItemCount"}}, 0},
             {{
                 {"component", "storage_fs"},
                 {"host", "cluster"},
@@ -744,7 +744,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCounters({
             {{{"sensor", "FreshBytesCount"}, {"filesystem", "test"}}, DefaultBlockSize - 1},
-            {{{"sensor", "FreshBytesEntriesCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "FreshBytesItemCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "FreshBlocksCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "MixedBlobsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "CMMixedBlobsCount"}, {"filesystem", "test"}}, 1},
