@@ -541,24 +541,37 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    const auto& laggingAgentId = msg->LaggingAgent.GetAgentId();
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Agent %s has become unavailable",
         PartConfig->GetName().c_str(),
-        msg->LaggingAgent.GetAgentId().Quote().c_str());
+        laggingAgentId.Quote().c_str());
 
+    TSet<ui32> laggingRows;
     for (const auto& laggingDevice: msg->LaggingAgent.GetDevices()) {
         Y_DEBUG_ABORT_UNLESS(DeviceStats.size() > laggingDevice.GetRowIndex());
-        DeviceStats[laggingDevice.GetRowIndex()].DeviceStatus =
-            EDeviceStatus::Unavailable;
+        Y_DEBUG_ABORT_UNLESS(
+            static_cast<ui32>(PartConfig->GetDevices().size()) >
+            laggingDevice.GetRowIndex());
+
+        laggingRows.insert(laggingDevice.GetRowIndex());
+        const auto& rowAgentId =
+            PartConfig->GetDevices()[laggingDevice.GetRowIndex()].GetAgentId();
+
+        if (rowAgentId == laggingAgentId) {
+            DeviceStats[laggingDevice.GetRowIndex()].DeviceStatus =
+                EDeviceStatus::Unavailable;
+        }
     }
 
+    // Cancel all requests that intersects with the rows of the lagging agent.
     for (const auto& [actorId, requestData]: RequestsInProgress.AllRequests()) {
         for (int deviceIndex: requestData.Value.DeviceIndices) {
-            if (PartConfig->GetDevices()[deviceIndex].GetAgentId() ==
-                msg->LaggingAgent.GetAgentId())
-            {
+            if (laggingRows.contains(deviceIndex)) {
                 NCloud::Send<TEvNonreplPartitionPrivate::TEvCancelRequest>(
                     ctx,
                     actorId,

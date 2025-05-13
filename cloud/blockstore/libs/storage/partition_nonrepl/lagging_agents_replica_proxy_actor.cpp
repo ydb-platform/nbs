@@ -748,7 +748,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
 
     const auto& agentId = msg->LaggingAgent.GetAgentId();
     if (TAgentState* state = AgentState.FindPtr(agentId);
-        state && state->State == EAgentState::Unavailable)
+        !state || state->State == EAgentState::Unavailable)
     {
         return;
     }

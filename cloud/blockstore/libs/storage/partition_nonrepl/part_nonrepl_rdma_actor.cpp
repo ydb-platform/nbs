@@ -621,6 +621,11 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
         return;
     }
 
+    TSet<ui32> laggingRows;
+    for (const auto& laggingDevice: msg->LaggingAgent.GetDevices()) {
+        laggingRows.insert(laggingDevice.GetRowIndex());
+    }
+
     const auto& devices = PartConfig->GetDevices();
     for (const auto& [_, requestInfo]: RequestsInProgress.AllRequests()) {
         const auto& requestCtx = requestInfo.Value;
@@ -628,11 +633,7 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
             requestCtx,
             [&](const auto& ctx)
             {
-                Y_ABORT_UNLESS(
-                    ctx.DeviceIndex < static_cast<ui64>(devices.size()));
-
-                return devices[ctx.DeviceIndex].GetAgentId() ==
-                       msg->LaggingAgent.GetAgentId();
+                return laggingRows.contains(ctx.DeviceIndex);
             });
 
         if (!needToCancel) {
