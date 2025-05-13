@@ -180,9 +180,11 @@ async def main():
     available_after_removal = running_count - remove_count
     to_create = args.max_vms_to_create - available_after_removal
 
-    total_if_created = running_count + to_create
+    total_if_created = running_count + to_create - remove_count
     if total_if_created > args.maximum_amount_of_vms_to_have:
-        to_create = max(0, args.maximum_amount_of_vms_to_have - running_count)
+        to_create = max(
+            0, args.maximum_amount_of_vms_to_have - running_count + remove_count
+        )
         logger.info("Capping creation to avoid exceeding maximum VM count")
 
     vms_to_create = (
