@@ -581,6 +581,7 @@ async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name:
                 break
 
         if disk_id is None:
+            logger.info("ListDisksRequest result: %s", result)
             logger.error(
                 "Failed to find disk with name %s", DISK_NAME_PREFIX + instance_name
             )

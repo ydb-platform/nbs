@@ -151,25 +151,21 @@ runs:
             extra_params+=(--build "release")
             extra_params+=(--sanitize="address")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            RETRY_COUNT=1
             ;;
           release-tsan)
             extra_params+=(--build "release")
             extra_params+=(--sanitize="thread")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            RETRY_COUNT=1
             ;;
           release-msan)
             extra_params+=(--build "release")
             extra_params+=(--sanitize="memory")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            RETRY_COUNT=1
             ;;
           release-ubsan)
             extra_params+=(--build "release")
             extra_params+=(--sanitize="undefined")
             extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            RETRY_COUNT=1
             ;;
           *)
             echo "Invalid preset: $BUILD_PRESET"
