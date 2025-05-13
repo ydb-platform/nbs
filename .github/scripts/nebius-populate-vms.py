@@ -117,7 +117,11 @@ async def main():
     for instance in instances:
         logger.info("Processing instance %s", instance.metadata.name)
         labels = instance.metadata.labels
-        logger.info("Instance labels: %s", labels)
+        logger.info(
+            "Instance labels: %s, instance state: %s",
+            json.dumps(labels),
+            instance.status.state.name,
+        )
 
         condition = (
             labels.get("repo", "") == args.github_repo
@@ -125,7 +129,14 @@ async def main():
             and labels.get("runner-flavor", "") == args.flavor  # noqa: W503
             and instance.status.state.name == "RUNNING"  # noqa: W503
         )
-        logger.info("Instance condition: %s", condition)
+        logger.info(
+            "Instance condition: %s, checks: repo: %s, owner: %s, flavor: %s, state: %s",
+            condition,
+            labels.get("repo", "") == args.github_repo,
+            labels.get("owner", "") == args.github_repo_owner,
+            labels.get("runner-flavor", "") == args.flavor,
+            instance.status.state.name == "RUNNING",
+        )
         if not condition:
             logger.info(
                 "Instance %s does not match criteria, skipping", instance.metadata.name
