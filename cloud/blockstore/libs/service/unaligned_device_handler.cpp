@@ -319,7 +319,7 @@ TWriteRequest::TResponseFuture TWriteRequest::ReadModifyWrite(
 
     return read.Apply(
         [weakPtr = weak_from_this()](
-            const TFuture<NProto::TReadBlocksResponse>& future) mutable
+            const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
         {
             const auto& response = future.GetValue();
             if (HasError(response)) {
@@ -424,7 +424,7 @@ TZeroRequest::TResponseFuture TZeroRequest::ReadModifyWrite(
 
     return read.Apply(
         [weakPtr = weak_from_this()](
-            const TFuture<NProto::TReadBlocksResponse>& future) mutable
+            const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
         {
             const auto& response = future.GetValue();
             if (HasError(response)) {
@@ -638,7 +638,7 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
         [sgList = std::move(sgList),
          buffer = std::move(buffer),
          beginOffset = blocksInfo.BeginOffset](
-            const TFuture<NProto::TReadBlocksResponse>& future)
+            const TFuture<NProto::TReadBlocksLocalResponse>& future)
         {
             const auto& response = future.GetValue();
             if (HasError(response)) {
