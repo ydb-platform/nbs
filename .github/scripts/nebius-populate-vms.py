@@ -191,29 +191,33 @@ async def main():
     available_after_removal = running_count - remove_count
     to_create = 0
 
-    if idle_count <= args.min_idle_vms:
+    if running_count < args.max_vms_to_create:
         logger.info(
-            "Idle VM count (%d) is below or equal to threshold (%d)",
-            idle_count,
-            args.min_idle_vms,
+            "Current VM count (%d) is below max allowed to create (%d)",
+            running_count,
+            args.max_vms_to_create,
         )
         to_create = args.max_vms_to_create - available_after_removal
-
-        total_if_created = running_count + to_create - remove_count
-        logger.info("Total VMs if created: %d", total_if_created)
-        if total_if_created > args.maximum_amount_of_vms_to_have:
-            to_create = max(
-                0, args.maximum_amount_of_vms_to_have - running_count + remove_count
-            )
-            logger.info("Capping creation to avoid exceeding maximum VM count")
-        else:
-            logger.info("No cap on VM creation needed")
-    else:
+    elif running_count < args.maximum_amount_of_vms_to_have:
         logger.info(
-            "Sufficient idle VMs (%d > %d), skipping creation",
-            idle_count,
-            args.min_idle_vms,
+            "Running count (%d) is >= max_vms_to_create (%d) but < hard limit (%d), allowing up to %d extra",
+            running_count,
+            args.max_vms_to_create,
+            args.maximum_amount_of_vms_to_have,
+            args.extra_vm_if_needed,
         )
+        to_create = min(
+            args.extra_vm_if_needed, args.maximum_amount_of_vms_to_have - running_count
+        )
+    else:
+        logger.info("VM count already at or above hard limit, no creation allowed")
+
+    total_if_created = running_count + to_create - remove_count
+    if total_if_created > args.maximum_amount_of_vms_to_have:
+        to_create = max(
+            0, args.maximum_amount_of_vms_to_have - running_count + remove_count
+        )
+        logger.info("Capping creation to avoid exceeding maximum VM count")
 
     vms_to_create = (
         [
