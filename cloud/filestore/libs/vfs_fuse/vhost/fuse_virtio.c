@@ -1,18 +1,5 @@
 #include "fuse_virtio.h"
 
-#include <cloud/filestore/libs/vfs_fuse/fuse.h>
-
-#include <cloud/contrib/vhost/include/vhost/fs.h>
-#include <cloud/contrib/vhost/include/vhost/server.h>
-#include <cloud/contrib/vhost/include/vhost/types.h>
-#include <cloud/contrib/vhost/logging.h>
-#include <cloud/contrib/vhost/platform.h>
-
-#include <contrib/libs/virtiofsd/fuse.h>
-#include <contrib/libs/virtiofsd/fuse_i.h>
-#include <contrib/libs/virtiofsd/fuse_lowlevel.h>
-#include <contrib/libs/virtiofsd/fuse_virtio.h>
-
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -22,40 +9,6 @@
 #ifndef Y_UNUSED
 #define Y_UNUSED(x) (void)x;
 #endif
-
-struct fuse_virtio_dev
-{
-    struct vhd_fsdev_info fsdev;
-
-    struct vhd_vdev* vdev;
-    struct vhd_request_queue* rq;
-};
-
-struct fuse_virtio_queue
-{
-    // not used
-};
-
-struct fuse_virtio_request
-{
-    struct fuse_chan ch;
-    struct vhd_io* io;
-
-    void* buffer;
-    bool response_sent;
-
-    struct {
-        struct iovec* iov;
-        size_t count;
-    } in;
-
-    struct {
-        struct iovec* iov;
-        size_t count;
-    } out;
-
-    struct iovec iov[1];
-};
 
 #define VIRTIO_REQ_FROM_CHAN(ch) containerof(ch, struct fuse_virtio_request, ch);
 
@@ -200,7 +153,7 @@ static size_t iov_iter_to_buf(struct iov_iter *it, void *buf, size_t len)
     return ptr - buf;
 }
 
-static int process_request(struct fuse_session* se, struct vhd_io* io)
+int process_request(struct fuse_session* se, struct vhd_io* io)
 {
     struct vhd_fs_io* fsio = vhd_get_fs_io(io);
     VHD_ASSERT(fsio->sglist.nbuffers > 0);
@@ -424,60 +377,6 @@ void print_current_time_with_ms() {
     strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", tm_info);
 
     printf("=== Metrics (Current time: %s.%03ld) ===\n", buffer, tv.tv_usec / 1000);
-}
-
-int virtio_session_loop(struct fuse_session* se)
-{
-    struct fuse_virtio_dev* dev = se->virtio_dev;
-
-    int res;
-    for (;;) {
-        res = vhd_run_queue(dev->rq);
-        if (res != -EAGAIN) {
-            if (res < 0) {
-                VHD_LOG_WARN("request queue failure %d", -res);
-            }
-            break;
-        }
-
-        struct vhd_request req;
-        //struct timespec startTime, endTime;
-        //double duration;
-        while (vhd_dequeue_request(dev->rq, &req)) {
-            struct vhd_rq_metrics metrics_rq;
-            vhd_get_rq_stat(dev->rq, &metrics_rq);
-
-            struct vhd_vq_metrics metrics_vq;
-            vhd_vdev_get_queue_stat(dev->vdev, 0, &metrics_vq);
-
-            //print_current_time_with_ms();
-
-            /*printf("vhd_rq_metrics: \n");
-            printf("  Enqueued:              %lu\n", metrics_rq.enqueued);
-            printf("  Dequeued:              %lu\n", metrics_rq.dequeued);
-            printf("  Completions Received:  %lu\n", metrics_rq.completions_received);
-            printf("  Completed:             %lu\n", metrics_rq.completed);
-            printf("  Cancelled:             %lu\n", metrics_rq.cancelled);
-            printf("\n");
-*/
-            //clock_gettime(CLOCK_MONOTONIC, &startTime);
-
-            res = process_request(se, req.io);
-
-            //clock_gettime(CLOCK_MONOTONIC, &endTime);
-            //duration = (endTime.tv_sec - startTime.tv_sec) +
-            //   (endTime.tv_nsec - startTime.tv_nsec) / 1e9;
-            //printf("Duration of funс process_request %.6f ms\n", duration * 1000);
-
-
-            if (res < 0) {
-                VHD_LOG_WARN("request processing failure %d", -res);
-            }
-        }
-    }
-
-    se->exited = 1;
-    return res;
 }
 
 int virtio_send_msg(

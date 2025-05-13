@@ -1,11 +1,15 @@
 #include "loop.h"
 
+#include "cloud/storage/core/libs/common/task_queue.h"
+#include "cloud/storage/core/libs/common/thread_pool.h"
 #include "config.h"
 #include "fs.h"
 #include "fuse.h"
 #include "handle_ops_queue.h"
 #include "log.h"
 #include "write_back_cache.h"
+
+#include <cloud/filestore/libs/vfs_fuse/vhost/fuse_virtio.h>
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -424,6 +428,8 @@ private:
 
     pthread_t ThreadId = 0;
 
+    ITaskQueuePtr ThreadPool;
+
 public:
     TSessionThread(
             TLog log,
@@ -437,6 +443,9 @@ public:
 
     void Start()
     {
+        ThreadPool = CreateThreadPool("virtio_request_processor", 4);
+        ThreadPool->Start();
+
         ISimpleThread::Start();
     }
 
@@ -453,6 +462,7 @@ public:
 
         Join();
 
+        ThreadPool->Stop();
         STORAGE_INFO("stopped FUSE loop");
     }
 
@@ -483,7 +493,42 @@ private:
         ::NCloud::SetCurrentThreadName("FUSE" + ToString(index++));
 
         AtomicSet(ThreadId, pthread_self());
-        fuse_session_loop(Session);
+
+        struct fuse_session* se = Session;
+        struct fuse_virtio_dev* dev = se->virtio_dev;
+        int res;
+        // struct timespec startTime, endTime;
+        // double duration;
+        for (;;) {
+            res = vhd_run_queue(dev->rq);
+            if (res != -EAGAIN) {
+                if (res < 0) {
+                    VHD_LOG_WARN("request queue failure %d", -res);
+                }
+                break;
+            }
+
+            struct vhd_request req;
+            while (vhd_dequeue_request(dev->rq, &req)) {
+                ThreadPool->ExecuteSimple([&se, req]() mutable {
+
+                    // clock_gettime(CLOCK_MONOTONIC, &startTime);
+
+                    int res = process_request(se, req.io);
+
+                    // clock_gettime(CLOCK_MONOTONIC, &endTime);
+                    // duration = (endTime.tv_sec - startTime.tv_sec) +
+                    //     (endTime.tv_nsec - startTime.tv_nsec) / 1e9;
+                    // printf("Duration of funс process_request %.6f ms\n", duration * 1000);
+
+                    if (res < 0) {
+                        VHD_LOG_WARN("request processingdev failure %d", -res);
+                    }
+                });
+            }
+        }
+
+        se->exited = 1;
 
         return nullptr;
     }

@@ -17,6 +17,3 @@ InMemoryIndexCacheLoadOnTabletStartRowsPerTx: 1
 UseMixedBlocksInsteadOfAliveBlocksInCompaction: true
 MixedBlocksOffloadedRangesCapacity: 1024
 CalculateCleanupScoreBasedOnUsedBlocksCount: true
-GuestWriteBackCacheEnabled: true
-EntryTimeout: 1
-AttrTimeout: 1

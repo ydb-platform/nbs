@@ -5,14 +5,13 @@ CFLAGS(
     -DFUSE_USE_VERSION=31
 )
 
+SRCS(
+    fuse_virtio.c
+)
+
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/libs/vfs_fuse/ya.make.inc)
 
 SRCDIR(cloud/filestore/libs/vfs_fuse)
-
-SRCS(
-    # virtio-fs glue for FUSE
-    vhost/fuse_virtio.c
-)
 
 PEERDIR(
     cloud/contrib/vhost
