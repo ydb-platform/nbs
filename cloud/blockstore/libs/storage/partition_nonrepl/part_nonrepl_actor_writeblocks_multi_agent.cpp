@@ -20,13 +20,16 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDuration GetMaxTimeout(const NProto::TMultiAgentWriteRequest& request)
+TDuration CalcOverallTimeout(
+    const NProto::TMultiAgentWriteRequest& request,
+    TDuration networkForwardingTimeout)
 {
     TDuration maxRequestTimeout;
     for (const auto& deviceInfo: request.DevicesAndRanges) {
         maxRequestTimeout = Max(maxRequestTimeout, deviceInfo.RequestTimeout);
     }
-    return maxRequestTimeout;
+
+    return maxRequestTimeout + networkForwardingTimeout;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -100,6 +103,7 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
         replicationTarget->SetNodeId(deviceInfo.Device.GetNodeId());
         replicationTarget->SetDeviceUUID(deviceInfo.Device.GetDeviceUUID());
         replicationTarget->SetStartIndex(deviceInfo.DeviceBlockRange.Start);
+        replicationTarget->SetTimeout(deviceInfo.RequestTimeout.MilliSeconds());
     }
 
     if (AssignVolumeRequestId) {
@@ -161,27 +165,45 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    auto error = msg->GetError();
-    if (HasError(error)) {
-        HandleError(ctx, error, EStatus::Fail);
-        return;
-    }
 
-    bool subResponsesOk =
-        msg->Record.GetReplicationResponses().size() ==
-            static_cast<int>(Request.DevicesAndRanges.size()) &&
-        AllOf(
-            msg->Record.GetReplicationResponses(),
-            [](const NProto::TError& subResponseError)
-            { return subResponseError.GetCode() == S_OK; });
-
-    if (error.GetCode() == S_OK && !subResponsesOk) {
+    auto replyInconsistentError = [&]()
+    {
         auto response = std::make_unique<
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
             MakeError(E_REJECTED));
         response->Record.InconsistentResponse = true;
-
         Done(ctx, std::move(response), EStatus::Fail);
+    };
+
+    const bool subResponsesPresent =
+        msg->Record.GetReplicationResponses().size() ==
+        static_cast<int>(Request.DevicesAndRanges.size());
+
+    if (!subResponsesPresent) {
+        replyInconsistentError();
+        return;
+    }
+
+    auto error = msg->GetError();
+
+    if (HasError(error)) {
+        const bool executorTimeout =
+            msg->Record.GetReplicationResponses(0).GetCode() == E_TIMEOUT;
+
+        HandleError(
+            ctx,
+            error,
+            executorTimeout ? EStatus::Timeout : EStatus::Fail);
+        return;
+    }
+
+    bool subResponsesOk = AllOf(
+        msg->Record.GetReplicationResponses(),
+        [](const NProto::TError& subResponseError)
+        { return subResponseError.GetCode() == S_OK; });
+
+    if (error.GetCode() != S_OK || !subResponsesOk) {
+        replyInconsistentError();
         return;
     }
 
@@ -271,7 +293,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
     }
 
     timeoutPolicy.Timeout =
-        Max(timeoutPolicy.Timeout, GetMaxTimeout(msg->Record));
+        CalcOverallTimeout(msg->Record, Config->GetNetworkForwardingTimeout());
 
     auto actorId = NCloud::Register<TDiskAgentMultiWriteActor>(
         ctx,

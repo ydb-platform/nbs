@@ -1123,6 +1123,9 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
             HandleChecksumBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
+            GetDeviceForRangeCompanion.HandleGetDeviceForRange);
 
         HFunc(
             TEvNonreplPartitionPrivate::TEvAgentIsUnavailable,
@@ -1170,6 +1173,9 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateZombie)
         HFunc(
             TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
             RejectChecksumBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
+            GetDeviceForRangeCompanion.RejectGetDeviceForRange);
         HFunc(
             NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
             RejectWaitForInFlightWrites);

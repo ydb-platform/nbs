@@ -6318,7 +6318,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 TBlockRange64::WithLength(0, 10)));
     }
 
-    Y_UNIT_TEST_F(ShouldHandleTimeoutForMultiWrite, TMultiWriteFixture)
+    Y_UNIT_TEST_F(ShouldHandleTimeoutForMultiWriteOnRemote, TMultiWriteFixture)
     {
         // Setup message filter for intercepting write.
         auto timeoutWrite = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
@@ -6343,6 +6343,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             target.SetNodeId(DiskAgent1->GetNodeId());
             target.SetDeviceUUID("DA1-1");
             target.SetStartIndex(1);
+            target.SetTimeout(1000);
             replicationTargets.push_back(std::move(target));
         }
         {
@@ -6350,6 +6351,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             target.SetNodeId(DiskAgent2->GetNodeId());
             target.SetDeviceUUID("DA2-1");
             target.SetStartIndex(2);
+            target.SetTimeout(2000);
             replicationTargets.push_back(std::move(target));
         }
         auto response = MultiWriteBlocks(
@@ -6358,7 +6360,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             5,
             'a');
 
-        Runtime->AdvanceCurrentTime(TDuration::Seconds(5));
+        Runtime->AdvanceCurrentTime(TDuration::Seconds(2));
         Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetError().GetCode());
@@ -6372,11 +6374,85 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             const auto& subResponse2 =
                 response->Record.GetReplicationResponses(1);
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, subResponse2.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Subrequest #1 timeout 2.000s",
+                subResponse2.GetMessage());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleTimeoutForMultiWriteOnLocal, TMultiWriteFixture)
+    {
+        // Setup message filter for intercepting write.
+        auto timeoutWrite = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                const auto* msg =
+                    event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+
+                const bool isMultiWrite =
+                    msg->Record.ReplicationTargetsSize() != 0;
+                if (event->Recipient == DiskAgent1->DiskAgentActorId() &&
+                    !isMultiWrite)
+                {
+                    // Don't reply to request.
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        Runtime->SetEventFilter(timeoutWrite);
+
+        TVector<NProto::TReplicationTarget> replicationTargets;
+        {
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent1->GetNodeId());
+            target.SetDeviceUUID("DA1-1");
+            target.SetStartIndex(1);
+            target.SetTimeout(1000);
+            replicationTargets.push_back(std::move(target));
+        }
+        {
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent2->GetNodeId());
+            target.SetDeviceUUID("DA2-1");
+            target.SetStartIndex(2);
+            target.SetTimeout(2000);
+            replicationTargets.push_back(std::move(target));
+        }
+        auto response = MultiWriteBlocks(
+            *DiskAgent1,
+            std::move(replicationTargets),
+            5,
+            'a');
+
+        Runtime->AdvanceCurrentTime(TDuration::Seconds(2));
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetError().GetCode());
+
+        {
+            const auto& subResponse1 =
+                response->Record.GetReplicationResponses(0);
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, subResponse1.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Subrequest #0 timeout 1.000s",
+                subResponse1.GetMessage());
+        }
+        {
+            const auto& subResponse2 =
+                response->Record.GetReplicationResponses(1);
+
+            UNIT_ASSERT(subResponse2.GetCode() == S_OK);
         }
     }
 
     Y_UNIT_TEST_F(
-        ShouldReponseWithArgumentErrorForMultiWrite,
+        ShouldResponseWithArgumentErrorForMultiWrite,
         TMultiWriteFixture)
     {
         auto request =

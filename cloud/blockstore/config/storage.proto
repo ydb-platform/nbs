@@ -1232,4 +1232,8 @@ message TStorageServiceConfig
     // Max migration io depth used during the lagging migration after the
     // replica becomes online
     optional uint32 LaggingDeviceMaxMigrationIoDepth = 429;
+
+    // Additional time to receive a response from the DiskAgent through which
+    // the MultiAgentWrite request was executed.
+    optional uint32 NetworkForwardingTimeout = 430;
 }

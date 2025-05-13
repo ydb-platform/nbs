@@ -569,6 +569,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ResyncAfterLaggingAgentMigration,         bool,      false               )\
     xxx(MultiAgentWriteEnabled,                   bool,      false               )\
     xxx(MultiAgentWriteRequestSizeThreshold,      ui32,      0                   )\
+    xxx(NetworkForwardingTimeout,                 TDuration, MSeconds(100)       )\
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\

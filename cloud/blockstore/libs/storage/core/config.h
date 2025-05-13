@@ -646,6 +646,7 @@ public:
     [[nodiscard]] bool GetResyncAfterLaggingAgentMigration() const;
     [[nodiscard]] bool GetMultiAgentWriteEnabled() const;
     [[nodiscard]] ui32 GetMultiAgentWriteRequestSizeThreshold() const;
+    [[nodiscard]] TDuration GetNetworkForwardingTimeout() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 
