@@ -61,6 +61,12 @@ async def main():
         required=True,
         help="Hard cap on total number of VMs allowed",
     )
+    parser.add_argument(
+        "--min-idle-vms",
+        type=int,
+        default=1,
+        help="Minimum number of idle VMs to maintain before creating more",
+    )
     args = parser.parse_args()
     logger.info("Parsed arguments: %s", args)
 
@@ -92,11 +98,13 @@ async def main():
         github_output("VMS_TO_CREATE", "[]")
         github_output("DATE", str(now_ts))
         return
+
     logger.info("Fetched %d instances", len(instances))
     logger.info("Instances: %s", instances)
     runners = list(repo.get_self_hosted_runners())
     vms_to_remove = []
     running_vm_names = []
+    idle_vm_names = []
 
     for instance in instances:
         logger.info("Processing instance %s", instance.metadata.name)
@@ -149,8 +157,6 @@ async def main():
             )
             continue
 
-        logger.info("Instance %s matches criteria", instance.metadata.name)
-
         vm_name = instance.metadata.name
         vm_id = instance.metadata.id
         created_ts = int(instance.metadata.created_at.timestamp())
@@ -159,16 +165,20 @@ async def main():
 
         logger.info("Instance %s is %d seconds old", vm_name, age)
 
+        runner = next((r for r in runners if r.name == vm_id), None)
+        logger.info(
+            "Runner %s found: %s (id: %s, status: %s, busy: %s, )",
+            vm_id,
+            runner,
+            runner.id if runner else "N/A",
+            runner.status if runner else "N/A",
+            runner.busy if runner else "N/A",
+        )
+
+        if runner and not runner.busy:
+            idle_vm_names.append(vm_name)
+
         if age > args.vms_older_than:
-            runner = next((r for r in runners if r.name == vm_id), None)
-            logger.info(
-                "Runner %s found: %s (id: %s, status: %s, busy: %s, )",
-                vm_id,
-                runner,
-                runner.id if runner else "N/A",
-                runner.status if runner else "N/A",
-                runner.busy if runner else "N/A",
-            )
             if runner and not runner.busy:
                 logger.info("Marking VM %s as idle and eligible for removal", vm_name)
                 vms_to_remove.append(vm_id)
@@ -176,25 +186,34 @@ async def main():
                 logger.info("VM %s is busy or not found in GitHub", vm_name)
 
     running_count = len(running_vm_names)
+    idle_count = len(idle_vm_names)
     remove_count = len(vms_to_remove)
     available_after_removal = running_count - remove_count
-    to_create = args.max_vms_to_create - available_after_removal
+    to_create = 0
 
-    total_if_created = running_count + to_create - remove_count
-    logger.info(
-        "Total VMs if created: %d (running: %d, to create: %d, to remove: %d)",
-        total_if_created,
-        running_count,
-        to_create,
-        remove_count,
-    )
-    if total_if_created > args.maximum_amount_of_vms_to_have:
-        to_create = max(
-            0, args.maximum_amount_of_vms_to_have - running_count + remove_count
+    if idle_count <= args.min_idle_vms:
+        logger.info(
+            "Idle VM count (%d) is below or equal to threshold (%d)",
+            idle_count,
+            args.min_idle_vms,
         )
-        logger.info("Capping creation to avoid exceeding maximum VM count")
+        to_create = args.max_vms_to_create - available_after_removal
+
+        total_if_created = running_count + to_create - remove_count
+        logger.info("Total VMs if created: %d", total_if_created)
+        if total_if_created > args.maximum_amount_of_vms_to_have:
+            to_create = max(
+                0, args.maximum_amount_of_vms_to_have - running_count + remove_count
+            )
+            logger.info("Capping creation to avoid exceeding maximum VM count")
+        else:
+            logger.info("No cap on VM creation needed")
     else:
-        logger.info("No cap on VM creation needed")
+        logger.info(
+            "Sufficient idle VMs (%d > %d), skipping creation",
+            idle_count,
+            args.min_idle_vms,
+        )
 
     vms_to_create = (
         [
@@ -207,6 +226,7 @@ async def main():
 
     logger.info("RUNNING_VMS_COUNT=%d", running_count)
     logger.info("VMS_COUNT_TO_REMOVE=%d", remove_count)
+    logger.info("IDLE_VMS_COUNT=%d", idle_count)
     logger.info("MAX_VMS_TO_CREATE=%d", args.max_vms_to_create)
     logger.info("NUMBER_VMS_TO_CREATE=%d", to_create)
 
