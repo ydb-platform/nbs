@@ -113,6 +113,7 @@ private:
     };
 
     THashMap<TString, TAgentRegInfo> AgentRegInfo;
+    ui32 DisconnectedAgentCount = 0;
 
     // Requests in-progress
     THashSet<NActors::TActorId> Actors;

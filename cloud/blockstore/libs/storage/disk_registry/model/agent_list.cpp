@@ -21,7 +21,7 @@ double UpdateRejectTimeoutMultiplier(
     if (!disconnectRecoveryInterval) {
         disconnectRecoveryInterval = TDuration::Minutes(1);
     }
-    double exponent = double((now - lastUpdateTs).MicroSeconds())
+    double exponent = static_cast<double>((now - lastUpdateTs).MicroSeconds())
         / disconnectRecoveryInterval.MicroSeconds();
     currentMultiplier /= pow(timeoutGrowthFactor, exponent);
 
@@ -197,6 +197,8 @@ NProto::TAgentConfig* TAgentList::FindAgent(TNodeId nodeId)
 
 NProto::TAgentConfig* TAgentList::FindAgent(const TAgentId& agentId)
 {
+    Cerr << "TAgentConfig " << reinterpret_cast<intptr_t>(this);
+    Cerr << "; AgentIdToIdx.size = " << AgentIdToIdx.size() << "; bc = " << AgentIdToIdx.bucket_count() << Endl;
     auto it = AgentIdToIdx.find(agentId);
     if (it == AgentIdToIdx.end()) {
         return nullptr;
@@ -382,12 +384,22 @@ void TAgentList::RegisterCounters(const NProto::TAgentConfig& agent)
     }
 }
 
+void TAgentList::OnAgentDisconnected(const TAgentId& agentId) {
+    auto* agent = FindAgent(agentId);
+    if (!agent || agent->GetDevices().empty()) {
+        return;
+    }
+
+    DisconnectedAgents.insert(agentId);
+}
+
 auto TAgentList::RegisterAgent(
     NProto::TAgentConfig agentConfig,
     TInstant timestamp,
     const TKnownAgent& knownAgent) -> TAgentRegistrationResult
 {
     FilterOutUnknownDevices(agentConfig, knownAgent);
+    DisconnectedAgents.erase(agentConfig.GetAgentId());
 
     auto* agent = FindAgent(agentConfig.GetAgentId());
     if (!agent) {
