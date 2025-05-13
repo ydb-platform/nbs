@@ -300,9 +300,12 @@ public:
     ui64 GetShardAllocationUnit() const;
     ui64 GetAutomaticallyCreatedShardSize() const;
     bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
+
     bool GetShardIdSelectionInLeaderEnabled() const;
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
+    NProto::EShardBalancerPolicy GetShardBalancerPolicy() const;
+
     bool GetDirectoryCreationInShardsEnabled() const;
 
     bool GetGuestWriteBackCacheEnabled() const;

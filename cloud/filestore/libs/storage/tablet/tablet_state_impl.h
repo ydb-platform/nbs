@@ -72,7 +72,7 @@ struct TIndexTabletState::TImpl
 
     TThrottlingPolicy ThrottlingPolicy;
 
-    TShardBalancer ShardBalancer;
+    IShardBalancerPtr ShardBalancer;
 
     TImpl(const TFileStoreAllocRegistry& registry)
         : FreshBytes(registry.GetAllocator(EAllocatorTag::FreshBytes))
