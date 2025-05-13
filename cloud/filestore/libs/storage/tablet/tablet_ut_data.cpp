@@ -404,7 +404,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
 
-        // Write 1 byte 999 times
+        // Write 2 bytes 999 times
         for (int i = 1; i <= 999; i++) {
             tablet.WriteData(handle, i * 2, 2, 'a');
         }
@@ -416,7 +416,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(999, stats.GetFreshBytesItemCount());
         }
 
-        // Write 1000th byte - FlushBytes should be triggered
+        // Write 1000th byte pair - FlushBytes should be triggered
         tablet.WriteData(handle, 2000, 2, 'a');
 
         {

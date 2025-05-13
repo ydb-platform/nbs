@@ -472,8 +472,8 @@ ui32 TIndexTabletState::GetFreshBytesItemCount() const
 
 void TIndexTabletState::UpdateFreshBytesItemCount()
 {
-    auto freshBytesEntriesCount = Impl->FreshBytes.GetTotalDataItemCount();
-    FileSystemStats.SetFreshBytesItemCount(freshBytesEntriesCount);
+    auto freshBytesItemCount = Impl->FreshBytes.GetTotalDataItemCount();
+    FileSystemStats.SetFreshBytesItemCount(freshBytesItemCount);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
