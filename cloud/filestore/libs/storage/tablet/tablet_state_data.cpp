@@ -384,6 +384,7 @@ void TIndexTabletState::WriteFreshBytes(
         data);
 
     IncrementFreshBytesCount(db, data.size());
+    UpdateFreshBytesItemCount();
 
     InvalidateReadAheadCache(nodeId);
 }
@@ -455,11 +456,24 @@ TFlushBytesStats TIndexTabletState::FinishFlushBytes(
         cnt,
         deletedCnt);
 
-    auto [freshBytes, deletedFreshBytes] = Impl->FreshBytes.GetTotalBytes();
+    auto freshBytes = Impl->FreshBytes.GetTotalBytes();
+    auto deletedFreshBytes = Impl->FreshBytes.GetTotalDeletedBytes();
     SetFreshBytesCount(db, freshBytes);
     SetDeletedFreshBytesCount(db, deletedFreshBytes);
+    UpdateFreshBytesItemCount();
 
     return {sz + deletedSz, completed};
+}
+
+ui32 TIndexTabletState::GetFreshBytesItemCount() const
+{
+    return FileSystemStats.GetFreshBytesItemCount();
+}
+
+void TIndexTabletState::UpdateFreshBytesItemCount()
+{
+    auto freshBytesItemCount = Impl->FreshBytes.GetTotalDataItemCount();
+    FileSystemStats.SetFreshBytesItemCount(freshBytesItemCount);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

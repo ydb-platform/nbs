@@ -594,4 +594,11 @@ message TStorageConfig
     // Specifies the shard balancer policy to be used for the shard balancing.
     // Has no effect if ShardBalancerEnabled is false.
     optional EShardBalancerPolicy ShardBalancerPolicy = 428;
+
+    // The amount of data entries in the fresh bytes table that triggers
+    // flushing
+    optional uint32 FlushBytesItemCountThreshold = 429;
+
+    // Enable triggering FlushBytes by reaching FlushBytesItemCountThreshold
+    optional bool FlushBytesByItemCountEnabled = 430;
 }
