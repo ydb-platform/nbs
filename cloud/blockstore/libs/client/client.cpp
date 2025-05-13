@@ -70,6 +70,16 @@ const char AUTH_METHOD[] = "Bearer";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+
+TString CreateAddress(const TString& host, ui32 port)
+{
+    if (host.Contains(':')) {
+        // ipv6
+        return TStringBuilder() << "[" << host << "]:" << port;
+    }
+    return TStringBuilder() << host << ":" << port;
+}
+
 NProto::TError CompleteReadBlocksLocalRequest(
     NProto::TReadBlocksLocalRequest& request,
     const NProto::TReadBlocksLocalResponse& response)
@@ -1053,8 +1063,10 @@ bool TClient::InitControlEndpoint()
 
     if (Config->GetSecurePort() != 0 || Config->GetInsecurePort() != 0) {
         bool secureEndpoint = Config->GetSecurePort() != 0;
-        auto address = Join(":", Config->GetHost(),
-            secureEndpoint ? Config->GetSecurePort() : Config->GetInsecurePort());
+        auto address = CreateAddress(
+            Config->GetHost(),
+            secureEndpoint ? Config->GetSecurePort()
+                           : Config->GetInsecurePort());
 
         auto channel = CreateTcpSocketChannel(address, secureEndpoint);
         if (!channel) {
@@ -1078,8 +1090,8 @@ bool TClient::InitDataEndpoint()
     }
 
     if (Config->GetPort() != 0) {
-        auto address = Join(":", Config->GetHost(), Config->GetPort());
-        auto secureEndpoint = false;    // auth not supported
+        auto address = CreateAddress(Config->GetHost(), Config->GetPort());
+        bool secureEndpoint = false;    // auth not supported
 
         auto channel = CreateTcpSocketChannel(address, secureEndpoint);
 
