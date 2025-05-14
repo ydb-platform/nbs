@@ -575,8 +575,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
     xxx(AllowLiteDiskReallocations,                     bool,      false         )\
     xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
-    xxx(BlobStorageAsyncGetTimeoutHDD,                  TDuration, Seconds(0)    )\
-    xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
+    xxx(BlobStorageAsyncRequestTimeoutHDD,              TDuration, Seconds(0)    )\
+    xxx(BlobStorageAsyncRequestTimeoutSSD,              TDuration, Seconds(0)    )\
                                                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
     xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\

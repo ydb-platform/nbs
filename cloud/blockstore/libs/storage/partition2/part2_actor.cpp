@@ -716,6 +716,13 @@ void TPartitionActor::HandleLockAndDrainRange(
     Y_ABORT("Unimplemented");
 }
 
+TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetBlobStorageAsyncRequestTimeoutSSD()
+               : Config->GetBlobStorageAsyncRequestTimeoutHDD();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \

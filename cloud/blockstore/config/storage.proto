@@ -1091,8 +1091,13 @@ message TStorageServiceConfig
     // "DiskRegistryCleanupConfigOnRemoveHost"
     optional bool DiskRegistryAlwaysAllocatesLocalDisks = 388;
 
-    optional uint32 BlobStorageAsyncGetTimeoutHDD = 389;
-    optional uint32 BlobStorageAsyncGetTimeoutSSD = 390;
+    // Timeout for asynchronous TEvPut, TEvPatch, TEvGet requests to blob storage
+    // for HDD disks (in milliseconds)
+    optional uint32 BlobStorageAsyncRequestTimeoutHDD = 389;
+
+    // Timeout for asynchronous TEvPut, TEvPatch, TEvGet requests to blob storage
+    // for SSD disks (in milliseconds)
+    optional uint32 BlobStorageAsyncRequestTimeoutSSD = 390;
 
     // Specifies the minimum number of replicas to read from in a mirrored disk
     // for every read request.
