@@ -186,9 +186,9 @@ void PartitionBootExternalCompleted(
             MakeStorageStatsServiceId(),
             MakeStorageStatsServiceId(),
             partitionBootExternalCompletedMsg.release(),
-            0, // flags
+            0,   // flags
             0),
-            0);
+        0);
 }
 
 void SendDiskStats(

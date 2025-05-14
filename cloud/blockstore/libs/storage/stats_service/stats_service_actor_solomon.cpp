@@ -299,7 +299,9 @@ void TStatsServiceActor::HandlePartitionBootExternalCompleted(
 
     auto volume = State.GetVolume(msg->DiskId);
     if (!volume) {
-        LOG_WARN(ctx, TBlockStoreComponents::STATS_SERVICE,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::STATS_SERVICE,
             "Volume %s not found",
             msg->DiskId.Quote().data());
         return;

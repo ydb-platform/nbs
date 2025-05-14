@@ -236,12 +236,11 @@ NYdbStats::TYdbBlobLoadMetricRow BuildBlobLoadMetricsForUpload(
     return {FQDNHostName(), ctx.Now(), result.Str()};
 }
 
-TVector<NYdbStats::TYdbGroupRow> BuildGroupsInfoForUpload(
+void BuildGroupsInfoForUpload(
     const TActorContext& ctx,
-    const TVolumeStatsInfo& volume)
+    const TVolumeStatsInfo& volume,
+    TVector<NYdbStats::TYdbGroupRow>& rows)
 {
-    TVector<NYdbStats::TYdbGroupRow> rows;
-
     auto timestamp = ctx.Now();
 
     for (const auto& [partitionTabletId, channels] : volume.ChannelInfos) {
@@ -256,16 +255,13 @@ TVector<NYdbStats::TYdbGroupRow> BuildGroupsInfoForUpload(
             }
         }
     }
-
-    return rows;
 }
 
-TVector<NYdbStats::TYdbPartitionRow> BuildPartitionsInfoForUpload(
+void BuildPartitionsInfoForUpload(
     const TActorContext& ctx,
-    const TVolumeStatsInfo& volume)
+    const TVolumeStatsInfo& volume,
+    TVector<NYdbStats::TYdbPartitionRow>& rows)
 {
-    TVector<NYdbStats::TYdbPartitionRow> rows;
-
     auto timestamp = ctx.Now();
 
     for (const auto& [partitionTabletId, _]: volume.ChannelInfos) {
@@ -275,8 +271,6 @@ TVector<NYdbStats::TYdbPartitionRow> BuildPartitionsInfoForUpload(
             volume.VolumeInfo.GetDiskId(),
             timestamp);
     }
-
-    return rows;
 }
 
 }    // namespace
@@ -464,13 +458,11 @@ void TStatsServiceActor::HandleUploadDisksStats(
         volumeInfoPtr->PerfCounters.YdbDiskCounters.Reset();
         volumeInfoPtr->PerfCounters.YdbVolumeSelfCounters.Reset();
 
-        for (auto& row: BuildGroupsInfoForUpload(ctx, *volumeInfoPtr)) {
-            result.first.Groups.push_back(std::move(row));
-        }
-
-        for (auto& row: BuildPartitionsInfoForUpload(ctx, *volumeInfoPtr)) {
-            result.first.Partitions.push_back(std::move(row));
-        }
+        BuildGroupsInfoForUpload(ctx, *volumeInfoPtr, result.first.Groups);
+        BuildPartitionsInfoForUpload(
+            ctx,
+            *volumeInfoPtr,
+            result.first.Partitions);
     }
 
     if (((ctx.Now() - YdbMetricsRequestSentTs) > Config->GetStatsUploadInterval())
