@@ -880,7 +880,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             });
 
         TVector<TActorId> readActors;
-        TVector<NProto::TLaggingAgent> unavailableAgents;
+        TSet<TString> unavailableAgents;
+        size_t unavailableAgentsRequestCount = 0;
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
@@ -896,7 +897,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
                         const auto* msg =
                             event->Get<TEvNonreplPartitionPrivate::
                                            TEvAgentIsUnavailable>();
-                        unavailableAgents.push_back(msg->LaggingAgent);
+                        unavailableAgents.insert(msg->LaggingAgent.GetAgentId());
+                        ++unavailableAgentsRequestCount;
                         break;
                     }
                     case TEvents::TEvPoisonPill::EventType: {
@@ -935,23 +937,29 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         env.AddLaggingAgent("agent-7");
         // 1 from mirror partition, 1 from lagging proxy, 2 from migration
         // partition
-        UNIT_ASSERT_VALUES_EQUAL(4, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(6, unavailableAgentsRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(1, mirrorActorChildren.size());
         TActorId replica2Proxy = mirrorActorChildren.back();
         unavailableAgents.clear();
+        unavailableAgentsRequestCount = 0;
 
         // uuid-8 is lagging
         env.AddLaggingAgent("agent-8");
-        UNIT_ASSERT_VALUES_EQUAL(4, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(6, unavailableAgentsRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(1, mirrorActorChildren.size());
         unavailableAgents.clear();
+        unavailableAgentsRequestCount = 0;
 
         // uuid-3 is lagging
         env.AddLaggingAgent("agent-3");
-        UNIT_ASSERT_VALUES_EQUAL(2, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(7, unavailableAgentsRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(2, mirrorActorChildren.size());
         TActorId replica1Proxy = mirrorActorChildren.back();
         unavailableAgents.clear();
+        unavailableAgentsRequestCount = 0;
 
         // The first and second replicas
         const auto firstRow = TBlockRange64::MakeOneBlock(DeviceBlockCount - 1);
