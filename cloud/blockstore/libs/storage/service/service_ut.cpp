@@ -47,6 +47,7 @@ ui32 SetupTestEnv(
 ui32 SetupTestEnvWithYdbStats(
     TTestEnv& env,
     ui32 diskCnt,
+    ui32 rowCnt,
     TDuration statsUploadInterval,
     TDuration statsUploadRetryTimeout,
     NYdbStats::IYdbVolumesStatsUploaderPtr ydbStatsUploader)
@@ -55,6 +56,7 @@ ui32 SetupTestEnvWithYdbStats(
 
     NProto::TStorageServiceConfig storageServiceConfig;
     storageServiceConfig.SetStatsUploadDiskCount(diskCnt);
+    storageServiceConfig.SetStatsUploadRowCount(rowCnt);
     storageServiceConfig.SetStatsUploadInterval(statsUploadInterval.MilliSeconds());
     storageServiceConfig.SetStatsUploadRetryTimeout(statsUploadRetryTimeout.MilliSeconds());
 

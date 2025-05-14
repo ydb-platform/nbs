@@ -243,9 +243,9 @@ void BuildGroupsInfoForUpload(
 {
     auto timestamp = ctx.Now();
 
-    for (const auto& [partitionTabletId, channels] : volume.ChannelInfos) {
-        for (const auto& channel : channels) {
-            for (const auto& historyEntry : channel.History) {
+    for (const auto& [partitionTabletId, channels]: volume.ChannelInfos) {
+        for (const auto& channel: channels) {
+            for (const auto& historyEntry: channel.History) {
                 rows.emplace_back(
                     partitionTabletId,
                     channel.Channel,
@@ -416,6 +416,43 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
     }
 }
 
+void TStatsServiceActor::SplitRowsIntoRequests(
+    NYdbStats::TYdbRowData rows,
+    const TActorContext& ctx)
+{
+    auto timestamp = ctx.Now();
+
+    if (rows.Stats.size() || rows.Metrics.size() || rows.Partitions.size()) {
+        TStatsUploadRequest request;
+        request.second = timestamp;
+
+        request.first.Stats = std::move(rows.Stats);
+        request.first.Metrics = std::move(rows.Metrics);
+        request.first.Partitions = std::move(rows.Partitions);
+
+        YdbStatsRequests.push_back(std::move(request));
+    }
+
+    for (ui32 from = 0; from < rows.Groups.size();
+         from += Config->GetStatsUploadRowCount())
+    {
+        TStatsUploadRequest request;
+        request.second = timestamp;
+
+        ui32 to = std::min(
+            from + Config->GetStatsUploadRowCount(),
+            static_cast<ui32>(rows.Groups.size()));
+        request.first.Groups.reserve(to - from);
+
+        std::move(
+            rows.Groups.begin() + from,
+            rows.Groups.begin() + to,
+            std::back_inserter(request.first.Groups));
+
+        YdbStatsRequests.push_back(std::move(request));
+    }
+}
+
 void TStatsServiceActor::HandleUploadDisksStats(
     const TEvStatsServicePrivate::TEvUploadDisksStats::TPtr& ev,
     const TActorContext& ctx)
@@ -430,8 +467,7 @@ void TStatsServiceActor::HandleUploadDisksStats(
         }
     }
 
-    TStatsUploadRequest result;
-    result.second = ctx.Now();
+    NYdbStats::TYdbRowData rows;
     ui32 volumeCnt = 0;
 
     while (VolumeIdQueueForYdbStatsUpload
@@ -448,7 +484,7 @@ void TStatsServiceActor::HandleUploadDisksStats(
 
         ++volumeCnt;
 
-        result.first.Stats.emplace_back(BuildStatsForUpload(
+        rows.Stats.emplace_back(BuildStatsForUpload(
             ctx,
             *volumeInfoPtr,
             UpdateCountersInterval,
@@ -458,11 +494,11 @@ void TStatsServiceActor::HandleUploadDisksStats(
         volumeInfoPtr->PerfCounters.YdbDiskCounters.Reset();
         volumeInfoPtr->PerfCounters.YdbVolumeSelfCounters.Reset();
 
-        BuildGroupsInfoForUpload(ctx, *volumeInfoPtr, result.first.Groups);
+        BuildGroupsInfoForUpload(ctx, *volumeInfoPtr, rows.Groups);
         BuildPartitionsInfoForUpload(
             ctx,
             *volumeInfoPtr,
-            result.first.Partitions);
+            rows.Partitions);
     }
 
     if (((ctx.Now() - YdbMetricsRequestSentTs) > Config->GetStatsUploadInterval())
@@ -470,17 +506,14 @@ void TStatsServiceActor::HandleUploadDisksStats(
 
         YdbMetricsRequestSentTs = ctx.Now();
 
-        result.first.Metrics.emplace_back(BuildBlobLoadMetricsForUpload(
+        rows.Metrics.emplace_back(BuildBlobLoadMetricsForUpload(
             ctx,
             CurrentBlobMetrics
         ));
     }
 
-    if (result.first.Stats.size() || result.first.Metrics.size()) {
-        YdbStatsRequests.push_back(std::move(result));
-
-        PushYdbStats(ctx);
-    }
+    SplitRowsIntoRequests(rows, ctx);
+    PushYdbStats(ctx);
 
     ScheduleStatsUpload(ctx);
 }

@@ -110,6 +110,10 @@ private:
 
     void PushYdbStats(const NActors::TActorContext& ctx);
 
+    void SplitRowsIntoRequests(
+        NYdbStats::TYdbRowData rows,
+        const NActors::TActorContext& ctx);
+
     [[nodiscard]] ui32 CalcBandwidthLimit(const TString& sourceId) const;
     void ScheduleCleanupBackgroundSources(
         const NActors::TActorContext& ctx) const;

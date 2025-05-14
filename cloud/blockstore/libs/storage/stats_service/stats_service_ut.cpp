@@ -1187,6 +1187,91 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             std::make_tuple<ui64, ui32, ui32, ui32>(19, 0, 2, 2)));
     }
 
+    Y_UNIT_TEST(ShouldSplitRowsIntoMultipleRequests)
+    {
+        ui32 uploadTimes = 0;
+        THashSet<ui32> groups;
+
+        auto callback = [&](const TYdbRowData& rows)
+        {
+            Y_UNUSED(rows);
+
+            ++uploadTimes;
+            for (const auto& groupRow: rows.Groups) {
+                groups.insert(groupRow.GroupId);
+            }
+
+            return NThreading::MakeFuture(MakeError(S_OK));
+        };
+
+        IYdbVolumesStatsUploaderPtr ydbStats =
+            std::make_shared<TYdbStatsMock>(callback);
+
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetStatsUploadDiskCount(1);
+        storageServiceConfig.SetStatsUploadRowCount(3);
+        storageServiceConfig.SetStatsUploadInterval(
+            TDuration::Seconds(300).MilliSeconds());
+        storageServiceConfig.SetStatsUploadRetryTimeout(
+            TDuration::Seconds(20).MilliSeconds());
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            std::move(ydbStats));
+
+        RegisterVolume(runtime, "vol", 111 /* volumeTabletId */);
+
+        auto partitionBootExternalCompleted = [&](ui32 channelsCount)
+        {
+            TVector<NKikimr::TTabletChannelInfo> channels(1);
+            channels[0].Channel = 0;
+
+            channels[0].History.reserve(channelsCount);
+            for (ui32 i = 0; i < channelsCount; ++i) {
+                channels[0].History.emplace_back(
+                    i /* fromGeneration */,
+                    i /* groupId */);
+            }
+
+            PartitionBootExternalCompleted(
+                runtime,
+                "vol",
+                222,   // partitionTabletId
+                std::move(channels));
+        };
+
+        auto checkUploads =
+            [&](ui32 expectedUploadTimes, ui32 expectedGroupsCount)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(expectedUploadTimes, uploadTimes);
+            UNIT_ASSERT_VALUES_EQUAL(expectedGroupsCount, groups.size());
+            for (ui32 i = 0; i < expectedGroupsCount; ++i) {
+                UNIT_ASSERT(groups.contains(i));
+            }
+
+            uploadTimes = 0;
+            groups.clear();
+        };
+
+        partitionBootExternalCompleted(0);
+        ForceYdbStatsUpdate(runtime, {"vol"}, 1, 1);
+        checkUploads(1, 0);
+
+        partitionBootExternalCompleted(2);
+        ForceYdbStatsUpdate(runtime, {"vol"}, 2, 1);
+        checkUploads(2, 2);
+
+        partitionBootExternalCompleted(4);
+        ForceYdbStatsUpdate(runtime, {"vol"}, 3, 1);
+        checkUploads(3, 4);
+
+        partitionBootExternalCompleted(6);
+        ForceYdbStatsUpdate(runtime, {"vol"}, 3, 1);
+        checkUploads(3, 6);
+    }
+
     Y_UNIT_TEST(ShouldNotTryToPushStatsIfNothingToReportToYDB)
     {
         TVector<TVector<TString>> batches;

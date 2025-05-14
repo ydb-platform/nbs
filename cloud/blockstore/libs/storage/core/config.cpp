@@ -463,6 +463,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(EnableConversionIntoMixedIndexV2,          bool,      false           )\
                                                                                \
     xxx(StatsUploadDiskCount,                      ui32,      1000            )\
+    xxx(StatsUploadRowCount,                       ui32,      10000           )\
     xxx(StatsUploadRetryTimeout,                   TDuration, Seconds(5)      )\
                                                                                \
     xxx(RemoteMountOnly,                           bool,      false           )\
