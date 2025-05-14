@@ -71,6 +71,8 @@ jobs:
           vms_ttl: ${{ inputs.vms_ttl }}
           flavor: ${{ inputs.flavor }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          maximum_amount_of_vms_to_have: ${{ github.repository == 'ydb-platform/nbs' && (vars.MAXIMUM_AMOUNT_OF_VMS_TO_HAVE || '10') || '5' }}
+          extra_vms_if_needed: ${{ vars.EXTRA_VMS_IF_NEEDED || '1' }}
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
   remove_vms:
     needs: calculate_missing_vms

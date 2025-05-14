@@ -52,7 +52,7 @@ async def main():
         "--max-vms-to-create",
         type=int,
         required=True,
-        help="Target number of idle VMs to maintain",
+        help="Maximum number of VMs to create if idle VMs are less than this",
     )
     parser.add_argument(
         "--maximum-amount-of-vms-to-have",
@@ -61,7 +61,7 @@ async def main():
         help="Hard cap on total number of VMs allowed",
     )
     parser.add_argument(
-        "--extra-vm-if-needed",
+        "--extra-vms-if-needed",
         type=int,
         default=1,
         help="Number of additional VMs to create when most are busy",
@@ -183,7 +183,7 @@ async def main():
         and projected_vm_count < args.maximum_amount_of_vms_to_have  # noqa: W503
     ):
         to_create = min(
-            args.extra_vm_if_needed,
+            args.extra_vms_if_needed,
             args.maximum_amount_of_vms_to_have - projected_vm_count,
         )
         logger.info("Most VMs are busy, provisioning %d extra VM(s)", to_create)
@@ -203,7 +203,6 @@ async def main():
 
     github_output("VMS_TO_REMOVE", json.dumps(vms_to_remove))
     github_output("VMS_TO_CREATE", json.dumps(vms_to_create))
-    github_output("DATE", str(now_ts))
 
 if __name__ == "__main__":
     asyncio.run(main())

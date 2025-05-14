@@ -10,6 +10,12 @@ inputs:
   max_vms_to_create:
     required: true
     description: "max vms to create"
+  maximum_amount_of_vms_to_have:
+    required: true
+    description: "maximum amount of vms to have"
+  extra_vms_if_needed:
+    required: true
+    description: "extra vms if needed"
   flavor:
     required: true
     description: "required flavor"
@@ -20,9 +26,6 @@ inputs:
     required: true
     description: "service account key"
 outputs:
-  RUNNING_VMS_COUNT:
-    value: ${{ steps.populate.outputs.RUNNING_VMS_COUNT }}
-    description: "running vms count"
   VMS_TO_CREATE:
     value: ${{ steps.populate.outputs.VMS_TO_CREATE }}
     description: "vms to create"
@@ -53,6 +56,9 @@ runs:
       id: populate
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+        if [ -n "$MAXIMUM_AMOUNT_OF_VMS_TO_HAVE" ]; then
+          MAXIMUM_AMOUNT_OF_VMS_TO_HAVE=$((MAX_VMS_TO_CREATE*2))
+        fi
         python3 -m scripts.nebius-populate-vms \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
           --github-repo-owner "${OWNER}" \
@@ -61,12 +67,15 @@ runs:
           --max-vms-to-create "${MAX_VMS_TO_CREATE}" \
           --flavor "${FLAVOR}" \
           --vms-older-than "${VMS_OLDER_THAN}" \
-          --maximum-amount-of-vms-to-have "$((MAX_VMS_TO_CREATE*2))" 
+          --maximum-amount-of-vms-to-have "${MAXIMUM_AMOUNT_OF_VMS_TO_HAVE}" \
+          --extra-vms-if-needed "${EXTRA_VMS_IF_NEEDED}" 
       env:
         OWNER: ${{ github.event.repository.owner.login }}
         REPO: ${{ github.event.repository.name }}
         PARENT_ID: ${{ inputs.parent_id }}
         MAX_VMS_TO_CREATE: ${{ inputs.max_vms_to_create }}
+        MAXIMUM_AMOUNT_OF_VMS_TO_HAVE: ${{ inputs.maximum_amount_of_vms_to_have }}
+        EXTRA_VMS_IF_NEEDED: ${{ inputs.extra_vms_if_needed }}
         FLAVOR: ${{ inputs.flavor }}
         VMS_OLDER_THAN: ${{ inputs.vms_ttl }}
         GITHUB_TOKEN: ${{ inputs.token }}
