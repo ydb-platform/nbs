@@ -755,7 +755,7 @@ bool TValidationService::HandleRequest(
     auto diskId = request->GetDiskId();
     auto clientId = request->GetHeaders().GetClientId();
     response = Service->MountVolume(std::move(ctx), std::move(request)).Subscribe(
-            [=] (const auto& future) {
+            [=, this] (const auto& future) {
             if (!IsRequestFailed(future)) {
                 const auto& response = future.GetValue();
                 auto timeout = InactiveClientsTimeout * 1.05;
@@ -779,7 +779,7 @@ bool TValidationService::HandleRequest(
     auto diskId = request->GetDiskId();
     auto clientId = request->GetHeaders().GetClientId();
     response = Service->UnmountVolume(std::move(ctx), std::move(request)).Subscribe(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             if (!IsRequestFailed(future)) {
                 UnmountVolume(diskId, clientId);
             }
@@ -823,7 +823,7 @@ bool TValidationService::HandleRequest(
     Y_ABORT_UNLESS(blocks.size() == range->Size());
 
     response = Service->ReadBlocks(std::move(ctx), std::move(request)).Subscribe(
-        [=, blocks_ = std::move(blocks)] (const auto& future) {
+        [=, this, blocks_ = std::move(blocks)] (const auto& future) {
             if (!IsRequestFailed(future)) {
                 const auto& response = future.GetValue();
 
@@ -886,7 +886,7 @@ bool TValidationService::HandleRequest(
     Y_ABORT_UNLESS(blocks.size() == range->Size());
 
     response = Service->ReadBlocksLocal(std::move(ctx), request).Subscribe(
-        [=, blocks_ = std::move(blocks)] (const auto& future) {
+        [=, this, blocks_ = std::move(blocks)] (const auto& future) {
             if (!IsRequestFailed(future)) {
                 auto guard = request->Sglist.Acquire();
 
@@ -959,7 +959,7 @@ bool TValidationService::HandleRequest(
     PrepareWrite(*volume, *range);
 
     response = Service->WriteBlocks(std::move(ctx), std::move(request)).Subscribe(
-        [=, blocks_ = std::move(blocks)] (const auto& future) {
+        [=, this, blocks_ = std::move(blocks)] (const auto& future) {
             if (!IsRequestFailed(future)) {
                 CompleteWrite(*volume, *range, blocks_);
             } else {
@@ -1009,7 +1009,7 @@ bool TValidationService::HandleRequest(
     PrepareWrite(*volume, *range);
 
     response = Service->WriteBlocksLocal(std::move(ctx), std::move(request))
-        .Subscribe([=, blocks_ = std::move(blocks)] (const auto& future) {
+        .Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
             if (!IsRequestFailed(future)) {
                 CompleteWrite(*volume, *range, blocks_);
             } else {
@@ -1047,7 +1047,7 @@ bool TValidationService::HandleRequest(
     PrepareZero(*volume, *range);
 
     response = Service->ZeroBlocks(std::move(ctx), std::move(request)).Subscribe(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             if (!IsRequestFailed(future)) {
                 CompleteZero(*volume, *range);
             } else {

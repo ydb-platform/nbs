@@ -215,7 +215,7 @@ public:
 
             auto onRecv = std::make_unique<TOnRecv>(group);
             onRecv->Result.GetFuture().Subscribe(
-                [=, s = State, &instances] (auto f) mutable {
+                [=, this, s = State, &instances] (auto f) mutable {
                     TReadGuard guard(s->Lock);
 
                     if (!s->Running) {
@@ -235,7 +235,7 @@ public:
 
             Scheduler->Schedule(
                 Timer->Now() + Config->GetConductorRequestTimeout(),
-                [=, &instances] () mutable {
+                [=, this, &instances] () mutable {
                     const auto done = OnConductorResult(
                         i,
                         {group, {}, "timeout"},

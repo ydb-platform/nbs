@@ -223,7 +223,7 @@ private:
             sglist);
 
         future.Subscribe([
-            =,
+            =, this,
             callContext = std::move(callContext),
             sglist = std::move(sglist)
         ] (auto future) {
@@ -267,7 +267,7 @@ private:
             sglist);
 
         future.Subscribe([
-            =,
+            =, this,
             callContext = std::move(callContext),
             sglist = std::move(sglist)
         ] (auto future) {

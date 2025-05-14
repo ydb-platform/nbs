@@ -104,7 +104,7 @@ private:
         auto promise = NewPromise<TResponse>();
 
         authResponse.Subscribe(
-            [=, request = std::move(request), ctx = std::move(ctx)] (const auto& future) mutable {
+            [=, this, request = std::move(request), ctx = std::move(ctx)] (const auto& future) mutable {
                 const auto& error = future.GetValue();
 
                 if (HasError(error)) {

@@ -468,7 +468,7 @@ private:
                 MakeIntrusive<TCallContext>(),
                 std::move(request));
 
-            future.Subscribe([=, holder = std::move(holder)] (const auto& f) mutable {
+            future.Subscribe([=, this, holder = std::move(holder)] (const auto& f) mutable {
                 const auto& response = f.GetValue();
                 auto buffer = holder.Extract();
 

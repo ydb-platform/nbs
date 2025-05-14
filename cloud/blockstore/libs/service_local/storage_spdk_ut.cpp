@@ -97,9 +97,9 @@ struct TCompositeDevice
             Devs[d] = std::make_shared<NSpdk::TTestSpdkDevice>();
 
             Devs[d]->ReadBufferHandler = // fast path
-                [=] (void* buffer, ui64 fileOffset, ui32 bytes)
+                [=, this] (void* buffer, ui64 fileOffset, ui32 bytes)
             {
-                return Execute([=] {
+                return Execute([=, this] {
                     UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
                     UNIT_ASSERT(bytes <= BlocksPerDevice * BlockSize - fileOffset);
 
@@ -111,9 +111,9 @@ struct TCompositeDevice
             };
 
             Devs[d]->ReadSgListHandler =
-                [=] (TSgList sglist, ui64 fileOffset, ui32 bytes)
+                [=, this] (TSgList sglist, ui64 fileOffset, ui32 bytes)
             {
-                return Execute([=] {
+                return Execute([=, this] {
                     UNIT_ASSERT_VALUES_EQUAL(bytes, SgListGetSize(sglist));
                     UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
                     UNIT_ASSERT(bytes <= BlocksPerDevice * BlockSize - fileOffset);
@@ -131,9 +131,9 @@ struct TCompositeDevice
             };
 
             Devs[d]->WriteBufferHandler = // fast path
-                [=] (void* buffer, ui64 fileOffset, ui32 bytes)
+                [=, this] (void* buffer, ui64 fileOffset, ui32 bytes)
             {
-                return Execute([=] {
+                return Execute([=, this] {
                     UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
                     UNIT_ASSERT(bytes <= BlocksPerDevice * BlockSize - fileOffset);
 
@@ -145,9 +145,9 @@ struct TCompositeDevice
             };
 
             Devs[d]->WriteSgListHandler =
-                [=] (TSgList sglist, ui64 fileOffset, ui32 bytes)
+                [=, this] (TSgList sglist, ui64 fileOffset, ui32 bytes)
             {
-                return Execute([=] {
+                return Execute([=, this] {
                     UNIT_ASSERT_VALUES_EQUAL(bytes, SgListGetSize(sglist));
                     UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
                     UNIT_ASSERT(bytes <= BlocksPerDevice * BlockSize - fileOffset);
@@ -164,9 +164,9 @@ struct TCompositeDevice
                 });
             };
 
-            Devs[d]->WriteZeroesHandler = [=] (ui64 fileOffset, ui32 bytes)
+            Devs[d]->WriteZeroesHandler = [=, this] (ui64 fileOffset, ui32 bytes)
             {
-                return Execute([=] {
+                return Execute([=, this] {
                     UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
                     UNIT_ASSERT(bytes <= BlocksPerDevice * BlockSize - fileOffset);
 

@@ -185,7 +185,7 @@ TFuture<NProto::TError> TYdbNativeStorage::CreateTable(
         });
 
     return future.Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             auto status = ExtractStatus(future);
             if (status.IsSuccess()) {
                 return MakeError(S_OK);
@@ -207,7 +207,7 @@ TFuture<NProto::TError> TYdbNativeStorage::AlterTable(
         });
 
     return future.Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             auto status = ExtractStatus(future);
             if (status.IsSuccess()) {
                 return MakeError(S_OK);
@@ -227,7 +227,7 @@ TFuture<NProto::TError> TYdbNativeStorage::DropTable(const TString& table)
         });
 
     return future.Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             auto status = ExtractStatus(future);
             if (status.IsSuccess()) {
                 return MakeError(S_OK);
@@ -257,7 +257,7 @@ TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
         });
     };
 
-    Client->RetryOperation(describe).Subscribe([=] (const auto& future) mutable {
+    Client->RetryOperation(describe).Subscribe([=, this] (const auto& future) mutable {
         auto status = ExtractStatus(future);
         if (status.IsSuccess()) {
             // promise result is already set
@@ -284,7 +284,7 @@ TFuture<TGetTablesResponse> TYdbNativeStorage::GetHistoryTables()
     auto future = SchemeClient->ListDirectory(database);
 
     return future.Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             auto status = ExtractStatus(future);
             if (!status.IsSuccess()) {
                 auto out = BuildError(status, "unable to list directory ", database.Quote());
