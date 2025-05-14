@@ -318,7 +318,7 @@ func (f *factory) GetShards(zoneID string) []string {
 }
 
 func (f *factory) ShouldUseShardsForFolder(folderID string) bool {
-	return slices.Contains(f.config.UseShardsFolders, folderID)
+	return slices.Contains(f.config.UseShardsInFolders, folderID)
 }
 
 func (f *factory) HasClient(zoneID string) bool {
