@@ -175,7 +175,7 @@ async def main():
     idle_remaining = len(idle_vm_ids) - excess_idle
 
     to_create = 0
-    if projected_vm_count < args.max_vms_to_create:
+    if idle_remaining < args.max_vms_to_create:
         to_create = args.max_vms_to_create - idle_remaining
         logger.info("Need more idle VMs to reach target: creating %d", to_create)
     elif (
@@ -187,6 +187,13 @@ async def main():
             args.maximum_amount_of_vms_to_have - projected_vm_count,
         )
         logger.info("Most VMs are busy, provisioning %d extra VM(s)", to_create)
+
+    if projected_vm_count == 0:
+        logger.info(
+            "No VMs are running, creating %d VM(s) to reach the minimum required",
+            args.max_vms_to_create,
+        )
+        to_create = args.max_vms_to_create
 
     logger.info("PROJECTED_VM_COUNT=%d", projected_vm_count)
     logger.info("FINAL_TO_CREATE=%d", to_create)
