@@ -115,7 +115,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-1"
+        key: "zone-d"
         value: <
             Endpoints: [
                 "localhost:{nbs4_port}",
@@ -136,11 +136,12 @@ NbsConfig: <
         key: "zone-d"
         value: <
             Shards: [
-                "zone-d-1",
-                "zone-d-2"
+                "zone-d-2",
+                "zone-d"
             ]
         >
     >
+    UseShardsInFolders: ["shards-folder"]
     RootCertsFile: "{root_certs_file}"
     GrpcKeepAlive: <>
     UseGZIPCompression: true
@@ -193,7 +194,7 @@ ImagesConfig: <
             Capacity: 0
         >,
         <
-            ZoneId: "zone-d-1"
+            ZoneId: "zone-d"
             Capacity: 0
         >,
         <
@@ -249,7 +250,7 @@ S3Config: <
 
 DATAPLANE_CONFIG_TEMPLATE = """
 TasksConfig: <
-    ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d-1", "zone-d-2"]
+    ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d", "zone-d-2"]
     TaskPingPeriod: "1s"
     PollForTaskUpdatesPeriod: "1s"
     PollForTasksPeriodMin: "1s"
@@ -298,7 +299,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-1"
+        key: "zone-d"
         value: <
             Endpoints: [
                 "localhost:{nbs4_port}",
@@ -319,8 +320,8 @@ NbsConfig: <
         key: "zone-d"
         value: <
             Shards: [
-                "zone-d-1",
-                "zone-d-2"
+                "zone-d-2",
+                "zone-d"
             ]
         >
     >
