@@ -13,7 +13,7 @@ jobs:
     secrets: inherit
     with:
       max_vms_to_create: 1
-      vms_ttl: 60
+      vms_ttl: 600
       flavor: light
   heavy:
     name: Populate heavy VMs
@@ -21,5 +21,5 @@ jobs:
     secrets: inherit
     with:
       max_vms_to_create: 1
-      vms_ttl: 60
+      vms_ttl: 600
       flavor: heavy

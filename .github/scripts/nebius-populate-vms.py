@@ -190,7 +190,7 @@ async def main():
 
     if projected_vm_count == 0:
         logger.info(
-            "No VMs are running, creating %d VM(s) to reach the minimum required",
+            "No VMs will be running, creating %d VM(s) to reach the minimum required",
             args.max_vms_to_create,
         )
         to_create = args.max_vms_to_create
