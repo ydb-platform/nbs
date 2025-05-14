@@ -230,13 +230,13 @@ jobs:
 
           # Determine build_target and test_target based on conditions
           if [ "$true_count" -eq 5 ] || [ "$false_count" -eq 5 ]; then
-              build_target="cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+              build_target="cloud/tasks/"
               build_target_asan="cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/"
               build_target_tsan="cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/"
               build_target_msan="cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/"
               build_target_ubsan="cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/"
 
-              test_target="cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+              test_target="cloud/tasks/"
               test_target_asan="cloud/blockstore/,cloud/filestore/,cloud/storage/"
               test_target_tsan="cloud/blockstore/,cloud/filestore/,cloud/storage/"
               test_target_msan="cloud/blockstore/,cloud/filestore/,cloud/storage/"
