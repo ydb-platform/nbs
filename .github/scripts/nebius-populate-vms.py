@@ -175,7 +175,7 @@ async def main():
     idle_remaining = len(idle_vm_ids) - excess_idle
 
     to_create = 0
-    if idle_remaining < args.max_vms_to_create:
+    if projected_vm_count < args.max_vms_to_create:
         to_create = args.max_vms_to_create - idle_remaining
         logger.info("Need more idle VMs to reach target: creating %d", to_create)
     elif (
