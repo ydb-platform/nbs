@@ -342,7 +342,7 @@ def test_config_comparison(
         agent_id,
         data_path)
 
-    crit = disk_agent.counters.find({'sensor': 'AppCriticalEvents/DiskAgentConfigMismatch'})
+    crit = disk_agent.counters.find({'sensor': 'AppDiskAgentCriticalEvents/DiskAgentConfigMismatch'})
     assert crit is not None
     assert crit['value'] == (1 if cmp == 'mismatch' else 0)
 
@@ -350,7 +350,7 @@ def test_config_comparison(
         # Wait for duplicate event.
         time.sleep(30)
         crit = disk_agent.counters.find(
-            {'sensor': 'AppCriticalEvents/DiskAgentConfigMismatch'})
+            {'sensor': 'AppDiskAgentCriticalEvents/DiskAgentConfigMismatch'})
         assert crit is not None
         assert crit['value'] == 2
 
@@ -734,7 +734,7 @@ def test_override_storage_discovery_config(
     disk_agent_with_overridden_config.wait_for_registration()
 
     crit = disk_agent_with_overridden_config.counters.find(
-        {'sensor': 'AppCriticalEvents/DiskAgentConfigMismatch'})
+        {'sensor': 'AppDiskAgentCriticalEvents/DiskAgentConfigMismatch'})
 
     assert crit is not None
     assert crit['value'] == 0

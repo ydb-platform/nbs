@@ -19,6 +19,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 // BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER
 
     BLOCKSTORE_CRITICAL_EVENTS(BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER)
+    DISK_AGENT_CRITICAL_EVENTS(BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER)
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER)
 #undef BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER
 
@@ -43,6 +44,25 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     BLOCKSTORE_CRITICAL_EVENTS(BLOCKSTORE_DEFINE_CRITICAL_EVENT_ROUTINE)
 #undef BLOCKSTORE_DEFINE_CRITICAL_EVENT_ROUTINE
 
+#define BLOCKSTORE_DEFINE_DISK_AGENT_CRITICAL_EVENT_ROUTINE(name)              \
+    TString Report##name(const TString& message)                               \
+    {                                                                          \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            message,                                                           \
+            false);                                                            \
+    }                                                                          \
+                                                                               \
+    const TString GetCriticalEventFor##name()                                  \
+    {                                                                          \
+        return "AppDiskAgentCriticalEvents/"#name;                             \
+    }                                                                          \
+// BLOCKSTORE_DEFINE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
+
+    DISK_AGENT_CRITICAL_EVENTS(
+        BLOCKSTORE_DEFINE_DISK_AGENT_CRITICAL_EVENT_ROUTINE)
+#undef BLOCKSTORE_DEFINE_CRITICAL_EVENT_ROUTINE
+
 #define BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE(name)                       \
     TString Report##name(const TString& message)                               \
     {                                                                          \
@@ -54,7 +74,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
                                                                                \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
-        return "AppCriticalEvents/"#name;                                      \
+        return "AppImpossibleEvents/"#name;                                    \
     }                                                                          \
 // BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
 

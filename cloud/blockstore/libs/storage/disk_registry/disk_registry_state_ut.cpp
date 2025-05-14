@@ -10891,7 +10891,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         InitCriticalEventsCounter(serverGroup);
 
         auto criticalEvents = serverGroup->FindCounter(
-            "AppCriticalEvents/DiskRegistryDeviceNotFound");
+            "AppImpossibleEvents/DiskRegistryDeviceNotFound");
 
         UNIT_ASSERT_VALUES_EQUAL(0, criticalEvents->Val());
 
