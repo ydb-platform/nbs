@@ -510,10 +510,9 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 {
     InitBlockDigests();
 
-    const auto writeBlobDeadline =
-        BlobStorageAsyncRequestTimeout
-            ? ctx.Now() + BlobStorageAsyncRequestTimeout
-            : TInstant::Max();
+    const auto deadline = BlobStorageAsyncRequestTimeout
+                              ? ctx.Now() + BlobStorageAsyncRequestTimeout
+                              : TInstant::Max();
 
     for (auto& rc: RangeCompactionInfos) {
         if (!rc.DataBlobId) {
@@ -530,8 +529,8 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                     rc.DataBlobId,
                     std::move(rc.Diffs),
                     rc.DiffCount,
-                    true,                 // async
-                    writeBlobDeadline);   // deadline
+                    true,        // async
+                    deadline);   // deadline
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(
@@ -552,9 +551,9 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                     rc.DataBlobId,
                     rc.BlobContent.GetGuardedSgList(),
-                    0,                    // blockSizeForChecksums
-                    true,                 // async
-                    writeBlobDeadline);   // deadline
+                    0,           // blockSizeForChecksums
+                    true,        // async
+                    deadline);   // deadline
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(

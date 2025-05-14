@@ -11214,7 +11214,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, compactionByBlockCount);
     }
 
-    void DoShouldAbortCompactionIfBlobStorageRequestFailsWithDeadlineExceeded(int typeRewrite)
+    void DoShouldAbortCompactionIfBlobStorageRequestFailsWithDeadlineExceeded(
+        int requestType)
     {
         NProto::TStorageServiceConfig config;
         config.SetBlobStorageAsyncRequestTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
@@ -11233,7 +11234,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             {
                 Y_UNUSED(runtime);
 
-                if (typeRewrite == TEvBlobStorage::EvVGet &&
+                if (requestType == TEvBlobStorage::EvVGet &&
                     ev->GetTypeRewrite() == TEvBlobStorage::EvVGet)
                 {
                     const auto* msg = ev->Get<TEvBlobStorage::TEvVGet>();
@@ -11244,7 +11245,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         return true;
                     }
                 } else if (
-                    typeRewrite == TEvBlobStorage::EvVPut &&
+                    requestType == TEvBlobStorage::EvVPut &&
                     ev->GetTypeRewrite() == TEvBlobStorage::EvVPut)
                 {
                     const auto* msg = ev->Get<TEvBlobStorage::TEvVPut>();
@@ -11273,7 +11274,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(15));
 
-        if (typeRewrite != TEvBlobStorage::EvVGet) {
+        if (requestType != TEvBlobStorage::EvVGet) {
             return;
         }
 
