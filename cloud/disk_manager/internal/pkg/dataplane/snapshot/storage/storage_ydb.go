@@ -259,7 +259,10 @@ func (s *storageYDB) GetIncremental(
 	return snapshotID, checkpointID, err
 }
 
-func (s *storageYDB) ListAllSnapshots(ctx context.Context) (ids task_storage.StringSet, err error) {
+func (s *storageYDB) ListSnapshots(
+	ctx context.Context,
+) (ids task_storage.StringSet, err error) {
+
 	err = s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {

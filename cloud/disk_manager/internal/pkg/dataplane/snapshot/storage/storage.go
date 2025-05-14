@@ -145,5 +145,5 @@ type Storage interface {
 		disk *types.Disk,
 	) (snapshotID string, checkpointID string, err error)
 
-	ListAllSnapshots(ctx context.Context) (task_storage.StringSet, error)
+	ListSnapshots(ctx context.Context) (task_storage.StringSet, error)
 }

@@ -55,12 +55,12 @@ func (m migrateSnapshotDatabaseTask) Run(
 		cfg := m.config
 		inflightSnapshotsLimit := int(cfg.GetMigratingSnapshotsInflightLimit())
 
-		srcSnapshots, err := m.srcStorage.ListAllSnapshots(ctx)
+		srcSnapshots, err := m.srcStorage.ListSnapshots(ctx)
 		if err != nil {
 			return err
 		}
 
-		dstSnapshots, err := m.dstStorage.ListAllSnapshots(ctx)
+		dstSnapshots, err := m.dstStorage.ListSnapshots(ctx)
 		if err != nil {
 			return err
 		}
@@ -81,12 +81,12 @@ func (m migrateSnapshotDatabaseTask) Run(
 				return err
 			}
 
+			m.state.InflightTaskIDs = append(m.state.InflightTaskIDs, taskID)
 			err = execCtx.SaveState(ctx)
 			if err != nil {
 				return err
 			}
 
-			m.state.InflightTaskIDs = append(m.state.InflightTaskIDs, taskID)
 			tasksCount := len(m.state.InflightTaskIDs)
 			inflightTasksLimitReached := tasksCount >= inflightSnapshotsLimit
 			if !inflightTasksLimitReached && snapshotsToProcessCount != 1 {
