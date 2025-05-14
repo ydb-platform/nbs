@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
@@ -83,16 +84,16 @@ type migrateSnapshotDatabaseTask struct {
 	state      *dataplane_protos.MigrateSnapshotDatabaseTaskState
 }
 
-func (m migrateSnapshotDatabaseTask) Save() ([]byte, error) {
+func (m *migrateSnapshotDatabaseTask) Save() ([]byte, error) {
 	return proto.Marshal(m.state)
 }
 
-func (m migrateSnapshotDatabaseTask) Load(request []byte, state []byte) error {
+func (m *migrateSnapshotDatabaseTask) Load(request []byte, state []byte) error {
 	m.state = &dataplane_protos.MigrateSnapshotDatabaseTaskState{}
 	return proto.Unmarshal(state, m.state)
 }
 
-func (m migrateSnapshotDatabaseTask) Run(
+func (m *migrateSnapshotDatabaseTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -118,13 +119,11 @@ func (m migrateSnapshotDatabaseTask) Run(
 		if err != nil {
 			return err
 		}
-
 		snapshotsToMigrate := srcSnapshots.Subtract(dstSnapshots)
 		snapshotsToProcessCount := snapshotsToMigrate.Size()
 		subregistry.Gauge(
 			"snapshots/migratingCount",
 		).Set(float64(snapshotsToProcessCount))
-
 		err = m.migrateSnapshotsOnce(ctx, execCtx, snapshotsToMigrate)
 		if err != nil {
 			return err
@@ -134,7 +133,7 @@ func (m migrateSnapshotDatabaseTask) Run(
 	return nil
 }
 
-func (m migrateSnapshotDatabaseTask) Cancel(
+func (m *migrateSnapshotDatabaseTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -142,18 +141,18 @@ func (m migrateSnapshotDatabaseTask) Cancel(
 	return nil
 }
 
-func (m migrateSnapshotDatabaseTask) GetMetadata(
+func (m *migrateSnapshotDatabaseTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
 }
 
-func (m migrateSnapshotDatabaseTask) GetResponse() proto.Message {
+func (m *migrateSnapshotDatabaseTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }
 
-func (m migrateSnapshotDatabaseTask) migrateSnapshotsOnce(
+func (m *migrateSnapshotDatabaseTask) migrateSnapshotsOnce(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	snapshotsToMigrate tasks_storage.StringSet,
@@ -194,7 +193,7 @@ func (m migrateSnapshotDatabaseTask) migrateSnapshotsOnce(
 	}
 }
 
-func (m migrateSnapshotDatabaseTask) saveInflightSnapshots(
+func (m *migrateSnapshotDatabaseTask) saveInflightSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	snapshotsToMigrate tasks_storage.StringSet,
@@ -202,13 +201,10 @@ func (m migrateSnapshotDatabaseTask) saveInflightSnapshots(
 
 	cfg := m.config
 	inflightSnapshotsLimit := int(cfg.GetMigratingSnapshotsInflightLimit())
-	inflightSnapshots := tasks_storage.NewStringSet(
-		m.state.InflightSnapshots...,
-	)
 
 	// Save all inflight snapshots to the state
 	for snapshotID := range snapshotsToMigrate.Vals() {
-		if inflightSnapshots.Has(snapshotID) {
+		if common.Find(m.state.InflightSnapshots, snapshotID) {
 			continue
 		}
 
@@ -216,7 +212,6 @@ func (m migrateSnapshotDatabaseTask) saveInflightSnapshots(
 			break
 		}
 
-		inflightSnapshots.Add(snapshotID)
 		m.state.InflightSnapshots = append(
 			m.state.InflightSnapshots,
 			snapshotID,
@@ -230,13 +225,16 @@ func (m migrateSnapshotDatabaseTask) saveInflightSnapshots(
 	return nil
 }
 
-func (m migrateSnapshotDatabaseTask) scheduleAllInflightSnapshots(
+func (m *migrateSnapshotDatabaseTask) scheduleAllInflightSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	mapping *snapshotToTasksMapping,
 ) error {
 
 	for _, snapshotID := range m.state.InflightSnapshots {
+		if mapping.hasSnapshots(snapshotID) {
+			continue
+		}
 
 		taskID, err := m.scheduleMigrateSnapshotTask(
 			ctx,
@@ -253,7 +251,7 @@ func (m migrateSnapshotDatabaseTask) scheduleAllInflightSnapshots(
 	return nil
 }
 
-func (m migrateSnapshotDatabaseTask) scheduleMigrateSnapshotTask(
+func (m *migrateSnapshotDatabaseTask) scheduleMigrateSnapshotTask(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	snapshotID string,
