@@ -148,7 +148,6 @@ async def main():
             runner.status if runner else "N/A",
             runner.busy if runner else "N/A",
         )
-
         if runner and not runner.busy:
             idle_vm_names.append(vm_name)
             idle_vm_ids.append(vm_id)
@@ -167,7 +166,7 @@ async def main():
 
     projected_running = running_count - len(vms_to_remove)
 
-    if projected_running < args.max_vms_to_create:
+    if idle_count < args.max_vms_to_create:
         logger.info(
             "Current VM count (%d) is below max allowed to create (%d)",
             running_count,
@@ -197,6 +196,15 @@ async def main():
         logger.info("Capping creation to avoid exceeding maximum VM count")
 
     # Remove excess idle VMs above max_vms_to_create
+    idle_busy_count = running_count - idle_count
+    logger.info(
+        "IDLE_BUSY_COUNT=%d (running=%d - idle=%d)",
+        idle_busy_count,
+        running_count,
+        idle_count,
+    )
+
+    # Remove excess idle VMs above max_vms_to_create
     excess_idle = idle_count - args.max_vms_to_create
     logger.info(
         "EXCESS_IDLE_CALCULATION: idle_count=%d - max_vms_to_create=%d = excess_idle=%d",
@@ -204,6 +212,7 @@ async def main():
         args.max_vms_to_create,
         excess_idle,
     )
+
     if excess_idle > 0:
         logger.info(
             "Too many idle VMs (%d), removing %d to match max_vms_to_create=%d",
