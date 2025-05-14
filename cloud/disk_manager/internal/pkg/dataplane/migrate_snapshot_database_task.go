@@ -6,14 +6,71 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+type snapshotToTasksMapping struct {
+	snapshotToTask map[string]string
+	taskToSnapshot map[string]string
+}
+
+func newSnapshotToTasksMapping() *snapshotToTasksMapping {
+	return &snapshotToTasksMapping{
+		snapshotToTask: make(map[string]string),
+		taskToSnapshot: make(map[string]string),
+	}
+}
+
+func (m *snapshotToTasksMapping) add(
+	snapshotID string,
+	taskID string,
+) {
+	m.snapshotToTask[snapshotID] = taskID
+	m.taskToSnapshot[taskID] = snapshotID
+}
+
+func (m *snapshotToTasksMapping) remove(taskIDs []string) {
+	for _, taskID := range taskIDs {
+		snapshotID, ok := m.taskToSnapshot[taskID]
+		if !ok {
+			continue
+		}
+
+		delete(m.snapshotToTask, snapshotID)
+		delete(m.taskToSnapshot, taskID)
+	}
+}
+
+func (m *snapshotToTasksMapping) hasSnapshots(snapshotID string) bool {
+	_, ok := m.snapshotToTask[snapshotID]
+	return ok
+}
+
+func (m *snapshotToTasksMapping) taskIDs() []string {
+	taskIDs := make([]string, 0, len(m.taskToSnapshot))
+	for taskID := range m.taskToSnapshot {
+		taskIDs = append(taskIDs, taskID)
+	}
+
+	return taskIDs
+}
+
+func (m *snapshotToTasksMapping) snapshotIDs() []string {
+	snapshotIDs := make([]string, 0, len(m.snapshotToTask))
+	for snapshotID := range m.snapshotToTask {
+		snapshotIDs = append(snapshotIDs, snapshotID)
+	}
+
+	return snapshotIDs
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -52,9 +109,6 @@ func (m migrateSnapshotDatabaseTask) Run(
 		// are created by disabling snapshot creation tasks.
 		// Disabling snapshot creation is error-prone, thus we should perform
 		// it manually by disabling respective tasks in config.
-		cfg := m.config
-		inflightSnapshotsLimit := int(cfg.GetMigratingSnapshotsInflightLimit())
-
 		srcSnapshots, err := m.srcStorage.ListSnapshots(ctx)
 		if err != nil {
 			return err
@@ -71,55 +125,129 @@ func (m migrateSnapshotDatabaseTask) Run(
 			"snapshots/migratingCount",
 		).Set(float64(snapshotsToProcessCount))
 
-		for snapshotID := range snapshotsToMigrate.Vals() {
-			taskID, err := m.scheduleMigrateSnapshotTask(
-				ctx,
-				execCtx,
-				snapshotID,
-			)
-			if err != nil {
-				return err
-			}
-
-			m.state.InflightTaskIDs = append(m.state.InflightTaskIDs, taskID)
-			err = execCtx.SaveState(ctx)
-			if err != nil {
-				return err
-			}
-
-			tasksCount := len(m.state.InflightTaskIDs)
-			inflightTasksLimitReached := tasksCount >= inflightSnapshotsLimit
-			if !inflightTasksLimitReached && snapshotsToProcessCount != 1 {
-				snapshotsToProcessCount--
-				continue
-			}
-
-			finishedTaskIDs, err := m.scheduler.WaitAnyTasks(
-				ctx,
-				m.state.InflightTaskIDs,
-			)
-			if err != nil {
-				return err
-			}
-
-			unfinishedTaskIDs := make([]string, tasksCount)
-			for _, inflightTaskID := range m.state.InflightTaskIDs {
-				if !common.Find(finishedTaskIDs, inflightTaskID) {
-					unfinishedTaskIDs = append(
-						unfinishedTaskIDs,
-						inflightTaskID,
-					)
-				}
-			}
-
-			m.state.InflightTaskIDs = unfinishedTaskIDs
-			err = execCtx.SaveState(ctx)
-			if err != nil {
-				return err
-			}
-
-			snapshotsToProcessCount--
+		err = m.migrateSnapshotsOnce(ctx, execCtx, snapshotsToMigrate)
+		if err != nil {
+			return err
 		}
+	}
+
+	return nil
+}
+
+func (m migrateSnapshotDatabaseTask) Cancel(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	return nil
+}
+
+func (m migrateSnapshotDatabaseTask) GetMetadata(
+	ctx context.Context,
+) (proto.Message, error) {
+
+	return &empty.Empty{}, nil
+}
+
+func (m migrateSnapshotDatabaseTask) GetResponse() proto.Message {
+	return &empty.Empty{}
+}
+
+func (m migrateSnapshotDatabaseTask) migrateSnapshotsOnce(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	snapshotsToMigrate tasks_storage.StringSet,
+) error {
+
+	mapping := newSnapshotToTasksMapping()
+
+	for {
+		err := m.saveInflightSnapshots(ctx, execCtx, snapshotsToMigrate)
+		if err != nil {
+			return err
+		}
+
+		if len(m.state.InflightSnapshots) == 0 {
+			return nil
+		}
+
+		err = m.scheduleAllInflightSnapshots(ctx, execCtx, mapping)
+		if err != nil {
+			return err
+		}
+
+		finishedTaskIDs, err := m.scheduler.WaitAnyTasks(
+			ctx,
+			mapping.taskIDs(),
+		)
+		if err != nil {
+			return err
+		}
+
+		mapping.remove(finishedTaskIDs)
+		m.state.InflightSnapshots = mapping.snapshotIDs()
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+
+	}
+}
+
+func (m migrateSnapshotDatabaseTask) saveInflightSnapshots(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	snapshotsToMigrate tasks_storage.StringSet,
+) error {
+
+	cfg := m.config
+	inflightSnapshotsLimit := int(cfg.GetMigratingSnapshotsInflightLimit())
+	inflightSnapshots := tasks_storage.NewStringSet(
+		m.state.InflightSnapshots...,
+	)
+
+	// Save all inflight snapshots to the state
+	for snapshotID := range snapshotsToMigrate.Vals() {
+		if inflightSnapshots.Has(snapshotID) {
+			continue
+		}
+
+		if len(m.state.InflightSnapshots) >= inflightSnapshotsLimit {
+			break
+		}
+
+		inflightSnapshots.Add(snapshotID)
+		m.state.InflightSnapshots = append(
+			m.state.InflightSnapshots,
+			snapshotID,
+		)
+		err := execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m migrateSnapshotDatabaseTask) scheduleAllInflightSnapshots(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	mapping *snapshotToTasksMapping,
+) error {
+
+	for _, snapshotID := range m.state.InflightSnapshots {
+
+		taskID, err := m.scheduleMigrateSnapshotTask(
+			ctx,
+			execCtx,
+			snapshotID,
+		)
+		if err != nil {
+			return err
+		}
+
+		mapping.add(snapshotID, taskID)
 	}
 
 	return nil
@@ -147,23 +275,4 @@ func (m migrateSnapshotDatabaseTask) scheduleMigrateSnapshotTask(
 			SrcSnapshotId: snapshotID,
 		},
 	)
-}
-
-func (m migrateSnapshotDatabaseTask) Cancel(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	return nil
-}
-
-func (m migrateSnapshotDatabaseTask) GetMetadata(
-	ctx context.Context,
-) (proto.Message, error) {
-
-	return &empty.Empty{}, nil
-}
-
-func (m migrateSnapshotDatabaseTask) GetResponse() proto.Message {
-	return &empty.Empty{}
 }

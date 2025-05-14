@@ -7,5 +7,5 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message MigrateSnapshotDatabaseTaskState {
-  repeated string inflightTaskIDs = 1;
+  repeated string inflightSnapshots = 1;
 }
