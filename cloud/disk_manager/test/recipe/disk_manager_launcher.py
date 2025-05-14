@@ -335,7 +335,7 @@ MIGRATION_CONFIG_TEMPLATE = """
         S3Bucket: "snapshot"
         ChunkBlobsS3KeyPrefix: "snapshot/chunks"
     >
-    MigratingSnapshotsInflightLimit: {migration_snapshots_inflight_limit}
+    MigratingSnapshotsInflightLimit: {migrating_snapshots_inflight_limit}
 """
 
 SERVICE_NAME = "disk_manager"
@@ -415,7 +415,7 @@ class DiskManagerLauncher:
         migration_dst_ydb_port=None,
         migration_dst_s3_port=None,
         migration_dst_s3_credentials_file=None,
-        migration_snapshots_inflight_limit=1000,
+        migrating_snapshots_inflight_limit=None,
         retry_broken_disk_registry_based_disk_checkpoint=False,
     ):
         self.__idx = idx
@@ -472,7 +472,7 @@ class DiskManagerLauncher:
                             s3_port=migration_dst_s3_port,
                             s3_credentials_file=migration_dst_s3_credentials_file,
                         ),
-                        migration_snapshots_inflight_limit=migration_snapshots_inflight_limit,
+                        migrating_snapshots_inflight_limit=migrating_snapshots_inflight_limit,
                     ),
                 ))
         else:
@@ -546,10 +546,7 @@ class DiskManagerLauncher:
         register_process(SERVICE_NAME, self.__daemon.pid)
 
     def stop_daemon(self):
-        try:
-            self.__daemon.stop()
-        except ProcessLookupError:
-            pass
+        self.__daemon.stop()
 
     @staticmethod
     def stop():

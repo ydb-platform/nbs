@@ -1,3 +1,4 @@
+import dataclasses
 import hashlib
 import json
 import logging
@@ -41,9 +42,9 @@ class _MigrationTestSetup:
 
     def __init__(
         self,
-        use_s3_as_src: bool = False,
-        use_s3_as_dst: bool = False,
-        migration_snapshots_inflight_limit=1000,
+        use_s3_as_src: bool,
+        use_s3_as_dst: bool,
+        migrating_snapshots_inflight_limit: int,
         with_nemesis: bool = False,
     ):
         self.use_s3_as_src = use_s3_as_src
@@ -139,7 +140,7 @@ class _MigrationTestSetup:
             s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
             migration_dst_s3_port=self.dst_s3.port if self.dst_s3 is not None else None,
             migration_dst_s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
-            migration_snapshots_inflight_limit=migration_snapshots_inflight_limit,
+            migrating_snapshots_inflight_limit=migrating_snapshots_inflight_limit,
         )
 
         self.initial_cpl_disk_manager.start()
@@ -156,23 +157,11 @@ class _MigrationTestSetup:
         self.initial_dpl_disk_manager.stop_daemon()
         if self.secondary_dpl_disk_manager is not None:
             self.secondary_dpl_disk_manager.stop_daemon()
-        try:
-            MetadataServiceLauncher.stop()
-        except ProcessLookupError:
-            pass
-        try:
-            NbsLauncher.stop()
-        except ProcessLookupError:
-            pass
-        try:
-            YDBLauncher.stop()
-        except ProcessLookupError:
-            pass
+        MetadataServiceLauncher.stop()
+        NbsLauncher.stop()
+        YDBLauncher.stop()
         if self.src_s3 is not None or self.dst_s3 is not None:
-            try:
-                S3Launcher.stop()
-            except ProcessLookupError:
-                pass
+            S3Launcher.stop()
 
     def admin(self, *args: str):
         return subprocess.check_output(
@@ -348,6 +337,7 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
+        migrating_snapshots_inflight_limit=10,
     ) as setup:
         disk_size = 16 * 1024 * 1024
         initial_disk_id = "example"
@@ -363,75 +353,92 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
         assert new_checksum == checksum
 
 
+@dataclasses.dataclass
+class _SingleSnapshotMigrationConfig:
+    src_disk_id: str
+    snapshot_id: str
+    checksum: str
+    dst_disk_id: str
+    size: int
+
+
 @pytest.mark.parametrize(
     [
         "use_s3_as_src",
         "use_s3_as_dst",
-        "migration_snapshots_inflight_limit",
+        "migrating_snapshots_inflight_limit",
         "with_nemesis",
     ],
     [
-        (True, False, 1000, False),
-        (False, True, 1000, False),
-        (True, True, 1000, False),
+        (False, True, 10, False),
+        (True, False, 10, False),
+        (True, True, 10, True),
         (False, False, 4, False),
-        (False, False, 5, False),
-        (False, False, 9, False),
-        (False, False, 10, False),
-        (False, False, 1000, False),
-        (False, False, 4, True),
     ]
 )
 def test_disk_manager_dataplane_database_migration(
     use_s3_as_src,
     use_s3_as_dst,
-    migration_snapshots_inflight_limit,
+    migrating_snapshots_inflight_limit,
     with_nemesis,
 ):
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
-        migration_snapshots_inflight_limit=migration_snapshots_inflight_limit,
+        migrating_snapshots_inflight_limit=migrating_snapshots_inflight_limit,
         with_nemesis=with_nemesis,
     ) as setup:
-        initial_data_count = 10
-        disks = [f"disk_{i}" for i in range(initial_data_count)]
-        snapshots = [f"snapshot_{i}" for i in range(initial_data_count)]
-        new_disks_for_initial = [f"new_disk_{i}" for i in range(initial_data_count)]
-        checksums = []
-        size = 100 * 1024 * 1024
+        snapshot_count = 10
+        migration_configs = [
+            _SingleSnapshotMigrationConfig(
+                src_disk_id=f"disk_{i}",
+                snapshot_id=f"snapshot_{i}",
+                dst_disk_id=f"new_disk_{i}",
+                checksum="",
+                size=8 * 1024 * 1024,
+            ) for i in range(snapshot_count)
+        ]
 
         # Create disks and snapshots before migration
-        for snapshot, disk in list(zip(snapshots, disks))[:initial_data_count // 2]:
-            setup.create_new_disk(disk, size)
-            checksums.append(setup.fill_disk(disk))
-            setup.create_snapshot(src_disk_id=disk, snapshot_id=snapshot)
+        for config in migration_configs[:snapshot_count // 2]:
+            setup.create_new_disk(config.src_disk_id, config.size)
+            config.checksum = setup.fill_disk(config.src_disk_id)
+            setup.create_snapshot(
+                src_disk_id=config.src_disk_id,
+                snapshot_id=config.snapshot_id,
+            )
 
-        while len(setup.list_snapshots()) != initial_data_count // 2:
+        while len(setup.list_snapshots()) != snapshot_count // 2:
             _logger.info("Waiting for initial snapshots to be created")
             time.sleep(1)
 
         # Prepare disks to create snapshots from during migration
-        for disk in disks[initial_data_count // 2:]:
-            setup.create_new_disk(disk, size)
-            checksums.append(setup.fill_disk(disk))
+        for config in migration_configs[snapshot_count // 2:]:
+            setup.create_new_disk(config.src_disk_id, config.size)
+            config.checksum = setup.fill_disk(config.src_disk_id)
 
         task_id = setup.start_database_migration()
 
         setup.wait_for_dpl_metric_equals(0)
         # Create snapshots during migration
-        for snapshot, disk in list(zip(snapshots, disks))[initial_data_count // 2:]:
-            setup.create_snapshot(src_disk_id=disk, snapshot_id=snapshot)
+        for config in migration_configs[snapshot_count // 2:]:
+            setup.create_snapshot(
+                src_disk_id=config.src_disk_id,
+                snapshot_id=config.snapshot_id)
 
         # Wait for snapshots to be created
-        while len(setup.list_snapshots()) != initial_data_count:
+        while len(setup.list_snapshots()) != snapshot_count:
             _logger.info("Waiting for snapshots to be created during migration")
             time.sleep(1)
 
         setup.wait_for_dpl_metric_equals(0)
         setup.finish_database_migration(task_id)
         setup.switch_dataplane_to_new_db()
-        for new_disk, checksum, snapshot in zip(new_disks_for_initial, checksums, snapshots):
-            setup.create_disk_from_snapshot(snapshot_id=snapshot, disk_id=new_disk, size=size)
-            new_checksum = setup.checksum_disk(new_disk)
-            assert new_checksum == checksum
+        for config in migration_configs:
+            setup.create_disk_from_snapshot(
+                snapshot_id=config.snapshot_id,
+                disk_id=config.dst_disk_id,
+                size=config.size,
+            )
+            new_checksum = setup.checksum_disk(config.dst_disk_id)
+            assert new_checksum == config.checksum

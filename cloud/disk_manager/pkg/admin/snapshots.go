@@ -52,6 +52,7 @@ func (t *commandWithScheduler) init() error {
 		metrics.NewEmptyRegistry(),
 	)
 	if err != nil {
+		t.close()
 		logging.Error(t.ctx, "Failed to create task scheduler: %v", err)
 		return err
 	}
@@ -60,9 +61,7 @@ func (t *commandWithScheduler) init() error {
 }
 
 func (t *commandWithScheduler) close() {
-	if t.db != nil {
-		t.db.Close(t.ctx)
-	}
+	t.db.Close(t.ctx)
 }
 
 func newCommandWithScheduler(
@@ -324,10 +323,10 @@ type scheduleCreateSnapshotFromLegacySnapshotTask struct {
 
 func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
 	err := c.init()
-	defer c.close()
 	if err != nil {
 		return err
 	}
+	defer c.close()
 
 	taskID, err := c.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
@@ -389,10 +388,10 @@ type scheduleMigrateSnapshotTaskCmd struct {
 
 func (c *scheduleMigrateSnapshotTaskCmd) run() error {
 	err := c.init()
-	defer c.close()
 	if err != nil {
 		return err
 	}
+	defer c.close()
 
 	taskID, err := c.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
@@ -451,10 +450,10 @@ type migrateSnapshotDatabaseCmd struct {
 
 func (c *migrateSnapshotDatabaseCmd) run() error {
 	err := c.init()
-	defer c.close()
 	if err != nil {
 		return err
 	}
+	defer c.close()
 
 	taskID, err := c.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
