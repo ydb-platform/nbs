@@ -116,7 +116,7 @@ async def main():
         logger.info(
             "Instance %s labels: %s, state: %s",
             instance.metadata.id,
-            labels,
+            ", ".join([f"{k}: {v}" for k, v in labels.items()]),
             instance.status.state.name,
         )
         if condition:
