@@ -73,7 +73,6 @@ async def main():
         default=1,
         help="Number of additional VMs to create when max already reached but still below hard limit",
     )
-
     args = parser.parse_args()
     logger.info("Parsed arguments: %s", args)
 
@@ -117,11 +116,7 @@ async def main():
     for instance in instances:
         logger.info("Processing instance %s", instance.metadata.name)
         labels = instance.metadata.labels
-        logger.info(
-            "Instance labels: %s, instance state: %s",
-            ",".join([f"{k}={v}" for k, v in labels.items()]),
-            instance.status.state.name,
-        )
+        logger.info("Instance labels: %s", labels)
 
         condition = (
             labels.get("repo", "") == args.github_repo
@@ -129,14 +124,7 @@ async def main():
             and labels.get("runner-flavor", "") == args.flavor  # noqa: W503
             and instance.status.state.name == "RUNNING"  # noqa: W503
         )
-        logger.info(
-            "Instance condition: %s, checks: repo: %s, owner: %s, flavor: %s, state: %s",
-            condition,
-            labels.get("repo", "") == args.github_repo,
-            labels.get("owner", "") == args.github_repo_owner,
-            labels.get("runner-flavor", "") == args.flavor,
-            instance.status.state.name == "RUNNING",
-        )
+        logger.info("Instance condition match: %s", condition)
         if not condition:
             logger.info(
                 "Instance %s does not match criteria, skipping", instance.metadata.name
@@ -153,7 +141,7 @@ async def main():
 
         runner = next((r for r in runners if r.name == vm_id), None)
         logger.info(
-            "Runner %s found: %s (id: %s, status: %s, busy: %s)",
+            "Runner %s found: %s (id: %s, status: %s, busy: %s, )",
             vm_id,
             runner,
             runner.id if runner else "N/A",
@@ -177,14 +165,16 @@ async def main():
     available_after_removal = running_count - len(vms_to_remove)
     to_create = 0
 
-    if running_count < args.max_vms_to_create:
+    projected_running = running_count - len(vms_to_remove)
+
+    if projected_running < args.max_vms_to_create:
         logger.info(
             "Current VM count (%d) is below max allowed to create (%d)",
             running_count,
             args.max_vms_to_create,
         )
         to_create = args.max_vms_to_create - available_after_removal
-    elif running_count < args.maximum_amount_of_vms_to_have:
+    elif projected_running < args.maximum_amount_of_vms_to_have:
         logger.info(
             "Running count (%d) is >= max_vms_to_create (%d) but < hard limit (%d), allowing up to %d extra",
             running_count,
@@ -198,15 +188,22 @@ async def main():
     else:
         logger.info("VM count already at or above hard limit, no creation allowed")
 
-    total_if_created = running_count + to_create - len(vms_to_remove)
+    logger.info("PROJECTED_RUNNING_COUNT=%d", projected_running)
+    logger.info("PLANNED_CREATION_COUNT=%d", to_create)
+    total_if_created = projected_running + to_create
+    logger.info("TOTAL_IF_CREATED=%d", total_if_created)
     if total_if_created > args.maximum_amount_of_vms_to_have:
-        to_create = max(
-            0, args.maximum_amount_of_vms_to_have - running_count + len(vms_to_remove)
-        )
+        to_create = max(0, args.maximum_amount_of_vms_to_have - projected_running)
         logger.info("Capping creation to avoid exceeding maximum VM count")
 
     # Remove excess idle VMs above max_vms_to_create
     excess_idle = idle_count - args.max_vms_to_create
+    logger.info(
+        "EXCESS_IDLE_CALCULATION: idle_count=%d - max_vms_to_create=%d = excess_idle=%d",
+        idle_count,
+        args.max_vms_to_create,
+        excess_idle,
+    )
     if excess_idle > 0:
         logger.info(
             "Too many idle VMs (%d), removing %d to match max_vms_to_create=%d",
