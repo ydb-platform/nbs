@@ -47,6 +47,7 @@ void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
     if (HasError(sgListOrError)){
         ReplyAndDie(ctx, sgListOrError.GetError());
+        return;
     }
     SgList.SetSgList(sgListOrError.ExtractResult());
 
