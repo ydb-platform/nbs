@@ -188,8 +188,7 @@ async def main():
             running_count,
             args.max_vms_to_create,
         )
-        to_create = args.max_vms_to_create - projected_running
-
+        to_create = args.max_vms_to_create - idle_count
     elif (
         idle_count >= args.max_vms_to_create
         and projected_running < args.maximum_amount_of_vms_to_have
