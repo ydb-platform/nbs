@@ -161,19 +161,39 @@ async def main():
 
     running_count = len(running_vm_names)
     idle_count = len(idle_vm_names)
-    available_after_removal = running_count - len(vms_to_remove)
+    # Remove excess idle VMs above max_vms_to_create (early to correct projected count)
+    excess_idle = idle_count - args.max_vms_to_create
+    logger.info(
+        "EXCESS_IDLE_CALCULATION: idle_count=%d - max_vms_to_create=%d = excess_idle=%d",
+        idle_count,
+        args.max_vms_to_create,
+        excess_idle,
+    )
+    forced_idle_removals = idle_vm_ids[:excess_idle] if excess_idle > 0 else []
+    for vm_id in forced_idle_removals:
+        if vm_id not in vms_to_remove:
+            vms_to_remove.append(vm_id)
+
+    projected_running = running_count - len(vms_to_remove)
     to_create = 0
 
     projected_running = running_count - len(vms_to_remove)
 
-    if idle_count < args.max_vms_to_create:
+    if (
+        idle_count < args.max_vms_to_create
+        and projected_running < args.maximum_amount_of_vms_to_have
+    ):
         logger.info(
             "Current VM count (%d) is below max allowed to create (%d)",
             running_count,
             args.max_vms_to_create,
         )
-        to_create = args.max_vms_to_create - available_after_removal
-    elif projected_running < args.maximum_amount_of_vms_to_have:
+        to_create = args.max_vms_to_create - projected_running
+
+    elif (
+        idle_count >= args.max_vms_to_create
+        and projected_running < args.maximum_amount_of_vms_to_have
+    ):
         logger.info(
             "Running count (%d) is >= max_vms_to_create (%d) but < hard limit (%d), allowing up to %d extra",
             running_count,
@@ -195,34 +215,7 @@ async def main():
         to_create = max(0, args.maximum_amount_of_vms_to_have - projected_running)
         logger.info("Capping creation to avoid exceeding maximum VM count")
 
-    # Remove excess idle VMs above max_vms_to_create
-    idle_busy_count = running_count - idle_count
-    logger.info(
-        "IDLE_BUSY_COUNT=%d (running=%d - idle=%d)",
-        idle_busy_count,
-        running_count,
-        idle_count,
-    )
-
-    # Remove excess idle VMs above max_vms_to_create
-    excess_idle = idle_count - args.max_vms_to_create
-    logger.info(
-        "EXCESS_IDLE_CALCULATION: idle_count=%d - max_vms_to_create=%d = excess_idle=%d",
-        idle_count,
-        args.max_vms_to_create,
-        excess_idle,
-    )
-
-    if excess_idle > 0:
-        logger.info(
-            "Too many idle VMs (%d), removing %d to match max_vms_to_create=%d",
-            idle_count,
-            excess_idle,
-            args.max_vms_to_create,
-        )
-        for vm_id in idle_vm_ids[:excess_idle]:
-            if vm_id not in vms_to_remove:
-                vms_to_remove.append(vm_id)
+    # Excess idle removals already handled earlier, skipping duplicate logic
 
     vms_to_create = (
         [
