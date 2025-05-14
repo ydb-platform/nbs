@@ -118,21 +118,22 @@ func getDiskKind(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
-	mediaKind, err := getStorageMediaKind(kind)
-	if err != nil {
-		return false
-	}
-
-	return isDiskRegistryBasedDisk(mediaKind)
-}
-
 func isDiskRegistryBasedDisk(mediaKind core_protos.EStorageMediaKind) bool {
 	switch mediaKind {
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_NONREPLICATED,
 		core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR2,
 		core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR3,
 		core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED:
+		return true
+	}
+
+	return false
+}
+
+func isLocalDisk(mediaKind core_protos.EStorageMediaKind) bool {
+	switch mediaKind {
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_LOCAL,
+		core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL:
 		return true
 	}
 
@@ -390,6 +391,37 @@ func isAbortedError(e error) bool {
 	return false
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
+	mediaKind, err := getStorageMediaKind(kind)
+	if err != nil {
+		return false
+	}
+
+	return isDiskRegistryBasedDisk(mediaKind)
+}
+
+func IsLocalDisk(kind types.DiskKind) bool {
+	mediaKind, err := getStorageMediaKind(kind)
+	if err != nil {
+		return false
+	}
+
+	return isLocalDisk(mediaKind)
+}
+
+func IsTryAgainError(e error) bool {
+	var clientErr *nbs_client.ClientError
+	if errors.As(e, &clientErr) {
+		if clientErr.Code == nbs_client.E_TRY_AGAIN {
+			return true
+		}
+	}
+
+	return false
+}
+
 func IsDiskNotFoundError(e error) bool {
 	return nbs_client.IsDiskNotFoundError(e)
 }
@@ -425,6 +457,14 @@ func IsAlterPlacementGroupMembershipPublicError(e error) bool {
 	}
 
 	return false
+}
+
+func IsLocalDiskAllocationTryAgainError(e error, kind types.DiskKind) bool {
+	return IsTryAgainError(e) &&
+		IsLocalDisk(kind) &&
+		strings.Contains(
+			e.Error(),
+			"Unable to allocate local disk: secure erase has not finished yet")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
