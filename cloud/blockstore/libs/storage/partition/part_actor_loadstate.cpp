@@ -69,6 +69,7 @@ bool TPartitionActor::PrepareLoadState(
     TPartitionDatabase db(tx.DB);
 
     CompactionMapLoadState.RangesPerTx = Config->GetMaxCompactionRangesLoadingPerTx();
+    CompactionMapLoadState.MaxChunksInflight = Config->GetMaxOutOfOrderCompactionMapLoadRequestsInQueue();
 
     const bool shouldLoadCompactionMapLazily = CompactionMapLoadState.RangesPerTx != 0;
     CompactionMapLoadState.Finished = !shouldLoadCompactionMapLazily;

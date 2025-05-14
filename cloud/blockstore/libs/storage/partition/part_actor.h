@@ -108,11 +108,14 @@ class TPartitionActor final
             bool OutOfOrder = false;
         };
 
+        ui32 TryToEnqueueOutOfOrderRange(ui32 rangeIndex);
+        bool ShouldRejectRequest(const THashSet<ui32>& rangeIndices);
+
         ui32 RangesPerTx = 0;
+        ui32 MaxChunksInflight = 0;
         ui32 FirstRangeIdx = 0;
         bool Finished = false;
         THashSet<ui32> LoadedOutOfOrderRangeIds;
-
         TDeque<TChunk> ChunksInflight;
     };
 
@@ -678,7 +681,11 @@ private:
     void HandleLoadCompactionMapChunk(
         const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
-    ui32 TryToEnqueueOutOfOrderRange(ui32 rangeIndex);
+
+    THashSet<ui32> GetRangeIndices(
+        const TVector<TAddFreshBlob>& freshBlobs,
+        const TVector<TAddMixedBlob>& mixedBlobs,
+        const TVector<TAddMergedBlob>& mergedBlobs) const;
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)
