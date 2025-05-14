@@ -347,6 +347,8 @@ type Factory interface {
 		srcZoneID string,
 		dstZoneID string,
 	) (MultiZoneClient, error)
+
+	ShouldUseShardsForFolder(folderID string) bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////

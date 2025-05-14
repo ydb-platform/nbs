@@ -3,6 +3,7 @@ package nbs
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
@@ -314,6 +315,10 @@ func (f *factory) GetShards(zoneID string) []string {
 	}
 
 	return shards.Shards
+}
+
+func (f *factory) ShouldUseShardsForFolder(folderID string) bool {
+	return slices.Contains(f.config.UseShardsFolders, folderID)
 }
 
 func (f *factory) HasClient(zoneID string) bool {

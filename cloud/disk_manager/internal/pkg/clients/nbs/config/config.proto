@@ -38,4 +38,5 @@ message ClientConfig {
     // ServerRequestTimeout is passed to server in headers and handled on the server side.
     optional string ServerRequestTimeout = 13 [default = "20s"];
     map<string, ZoneShards> Shards = 14;
+    repeated string UseShardsFolders = 15;
 }

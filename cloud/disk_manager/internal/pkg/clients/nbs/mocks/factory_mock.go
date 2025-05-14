@@ -60,6 +60,13 @@ func (f *FactoryMock) GetMultiZoneClient(
 	return res, args.Error(1)
 }
 
+func (f *FactoryMock) ShouldUseShardsForFolder(folderID string) bool {
+
+	args := f.Called(folderID)
+
+	return args.Get(0).(bool)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewFactoryMock() *FactoryMock {

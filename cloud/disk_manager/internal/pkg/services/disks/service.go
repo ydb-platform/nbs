@@ -199,9 +199,13 @@ func (s *service) prepareCreateDiskParams(
 		)
 	}
 
-	zoneID, err := s.prepareZoneId(ctx, req.DiskId)
-	if err != nil {
-		return nil, err
+	var err error
+	zoneID := req.DiskId.ZoneId
+	if s.nbsFactory.ShouldUseShardsForFolder(req.FolderId) {
+		zoneID, err = s.prepareZoneId(ctx, req.DiskId)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
