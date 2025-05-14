@@ -101,10 +101,10 @@ class TPartitionActor final
 
     struct TCompactionMapLoadState
     {
-        struct TLoadCompactionMapChunk
+        struct TChunk
         {
             ui32 FirstRangeIdx = 0;
-            ui32 RangesPerTx = 0;
+            ui32 RangeCount = 0;
             bool OutOfOrder = false;
         };
 
@@ -113,7 +113,7 @@ class TPartitionActor final
         bool Finished = false;
         THashSet<ui32> LoadedOutOfOrderRangeIds;
 
-        TDeque<TLoadCompactionMapChunk> LoadQueue;
+        TDeque<TChunk> ChunksInflight;
     };
 
 private:
@@ -129,7 +129,7 @@ private:
     const NBlockCodecs::ICodec* BlobCodec;
 
     std::unique_ptr<TPartitionState> State;
-    TCompactionMapLoadState CompactioMapLoadState;
+    TCompactionMapLoadState CompactionMapLoadState;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -678,6 +678,7 @@ private:
     void HandleLoadCompactionMapChunk(
         const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
+    ui32 TryToEnqueueOutOfOrderRange(ui32 rangeIndex);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)

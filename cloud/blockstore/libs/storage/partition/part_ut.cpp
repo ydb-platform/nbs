@@ -12402,21 +12402,21 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRejectWriteIfCompactionMapNotLoaded)
+    Y_UNIT_TEST(ShouldRejectWriteIfCompactionMapIsNotLoaded)
     {
         auto config = DefaultConfig();
         config.SetMaxCompactionRangesLoadingPerTx(1);
 
         auto runtime = PrepareTestActorRuntime(config, 1024);
 
-        TAutoPtr<IEventHandle> loadCmReq;
+        TAutoPtr<IEventHandle> capturedLoadCMRequest;
         runtime->SetEventFilter(
             [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvLoadCompactionMapChunkRequest: {
-                        UNIT_ASSERT(!loadCmReq);
-                        loadCmReq = event.Release();
+                        UNIT_ASSERT(!capturedLoadCMRequest);
+                        capturedLoadCMRequest = event.Release();
                         return true;
                     }
                 }
@@ -12434,8 +12434,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT(FAILED(response->GetStatus()));
         }
 
-        UNIT_ASSERT(loadCmReq);
-        runtime->Send(loadCmReq.Release());
+        UNIT_ASSERT(capturedLoadCMRequest);
+        runtime->Send(capturedLoadCMRequest.Release());
 
         {
             partition.SendWriteBlocksRequest(
@@ -12461,7 +12461,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             partition.WriteBlocks(TBlockRange32::WithLength(i * 1024, 256), i);
         }
 
-        std::vector<ui32> waitOooRangeIdx;
+        std::vector<ui32> waitOutOfOrderRangeIdx;
         TAutoPtr<IEventHandle> delayEvent;
         ui32 rangesLoaded = 0;
         runtime->SetEventFilter(
@@ -12472,11 +12472,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         auto* msg =
                             event->Get<TEvPartitionPrivate::
                                            TEvLoadCompactionMapChunkRequest>();
-                        if (!waitOooRangeIdx.empty()) {
+                        if (!waitOutOfOrderRangeIdx.empty()) {
                             UNIT_ASSERT_EQUAL(
-                                waitOooRangeIdx.back(),
+                                waitOutOfOrderRangeIdx.back(),
                                 msg->FirstRangeIdx);
-                            waitOooRangeIdx.pop_back();
+                            waitOutOfOrderRangeIdx.pop_back();
                             return false;
                         }
                         rangesLoaded += msg->RangesPerTx;
@@ -12516,14 +12516,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT(FAILED(response->GetStatus()));
         }
 
-        waitOooRangeIdx = { 83, 66 };
+        waitOutOfOrderRangeIdx = { 83, 66 };
 
         UNIT_ASSERT(delayEvent);
         runtime->Send(delayEvent.Release());
 
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
-        UNIT_ASSERT(waitOooRangeIdx.empty());
+        UNIT_ASSERT(waitOutOfOrderRangeIdx.empty());
 
         {
             partition.SendWriteBlocksRequest(

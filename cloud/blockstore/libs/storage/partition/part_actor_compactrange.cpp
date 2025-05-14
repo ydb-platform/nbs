@@ -325,9 +325,11 @@ void TPartitionActor::EnqueueForcedCompaction(const TActorContext& ctx)
     if (!State || !State->IsLoadStateFinished()) {
         return;
     }
-    if (!CompactioMapLoadState.Finished) {
+
+    if (!CompactionMapLoadState.Finished) {
         return;
     }
+
     if (State->GetForcedCompactionState().IsRunning ||
         PendingForcedCompactionRequests.empty())
     {

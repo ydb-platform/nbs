@@ -164,7 +164,7 @@ public:
     bool ReadCompactionMap(TVector<TCompactionCounter>& compactionMap);
     bool ReadCompactionMap(
         TVector<TCompactionCounter>& compactionMap,
-        ui32 firstRangeId,
+        ui32 startingFromRangeIdx,
         ui32 rangeCount);
 
     //

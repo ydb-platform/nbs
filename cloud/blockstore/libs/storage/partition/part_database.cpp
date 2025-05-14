@@ -984,13 +984,13 @@ bool TPartitionDatabase::ReadCompactionMap(
 
 bool TPartitionDatabase::ReadCompactionMap(
     TVector<TCompactionCounter>& compactionMap,
-    ui32 firstRangeId,
+    ui32 startingFromRangeIdx,
     ui32 rangeCount)
 {
     using TTable = TPartitionSchema::CompactionMap;
 
     auto it = Table<TTable>()
-        .GreaterOrEqual(firstRangeId)
+        .GreaterOrEqual(startingFromRangeIdx)
         .Select();
 
     if (!it.IsReady()) {

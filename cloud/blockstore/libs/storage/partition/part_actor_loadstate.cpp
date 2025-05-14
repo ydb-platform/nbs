@@ -68,13 +68,15 @@ bool TPartitionActor::PrepareLoadState(
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    CompactioMapLoadState.RangesPerTx = Config->GetMaxCompactionRangesLoadingPerTx();
-    CompactioMapLoadState.Finished = CompactioMapLoadState.RangesPerTx == 0;
+    CompactionMapLoadState.RangesPerTx = Config->GetMaxCompactionRangesLoadingPerTx();
+
+    const bool shouldLoadCompactionMapLazily = CompactionMapLoadState.RangesPerTx != 0;
+    CompactionMapLoadState.Finished = !shouldLoadCompactionMapLazily;
 
     std::initializer_list<bool> results = {
         db.ReadMeta(args.Meta),
         db.ReadFreshBlocks(args.FreshBlocks),
-        CompactioMapLoadState.Finished ? db.ReadCompactionMap(args.CompactionMap) : true,
+        shouldLoadCompactionMapLazily ? true : db.ReadCompactionMap(args.CompactionMap),
         db.ReadUsedBlocks(args.UsedBlocks),
         db.ReadLogicalUsedBlocks(args.LogicalUsedBlocks, args.ReadLogicalUsedBlocks),
         db.ReadCheckpoints(args.Checkpoints, args.CheckpointId2CommitId),
@@ -224,10 +226,10 @@ void TPartitionActor::CompleteLoadState(
     State->GetUsedBlocks() = std::move(args.UsedBlocks);
     State->AccessStats().SetUsedBlocksCount(State->GetUsedBlocks().Count());
 
-    if (!CompactioMapLoadState.Finished) {
-        CompactioMapLoadState.LoadQueue.emplace_back(
-            CompactioMapLoadState.FirstRangeIdx,
-            CompactioMapLoadState.RangesPerTx,
+    if (!CompactionMapLoadState.Finished) {
+        CompactionMapLoadState.ChunksInflight.emplace_back(
+            CompactionMapLoadState.FirstRangeIdx,
+            CompactionMapLoadState.RangesPerTx,
             false);
         LoadNextCompactionMapChunk(ctx);
     } else {
@@ -381,15 +383,13 @@ bool TPartitionActor::PrepareLoadCompactionMapChunk(
     TTransactionContext& tx,
     TTxPartition::TLoadCompactionMapChunk& args)
 {
-    Y_ABORT_UNLESS(!CompactioMapLoadState.LoadQueue.empty());
-
-    const auto& req = CompactioMapLoadState.LoadQueue.front();
+    const auto& req = CompactionMapLoadState.ChunksInflight.front();
 
     TPartitionDatabase db(tx.DB);
     const bool result = db.ReadCompactionMap(
         args.Counters,
         req.FirstRangeIdx * State->GetCompactionMap().GetRangeSize(),
-        req.RangesPerTx);
+        req.RangeCount);
 
     LOG_DEBUG(
         ctx,
@@ -416,27 +416,25 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
     const TActorContext& ctx,
     TTxPartition::TLoadCompactionMapChunk& args)
 {
-    Y_ABORT_UNLESS(!CompactioMapLoadState.LoadQueue.empty());
-
     State->GetCompactionMap().Update(args.Counters, &State->GetUsedBlocks());
 
-    const auto& req = CompactioMapLoadState.LoadQueue.front();
+    const auto& req = CompactionMapLoadState.ChunksInflight.front();
     if (req.OutOfOrder) {
-        CompactioMapLoadState.LoadedOutOfOrderRangeIds.emplace(
+        CompactionMapLoadState.LoadedOutOfOrderRangeIds.emplace(
             req.FirstRangeIdx);
     } else {
         if (!args.Counters.empty()) {
-            CompactioMapLoadState.FirstRangeIdx =
+            CompactionMapLoadState.FirstRangeIdx =
                 State->GetCompactionMap().GetRangeIndex(
                     args.Counters.back().BlockIndex) +
                 1;
         }
-        if (args.Counters.size() < CompactioMapLoadState.RangesPerTx) {
-            CompactioMapLoadState.Finished = true;
+        if (args.Counters.size() < CompactionMapLoadState.RangesPerTx) {
+            CompactionMapLoadState.Finished = true;
         }
     }
 
-    CompactioMapLoadState.LoadQueue.pop_front();
+    CompactionMapLoadState.ChunksInflight.pop_front();
 
     LOG_DEBUG(
         ctx,
@@ -444,9 +442,9 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
         "[%lu][d:%s] Compaction map chunk updated, finished=%d",
         TabletID(),
         PartitionConfig.GetDiskId().c_str(),
-        CompactioMapLoadState.Finished);
+        CompactionMapLoadState.Finished);
 
-    if (CompactioMapLoadState.Finished) {
+    if (CompactionMapLoadState.Finished) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -457,10 +455,10 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
         return;
     }
 
-    if (CompactioMapLoadState.LoadQueue.empty()) {
-        CompactioMapLoadState.LoadQueue.emplace_back(
-            CompactioMapLoadState.FirstRangeIdx,
-            CompactioMapLoadState.RangesPerTx,
+    if (CompactionMapLoadState.ChunksInflight.empty()) {
+        CompactionMapLoadState.ChunksInflight.emplace_back(
+            CompactionMapLoadState.FirstRangeIdx,
+            CompactionMapLoadState.RangesPerTx,
             false);
     }
 
@@ -470,7 +468,7 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
 void TPartitionActor::LoadNextCompactionMapChunk(
     const NActors::TActorContext& ctx)
 {
-    if (CompactioMapLoadState.LoadQueue.empty()) {
+    if (CompactionMapLoadState.ChunksInflight.empty()) {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -480,9 +478,11 @@ void TPartitionActor::LoadNextCompactionMapChunk(
         return;
     }
 
-    const auto& chunkInfo = CompactioMapLoadState.LoadQueue.front();
-    auto request = std::make_unique<
-        TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest>(chunkInfo.FirstRangeIdx, chunkInfo.RangesPerTx);
+    const auto& chunkInfo = CompactionMapLoadState.ChunksInflight.front();
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest>(
+            chunkInfo.FirstRangeIdx,
+            chunkInfo.RangeCount);
     NCloud::Send(ctx, SelfId(), std::move(request));
 }
 

@@ -1237,7 +1237,7 @@ message TStorageServiceConfig
     // the MultiAgentWrite request was executed.
     optional uint32 NetworkForwardingTimeout = 430;
 
-    // Maximum range count to load CompactionMap lazily.
+    // Maximum range count to load per 1 iteration (transaction).
     optional uint32 MaxCompactionRangesLoadingPerTx = 431;
     // Max inflight for out of order compaction map load requests.
     optional uint32 MaxOutOfOrderCompactionMapLoadRequestsInQueue = 432;

@@ -1093,14 +1093,17 @@ void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
 
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
-    if (!CompactioMapLoadState.Finished) {
+    if (!CompactionMapLoadState.Finished) {
         return;
     }
+
     if (State->GetCompactionState(ECompactionType::Tablet).Status !=
         EOperationStatus::Idle)
     {
+        // already enqueued
         return;
     }
+
     if (!State->IsCompactionAllowed()) {
         return;
     }

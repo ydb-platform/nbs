@@ -642,76 +642,51 @@ void TPartitionActor::HandleAddBlobs(
 {
     auto* msg = ev->Get();
 
-    if (!CompactioMapLoadState.Finished) {
+    if (!CompactionMapLoadState.Finished) {
         const ui32 limitInQueue =
             Config->GetMaxOutOfOrderCompactionMapLoadRequestsInQueue();
 
-        bool reject = false;
+        bool shouldReject = false;
 
         const auto& cm = State->GetCompactionMap();
 
-        TVector<ui32> rangeIndecies;
+        TVector<ui32> rangeIndices;
         for (const auto& blob: msg->MixedBlobs) {
             if (!blob.Blocks.empty()) {
-                rangeIndecies.emplace_back(cm.GetRangeIndex(blob.Blocks[0]));
+                rangeIndices.emplace_back(cm.GetRangeIndex(blob.Blocks[0]));
             }
         }
+
         for (const auto& blob: msg->MergedBlobs) {
             const auto rangeStart = cm.GetRangeStart(blob.BlockRange.Start);
             Y_DEBUG_ABORT_UNLESS(
                 rangeStart == cm.GetRangeStart(blob.BlockRange.End));
-            rangeIndecies.emplace_back(cm.GetRangeIndex(rangeStart));
+            rangeIndices.emplace_back(cm.GetRangeIndex(rangeStart));
         }
+
         for (const auto& blob: msg->FreshBlobs) {
             if (!blob.Blocks.empty()) {
-                rangeIndecies.emplace_back(
+                rangeIndices.emplace_back(
                     cm.GetRangeIndex(blob.Blocks[0].BlockIndex));
             }
         }
 
-        for (const ui32 rangeIndex: rangeIndecies) {
-            if (rangeIndex >= CompactioMapLoadState.FirstRangeIdx &&
-                !CompactioMapLoadState.LoadedOutOfOrderRangeIds.contains(
-                    rangeIndex))
-            {
-                reject = true;
-
-                bool shouldEnqueue = true;
-                ui32 oooRequestsInQueue = 0;
-                for (const auto& req: CompactioMapLoadState.LoadQueue) {
-                    if (!req.OutOfOrder) {
-                        if (rangeIndex >= req.FirstRangeIdx &&
-                            rangeIndex < (req.FirstRangeIdx + req.RangesPerTx))
-                        {
-                            shouldEnqueue = false;
-                            break;
-                        }
-                        continue;
-                    }
-                    if (req.FirstRangeIdx == rangeIndex) {
-                        shouldEnqueue = false;
-                        break;
-                    }
-                    if (++oooRequestsInQueue == limitInQueue) {
-                        shouldEnqueue = false;
-                        break;
-                    }
-                }
-
-                if (shouldEnqueue) {
-                    CompactioMapLoadState.LoadQueue.emplace_back(
-                        rangeIndex,
-                        1,
-                        true);
-                }
-
-                if (oooRequestsInQueue == limitInQueue) {
+        for (const ui32 rangeIndex: rangeIndices) {
+            const bool rangeLoaded =
+                rangeIndex < CompactionMapLoadState.FirstRangeIdx ||
+                CompactionMapLoadState.LoadedOutOfOrderRangeIds.contains(
+                    rangeIndex);
+            if (!rangeLoaded) {
+                shouldReject = true;
+                const ui32 outOfOrderReqCount =
+                    TryToEnqueueOutOfOrderRange(rangeIndex);
+                if (outOfOrderReqCount >= limitInQueue) {
                     break;
                 }
             }
         }
 
-        if (reject) {
+        if (shouldReject) {
             const auto error =
                 MakeError(E_REJECTED, "compaction state not loaded yet");
             auto response =
@@ -816,6 +791,45 @@ void TPartitionActor::CompleteAddBlobs(
 
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.AddBlobs.AddRequest(time);
+}
+
+ui32 TPartitionActor::TryToEnqueueOutOfOrderRange(ui32 rangeIndex)
+{
+    const ui32 limitInQueue =
+        Config->GetMaxOutOfOrderCompactionMapLoadRequestsInQueue();
+
+    bool shouldEnqueue = true;
+    ui32 outOfOrderRequestsInQueue = 0;
+
+    for (const auto& req: CompactionMapLoadState.ChunksInflight) {
+        if (!req.OutOfOrder) {
+            const bool rangeEnqueued =
+                rangeIndex >= req.FirstRangeIdx &&
+                rangeIndex < (req.FirstRangeIdx + req.RangeCount);
+            if (rangeEnqueued) {
+                shouldEnqueue = false;
+                break;
+            }
+            continue;
+        }
+
+        if (req.FirstRangeIdx == rangeIndex) {
+            shouldEnqueue = false;
+            break;
+        }
+
+        if (++outOfOrderRequestsInQueue >= limitInQueue) {
+            shouldEnqueue = false;
+            break;
+        }
+    }
+
+    if (shouldEnqueue) {
+        CompactionMapLoadState.ChunksInflight.emplace_back(rangeIndex, 1, true);
+        ++outOfOrderRequestsInQueue;
+    }
+
+    return outOfOrderRequestsInQueue;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
