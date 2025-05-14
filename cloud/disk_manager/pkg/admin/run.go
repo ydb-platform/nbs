@@ -12,6 +12,26 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func isHelperCommand(cmd *cobra.Command) bool {
+	// cmd.Name() would be the name of the most specific subcommand
+	// for "disk-manager-admin completion bash" it would be "bash".
+	// So, we need to go up the tree to find the root command's child
+	// e.g. "completion".
+	root := cmd.Root()
+	for ; cmd.Parent() != root && cmd != root; cmd = cmd.Parent() {
+	}
+
+	helperCommands := map[string]struct{}{
+		"__complete": {},
+		"completion": {},
+	}
+
+	_, ok := helperCommands[cmd.Name()]
+	return ok
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func Run(
 	use string,
 	defaultClientConfigFilePath string,
@@ -27,18 +47,7 @@ func Run(
 		Use:   use,
 		Short: "Admin console for Disk Manager service",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// cmd.Name() would be name of the most specific subcommand
-			// for "disk-manager-admin completion bash" it would be "bash".
-			// So, we need to go up the tree to find the root command's child.
-			command := cmd
-			for ; command.Parent() != cmd.Root(); command = command.Parent() {
-			}
-
-			helperCommands := map[string]struct{}{
-				"__complete": {},
-				"completion": {},
-			}
-			if _, ok := helperCommands[command.Name()]; ok {
+			if isHelperCommand(cmd) {
 				return nil
 			}
 
