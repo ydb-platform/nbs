@@ -11,6 +11,7 @@ from .helpers import setup_logger, github_output
 
 logger = setup_logger()
 
+
 async def main():
     parser = argparse.ArgumentParser(description="Manage GitHub runners on Nebius.")
     parser.add_argument(
@@ -106,12 +107,24 @@ async def main():
 
     for instance in instances:
         labels = instance.metadata.labels
-        if (
+        condition = (
             labels.get("repo", "") != args.github_repo
-            or labels.get("owner", "") != args.github_repo_owner
-            or labels.get("runner-flavor", "") != args.flavor
-            or instance.status.state.name != "RUNNING"
-        ):
+            or labels.get("owner", "") != args.github_repo_owner  # noqa: W503
+            or labels.get("runner-flavor", "") != args.flavor  # noqa: W503
+            or instance.status.state.name != "RUNNING"  # noqa: W503
+        )
+        logger.info(
+            "Instance %s labels: %s, state: %s",
+            instance.metadata.id,
+            labels,
+            instance.status.state.name,
+        )
+        if condition:
+            logger.info(
+                "Instance %s does not match criteria: %s",
+                instance.metadata.id,
+                condition,
+            )
             continue
 
         vm_id = instance.metadata.id
@@ -130,8 +143,15 @@ async def main():
         if runner and not runner.busy:
             idle_vm_ids.append(vm_id)
             if age > args.vms_older_than:
+                logger.info(
+                    "Instance %s is idle and its age is %d seconds (which is older than %d), marking for removal",
+                    vm_id,
+                    age,
+                    args.vms_older_than,
+                )
                 vms_to_remove.append(vm_id)
         elif runner and runner.busy:
+            logger.info("Instance %s is busy, not marking for removal", vm_id)
             busy_vm_ids.append(vm_id)
 
     logger.info(
@@ -160,7 +180,7 @@ async def main():
         logger.info("Need more idle VMs to reach target: creating %d", to_create)
     elif (
         len(busy_vm_ids) >= max(1, projected_vm_count - 1)
-        and projected_vm_count < args.maximum_amount_of_vms_to_have
+        and projected_vm_count < args.maximum_amount_of_vms_to_have  # noqa: W503
     ):
         to_create = min(
             args.extra_vm_if_needed,
@@ -181,7 +201,6 @@ async def main():
         else []
     )
 
-    github_output("RUNNING_VMS_COUNT", str(len(matched_vm_ids)))
     github_output("VMS_TO_REMOVE", json.dumps(vms_to_remove))
     github_output("VMS_TO_CREATE", json.dumps(vms_to_create))
     github_output("DATE", str(now_ts))
