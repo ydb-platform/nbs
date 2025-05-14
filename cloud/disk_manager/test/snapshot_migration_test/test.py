@@ -43,11 +43,12 @@ class _MigrationTestSetup:
         self,
         use_s3_as_src: bool = False,
         use_s3_as_dst: bool = False,
-        migration_inflight_transferring_snapshots_count=1000,
+        migration_snapshots_inflight_limit=1000,
         with_nemesis: bool = False,
     ):
         self.use_s3_as_src = use_s3_as_src
         self.use_s3_as_dst = use_s3_as_dst
+
         certs_dir = Path(yatest_common.source_path("cloud/blockstore/tests/certs"))
         self._root_certs_file = certs_dir / "server.crt"
         _logger.info(certs_dir.exists())
@@ -138,7 +139,7 @@ class _MigrationTestSetup:
             s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
             migration_dst_s3_port=self.dst_s3.port if self.dst_s3 is not None else None,
             migration_dst_s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
-            migration_inflight_transferring_snapshots_count=migration_inflight_transferring_snapshots_count,
+            migration_snapshots_inflight_limit=migration_snapshots_inflight_limit,
         )
 
         self.initial_cpl_disk_manager.start()
@@ -321,11 +322,11 @@ class _MigrationTestSetup:
         )
         self.secondary_dpl_disk_manager.start()
 
-    def wait_for_snapshot_metric_equals(self, value,  timeout_sec=360):
+    def wait_for_dpl_metric_equals(self, value, timeout_sec=360):
         started_at = time.monotonic()
         while True:
             if time.monotonic() - started_at > timeout_sec:
-                raise TimeoutError("Timed out waiting for snapshot metric to be zeroed")
+                raise TimeoutError(f"Timed out waiting for dataplane metric to equal to {value}")
             [metric] = self.initial_dpl_disk_manager.get_metrics().get("snapshots_migratingCount", [None])
             time.sleep(1)
             if metric is None:
@@ -366,7 +367,7 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
     [
         "use_s3_as_src",
         "use_s3_as_dst",
-        "migration_inflight_transferring_snapshots_count",
+        "migration_snapshots_inflight_limit",
         "with_nemesis",
     ],
     [
@@ -384,13 +385,13 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
 def test_disk_manager_dataplane_database_migration(
     use_s3_as_src,
     use_s3_as_dst,
-    migration_inflight_transferring_snapshots_count,
+    migration_snapshots_inflight_limit,
     with_nemesis,
 ):
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
-        migration_inflight_transferring_snapshots_count=migration_inflight_transferring_snapshots_count,
+        migration_snapshots_inflight_limit=migration_snapshots_inflight_limit,
         with_nemesis=with_nemesis,
     ) as setup:
         initial_data_count = 10
@@ -406,8 +407,8 @@ def test_disk_manager_dataplane_database_migration(
             checksums.append(setup.fill_disk(disk))
             setup.create_snapshot(src_disk_id=disk, snapshot_id=snapshot)
 
-        # Wait for snapshots to be created
         while len(setup.list_snapshots()) != initial_data_count // 2:
+            _logger.info("Waiting for initial snapshots to be created")
             time.sleep(1)
 
         # Prepare disks to create snapshots from during migration
@@ -417,16 +418,17 @@ def test_disk_manager_dataplane_database_migration(
 
         task_id = setup.start_database_migration()
 
-        setup.wait_for_snapshot_metric_equals(0)
+        setup.wait_for_dpl_metric_equals(0)
         # Create snapshots during migration
         for snapshot, disk in list(zip(snapshots, disks))[initial_data_count // 2:]:
             setup.create_snapshot(src_disk_id=disk, snapshot_id=snapshot)
 
         # Wait for snapshots to be created
         while len(setup.list_snapshots()) != initial_data_count:
+            _logger.info("Waiting for snapshots to be created during migration")
             time.sleep(1)
 
-        setup.wait_for_snapshot_metric_equals(0)
+        setup.wait_for_dpl_metric_equals(0)
         setup.finish_database_migration(task_id)
         setup.switch_dataplane_to_new_db()
         for new_disk, checksum, snapshot in zip(new_disks_for_initial, checksums, snapshots):

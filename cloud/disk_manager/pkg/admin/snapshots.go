@@ -40,7 +40,6 @@ func (t *commandWithScheduler) init() error {
 	}
 
 	t.db = db
-	logging.Info(t.ctx, "Creating task scheduler")
 	taskRegistry := tasks.NewRegistry()
 
 	regularTasksEnabled := false

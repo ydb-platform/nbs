@@ -88,7 +88,7 @@ func (m migrateSnapshotDatabaseTask) Run(
 
 			m.state.InflightTaskIDs = append(m.state.InflightTaskIDs, taskID)
 			tasksCount := len(m.state.InflightTaskIDs)
-			inflightTasksLimitReached := tasksCount == inflightSnapshotsLimit
+			inflightTasksLimitReached := tasksCount >= inflightSnapshotsLimit
 			if !inflightTasksLimitReached && snapshotsToProcessCount != 1 {
 				snapshotsToProcessCount--
 				continue
