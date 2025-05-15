@@ -153,6 +153,8 @@ func (m *migrateSnapshotDatabaseTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 func (m *migrateSnapshotDatabaseTask) migrateSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -190,7 +192,6 @@ func (m *migrateSnapshotDatabaseTask) migrateSnapshots(
 		if err != nil {
 			return err
 		}
-
 	}
 }
 
