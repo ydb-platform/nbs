@@ -111,28 +111,35 @@ bool ValidateDevices(
 
 std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer()
 {
-    const auto* ioModeTsDescriptor =
-        NProto::TVolumeMeta::GetDescriptor()->FindFieldByName("IOModeTs");
+    TVector<const NProtoBuf::FieldDescriptor*> descriptors;
+    descriptors.push_back(
+        NProto::TVolumeMeta::GetDescriptor()->FindFieldByName("IOModeTs"));
+    descriptors.push_back(
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("State"));
+    descriptors.push_back(
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("StateTs"));
+    descriptors.push_back(
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName(
+            "StateMessage"));
     // These are two fields that will change during disk agent blue-green
     // deploy.
-    const auto* nodeIdDescriptor =
-        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("NodeId");
-    const auto* rdmaPortDescriptor =
-        NProto::TRdmaEndpoint::GetDescriptor()->FindFieldByName("Port");
-    if (!nodeIdDescriptor || !rdmaPortDescriptor || !ioModeTsDescriptor) {
+    descriptors.push_back(
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("NodeId"));
+    descriptors.push_back(
+        NProto::TRdmaEndpoint::GetDescriptor()->FindFieldByName("Port"));
+
+    if (auto it = Find(descriptors, nullptr); it != descriptors.end()) {
         ReportFieldDescriptorNotFound(
             TStringBuilder()
-            << "Lite reallocation is impossible. nodeIdDescriptor = "
-            << static_cast<const void*>(nodeIdDescriptor)
-            << "; rdmaPortDescriptor = "
-            << static_cast<const void*>(rdmaPortDescriptor));
+            << "Lite reallocation is impossible. Descriptor #"
+            << std::distance(descriptors.begin(), it) << " is nullptr.");
         return nullptr;
     }
 
     auto diff = std::make_unique<MessageDifferencer>();
-    diff->IgnoreField(ioModeTsDescriptor);
-    diff->IgnoreField(nodeIdDescriptor);
-    diff->IgnoreField(rdmaPortDescriptor);
+    for (const auto* descriptor: descriptors) {
+        diff->IgnoreField(descriptor);
+    }
     diff->set_float_comparison(
         MessageDifferencer::FloatComparison::APPROXIMATE);
     diff->set_message_field_comparison(
