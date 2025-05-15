@@ -2,6 +2,10 @@ import pytest
 
 import yatest.common as common
 
+from cloud.filestore.tools.testing.loadtest.protos.loadtest_pb2 import TTestGraph
+from google.protobuf.text_format import MessageToString
+
+
 tests = ["sqlite", "jpeg", "fstest"]
 
 
@@ -12,23 +16,19 @@ def _get_bindir():
 
 def run_replay(name):
     dir_out_path = common.output_path() + "/replay"
-    conf_body = """
-Tests {
-    LoadTest {
-        Name: "test"
-        KeepFileStore: true
-        ReplayFsSpec {
-            FileName: \"""" + _get_bindir() + "/" + name + ".log" + """\"
-            ReplayRoot: \"""" + dir_out_path + """\"
-        }
-        IODepth: 64
-    }
-}
-"""
-
     tool_conf_path = common.output_path() + "/config.txt"
-    with open(tool_conf_path, "w+") as f:
-        f.writelines(conf_body)
+
+    config = TTestGraph()
+    config.Tests.add()
+    config.Tests[0].LoadTest.Name = "test"
+    config.Tests[0].LoadTest.KeepFileStore = True
+    config.Tests[0].LoadTest.ReplayFsSpec.FileName = _get_bindir() + "/" + name + ".log"
+    config.Tests[0].LoadTest.ReplayFsSpec.ReplayRoot = dir_out_path
+    config.Tests[0].LoadTest.IODepth = 64
+
+    with open(tool_conf_path, "w") as config_file:
+        config_file.write(MessageToString(config))
+        config_file.flush()
 
     tool_bin_path = common.binary_path("cloud/filestore/tools/testing/loadtest/bin/filestore-loadtest")
     common.execute([tool_bin_path,  "--tests-config", tool_conf_path])
