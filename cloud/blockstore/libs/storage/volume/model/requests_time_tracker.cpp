@@ -14,9 +14,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TStringBuf TotalBucketName = "Total";
-constexpr TStringBuf TotalSizeBucketName = "TotalSize";
-
 constexpr size_t BlockCountBucketsCount = 12;
 constexpr size_t TotalSizeBucket = BlockCountBucketsCount;
 constexpr std::array<size_t, BlockCountBucketsCount> RequestSizeBuckets = {
@@ -57,47 +54,13 @@ const TString& GetTimeBucketName(TDuration duration)
     return TimeNames[idx];
 }
 
-TVector<TRequestsTimeTracker::TBucketInfo> MakeSizeBuckets(ui32 blockSize)
-{
-    TVector<TRequestsTimeTracker::TBucketInfo> result;
-
-    size_t lastBucket = 0;
-    for (size_t i = 0; i < RequestSizeBuckets.size() - 1; ++i) {
-        const size_t sizeBucket = RequestSizeBuckets[i];
-        TRequestsTimeTracker::TBucketInfo bucket{.Key = ToString(sizeBucket)};
-
-        if (lastBucket && lastBucket != sizeBucket) {
-            bucket.Description =
-                TStringBuilder()
-                << "[" << FormatByteSize(lastBucket * blockSize) << ".."
-                << FormatByteSize(sizeBucket * blockSize) << "]";
-        } else {
-            bucket.Description =
-                TStringBuilder()
-                << "[" << FormatByteSize(sizeBucket * blockSize) << "]";
-        }
-        lastBucket = sizeBucket + 1;
-        result.push_back(std::move(bucket));
-    }
-
-    result.emplace_back(TRequestsTimeTracker::TBucketInfo{
-        .Key = "Inf",
-        .Description = "[" + FormatByteSize(lastBucket * blockSize) + "..Inf]",
-        .Tooltip = ""});
-    result.emplace_back(TRequestsTimeTracker::TBucketInfo{
-        .Key = "Total",
-        .Description = "Total",
-        .Tooltip = ""});
-    return result;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TString TRequestsTimeTracker::TKey::GetHtmlPrefix() const
 {
-    static const auto Sizes = MakeSizeBuckets(1);
+    static const auto Sizes = TRequestsTimeTracker::GetSizeBuckets(1);
 
     TStringBuilder builder;
     switch (RequestType) {
@@ -168,7 +131,7 @@ TRequestsTimeTracker::TRequestsTimeTracker()
     }
 }
 
-void TRequestsTimeTracker::OnRequestStart(
+void TRequestsTimeTracker::OnRequestStarted(
     ERequestType requestType,
     ui64 requestId,
     TBlockRange64 blockRange,
@@ -177,7 +140,7 @@ void TRequestsTimeTracker::OnRequestStart(
     InflightRequests.emplace(
         requestId,
         TRequestInflight{
-            .StartAt = startTime,
+            .StartTime = startTime,
             .BlockRange = blockRange,
             .RequestType = requestType});
 }
@@ -197,7 +160,7 @@ void TRequestsTimeTracker::OnRequestFinished(
         InflightRequests.erase(requestId);
     }
 
-    auto duration = CyclesToDurationSafe(finishTime - request.StartAt);
+    auto duration = CyclesToDurationSafe(finishTime - request.StartTime);
 
     TKey key{
         .SizeBucket = GetSizeBucket(request.BlockRange),
@@ -212,7 +175,7 @@ void TRequestsTimeTracker::OnRequestFinished(
     Histograms[key].BlockCount += request.BlockRange.Size();
 }
 
-TString TRequestsTimeTracker::GetStatJson(ui64 now, ui32 blockSize) const
+TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize) const
 {
     NJson::TJsonValue allStat(NJson::EJsonValueType::JSON_MAP);
 
@@ -222,25 +185,26 @@ TString TRequestsTimeTracker::GetStatJson(ui64 now, ui32 blockSize) const
     for (const auto& [key, histogram]: Histograms) {
         size_t total = 0;
         const auto htmlPrefix = key.GetHtmlPrefix();
-        for (size_t j = 0; j < TRequestUsTimeBuckets::BUCKETS_COUNT; ++j) {
-            allStat[htmlPrefix + times[j]] =
-                (histogram.Buckets[j] ? ToString(histogram.Buckets[j]) : "");
-            total += histogram.Buckets[j];
+        for (size_t i = 0; i < TRequestUsTimeBuckets::BUCKETS_COUNT; ++i) {
+            allStat[htmlPrefix + times[i]] =
+                (histogram.Buckets[i] ? ToString(histogram.Buckets[i]) : "");
+            total += histogram.Buckets[i];
         }
-        allStat[htmlPrefix + TotalBucketName] = ToString(total);
-        allStat[htmlPrefix + TotalSizeBucketName] =
+        allStat[htmlPrefix + "Total"] = ToString(total);
+        allStat[htmlPrefix + "TotalSize"] =
             FormatByteSize(histogram.BlockCount * blockSize);
     }
 
     // Build inflight requests counters
-    auto getHtmlKey =
-        [](size_t sizeBucket, ERequestType requestType, TStringBuf timeBucket)
+    auto getHtmlKey = [](size_t sizeBucket,
+                         ERequestType requestType,
+                         TStringBuf timeBucketName)
     {
         auto key = TKey{
             .SizeBucket = sizeBucket,
             .RequestType = requestType,
             .RequestStatus = ERequestStatus::Inflight};
-        return key.GetHtmlPrefix() + timeBucket;
+        return key.GetHtmlPrefix() + timeBucketName;
     };
 
     TMap<TString, size_t> inflight;
@@ -248,24 +212,23 @@ TString TRequestsTimeTracker::GetStatJson(ui64 now, ui32 blockSize) const
     for (const auto& [requestId, request]: InflightRequests) {
         auto requestType = request.RequestType;
         const auto sizeBucket = GetSizeBucket(request.BlockRange);
-        const auto& timeBucketName =
-            GetTimeBucketName(CyclesToDurationSafe(now - request.StartAt));
+        const auto& timeBucketName = GetTimeBucketName(
+            CyclesToDurationSafe(nowCycles - request.StartTime));
 
         // Time
         ++inflight[getHtmlKey(sizeBucket, requestType, timeBucketName)];
-        ++inflight[getHtmlKey(sizeBucket, requestType, TotalBucketName)];
+        ++inflight[getHtmlKey(sizeBucket, requestType, "Total")];
         ++inflight[getHtmlKey(TotalSizeBucket, requestType, timeBucketName)];
-        ++inflight[getHtmlKey(TotalSizeBucket, requestType, TotalBucketName)];
+        ++inflight[getHtmlKey(TotalSizeBucket, requestType, "Total")];
 
         // Size
-        inflight[getHtmlKey(sizeBucket, requestType, TotalSizeBucketName)] +=
+        inflight[getHtmlKey(sizeBucket, requestType, "TotalSize")] +=
             request.BlockRange.Size() * blockSize;
-        inflight
-            [getHtmlKey(TotalSizeBucket, requestType, TotalSizeBucketName)] +=
+        inflight[getHtmlKey(TotalSizeBucket, requestType, "TotalSize")] +=
             request.BlockRange.Size() * blockSize;
     }
     for (const auto& [key, count]: inflight) {
-        if (key.EndsWith(TotalSizeBucketName)) {
+        if (key.EndsWith("TotalSize")) {
             allStat[key] = FormatByteSize(count);
         } else {
             allStat[key] = ToString(count);
@@ -281,13 +244,42 @@ TString TRequestsTimeTracker::GetStatJson(ui64 now, ui32 blockSize) const
 }
 
 TVector<TRequestsTimeTracker::TBucketInfo> TRequestsTimeTracker::GetSizeBuckets(
-    ui32 blockSize) const
+    ui32 blockSize)
 {
-    return MakeSizeBuckets(blockSize);
+    TVector<TRequestsTimeTracker::TBucketInfo> result;
+
+    size_t lastBucket = 0;
+    for (size_t i = 0; i < RequestSizeBuckets.size() - 1; ++i) {
+        const size_t sizeBucket = RequestSizeBuckets[i];
+        TRequestsTimeTracker::TBucketInfo bucket{.Key = ToString(sizeBucket)};
+
+        if (lastBucket && lastBucket != sizeBucket) {
+            bucket.Description =
+                TStringBuilder()
+                << "[" << FormatByteSize(lastBucket * blockSize) << ".."
+                << FormatByteSize(sizeBucket * blockSize) << "]";
+        } else {
+            bucket.Description =
+                TStringBuilder()
+                << "[" << FormatByteSize(sizeBucket * blockSize) << "]";
+        }
+        lastBucket = sizeBucket + 1;
+        result.push_back(std::move(bucket));
+    }
+
+    result.emplace_back(TRequestsTimeTracker::TBucketInfo{
+        .Key = "Inf",
+        .Description = "[" + FormatByteSize(lastBucket * blockSize) + "..Inf]",
+        .Tooltip = ""});
+    result.emplace_back(TRequestsTimeTracker::TBucketInfo{
+        .Key = "Total",
+        .Description = "Total",
+        .Tooltip = ""});
+    return result;
 }
 
 TVector<TRequestsTimeTracker::TBucketInfo>
-TRequestsTimeTracker::GetTimeBuckets() const
+TRequestsTimeTracker::GetTimeBuckets()
 {
     TVector<TBucketInfo> result;
     TDuration last;
@@ -304,12 +296,10 @@ TRequestsTimeTracker::GetTimeBuckets() const
         last = TDuration::MicroSeconds(us.GetOrElse(0));
         result.push_back(std::move(bucket));
     }
+    result.push_back(
+        TBucketInfo{.Key = "Total", .Description = "Total", .Tooltip = ""});
     result.push_back(TBucketInfo{
-        .Key = TString(TotalBucketName),
-        .Description = "Total",
-        .Tooltip = ""});
-    result.push_back(TBucketInfo{
-        .Key = TString(TotalSizeBucketName),
+        .Key = "TotalSize",
         .Description = "Total Size",
         .Tooltip = ""});
     return result;

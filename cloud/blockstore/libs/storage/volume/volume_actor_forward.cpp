@@ -239,19 +239,19 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
     }
 
     if constexpr (IsReadMethod<TMethod>) {
-        RequestTimeTracker.OnRequestStart(
+        RequestTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Read,
             volumeRequestId,
             blockRange,
             traceTime);
     } else if constexpr (IsExactlyWriteMethod<TMethod>) {
-        RequestTimeTracker.OnRequestStart(
+        RequestTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Write,
             volumeRequestId,
             blockRange,
             traceTime);
     } else if constexpr (IsZeroMethod<TMethod>) {
-        RequestTimeTracker.OnRequestStart(
+        RequestTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Zero,
             volumeRequestId,
             blockRange,

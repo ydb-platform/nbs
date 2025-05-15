@@ -51,9 +51,9 @@ private:
 
     struct TKey
     {
-        size_t SizeBucket;
-        ERequestType RequestType;
-        ERequestStatus RequestStatus;
+        size_t SizeBucket = 0;
+        ERequestType RequestType = ERequestType::Read;
+        ERequestStatus RequestStatus = ERequestStatus::Fail;
 
         [[nodiscard]] TString GetHtmlPrefix() const;
     };
@@ -70,7 +70,7 @@ private:
 
     struct TRequestInflight
     {
-        ui64 StartAt = 0;
+        ui64 StartTime = 0;
         TBlockRange64 BlockRange;
         ERequestType RequestType = ERequestType::Read;
     };
@@ -81,7 +81,10 @@ private:
 public:
     explicit TRequestsTimeTracker();
 
-    void OnRequestStart(
+    static TVector<TBucketInfo> GetSizeBuckets(ui32 blockSize);
+    static TVector<TBucketInfo> GetTimeBuckets();
+
+    void OnRequestStarted(
         ERequestType requestType,
         ui64 requestId,
         TBlockRange64 blockRange,
@@ -89,9 +92,7 @@ public:
 
     void OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
-    [[nodiscard]] TString GetStatJson(ui64 now, ui32 blockSize) const;
-    [[nodiscard]] TVector<TBucketInfo> GetSizeBuckets(ui32 blockSize) const;
-    [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
+    [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -24,19 +24,20 @@ void DumpValues(const NJson::TJsonValue::TMapType& map)
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
 {
     Y_UNIT_TEST(ShouldCountInflight)
     {
         TRequestsTimeTracker requestsTimeTracker;
 
-        requestsTimeTracker.OnRequestStart(
+        requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Read,
             1,
             TBlockRange64::MakeOneBlock(0),
             0);
 
-        requestsTimeTracker.OnRequestStart(
+        requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Read,
             2,
             TBlockRange64::MakeOneBlock(0),
@@ -68,19 +69,19 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
     {
         TRequestsTimeTracker requestsTimeTracker;
 
-        requestsTimeTracker.OnRequestStart(
+        requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Write,
             1,
             TBlockRange64::MakeOneBlock(0),
             0);
 
-        requestsTimeTracker.OnRequestStart(
+        requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Write,
             2,
             TBlockRange64::MakeOneBlock(0),
             1000 * GetCyclesPerMillisecond());
 
-        requestsTimeTracker.OnRequestStart(
+        requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Write,
             3,
             TBlockRange64::MakeOneBlock(0),
@@ -127,19 +128,19 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
     {
         TRequestsTimeTracker requestsTimeTracker;
 
-        requestsTimeTracker.OnRequestStart(
+        requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Zero,
             1,
             TBlockRange64::WithLength(0, 512),
             0);
 
-        requestsTimeTracker.OnRequestStart(
+        requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Zero,
             2,
             TBlockRange64::WithLength(0, 600),
             1000 * GetCyclesPerMillisecond());
 
-        requestsTimeTracker.OnRequestStart(
+        requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Zero,
             3,
             TBlockRange64::WithLength(0, 2000),

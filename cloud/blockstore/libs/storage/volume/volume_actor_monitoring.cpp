@@ -441,10 +441,7 @@ void OutputClientInfo(
     }
 }
 
-void RenderLatencyTable(
-    IOutputStream& out,
-    const TString& parentId,
-    const TRequestsTimeTracker& timeTracker)
+void RenderLatencyTable(IOutputStream& out, const TString& parentId)
 {
     HTML (out) {
         TABLE_CLASS("table-latency")
@@ -467,7 +464,7 @@ void RenderLatencyTable(
             }
 
             for (const auto& [key, descr, tooltip]:
-                 timeTracker.GetTimeBuckets())
+                 TRequestsTimeTracker::GetTimeBuckets())
             {
                 TABLER () {
                     TABLED () {
@@ -495,10 +492,7 @@ void RenderLatencyTable(
     }
 }
 
-void RenderSizeTable(
-    IOutputStream& out,
-    const TRequestsTimeTracker& timeTracker,
-    ui32 blockSize)
+void RenderSizeTable(IOutputStream& out, ui32 blockSize)
 {
     HTML (out) {
         TABLE_CLASS("table table-bordered") {
@@ -519,22 +513,22 @@ void RenderSizeTable(
                 }
             }
             for (const auto& [key, descr, tooltip]:
-                 timeTracker.GetSizeBuckets(blockSize))
+                 TRequestsTimeTracker::GetSizeBuckets(blockSize))
             {
                 TABLER () {
                     TABLED () {
                         out << descr;
                     }
                     TABLED () {
-                        RenderLatencyTable(out, "R_" + key, timeTracker);
+                        RenderLatencyTable(out, "R_" + key);
                     }
                     TABLED_ATTRS()
                     {
-                        RenderLatencyTable(out, "W_" + key, timeTracker);
+                        RenderLatencyTable(out, "W_" + key);
                     }
                     TABLED_ATTRS()
                     {
-                        RenderLatencyTable(out, "Z_" + key, timeTracker);
+                        RenderLatencyTable(out, "Z_" + key);
                     }
                 }
             }
@@ -1106,7 +1100,7 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         out << style;
 
         DIV_CLASS ("row") {
-            RenderSizeTable(out, RequestTimeTracker, State->GetBlockSize());
+            RenderSizeTable(out, State->GetBlockSize());
         }
     }
 }
