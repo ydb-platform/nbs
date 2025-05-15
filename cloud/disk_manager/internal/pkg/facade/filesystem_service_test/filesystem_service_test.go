@@ -73,7 +73,8 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 			BlockSize: 4096,
 			Size:      4096000,
 			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD,
-		})
+		},
+	)
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
@@ -86,7 +87,8 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 			FilesystemId: &disk_manager.FilesystemId{
 				FilesystemId: filesystemID,
 			},
-		})
+		},
+	)
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
@@ -119,7 +121,8 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 			Size:       4096000,
 			Kind:       disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD,
 			IsExternal: true,
-		})
+		},
+	)
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
@@ -180,7 +183,8 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 			FilesystemId: &disk_manager.FilesystemId{
 				FilesystemId: filesystemID,
 			},
-		})
+		},
+	)
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 

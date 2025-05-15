@@ -103,7 +103,8 @@ func (t *createFilesystemTask) Run(
 				BlocksCount: t.request.BlocksCount,
 				BlockSize:   t.request.BlockSize,
 				Kind:        t.request.Kind,
-			})
+			},
+		)
 		if err != nil {
 			return err
 		}
