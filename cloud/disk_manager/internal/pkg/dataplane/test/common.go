@@ -29,6 +29,7 @@ func NewS3Client() (*persistence.S3Client, error) {
 		callTimeout,
 		metrics.NewEmptyRegistry(),
 		100, // maxRetriableErrorCount
+		nil, // availabilityMonitoring
 	)
 }
 
