@@ -29,7 +29,9 @@
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
+#include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
+
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/protos/trace.pb.h>
 
@@ -302,6 +304,7 @@ private:
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
+    TRequestsTimeTracker RequestTimeTracker;
 
     // inflight VolumeRequestId -> duplicate request queue
     // we respond to duplicate requests as soon as our original request is completed
@@ -452,6 +455,7 @@ private:
         IOutputStream& out) const;
     void RenderCheckpoints(IOutputStream& out) const;
     void RenderLinks(IOutputStream& out) const;
+    void RenderLatency(IOutputStream& out) const;
     void RenderTraces(IOutputStream& out) const;
     void RenderStorageConfig(IOutputStream& out) const;
     void RenderRawVolumeConfig(IOutputStream& out) const;
@@ -637,6 +641,11 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_RenderNonreplPartitionInfo(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderLatency(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
@@ -912,6 +921,7 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         NActors::TActorId newRecipient,
         ui64 volumeRequestId,
+        TBlockRange64 blockRange,
         ui64 traceTime,
         bool forkTraces,
         bool isMultipartition);
@@ -921,6 +931,7 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
         ui64 volumeRequestId,
+        TBlockRange64 blockRange,
         ui32 partitionId,
         ui64 traceTs);
 
