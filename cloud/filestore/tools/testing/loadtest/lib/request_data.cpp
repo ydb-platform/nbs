@@ -297,7 +297,7 @@ private:
             }
 
             return setAttr.Apply(
-                [=] (const TFuture<NProto::TSetNodeAttrResponse>& f) {
+                [=, this] (const TFuture<NProto::TSetNodeAttrResponse>& f) {
                     return HandleResizeAfterCreateHandle(f, name, started);
                 });
         } catch (const TServiceError& e)  {

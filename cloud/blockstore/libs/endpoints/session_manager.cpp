@@ -410,7 +410,7 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::CreateSession(
     TCallContextPtr callContext,
     const NProto::TStartEndpointRequest& request)
 {
-    return Executor->Execute([=] () mutable {
+    return Executor->Execute([=, this] () mutable {
         return CreateSessionImpl(std::move(callContext), request);
     });
 }
@@ -476,7 +476,7 @@ TFuture<NProto::TError> TSessionManager::RemoveSession(
     const TString& socketPath,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=] () mutable {
+    return Executor->Execute([=, this] () mutable {
         return RemoveSessionImpl(std::move(callContext), socketPath, headers);
     });
 }
@@ -514,7 +514,7 @@ TFuture<NProto::TError> TSessionManager::AlterSession(
     ui64 mountSeqNumber,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=] () mutable {
+    return Executor->Execute([=, this] () mutable {
         return AlterSessionImpl(
             std::move(callContext),
             socketPath,
@@ -560,7 +560,7 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::GetSession(
     const TString& socketPath,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=] () mutable {
+    return Executor->Execute([=, this] () mutable {
         return GetSessionImpl(
             std::move(callContext),
             socketPath,

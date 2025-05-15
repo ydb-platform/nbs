@@ -611,7 +611,7 @@ TClientEndpoint::TClientEndpoint(
     // user data attached to connection events
     Connection->context = this;
 
-    Log.SetFormatter([=](ELogPriority p, TStringBuf msg) {
+    Log.SetFormatter([=, this](ELogPriority p, TStringBuf msg) {
         Y_UNUSED(p);
         return TStringBuilder() << "[" << Id << "] " << msg;
     });

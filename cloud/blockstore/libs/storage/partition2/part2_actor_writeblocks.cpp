@@ -118,7 +118,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
         "WriteBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
+    auto replyError = [=, this] (
         const TActorContext& ctx,
         TRequestInfo& requestInfo,
         ui32 errorCode,

@@ -232,7 +232,7 @@ void THiveProxyFallbackActor::HandleBootExternal(
     const auto* msg = ev->Get();
 
     auto requestInfo = TRequestInfo(ev->Sender, ev->Cookie);
-    auto reply = [=](const auto& ctx, auto r) {
+    auto reply = [=, this](const auto& ctx, auto r) {
         if (HasError(r->Error)) {
             NCloud::Reply(
                 ctx,

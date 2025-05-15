@@ -239,7 +239,7 @@ TStorageBuffer TEndpoint::AllocateBuffer(size_t bytesCount)
 
     Y_ABORT_UNLESS(std::align(BlockSize, bytesCount, p, space));
 
-    return { static_cast<char*>(p), [=] (auto*) {
+    return { static_cast<char*>(p), [=, this] (auto*) {
         Allocator->Release(block);
     }};
 }

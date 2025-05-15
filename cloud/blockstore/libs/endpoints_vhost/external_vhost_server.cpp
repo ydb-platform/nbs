@@ -695,7 +695,7 @@ private:
             std::move(process));
         process = TChild{0};
 
-        Executor->ExecuteSimple([=] {
+        Executor->ExecuteSimple([=, this] {
             ep->Start(Executor->GetContExecutor());
         });
 

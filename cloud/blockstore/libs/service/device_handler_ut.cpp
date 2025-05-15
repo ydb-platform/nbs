@@ -93,7 +93,7 @@ public:
                 ctx->AddTime(EProcessingStage::Postponed, TDuration::Seconds(10));
 
                 auto future = WriteTrigger.GetFuture();
-                return future.Apply([=] (const auto& f) {
+                return future.Apply([=, this] (const auto& f) {
                     Y_UNUSED(f);
 
                     auto startIndex = request->GetStartIndex();
@@ -118,7 +118,7 @@ public:
                 ctx->AddTime(EProcessingStage::Postponed, TDuration::Seconds(100));
 
                 auto future = WriteTrigger.GetFuture();
-                return future.Apply([=] (const auto& f) {
+                return future.Apply([=, this] (const auto& f) {
                     Y_UNUSED(f);
 
                     auto startIndex = request->GetStartIndex();

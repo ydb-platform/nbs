@@ -533,7 +533,7 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::EnsureInitialized()
             InitResponse = NewPromise<TSetupTablesResult>();
             State = EState::INITIALIZING;
             SetupTables().Subscribe(
-                [=] (const auto& future) {
+                [=, this] (const auto& future) {
                     HandleSetupTablesResult(future.GetValue());
                 });
         }
@@ -545,7 +545,7 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::EnsureInitialized()
                 CleanupRunning = true;
                 STORAGE_INFO("Going to check for obsolete history tables");
                 RemoveObsoleteTables().Subscribe(
-                    [=] (const auto& future) {
+                    [=, this] (const auto& future) {
                         HandleRemoveObsoleteTablesResult(future.GetValue());
                     });
             }
@@ -692,7 +692,7 @@ TFuture<TSetupTableResult> TYdbStatsUploader::SetupPartitionsTable() const
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupHistoryTable() const
 {
     return DbStorage->GetHistoryTables().Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             const auto& result = future.GetValue();
             if (FAILED(result.Error.GetCode())) {
                 return MakeFuture(TSetupTableResult(result.Error));
@@ -726,7 +726,7 @@ TFuture<NProto::TError> TYdbStatsUploader::SetupTable(
     TStatsTableSchemePtr tableScheme) const
 {
     return DbStorage->DescribeTable(tableName).Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             const auto& response = future.GetValue();
             if (SUCCEEDED(response.Error.GetCode())) {
                 return AlterTable(tableName, *tableScheme, response.TableScheme);

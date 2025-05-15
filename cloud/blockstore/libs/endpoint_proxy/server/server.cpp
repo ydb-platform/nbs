@@ -1088,7 +1088,7 @@ struct TServer: IEndpointProxyServer
     {
         PreStart();
 
-        Thread = SystemThreadFactory()->Run([=] () {
+        Thread = SystemThreadFactory()->Run([=, this] () {
             Loop();
         });
     }

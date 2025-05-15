@@ -356,7 +356,7 @@ public:
         for (int i = 0; i < devices.size(); ++i) {
             Spdk->RegisterNVMeDevices(devices[i].GetBaseName(),
                                       devices[i].GetTransportId())
-                .Subscribe([=] (const auto& future) {
+                .Subscribe([=, this] (const auto& future) {
                     try {
                         const auto& remoteDevices = future.GetValue();
                         Y_ENSURE(remoteDevices.size() == 1);

@@ -44,7 +44,7 @@ public:
         const NProto::TKmsKey& kmsKey,
         const TString& diskId)
     {
-        return Executor->Execute([=] () mutable {
+        return Executor->Execute([=, this] () mutable {
             return DoReadKeyFromKMS(diskId, kmsKey);
         });
     }
