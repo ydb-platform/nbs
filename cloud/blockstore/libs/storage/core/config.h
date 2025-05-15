@@ -650,8 +650,8 @@ public:
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 
-    TDuration GetBlobStorageAsyncGetTimeoutHDD() const;
-    TDuration GetBlobStorageAsyncGetTimeoutSSD() const;
+    [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutHDD() const;
+    [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutSSD() const;
 
     [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
 

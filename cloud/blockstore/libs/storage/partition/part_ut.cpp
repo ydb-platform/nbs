@@ -11217,10 +11217,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, compactionByBlockCount);
     }
 
-    Y_UNIT_TEST(ShouldAbortCompactionIfReadBlobFailsWithDeadlineExceeded)
+    void DoShouldAbortCompactionIfBlobStorageRequestFailsWithDeadlineExceeded(
+        int requestType)
     {
         NProto::TStorageServiceConfig config;
-        config.SetBlobStorageAsyncGetTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
+        config.SetBlobStorageAsyncRequestTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -11230,26 +11231,44 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.Flush();
 
         ui32 failedReadBlob = 0;
-        runtime->SetEventFilter([&]
-            (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
-        {
-            Y_UNUSED(runtime);
 
-            if (ev->GetTypeRewrite() == TEvBlobStorage::EvVGet) {
-                const auto* msg = ev->Get<TEvBlobStorage::TEvVGet>();
-                if (msg->Record.GetHandleClass() == NKikimrBlobStorage::AsyncRead &&
-                    msg->Record.GetMsgQoS().HasDeadlineSeconds())
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+
+                if (requestType == TEvBlobStorage::EvVGet &&
+                    ev->GetTypeRewrite() == TEvBlobStorage::EvVGet)
                 {
-                    return true;
+                    const auto* msg = ev->Get<TEvBlobStorage::TEvVGet>();
+                    if (msg->Record.GetHandleClass() ==
+                            NKikimrBlobStorage::AsyncRead &&
+                        msg->Record.GetMsgQoS().HasDeadlineSeconds())
+                    {
+                        return true;
+                    }
+                } else if (
+                    requestType == TEvBlobStorage::EvVPut &&
+                    ev->GetTypeRewrite() == TEvBlobStorage::EvVPut)
+                {
+                    const auto* msg = ev->Get<TEvBlobStorage::TEvVPut>();
+                    if (msg->Record.GetHandleClass() ==
+                            NKikimrBlobStorage::AsyncBlob &&
+                        msg->Record.GetMsgQoS().HasDeadlineSeconds())
+                    {
+                        return true;
+                    }
+                } else if (
+                    ev->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+                {
+                    auto* msg =
+                        ev->Get<TEvStatsService::TEvVolumePartCounters>();
+                    failedReadBlob =
+                        msg->DiskCounters->Simple.ReadBlobDeadlineCount.Value;
                 }
-            } else if (ev->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters) {
-                auto* msg =
-                    ev->Get<TEvStatsService::TEvVolumePartCounters>();
-                failedReadBlob =
-                    msg->DiskCounters->Simple.ReadBlobDeadlineCount.Value;
-            }
-            return false;
-        });
+                return false;
+            });
 
         partition.SendCompactionRequest();
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
@@ -11257,6 +11276,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+
+        if (requestType != TEvBlobStorage::EvVGet) {
+            return;
+        }
 
         partition.SendToPipe(
             std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
@@ -11266,6 +11289,53 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             runtime->DispatchEvents(options);
         }
         UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
+    }
+
+    Y_UNIT_TEST(ShouldAbortCompactionIfReadBlobFailsWithDeadlineExceeded)
+    {
+        DoShouldAbortCompactionIfBlobStorageRequestFailsWithDeadlineExceeded(
+            TEvBlobStorage::EvVGet);
+    }
+
+    Y_UNIT_TEST(ShouldAbortCompactionIfWriteBlobFailsWithDeadlineExceeded)
+    {
+        DoShouldAbortCompactionIfBlobStorageRequestFailsWithDeadlineExceeded(
+            TEvBlobStorage::EvVPut);
+    }
+
+    Y_UNIT_TEST(ShouldAbortFlushIfWriteBlobFailsWithDeadlineExceeded)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetBlobStorageAsyncRequestTimeoutHDD(
+            TDuration::Seconds(1).MilliSeconds());
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(3, 33);
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+
+                if (ev->GetTypeRewrite() == TEvBlobStorage::EvVPut) {
+                    const auto* msg = ev->Get<TEvBlobStorage::TEvVPut>();
+                    if (msg->Record.GetHandleClass() ==
+                            NKikimrBlobStorage::AsyncBlob &&
+                        msg->Record.GetMsgQoS().HasDeadlineSeconds())
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        partition.SendFlushRequest();
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        auto response = partition.RecvFlushResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldAllowForcedCompactionRequestsInPresenseOfTabletCompaction)

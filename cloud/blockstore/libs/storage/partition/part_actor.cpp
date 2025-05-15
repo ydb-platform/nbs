@@ -808,6 +808,13 @@ bool TPartitionActor::IsFirstGarbageCollectionCompleted() const
     return FirstGarbageCollectionCompleted;
 }
 
+TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetBlobStorageAsyncRequestTimeoutSSD()
+               : Config->GetBlobStorageAsyncRequestTimeoutHDD();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)

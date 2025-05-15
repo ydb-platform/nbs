@@ -403,6 +403,8 @@ private:
         const TString& operationId,
         ui32& ranges) const;
 
+    [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
