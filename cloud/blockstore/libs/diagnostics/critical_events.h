@@ -68,7 +68,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
 // BLOCKSTORE_CRITICAL_EVENTS
 
-#define DISK_AGENT_CRITICAL_EVENTS(xxx)                                        \
+#define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
     xxx(AcquiredDiskEraseAttempt)                                              \
     xxx(DiskAgentConfigMismatch)                                               \
     xxx(DiskAgentIoDuringSecureErase)                                          \
@@ -76,7 +76,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskAgentSessionCacheRestoreError)                                     \
     xxx(DiskAgentSessionCacheUpdateError)                                      \
     xxx(UnexpectedIdentifierRepetition)                                        \
-// DISK_AGENT_CRITICAL_EVENTS
+// BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \
     xxx(TabletCommitIdOverflow)                                                \
@@ -129,7 +129,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 
-    DISK_AGENT_CRITICAL_EVENTS(
+    BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(
         BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE)
 #undef BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 

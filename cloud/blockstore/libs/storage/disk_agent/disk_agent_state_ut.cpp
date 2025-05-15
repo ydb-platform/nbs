@@ -496,7 +496,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         InitCriticalEventsCounter(counters);
 
         auto mismatch = counters->GetCounter(
-            "AppDiskAgentCriticalEvents/DiskAgentConfigMismatch",
+            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
             true);
 
         UNIT_ASSERT_EQUAL(0, *mismatch);
@@ -1630,7 +1630,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         InitCriticalEventsCounter(counters);
 
         auto restoreError = counters->GetCounter(
-            "AppDiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *restoreError);

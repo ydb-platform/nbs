@@ -1563,7 +1563,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             response->Record.GetError().GetCode());
 
         auto counter = counters->GetCounter(
-            "AppDiskAgentCriticalEvents/DiskAgentSecureEraseDuringIo",
+            "DiskAgentCriticalEvents/DiskAgentSecureEraseDuringIo",
             true);
         UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 1);
     }
@@ -1837,7 +1837,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
 
         auto unexpectedIdentifierRepetition = counters->GetCounter(
-            "AppDiskAgentCriticalEvents/UnexpectedIdentifierRepetition",
+            "DiskAgentCriticalEvents/UnexpectedIdentifierRepetition",
             true);
         UNIT_ASSERT_VALUES_EQUAL(
             monitoringMode ? 2 : 1,
@@ -3805,7 +3805,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         io(E_REJECTED);
 
         auto counter = counters->GetCounter(
-            "AppDiskAgentCriticalEvents/DiskAgentIoDuringSecureErase",
+            "DiskAgentCriticalEvents/DiskAgentIoDuringSecureErase",
             true);
         UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 3);
 
@@ -4586,7 +4586,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         InitCriticalEventsCounter(counters);
 
         auto mismatch = counters->GetCounter(
-            "AppDiskAgentCriticalEvents/DiskAgentConfigMismatch",
+            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
             true);
 
         UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
@@ -4606,7 +4606,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
     Y_UNIT_TEST_F(ShouldCacheSessions, TFixture)
     {
         auto cacheRestoreError = Counters->GetCounter(
-            "AppDiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
@@ -4825,7 +4825,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         auto cacheRestoreError = Counters->GetCounter(
-            "AppDiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
@@ -4940,7 +4940,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         auto cacheRestoreError = Counters->GetCounter(
-            "AppDiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
@@ -4963,7 +4963,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         auto cacheRestoreError = Counters->GetCounter(
-            "AppDiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
@@ -4997,7 +4997,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         auto cacheRestoreError = Counters->GetCounter(
-            "AppDiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
