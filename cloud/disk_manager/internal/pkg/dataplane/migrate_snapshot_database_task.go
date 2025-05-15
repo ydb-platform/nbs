@@ -119,12 +119,13 @@ func (m *migrateSnapshotDatabaseTask) Run(
 		if err != nil {
 			return err
 		}
+
 		snapshotsToMigrate := srcSnapshots.Subtract(dstSnapshots)
 		snapshotsToProcessCount := snapshotsToMigrate.Size()
 		subregistry.Gauge(
 			"snapshots/migratingCount",
 		).Set(float64(snapshotsToProcessCount))
-		err = m.migrateSnapshotsOnce(ctx, execCtx, snapshotsToMigrate)
+		err = m.migrateSnapshots(ctx, execCtx, snapshotsToMigrate)
 		if err != nil {
 			return err
 		}
@@ -152,7 +153,7 @@ func (m *migrateSnapshotDatabaseTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }
 
-func (m *migrateSnapshotDatabaseTask) migrateSnapshotsOnce(
+func (m *migrateSnapshotDatabaseTask) migrateSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	snapshotsToMigrate tasks_storage.StringSet,
@@ -170,7 +171,7 @@ func (m *migrateSnapshotDatabaseTask) migrateSnapshotsOnce(
 			return nil
 		}
 
-		err = m.scheduleAllInflightSnapshots(ctx, execCtx, mapping)
+		err = m.scheduleInflightSnapshots(ctx, execCtx, mapping)
 		if err != nil {
 			return err
 		}
@@ -200,7 +201,7 @@ func (m *migrateSnapshotDatabaseTask) saveInflightSnapshots(
 ) error {
 
 	cfg := m.config
-	inflightSnapshotsLimit := int(cfg.GetMigratingSnapshotsInflightLimit())
+	snapshotsInflightLimit := int(cfg.GetMigratingSnapshotsInflightLimit())
 
 	// Save all inflight snapshots to the state
 	for snapshotID := range snapshotsToMigrate.Vals() {
@@ -209,7 +210,7 @@ func (m *migrateSnapshotDatabaseTask) saveInflightSnapshots(
 			continue
 		}
 
-		if len(m.state.InflightSnapshots) >= inflightSnapshotsLimit {
+		if len(m.state.InflightSnapshots) >= snapshotsInflightLimit {
 			break
 		}
 
@@ -228,7 +229,7 @@ func (m *migrateSnapshotDatabaseTask) saveInflightSnapshots(
 	return nil
 }
 
-func (m *migrateSnapshotDatabaseTask) scheduleAllInflightSnapshots(
+func (m *migrateSnapshotDatabaseTask) scheduleInflightSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	mapping *snapshotToTasksMapping,
