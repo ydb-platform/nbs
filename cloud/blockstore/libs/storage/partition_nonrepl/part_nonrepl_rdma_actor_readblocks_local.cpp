@@ -23,11 +23,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestReadBlocksLocalHandler
-    : public TRdmaDeviceRequestHandler<TRdmaRequestReadBlocksLocalHandler>
+class TRdmaRequestReadBlocksLocalHandler: public IRdmaDeviceRequestHandler
 {
-    using TBase = TRdmaDeviceRequestHandler<TRdmaRequestReadBlocksLocalHandler>;
-
 private:
     const bool CheckVoidBlocks;
     TGuardedSgList SgList;
@@ -45,7 +42,7 @@ public:
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
-        : TRdmaDeviceRequestHandler(
+        : IRdmaDeviceRequestHandler(
               actorSystem,
               std::move(partConfig),
               std::move(requestInfo),
@@ -59,7 +56,7 @@ public:
 
     NProto::TError ProcessSubResponse(
         const TDeviceRequestRdmaContext& reqCtx,
-        TStringBuf buffer)
+        TStringBuf buffer) override
     {
         const auto& readReqCtx =
             static_cast<const TDeviceReadRequestContext&>(reqCtx);
@@ -115,13 +112,12 @@ public:
         return {};
     }
 
-    std::unique_ptr<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>
-    CreateCompletionEvent()
+    std::unique_ptr<IEventBase> CreateCompletionEvent() override
     {
         const auto requestBlockCount = GetRequestBlockCount();
         const bool allZeroes = VoidBlockCount == requestBlockCount;
 
-        auto completion = TBase::CreateCompletionEvent<
+        auto completion = CreateCompletionEventImpl<
             TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
         completion->NonVoidBlockCount = allZeroes ? 0 : requestBlockCount;
         completion->VoidBlockCount = allZeroes ? requestBlockCount : 0;
@@ -131,8 +127,7 @@ public:
         return completion;
     }
 
-    std::unique_ptr<TEvService::TEvReadBlocksLocalResponse> CreateResponse(
-        NProto::TError error) const
+    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error) override
     {
         const bool allZeroes = VoidBlockCount == GetRequestBlockCount();
         auto response =

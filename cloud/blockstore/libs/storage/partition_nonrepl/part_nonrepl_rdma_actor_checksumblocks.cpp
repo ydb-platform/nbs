@@ -43,20 +43,17 @@ struct TPartialChecksum
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceChecksumRequestHandler
-    : public TRdmaDeviceRequestHandler<TDeviceChecksumRequestHandler>
+class TDeviceChecksumRequestHandler: public IRdmaDeviceRequestHandler
 {
-    using TBase = TRdmaDeviceRequestHandler<TDeviceChecksumRequestHandler>;
-
 private:
     TMap<ui64, TPartialChecksum> Checksums;
 
 public:
-    using TRdmaDeviceRequestHandler::TRdmaDeviceRequestHandler;
+    using IRdmaDeviceRequestHandler::IRdmaDeviceRequestHandler;
 
     NProto::TError ProcessSubResponse(
         const TDeviceRequestRdmaContext& reqCtx,
-        TStringBuf buffer)
+        TStringBuf buffer) override
     {
         const auto& readReqCtx =
             static_cast<const TDeviceChecksumRequestContext&>(reqCtx);
@@ -79,10 +76,9 @@ public:
         return {};
     }
 
-    std::unique_ptr<TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>
-    CreateCompletionEvent()
+    std::unique_ptr<IEventBase> CreateCompletionEvent() override
     {
-        auto completion = TBase::CreateCompletionEvent<
+        auto completion = CreateCompletionEventImpl<
             TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>();
 
         auto& counters = *completion->Stats.MutableSysChecksumCounters();
@@ -90,8 +86,7 @@ public:
         return completion;
     }
 
-    std::unique_ptr<TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>
-    CreateResponse(NProto::TError err) const
+    std::unique_ptr<IEventBase> CreateResponse(NProto::TError err) override
     {
         TBlockChecksum checksum;
         for (const auto& [_, partialChecksum]: Checksums) {

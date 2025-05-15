@@ -222,7 +222,8 @@ struct TEvNonreplPartitionPrivate
         // Request execution total time.
         TDuration ExecutionTime;
 
-        struct TDeviceRequestResult {
+        struct TDeviceRequestResult
+        {
             ui32 DeviceIndex;
             NProto::TError Error;
         };
