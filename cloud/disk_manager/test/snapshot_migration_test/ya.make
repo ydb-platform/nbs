@@ -17,6 +17,7 @@ DEPENDS(
     cloud/disk_manager/test/mocks/metadata
 
     cloud/tasks/test/nemesis
+
     contrib/python/moto/bin
 )
 
