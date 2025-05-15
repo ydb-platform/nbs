@@ -528,6 +528,14 @@ public:
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TAssignVolumeRequest> request) override;
 
+    TFuture<NProto::TCreateVolumeLinkResponse> CreateVolumeLink(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TCreateVolumeLinkRequest> request) override;
+
+    TFuture<NProto::TDestroyVolumeLinkResponse> DestroyVolumeLink(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TDestroyVolumeLinkRequest> request) override;
+
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr ctx,                                                   \
@@ -564,7 +572,7 @@ TFuture<NProto::TCreateVolumeResponse> TLocalService::CreateVolume(
     std::shared_ptr<NProto::TCreateVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TCreateVolumeResponse>([=] {
+    return SafeAsyncExecute<NProto::TCreateVolumeResponse>([=, this] {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -598,7 +606,7 @@ TFuture<NProto::TResizeVolumeResponse> TLocalService::ResizeVolume(
     std::shared_ptr<NProto::TResizeVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TResizeVolumeResponse>([=] {
+    return SafeAsyncExecute<NProto::TResizeVolumeResponse>([=, this] {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -622,7 +630,7 @@ TFuture<NProto::TDestroyVolumeResponse> TLocalService::DestroyVolume(
     std::shared_ptr<NProto::TDestroyVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TDestroyVolumeResponse>([=] {
+    return SafeAsyncExecute<NProto::TDestroyVolumeResponse>([=, this] {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -641,7 +649,7 @@ TFuture<NProto::TListVolumesResponse> TLocalService::ListVolumes(
 {
     Y_UNUSED(ctx);
     Y_UNUSED(request);
-    return SafeAsyncExecute<NProto::TListVolumesResponse>([=] {
+    return SafeAsyncExecute<NProto::TListVolumesResponse>([=, this] {
         auto response = VolumeManager.ListVolumes();
         return MakeFuture(std::move(response));
     });
@@ -652,7 +660,7 @@ TFuture<NProto::TDescribeVolumeResponse> TLocalService::DescribeVolume(
         std::shared_ptr<NProto::TDescribeVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TDescribeVolumeResponse>([=] {
+    return SafeAsyncExecute<NProto::TDescribeVolumeResponse>([=, this] {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -670,7 +678,7 @@ TFuture<NProto::TMountVolumeResponse> TLocalService::MountVolume(
     std::shared_ptr<NProto::TMountVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TMountVolumeResponse>([=] {
+    return SafeAsyncExecute<NProto::TMountVolumeResponse>([=, this] {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -719,7 +727,7 @@ TFuture<NProto::TReadBlocksResponse> TLocalService::ReadBlocks(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TReadBlocksRequest> request)
 {
-    return SafeAsyncExecute<NProto::TReadBlocksResponse>([=] () mutable {
+    return SafeAsyncExecute<NProto::TReadBlocksResponse>([=, this] () mutable {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -770,7 +778,7 @@ TFuture<NProto::TWriteBlocksResponse> TLocalService::WriteBlocks(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TWriteBlocksRequest> request)
 {
-    return SafeAsyncExecute<NProto::TWriteBlocksResponse>([=] () mutable {
+    return SafeAsyncExecute<NProto::TWriteBlocksResponse>([=, this] () mutable {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -822,7 +830,7 @@ TFuture<NProto::TZeroBlocksResponse> TLocalService::ZeroBlocks(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
-    return SafeAsyncExecute<NProto::TZeroBlocksResponse>([=] () mutable {
+    return SafeAsyncExecute<NProto::TZeroBlocksResponse>([=, this] () mutable {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -871,7 +879,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalService::ReadBlocksLocal(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
-    return SafeAsyncExecute<NProto::TReadBlocksLocalResponse>([=] () mutable {
+    return SafeAsyncExecute<NProto::TReadBlocksLocalResponse>([=, this] () mutable {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -918,7 +926,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalService::WriteBlocksLocal(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
-    return SafeAsyncExecute<NProto::TWriteBlocksLocalResponse>([=] () mutable {
+    return SafeAsyncExecute<NProto::TWriteBlocksLocalResponse>([=, this] () mutable {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -978,7 +986,7 @@ TFuture<NProto::TAssignVolumeResponse> TLocalService::AssignVolume(
     std::shared_ptr<NProto::TAssignVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TAssignVolumeResponse>([=] {
+    return SafeAsyncExecute<NProto::TAssignVolumeResponse>([=, this] {
         const auto& diskId = request->GetDiskId();
         if (!diskId) {
             ythrow TServiceError(E_ARGUMENT)
@@ -989,6 +997,30 @@ TFuture<NProto::TAssignVolumeResponse> TLocalService::AssignVolume(
         *response.MutableVolume() = VolumeManager.DescribeVolume(diskId);
         return MakeFuture(response);
     });
+}
+
+TFuture<NProto::TCreateVolumeLinkResponse> TLocalService::CreateVolumeLink(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TCreateVolumeLinkRequest> request)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(request);
+
+    NProto::TCreateVolumeLinkResponse response;
+    *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);
+    return MakeFuture(response);
+}
+
+TFuture<NProto::TDestroyVolumeLinkResponse> TLocalService::DestroyVolumeLink(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TDestroyVolumeLinkRequest> request)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(request);
+
+    NProto::TDestroyVolumeLinkResponse response;
+    *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);
+    return MakeFuture(response);
 }
 
 }   // namespace

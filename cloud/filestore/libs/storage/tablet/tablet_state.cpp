@@ -121,6 +121,16 @@ void TIndexTabletState::LoadState(
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
+    // Changing thresholds in the config may result in a massive amount of
+    // deletion markers to be cleaned up.
+    // This causes Cleanup to run incessantly for a long time (up to several
+    // hours) and it may result in performance degradation.
+    // We track the minimal amount of deletion markers since the last tablet
+    // reboot and throttle cleanup when the amount of deletion markers is
+    // expected to drop below the minimal amount.
+    // https://github.com/ydb-platform/nbs/pull/3268
+    MinDeletionMarkersCountSinceTabletStart =
+        fileSystemStats.GetDeletionMarkersCount();
 
     if (FileSystemStats.GetLastNodeId() < RootNodeId) {
         FileSystemStats.SetLastNodeId(RootNodeId);
@@ -158,12 +168,13 @@ void TIndexTabletState::LoadState(
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
 
-    Impl->ShardBalancer.SetParameters(
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    Impl->ShardBalancer = CreateShardBalancer(
+        config.GetShardBalancerPolicy(),
         GetBlockSize(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
-        config.GetShardBalancerMinFreeSpaceReserve());
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    Impl->ShardBalancer.UpdateShards({shardIds.begin(), shardIds.end()});
+        config.GetShardBalancerMinFreeSpaceReserve(),
+        TVector<TString>(shardIds.begin(), shardIds.end()));
 }
 
 void TIndexTabletState::UpdateConfig(
@@ -180,12 +191,13 @@ void TIndexTabletState::UpdateConfig(
     Impl->RangeIdHasher = CreateHasher(fileSystem);
     Impl->ThrottlingPolicy.Reset(throttlerConfig);
 
-    Impl->ShardBalancer.SetParameters(
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    Impl->ShardBalancer = CreateShardBalancer(
+        config.GetShardBalancerPolicy(),
         GetBlockSize(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
-        config.GetShardBalancerMinFreeSpaceReserve());
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    Impl->ShardBalancer.UpdateShards({shardIds.begin(), shardIds.end()});
+        config.GetShardBalancerMinFreeSpaceReserve(),
+        TVector<TString>(shardIds.begin(), shardIds.end()));
 }
 
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const

@@ -122,6 +122,7 @@ public:
     TDuration GetMaxBurstTime() const;
     bool DeprecatedGetRdmaClientEnabled() const;
     const NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
+    bool GetUseFakeRdmaClient() const;
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
     TString GetEndpointStorageDir() const;
     TString GetVhostServerPath() const;
@@ -136,6 +137,8 @@ public:
     TDuration GetVhostServerTimeoutAfterParentExit() const;
     TString GetNodeRegistrationToken() const;
     NProto::TChecksumFlags GetChecksumFlags() const;
+    bool GetVhostDiscardEnabled() const;
+    ui32 GetMaxZeroBlocksSubRequestSize() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

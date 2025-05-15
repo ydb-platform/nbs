@@ -147,7 +147,8 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError(), false)) {
+    if (HasError(msg->GetError())) {
+        HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
 
@@ -203,21 +204,19 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
+    TRequestData request;
     bool ok = InitRequests<TEvService::TZeroBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy);
+        &timeoutPolicy,
+        &request);
 
     if (!ok) {
         return;
     }
-
-    const bool assignVolumeRequestId =
-        Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&
-        !msg->Record.GetHeaders().GetIsBackgroundRequest();
 
     auto actorId = NCloud::Register<TDiskAgentZeroActor>(
         ctx,
@@ -228,9 +227,9 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         PartConfig,
         SelfId(),
         PartConfig->GetBlockSize(),
-        assignVolumeRequestId);
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled());
 
-    RequestsInProgress.AddWriteRequest(actorId);
+    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
@@ -248,7 +247,6 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
-    NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);

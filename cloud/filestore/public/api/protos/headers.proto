@@ -15,16 +15,16 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/prot
 message THeaders
 {
     // Trace identifier for logging.
-    string TraceId = 1;
+    bytes TraceId = 1;
 
     // Idempotence identifier for retries.
-    string IdempotenceId = 2;
+    bytes IdempotenceId = 2;
 
     // Client identifier for client detection.
-    string ClientId = 3;
+    bytes ClientId = 3;
 
     // Session identifier.
-    string SessionId = 4;
+    bytes SessionId = 4;
 
     // Request timestamp.
     uint64 Timestamp = 5;
@@ -45,14 +45,14 @@ message THeaders
         NCloud.NProto.ERequestSource RequestSource = 2;
 
         // IAM auth token.
-        string AuthToken = 3;
+        bytes AuthToken = 3;
     }
 
     // Internal header, should not be used outside.
     TInternal Internal = 9;
 
     // FQDN of the host, where the request originated.
-    string OriginFqdn = 10;
+    bytes OriginFqdn = 10;
 
     // Explicitly disables multitablet forwarding.
     bool DisableMultiTabletForwarding = 11;

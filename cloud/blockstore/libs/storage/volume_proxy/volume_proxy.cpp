@@ -829,7 +829,10 @@ STFUNC(TVolumeProxyActor::StateWork)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::VOLUME_PROXY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

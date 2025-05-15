@@ -166,8 +166,9 @@ void TPartitionActor::HandleCleanup(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start cleanup @%lu (queue: %u)",
+        "[%lu][d:%s] Start cleanup @%lu (queue: %u)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId,
         static_cast<ui32>(cleanupQueue.size()));
 
@@ -276,8 +277,9 @@ void TPartitionActor::ExecuteCleanup(
         }
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Delete blob: %s",
+            "[%lu][d:%s] Delete blob: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             ToString(MakeBlobId(TabletID(), item.BlobId)).data());
 
         State->RemoveCleanupQueueItem(item);
@@ -304,8 +306,9 @@ void TPartitionActor::CompleteCleanup(
     TRequestScope timer(*args.RequestInfo);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete cleanup @%lu",
+        "[%lu][d:%s] Complete cleanup @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         args.CommitId);
 
     auto response = std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>();
@@ -328,8 +331,9 @@ void TPartitionActor::CompleteCleanup(
     for (const auto& item: args.CleanupQueue) {
         if (!IsDeletionMarker(item.BlobId)) {
             LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Add garbage blob: %s",
+                "[%lu][d:%s] Add garbage blob: %s",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 ToString(MakeBlobId(TabletID(), item.BlobId)).data());
 
             bool added = State->GetGarbageQueue().AddGarbageBlob(item.BlobId);
@@ -339,8 +343,7 @@ void TPartitionActor::CompleteCleanup(
 
     const auto d = CyclesToDurationSafe(args.RequestInfo->GetExecCycles());
     State->SetLastCleanupExecTime(d, ctx.Now());
-    UpdateCPUUsageStat(d.MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);

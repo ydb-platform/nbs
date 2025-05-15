@@ -111,5 +111,32 @@ TStatsTableSchemePtr CreateStatsTableScheme(TDuration ttl);
 TStatsTableSchemePtr CreateHistoryTableScheme();
 TStatsTableSchemePtr CreateArchiveStatsTableScheme(TDuration ttl);
 TStatsTableSchemePtr CreateBlobLoadMetricsTableScheme();
+TStatsTableSchemePtr CreateGroupsTableScheme();
+TStatsTableSchemePtr CreatePartitionsTableScheme();
+
+struct TYDBTableSchemes
+{
+    TStatsTableSchemePtr Stats;
+    TStatsTableSchemePtr History;
+    TStatsTableSchemePtr Archive;
+    TStatsTableSchemePtr Metrics;
+    TStatsTableSchemePtr Groups;
+    TStatsTableSchemePtr Partitions;
+
+    TYDBTableSchemes(
+            TStatsTableSchemePtr stats,
+            TStatsTableSchemePtr history,
+            TStatsTableSchemePtr archive,
+            TStatsTableSchemePtr metrics,
+            TStatsTableSchemePtr groups,
+            TStatsTableSchemePtr partitions)
+        : Stats(std::move(stats))
+        , History(std::move(history))
+        , Archive(std::move(archive))
+        , Metrics(std::move(metrics))
+        , Groups(std::move(groups))
+        , Partitions(std::move(partitions))
+    {}
+};
 
 }   // namespace NCloud::NBlockStore::NYdbStats

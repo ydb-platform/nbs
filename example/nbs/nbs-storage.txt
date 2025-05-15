@@ -11,9 +11,32 @@ UseShadowDisksForNonreplDiskCheckpoints: true
 MaxShadowDiskFillIoDepth: 4
 OptimizeVoidBuffersTransferForReadsEnabled: true
 MaxShadowDiskFillBandwidth: 1000
+MaxMigrationIoDepth: 1
 MaxMigrationBandwidth: 1000
 AssignIdToWriteAndZeroRequestsEnabled: true
 RejectLateRequestsAtDiskAgentEnabled: true
 UseDirectCopyRange: true
 EnableToChangeStatesFromDiskRegistryMonpage: true
 EnableToChangeErrorStatesFromDiskRegistryMonpage: true
+LaggingDevicesForMirror2DisksEnabled: true
+LaggingDevicesForMirror3DisksEnabled: true
+LinkedDiskFillBandwidth {
+  ReadBandwidth: 200
+  WriteBandwidth: 200
+  ReadIoDepth: 2
+  WriteIoDepth: 2
+}
+LinkedDiskFillBandwidth {
+  MediaKind: STORAGE_MEDIA_SSD_NONREPLICATED
+  ReadBandwidth: 300
+  WriteBandwidth: 300
+  ReadIoDepth: 4
+  WriteIoDepth: 4
+}
+DataScrubbingEnabled: true
+ResyncRangeAfterScrubbing: true
+ScrubbingChecksumMismatchTimeout: 1000
+ScrubbingResyncPolicy: RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK
+MultiAgentWriteEnabled: true
+UseRdma: true
+UseNonreplicatedRdmaActor: true

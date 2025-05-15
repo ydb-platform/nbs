@@ -252,6 +252,14 @@ TGuardedSgList TGuardedSgList::CreateDepender() const
         Sglist);
 }
 
+TGuardedSgList TGuardedSgList::CreateDepender(TSgList sglist) const
+{
+    Y_ABORT_UNLESS(GuardedObject);
+    return TGuardedSgList(
+        MakeIntrusive<TDependentGuardedObject>(GuardedObject),
+        std::move(sglist));
+}
+
 TGuardedSgList TGuardedSgList::Create(TSgList sglist) const
 {
     Y_ABORT_UNLESS(GuardedObject);

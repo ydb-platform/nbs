@@ -127,6 +127,7 @@ DisksConfig: <
     DisableDiskRegistryBasedDisks: {disable_disk_registry_based_disks}
     DiskRegistryBasedDisksFolderIdAllowList: "folder"
     DiskRegistryBasedDisksFolderIdAllowList: "another-folder"
+    DiskRegistryBasedDisksFolderIdAllowList: "encrypted-folder"
 >
 PoolsConfig: <
     MaxActiveSlots: 10
@@ -165,12 +166,14 @@ ImagesConfig: <
             Capacity: 0
         >
     ]
+    RetryBrokenDRBasedDiskCheckpoint: {retry_broken_disk_registry_based_disk_checkpoint}
 >
 SnapshotsConfig: <
     DeletedSnapshotExpirationTimeout: "1s"
     ClearDeletedSnapshotsTaskScheduleInterval: "2s"
     UseS3Percentage: {use_s3_percentage}
     UseProxyOverlayDisk: true
+    RetryBrokenDRBasedDiskCheckpoint: {retry_broken_disk_registry_based_disk_checkpoint}
 >
 LoggingConfig: <
     LoggingStderr: <>
@@ -400,6 +403,7 @@ class DiskManagerLauncher:
         migration_dst_ydb_port=None,
         migration_dst_s3_port=None,
         migration_dst_s3_credentials_file=None,
+        retry_broken_disk_registry_based_disk_checkpoint=False,
     ):
         self.__idx = idx
 
@@ -486,6 +490,7 @@ class DiskManagerLauncher:
                     creation_and_deletion_allowed_only_for_disks_with_id_prefix=creation_and_deletion_allowed_only_for_disks_with_id_prefix,
                     disable_disk_registry_based_disks="true" if disable_disk_registry_based_disks else "false",
                     use_s3_percentage="0" if s3_port is None else "100",
+                    retry_broken_disk_registry_based_disk_checkpoint=retry_broken_disk_registry_based_disk_checkpoint,
                 )
                 f.write(self.__server_config)
 

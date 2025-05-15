@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,11 +29,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/config"
+	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_headers "github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"google.golang.org/grpc"
 	grpc_codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -365,29 +368,63 @@ func RequireCheckpointsDoNotExist(
 	require.Empty(t, checkpoints)
 }
 
-func WaitForCheckpointsDoNotExist(
+func waitUntilCheckpointsMeetRequirements(
+	t *testing.T,
+	ctx context.Context,
+	diskID string,
+	checkRequirements func([]string) bool,
+) {
+
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
+	ticker := time.NewTicker(time.Millisecond * 100)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
+		require.NoError(t, err)
+
+		if checkRequirements(checkpoints) {
+			return
+		}
+
+		logging.Debug(
+			ctx,
+			"waitUntilCheckpointsMeetRequirements proceeding to next iteration",
+		)
+	}
+}
+
+func WaitForCheckpointDoesNotExist(
+	t *testing.T,
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) {
+
+	waitUntilCheckpointsMeetRequirements(
+		t,
+		ctx,
+		diskID,
+		func(checkpoints []string) bool {
+			return !slices.Contains(checkpoints, checkpointID)
+		},
+	)
+}
+
+func WaitForNoCheckpointsExist(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
 ) {
 
-	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
-
-	for {
-		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
-		require.NoError(t, err)
-
-		if len(checkpoints) == 0 {
-			return
-		}
-
-		logging.Warn(
-			ctx,
-			"WaitForCheckpointsDoNotExist proceeding to next iteration",
-		)
-
-		<-time.After(100 * time.Millisecond)
-	}
+	waitUntilCheckpointsMeetRequirements(
+		t,
+		ctx,
+		diskID,
+		func(checkpoints []string) bool {
+			return len(checkpoints) == 0
+		},
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -539,6 +576,19 @@ func newSnapshotStorage(ctx context.Context) (snapshot_storage.Storage, error) {
 		metrics.NewEmptyRegistry(),
 		db,
 		nil, // do not need s3 here
+	)
+}
+
+func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
+	db, err := newYDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return tasks_storage.NewStorage(
+		&tasks_config.TasksConfig{},
+		metrics.NewEmptyRegistry(),
+		db,
 	)
 }
 

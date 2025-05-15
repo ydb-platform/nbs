@@ -68,60 +68,68 @@ TDeviceRequestBuilder::TDeviceRequestBuilder(
     : DeviceRequests(deviceRequests)
     , BlockSize(blockSize)
     , Request(request)
-{}
+{
+    const size_t blockCountToSkip =
+        DeviceRequests[0].BlockRange.Start - request.GetStartIndex();
+    for (size_t i = 0; i < blockCountToSkip; ++i) {
+        GetBufferAndAdvance();
+    }
+}
 
 void TDeviceRequestBuilder::BuildNextRequest(TSgList* sglist)
 {
     Y_ABORT_UNLESS(CurrentDeviceIdx < DeviceRequests.size());
 
     const auto& deviceRequest = DeviceRequests[CurrentDeviceIdx];
-    for (ui32 i = 0; i < deviceRequest.BlockRange.Size(); ++i) {
-        const ui32 rem = Buffer().size() - CurrentOffsetInBuffer;
-        Y_ABORT_UNLESS(rem >= BlockSize);
-        sglist->push_back({Buffer().data() + CurrentOffsetInBuffer, BlockSize});
+    sglist->reserve(sglist->size() + deviceRequest.BlockRange.Size());
+    for (size_t i = 0; i < deviceRequest.BlockRange.Size(); ++i) {
+        sglist->push_back(GetBufferAndAdvance());
+    }
+
+    ++CurrentDeviceIdx;
+}
+
+TString TDeviceRequestBuilder::TakeBufferAndAdvance()
+{
+    auto& currentBuffer =
+        (*Request.MutableBlocks()->MutableBuffers())[CurrentBufferIdx];
+
+    TString result;
+    if (CurrentOffsetInBuffer == 0 && currentBuffer.size() == BlockSize) {
+        currentBuffer.swap(result);
+        ++CurrentBufferIdx;
+    } else {
+        Y_ABORT_UNLESS(
+            currentBuffer.size() - CurrentOffsetInBuffer >= BlockSize);
+
+        result = currentBuffer.substr(CurrentOffsetInBuffer, BlockSize);
         CurrentOffsetInBuffer += BlockSize;
-        if (CurrentOffsetInBuffer == Buffer().size()) {
+        if (CurrentOffsetInBuffer == currentBuffer.size()) {
             CurrentOffsetInBuffer = 0;
             ++CurrentBufferIdx;
         }
     }
-
-    ++CurrentDeviceIdx;
+    return result;
 }
 
-void TDeviceRequestBuilder::BuildNextRequest(
-    NProto::TWriteDeviceBlocksRequest& r)
+TBlockDataRef TDeviceRequestBuilder::GetBufferAndAdvance()
 {
-    Y_ABORT_UNLESS(CurrentDeviceIdx < DeviceRequests.size());
+    auto& currentBuffer =
+        (*Request.MutableBlocks()->MutableBuffers())[CurrentBufferIdx];
 
-    const auto& deviceRequest = DeviceRequests[CurrentDeviceIdx];
-    for (ui32 i = 0; i < deviceRequest.BlockRange.Size(); ++i) {
-        auto& deviceBuffer = *r.MutableBlocks()->AddBuffers();
-        if (CurrentOffsetInBuffer == 0 && Buffer().size() == BlockSize) {
-            deviceBuffer = std::move(Buffer());
-            ++CurrentBufferIdx;
-        } else {
-            const ui32 rem = Buffer().size() - CurrentOffsetInBuffer;
-            Y_ABORT_UNLESS(rem >= BlockSize);
-            deviceBuffer.resize(BlockSize);
-            memcpy(
-                deviceBuffer.begin(),
-                Buffer().data() + CurrentOffsetInBuffer,
-                BlockSize);
-            CurrentOffsetInBuffer += BlockSize;
-            if (CurrentOffsetInBuffer == Buffer().size()) {
-                CurrentOffsetInBuffer = 0;
-                ++CurrentBufferIdx;
-            }
-        }
+    Y_ABORT_UNLESS(currentBuffer.size() - CurrentOffsetInBuffer >= BlockSize);
+
+    TBlockDataRef result(
+        currentBuffer.data() + CurrentOffsetInBuffer,
+        BlockSize);
+
+    CurrentOffsetInBuffer += BlockSize;
+    if (CurrentOffsetInBuffer == currentBuffer.size()) {
+        CurrentOffsetInBuffer = 0;
+        ++CurrentBufferIdx;
     }
 
-    ++CurrentDeviceIdx;
-}
-
-TString& TDeviceRequestBuilder::Buffer()
-{
-    return (*Request.MutableBlocks()->MutableBuffers())[CurrentBufferIdx];
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

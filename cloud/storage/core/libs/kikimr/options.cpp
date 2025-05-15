@@ -66,6 +66,10 @@ TOptionsYdbBase::TOptionsYdbBase()
         .RequiredArgument("PORT")
         .StoreResult(&NodeBrokerPort);
 
+    Opts.AddLongOption("node-broker-secure-port")
+        .RequiredArgument("PORT")
+        .StoreResult(&NodeBrokerSecurePort);
+
     Opts.AddLongOption(
         "use-secure-registration",
         "Use secure connection to node broker")
@@ -87,6 +91,10 @@ TOptionsYdbBase::TOptionsYdbBase()
     Opts.AddLongOption("load-configs-from-cms", "load configs from CMS")
         .NoArgument()
         .StoreTrue(&LoadCmsConfigs);
+
+    Opts.AddLongOption("actor-system-available-cpu-cores-percentage")
+        .OptionalArgument("NUM")
+        .StoreResult(&ActorSystemAvailableCpuCoresPercentage);
 }
 
 }   // namespace NCloud::NStorage

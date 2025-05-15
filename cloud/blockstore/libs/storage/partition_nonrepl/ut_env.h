@@ -5,16 +5,19 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
+#include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -29,10 +32,12 @@ const ui64 DefaultDeviceBlockSize = 512;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStorageStatsServiceState
-    : TAtomicRefCount<TStorageStatsServiceState>
+struct TStorageStatsServiceState: TAtomicRefCount<TStorageStatsServiceState>
 {
     TPartitionDiskCounters Counters{
+        EPublishingPolicy::DiskRegistryBased,
+        EHistogramCounterOption::ReportMultipleCounters};
+    TPartitionDiskCounters AggregatedCounters{
         EPublishingPolicy::DiskRegistryBased,
         EHistogramCounterOption::ReportMultipleCounters};
 };
@@ -87,6 +92,7 @@ private:
         Y_UNUSED(ctx);
 
         State->Counters = *ev->Get()->DiskCounters;
+        State->AggregatedCounters.AggregateWith(*ev->Get()->DiskCounters);
     }
 
     void HandleRegisterTrafficSource(
@@ -136,6 +142,7 @@ private:
             HFunc(
                 TEvVolume::TEvDiskRegistryBasedPartitionCounters,
                 HandleVolumePartCounters);
+            HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
 
             HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
 
@@ -147,6 +154,11 @@ private:
 
             HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
             HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
+
+            IgnoreFunc(TEvVolume::TEvReacquireDisk);
+
+            IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
+            IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
 
             default:
                 Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
@@ -170,16 +182,26 @@ private:
             MakeStorageStatsServiceId(),
             ev->Sender,
             new TEvStatsService::TEvVolumePartCounters(
-                "", // diskId
+                "",   // diskId
                 std::move(ev->Get()->DiskCounters),
                 0,
                 0,
                 false,
-                NBlobMetrics::TBlobLoadMetrics()),
+                NBlobMetrics::TBlobLoadMetrics(),
+                NKikimrTabletBase::TMetrics()),
             ev->Flags,
             ev->Cookie);
         ctx.Send(event.release());
     }
+
+    void HandleScrubberCounters(
+        const TEvVolume::TEvScrubberCounters::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+        Y_UNUSED(ctx);
+    }
+
 
     void HandleRdmaUnavailable(
         const TEvVolume::TEvRdmaUnavailable::TPtr& ev,
@@ -422,6 +444,53 @@ public:
         return request;
     }
 
+    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool calculateChecksums = false)
+    {
+        auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
+        request->Record.SetDiskId(id);
+        request->Record.SetStartIndex(startIndex);
+        request->Record.SetBlocksCount(size);
+        request->Record.SetCalculateChecksums(calculateChecksums);
+        return request;
+    }
+
+    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, ui32 replicaCount, bool calculateChecksums = false)
+    {
+        auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
+        request->Record.SetDiskId(id);
+        request->Record.SetStartIndex(startIndex);
+        request->Record.SetBlocksCount(size);
+        request->Record.SetCalculateChecksums(calculateChecksums);
+        request->Record.mutable_headers()->SetReplicaCount(replicaCount);
+        return request;
+    }
+
+    std::unique_ptr<NPartition::TEvPartition::TEvLockAndDrainRangeRequest>
+    CreateLockAndDrainRangeRequest(TBlockRange64 range)
+    {
+        return std::make_unique<
+            NPartition::TEvPartition::TEvLockAndDrainRangeRequest>(range);
+    }
+
+    void SendReleaseRange(TBlockRange64 range)
+    {
+        auto req =
+            std::make_unique<NPartition::TEvPartition::TEvReleaseRange>(range);
+        SendRequest(ActorId, std::move(req), ++RequestId);
+    }
+
+    void SendAgentIsUnavailable(TString agentId)
+    {
+        NProto::TLaggingAgent laggingAgent;
+        laggingAgent.SetAgentId(std::move(agentId));
+        auto msg =
+            std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
+                std::move(laggingAgent));
+
+        SendRequest(ActorId, std::move(msg), ++RequestId);
+    }
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
@@ -455,7 +524,9 @@ public:
     BLOCKSTORE_DECLARE_METHOD(ReadBlocksLocal, TEvService);
     BLOCKSTORE_DECLARE_METHOD(WriteBlocksLocal, TEvService);
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks, TEvService);
+    BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvVolume);
     BLOCKSTORE_DECLARE_METHOD(ChecksumBlocks, TEvNonreplPartitionPrivate);
+    BLOCKSTORE_DECLARE_METHOD(LockAndDrainRange, NPartition::TEvPartition);
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };

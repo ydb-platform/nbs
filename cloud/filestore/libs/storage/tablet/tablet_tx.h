@@ -80,6 +80,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(LoadNodeRefs,                       __VA_ARGS__)                       \
     xxx(LoadNodes,                          __VA_ARGS__)                       \
+                                                                               \
+    xxx(ReadData,                           __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 
 #define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
@@ -99,6 +101,7 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
+    xxx(CompleteUnlinkNode,                 __VA_ARGS__)                       \
     xxx(RenameNode,                         __VA_ARGS__)                       \
     xxx(PrepareRenameNodeInSource,          __VA_ARGS__)                       \
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
@@ -115,7 +118,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ReleaseLock,                        __VA_ARGS__)                       \
     xxx(TestLock,                           __VA_ARGS__)                       \
                                                                                \
-    xxx(ReadData,                           __VA_ARGS__)                       \
     xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(AddData,                            __VA_ARGS__)                       \
     xxx(WriteBatch,                         __VA_ARGS__)                       \
@@ -589,7 +591,7 @@ struct TTxIndexTablet
         TVector<IIndexTabletDatabase::TNodeRef> NodeRefs;
 
         TVector<TIndexTabletDatabase::TCheckpointBlob> Blobs;
-        TVector<TIndexTabletDatabase::TMixedBlob> MixedBlobs;
+        TVector<TIndexTabletDatabase::IIndexTabletDatabase::TMixedBlob> MixedBlobs;
 
         // NOTE: should persist state across tx restarts
         TSet<ui32> MixedBlocksRanges;
@@ -737,6 +739,53 @@ struct TTxIndexTablet
             , Request(std::move(request))
             , ParentNodeId(Request.GetNodeId())
             , Name(Request.GetName())
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
+            CommitId = InvalidCommitId;
+            ParentNode.Clear();
+            ChildNode.Clear();
+            ChildRef.Clear();
+            OpLogEntry.Clear();
+        }
+    };
+
+    //
+    // CompleteUnlinkNode
+    //
+
+    struct TCompleteUnlinkNode
+        : TSessionAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProto::TUnlinkNodeRequest Request;
+        const ui64 ParentNodeId;
+        const TString Name;
+        ui64 OpLogEntryId;
+        NProto::TUnlinkNodeResponse Response;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
+
+        NProto::TOpLogEntry OpLogEntry;
+
+        TCompleteUnlinkNode(
+                TRequestInfoPtr requestInfo,
+                NProto::TUnlinkNodeRequest request,
+                ui64 opLogEntryId,
+                NProto::TUnlinkNodeResponse response)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+            , ParentNodeId(Request.GetNodeId())
+            , Name(Request.GetName())
+            , OpLogEntryId(opLogEntryId)
+            , Response(std::move(response))
         {}
 
         void Clear()
@@ -1490,7 +1539,9 @@ struct TTxIndexTablet
     // ReadData
     //
 
-    struct TReadData : TSessionAware
+    struct TReadData
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 Handle;
@@ -1532,6 +1583,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
             ReadAheadRange.Clear();

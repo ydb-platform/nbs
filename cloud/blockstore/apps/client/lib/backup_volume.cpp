@@ -178,7 +178,7 @@ protected:
         auto future = ClientEndpoint->GetChangedBlocks(
             MakeIntrusive<TCallContext>(requestId), std::move(request));
 
-        ChangedBlocks = future.Subscribe([=](const auto& future) {
+        ChangedBlocks = future.Subscribe([=, this](const auto& future) {
             const auto& response = future.GetValue();
             if (HasError(response)) {
                 STORAGE_ERROR(FormatError(response.GetError()));
@@ -271,14 +271,14 @@ protected:
             MakeIntrusive<TCallContext>(),
             std::move(request));
 
-        future.Subscribe([=, holder = std::move(holder)](const auto& future) mutable {
+        future.Subscribe([=, this, holder = std::move(holder)](const auto& future) mutable {
             const auto& response = future.GetValue();
             if (HasError(response)) {
                 STORAGE_ERROR(FormatError(response.GetError()));
                 ShouldContinue.ShouldStop(1);
                 return;
             }
-            Write[bucket].Subscribe([=, holder = std::move(holder)](const auto& future) mutable {
+            Write[bucket].Subscribe([=, this, holder = std::move(holder)](const auto& future) mutable {
                 Y_UNUSED(future);
                 WriteBlocks(bucket, startIndex, blocksCount, holder.Extract());
                 Queue.Push(bucket);
@@ -301,7 +301,7 @@ protected:
             MakeIntrusive<TCallContext>(),
             std::move(request));
 
-        Write[bucket].Subscribe([=, holder = std::move(holder)](const auto& future) mutable {
+        Write[bucket].Subscribe([=, this, holder = std::move(holder)](const auto& future) mutable {
             holder.Extract();
 
             const auto& response = future.GetValue();

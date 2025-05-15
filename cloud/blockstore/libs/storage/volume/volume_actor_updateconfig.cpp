@@ -234,15 +234,23 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     *newMeta.MutableDevices() = std::move(UnfinishedUpdateVolumeConfig.Devices);
     *newMeta.MutableMigrations() =
         std::move(UnfinishedUpdateVolumeConfig.Migrations);
+
     newMeta.ClearReplicas();
     for (auto& devices: UnfinishedUpdateVolumeConfig.Replicas) {
         auto* replica = newMeta.AddReplicas();
         *replica->MutableDevices() = std::move(devices);
     }
+
     newMeta.ClearFreshDeviceIds();
     for (auto& freshDeviceId: UnfinishedUpdateVolumeConfig.FreshDeviceIds) {
         *newMeta.AddFreshDeviceIds() = std::move(freshDeviceId);
     }
+
+    newMeta.ClearLostDeviceIds();
+    for (auto& lostDevice: UnfinishedUpdateVolumeConfig.LostDeviceIds) {
+        newMeta.AddLostDeviceIds(std::move(lostDevice));
+    }
+
     if (State) {
         newMeta.MutableLaggingAgentsInfo()->CopyFrom(
             State->GetMeta().GetLaggingAgentsInfo());
@@ -256,6 +264,7 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     UnfinishedUpdateVolumeConfig.Replicas = {};
     UnfinishedUpdateVolumeConfig.FreshDeviceIds = {};
     UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds = {};
+    UnfinishedUpdateVolumeConfig.LostDeviceIds = {};
 
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Updating volume config to version %u",
@@ -322,12 +331,6 @@ void TVolumeActor::CompleteUpdateConfig(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    if (State) {
-        if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
-            WaitForPartitions.emplace_back(actorId, nullptr);
-        }
-    }
-
     // stop partitions that might have been using old configuration
     StopPartitions(ctx, {});
 
@@ -351,16 +354,20 @@ void TVolumeActor::CompleteUpdateConfig(
             // TODO: will it get updated later?
             {},   // volume params
             throttlerConfig,
-            {},   // clients
+            {},                            // clients
             TCachedVolumeMountHistory{},   // history
-            {},   // checkpoint requests
-            false // StartPartitionsNeeded
-        ));
+            {},                            // checkpoint requests
+            {},                            // follower disks
+            false                          // StartPartitionsNeeded
+            ));
 
         ResetThrottlingPolicy();
         RegisterCounters(ctx);
         RegisterVolume(ctx);
     }
+
+    HasPerformanceProfileModifications =
+        State->HasPerformanceProfileModifications(*Config);
 
     Y_ABORT_UNLESS(NextVolumeConfigVersion == GetCurrentConfigVersion());
 

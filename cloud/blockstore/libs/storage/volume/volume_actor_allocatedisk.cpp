@@ -161,6 +161,12 @@ NProto::TVolumeMeta CreateNewMeta(
     newMeta.SetMuteIOErrors(args.MuteIOErrors);
     UpdateLaggingDevicesAfterMetaUpdate(newMeta, args.RemovedLaggingDeviceIds);
 
+    Sort(args.LostDeviceIds);
+
+    newMeta.MutableLostDeviceIds()->Assign(
+        std::make_move_iterator(args.LostDeviceIds.begin()),
+        std::make_move_iterator(args.LostDeviceIds.end()));
+
     return newMeta;
 }
 
@@ -290,6 +296,56 @@ void TVolumeActor::ScheduleAllocateDiskIfNeeded(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TVolumeActor::HandleAllocateDiskError(
+    const TActorContext& ctx,
+    NProto::TError error)
+{
+    if (UpdateVolumeConfigInProgress && State) {
+        UnfinishedUpdateVolumeConfig.Devices = State->GetMeta().GetDevices();
+        UnfinishedUpdateVolumeConfig.Migrations =
+            State->GetMeta().GetMigrations();
+
+        UnfinishedUpdateVolumeConfig.Replicas.clear();
+        for (auto& r: State->GetMeta().GetReplicas()) {
+            UnfinishedUpdateVolumeConfig.Replicas.push_back(r.GetDevices());
+        }
+
+        UnfinishedUpdateVolumeConfig.FreshDeviceIds.assign(
+            State->GetMeta().GetFreshDeviceIds().begin(),
+            State->GetMeta().GetFreshDeviceIds().end());
+        UnfinishedUpdateVolumeConfig.LostDeviceIds.assign(
+            State->GetMeta().GetLostDeviceIds().begin(),
+            State->GetMeta().GetLostDeviceIds().end());
+    }
+
+    if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+        ScheduleAllocateDiskIfNeeded(ctx);
+        return;
+    }
+
+    const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
+        GetNewestConfig().GetStorageMediaKind());
+    const bool localDiskAllocationRetry =
+        Config->GetLocalDiskAsyncDeallocationEnabled() &&
+        error.GetCode() == E_TRY_AGAIN &&
+        IsDiskRegistryLocalMediaKind(mediaKind);
+
+    if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED && !localDiskAllocationRetry)
+    {
+        ReportDiskAllocationFailure();
+    }
+
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Disk allocation failed with error: %s. DiskId=%s",
+        TabletID(),
+        FormatError(error).c_str(),
+        GetNewestConfig().GetDiskId().Quote().c_str());
+
+    StorageAllocationResult = std::move(error);
+}
+
 void TVolumeActor::HandleAllocateDiskResponse(
     const TEvDiskRegistry::TEvAllocateDiskResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -302,37 +358,8 @@ void TVolumeActor::HandleAllocateDiskResponse(
 
     auto* msg = ev->Get();
 
-    if (const auto& error = msg->Record.GetError(); FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Disk allocation failed with error: %s. DiskId=%s",
-            TabletID(),
-            FormatError(error).c_str(),
-            GetNewestConfig().GetDiskId().Quote().c_str());
-
-        if (UpdateVolumeConfigInProgress && State) {
-            UnfinishedUpdateVolumeConfig.Devices = State->GetMeta().GetDevices();
-            UnfinishedUpdateVolumeConfig.Migrations =
-                State->GetMeta().GetMigrations();
-
-            UnfinishedUpdateVolumeConfig.Replicas.clear();
-            for (auto& r: State->GetMeta().GetReplicas()) {
-                UnfinishedUpdateVolumeConfig.Replicas.push_back(r.GetDevices());
-            }
-
-            UnfinishedUpdateVolumeConfig.FreshDeviceIds.assign(
-                State->GetMeta().GetFreshDeviceIds().begin(),
-                State->GetMeta().GetFreshDeviceIds().end());
-        }
-
-        if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
-            ScheduleAllocateDiskIfNeeded(ctx);
-        } else {
-            if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED) {
-                ReportDiskAllocationFailure();
-            }
-            StorageAllocationResult = error;
-        }
-
+    if (auto error = msg->Record.GetError(); FAILED(error.GetCode())) {
+        HandleAllocateDiskError(ctx, std::move(error));
         return;
     } else {
         LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
@@ -352,6 +379,7 @@ void TVolumeActor::HandleAllocateDiskResponse(
     TVector<TDevices> replicas;
     TVector<TString> freshDeviceIds;
     TVector<TString> removedLaggingDevices;
+    TVector<TString> lostDeviceIds;
     for (auto& msgReplica: *msg->Record.MutableReplicas()) {
         replicas.push_back(std::move(*msgReplica.MutableDevices()));
     }
@@ -363,6 +391,9 @@ void TVolumeActor::HandleAllocateDiskResponse(
     {
         removedLaggingDevices.push_back(
             std::move(*removedLaggingDevice.MutableDeviceUUID()));
+    }
+    for (auto& lostDeviceId: *msg->Record.MutableLostDeviceUUIDs()) {
+        lostDeviceIds.push_back(std::move(lostDeviceId));
     }
 
     if (!CheckAllocationResult(ctx, devices, replicas)) {
@@ -376,6 +407,7 @@ void TVolumeActor::HandleAllocateDiskResponse(
         UnfinishedUpdateVolumeConfig.FreshDeviceIds = std::move(freshDeviceIds);
         UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds =
             std::move(removedLaggingDevices);
+        UnfinishedUpdateVolumeConfig.LostDeviceIds = std::move(lostDeviceIds);
     } else {
         ExecuteTx<TUpdateDevices>(
             ctx,
@@ -384,10 +416,10 @@ void TVolumeActor::HandleAllocateDiskResponse(
             std::move(replicas),
             std::move(freshDeviceIds),
             std::move(removedLaggingDevices),
+            std::move(lostDeviceIds),
             msg->Record.GetIOMode(),
             TInstant::MicroSeconds(msg->Record.GetIOModeTs()),
-            msg->Record.GetMuteIOErrors()
-        );
+            msg->Record.GetMuteIOErrors());
     }
 }
 
@@ -420,15 +452,13 @@ void TVolumeActor::HandleUpdateDevices(
 
     ExecuteTx<TUpdateDevices>(
         ctx,
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext),
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         std::move(msg->Devices),
         std::move(msg->Migrations),
         std::move(msg->Replicas),
         std::move(msg->FreshDeviceIds),
         std::move(msg->RemovedLaggingDevices),
+        std::move(msg->LostDeviceIds),
         msg->IOMode,
         msg->IOModeTs,
         msg->MuteIOErrors);
@@ -567,6 +597,8 @@ void TVolumeActor::ExecuteUpdateDevices(
         TVolumeMetaHistoryItem metaHistoryItem{ctx.Now(), newMeta};
         db.WriteMetaHistory(State->GetMetaHistory().size(), metaHistoryItem);
         State->AddMetaHistory(std::move(metaHistoryItem));
+
+        args.ReplacedDevices = GetReplacedDevices(oldMeta, newMeta);
     }
 
     db.WriteMeta(newMeta);
@@ -585,29 +617,38 @@ void TVolumeActor::CompleteUpdateDevices(
         State->GetDiskId().c_str(),
         args.LiteReallocation);
 
-    if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
-        if (!args.RequestInfo) {
-            WaitForPartitions.emplace_back(actorId, nullptr);
-        } else {
-            auto reply =
-                [requestInfo = args.RequestInfo](const auto& ctx, auto error)
-            {
-                using TResponse = TEvVolumePrivate::TEvUpdateDevicesResponse;
-
-                NCloud::Reply(
-                    ctx,
-                    *requestInfo,
-                    std::make_unique<TResponse>(std::move(error)));
-            };
-
-            WaitForPartitions.emplace_back(actorId, std::move(reply));
-        }
+    // Hacky way to avoid race condition with "TTxVolume::TUpdateMigrationState"
+    // TODO(komarevtsev-d): Remove after proper fix in #3162.
+    if (!args.LiteReallocation) {
+        State->UpdateMigrationIndexInMeta(0);
     }
 
-    StopPartitions(ctx, {});
+    TPoisonCallback onPartitionDestroy =
+        [requestInfo =
+             args.RequestInfo](const TActorContext& ctx, NProto::TError error)
+    {
+        if (!requestInfo) {
+            return;
+        }
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
+                std::move(error)));
+    };
+
+    StopPartitions(ctx, onPartitionDestroy);
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);
+    if (!args.LiteReallocation) {
+        // Non-lite reallocation means that new devices could have been added.
+        AcquireDiskIfNeeded(ctx);
+        // Try to release devices that don't belong to the volume anymore. This
+        // task is not critical, and in case of failure, the acquire will become
+        // obsolete in some time.
+        ReleaseReplacedDevices(ctx, args.ReplacedDevices);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

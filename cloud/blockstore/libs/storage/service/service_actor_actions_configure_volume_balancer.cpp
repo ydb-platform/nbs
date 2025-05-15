@@ -119,7 +119,10 @@ STFUNC(TConfigureVolumeBalancerActionActor::StateWork)
         HFunc(TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse, HandleConfigureVolumeBalancerResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME_BALANCER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME_BALANCER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

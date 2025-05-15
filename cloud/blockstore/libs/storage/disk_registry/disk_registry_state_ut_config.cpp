@@ -34,9 +34,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateConfigTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .With(counters)
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder().With(counters).Build();
+        TDiskRegistryState& state = *statePtr;
 
         const TString uuid = "uuid-1.1";
         const auto agentConfig = AgentConfig(1, { Device("dev-1", uuid) });
@@ -102,9 +101,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateConfigTest)
             }),
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig(agents)
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder().WithConfig(agents).Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(

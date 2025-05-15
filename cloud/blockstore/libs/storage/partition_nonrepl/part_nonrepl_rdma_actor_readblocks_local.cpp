@@ -41,6 +41,12 @@ private:
 
     ui32 VoidBlockCount = 0;
 
+    // Indices of devices that participated in the request.
+    TStackVec<ui32, 2> DeviceIndices;
+
+    // Indices of devices where requests have resulted in errors.
+    TStackVec<ui32, 2> ErrorDeviceIndices;
+
 public:
     TRdmaRequestReadBlocksLocalContext(
             TActorSystem* actorSystem,
@@ -61,54 +67,62 @@ public:
         , CheckVoidBlocks(checkVoidBlocks)
         , ResponseCount(requestCount)
         , SgList(std::move(sglist))
+    {}
+
+    void HandleResult(
+        const TDeviceReadRequestContext& reqCtx,
+        TStringBuf buffer)
     {
-    }
+        auto guard = SgList.Acquire();
+        if (!guard) {
+            Error = MakeError(E_CANCELLED, "can't acquire sglist");
+            return;
+        }
+        auto* serializer = TBlockStoreProtocol::Serializer();
+        auto [result, err] = serializer->Parse(buffer);
 
-    void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
-    {
-        if (auto guard = SgList.Acquire()) {
-            auto* serializer = TBlockStoreProtocol::Serializer();
-            auto [result, err] = serializer->Parse(buffer);
+        if (HasError(err)) {
+            Error = std::move(err);
+            return;
+        }
 
-            if (HasError(err)) {
-                Error = std::move(err);
-                return;
-            }
+        const auto& concreteProto =
+            static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
+        if (HasError(concreteProto.GetError())) {
+            Error = concreteProto.GetError();
+            return;
+        }
 
-            const auto& concreteProto =
-                static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
-            if (HasError(concreteProto.GetError())) {
-                Error = concreteProto.GetError();
-                return;
-            }
+        TSgList data = guard.Get();
 
-            TSgList data = guard.Get();
+        ui64 offset = 0;
+        ui64 b = 0;
+        bool isAllZeroes = CheckVoidBlocks;
+        while (offset < result.Data.size()) {
+            ui64 targetBlock = reqCtx.StartIndexOffset + b;
+            Y_ABORT_UNLESS(targetBlock < data.size());
+            ui64 bytes =
+                Min(result.Data.size() - offset, data[targetBlock].Size());
+            Y_ABORT_UNLESS(bytes);
 
-            ui64 offset = 0;
-            ui64 b = 0;
-            bool isAllZeroes = CheckVoidBlocks;
-            while (offset < result.Data.size()) {
-                ui64 targetBlock = dr.StartIndexOffset + b;
-                Y_ABORT_UNLESS(targetBlock < data.size());
-                ui64 bytes =
-                    Min(result.Data.size() - offset, data[targetBlock].Size());
-                Y_ABORT_UNLESS(bytes);
-
-                char* dst = const_cast<char*>(data[targetBlock].Data());
-                const char* src = result.Data.data() + offset;
-
-                if (isAllZeroes) {
-                    isAllZeroes = IsAllZeroes(src, bytes);
-                }
-                memcpy(dst, src, bytes);
-
-                offset += bytes;
-                ++b;
-            }
+            char* dst = const_cast<char*>(data[targetBlock].Data());
+            const char* src = result.Data.data() + offset;
 
             if (isAllZeroes) {
-                VoidBlockCount += dr.BlockCount;
+                isAllZeroes = IsAllZeroes(src, bytes);
             }
+
+            // may be nullptr for overlay disks
+            if (dst) {
+                memcpy(dst, src, bytes);
+            }
+
+            offset += bytes;
+            ++b;
+        }
+
+        if (isAllZeroes) {
+            VoidBlockCount += reqCtx.BlockCount;
         }
     }
 
@@ -121,13 +135,20 @@ public:
 
         auto guard = Guard(Lock);
 
-        auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
+        auto* reqCtx =
+            static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
+        DeviceIndices.emplace_back(reqCtx->DeviceIdx);
+
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dr, buffer);
+            HandleResult(*reqCtx, buffer);
         } else {
             Error = NRdma::ParseError(buffer);
+            ConvertRdmaErrorIfNeeded(status, Error);
+            if (NeedToNotifyAboutDeviceRequestError(Error)) {
+                ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
+            }
         }
 
         if (--ResponseCount != 0) {
@@ -155,6 +176,8 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableUserReadCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
+        completion->DeviceIndices = DeviceIndices;
+        completion->ErrorDeviceIndices = ErrorDeviceIndices;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
@@ -226,7 +249,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         requestId,
         Config->GetOptimizeVoidBuffersTransferForReadsEnabled());
 
-    auto error = SendReadRequests(
+    auto [sentRequestCtx, error] = SendReadRequests(
         ctx,
         requestInfo->CallContext,
         msg->Record.GetHeaders(),
@@ -243,7 +266,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         return;
     }
 
-    RequestsInProgress.AddReadRequest(requestId);
+    RequestsInProgress.AddReadRequest(requestId, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

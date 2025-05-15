@@ -1,49 +1,18 @@
 name: Nightly build
 run-name: |
-  ${{ github.event_name == 'workflow_dispatch'
-      && format(
-          'Nightly build (manual) use_network_cache:{0} clean_ya_dir:{1} upload_ya_dir:{2}, disk_type:{3}, build_target:{4} test_target:{5}',
-          inputs.use_network_cache, inputs.clean_ya_dir, inputs.upload_ya_dir, inputs.disk_type, inputs.build_target, inputs.test_target
-        )
-      || format('Nightly build (schedule)')
+  ${{ github.event_name == 'schedule'
+      && format('Nightly build (schedule)')
+      || (
+            inputs.comment != ''
+            && format('Nightly build (manual) (comment: {0})', inputs.comment)
+            || format('Nightly build (manual)')
+          )
     }}
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 23 * * *"
   workflow_dispatch:
     inputs:
-      clean_ya_dir:
-        description: 'Clean ya dir'
-        type: choice
-        required: false
-        default: 'no'
-        options:
-          - 'yes'
-          - 'no'
-      upload_ya_dir:
-        description: 'Upload ya dir'
-        type: choice
-        required: false
-        default: 'no'
-        options:
-          - 'yes'
-          - 'no'
-      use_network_cache:
-        description: 'Use network cache'
-        type: choice
-        required: false
-        default: 'yes'
-        options:
-          - 'yes'
-          - 'no'
-      disk_type:
-        description: 'Disk type'
-        type: choice
-        required: false
-        default: 'network-ssd-nonreplicated'
-        options:
-          - 'network-ssd'
-          - 'network-ssd-nonreplicated'
       build_target:
         description: 'Build target'
         type: string
@@ -56,19 +25,12 @@ on:
         required: false
         #default: 'cloud/tasks/'
         default: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
-      nebius:
-        description: 'Run on new nebius runners'
-        type: choice
-        required: false
-        default: 'no'
-        options:
-          - 'yes'
-          - 'no'
-      test_threads:
-        description: 'Test threads count'
+      comment:
+        description: 'Comment'
         type: string
         required: false
-        default: '32'
+        default: ""
+
 
 
 jobs:
@@ -84,12 +46,7 @@ jobs:
       cache_update_build: true
       cache_update_tests: false
       sleep_after_tests: 1
-      test_threads: ${{ inputs.test_threads }}
-      disk_type: ${{ inputs.disk_type }}
-      use_network_cache: ${{ inputs.use_network_cache }}
-      upload_ya_dir: ${{ inputs.upload_ya_dir }}
-      clean_ya_dir: ${{ inputs.clean_ya_dir }}
-      nebius: ${{ inputs.nebius }}
+      number_of_retries: 1
   build_schedule:
     name: Build/test x86_64 using YA (relwithdebinfo) (schedule)
     if: github.event_name == 'schedule'
@@ -102,9 +59,4 @@ jobs:
       cache_update_build: true
       cache_update_tests: false
       sleep_after_tests: 1
-      test_threads: 32
-      disk_type: 'network-ssd-nonreplicated'
-      use_network_cache: "yes"
-      upload_ya_dir: "no"
-      clean_ya_dir: "yes"
-      nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}
+      number_of_retries: 1

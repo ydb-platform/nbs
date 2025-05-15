@@ -20,6 +20,7 @@ SRCS(
 PEERDIR(
     cloud/storage/core/libs/actors
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/daemon
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/protos
 
@@ -30,7 +31,6 @@ PEERDIR(
     contrib/ydb/library/actors/util
     contrib/ydb/library/actors/protos
     contrib/ydb/library/actors/wilson
-    contrib/ydb/library/keys
 
     contrib/ydb/core/base
     contrib/ydb/core/config/init

@@ -7,11 +7,13 @@ SRCS(
     assign_volume.cpp
     backup_volume.cpp
     bootstrap.cpp
+    check_range.cpp
     command.cpp
     create_checkpoint.cpp
     create_placement_group.cpp
     create_volume.cpp
     create_volume_from_device.cpp
+    create_volume_link.cpp
     delete_checkpoint.cpp
     describe_disk_registry_config.cpp
     describe_endpoint.cpp
@@ -20,6 +22,7 @@ SRCS(
     describe_volume_model.cpp
     destroy_placement_group.cpp
     destroy_volume.cpp
+    destroy_volume_link.cpp
     discover_instances.cpp
     endpoint_proxy.cpp
     execute_action.cpp
@@ -66,6 +69,7 @@ PEERDIR(
     library/cpp/lwtrace/mon
     library/cpp/protobuf/util
     library/cpp/threading/blocking_queue
+    library/cpp/json
 
     contrib/ydb/library/actors/util
 )

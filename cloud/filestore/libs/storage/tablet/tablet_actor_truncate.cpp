@@ -66,7 +66,10 @@ private:
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET_WORKER,
+                    __PRETTY_FUNCTION__);
         }
     }
 
@@ -350,6 +353,7 @@ void TIndexTabletActor::CompleteTx_TruncateRange(
             std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
+    EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 }
 

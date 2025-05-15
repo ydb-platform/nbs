@@ -14,14 +14,15 @@
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/device_stats.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
-#include <library/cpp/containers/ring_buffer/ring_buffer.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -48,52 +49,32 @@ class TNonreplicatedPartitionActor final
     : public NActors::TActorBootstrapped<TNonreplicatedPartitionActor>
 {
 private:
+    using EDeviceStatus = TDeviceStat::EDeviceStatus;
+
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId StatActorId;
 
-    enum class EDeviceStatus
-    {
-        Ok,
-        SilentBroken,
-        Broken,
-    };
-
-    struct TDeviceStat
-    {
-        // The start time of the first timed out request.
-        TInstant FirstTimeoutTs;
-
-        // Execution times of the last 10 requests.
-        TSimpleRingBuffer<TDuration> ResponseTimes{10};
-
-        // The current status of the device.
-        EDeviceStatus DeviceStatus = EDeviceStatus::Ok;
-
-        // When the device was considered broken.
-        TInstant BrokenTransitionTs;
-
-        // Returns the maximum request execution time among the latest.
-        [[nodiscard]] TDuration WorstRequestTime() const;
-
-        [[nodiscard]] TDuration GetTimedOutStateDuration(TInstant now) const;
-
-        [[nodiscard]] bool CooldownPassed(
-            TInstant now,
-            TDuration cooldownTimeout) const;
-    };
     TVector<TDeviceStat> DeviceStats;
 
-    TRequestsInProgress<NActors::TActorId> RequestsInProgress{
-        EAllowedRequests::ReadWrite};
+    struct TRequestData
+    {
+        TStackVec<int, 2> DeviceIndices;
+    };
+    TRequestsInProgress<
+        EAllowedRequests::ReadWrite,
+        NActors::TActorId,
+        TRequestData>
+        RequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         PartConfig->GetName()};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite,
         Config,
-        PartConfig};
+        PartConfig,
+        &DeviceStats};
 
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr PartCounters;
@@ -146,16 +127,28 @@ private:
         const TRequestInfo& requestInfo,
         const TBlockRange64& blockRange,
         TVector<TDeviceRequest>* deviceRequests,
-        TRequestTimeoutPolicy* timeoutPolicy);
+        TRequestTimeoutPolicy* timeoutPolicy,
+        TRequestData* requestData);
+
+    template <typename TRequest, typename TResponse>
+    bool InitRequests(
+        const char* methodName,
+        const bool isWriteMethod,
+        const TRequest& msg,
+        const NActors::TActorContext& ctx,
+        const TRequestInfo& requestInfo,
+        const TBlockRange64& blockRange,
+        TVector<TDeviceRequest>* deviceRequests,
+        TRequestTimeoutPolicy* timeoutPolicy,
+        TRequestData* requestData);
 
     void OnRequestCompleted(
         const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
         TInstant now);
-    void OnRequestSuccess(ui32 deviceIndex, TDuration executionTime);
-    void OnRequestTimeout(
-        ui32 deviceIndex,
-        TDuration executionTime,
-        TInstant now);
+    void
+    OnRequestSuccess(ui32 deviceIndex, TDuration executionTime, TInstant now);
+    void
+    OnRequestTimeout(ui32 deviceIndex, TDuration executionTime, TInstant now);
 
     void HandleUpdateCounters(
         const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
@@ -173,12 +166,29 @@ private:
         const TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleMultiAgentWriteBlocksCompleted(
+        const TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted::
+            TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleZeroBlocksCompleted(
         const TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleChecksumBlocksCompleted(
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDeviceTimedOutResponse(
+        const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAgentIsUnavailable(
+        const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAgentIsBackOnline(
+        const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
@@ -190,7 +200,11 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ChecksumBlocks, TEvNonreplPartitionPrivate);
+    BLOCKSTORE_IMPLEMENT_REQUEST(MultiAgentWrite, TEvNonreplPartitionPrivate);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(
+        WaitForInFlightWrites,
+        NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetCompactionStatus, TEvVolume);
@@ -198,6 +212,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(GetRebuildMetadataStatus, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus, TEvVolume);
+    BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange, TEvVolume);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

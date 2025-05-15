@@ -1,29 +1,30 @@
 #pragma once
 
-#include "partition_info.h"
 #include "public.h"
 
-#include <cloud/blockstore/libs/diagnostics/config.h>
+#include "partition_info.h"
+
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
-#include <cloud/blockstore/libs/storage/volume/model/client_state.h>
-#include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
+#include <cloud/blockstore/libs/storage/volume/model/client_state.h>
+#include <cloud/blockstore/libs/storage/volume/model/follower_disk.h>
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_params.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
-
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
@@ -180,6 +181,19 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TScrubbingInfo
+{
+    size_t FullScanCount = 0;
+    bool Running = false;
+    TBlockRange64 CurrentRange;
+    TBlockRangeSet64 Minors;
+    TBlockRangeSet64 Majors;
+    TBlockRangeSet64 Fixed;
+    TBlockRangeSet64 FixedPartial;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TVolumeState
 {
 private:
@@ -195,7 +209,7 @@ private:
 
     TPartitionInfoList Partitions;
     TPartitionInfo::EState PartitionsState = TPartitionInfo::UNKNOWN;
-    NActors::TActorId DiskRegistryBasedPartitionActor;
+    TActorsStack DiskRegistryBasedPartitionActor;
     TNonreplicatedPartitionConfigPtr NonreplicatedPartitionConfig;
 
     TVector<TPartitionStatInfo> PartitionStatInfos;
@@ -240,6 +254,19 @@ private:
 
     // The number of blocks that need to be migrated to complete the migration.
     std::optional<ui64> BlockCountToMigrate;
+
+    TFollowerDisks FollowerDisks;
+
+    struct TLaggingAgentMigrationInfo
+    {
+        ui64 CleanBlocks;
+        ui64 DirtyBlocks;
+    };
+    THashMap<TString, TLaggingAgentMigrationInfo>
+        CurrentlyMigratingLaggingAgents;
+
+    TScrubbingInfo ScrubbingInfo;
+
 public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
@@ -251,6 +278,7 @@ public:
         THashMap<TString, TVolumeClientState> infos,
         TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
+        TFollowerDisks followerDisks,
         bool startPartitionsNeeded);
 
     const NProto::TVolumeMeta& GetMeta() const
@@ -298,9 +326,12 @@ public:
         Meta.SetResyncIndex(resyncIndex);
     }
 
-    void SetResyncNeededInMeta(bool resyncNeeded)
+    void SetResyncNeededInMeta(
+        bool resyncNeeded,
+        bool alertResyncChecksumMismatch)
     {
         Meta.SetResyncNeeded(resyncNeeded);
+        Meta.SetAlertResyncChecksumMismatch(alertResyncChecksumMismatch);
         Meta.SetResyncIndex(0);
     }
 
@@ -311,8 +342,16 @@ public:
     void AddLaggingAgent(NProto::TLaggingAgent agent);
     std::optional<NProto::TLaggingAgent> RemoveLaggingAgent(
         const TString& agentId);
+    [[nodiscard]] bool HasLaggingAgents() const;
     [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
     [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
+    void UpdateLaggingAgentMigrationState(
+        const TString& agentId,
+        ui64 cleanBlocks,
+        ui64 dirtyBlocks);
+    void ResetLaggingAgentMigrationState(const TString& agentId);
+    const THashMap<TString, TLaggingAgentMigrationInfo>&
+    GetLaggingAgentsMigrationInfo() const;
 
     void SetStartPartitionsNeeded(bool startPartitionsNeeded)
     {
@@ -360,7 +399,13 @@ public:
 
     void FillDeviceInfo(NProto::TVolume& volume) const;
 
+    NProto::EStorageMediaKind GetStorageMediaKind() const
+    {
+        return Config->GetStorageMediaKind();
+    }
     bool IsDiskRegistryMediaKind() const;
+
+    bool HasPerformanceProfileModifications(const TStorageConfig& config) const;
 
     //
     // Partitions
@@ -372,8 +417,10 @@ public:
     }
 
     TPartitionInfo* GetPartition(ui64 tabletId);
-    std::optional<ui32> FindPartitionIndex(NActors::TActorId owner) const;
-    std::optional<ui64> FindPartitionTabletId(NActors::TActorId owner) const;
+    std::optional<ui32> FindPartitionIndex(
+        NActors::TActorId partitionActorId) const;
+    std::optional<ui64> FindPartitionTabletId(
+        NActors::TActorId partitionActorId) const;
 
     //
     // State
@@ -405,12 +452,12 @@ public:
     TString GetPartitionsError() const;
 
     void SetDiskRegistryBasedPartitionActor(
-        const NActors::TActorId& actor,
+        TActorsStack actors,
         TNonreplicatedPartitionConfigPtr config);
 
-    const NActors::TActorId& GetDiskRegistryBasedPartitionActor() const
+    NActors::TActorId GetDiskRegistryBasedPartitionActor() const
     {
-        return DiskRegistryBasedPartitionActor;
+        return DiskRegistryBasedPartitionActor.GetTop();
     }
 
     const TNonreplicatedPartitionConfigPtr& GetNonreplicatedPartitionConfig() const
@@ -730,7 +777,39 @@ public:
         return Meta.GetResyncNeeded();
     }
 
-    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
+    bool IsForceMirrorResync() const
+    {
+        return ForceMirrorResync;
+    }
+
+    TVector<NProto::TDeviceConfig> GetDevicesForAcquire() const;
+    TVector<NProto::TDeviceConfig> GetDevicesForRelease() const;
+
+    //
+    // Followers
+    //
+
+    void AddOrUpdateFollower(TFollowerDiskInfo follower);
+    void RemoveFollower(const TString& linkUUID);
+    std::optional<TFollowerDiskInfo> FindFollowerByUuid(
+        const TString& linkUUID) const;
+    std::optional<TFollowerDiskInfo> FindFollowerByDiskId(
+        const TString& diskId) const;
+    const TFollowerDisks& GetAllFollowers() const
+    {
+        return FollowerDisks;
+    }
+
+    //
+    // Scrubbing
+    //
+
+    const TScrubbingInfo& GetScrubbingInfo() const
+    {
+        return ScrubbingInfo;
+    }
+
+    void UpdateScrubberCounters(TScrubbingInfo counters);
 
 private:
     bool CanPreemptClient(
@@ -747,6 +826,9 @@ private:
     THashSet<TString> MakeFilteredDeviceIds() const;
 
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
+
+    TVector<NProto::TDeviceConfig> GetDevicesForAcquireOrRelease(
+        const THashSet<TString>& deviceIdsToIgnore) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -6,11 +6,40 @@
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+template <class T>
+void VolumeConfigToVolumeModelPerformanceProfile(
+    const NKikimrBlockStore::TVolumeConfig& volumeConfig,
+    T& performanceProfile)
+{
+    performanceProfile.SetMaxReadBandwidth(
+        volumeConfig.GetPerformanceProfileMaxReadBandwidth());
+    performanceProfile.SetMaxWriteBandwidth(
+        volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
+    performanceProfile.SetMaxReadIops(
+        volumeConfig.GetPerformanceProfileMaxReadIops());
+    performanceProfile.SetMaxWriteIops(
+        volumeConfig.GetPerformanceProfileMaxWriteIops());
+    performanceProfile.SetBurstPercentage(
+        volumeConfig.GetPerformanceProfileBurstPercentage());
+    performanceProfile.SetMaxPostponedWeight(
+        volumeConfig.GetPerformanceProfileMaxPostponedWeight());
+    performanceProfile.SetBoostTime(
+        volumeConfig.GetPerformanceProfileBoostTime());
+    performanceProfile.SetBoostRefillTime(
+        volumeConfig.GetPerformanceProfileBoostRefillTime());
+    performanceProfile.SetBoostPercentage(
+        volumeConfig.GetPerformanceProfileBoostPercentage());
+    performanceProfile.SetThrottlingEnabled(
+        volumeConfig.GetPerformanceProfileThrottlingEnabled());
+}
 
 template <class T>
 void VolumeConfigToVolumeModelFields(
@@ -64,27 +93,10 @@ void VolumeConfigToVolumeModelFields(
 
     volumeModel.SetStorageMediaKind(storageMediaKind);
 
-    auto pp = volumeModel.MutablePerformanceProfile();
-    pp->SetMaxReadBandwidth(
-        volumeConfig.GetPerformanceProfileMaxReadBandwidth());
-    pp->SetMaxWriteBandwidth(
-        volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
-    pp->SetMaxReadIops(
-        volumeConfig.GetPerformanceProfileMaxReadIops());
-    pp->SetMaxWriteIops(
-        volumeConfig.GetPerformanceProfileMaxWriteIops());
-    pp->SetBurstPercentage(
-        volumeConfig.GetPerformanceProfileBurstPercentage());
-    pp->SetMaxPostponedWeight(
-        volumeConfig.GetPerformanceProfileMaxPostponedWeight());
-    pp->SetBoostTime(
-        volumeConfig.GetPerformanceProfileBoostTime());
-    pp->SetBoostRefillTime(
-        volumeConfig.GetPerformanceProfileBoostRefillTime());
-    pp->SetBoostPercentage(
-        volumeConfig.GetPerformanceProfileBoostPercentage());
-    pp->SetThrottlingEnabled(
-        volumeConfig.GetPerformanceProfileThrottlingEnabled());
+    auto* performanceProfile = volumeModel.MutablePerformanceProfile();
+    VolumeConfigToVolumeModelPerformanceProfile(
+        volumeConfig,
+        *performanceProfile);
 }
 
 NProto::TEncryptionDesc ConvertToEncryptionDesc(
@@ -164,6 +176,12 @@ void FillDevices(
     for (const auto& deviceConfig: devices) {
         FillDevice(deviceConfig, t.AddDevices());
     }
+}
+
+template <typename TEv>
+ui64 GetVolumeRequestIdFromHeaders(const TEv& request)
+{
+    return request.Record.GetHeaders().GetVolumeRequestId();
 }
 
 }   // namespace
@@ -276,6 +294,23 @@ bool GetThrottlingEnabled(
     }
 }
 
+bool GetThrottlingEnabledZeroBlocks(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig)
+{
+    bool throttlingEnabled = GetThrottlingEnabled(config, partitionConfig);
+
+    if (throttlingEnabled &&
+        !NCloud::IsDiskRegistryMediaKind(
+            partitionConfig.GetStorageMediaKind()) &&
+        config.GetDisableZeroBlocksThrottlingForYDBBasedDisks())
+    {
+        throttlingEnabled = false;
+    }
+
+    return throttlingEnabled;
+}
+
 ui32 GetWriteBlobThreshold(
     const TStorageConfig& config,
     const NCloud::NProto::EStorageMediaKind mediaKind)
@@ -285,6 +320,17 @@ ui32 GetWriteBlobThreshold(
     }
 
     return config.GetWriteBlobThreshold();
+}
+
+ui32 GetWriteMixedBlobThreshold(
+    const TStorageConfig& config,
+    const NCloud::NProto::EStorageMediaKind mediaKind)
+{
+    if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD) {
+        return 0;
+    }
+
+    return config.GetWriteMixedBlobThresholdHDD();
 }
 
 bool CompareVolumeConfigs(
@@ -455,6 +501,26 @@ ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request)
     return request.Record.GetVolumeRequestId();
 }
 
+ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
+
+ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksLocalRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
+
+ui64 GetVolumeRequestId(const TEvService::TEvZeroBlocksRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
+
+ui64 GetVolumeRequestId(const TEvDiskAgent::TEvDirectCopyBlocksRequest& request)
+{
+    return GetVolumeRequestIdFromHeaders(request);
+}
+
 TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
 {
     TStringBuilder sb;
@@ -464,6 +530,16 @@ TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
     }
     sb << ")";
     return sb;
+}
+
+NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
+    const NKikimrBlockStore::TVolumeConfig& volumeConfig)
+{
+    NProto::TVolumePerformanceProfile performanceProfile;
+    VolumeConfigToVolumeModelPerformanceProfile(
+        volumeConfig,
+        performanceProfile);
+    return performanceProfile;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

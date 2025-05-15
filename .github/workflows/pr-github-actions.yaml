@@ -18,14 +18,6 @@ on:
       - 'labeled'
   workflow_dispatch:
     inputs:
-      nebius:
-        required: false
-        type: choice
-        default: "no"
-        description: "Run on nebius runners"
-        options:
-          - "yes"
-          - "no"
       allow_downgrade:
         description: 'Allow downgrade'
         required: false
@@ -43,12 +35,16 @@ on:
           - "yes"
           - "no"
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 defaults:
   run:
     shell: bash
 
 env:
-  nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebius')) || inputs.nebius == 'yes') }}
   allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
   large_tests: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'large-tests'))  && 'true' || inputs.large_tests == 'yes' }}
 
@@ -60,7 +56,6 @@ jobs:
   set-env:
     runs-on: ubuntu-latest
     outputs:
-      nebius: ${{ env.nebius == 'false' && 'no' || 'yes' }}
       allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
       large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
     # we don't need anything, but otherwise github will complain
@@ -68,15 +63,133 @@ jobs:
       - name: set env
         id: set-env
         run: echo
+  check-running-allowed:
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.check-ownership-membership.outputs.result }}
+    steps:
+      - name: Check if running tests is allowed
+        id: check-ownership-membership
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          script: |
+            async function isOrgMember(owner, username) {
+              core.info(`Checking membership for user: ${username}`);
+              try {
+                const { data: membership } = await github.rest.orgs.getMembershipForUser({
+                  org: owner,
+                  username
+                });
+                if (membership?.state === 'active') {
+                  core.info(`${username} is confirmed as an org member`);
+                  return true;
+                } else {
+                  core.info(`${username} is not an active org member (state: ${membership?.state})`);
+                  return false;
+                }
+              } catch (error) {
+                // Often the call fails if the user isn't in the org or it's private
+                core.error(`Error checking membership for user ${username}: ${error.message}`);
+                return false;
+              }
+            }
 
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request.number;
+            const prAuthor = context.payload.pull_request.user.login;
+
+            core.info(`Starting membership check for PR #${prNumber} by @${prAuthor}`);
+
+            const authorIsOrgMember = await isOrgMember(owner, prAuthor);
+            if (authorIsOrgMember) {
+              core.info(`User @${prAuthor} is org member => authorized`);
+              return true;
+            }
+
+            core.info(`User @${prAuthor} is NOT an org member; checking for 'ok-to-test' label`);
+
+            let events;
+            try {
+              const resp = await github.rest.issues.listEvents({
+                owner,
+                repo,
+                issue_number: prNumber
+              });
+              events = resp.data;
+            } catch (error) {
+              core.error(`Error fetching issue events: ${error.message}`);
+              return false;
+            }
+
+            // Find last 'labeled' event for 'ok-to-test'
+            const labeledOkToTest = events
+              .filter(e => e.event === 'labeled' && e.label?.name === 'ok-to-test')
+              .pop();
+
+            if (!labeledOkToTest) {
+              core.info("No 'ok-to-test' label found on this PR");
+              return false;
+            }
+
+            core.info(`Found 'ok-to-test' label event by @${labeledOkToTest.actor.login}, verifying if they are an org member...`);
+
+            const labelerLogin = labeledOkToTest.actor.login;
+            const labelerIsOrgMember = await isOrgMember(owner, labelerLogin);
+            if (!labelerIsOrgMember) {
+              core.info(`User @${labelerLogin} who labeled 'ok-to-test' is not an org member => not authorized`);
+              return false;
+            }
+
+            core.info(`'ok-to-test' label added by an org member => authorized`);
+            return true
+      - name: comment-if-waiting-on-ok
+        if: steps.check-ownership-membership.outputs.result == 'false' &&
+            github.event.action == 'opened'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'Hi! Thank you for contributing!\nThe tests on this PR will run after a maintainer adds an `ok-to-test` label to this PR manually. Thank you for your patience!'
+            });
+      - name: cleanup-labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let labelsToRemove = ['ok-to-test', 'recheck'];
+            const prNumber = context.payload.pull_request.number;
+            const prLabels = new Set(context.payload.pull_request.labels.map(l => l.name));
+            for await (const label of labelsToRemove.filter(l => prLabels.has(l))) {
+              core.info(`remove label=${label} for pr=${prNumber}`);
+              try {
+                const result = await github.rest.issues.removeLabel({
+                  ...context.repo,
+                  issue_number: prNumber,
+                  name: label
+                });
+              } catch(error) {
+                // ignore the 404 error that arises
+                // when the label did not exist for the
+                // organization member
+                if (error.status && error.status != 404) {
+                  throw error;
+                }
+              }
+            }
   shell:
+    needs: [set-env, check-running-allowed]
+    if: needs.check-running-allowed.outputs.result == 'true'
     runs-on: ubuntu-latest
 
     steps:
       - name: checkout
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
+          sparse-checkout: '.github'
 
       - name: get reporter name
         uses: haya14busa/action-cond@v1
@@ -99,13 +212,13 @@ jobs:
         with:
           scandir: .github
         env:
-          SHELLCHECK_OPTS: "-e SC2155,SC2086,SC2154,SC2164,SC2009,SC2015"
+          SHELLCHECK_OPTS: "-e SC2155,SC2086"
 
 
       - name: shellcheck for github actions shell scripts in .temporary dir
         uses: ludeeus/action-shellcheck@master
         env:
-          SHELLCHECK_OPTS: "-e SC2155,SC2086,SC2154,SC2164,SC2009,SC2015"
+          SHELLCHECK_OPTS: "-e SC2155,SC2086"
         with:
           scandir: .temporary
 
@@ -117,13 +230,16 @@ jobs:
           shfmt_flags: "-i 4 -ci -kp -bn -sr"
 
   python:
+    needs: [set-env, check-running-allowed]
+    if: needs.check-running-allowed.outputs.result == 'true'
     runs-on: ubuntu-latest
 
     steps:
       - name: checkout
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
+          sparse-checkout: '.github'
 
       - name: get reporter name
         uses: haya14busa/action-cond@v1
@@ -159,12 +275,15 @@ jobs:
           reporter: ${{ steps.reporter.outputs.value }}
 
   workflows:
+    needs: [set-env, check-running-allowed]
+    if: needs.check-running-allowed.outputs.result == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: checkout
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
+          sparse-checkout: '.github'
 
       - name: install action-validator with asdf
         uses: asdf-vm/actions/install@v3
@@ -196,17 +315,19 @@ jobs:
               body: '${{ steps.lint.outputs.WORKFLOW_LINT }}'
             })
   nbs-github-actions:
+    needs: [set-env, check-running-allowed]
+    if: needs.check-running-allowed.outputs.result == 'true'
     name: Launch scripts on test-data
     uses: ./.github/workflows/github_actions_scripts.yaml
     secrets: inherit
 
   create-and-delete-vm:
+    needs: [set-env, check-running-allowed]
+    if: needs.check-running-allowed.outputs.result == 'true'
     name: Create and delete VM
     uses: ./.github/workflows/create_and_delete_vm.yaml
-    needs:
-      - set-env
     with:
-      nebius: ${{ needs.set-env.outputs.nebius }}
       allow_downgrade: ${{ needs.set-env.outputs.allow_downgrade }}
       large_tests: ${{ needs.set-env.outputs.large_tests }}
+      number_of_retries: 3
     secrets: inherit

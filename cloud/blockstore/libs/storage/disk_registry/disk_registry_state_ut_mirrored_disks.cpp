@@ -55,14 +55,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-12", "uuid-12", "rack-4"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3,
-                agentConfig4,
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                                agentConfig3,
+                                agentConfig4,
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -184,12 +185,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-6", "uuid-6", "rack-2"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -353,14 +355,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-15", "uuid-15", "rack-3"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3,
-                agentConfig4,
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                                agentConfig3,
+                                agentConfig4,
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -437,35 +440,46 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                AgentConfig(1, {
-                    Device("dev-1", "uuid-1", "rack-1"),
-                    Device("dev-2", "uuid-2", "rack-1"),
-                    Device("dev-3", "uuid-3", "rack-1"),
-                }),
-                AgentConfig(2, {
-                    Device("dev-4", "uuid-4", "rack-2"),
-                    Device("dev-5", "uuid-5", "rack-2"),
-                    Device("dev-6", "uuid-6", "rack-2"),
-                }),
-                AgentConfig(3, {
-                    Device("dev-7", "uuid-7", "rack-3"),
-                    Device("dev-8", "uuid-8", "rack-3"),
-                    Device("dev-9", "uuid-9", "rack-3"),
-                }),
-                AgentConfig(4, {
-                    Device("dev-10", "uuid-10", "rack-4"),
-                    Device("dev-11", "uuid-11", "rack-4"),
-                    Device("dev-12", "uuid-12", "rack-4"),
-                }),
-                AgentConfig(5, {
-                    Device("dev-13", "uuid-13", "rack-5"),
-                    Device("dev-14", "uuid-14", "rack-5"),
-                    Device("dev-15", "uuid-15", "rack-5"),
-                }),
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                AgentConfig(
+                                    1,
+                                    {
+                                        Device("dev-1", "uuid-1", "rack-1"),
+                                        Device("dev-2", "uuid-2", "rack-1"),
+                                        Device("dev-3", "uuid-3", "rack-1"),
+                                    }),
+                                AgentConfig(
+                                    2,
+                                    {
+                                        Device("dev-4", "uuid-4", "rack-2"),
+                                        Device("dev-5", "uuid-5", "rack-2"),
+                                        Device("dev-6", "uuid-6", "rack-2"),
+                                    }),
+                                AgentConfig(
+                                    3,
+                                    {
+                                        Device("dev-7", "uuid-7", "rack-3"),
+                                        Device("dev-8", "uuid-8", "rack-3"),
+                                        Device("dev-9", "uuid-9", "rack-3"),
+                                    }),
+                                AgentConfig(
+                                    4,
+                                    {
+                                        Device("dev-10", "uuid-10", "rack-4"),
+                                        Device("dev-11", "uuid-11", "rack-4"),
+                                        Device("dev-12", "uuid-12", "rack-4"),
+                                    }),
+                                AgentConfig(
+                                    5,
+                                    {
+                                        Device("dev-13", "uuid-13", "rack-5"),
+                                        Device("dev-14", "uuid-14", "rack-5"),
+                                        Device("dev-15", "uuid-15", "rack-5"),
+                                    }),
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> d;
@@ -557,35 +571,46 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                AgentConfig(1, {
-                    Device("dev-1", "uuid-1", "rack-1"),
-                    Device("dev-2", "uuid-2", "rack-1"),
-                    Device("dev-3", "uuid-3", "rack-1"),
-                }),
-                AgentConfig(2, {
-                    Device("dev-4", "uuid-4", "rack-2"),
-                    Device("dev-5", "uuid-5", "rack-2"),
-                    Device("dev-6", "uuid-6", "rack-2"),
-                }),
-                AgentConfig(3, {
-                    Device("dev-7", "uuid-7", "rack-3"),
-                    Device("dev-8", "uuid-8", "rack-3"),
-                    Device("dev-9", "uuid-9", "rack-3"),
-                }),
-                AgentConfig(4, {
-                    Device("dev-10", "uuid-10", "rack-4"),
-                    Device("dev-11", "uuid-11", "rack-4"),
-                    Device("dev-12", "uuid-12", "rack-4"),
-                }),
-                AgentConfig(5, {
-                    Device("dev-13", "uuid-13", "rack-5"),
-                    Device("dev-14", "uuid-14", "rack-5"),
-                    Device("dev-15", "uuid-15", "rack-5"),
-                }),
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                AgentConfig(
+                                    1,
+                                    {
+                                        Device("dev-1", "uuid-1", "rack-1"),
+                                        Device("dev-2", "uuid-2", "rack-1"),
+                                        Device("dev-3", "uuid-3", "rack-1"),
+                                    }),
+                                AgentConfig(
+                                    2,
+                                    {
+                                        Device("dev-4", "uuid-4", "rack-2"),
+                                        Device("dev-5", "uuid-5", "rack-2"),
+                                        Device("dev-6", "uuid-6", "rack-2"),
+                                    }),
+                                AgentConfig(
+                                    3,
+                                    {
+                                        Device("dev-7", "uuid-7", "rack-3"),
+                                        Device("dev-8", "uuid-8", "rack-3"),
+                                        Device("dev-9", "uuid-9", "rack-3"),
+                                    }),
+                                AgentConfig(
+                                    4,
+                                    {
+                                        Device("dev-10", "uuid-10", "rack-4"),
+                                        Device("dev-11", "uuid-11", "rack-4"),
+                                        Device("dev-12", "uuid-12", "rack-4"),
+                                    }),
+                                AgentConfig(
+                                    5,
+                                    {
+                                        Device("dev-13", "uuid-13", "rack-5"),
+                                        Device("dev-14", "uuid-14", "rack-5"),
+                                        Device("dev-15", "uuid-15", "rack-5"),
+                                    }),
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> d;
@@ -657,35 +682,46 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                AgentConfig(1, {
-                    Device("dev-1", "uuid-1", "rack-1"),
-                    Device("dev-2", "uuid-2", "rack-1"),
-                    Device("dev-3", "uuid-3", "rack-1"),
-                }),
-                AgentConfig(2, {
-                    Device("dev-4", "uuid-4", "rack-2"),
-                    Device("dev-5", "uuid-5", "rack-2"),
-                    Device("dev-6", "uuid-6", "rack-2"),
-                }),
-                AgentConfig(3, {
-                    Device("dev-7", "uuid-7", "rack-3"),
-                    Device("dev-8", "uuid-8", "rack-3"),
-                    Device("dev-9", "uuid-9", "rack-3"),
-                }),
-                AgentConfig(4, {
-                    Device("dev-10", "uuid-10", "rack-4"),
-                    Device("dev-11", "uuid-11", "rack-4"),
-                    Device("dev-12", "uuid-12", "rack-4"),
-                }),
-                AgentConfig(5, {
-                    Device("dev-13", "uuid-13", "rack-5"),
-                    Device("dev-14", "uuid-14", "rack-5"),
-                    Device("dev-15", "uuid-15", "rack-5"),
-                }),
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                AgentConfig(
+                                    1,
+                                    {
+                                        Device("dev-1", "uuid-1", "rack-1"),
+                                        Device("dev-2", "uuid-2", "rack-1"),
+                                        Device("dev-3", "uuid-3", "rack-1"),
+                                    }),
+                                AgentConfig(
+                                    2,
+                                    {
+                                        Device("dev-4", "uuid-4", "rack-2"),
+                                        Device("dev-5", "uuid-5", "rack-2"),
+                                        Device("dev-6", "uuid-6", "rack-2"),
+                                    }),
+                                AgentConfig(
+                                    3,
+                                    {
+                                        Device("dev-7", "uuid-7", "rack-3"),
+                                        Device("dev-8", "uuid-8", "rack-3"),
+                                        Device("dev-9", "uuid-9", "rack-3"),
+                                    }),
+                                AgentConfig(
+                                    4,
+                                    {
+                                        Device("dev-10", "uuid-10", "rack-4"),
+                                        Device("dev-11", "uuid-11", "rack-4"),
+                                        Device("dev-12", "uuid-12", "rack-4"),
+                                    }),
+                                AgentConfig(
+                                    5,
+                                    {
+                                        Device("dev-13", "uuid-13", "rack-5"),
+                                        Device("dev-14", "uuid-14", "rack-5"),
+                                        Device("dev-15", "uuid-15", "rack-5"),
+                                    }),
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TDiskInfo diskInfo;
@@ -796,14 +832,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-12", "uuid-12", "rack-4"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3,
-                agentConfig4
-            })
-            .Build();
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents(
+                    {agentConfig1, agentConfig2, agentConfig3, agentConfig4})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -1130,12 +1164,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-6", "uuid-6", "rack-2"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -1436,15 +1471,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-15", "uuid-15", "rack-5"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3,
-                agentConfig4,
-                agentConfig5,
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                                agentConfig3,
+                                agentConfig4,
+                                agentConfig5,
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -1606,13 +1642,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-9", "uuid-9", "rack-3"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3,
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                                agentConfig3,
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -1788,14 +1825,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         *disks.back().AddDeviceReplacementUUIDs() = "uuid-1";
         *disks.back().AddDeviceReplacementUUIDs() = "uuid-6";
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3,
-            })
-            .WithDisks(disks)
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                                agentConfig3,
+                            })
+                            .WithDisks(disks)
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         const auto rt = GetReplicaTableRepr(state, "disk-1");
 
@@ -1827,13 +1865,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-1", "uuid-5", "rack-3"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3
-            })
-            .Build();
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents({agentConfig1, agentConfig2, agentConfig3})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // Create a mirror-2 disk
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -1965,15 +2001,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .With(diskRegistryGroup)
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3,
-                agentConfig4,
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .With(diskRegistryGroup)
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                                agentConfig3,
+                                agentConfig4,
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -2228,14 +2265,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-12", "uuid-12", "rack-4"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3,
-                agentConfig4
-            })
-            .Build();
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents(
+                    {agentConfig1, agentConfig2, agentConfig3, agentConfig4})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -2378,7 +2413,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(0, migrations.size());
             ASSERT_VECTORS_EQUAL(TVector<TString>(), deviceReplacementIds);
 
-            state.DeleteDiskToReallocate(db, "disk-1", 3);
+            state.DeleteDiskToReallocate(db, "disk-1", 4);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -2474,13 +2509,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         // intentionally setting agent count to 3 to get E_DISK_ALLOCATION_FAILED
         // upon ReplaceDevice call
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3,
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                                agentConfig3,
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -2638,13 +2674,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             Device("dev-1", "uuid-3", "rack-3"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-                agentConfig3,
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                                agentConfig3,
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // Creating a mirror-3 (one device per replica)
 
@@ -2755,10 +2792,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         proto.SetAllocationUnitNonReplicatedSSD(10);
         auto storageConfig = CreateStorageConfig(proto);
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .With(storageConfig)
-            .WithKnownAgents(agents)
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .With(storageConfig)
+                            .WithKnownAgents(agents)
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         /*
          *  Creating a small mirror-2 disk that will use 2 agents.
@@ -2926,13 +2964,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         storageConfig.SetAllocationUnitNonReplicatedSSD(10);
         storageConfig.SetMaxAutomaticDeviceReplacementsPerHour(1);
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .With(CreateStorageConfig(storageConfig))
-            .WithKnownAgents({
-                agentConfig1,
-                agentConfig2,
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .With(CreateStorageConfig(storageConfig))
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto monitoring = CreateMonitoringServiceStub();
         auto rootGroup = monitoring->GetCounters()
@@ -3059,9 +3098,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents(agents)
-            .Build();
+        auto statePtr =
+            TDiskRegistryStateBuilder().WithKnownAgents(agents).Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;

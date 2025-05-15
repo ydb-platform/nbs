@@ -233,8 +233,10 @@ struct TTestVerbs
                 .status = IBV_WC_SUCCESS,
                 .opcode = opcode,
             };
-            if (TestContext->HandleCompletionEvent) {
-                TestContext->HandleCompletionEvent(&wc);
+            with_lock (TestContext->CompletionLock) {
+                if (TestContext->HandleCompletionEvent) {
+                    TestContext->HandleCompletionEvent(&wc);
+                }
             }
             handler->HandleCompletionEvent(&wc);
         };

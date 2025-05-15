@@ -268,7 +268,10 @@ STFUNC(THttpReadBlockActor::StateWork)
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlockRequest);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

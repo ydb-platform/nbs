@@ -201,7 +201,10 @@ STFUNC(TStatPartitionActor::StateWork)
         HFunc(TEvPartition::TEvStatPartitionResponse, HandleStatPartitionResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -313,7 +316,7 @@ void TVolumeActor::HandleStatVolume(
     if (!noPartition && State->GetPartitions()) {
         TVector<TActorId> partActorIds;
         for (const auto& partition: State->GetPartitions()) {
-            partActorIds.push_back(partition.Owner);
+            partActorIds.push_back(partition.GetTopActorId());
         }
 
         NCloud::Register<TStatPartitionActor>(

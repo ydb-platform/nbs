@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/device_stats.h>
+
 #include <cloud/storage/core/libs/actors/helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -20,11 +22,19 @@ TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
 TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
         EAllowedOperation allowedOperation,
         TStorageConfigPtr config,
-        TNonreplicatedPartitionConfigPtr partConfig)
-    : AllowedOperation(allowedOperation)
-    , Config(std::move(config))
+        TNonreplicatedPartitionConfigPtr partConfig,
+        const TVector<TDeviceStat>* const deviceStats)
+    : Config(std::move(config))
     , PartConfig(std::move(partConfig))
+    , DeviceStats(deviceStats)
+    , AllowedOperation(allowedOperation)
 {}
+
+void TGetDeviceForRangeCompanion::SetAllowedOperation(
+    EAllowedOperation allowedOperation)
+{
+    AllowedOperation = allowedOperation;
+}
 
 void TGetDeviceForRangeCompanion::SetDelegate(NActors::TActorId delegate)
 {
@@ -42,6 +52,9 @@ void TGetDeviceForRangeCompanion::HandleGetDeviceForRange(
 
     bool operationAllowed = false;
     switch (AllowedOperation) {
+        case EAllowedOperation::None:
+            operationAllowed = false;
+            break;
         case EAllowedOperation::Read:
             operationAllowed = msg->Purpose == EPurpose::ForReading;
             break;
@@ -77,9 +90,21 @@ void TGetDeviceForRangeCompanion::HandleGetDeviceForRange(
     auto response = std::make_unique<
         TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse>();
 
+    if (DeviceStats) {
+        Y_DEBUG_ABORT_UNLESS(requests[0].DeviceIdx < DeviceStats->size());
+
+        const auto& deviceStat = (*DeviceStats)[requests[0].DeviceIdx];
+        if (deviceStat.DeviceStatus != TDeviceStat::EDeviceStatus::Ok) {
+            ReplyCanNotUseDirectCopy(ev, ctx);
+            return;
+        }
+        response->RequestTimeout = deviceStat.WorstRequestTime();
+    }
+
     response->Device = requests[0].Device;
     response->DeviceBlockRange = requests[0].DeviceBlockRange;
-    response->RequestTimeout = GetMinRequestTimeout();
+    response->RequestTimeout =
+        Max(response->RequestTimeout, GetMinRequestTimeout());
     response->PartConfig = PartConfig;
 
     NCloud::Reply(ctx, *ev, std::move(response));

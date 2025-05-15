@@ -290,7 +290,10 @@ STFUNC(TCollectGarbageActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvDeleteGarbageResponse, HandleDeleteGarbageResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -499,7 +502,10 @@ STFUNC(TCollectGarbageHardActor::StateWork)
         HFunc(TEvBlobStorage::TEvCollectGarbageResult, HandleCollectGarbageResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -689,8 +695,7 @@ void TPartitionActor::HandleCollectGarbageCompleted(
         State->SetStartupGcExecuted();
     }
 
-    UpdateCPUUsageStats(ctx, CyclesToDurationSafe(msg->ExecCycles));
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx, msg->ExecCycles);
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.CollectGarbage.AddRequest(time);

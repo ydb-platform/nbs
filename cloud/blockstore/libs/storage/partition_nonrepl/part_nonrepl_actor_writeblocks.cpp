@@ -159,7 +159,8 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError(), false)) {
+    if (HasError(msg->GetError())) {
+        HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
 
@@ -246,21 +247,19 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
+    TRequestData request;
     bool ok = InitRequests<TEvService::TWriteBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy);
+        &timeoutPolicy,
+        &request);
 
     if (!ok) {
         return;
     }
-
-    const bool assignVolumeRequestId =
-        Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&
-        !msg->Record.GetHeaders().GetIsBackgroundRequest();
 
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
@@ -270,10 +269,10 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         std::move(deviceRequests),
         PartConfig,
         SelfId(),
-        assignVolumeRequestId,
-        false); // replyLocal
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
+        false);   // replyLocal
 
-    RequestsInProgress.AddWriteRequest(actorId);
+    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
@@ -330,13 +329,15 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
+    TRequestData request;
     bool ok = InitRequests<TEvService::TWriteBlocksLocalMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy);
+        &timeoutPolicy,
+        &request);
 
     if (!ok) {
         return;
@@ -372,10 +373,6 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     // code to TDiskAgentWriteActor that tries to use it
     msg->Record.Sglist.SetSgList({});
 
-    const bool assignVolumeRequestId =
-        Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&
-        !msg->Record.GetHeaders().GetIsBackgroundRequest();
-
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
         requestInfo,
@@ -384,10 +381,10 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         std::move(deviceRequests),
         PartConfig,
         SelfId(),
-        assignVolumeRequestId,
-        true); // replyLocal
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
+        true);   // replyLocal
 
-    RequestsInProgress.AddWriteRequest(actorId);
+    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(

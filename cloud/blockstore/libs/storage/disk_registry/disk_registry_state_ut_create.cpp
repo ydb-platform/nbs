@@ -66,7 +66,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             })
         };
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithAgents(agents)
                 .WithConfig(
@@ -84,6 +84,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 .WithDisks({Disk("disk-1", {"uuid-1.1"})})
                 .WithDirtyDevices({TDirtyDevice{"uuid-2.1", {}}})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto deviceByName = [] (auto agentId, auto name) {
             NProto::TDeviceConfig config;
@@ -381,10 +382,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .With(diskRegistryGroup)
-            .WithKnownAgents(agents)
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .With(diskRegistryGroup)
+                            .WithKnownAgents(agents)
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         state.PublishCounters(TInstant::Zero());
 
@@ -427,18 +429,22 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             deviceConfig("dev-4", "uuid-1.4"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig([&] {
-                auto config = MakeConfig(0, {agent});
-                auto* pool = config.AddDevicePoolConfigs();
-                pool->SetName(poolName);
-                pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-                pool->SetAllocationUnit(logicalDeviceSize);
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, {agent});
+                        auto* pool = config.AddDevicePoolConfigs();
+                        pool->SetName(poolName);
+                        pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        pool->SetAllocationUnit(logicalDeviceSize);
 
-                return config;
-            }())
-            .WithAgents({agent})
-            .Build();
+                        return config;
+                    }())
+                .WithAgents({agent})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
 
         {
             auto [infos, error] = state.QueryAvailableStorage(
@@ -514,9 +520,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 testDeviceSizeInBytes)
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithStorageConfig({})
-            .Build();
+        auto statePtr =
+            TDiskRegistryStateBuilder().WithStorageConfig({}).Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(

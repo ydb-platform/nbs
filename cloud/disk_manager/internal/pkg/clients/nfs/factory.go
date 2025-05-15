@@ -20,10 +20,12 @@ type errorLogger struct {
 }
 
 func (l *errorLogger) Print(ctx context.Context, v ...interface{}) {
+	ctx = logging.AddCallerSkip(ctx, 1)
 	logging.Error(ctx, fmt.Sprint(v...))
 }
 
 func (l *errorLogger) Printf(ctx context.Context, format string, v ...interface{}) {
+	ctx = logging.AddCallerSkip(ctx, 1)
 	logging.Error(ctx, fmt.Sprintf(format, v...))
 }
 
@@ -33,10 +35,12 @@ type warnLogger struct {
 }
 
 func (l *warnLogger) Print(ctx context.Context, v ...interface{}) {
+	ctx = logging.AddCallerSkip(ctx, 1)
 	logging.Warn(ctx, fmt.Sprint(v...))
 }
 
 func (l *warnLogger) Printf(ctx context.Context, format string, v ...interface{}) {
+	ctx = logging.AddCallerSkip(ctx, 1)
 	logging.Warn(ctx, fmt.Sprintf(format, v...))
 }
 
@@ -46,10 +50,12 @@ type infoLogger struct {
 }
 
 func (l *infoLogger) Print(ctx context.Context, v ...interface{}) {
+	ctx = logging.AddCallerSkip(ctx, 1)
 	logging.Info(ctx, fmt.Sprint(v...))
 }
 
 func (l *infoLogger) Printf(ctx context.Context, format string, v ...interface{}) {
+	ctx = logging.AddCallerSkip(ctx, 1)
 	logging.Info(ctx, fmt.Sprintf(format, v...))
 }
 
@@ -59,10 +65,12 @@ type debugLogger struct {
 }
 
 func (l *debugLogger) Print(ctx context.Context, v ...interface{}) {
+	ctx = logging.AddCallerSkip(ctx, 1)
 	logging.Debug(ctx, fmt.Sprint(v...))
 }
 
 func (l *debugLogger) Printf(ctx context.Context, format string, v ...interface{}) {
+	ctx = logging.AddCallerSkip(ctx, 1)
 	logging.Debug(ctx, fmt.Sprintf(format, v...))
 }
 

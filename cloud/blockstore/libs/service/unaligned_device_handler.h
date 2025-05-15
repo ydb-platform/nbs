@@ -47,8 +47,10 @@ public:
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
+        ui32 maxZeroBlocksSubRequestSize,
         ui32 maxUnalignedRequestSize,
-        bool checkBufferModificationDuringWriting);
+        bool checkBufferModificationDuringWriting,
+        bool isReliableMediaKind);
 
     ~TUnalignedDeviceHandler() override;
 

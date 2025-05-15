@@ -224,6 +224,8 @@ void BuildVolumeTabs(IOutputStream& out)
         << "<li class='active'><a  href='#Overview' data-toggle='tab'>Overview</a></li>"
         << "<li><a href='#History' data-toggle='tab'>History</a></li>"
         << "<li><a href='#Checkpoints' data-toggle='tab'>Checkpoints</a></li>"
+        << "<li><a href='#Links' data-toggle='tab'>Links</a></li>"
+        << "<li><a href='#Latency' data-toggle='tab'>Latency</a></li>"
         << "<li><a href='#Traces' data-toggle='tab'>Traces</a></li>"
         << "<li><a href='#StorageConfig' data-toggle='tab'>StorageConfig</a></li></ul>";
 }

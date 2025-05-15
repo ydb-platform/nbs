@@ -147,7 +147,10 @@ private:
             HFunc(TEvService::TEvWriteDataResponse, HandleWriteDataResponse);
 
             default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE_WORKER,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -157,16 +160,21 @@ private:
         const TActorContext& ctx)
     {
         const auto* msg = ev->Get();
+        const auto& error = msg->GetError();
 
         TABLET_VERIFY(InFlightRequest);
 
-        InFlightRequest->Complete(ctx.Now(), msg->GetError());
+        InFlightRequest->Complete(ctx.Now(), error);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             msg->Record);
 
-        if (HasError(msg->GetError())) {
-            WriteData(ctx, msg->GetError());
+        if (HasError(error)) {
+            if (error.GetCode() != E_FS_THROTTLED) {
+                WriteData(ctx, error);
+            } else {
+                HandleError(ctx, error);
+            }
             return;
         }
 

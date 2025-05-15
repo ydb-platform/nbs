@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
@@ -29,6 +30,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -206,7 +208,8 @@ struct TTestEnv
             ui32 blockSize,
             TDevices devices,
             TVector<TDevices> replicas,
-            THashSet<TString> freshDeviceIds)
+            THashSet<TString> freshDeviceIds,
+            bool enableVolumeRequestId = false)
         : Runtime(runtime)
         , BlockSize(blockSize)
         , MirrorActorId(0, "YYY")
@@ -229,6 +232,10 @@ struct TTestEnv
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
+        storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(
+            enableVolumeRequestId);
+        storageConfig.SetRejectLateRequestsAtDiskAgentEnabled(
+            enableVolumeRequestId);
 
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -257,23 +264,19 @@ struct TTestEnv
             )
         );
 
-        PartConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(devices, BlockSize),
-            NProto::VOLUME_IO_OK,
-            "test",
-            BlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{
-                Now(),
-                // only SSD/HDD distinction matters
-                NProto::STORAGE_MEDIA_SSD_MIRROR3},
-            VolumeActorId,
-            false,   // muteIOErrors
-            std::move(freshDeviceIds),
-            THashSet<TString>(),   // laggingDeviceIds
-            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-            false,                 // maxTimedOutDeviceStateDurationOverridden
-            true                   // useSimpleMigrationBandwidthLimiter
-        );
+        TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+            params{
+                ToLogicalBlocks(devices, BlockSize),
+                TNonreplicatedPartitionConfig::TVolumeInfo{
+                    Now(),
+                    // only SSD/HDD distinction matters
+                    NProto::STORAGE_MEDIA_SSD_MIRROR3},
+                "test",
+                BlockSize,
+                VolumeActorId};
+        params.FreshDeviceIds = std::move(freshDeviceIds);
+        PartConfig =
+            std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
         for (auto& replica: Replicas) {
             replica = ToLogicalBlocks(replica, BlockSize);
@@ -346,20 +349,25 @@ struct TTestEnv
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     }
 
-    void StartResync(ui64 initialResyncIndex = 0)
+    void StartResync(
+        ui64 initialResyncIndex = 0,
+        NProto::EResyncPolicy resyncPolicy =
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB)
     {
         auto actor = std::make_unique<TMirrorPartitionResyncActor>(
             Config,
             CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            "", // rwClientId
+            "",   // rwClientId
             PartConfig,
             TMigrations(),
             Replicas,
-            nullptr, // rdmaClient
+            nullptr,   // rdmaClient
             VolumeActorId,
-            initialResyncIndex
+            initialResyncIndex,
+            resyncPolicy,
+            false   // critOnChecksumMismatch
         );
 
         actor->SetRequestIdentityKey(RequestIdentityKey);
@@ -420,6 +428,18 @@ struct TTestEnv
         Runtime.DispatchEvents({}, TDuration::Seconds(1));
 
         return StorageStatsServiceState->Counters;
+    }
+
+    TPartitionDiskCounters GetAggregatedMirrorCounters()
+    {
+        Runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        Runtime.DispatchEvents({}, 10ms);
+        Runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        Runtime.DispatchEvents({}, 10ms);
+        Runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        Runtime.DispatchEvents({}, 10ms);
+
+        return StorageStatsServiceState->AggregatedCounters;
     }
 
     void AddReplica(TNonreplicatedPartitionConfigPtr partConfig, TString name)
@@ -485,6 +505,22 @@ struct TTestEnv
             Runtime.Send(ev.release());
         }
         Caught.clear();
+    }
+};
+
+struct TResyncMessageHandler
+{
+    TVector<ui64> VolumeRequestIds;
+    ui64 ResyncRequestCount = 0;
+
+    template <typename TEv>
+    void Handle(TAutoPtr<IEventHandle>& event)
+    {
+        if (event->GetTypeRewrite() == TEv::EventType) {
+            ResyncRequestCount += 1;
+            auto* ev = static_cast<TEv*>(event->GetBase());
+            VolumeRequestIds.emplace_back(GetVolumeRequestId(*ev));
+        }
     }
 };
 
@@ -589,7 +625,47 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             counters.RequestCounters.ZeroBlocks.RequestBytes);
     }
 
-    void DoTestShouldResyncWholeDisk(ui32 blockSize)
+    Y_UNIT_TEST(ShouldSendStatisticsDuringResync)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        const auto range = TBlockRange64::WithLength(0, 1024);
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(0);
+        env.StartResync();
+
+        TPartitionClient resyncClient(runtime, env.ActorId);
+
+        {
+            const ui64 cookie = 11;
+            auto request = resyncClient.CreateReadBlocksRequest(range);
+            resyncClient.SendRequest(
+                resyncClient.GetActorId(),
+                std::move(request),
+                cookie);
+
+            runtime.DispatchEvents({}, 1s);
+
+            runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+
+            using TResponse = TEvService::TEvReadBlocksResponse;
+            auto response = resyncClient.RecvResponse<TResponse>(cookie);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // Check counters
+        auto counters = env.GetAggregatedMirrorCounters();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultBlockSize * range.Size(),
+            counters.RequestCounters.ReadBlocks.RequestBytes);
+    }
+
+    void DoTestShouldResyncWholeDisk(
+        ui32 blockSize,
+        NProto::EResyncPolicy resyncPolicy)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime, blockSize);
@@ -600,7 +676,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         env.WriteReplica(1, range, 'B');
         env.WriteReplica(2, range, 'B');
 
-        env.StartResync();
+        env.StartResync(0, resyncPolicy);
         env.ResyncController.WaitForResyncedRangeCount(5);
         UNIT_ASSERT(env.ResyncController.ResyncFinished);
 
@@ -631,14 +707,171 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         UNIT_ASSERT_VALUES_EQUAL(5, env.ResyncController.ResyncedRanges.size());
     }
 
-    Y_UNIT_TEST(ShouldResyncWholeDisk)
+    Y_UNIT_TEST(ShouldResyncWholeDisk_MINOR_4MB)
     {
-        DoTestShouldResyncWholeDisk(4_KB);
+        DoTestShouldResyncWholeDisk(4_KB, NProto::RESYNC_POLICY_MINOR_4MB);
+        DoTestShouldResyncWholeDisk(128_KB, NProto::RESYNC_POLICY_MINOR_4MB);
     }
 
-    Y_UNIT_TEST(ShouldResyncWholeDiskWithLargeBlockSize)
+    Y_UNIT_TEST(ShouldResyncWholeDisk_MINOR_AND_MAJOR_4MB)
     {
-        DoTestShouldResyncWholeDisk(128_KB);
+        DoTestShouldResyncWholeDisk(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+        DoTestShouldResyncWholeDisk(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDisk_MINOR_BLOCK_BY_BLOCK)
+    {
+        DoTestShouldResyncWholeDisk(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+        DoTestShouldResyncWholeDisk(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDisk_MINOR_AND_MAJOR_BLOCK_BY_BLOCK)
+    {
+        DoTestShouldResyncWholeDisk(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+        DoTestShouldResyncWholeDisk(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+    }
+
+    void DoTestShouldResyncWholeDiskWithMajor(
+        ui32 blockSize,
+        NProto::EResyncPolicy resyncPolicy)
+    {
+        using EResyncPolicy = NProto::EResyncPolicy;
+
+        // When fixing a major error, the result will vary depending on the
+        // policy.
+        // 1. RESYNC_POLICY_MINOR_4_MB will not fix 4MB, we get 'AAAA...' in
+        //    first, 'BBBB...' in second and 'CBBB...' in third replica
+        // 2. RESYNC_POLICY_MINOR_AND_MAJOR_4_MB will select the first replica
+        //    for all 4MB and we will get 'AAAA' in all replicas
+        // 3. RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK will fix all blocks with minor
+        //    errors and we will get 'ABBB...' in first replica, 'BBBB...' in
+        //    second and 'CBBBB...' in third
+        // 4. RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK the heuristic
+        //    will work well and we will get 'BBBB...' in all replicas
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, blockSize);
+
+        const auto range = TBlockRange64::WithLength(0, 5120 * 4_KB / blockSize);
+        const auto range4MB = TBlockRange64::WithLength(0, 4_MB / blockSize);
+
+        env.WriteMirror(range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+        env.WriteReplica(2, TBlockRange64::MakeOneBlock(0), 'C');
+
+        env.StartResync(0, resyncPolicy);
+        env.ResyncController.WaitForResyncedRangeCount(5);
+        UNIT_ASSERT(env.ResyncController.ResyncFinished);
+
+        // Check individual replicas
+        auto blocks0 = env.ReadReplica(0, range);
+        auto blocks1 = env.ReadReplica(1, range);
+        auto blocks2 = env.ReadReplica(2, range);
+        for (size_t i = 0; i < blocks0.size(); ++i ) {
+            char expected0 = 'B';
+            char expected1 = 'B';
+            char expected2 = 'B';
+            if (i == 0) {
+                switch (resyncPolicy) {
+                    case EResyncPolicy::RESYNC_POLICY_MINOR_4MB: {
+                        expected0 = 'A';
+                        expected2 = 'C';
+                    } break;
+                    case EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB: {
+                        expected0 = 'A';
+                        expected1 = 'A';
+                        expected2 = 'A';
+                    } break;
+                    case NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK: {
+                        expected0 = 'A';
+                        expected2 = 'C';
+                    } break;
+                    case NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK:
+                        break;
+                }
+            }
+            if (i > 0 && range4MB.Contains(i)) {
+                switch (resyncPolicy) {
+                    case EResyncPolicy::RESYNC_POLICY_MINOR_4MB: {
+                        expected0 = 'A';
+                    } break;
+                    case EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB: {
+                        expected0 = 'A';
+                        expected1 = 'A';
+                        expected2 = 'A';
+                    } break;
+                    case NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK:
+                    case NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK:
+                        break;
+                }
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, expected0), blocks0[i]);
+            UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, expected1), blocks1[i]);
+            UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, expected2), blocks2[i]);
+        }
+
+        const ui32 expectedResyncRangeSize = 4_MB;
+        for (const auto& resyncRange: env.ResyncController.ResyncedRanges) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedResyncRangeSize,
+                resyncRange.Size() * blockSize);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(5, env.ResyncController.ResyncedRanges.size());
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDiskWithMajor_MINOR_4MB)
+    {
+        DoTestShouldResyncWholeDiskWithMajor(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_4MB);
+        DoTestShouldResyncWholeDiskWithMajor(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_4MB);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDiskWithMajor_MINOR_AND_MAJOR_4MB)
+    {
+        DoTestShouldResyncWholeDiskWithMajor(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+        DoTestShouldResyncWholeDiskWithMajor(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDiskWithMajor_MINOR_BLOCK_BY_BLOCK)
+    {
+        DoTestShouldResyncWholeDiskWithMajor(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+
+        DoTestShouldResyncWholeDiskWithMajor(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDiskWithMajor_MINOR_AND_MAJOR_BLOCK_BY_BLOCK)
+    {
+        DoTestShouldResyncWholeDiskWithMajor(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+        DoTestShouldResyncWholeDiskWithMajor(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
     }
 
     Y_UNIT_TEST(ShouldResyncFromStartIndex)
@@ -1542,6 +1775,102 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
         }
+    }
+
+    void DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
+        NProto::EResyncPolicy resyncPolicy)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            DefaultBlockSize,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0), DefaultBlockSize),
+            TVector<TDevices>{
+                TTestEnv::DefaultReplica(
+                    runtime.GetNodeId(0),
+                    DefaultBlockSize,
+                    1),
+                TTestEnv::DefaultReplica(
+                    runtime.GetNodeId(0),
+                    DefaultBlockSize,
+                    2),
+            },
+            {},
+            true);
+
+        const auto range = TBlockRange64::WithLength(0, 5120);
+
+        env.WriteMirror(range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+
+        ui64 volumeRequestId = 12345;
+
+        for (size_t i = 0; i < 5; ++i) {
+            TResyncMessageHandler handler;
+            std::unique_ptr<IEventHandle> stollenTakeVolumeRequestIdEvent;
+
+            runtime.SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    handler.Handle<TEvService::TEvWriteBlocksRequest>(event);
+                    handler.Handle<TEvService::TEvWriteBlocksLocalRequest>(
+                        event);
+
+                    switch (event->GetTypeRewrite()) {
+                        case TEvVolumePrivate::EvTakeVolumeRequestIdRequest:
+                            stollenTakeVolumeRequestIdEvent.reset(
+                                event.Release());
+                            return TTestActorRuntimeBase::EEventAction::DROP;
+                        default:
+                            break;
+                    }
+
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+            env.StartResync(0, resyncPolicy);
+
+            runtime.DispatchEvents({}, ResyncNextRangeInterval);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, handler.ResyncRequestCount);
+            UNIT_ASSERT(stollenTakeVolumeRequestIdEvent);
+            UNIT_ASSERT_VALUES_EQUAL(
+                env.VolumeActorId,
+                stollenTakeVolumeRequestIdEvent->Recipient);
+
+            runtime.Send(
+                stollenTakeVolumeRequestIdEvent->Sender,
+                env.VolumeActorId,
+                std::make_unique<
+                    TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+                    volumeRequestId)
+                    .release());
+
+            NActors::TDispatchOptions options;
+            options.FinalEvents = {
+                NActors::TDispatchOptions::TFinalEventCondition(
+                    TEvNonreplPartitionPrivate::EvRangeResynced)};
+
+            runtime.DispatchEvents(options);
+            UNIT_ASSERT_VALUES_EQUAL(1, handler.ResyncRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, handler.VolumeRequestIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                volumeRequestId,
+                handler.VolumeRequestIds[0]);
+            volumeRequestId += 12345;
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSendWriteRequestsWithCorrectVolumeRequestId)
+    {
+        DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB);
+    }
+
+    Y_UNIT_TEST(ShouldSendWriteRequestsWithCorrectVolumeRequestIdBlockByBlock)
+    {
+        DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
     }
 }
 

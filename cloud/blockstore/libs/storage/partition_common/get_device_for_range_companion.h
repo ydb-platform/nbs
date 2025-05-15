@@ -9,6 +9,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDeviceStat;
+
 // A companion for processing EvGetDeviceForRangeRequest requests. Finds how
 // many requests needs for processing the range. If only one request is
 // needed, then everything is fine, request can be executed in direct
@@ -21,14 +23,17 @@ class TGetDeviceForRangeCompanion
 public:
     enum class EAllowedOperation
     {
+        None,       // Reply with an error to all requests
         Read,       // Reply with an error to requests intended for writing
         ReadWrite   // Requests with any purpose are allowed
     };
 
 private:
-    const EAllowedOperation AllowedOperation;
     const TStorageConfigPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+    const TVector<TDeviceStat>* const DeviceStats = nullptr;
+
+    EAllowedOperation AllowedOperation;
     NActors::TActorId Delegate;
 
 public:
@@ -37,8 +42,10 @@ public:
     TGetDeviceForRangeCompanion(
         EAllowedOperation allowedOperation,
         TStorageConfigPtr config,
-        TNonreplicatedPartitionConfigPtr partConfig);
+        TNonreplicatedPartitionConfigPtr partConfig,
+        const TVector<TDeviceStat>* const deviceStats);
 
+    void SetAllowedOperation(EAllowedOperation allowedOperation);
     void SetDelegate(NActors::TActorId delegate);
 
     void HandleGetDeviceForRange(

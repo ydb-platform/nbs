@@ -263,6 +263,21 @@ private:
             PartitionRequests[requestNo].PartitionId);
     }
 
+    void Merge(
+        NProto::TCheckRangeResponse& src,
+        ui32 requestNo,
+        NProto::TCheckRangeResponse& dst)
+    {
+        Y_UNUSED(requestNo);
+        if (src.GetError().GetCode() > dst.GetError().GetCode()) {
+            dst.MutableError()->CopyFrom(src.GetError());
+        }
+
+        if (src.GetStatus().GetCode() > dst.GetStatus().GetCode()) {
+            dst.MutableStatus()->CopyFrom(src.GetStatus());
+        }
+    }
+
     template <typename T>
     void Merge(
         T& src,
@@ -438,7 +453,10 @@ STFUNC(TMultiPartitionRequestActor<TMethod>::StateWork)
         HFunc(TMethod::TRequest, HandleUndelivery);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

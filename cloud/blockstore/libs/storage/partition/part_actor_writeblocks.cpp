@@ -202,10 +202,11 @@ void TPartitionActor::WriteBlocks(
     IWriteBlocksHandlerPtr writeHandler,
     bool replyLocal)
 {
-    auto replyError = [=] (const TActorContext& ctx, NProto::TError error) {
+    auto replyError = [=, this] (const TActorContext& ctx, NProto::TError error) {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] WriteBlocks error: %s",
+            "[%lu][d:%s] WriteBlocks error: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             error.GetMessage().c_str());
 
         auto response = CreateWriteBlocksResponse(replyLocal, std::move(error));
@@ -257,8 +258,9 @@ void TPartitionActor::WriteBlocks(
             EnqueueProcessWriteQueueIfNeeded(ctx);
 
             LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Enqueueing fresh blocks (range: %s)",
+                "[%lu][d:%s] Enqueueing fresh blocks (range: %s)",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 DescribeRange(writeRange).data()
             );
             State->GetWriteBuffer().Put(std::move(requestInBuffer));
@@ -279,8 +281,9 @@ void TPartitionActor::HandleWriteBlocksCompleted(
 
     ui64 commitId = msg->CommitId;
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete write blocks @%lu",
+        "[%lu][d:%s] Complete write blocks @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);
@@ -288,9 +291,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * State->GetBlockSize();
 
-    UpdateNetworkStat(ctx.Now(), requestBytes);
-    UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     const auto requestCount =

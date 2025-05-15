@@ -252,7 +252,10 @@ STFUNC(TReleaseDiskActor::StateWork)
             HandleRemoveDiskSessionResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -315,7 +318,7 @@ void TDiskRegistryActor::HandleReleaseDisk(
         return;
     }
 
-    if (!State->FilterDevicesAtUnavailableAgents(diskInfo)) {
+    if (!State->FilterDevicesForRelease(diskInfo)) {
         LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "ReleaseDisk %s. Nothing to release",
             diskId.c_str());

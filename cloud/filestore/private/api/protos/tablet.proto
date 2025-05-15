@@ -132,6 +132,7 @@ message TStorageStats
     uint64 LastCollectCommitId = 112;
     uint64 DeletedFreshBytesCount = 113;
     uint64 LargeDeletionMarkersCount = 114;
+    uint64 FreshBytesItemCount = 115;
 
     // channel stats
     uint64 TabletChannelCount = 1000;
@@ -577,6 +578,9 @@ message TConfigureShardsRequest
 
     // Override shard list validation.
     bool Force = 3;
+
+    // Make it possible to create directories in shards.
+    bool DirectoryCreationInShardsEnabled = 4;
 }
 
 message TConfigureShardsResponse
@@ -600,6 +604,9 @@ message TConfigureAsShardRequest
     // RootNode). Needed for directory creation in shards.
     repeated string ShardFileSystemIds = 3;
     string MainFileSystemId = 4;
+
+    // Make it possible to create directories in shards.
+    bool DirectoryCreationInShardsEnabled = 5;
 }
 
 message TConfigureAsShardResponse
@@ -734,6 +741,8 @@ message TGetFileSystemTopologyResponse
 
     // Shard no (if this fs is a shard itself).
     uint32 ShardNo = 3;
+
+    bool DirectoryCreationInShardsEnabled = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -238,7 +238,10 @@ STFUNC(TDescribeBaseDiskBlocksActor::StateWork)
         HFunc(TEvVolume::TEvDescribeBlocksResponse, HandleDescribeBlocksResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_COMMON);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_COMMON,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

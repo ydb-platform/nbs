@@ -646,6 +646,70 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotSendAcquireReleaseRequestsToBrokenDevices)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("test", "uuid-1", "rack-1", 10_GB)
+            }),
+            CreateAgentConfig("agent-2", {
+                Device("test", "uuid-2", "rack-2", 10_GB)
+            })
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        {
+            auto response = diskRegistry.AllocateDisk("disk-1", 20_GB);
+            const auto& msg = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(msg.DevicesSize(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(
+                msg.GetDevices(0).GetNodeId(),
+                runtime->GetNodeId(0));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                msg.GetDevices(1).GetNodeId(),
+                runtime->GetNodeId(1));
+        }
+
+        auto breakDevice = [&](const TString& deviceUUID)
+        {
+            diskRegistry.ChangeDeviceState(
+                deviceUUID,
+                NProto::DEVICE_STATE_ERROR);
+            runtime->AdvanceCurrentTime(TDuration::Seconds(20));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        };
+
+        breakDevice("uuid-1");
+
+        {
+            diskRegistry.SendAcquireDiskRequest("disk-1", "session-1");
+            auto response = diskRegistry.RecvAcquireDiskResponse();
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            const auto& msg = response->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-2",
+                msg.GetDevices(0).GetDeviceUUID());
+        }
+
+        diskRegistry.ReleaseDisk("disk-1", "session-1");
+    }
+
     Y_UNIT_TEST(ShouldAcquireReleaseSession)
     {
         const auto agent1 = CreateAgentConfig("agent-1", {

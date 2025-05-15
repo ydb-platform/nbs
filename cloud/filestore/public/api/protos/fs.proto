@@ -31,6 +31,8 @@ message TFileStoreFeatures
     bool GuestPageCacheDisabled = 16;
     bool ExtendedAttributesDisabled = 17;
     bool ServerWriteBackCacheEnabled = 18;
+    bool DirectoryCreationInShardsEnabled = 19;
+    bool GuestKeepCacheAllowed = 20;
 }
 
 message TFileStore

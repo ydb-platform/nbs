@@ -38,6 +38,7 @@ private:
     TVector<TString> ShardIds;
     ui32 ShardsToCreate = 0;
     ui32 ShardsToConfigure = 0;
+    bool DirectoryCreationInShardsEnabled = false;
 
 public:
     TAlterFileStoreActor(
@@ -309,6 +310,8 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
         ShardIds.push_back(std::move(shardId));
     }
+    DirectoryCreationInShardsEnabled =
+        msg->Record.GetDirectoryCreationInShardsEnabled();
 
     ui32 shardsToCheck =
         Min<ui32>(ShardIds.size(), FileStoreConfig.ShardConfigs.size());
@@ -334,7 +337,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         ShardsToConfigure = 0;
     } else {
         ShardsToCreate -= Min<ui32>(ShardsToCreate, ShardIds.size());
-        ShardsToConfigure = ShardsToCreate;
+        ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
     }
 
     if (ShardsToCreate) {
@@ -408,20 +411,20 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
 
 void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
-    for (ui32 i = ShardIds.size();
-            i < FileStoreConfig.ShardConfigs.size(); ++i)
-    {
+    for (ui32 i = 0; i < FileStoreConfig.ShardConfigs.size(); ++i) {
         auto request =
             std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
         request->Record.SetFileSystemId(
             FileStoreConfig.ShardConfigs[i].GetFileSystemId());
         request->Record.SetShardNo(i + 1);
         request->Record.SetMainFileSystemId(FileSystemId);
-        if (StorageConfig->GetDirectoryCreationInShardsEnabled()) {
+        if (DirectoryCreationInShardsEnabled) {
             for (const auto& shard: FileStoreConfig.ShardConfigs) {
                 request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
             }
         }
+        request->Record.SetDirectoryCreationInShardsEnabled(
+            DirectoryCreationInShardsEnabled);
 
         LOG_INFO(
             ctx,
@@ -482,6 +485,8 @@ void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
+    request->Record.SetDirectoryCreationInShardsEnabled(
+        DirectoryCreationInShardsEnabled);
 
     LOG_INFO(
         ctx,
@@ -567,7 +572,10 @@ STFUNC(TAlterFileStoreActor::StateWork)
             HandleConfigureMainFileStoreResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

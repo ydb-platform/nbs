@@ -75,6 +75,8 @@ public:
     ui32 GetFlushThreshold() const;
     ui32 GetCleanupThreshold() const;
     ui32 GetCleanupThresholdAverage() const;
+    ui32 GetCleanupCpuThrottlingThresholdPercentage() const;
+    bool GetCalculateCleanupScoreBasedOnUsedBlocksCount() const;
     bool GetNewCleanupEnabled() const;
     ui32 GetCompactionThreshold() const;
     ui32 GetGarbageCompactionThreshold() const;
@@ -86,6 +88,8 @@ public:
     bool GetUseMixedBlocksInsteadOfAliveBlocksInCompaction() const;
     ui32 GetCollectGarbageThreshold() const;
     ui64 GetFlushBytesThreshold() const;
+    ui32 GetFlushBytesItemCountThreshold() const;
+    bool GetFlushBytesByItemCountEnabled() const;
     ui32 GetMaxDeleteGarbageBlobsPerTx() const;
     ui32 GetLoadedCompactionRangesPerTx() const;
 
@@ -224,6 +228,7 @@ public:
     bool GetGetNodeAttrBatchEnabled() const;
 
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
+    TDuration GetEnqueueBlobIndexOpIfNeededScheduleInterval() const;
 
     bool GetAllowFileStoreForceDestroy() const;
     bool GetAllowFileStoreDestroyWithOrphanSessions() const;
@@ -257,6 +262,7 @@ public:
     ui32 GetNodeRegistrationMaxAttempts() const;
     TDuration GetNodeRegistrationTimeout() const;
     TDuration GetNodeRegistrationErrorTimeout() const;
+    bool GetNodeRegistrationUseSsl() const;
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
@@ -296,9 +302,12 @@ public:
     ui64 GetShardAllocationUnit() const;
     ui64 GetAutomaticallyCreatedShardSize() const;
     bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
+
     bool GetShardIdSelectionInLeaderEnabled() const;
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
+    NProto::EShardBalancerPolicy GetShardBalancerPolicy() const;
+
     bool GetDirectoryCreationInShardsEnabled() const;
 
     bool GetGuestWriteBackCacheEnabled() const;
@@ -310,6 +319,10 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+
+    bool GetGuestKeepCacheAllowed() const;
+    NProto::EGuestCachingType GetGuestCachingType() const;
+    ui64 GetSessionHandleOffloadedStatsCapacity() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

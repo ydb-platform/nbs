@@ -202,7 +202,10 @@ STFUNC(TCheckBlobActionActor::StateWork)
         HFunc(TEvBlobStorage::TEvGetResult, HandleGetResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

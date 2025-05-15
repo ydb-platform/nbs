@@ -38,7 +38,8 @@ class TestCase(object):
             block_count_per_device=DEFAULT_BLOCK_COUNT_PER_DEVICE,
             allocation_unit_size=1,
             agent_count=1,
-            dump_block_digests=False):
+            dump_block_digests=False,
+            max_migration_bandwidth=1024 * 1024 * 1024):
         self.name = name
         self.config_path = config_path
         self.restart_interval = restart_interval
@@ -48,6 +49,7 @@ class TestCase(object):
         self.allocation_unit_size = allocation_unit_size
         self.agent_count = agent_count
         self.dump_block_digests = dump_block_digests
+        self.max_migration_bandwidth = max_migration_bandwidth
 
 
 TESTS = [
@@ -81,10 +83,34 @@ TESTS = [
         agent_count=3,
         dump_block_digests=True,
     ),
+
+    # There are non-intuitive replica configuration permutations during migration,
+    # that's why we should run tests with different fresh device topologies.
+    # See issue-2854
+    TestCase(
+        "mirror2-split-read-cross",
+        "cloud/blockstore/tests/loadtest/local-mirror/local-mirror2-split-read-cross.txt",
+        agent_count=6,
+        dump_block_digests=True,
+        max_migration_bandwidth=1
+    ),
+    TestCase(
+        "mirror2-split-read-column",
+        "cloud/blockstore/tests/loadtest/local-mirror/local-mirror2-split-read-column.txt",
+        agent_count=6,
+        dump_block_digests=True,
+        max_migration_bandwidth=1
+    ),
+    TestCase(
+        "mirror2-fresh-device-migration",
+        "cloud/blockstore/tests/loadtest/local-mirror/local-mirror2-fresh-device-migration.txt",
+        agent_count=6,
+        dump_block_digests=True,
+    ),
 ]
 
 
-def __cleanup_file_devices(devices):
+def __remove_file_devices(devices):
     logging.info("Remove temporary device files")
     for d in devices:
         if d.path is not None:
@@ -130,7 +156,7 @@ def __process_config(config_path, devices_per_agent):
     return config_path
 
 
-def __run_test(test_case):
+def __run_test(test_case, use_rdma):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
@@ -185,6 +211,8 @@ def __run_test(test_case):
         server_app_config.ServerConfig.StrictContractValidation = False
         server_app_config.ServerConfig.NbdEnabled = True
         server_app_config.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
+        server_app_config.ServerConfig.UseFakeRdmaClient = use_rdma
+        server_app_config.ServerConfig.RdmaClientEnabled = use_rdma
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
         storage = TStorageServiceConfig()
@@ -197,10 +225,12 @@ def __run_test(test_case):
         storage.DisableLocalService = False
         storage.InactiveClientsTimeout = 60000  # 1 min
         storage.AgentRequestTimeout = 5000      # 5 sec
-        storage.MaxMigrationBandwidth = 1024 * 1024 * 1024
+        storage.MaxMigrationBandwidth = test_case.max_migration_bandwidth
         storage.UseMirrorResync = True
         storage.MirroredMigrationStartAllowed = True
         storage.NodeType = 'main'
+        storage.UseNonreplicatedRdmaActor = use_rdma
+        storage.UseRdma = use_rdma
 
         if test_case.dump_block_digests:
             storage.BlockDigestsEnabled = True
@@ -275,12 +305,13 @@ def __run_test(test_case):
             nbs.stop()
             kikimr_cluster.stop()
     finally:
-        __cleanup_file_devices(devices)
+        __remove_file_devices(devices)
 
     return ret
 
 
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-def test_load(test_case):
+@pytest.mark.parametrize("use_rdma", [True, False], ids=['rdma', 'no-rdma'])
+def test_load(test_case, use_rdma):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
-    return __run_test(test_case)
+    return __run_test(test_case, use_rdma)

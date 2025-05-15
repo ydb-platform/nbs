@@ -115,7 +115,7 @@ bool CompareRequests(
     const NProto::TStartEndpointRequest& left,
     const NProto::TStartEndpointRequest& right)
 {
-    Y_DEBUG_ABORT_UNLESS(26 == GetFieldCount<NProto::TStartEndpointRequest>());
+    Y_DEBUG_ABORT_UNLESS(27 == GetFieldCount<NProto::TStartEndpointRequest>());
     return left.GetUnixSocketPath() == right.GetUnixSocketPath()
         && left.GetDiskId() == right.GetDiskId()
         && left.GetInstanceId() == right.GetInstanceId()
@@ -144,7 +144,8 @@ bool CompareRequests(
             right.GetClientCGroups().end())
         && left.GetPersistent() == right.GetPersistent()
         && left.GetNbdDeviceFile() == right.GetNbdDeviceFile()
-        && left.GetUseFreeNbdDeviceFile() == right.GetUseFreeNbdDeviceFile();
+        && left.GetUseFreeNbdDeviceFile() == right.GetUseFreeNbdDeviceFile()
+        && left.GetVhostDiscardEnabled() == right.GetVhostDiscardEnabled();
 }
 
 bool CompareRequests(
@@ -559,7 +560,8 @@ private:
     bool IsEndpointRestoring(const TString& socket)
     {
         switch (AtomicGet(RestoringStage)) {
-            case WaitingForRestoring: return false;
+            case WaitingForRestoring:
+                return true;
             case ReadingStorage: return true;
             case StartingEndpoints: return RestoringEndpoints.contains(socket);
             case Completed: return false;
@@ -741,9 +743,7 @@ TFuture<NProto::TStartEndpointResponse> TEndpointManager::RestoreSingleEndpoint(
             }
 
             auto socketPath = TFsPath(request->GetUnixSocketPath());
-            if (!socketPath.Parent().Exists()) {
-                socketPath.Parent().MkDir();
-            }
+            socketPath.Parent().MkDirs();
 
             auto response = self->StartEndpointImpl(
                 std::move(ctx),

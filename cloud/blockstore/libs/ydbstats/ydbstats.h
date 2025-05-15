@@ -2,6 +2,7 @@
 
 #include "public.h"
 #include "ydbrow.h"
+#include "ydbscheme.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -23,8 +24,7 @@ struct IYdbVolumesStatsUploader
     virtual ~IYdbVolumesStatsUploader() = default;
 
     virtual NThreading::TFuture<NProto::TError> UploadStats(
-        const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>& metrics) = 0;
+        const TYdbRowData& rows) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,11 +33,22 @@ IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
     TYdbStatsConfigPtr config,
     ILoggingServicePtr logging,
     IYdbStoragePtr dbStorage,
-    TStatsTableSchemePtr statsTableScheme,
-    TStatsTableSchemePtr historyTableScheme,
-    TStatsTableSchemePtr archiveStatsTableScheme,
-    TStatsTableSchemePtr metricsTableScheme);
+    TYDBTableSchemes tableSchemes);
 
 IYdbVolumesStatsUploaderPtr CreateVolumesStatsUploaderStub();
 
 }   // namespace NCloud::NBlockStore::NYdbStats
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TYDBTableNames
+{
+    TString Stats;
+    TString History;
+    TString Archive;
+    TString Metrics;
+    TString Groups;
+    TString Partitions;
+
+    TYDBTableNames() = default;
+};

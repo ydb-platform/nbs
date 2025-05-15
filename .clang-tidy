@@ -19,6 +19,7 @@ Checks: >
   -llvm-header-guard,
   -llvmlibc-*,
   -modernize-use-trailing-return-type,
+  -performance-enum-size,
   -readability-avoid-const-params-in-decls,
   -readability-identifier-length,
   -readability-implicit-bool-conversion,

@@ -22,6 +22,31 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
+{
+    switch (err.GetCode()) {
+        case E_RDMA_UNAVAILABLE:
+        case E_TIMEOUT:
+        case E_REJECTED:
+            return true;
+    }
+    return false;
+}
+
+void ConvertRdmaErrorIfNeeded(ui32 rdmaStatus, NProto::TError& err)
+{
+    if (rdmaStatus == NRdma::RDMA_PROTO_FAIL && err.GetCode() == E_CANCELLED) {
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
+        err = MakeError(
+            E_REJECTED,
+            std::move(*err.MutableMessage()) + ", converted to E_REJECTED",
+            flags);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
@@ -155,10 +180,16 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
             if (f->HasException()) {
                 SendRdmaUnavailableIfNeeded(ctx);
 
-                reply(ctx, requestInfo, PartConfig->MakeError(
-                    E_REJECTED,
-                    TStringBuilder() << "endpoint init failed for agent: "
-                    << r.Device.GetAgentId()));
+                auto [_, error] = ResultOrError(*f);
+
+                reply(
+                    ctx,
+                    requestInfo,
+                    PartConfig->MakeError(
+                        E_REJECTED,
+                        TStringBuilder() << "endpoint init failed for agent "
+                                         << r.Device.GetAgentId().Quote()
+                                         << ": " << FormatError(error)));
                 return false;
             }
 
@@ -221,7 +252,8 @@ template bool TNonreplicatedPartitionRdmaActor::InitRequests<TEvNonreplPartition
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
+TResultOrError<TNonreplicatedPartitionRdmaActor::TRequestContext>
+TNonreplicatedPartitionRdmaActor::SendReadRequests(
     const NActors::TActorContext& ctx,
     TCallContextPtr callContext,
     const NProto::THeaders& headers,
@@ -236,6 +268,8 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
 
     TVector<TDeviceRequestInfo> requests;
 
+    TRequestContext sentRequestCtx;
+
     ui64 startBlockIndexOffset = 0;
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
@@ -245,7 +279,10 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         ui64 sz = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
         dr->StartIndexOffset = startBlockIndexOffset;
         dr->BlockCount = r.DeviceBlockRange.Size();
+        dr->DeviceIdx = r.DeviceIdx;
         startBlockIndexOffset += r.DeviceBlockRange.Size();
+
+        sentRequestCtx.emplace_back(r.DeviceIdx);
 
         NProto::TReadDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(headers);
@@ -266,6 +303,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
                 ", error: %s",
                 FormatError(err).c_str());
 
+            NotifyDeviceTimedOutIfNeeded(ctx, r.Device.GetDeviceUUID());
             return err;
         }
 
@@ -283,16 +321,69 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         requests.push_back({std::move(ep), std::move(req)});
     }
 
-    for (auto& request: requests) {
-        request.Endpoint->SendRequest(
+    for (size_t i = 0; i < requests.size(); ++i) {
+        auto& request = requests[i];
+        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             callContext);
     }
 
-    return {};
+    return sentRequestCtx;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TNonreplicatedPartitionRdmaActor::NotifyDeviceTimedOutIfNeeded(
+    const NActors::TActorContext& ctx,
+    const TString& deviceUUID)
+{
+    if (!PartConfig->GetLaggingDevicesAllowed()) {
+        return;
+    }
+    auto [it, inserted] = TimedOutDeviceCtxByDeviceUUID.try_emplace(
+        deviceUUID,
+        TTimedOutDeviceCtx{});
+    auto& timedOutDeviceCtx = it->second;
+
+    if (inserted) {
+        timedOutDeviceCtx.FirstErrorTs = ctx.Now();
+        timedOutDeviceCtx.VolumeWasNotified = false;
+        return;
+    }
+
+    if (timedOutDeviceCtx.VolumeWasNotified) {
+        return;
+    }
+
+    auto timePassedSinceFirstError = ctx.Now() - timedOutDeviceCtx.FirstErrorTs;
+    if (timePassedSinceFirstError >= Config->GetLaggingDeviceTimeoutThreshold())
+    {
+        NCloud::Send(
+            ctx,
+            PartConfig->GetParentActorId(),
+            std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutRequest>(
+                deviceUUID));
+        timedOutDeviceCtx.VolumeWasNotified = true;
+    }
+}
+
+void TNonreplicatedPartitionRdmaActor::ProcessOperationCompleted(
+    const NActors::TActorContext& ctx,
+    const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted)
+{
+    const auto& devices = PartConfig->GetDevices();
+    for (auto idx: opCompleted.DeviceIndices) {
+        Y_ABORT_UNLESS(idx < static_cast<ui32>(devices.size()));
+        const auto* errDevice = FindPtr(opCompleted.ErrorDeviceIndices, idx);
+        const auto& deviceUUID = devices[idx].GetDeviceUUID();
+        if (errDevice) {
+            NotifyDeviceTimedOutIfNeeded(ctx, deviceUUID);
+            continue;
+        }
+
+        TimedOutDeviceCtxByDeviceUUID.erase(deviceUUID);
+    }
+}
 
 void TNonreplicatedPartitionRdmaActor::SendRdmaUnavailableIfNeeded(
     const TActorContext& ctx)
@@ -304,10 +395,9 @@ void TNonreplicatedPartitionRdmaActor::SendRdmaUnavailableIfNeeded(
     NCloud::Send(
         ctx,
         PartConfig->GetParentActorId(),
-        std::make_unique<TEvVolume::TEvRdmaUnavailable>()
-    );
+        std::make_unique<TEvVolume::TEvRdmaUnavailable>());
 
-    ReportRdmaError();
+    ReportRdmaError("RDMA Unavailable");
 
     SentRdmaUnavailableNotification = true;
 }
@@ -325,17 +415,25 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
 
     UpdateStats(msg->Stats);
 
+    ProcessOperationCompleted(ctx, *msg);
+
     const auto requestBytes = msg->Stats.GetUserReadCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
     PartCounters->Rdma.ReadBytes.Increment(requestBytes);
     PartCounters->Rdma.ReadCount.Increment(1);
-    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+    const ui64 nonVoidBytes =
         static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();
-    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes +=
+    const ui64 voidBytes =
         static_cast<ui64>(msg->VoidBlockCount) * PartConfig->GetBlockSize();
+    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+        nonVoidBytes;
+    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes += voidBytes;
 
+    // TODO(komarevtsev-d): As of now, RDMA always transfers zero over the
+    // network. Once this behaviour is optimized, "nonVoidBytes" should be added
+    // here instead of "requestBytes".
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
@@ -357,6 +455,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksCompleted(
         "[%s] Complete write blocks", SelfId().ToString().c_str());
 
     UpdateStats(msg->Stats);
+
+    ProcessOperationCompleted(ctx, *msg);
 
     const auto requestBytes = msg->Stats.GetUserWriteCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
@@ -387,11 +487,12 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocksCompleted(
 
     UpdateStats(msg->Stats);
 
+    ProcessOperationCompleted(ctx, *msg);
+
     const auto requestBytes = msg->Stats.GetUserWriteCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
-    NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
@@ -414,11 +515,14 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocksCompleted(
 
     UpdateStats(msg->Stats);
 
+    ProcessOperationCompleted(ctx, *msg);
+
     const auto requestBytes = msg->Stats.GetSysChecksumCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ChecksumBlocks.AddRequest(time, requestBytes);
 
+    NetworkBytes += sizeof(ui64);   //  Checksum is sent as a 64-bit integer.
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
@@ -498,6 +602,96 @@ void TNonreplicatedPartitionRdmaActor::HandlePoisonPill(
 
     ReplyAndDie(ctx);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
+    const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Agent %s has become unavailable (lagging)",
+        PartConfig->GetName().c_str(),
+        msg->LaggingAgent.GetAgentId().Quote().c_str());
+
+    if (!PartConfig->GetLaggingDevicesAllowed()) {
+        return;
+    }
+
+    const auto& devices = PartConfig->GetDevices();
+    for (const auto& [_, requestInfo]: RequestsInProgress.AllRequests()) {
+        const auto& requestCtx = requestInfo.Value;
+        bool needToCancel = AnyOf(
+            requestCtx,
+            [&](const auto& ctx)
+            {
+                Y_ABORT_UNLESS(
+                    ctx.DeviceIndex < static_cast<ui64>(devices.size()));
+
+                return devices[ctx.DeviceIndex].GetAgentId() ==
+                       msg->LaggingAgent.GetAgentId();
+            });
+
+        if (!needToCancel) {
+            continue;
+        }
+
+        for (auto [deviceIdx, rdmaRequestId]: requestCtx) {
+            Y_ABORT_UNLESS(deviceIdx < static_cast<ui64>(devices.size()));
+            auto agentId = devices[deviceIdx].GetAgentId();
+
+            auto& endpoint = AgentId2Endpoint[agentId];
+            endpoint->CancelRequest(rdmaRequestId);
+        }
+    }
+}
+
+void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(
+    const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto& agentId = msg->AgentId;
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Lagging agent %s is back online",
+        PartConfig->GetName().c_str(),
+        agentId.Quote().c_str());
+
+    const auto* ep = AgentId2Endpoint.FindPtr(agentId);
+    if (!ep) {
+        return;
+    }
+    // Agent is back online via interconnect. We should force the reconnect
+    // attempt via RDMA.
+    ep->get()->TryForceReconnect();
+
+    for (const auto& device: PartConfig->GetDevices()) {
+        if (device.GetAgentId() == msg->AgentId) {
+            TimedOutDeviceCtxByDeviceUUID.erase(device.GetDeviceUUID());
+        }
+    }
+}
+
+void TNonreplicatedPartitionRdmaActor::HandleDeviceTimedOutResponse(
+    const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Attempted to mark device %s as lagging. Result: %s",
+        PartConfig->GetName().c_str(),
+        PartConfig->GetDevices()[ev->Cookie].GetDeviceUUID().c_str(),
+        FormatError(msg->GetError()).c_str());
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 bool TNonreplicatedPartitionRdmaActor::HandleRequests(STFUNC_SIG)
 {
@@ -581,9 +775,22 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
 
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
 
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvAgentIsBackOnline,
+            HandleAgentIsBackOnline);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvAgentIsUnavailable,
+            HandleAgentIsUnavailable);
+        HFunc(
+            TEvVolumePrivate::TEvDeviceTimedOutResponse,
+            HandleDeviceTimedOutResponse);
+
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -628,10 +835,14 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateZombie)
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

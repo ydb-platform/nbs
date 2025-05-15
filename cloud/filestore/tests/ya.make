@@ -9,6 +9,8 @@ RECURSE_FOR_TESTS(
     client
     client_sharded
     client_sharded_dir
+    client_sharded_dir_resize
+    close_to_open_consistency
     config_dispatcher
     endpoints
     fio
@@ -16,6 +18,7 @@ RECURSE_FOR_TESTS(
     fio_index_migration
     fio_migration
     fs_posix_compliance
+    guest_cache
     loadtest
     profile_log
     registration

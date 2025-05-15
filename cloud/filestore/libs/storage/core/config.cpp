@@ -36,6 +36,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FlushThreshold,                     ui32,   4_MB                      )\
     xxx(CleanupThreshold,                   ui32,   512                       )\
     xxx(CleanupThresholdAverage,            ui32,   64                        )\
+    xxx(CleanupCpuThrottlingThresholdPercentage,                               \
+                                            ui32,   0                         )\
+    xxx(CalculateCleanupScoreBasedOnUsedBlocksCount,                           \
+                                            bool,   false                     )\
     xxx(NewCleanupEnabled,                  bool,   false                     )\
     xxx(CompactionThreshold,                ui32,   20                        )\
     xxx(GarbageCompactionThreshold,         ui32,   100                       )\
@@ -48,6 +52,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(UseMixedBlocksInsteadOfAliveBlocksInCompaction, bool,   false         )\
     xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\
     xxx(FlushBytesThreshold,                ui64,   4_MB                      )\
+    xxx(FlushBytesItemCountThreshold,       ui32,   100'000                   )\
+    xxx(FlushBytesByItemCountEnabled,       bool,   false                     )\
     xxx(MaxDeleteGarbageBlobsPerTx,         ui32,   16384                     )\
     xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
@@ -57,9 +63,14 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ShardAllocationUnit,                                    ui64,   4_TB  )\
     xxx(AutomaticallyCreatedShardSize,                          ui64,   5_TB  )\
     xxx(EnforceCorrectFileSystemShardCountUponSessionCreation,  bool,   false )\
+                                                                               \
     xxx(ShardIdSelectionInLeaderEnabled,                        bool,   false )\
     xxx(ShardBalancerDesiredFreeSpaceReserve,                   ui64,   1_TB  )\
     xxx(ShardBalancerMinFreeSpaceReserve,                       ui64,   1_MB  )\
+    xxx(ShardBalancerPolicy,                                                   \
+            NProto::EShardBalancerPolicy,                                      \
+            NProto::SBP_ROUND_ROBIN                                           )\
+                                                                               \
     xxx(DirectoryCreationInShardsEnabled,                       bool,   false )\
                                                                                \
     xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
@@ -73,6 +84,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(BlobIndexOpsPriority,                                                  \
             NProto::EBlobIndexOpsPriority,                                     \
             NProto::BIOP_CLEANUP_FIRST                                        )\
+    xxx(EnqueueBlobIndexOpIfNeededScheduleInterval,                            \
+                                            TDuration, TDuration::Seconds(1)  )\
                                                                                \
     xxx(FlushThresholdForBackpressure,      ui32,      128_MB                 )\
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
@@ -202,6 +215,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
     xxx(NodeRegistrationCert,            TCertificate,          {}            )\
     xxx(NodeRegistrationToken,           TString,               "root@builtin")\
+    xxx(NodeRegistrationUseSsl,          bool,                  false         )\
     xxx(NodeType,                        TString,               {}            )\
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
@@ -251,6 +265,12 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ExtendedAttributesDisabled,                bool,     false            )\
                                                                                \
     xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
+                                                                               \
+    xxx(GuestKeepCacheAllowed,                     bool,      false           )\
+    xxx(GuestCachingType,                                                      \
+        NProto::EGuestCachingType,                                             \
+        NProto::GCT_SECOND_READ                                               )\
+    xxx(SessionHandleOffloadedStatsCapacity,       ui64,      0               )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -334,6 +354,20 @@ IOutputStream& operator <<(
     NProto::EBlobIndexOpsPriority biopp)
 {
     return out << EBlobIndexOpsPriority_Name(biopp);
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::EGuestCachingType gct)
+{
+    return out << EGuestCachingType_Name(gct);
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::EShardBalancerPolicy policy)
+{
+    return out << EShardBalancerPolicy_Name(policy);
 }
 
 template <typename T>

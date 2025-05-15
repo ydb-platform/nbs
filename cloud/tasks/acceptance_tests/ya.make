@@ -9,7 +9,11 @@ GO_XTEST_SRCS(
 )
 
 SIZE(LARGE)
-TAG(ya:fat ya:force_sandbox ya:sandbox_coverage)
+TAG(
+    ya:fat
+    ya:force_sandbox
+    ya:sandbox_coverage
+)
 
 REQUIREMENTS(
     cpu:4

@@ -134,7 +134,7 @@ void Generate(
     }
 }
 
-auto GenerateAll(ui64 seed)
+std::unique_ptr<TDiskRegistryState> GenerateAll(ui64 seed)
 {
     TMap<TString, ui64> AllocationUnit;
     AllocationUnit[""] = 93_GB;
@@ -250,7 +250,7 @@ auto GenerateAll(ui64 seed)
     auto diskRegistryGroup = monitoring->GetCounters()
                                  ->GetSubgroup("counters", "blockstore")
                                  ->GetSubgroup("component", "disk_registry");
-    auto state =
+    auto statePtr =
         NDiskRegistryStateTest::TDiskRegistryStateBuilder()
             .AddDevicePoolConfig("", 93_GB, NProto::DEVICE_POOL_KIND_DEFAULT)
             .With(diskRegistryGroup)
@@ -273,6 +273,7 @@ auto GenerateAll(ui64 seed)
                 AllocationUnit["chunk-5.82TiB"],
                 NProto::DEVICE_POOL_KIND_LOCAL)
             .Build();
+    TDiskRegistryState& state = *statePtr;
 
     TTestExecutor executor;
     executor.WriteTx([&](TDiskRegistryDatabase db) mutable
@@ -368,7 +369,7 @@ auto GenerateAll(ui64 seed)
         Cout << "Finish generate state:\n";
         diskRegistryGroup->OutputPlainText(Cout, "\t");
     }
-    return state;
+    return statePtr;
 }
 
 }   // namespace
@@ -379,7 +380,7 @@ int main(int argc, char** argv)
     opts.Parse(argc, argv);
 
     auto state = GenerateAll(opts.Seed);
-    NProto::TDiskRegistryStateBackup backupState = state.BackupState();
+    NProto::TDiskRegistryStateBackup backupState = state->BackupState();
     NProto::TBackupDiskRegistryStateResponse backup;
     backup.MutableBackup()->Swap(&backupState);
 

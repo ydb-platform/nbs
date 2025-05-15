@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
+#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -511,12 +512,6 @@ ui64 TPartitionActor::CalcChannelHistorySize() const
     return sum;
 }
 
-void TPartitionActor::UpdateExecutorStats(const TActorContext& ctx)
-{
-    auto& metrics = *Executor()->GetResourceMetrics();
-    metrics.TryUpdate(ctx);
-}
-
 void TPartitionActor::UpdateNetworkStats(const TActorContext& ctx, ui64 value)
 {
     auto& metrics = Executor()->GetResourceMetrics()->Network;
@@ -531,11 +526,14 @@ void TPartitionActor::UpdateStorageStats(const TActorContext& ctx, i64 value)
     metrics.Increment(value);
 }
 
-void TPartitionActor::UpdateCPUUsageStats(const TActorContext& ctx, TDuration value)
+void TPartitionActor::UpdateCPUUsageStat(
+    const TActorContext& ctx,
+    ui64 execCycles)
 {
-    UserCPUConsumption += value.MicroSeconds();
+    const auto duration = CyclesToDurationSafe(execCycles);
+    UserCPUConsumption += duration.MicroSeconds();
     auto& metrics = Executor()->GetResourceMetrics()->CPU;
-    metrics.Increment(value.MicroSeconds(), ctx.Now());
+    metrics.Increment(duration.MicroSeconds(), ctx.Now());
 }
 
 void TPartitionActor::UpdateWriteThroughput(
@@ -702,6 +700,29 @@ void TPartitionActor::HandleDrain(
     DrainActorCompanion.HandleDrain(ev, ctx);
 }
 
+void TPartitionActor::HandleWaitForInFlightWrites(
+    const TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    DrainActorCompanion.HandleWaitForInFlightWrites(ev, ctx);
+}
+
+void TPartitionActor::HandleLockAndDrainRange(
+    const TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
+}
+
+TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetBlobStorageAsyncRequestTimeoutSSD()
+               : Config->GetBlobStorageAsyncRequestTimeoutHDD();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
@@ -816,7 +837,10 @@ STFUNC(TPartitionActor::StateInit)
 
         default:
             if (!RejectRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -861,7 +885,10 @@ STFUNC(TPartitionActor::StateWork)
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -883,6 +910,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
 
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvReadBlobCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvWriteBlobCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvReadBlocksCompleted);
@@ -904,7 +932,10 @@ STFUNC(TPartitionActor::StateZombie)
 
         default:
             if (!RejectRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

@@ -161,8 +161,7 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
 
     Actors.erase(ev->Sender);
 
-    UpdateCPUUsageStats(ctx, CyclesToDurationSafe(msg->ExecCycles));
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx, msg->ExecCycles);
 
     EnqueueTrimFreshLogIfNeeded(ctx);
 

@@ -41,6 +41,7 @@ type ImageMeta struct {
 	ID                string                `json:"id"`
 	FolderID          string                `json:"folder_id"`
 	SrcDiskID         string                `json:"src_disk_id"`
+	CheckpointID      string                `json:"checkpoint_id"`
 	SrcImageID        string                `json:"src_image_id"`
 	SrcSnapshotID     string                `json:"src_snapshot_id"`
 	CreateRequest     proto.Message         `json:"create_request"`
@@ -86,6 +87,7 @@ type FilesystemMeta struct {
 	CreatedAt     time.Time     `json:"created_at"`
 	CreatedBy     string        `json:"created_by"`
 	DeleteTaskID  string        `json:"delete_task_id"`
+	IsExternal    bool          `json:"is_external"`
 }
 
 type PlacementGroupMeta struct {
@@ -135,6 +137,7 @@ type Storage interface {
 	ImageCreated(
 		ctx context.Context,
 		imageID string,
+		checkpointID string,
 		createdAt time.Time,
 		imageSize uint64,
 		imageStorageSize uint64,
@@ -168,6 +171,7 @@ type Storage interface {
 	SnapshotCreated(
 		ctx context.Context,
 		snapshotID string,
+		checkpointID string,
 		createdAt time.Time,
 		snapshotSize uint64,
 		snapshotStorageSize uint64,

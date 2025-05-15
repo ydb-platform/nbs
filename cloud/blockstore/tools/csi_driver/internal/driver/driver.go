@@ -2,7 +2,6 @@ package driver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -63,40 +62,11 @@ type Config struct {
 	LocalFilestoreOverridePath string
 	NfsLocalHost               string
 	NfsLocalFilestorePort      uint
+	NfsLocalFilestoreSocket    string
 	NfsLocalEndpointPort       uint
+	NfsLocalEndpointSocket     string
 	MountOptions               string
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type LocalFilestoreOverride struct {
-	FsId           string `json:"fs_id"`
-	LocalMountPath string `json:"local_mount_path"`
-}
-
-type LocalFilestoreOverrideMap map[string]LocalFilestoreOverride
-
-func LoadLocalFilestoreOverrides(filePath string) (LocalFilestoreOverrideMap, error) {
-	if filePath == "" {
-		return make(LocalFilestoreOverrideMap), nil
-	}
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("reading file: %w", err)
-	}
-
-	var fsOverrides []LocalFilestoreOverride
-	if err := json.Unmarshal(data, &fsOverrides); err != nil {
-		return nil, fmt.Errorf("unmarshalling JSON: %w", err)
-	}
-
-	overrideMap := make(LocalFilestoreOverrideMap)
-	for _, fsOverride := range fsOverrides {
-		overrideMap[fsOverride.FsId] = fsOverride
-	}
-
-	return overrideMap, nil
+	UseDiscardForYDBBasedDisks bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -128,7 +98,7 @@ func createClients(cfg Config) (*driverClients, error) {
 	}
 
 	var nfsFilestoreClient nfsclient.ClientIface
-	if cfg.NfsServerPort != 0 {
+	if cfg.NfsServerSocket != "" || cfg.NfsServerPort != 0 {
 		nfsFilestoreClient, err = nfsclient.NewGrpcClient(
 			&nfsclient.GrpcClientOpts{
 				Endpoint: getEndpoint(cfg.NfsServerSocket, cfg.NfsServerHost, cfg.NfsServerPort),
@@ -140,10 +110,10 @@ func createClients(cfg Config) (*driverClients, error) {
 	}
 
 	var nfsLocalFilestoreClient nfsclient.ClientIface
-	if cfg.NfsLocalFilestorePort != 0 {
+	if cfg.NfsLocalFilestoreSocket != "" || cfg.NfsLocalFilestorePort != 0 {
 		nfsLocalFilestoreClient, err = nfsclient.NewGrpcClient(
 			&nfsclient.GrpcClientOpts{
-				Endpoint: getEndpoint("", cfg.NfsLocalHost, cfg.NfsLocalFilestorePort),
+				Endpoint: getEndpoint(cfg.NfsLocalFilestoreSocket, cfg.NfsLocalHost, cfg.NfsLocalFilestorePort),
 			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
 		)
 		if err != nil {
@@ -152,7 +122,7 @@ func createClients(cfg Config) (*driverClients, error) {
 	}
 
 	var nfsEndpointClient nfsclient.EndpointClientIface
-	if cfg.NfsVhostPort != 0 {
+	if cfg.NfsVhostSocket != "" || cfg.NfsVhostPort != 0 {
 		nfsEndpointClient, err = nfsclient.NewGrpcEndpointClient(
 			&nfsclient.GrpcClientOpts{
 				Endpoint: getEndpoint(cfg.NfsVhostSocket, cfg.NfsVhostHost, cfg.NfsVhostPort),
@@ -164,10 +134,10 @@ func createClients(cfg Config) (*driverClients, error) {
 	}
 
 	var nfsLocalEndpointClient nfsclient.EndpointClientIface
-	if cfg.NfsLocalEndpointPort != 0 {
+	if cfg.NfsLocalEndpointSocket != "" || cfg.NfsLocalEndpointPort != 0 {
 		nfsLocalEndpointClient, err = nfsclient.NewGrpcEndpointClient(
 			&nfsclient.GrpcClientOpts{
-				Endpoint: getEndpoint("", cfg.NfsLocalHost, cfg.NfsLocalEndpointPort),
+				Endpoint: getEndpoint(cfg.NfsLocalEndpointSocket, cfg.NfsLocalHost, cfg.NfsLocalEndpointPort),
 			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
 		)
 		if err != nil {
@@ -186,7 +156,7 @@ func createClients(cfg Config) (*driverClients, error) {
 }
 
 func NewDriver(cfg Config) (*Driver, error) {
-	localFsOverrides, err := LoadLocalFilestoreOverrides(cfg.LocalFilestoreOverridePath)
+	externalFsOverrides, err := LoadExternalFsOverrides(cfg.LocalFilestoreOverridePath)
 	if err != nil {
 		return nil, err
 	}
@@ -235,10 +205,8 @@ func NewDriver(cfg Config) (*Driver, error) {
 	csi.RegisterControllerServer(
 		grpcServer,
 		newNBSServerControllerService(
-			localFsOverrides,
 			clients.nbsClient,
-			clients.nfsFilestoreClient,
-			clients.nfsLocalFilestoreClient))
+			clients.nfsFilestoreClient))
 
 	csi.RegisterNodeServer(
 		grpcServer,
@@ -249,12 +217,14 @@ func NewDriver(cfg Config) (*Driver, error) {
 			cfg.SocketsDir,
 			NodeFsTargetPathPattern,
 			NodeBlkTargetPathPattern,
-			localFsOverrides,
+			externalFsOverrides,
 			clients.nbsClient,
 			clients.nfsEndpointClient,
 			clients.nfsLocalEndpointClient,
+			clients.nfsLocalFilestoreClient,
 			mounter.NewMounter(),
-			strings.Split(cfg.MountOptions, ",")))
+			strings.Split(cfg.MountOptions, ","),
+			cfg.UseDiscardForYDBBasedDisks))
 
 	return &Driver{
 		grpcServer: grpcServer,

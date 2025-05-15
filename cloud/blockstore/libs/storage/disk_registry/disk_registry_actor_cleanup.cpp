@@ -188,7 +188,10 @@ STFUNC(TCleanupActor::StateWork)
         HFunc(TEvDiskRegistry::TEvDeallocateDiskResponse, HandleDeallocateDiskResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -94,7 +94,10 @@ private:
             IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::HIVE_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::HIVE_PROXY,
+                    __PRETTY_FUNCTION__);
         }
     }
 
@@ -452,8 +455,8 @@ public:
 
     std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> CreateGetStorageConfigRequest();
 
-    std::unique_ptr<TEvVolumePrivate::TEvDeviceTimeoutedRequest>
-    CreateDeviceTimeoutedRequest(TString deviceUUID);
+    std::unique_ptr<TEvVolumePrivate::TEvDeviceTimedOutRequest>
+    CreateDeviceTimedOutRequest(TString deviceUUID);
 
     std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest> CreateUpdateShadowDiskStateRequest(
         TString checkpointId,
@@ -465,6 +468,22 @@ public:
 
     std::unique_ptr<TEvVolume::TEvGracefulShutdownRequest>
     CreateGracefulShutdownRequest();
+
+    std::unique_ptr<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>
+    CreateLinkLeaderVolumeToFollowerRequest(
+        const TString& leaderDiskId,
+        const TString& followerDiskId);
+
+    std::unique_ptr<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>
+    CreateUnlinkLeaderVolumeFromFollowerRequest(
+        const TString& leaderDiskId,
+        const TString& followerDiskId);
+
+    std::unique_ptr<TEvVolumePrivate::TEvUpdateFollowerStateRequest>
+    CreateUpdateFollowerStateRequest(
+        TString followerUuid,
+        TEvVolumePrivate::TUpdateFollowerStateRequest::EReason reason,
+        std::optional<ui64> migratedBytes);
 
     void SendRemoteHttpInfo(
         const TString& params,

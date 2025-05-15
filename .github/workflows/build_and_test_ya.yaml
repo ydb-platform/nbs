@@ -82,14 +82,14 @@ on:
         type: string
         default: "yes"
         description: "Use network cache"
-      nebius:
-        type: string
-        default: "no"
-        description: "Run on nebius runners"
       truncate_enabled:
         type: string
         default: "yes"
         description: "Truncate enabled"
+      number_of_retries:
+        type: string
+        default: "1"
+        description: "Number of retries for tests"
     outputs:
       sleep_after_tests:
         description: "sleep_after_tests"
@@ -114,8 +114,8 @@ jobs:
       if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
       shell: bash
       run: |
-        git config user.email "librarian@nebius.com"
-        git config user.name "Rebase Robotovich"
+        git config user.email "robot-nbs@nebius.com"
+        git config user.name "Robot NBS"
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git rebase origin/${{ github.event.pull_request.base.ref }}
     - name: Checkout
@@ -128,13 +128,42 @@ jobs:
       uses: ./.github/actions/s3cmd
       with:
         s3_bucket: ${{ vars.AWS_BUCKET }}
-        s3_endpoint: ${{ inputs.nebius == 'yes' && vars.NEBIUS_AWS_ENDPOINT || vars.AWS_ENDPOINT }}
-        s3_website_suffix: ${{ inputs.nebius == 'yes' && vars.NEBIUS_AWS_WEBSITE_SUFFIX || vars.AWS_WEBSITE_SUFFIX }}
-        s3_key_id: ${{ inputs.nebius == 'yes' && secrets.NEBIUS_AWS_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
-        s3_key_secret: ${{ inputs.nebius == 'yes' && secrets.NEBIUS_AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+        s3_endpoint: ${{ vars.NEBIUS_AWS_ENDPOINT }}
+        s3_website_suffix: ${{ vars.NEBIUS_AWS_WEBSITE_SUFFIX }}
+        s3_key_id: ${{ secrets.NEBIUS_AWS_ACCESS_KEY_ID }}
+        s3_key_secret: ${{ secrets.NEBIUS_AWS_SECRET_ACCESS_KEY }}
         folder_prefix: nebius-
         build_preset: ${{ inputs.build_preset }}
         install: false
+
+    - name: set up zramswap
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y zram-tools
+        echo "vm.swappiness=1" | sudo tee -a /etc/sysctl.conf
+        sudo sysctl -p
+        echo "SIZE=102400" | sudo tee -a /etc/default/zramswap
+        echo "PRIORITY=2" | sudo tee -a /etc/default/zramswap
+        echo "ALGO=lz4" | sudo tee -a /etc/default/zramswap
+        sudo systemctl restart zramswap
+
+    - name: Create background process that will adjust oom_score_adj for selection of processes
+      shell: bash
+      run: |
+        set -x
+        while true; do
+          echo "$(date) done sleeping" | tee -a /tmp/oom_score_adj.log
+          for pid in $(pgrep -f ydbd) $(pgrep -f qemu-system-x86_64); do
+            # check if process is already having oom_score_adj set to 500 if not then set it
+            if [ "$(cat /proc/$pid/oom_score_adj)" != "1000" ]; then
+              echo 1000 | sudo tee /proc/$pid/oom_score_adj
+              echo "set oom_score_adj=1000 for pid: $pid" | tee -a /tmp/oom_score_adj.log
+            fi
+          done
+          echo "$(date) sleeping for 30s" | tee -a /tmp/oom_score_adj.log
+          sleep 30
+        done &
 
     - name: Build
       uses: ./.github/actions/build
@@ -143,7 +172,7 @@ jobs:
         build_target: ${{ inputs.build_target }}
         build_preset: ${{ inputs.build_preset }}
         cache_update: ${{ inputs.cache_update_build }}
-        bazel_remote_uri: ${{ inputs.nebius == 'yes' && vars.NEBIUS_BAZEL_REMOTE_CACHE_URL || vars.REMOTE_CACHE_URL_YA }}
+        bazel_remote_uri: ${{ vars.NEBIUS_BAZEL_REMOTE_CACHE_URL }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
         build_threads: ${{ inputs.build_threads }}
@@ -160,7 +189,7 @@ jobs:
         test_size: ${{ inputs.test_size }}
         test_type: ${{ inputs.test_type }}
         cache_update: ${{ inputs.cache_update_tests }}
-        bazel_remote_uri: ${{ inputs.nebius == 'yes' && vars.NEBIUS_BAZEL_REMOTE_CACHE_URL || vars.REMOTE_CACHE_URL_YA }}
+        bazel_remote_uri: ${{ vars.NEBIUS_BAZEL_REMOTE_CACHE_URL }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
         link_threads: ${{ inputs.link_threads }}
@@ -169,7 +198,7 @@ jobs:
         upload_ya_dir: ${{ inputs.upload_ya_dir }}
         clean_ya_dir: ${{ inputs.run_build && 'no' || inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
-        nebius: ${{ inputs.nebius }}
+        number_of_retries: ${{ inputs.number_of_retries }}
         truncate_enabled: ${{ inputs.truncate_enabled }}
     - id: failure
       name: set sleep_after_tests in case of failure

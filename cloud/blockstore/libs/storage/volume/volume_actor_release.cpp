@@ -14,7 +14,8 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 void TVolumeActor::SendReleaseDevicesToAgents(
     const TString& clientId,
-    const TActorContext& ctx)
+    const TActorContext& ctx,
+    TVector<NProto::TDeviceConfig> devicesToRelease)
 {
     auto replyWithError = [&](auto error)
     {
@@ -38,7 +39,9 @@ void TVolumeActor::SendReleaseDevicesToAgents(
         return;
     }
 
-    auto devices = State->GetAllDevicesForAcquireRelease();
+    if (devicesToRelease.empty()) {
+        devicesToRelease = State->GetDevicesForRelease();
+    }
 
     auto actor = NCloud::Register<TReleaseDevicesActor>(
         ctx,
@@ -47,7 +50,7 @@ void TVolumeActor::SendReleaseDevicesToAgents(
         clientId,
         volumeGeneration,
         Config->GetAgentRequestTimeout(),
-        std::move(devices),
+        std::move(devicesToRelease),
         State->GetMeta().GetMuteIOErrors());
 
     Actors.insert(actor);
@@ -58,6 +61,28 @@ void TVolumeActor::HandleDevicesReleasedFinished(
     const NActors::TActorContext& ctx)
 {
     HandleDevicesReleasedFinishedImpl(ev->Get()->GetError(), ctx);
+}
+
+void TVolumeActor::ReleaseReplacedDevices(
+    const NActors::TActorContext& ctx,
+    const TVector<NProto::TDeviceConfig>& replacedDevices)
+{
+    if (replacedDevices.empty()) {
+        return;
+    }
+
+    for (const auto& [clientId, _]: State->GetClients()) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Releasing devices that don't belong to the volume anymore "
+            "for client: %s",
+            TabletID(),
+            clientId.c_str());
+
+        TAcquireReleaseDiskRequest request{clientId, nullptr, replacedDevices};
+        AcquireReleaseDiskRequests.push_back(std::move(request));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

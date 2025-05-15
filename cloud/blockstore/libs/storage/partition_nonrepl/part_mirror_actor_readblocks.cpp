@@ -1,6 +1,8 @@
 #include "part_mirror_actor.h"
 
 #include "mirror_request_actor.h"
+#include "part_mirror_split_read_blocks_actor.h"
+#include "part_mirror_split_request_helpers.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
@@ -9,6 +11,9 @@
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <util/string/join.h>
+
+#include <algorithm>
+#include <ranges>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -202,18 +207,32 @@ void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
     for (ui32 i = 1; i < ResponseChecksums.size(); ++i) {
         const auto checksum = ResponseChecksums[i];
         if (firstChecksum != checksum) {
+            TSet<ui32> checksums(ResponseChecksums.begin(), ResponseChecksums.end());
+
+            TStringBuilder errorMessage;
+            if (ResponseChecksums.size() == 3) {
+                errorMessage << ((checksums.size() == 3) ? "Major " : "Minor ");
+            }
+
+            errorMessage << "checksum mismatch detected: ";
+
+            for (size_t i = 0; i < ResponseChecksums.size(); ++i) {
+                if (i != 0) {
+                    errorMessage << ", ";
+                }
+                errorMessage << "replica " << Partitions[i].ToString()
+                             << ": checksum " << ResponseChecksums[i];
+            }
+
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Read range %s: checksum mismatch, %u (%s) != %u (%s)",
+                "[%s] Read range %s: %s",
                 DiskId.c_str(),
                 DescribeRange(Range).c_str(),
-                firstChecksum,
-                Partitions[0].ToString().c_str(),
-                checksum,
-                Partitions[i].ToString().c_str());
-            *Response.MutableError() =
-                MakeError(E_REJECTED, "Checksum mismatch detected");
+                errorMessage.c_str());
+
+            *Response.MutableError() = MakeError(E_REJECTED, errorMessage);
             ChecksumMismatchObserved = true;
             break;
         }
@@ -384,7 +403,8 @@ STFUNC(TRequestActor<TMethod>::StateWork)
         default:
             HandleUnexpectedEvent(
                 ev,
-                TBlockStoreComponents::PARTITION_WORKER);
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -397,7 +417,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     std::optional<ui32> replicaIndex,
     std::optional<ui32> replicaCount,
     TBlockRange64 blockRange,
-    const TStringBuf& methodName) -> TResultOrError<TSet<TActorId>>
+    const TStringBuf methodName) -> TResultOrError<TVector<TActorId>>
 {
     const auto& replicaInfos = State.GetReplicaInfos();
 
@@ -418,7 +438,6 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                              << replicaInfos.size() << " replicas");
     }
 
-    TSet<ui32> replicaIndexes;
     ui32 readReplicaCount =
         replicaCount ? *replicaCount
                      : Min<ui32>(
@@ -429,7 +448,8 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         State.SetReadReplicaIndex(*replicaIndex);
         readReplicaCount = 1;
     }
-
+    TVector<ui32> replicaIndexes;
+    replicaIndexes.reserve(readReplicaCount);
     for (ui32 i = 0; i < readReplicaCount; ++i) {
         ui32 replicaIndex = 0;
         const auto error = State.NextReadReplica(blockRange, replicaIndex);
@@ -437,9 +457,11 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
             return error;
         }
 
-        if (!replicaIndexes.insert(replicaIndex).second) {
+        if (FindPtr(replicaIndexes, replicaIndex)) {
             break;
         }
+
+        replicaIndexes.emplace_back(replicaIndex);
     }
 
     if (replicaIndex && *replicaIndexes.begin() != *replicaIndex) {
@@ -451,16 +473,14 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     }
 
     if (replicaCount && replicaIndexes.size() != *replicaCount) {
-        std::vector<ui32> allIndexes(*replicaCount);
-        std::iota(allIndexes.begin(), allIndexes.end(), 0);
+        auto allIndexes = std::views::iota(0U, *replicaCount);
 
-        TSet<ui32> unreadyActorIndexes;
-        std::set_difference(
-            allIndexes.begin(),
-            allIndexes.end(),
-            replicaIndexes.begin(),
-            replicaIndexes.end(),
-            std::inserter(unreadyActorIndexes, unreadyActorIndexes.end()));
+        Sort(replicaIndexes);
+        TVector<ui32> unreadyActorIndexes;
+        std::ranges::set_difference(
+            allIndexes,
+            replicaIndexes,
+            std::back_inserter(unreadyActorIndexes));
 
         return MakeError(
             E_REJECTED,
@@ -471,9 +491,9 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << JoinSeq(",", unreadyActorIndexes) << "]");
     }
 
-    TSet<TActorId> replicaActorIds;
+    TVector<TActorId> replicaActorIds;
     for (const auto& replicaIndex: replicaIndexes) {
-        replicaActorIds.insert(State.GetReplicaActor(replicaIndex));
+        replicaActorIds.emplace_back(State.GetReplicaActor(replicaIndex));
     }
 
     return replicaActorIds;
@@ -486,11 +506,8 @@ void TMirrorPartitionActor::ReadBlocks(
 {
     using TResponse = TMethod::TResponse;
 
-    auto requestInfo =
-        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
-
     if (HasError(Status)) {
-        Reply(ctx, *requestInfo, std::make_unique<TResponse>(Status));
+        Reply(ctx, *ev, std::make_unique<TResponse>(Status));
 
         return;
     }
@@ -525,8 +542,29 @@ void TMirrorPartitionActor::ReadBlocks(
         blockRange,
         TMethod::Name);
 
-    if (HasError(error)) {
-        NCloud::Reply(ctx, *ev, std::make_unique<TResponse>(error));
+    bool tryToSplitRequest =
+        error.GetCode() == E_INVALID_STATE && !replicaIndex;
+    if (HasError(error) && !tryToSplitRequest) {
+        NCloud::Reply(ctx, *ev, std::make_unique<TResponse>(std::move(error)));
+        return;
+    }
+    if (tryToSplitRequest) {
+        auto splitError = SplitReadBlocks<TMethod>(ev, ctx);
+
+        if (HasError(splitError)) {
+            LOG_LOG(
+                ctx,
+                splitError.GetCode() == E_ARGUMENT ? NLog::PRI_ERROR
+                                                   : NLog::PRI_DEBUG,
+                TBlockStoreComponents::PARTITION,
+                "Can't split read request: %s",
+                FormatError(splitError).c_str());
+
+            NCloud::Reply(
+                ctx,
+                *ev,
+                std::make_unique<TResponse>(std::move(error)));
+        }
         return;
     }
 
@@ -541,17 +579,82 @@ void TMirrorPartitionActor::ReadBlocks(
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     RequestsInProgress.AddReadRequest(
         requestIdentityKey,
-        {blockRange, record.GetHeaders().GetVolumeRequestId()});
+        blockRange,
+        record.GetHeaders().GetVolumeRequestId());
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
     NCloud::Register<TRequestActor<TMethod>>(
         ctx,
         std::move(requestInfo),
-        TVector<TActorId>(replicaActorIds.begin(), replicaActorIds.end()),
+        std::move(replicaActorIds),
         std::move(record),
         blockRange,
         State.GetReplicaInfos()[0].Config->GetName(),
         SelfId(),
         requestIdentityKey);
+}
+
+template <typename TMethod>
+NProto::TError TMirrorPartitionActor::SplitReadBlocks(
+    const typename TMethod::TRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto& record = ev->Get()->Record;
+
+    const auto blockRange = TBlockRange64::WithLength(
+        record.GetStartIndex(),
+        record.GetBlocksCount());
+
+    auto blockRangeSplitByDeviceBorders =
+        State.SplitRangeByDeviceBorders(blockRange);
+    // There is no sense to split request if it covers only one device or
+    // replica.
+    if (blockRangeSplitByDeviceBorders.size() == 1) {
+        return MakeError(E_INVALID_STATE, "no sense to split such request");
+    }
+
+    for (auto range: blockRangeSplitByDeviceBorders) {
+        ui32 replicaIndex = 0;
+        auto error = State.NextReadReplica(range, replicaIndex);
+        if (HasError(error)) {
+            return error;
+        }
+    }
+
+    auto [splitRequest, error] =
+        SplitReadRequest(record, blockRangeSplitByDeviceBorders);
+    if (HasError(error)) {
+        return error;
+    }
+
+    const auto requestIdentityKey = TakeNextRequestIdentifier();
+    RequestsInProgress.AddReadRequest(
+        requestIdentityKey,
+        blockRange,
+        record.GetHeaders().GetVolumeRequestId());
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] Split original range %s by device borders. Will try to read "
+        "with few requests",
+        DiskId.c_str(),
+        DescribeRange(blockRange).c_str());
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+
+    NCloud::Register<TSplitReadBlocksActor<TMethod>>(
+        ctx,
+        std::move(requestInfo),
+        std::move(splitRequest),
+        SelfId(),
+        State.GetBlockSize(),
+        requestIdentityKey);
+
+    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

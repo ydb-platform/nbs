@@ -37,7 +37,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             Device("NVMENBS04", "uuid-1.4", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetConfig().KnownAgentsSize());
@@ -110,9 +111,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             Device("NVMENBS04", "uuid-1.4", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig({agentConfig})
-            .Build();
+        auto statePtr =
+            TDiskRegistryStateBuilder().WithConfig({agentConfig}).Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetConfigVersion());
@@ -184,9 +185,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             Device("NVMENBS04", "uuid-1.4", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithConfig({agentConfig})
-            .Build();
+        auto statePtr =
+            TDiskRegistryStateBuilder().WithConfig({agentConfig}).Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetConfigVersion());
@@ -300,9 +301,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             Device("NVMENBS04", "uuid-1.4", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-                                       .WithKnownAgents({lostAgentConfig})
-                                       .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({lostAgentConfig})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // prepare agent-1
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -486,10 +488,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                         NProto::DEVICE_STATE_ERROR),
                 })};
 
-        TDiskRegistryState state =
-            TDiskRegistryStateBuilder()
-                .WithConfig(agents)
-                .Build();
+        auto statePtr = TDiskRegistryStateBuilder().WithConfig(agents).Build();
+        TDiskRegistryState& state = *statePtr;
 
         // Register agents.
         executor.WriteTx(
@@ -736,8 +736,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 
         // Init state.
         {
-            TDiskRegistryState state =
+            auto statePtr =
                 TDiskRegistryStateBuilder().WithConfig({agent}).Build();
+            TDiskRegistryState& state = *statePtr;
 
             // Register agent.
             executor.WriteTx(
@@ -771,9 +772,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             [&](TDiskRegistryDatabase db)
             {
                 // Load state from db.
-                auto state = TDiskRegistryStateBuilder::LoadState(db)
-                                 .WithConfig({agent})
-                                 .Build();
+                auto statePtr = TDiskRegistryStateBuilder::LoadState(db)
+                                    .WithConfig({agent})
+                                    .Build();
+                TDiskRegistryState& state = *statePtr;
 
                 // Remove agent.
                 TVector<TString> affectedDisks;
@@ -847,7 +849,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
             })};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     MakeConfig(0, agents) | WithPoolConfig(
@@ -855,6 +857,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                                                 NProto::DEVICE_POOL_KIND_LOCAL,
                                                 DefaultDeviceSize))
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         // Register agents.
         executor.WriteTx(
@@ -964,10 +967,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     Device("NVMENBS04", "uuid-2.4", "rack-2"),
                 })};
 
-        TDiskRegistryState state =
-            TDiskRegistryStateBuilder()
-                .WithConfig(agents)
-                .Build();
+        auto statePtr = TDiskRegistryStateBuilder().WithConfig(agents).Build();
+        TDiskRegistryState& state = *statePtr;
 
         // Register agents.
         executor.WriteTx(

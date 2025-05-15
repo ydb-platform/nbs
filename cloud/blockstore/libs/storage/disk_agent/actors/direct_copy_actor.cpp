@@ -20,6 +20,7 @@ auto PrepareRequest(
     headers->SetIsBackgroundRequest(
         copyBlocks.GetHeaders().GetIsBackgroundRequest());
     headers->SetClientId(TString(copyBlocks.GetTargetClientId()));
+    headers->SetVolumeRequestId(copyBlocks.GetHeaders().GetVolumeRequestId());
 
     rec.SetDeviceUUID(copyBlocks.GetTargetDeviceUUID());
     rec.SetStartIndex(copyBlocks.GetTargetStartIndex());
@@ -202,7 +203,10 @@ STFUNC(TDirectCopyActor::StateWork)
             TEvDiskAgent::TEvZeroDeviceBlocksRequest,
             HandleZeroBlocksUndelivery);
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -29,7 +29,8 @@ TNonreplicatedPartitionMigrationCommonActor::
         ui64 initialMigrationIndex,
         TString rwClientId,
         NActors::TActorId statActorId,
-        ui32 maxIoDepth)
+        ui32 maxIoDepth,
+        NActors::TActorId volumeActorId)
     : MigrationOwner(migrationOwner)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -39,12 +40,47 @@ TNonreplicatedPartitionMigrationCommonActor::
     , BlockCount(blockCount)
     , BlockDigestGenerator(std::move(digestGenerator))
     , MaxIoDepth(maxIoDepth)
+    , VolumeActorId(volumeActorId)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
-    , ChangedRangesMap(blockCount, blockSize, ProcessingRangeSize)
+    , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
-{}
+{
+}
+
+TNonreplicatedPartitionMigrationCommonActor::
+    TNonreplicatedPartitionMigrationCommonActor(
+        IMigrationOwner* migrationOwner,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        TString diskId,
+        ui64 blockCount,
+        ui64 blockSize,
+        IProfileLogPtr profileLog,
+        IBlockDigestGeneratorPtr digestGenerator,
+        TCompressedBitmap migrationBlockMap,
+        TString rwClientId,
+        NActors::TActorId statActorId,
+        ui32 maxIoDepth,
+        NActors::TActorId volumeActorId)
+    : MigrationOwner(migrationOwner)
+    , Config(std::move(config))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
+    , ProfileLog(std::move(profileLog))
+    , DiskId(std::move(diskId))
+    , BlockSize(blockSize)
+    , BlockCount(blockCount)
+    , BlockDigestGenerator(std::move(digestGenerator))
+    , MaxIoDepth(maxIoDepth)
+    , VolumeActorId(volumeActorId)
+    , RWClientId(std::move(rwClientId))
+    , ProcessingBlocks(blockCount, blockSize, std::move(migrationBlockMap))
+    , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)
+    , StatActorId(statActorId)
+    , PoisonPillHelper(this)
+{
+}
 
 TNonreplicatedPartitionMigrationCommonActor::
     ~TNonreplicatedPartitionMigrationCommonActor() = default;
@@ -69,6 +105,11 @@ ui64 TNonreplicatedPartitionMigrationCommonActor::
     GetBlockCountNeedToBeProcessed() const
 {
     return ProcessingBlocks.GetBlockCountNeedToBeProcessed();
+}
+
+ui64 TNonreplicatedPartitionMigrationCommonActor::GetProcessedBlockCount() const
+{
+    return ProcessingBlocks.GetProcessedBlockCount();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -168,6 +209,9 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(
             NPartition::TEvPartition::TEvDrainRequest,
             DrainActorCompanion.HandleDrain);
+        HFunc(
+            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            DrainActorCompanion.HandleWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -207,7 +251,10 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_NONREPL,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -232,6 +279,9 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(
+            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            RejectWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -264,7 +314,10 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_NONREPL,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

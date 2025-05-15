@@ -95,6 +95,10 @@ message TStartEndpointRequest
         // Use any free nbd device file which nbd-client will connect to.
         bool UseFreeNbdDeviceFile = 26;
     }
+
+    // Enable Discard/ZeroBlocks features for vhost device
+    // deprecated
+    bool VhostDiscardEnabled = 27;
 }
 
 message TStartEndpointResponse
@@ -246,6 +250,7 @@ message TStartProxyEndpointRequest
     // NBD StorageOptions.
     uint32 BlockSize = 4;
     uint64 BlocksCount = 5;
+    uint32 MaxZeroBlocksSubRequestSize = 6;
 }
 
 message TStartProxyEndpointResponse

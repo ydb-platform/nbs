@@ -1,5 +1,6 @@
 #include "config.h"
 
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/certificate.pb.h>
 
@@ -22,6 +23,9 @@ namespace {
 
 constexpr auto PreemptedVolumesFile =
     "/var/log/nbs-server/nbs-preempted-volumes.json";
+
+constexpr ui32 DefaultLinkedDiskBandwidth = 100;
+constexpr ui32 DefaultLinkedIoDepth = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -48,6 +52,32 @@ TDuration Seconds(ui32 value)
 TDuration MSeconds(ui32 value)
 {
     return TDuration::MilliSeconds(value);
+}
+
+NProto::TLinkedDiskFillBandwidth GetBandwidth(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind mediaKind)
+{
+    auto allBandwidths = config.GetLinkedDiskFillBandwidth();
+
+    for (const auto& bandwidth: allBandwidths) {
+        if (bandwidth.HasMediaKind() && bandwidth.GetMediaKind() == mediaKind) {
+            return bandwidth;
+        }
+    }
+
+    for (const auto& bandwidth: allBandwidths) {
+        if (!bandwidth.HasMediaKind()) {
+            return bandwidth;
+        }
+    }
+
+    NProto::TLinkedDiskFillBandwidth result;
+    result.SetReadBandwidth(DefaultLinkedDiskBandwidth);
+    result.SetWriteBandwidth(DefaultLinkedDiskBandwidth);
+    result.SetReadIoDepth(DefaultLinkedIoDepth);
+    result.SetWriteIoDepth(DefaultLinkedIoDepth);
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -123,15 +153,20 @@ TDuration MSeconds(ui32 value)
     xxx(NodeType,                             TString,               {}       )\
     xxx(NodeRegistrationRootCertsFile,        TString,               {}       )\
     xxx(NodeRegistrationCert,                 TCertificate,          {}       )\
+    xxx(NodeRegistrationUseSsl,               bool,                  false    )\
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
         {}                                                                    )\
     xxx(YdbViewerServiceEnabled,              bool,                  false    )\
+    xxx(LinkedDiskFillBandwidth,                                               \
+        TVector<NProto::TLinkedDiskFillBandwidth>,                             \
+        {}                                                                    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
     xxx(WriteBlobThreshold,            ui32,      1_MB                        )\
     xxx(WriteBlobThresholdSSD,         ui32,      128_KB                      )\
+    xxx(WriteMixedBlobThresholdHDD,    ui32,      0                           )\
     xxx(FlushThreshold,                ui32,      4_MB                        )\
     xxx(FreshBlobCountFlushThreshold,  ui32,      3200                        )\
     xxx(FreshBlobByteCountFlushThreshold,   ui32,      16_MB                  )\
@@ -344,6 +379,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(AllocateSeparateMixedChannels,                  bool,   false         )\
     xxx(PoolKindChangeAllowed,                          bool,   false         )\
+    xxx(MixedChannelsPercentageFromMerged,              ui32,   0             )\
                                                                                \
     xxx(BlockDigestsEnabled,                            bool,   false         )\
     xxx(UseTestBlockDigestGenerator,                    bool,   false         )\
@@ -465,6 +501,12 @@ TDuration MSeconds(ui32 value)
     xxx(ForceMirrorResync,                         bool,      false           )\
     xxx(ResyncIndexCachingInterval,                ui32,      65536           )\
     xxx(ResyncAfterClientInactivityInterval,       TDuration, Minutes(1)      )\
+    xxx(AutoResyncPolicy,                                                      \
+        NProto::EResyncPolicy,                                                 \
+        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB              )\
+    xxx(ForceResyncPolicy,                                                     \
+        NProto::EResyncPolicy,                                                 \
+        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB              )\
     xxx(MirrorReadReplicaCount,                    ui32,      0               )\
                                                                                \
     xxx(PingMetricsHalfDecayInterval,              TDuration, Seconds(15)     )\
@@ -514,14 +556,28 @@ TDuration MSeconds(ui32 value)
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
     xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
+    xxx(ScrubbingResyncPolicy,                                                    \
+        NProto::EResyncPolicy,                                                    \
+        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB                           )\
+                                                                                  \
+    xxx(LaggingDevicesForMirror2DisksEnabled,     bool,      false               )\
+    xxx(LaggingDevicesForMirror3DisksEnabled,     bool,      false               )\
+    xxx(LaggingDeviceTimeoutThreshold,            TDuration, Seconds(5)          )\
+    xxx(LaggingDevicePingInterval,                TDuration, MSeconds(500)       )\
+    xxx(LaggingDeviceMaxMigrationBandwidth,       ui32,      400                 )\
+    xxx(LaggingDeviceMaxMigrationIoDepth,         ui32,      1                   )\
+    xxx(ResyncAfterLaggingAgentMigration,         bool,      false               )\
+    xxx(MultiAgentWriteEnabled,                   bool,      false               )\
+    xxx(MultiAgentWriteRequestSizeThreshold,      ui32,      0                   )\
+    xxx(NetworkForwardingTimeout,                 TDuration, MSeconds(100)       )\
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
     xxx(AllowLiteDiskReallocations,                     bool,      false         )\
     xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
-    xxx(BlobStorageAsyncGetTimeoutHDD,                  TDuration, Seconds(0)    )\
-    xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
+    xxx(BlobStorageAsyncRequestTimeoutHDD,              TDuration, Seconds(0)    )\
+    xxx(BlobStorageAsyncRequestTimeoutSSD,              TDuration, Seconds(0)    )\
                                                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
     xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\
@@ -536,6 +592,13 @@ TDuration MSeconds(ui32 value)
     xxx(BSGroupsPerChannelToWarmup,                ui32,      1               )\
     xxx(WarmupBSGroupConnectionsTimeout,           TDuration, Seconds(1)      )\
     xxx(AllowAdditionalSystemTablets,              bool,      false           )\
+                                                                               \
+    xxx(CheckRangeMaxRangeSize,                    ui32,      4_MB            )\
+                                                                               \
+    xxx(DisableZeroBlocksThrottlingForYDBBasedDisks,       bool,   false      )\
+                                                                               \
+    xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )\
+    xxx(DoNotStopVolumeTabletOnLockLost,                   bool,   false      )
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
@@ -566,6 +629,8 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
     xxx(AddingUnconfirmedBlobs)                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisks)                             \
+    xxx(LaggingDevicesForMirror2Disks)                                         \
+    xxx(LaggingDevicesForMirror3Disks)                                         \
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -617,10 +682,22 @@ TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
     return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
 }
 
-template <typename T>
-bool IsEmpty(const T& t)
+template <>
+TVector<NProto::TLinkedDiskFillBandwidth> ConvertValue(
+    const google::protobuf::RepeatedPtrField<NProto::TLinkedDiskFillBandwidth>&
+        value)
 {
-    return !t;
+    TVector<NProto::TLinkedDiskFillBandwidth> v;
+    for (const auto& x: value) {
+        v.push_back(x);
+    }
+    return v;
+}
+
+template <typename T>
+bool IsEmpty(const T& value)
+{
+    return !value;
 }
 
 template <>
@@ -664,6 +741,11 @@ IOutputStream& operator <<(
     return out << EVolumePreemptionType_Name(pt);
 }
 
+IOutputStream& operator<<(IOutputStream& out, NProto::EResyncPolicy pt)
+{
+    return out << NProto::EResyncPolicy_Name(pt);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
@@ -690,6 +772,19 @@ void DumpImpl(const TCertificate& value, IOutputStream& os)
         << ", "
         << value.CertPrivateKeyFile
         << " }";
+}
+
+template <>
+void DumpImpl(
+    const TVector<NProto::TLinkedDiskFillBandwidth>& value,
+    IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",<br>";
+        }
+        os << value[i];
+    }
 }
 
 }   // namespace
@@ -774,8 +869,7 @@ void TStorageConfig::SetFeaturesConfig(
     Impl->SetFeaturesConfig(std::move(featuresConfig));
 }
 
-void TStorageConfig::Register(TControlBoard& controlBoard)
-{
+void TStorageConfig::Register(TControlBoard& controlBoard){
 #define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
     controlBoard.RegisterSharedControl(                                        \
         Impl->Control##name,                                                   \
@@ -788,12 +882,14 @@ void TStorageConfig::Register(TControlBoard& controlBoard)
 }
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TStorageConfig::Get##name() const                                         \
-{                                                                              \
-    auto value = Impl->StorageServiceConfig.Get##name();                       \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
-}                                                                              \
-// BLOCKSTORE_CONFIG_GETTER
+    type TStorageConfig::Get##name() const                                     \
+    {                                                                          \
+        bool hasValue = NCloud::HasField(Impl->StorageServiceConfig, #name) && \
+                        !IsEmpty(Impl->StorageServiceConfig.Get##name());      \
+        return hasValue ? ConvertValue<type>(                                  \
+                              Impl->StorageServiceConfig.Get##name())          \
+                        : Default##name;                                       \
+    }   // namespace NCloud::NBlockStore::NStorage
 
 BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 
@@ -1033,6 +1129,23 @@ void AdaptNodeRegistrationParams(
     if (!storageConfig.GetNodeType()) {
         storageConfig.SetNodeType(serverConfig.GetNodeType());
     }
+}
+
+TLinkedDiskFillBandwidth GetLinkedDiskFillBandwidth(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind leaderMediaKind,
+    NCloud::NProto::EStorageMediaKind followerMediaKind)
+{
+    const auto leaderBandwidth = GetBandwidth(config, leaderMediaKind);
+    const auto followerBandwidth = GetBandwidth(config, followerMediaKind);
+
+    return TLinkedDiskFillBandwidth{
+        .Bandwidth =
+            Min(leaderBandwidth.GetReadBandwidth(),
+                followerBandwidth.GetWriteBandwidth()),
+        .IoDepth =
+            Min(leaderBandwidth.GetReadIoDepth(),
+                followerBandwidth.GetWriteIoDepth())};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

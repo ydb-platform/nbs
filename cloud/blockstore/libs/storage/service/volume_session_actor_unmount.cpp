@@ -174,11 +174,13 @@ void TUnmountRequestActor::HandleVolumeRemoveClientResponse(
     Error = msg->GetError();
 
     if (FAILED(Error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Failed to remove client %s from volume %s with code %u",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Failed to remove client %s from volume %s with error: %s",
             ClientId.Quote().data(),
             DiskId.Quote().data(),
-            Error.GetCode());
+            FormatError(Error).data());
 
         if (GetErrorKind(Error) == EErrorKind::ErrorRetriable) {
             // check if volume is not destroyed
@@ -252,7 +254,10 @@ STFUNC(TUnmountRequestActor::StateWork)
         HFunc(TEvServicePrivate::TEvStopVolumeResponse, HandleStopVolumeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

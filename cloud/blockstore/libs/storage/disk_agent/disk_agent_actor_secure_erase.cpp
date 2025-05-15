@@ -10,12 +10,22 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TDiskAgentActor::CanStartSecureErase(const TString& uuid)
+{
+    const auto& name = State->GetDeviceName(uuid);
+    return !SecureEraseDevicesNames.contains(name) &&
+           SecureEraseDevicesNames.size() <
+               AgentConfig->GetMaxParallelSecureErasesAllowed();
+}
+
 void TDiskAgentActor::SecureErase(
     const NActors::TActorContext& ctx,
     const TString& deviceId)
 {
     LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
         "Start secure erase for " << deviceId.Quote());
+
+    SecureEraseDevicesNames.emplace(State->GetDeviceName(deviceId));
 
     auto* actorSystem = ctx.ActorSystem();
     auto replyTo = ctx.SelfID;
@@ -72,7 +82,26 @@ void TDiskAgentActor::HandleSecureEraseDevice(
     const auto& request = ev->Get()->Record;
     const auto& deviceId = request.GetDeviceUUID();
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
+    if (!State->FindDeviceConfig(deviceId)) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Received secure erase for unknown device %s",
+            deviceId.Quote().c_str());
+
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
+                MakeError(
+                    E_NOT_FOUND,
+                    TStringBuilder()
+                        << "Device " << deviceId.Quote() << " not found"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
         "Secure erase device " << deviceId.Quote());
 
     auto& pendingRequests = SecureErasePendingRequests[deviceId];
@@ -83,7 +112,7 @@ void TDiskAgentActor::HandleSecureEraseDevice(
             ev->Cookie,
             ev->Get()->CallContext));
 
-    if (SecureErasePendingRequests.size() > 1 || pendingRequests.size() > 1) {
+    if (!CanStartSecureErase(deviceId)) {
         LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
             "Postpone secure erase for " << deviceId.Quote());
 
@@ -129,23 +158,26 @@ void TDiskAgentActor::HandleSecureEraseCompleted(
 
         SecureErasePendingRequests.erase(it);
     }
+    SecureEraseDevicesNames.erase(State->GetDeviceName(msg->DeviceId));
 
     // erase next device
 
-    while (!SecureErasePendingRequests.empty()) {
-        auto it = SecureErasePendingRequests.begin();
-
-        auto& [deviceId, pendingRequests] = *it;
-
+    TVector<TString> devicesToErase;
+    for (const auto& [deviceUUID, pendingRequests]: SecureErasePendingRequests) {
         Y_DEBUG_ABORT_UNLESS(!pendingRequests.empty());
 
         if (pendingRequests.empty()) {
-            SecureErasePendingRequests.erase(it);
+            devicesToErase.emplace_back(deviceUUID);
             continue;
         }
 
-        SecureErase(ctx, deviceId);
-        break;
+        if (CanStartSecureErase(deviceUUID)) {
+            SecureErase(ctx, deviceUUID);
+        }
+    }
+
+    for (const auto& uuid: devicesToErase) {
+        SecureErasePendingRequests.erase(uuid);
     }
 }
 

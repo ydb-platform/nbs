@@ -91,7 +91,9 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&PartitionsCount);
 
-        Opts.AddLongOption("encryption-mode", "encryption mode [no|aes-xts|test]")
+        Opts.AddLongOption(
+                "encryption-mode",
+                "encryption mode [no|aes-xts|default|test]")
             .RequiredArgument("STR")
             .Handler1T<TString>([this] (const auto& s) {
                 EncryptionMode = EncryptionModeFromString(s);

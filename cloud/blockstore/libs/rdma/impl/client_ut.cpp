@@ -14,6 +14,8 @@
 
 namespace NCloud::NBlockStore::NRdma {
 
+using namespace std::chrono_literals;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequestContext: public NRdma::TNullContext
@@ -281,6 +283,120 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, error.GetCode());
     }
 
+    Y_UNIT_TEST(ShouldCancelRequests)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->MaxReconnectDelay = 1s;
+        clientConfig->MaxResponseDelay = 1s;
+
+        auto logging =
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+
+        client->Start();
+        Y_DEFER
+        {
+            client->Stop();
+        };
+
+        auto clientEndpoint = client->StartEndpoint("::", 10020);
+
+        auto ep = clientEndpoint.GetValue(5s);
+
+        struct TResponse
+        {
+            bool Received = false;
+            TStringBuf Buffer;
+            ui32 Status = 0;
+            size_t Bytes = 0;
+        };
+
+        auto makeContext = [](TResponse& response, TManualEvent& ev)
+        {
+            auto ctx = std::make_unique<TRequestContext>();
+            ctx->Handler = [&](TStringBuf requestBuffer,
+                               TStringBuf responseBuffer,
+                               ui32 status,
+                               size_t responseBytes)
+            {
+                Y_UNUSED(requestBuffer);
+
+                response =
+                    TResponse{true, responseBuffer, status, responseBytes};
+                ev.Signal();
+            };
+            return ctx;
+        };
+
+        TManualEvent ev1;
+        TResponse response1;
+
+        const size_t requestBytes = 1024;
+        const size_t responseBytes = 1024;
+        auto r1 = ep->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            makeContext(response1, ev1),
+            requestBytes,
+            responseBytes);
+        auto request1 = r1.ExtractResult();
+        auto callContext = MakeIntrusive<TCallContext>();
+
+        // make sure that time spent on request processing before SendRequest
+        // won't be counted towards rdma timeout
+        auto retryDelay =
+            DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
+
+        callContext->SetRequestStartedCycles(GetCycleCount() - retryDelay);
+        auto reqId1 = ep->SendRequest(std::move(request1), callContext);
+
+        TManualEvent ev2;
+        TResponse response2;
+
+        auto r2 = ep->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            makeContext(response2, ev2),
+            requestBytes,
+            responseBytes);
+        auto request2 = r2.ExtractResult();
+
+        auto reqId2 = ep->SendRequest(std::move(request2), callContext);
+
+        ep->CancelRequest(reqId2);
+
+        ev2.WaitT(5s);
+        UNIT_ASSERT(response2.Received);
+        UNIT_ASSERT_VALUES_EQUAL((ui32)RDMA_PROTO_FAIL, response2.Status);
+
+        NProto::TError error;
+        bool parsed = error.ParseFromArray(
+            response2.Buffer.Head(response2.Bytes).data(),
+            response2.Bytes);
+
+        UNIT_ASSERT(parsed);
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, error.GetCode());
+
+        UNIT_ASSERT(!response1.Received);
+
+        ep->CancelRequest(reqId1);
+
+        ev1.WaitT(5s);
+        UNIT_ASSERT(response1.Received);
+        UNIT_ASSERT_VALUES_EQUAL((ui32)RDMA_PROTO_FAIL, response1.Status);
+
+        parsed = error.ParseFromArray(
+            response1.Buffer.Head(response1.Bytes).data(),
+            response1.Bytes);
+
+        UNIT_ASSERT(parsed);
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, error.GetCode());
+    }
+
     Y_UNIT_TEST(ShouldReconnect)
     {
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
@@ -385,6 +501,51 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         ev.WaitT(TDuration::Seconds(5));
         UNIT_ASSERT(response.Received);
         UNIT_ASSERT_VALUES_EQUAL(0, response.Status);
+    }
+
+    Y_UNIT_TEST(ShouldForceReconnect)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->MaxReconnectDelay = TDuration::Seconds(1);
+        clientConfig->MaxResponseDelay = TDuration::Seconds(1);
+        clientConfig->WaitMode = EWaitMode::AdaptiveWait;
+
+        auto logging =
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+
+        client->Start();
+        Y_DEFER
+        {
+            client->Stop();
+        };
+
+        auto clientEndpoint = client->StartEndpoint("::", 10020);
+        auto ep = clientEndpoint.GetValue(TDuration::Seconds(5));
+
+        // Increase reconnect timer delay up to "MaxReconnectDelay".
+        for (int i = 0; i < 10; i++) {
+            Disconnect(testContext);
+        }
+
+        const auto now = TInstant::Now();
+        ep->TryForceReconnect();
+
+        // wait for receive queue to initialize 2nd time after reconnect
+        ui64 recv;
+        do {
+            recv = AtomicGet(testContext->PostRecvCounter);
+        } while (recv != 2 * clientConfig->QueueSize);
+
+        // Force reconnect should be less than "MaxReconnectDelay".
+        const auto elapsed = now - TInstant::Now();
+        UNIT_ASSERT_LT(elapsed, clientConfig->MaxReconnectDelay);
     }
 
     Y_UNIT_TEST(ShouldHandleErrors)

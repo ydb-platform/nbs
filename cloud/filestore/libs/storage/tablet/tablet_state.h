@@ -2,13 +2,12 @@
 
 #include "public.h"
 
-#include "tablet_database.h"
-#include "tablet_tx.h"
-
 #include "checkpoint.h"
 #include "helpers.h"
 #include "rebase_logic.h"
 #include "session.h"
+#include "tablet_database.h"
+#include "tablet_tx.h"
 
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 #include <cloud/filestore/libs/storage/tablet/model/alloc.h>
@@ -16,6 +15,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
+#include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
@@ -178,6 +178,7 @@ private:
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     TNodeToSessionCounters NodeToSessionCounters;
+    ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
@@ -292,6 +293,19 @@ public:
     const NProto::TFileSystemStats& GetFileSystemStats() const
     {
         return FileSystemStats;
+    }
+
+    ui64 GetMinDeletionMarkersCountSinceTabletStart() const
+    {
+        return MinDeletionMarkersCountSinceTabletStart;
+    }
+
+    void UpdateMinDeletionMarkersCountSinceTabletStart()
+    {
+        MinDeletionMarkersCountSinceTabletStart = Min(
+            MinDeletionMarkersCountSinceTabletStart,
+            FileSystemStats.GetDeletionMarkersCount()
+        );
     }
 
     const TNodeToSessionCounters& GetNodeToSessionCounters() const
@@ -598,7 +612,8 @@ public:
         const TVector<NProto::TSessionHandle>& handles,
         const TVector<NProto::TSessionLock>& locks,
         const TVector<NProto::TDupCacheEntry>& cacheEntries,
-        const TVector<NProto::TSessionHistoryEntry>& sessionsHistory);
+        const TVector<NProto::TSessionHistoryEntry>& sessionsHistory,
+        const NProto::TSessionOptions& sessionOptions);
 
     TSession* CreateSession(
         TIndexTabletDatabase& db,
@@ -608,7 +623,8 @@ public:
         const TString& originFqdn,
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(
         TIndexTabletDatabase& db,
@@ -626,10 +642,10 @@ public:
         ui64 sessionSeqNo,
         bool readOnly,
         const NActors::TActorId& owner);
-    void OrphanSession(const NActors::TActorId& owner, TInstant deadline);
+    void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
     void ResetSession(TIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
-    TVector<TSession*> GetTimeoutedSessions(TInstant now) const;
+    TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
     TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
 
@@ -649,13 +665,15 @@ public:
 private:
     TSession* CreateSession(
         const NProto::TSession& proto,
-        TInstant deadline);
+        TInstant inactivityDeadline,
+        const NProto::TSessionOptions& sessionOptions);
 
     TSession* CreateSession(
         const NProto::TSession& proto,
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(TSession* session);
 
@@ -795,10 +813,10 @@ public:
 
     using TBackpressureValues = TBackpressureThresholds;
 
-    bool IsWriteAllowed(
+    static bool IsWriteAllowed(
         const TBackpressureThresholds& thresholds,
         const TBackpressureValues& values,
-        TString* message) const;
+        TString* message);
 
     //
     // FreshBytes
@@ -842,6 +860,11 @@ public:
         ui64 itemLimit,
         ui64 chunkId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
+
+    ui32 GetFreshBytesItemCount() const;
+
+private:
+    void UpdateFreshBytesItemCount();
 
     //
     // FreshBlocks
@@ -888,7 +911,7 @@ public:
     //
 
 public:
-    bool LoadMixedBlocks(TIndexTabletDatabase& db, ui32 rangeId);
+    bool LoadMixedBlocks(IIndexTabletDatabase& db, ui32 rangeId);
     void ReleaseMixedBlocks(ui32 rangeId);
     void ReleaseMixedBlocks(const TSet<ui32>& ranges);
 
@@ -941,6 +964,8 @@ public:
         ui32 rangeId,
         /*const*/ TMixedBlobMeta& blob,
         const TMixedBlobStats& blobStats);
+
+    TBlobMetaMapStats GetBlobMetaMapStats() const;
 
     ui32 GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex) const;
     ui32 GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex, ui32 blocksCount) const;

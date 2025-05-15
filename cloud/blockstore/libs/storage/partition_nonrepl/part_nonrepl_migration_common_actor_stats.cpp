@@ -35,6 +35,10 @@ void TNonreplicatedPartitionMigrationCommonActor::HandlePartCounters(
 void TNonreplicatedPartitionMigrationCommonActor::SendStats(
     const TActorContext& ctx)
 {
+    if (!StatActorId) {
+        return;
+    }
+
     auto stats = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
         DiagnosticsConfig->GetHistogramCounterOptions());

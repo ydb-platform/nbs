@@ -8,8 +8,8 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_test.h>
-
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
@@ -954,6 +954,86 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutForInstantRetryFlag)
+    {
+        NProto::TClientAppConfig configProto;
+        auto& clientConfigProto = *configProto.MutableClientConfig();
+        clientConfigProto.SetRetryTimeoutIncrement(3'000);
+        clientConfigProto.SetConnectionErrorMaxRetryTimeout(7'000);
+        // Should not be used in this test.
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(500);
+        clientConfigProto.SetYDBBasedDiskInitialRetryTimeout(500);
+        auto config = std::make_shared<TClientAppConfig>(configProto);
+
+        auto policy = CreateRetryPolicy(config, std::nullopt);
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+            UNIT_ASSERT(!state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+        }
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+            UNIT_ASSERT(!state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+            UNIT_ASSERT(!state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(
+                state,
+                MakeError(E_GRPC_UNAVAILABLE, "", flags));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(
+                state,
+                MakeError(E_GRPC_UNAVAILABLE, "", flags));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
         }
     }
 

@@ -203,7 +203,10 @@ STFUNC(TGetShardStatsActor::StateWork)
             HandleGetStorageStatsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -292,7 +295,10 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(ActiveSessionsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(OrphanSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(SessionCleanupAttempts, EMetricType::MT_DERIVATIVE);
 
     REGISTER_AGGREGATABLE_SUM(ReassignCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(WritableChannelCount, EMetricType::MT_ABSOLUTE);
@@ -343,7 +349,15 @@ void TIndexTabletActor::TMetrics::Register(
         InMemoryIndexStateIsExhaustive,
         EMetricType::MT_ABSOLUTE);
 
+    REGISTER_AGGREGATABLE_SUM(
+        MixedIndexLoadedRanges,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        MixedIndexOffloadedRanges,
+        EMetricType::MT_ABSOLUTE);
+
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(FreshBytesItemCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(DeletedFreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBlobsCount, EMetricType::MT_ABSOLUTE);
@@ -357,6 +371,8 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(CMMixedBlobsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(CMDeletionMarkersCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(CMGarbageBlocksCount, EMetricType::MT_ABSOLUTE);
+
+    REGISTER_AGGREGATABLE_SUM(IsWriteAllowed, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
@@ -440,6 +456,7 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_REQUEST(RenameNode);
     REGISTER_REQUEST(UnlinkNode);
     REGISTER_REQUEST(StatFileStore);
+    REGISTER_REQUEST(GetNodeXAttr);
 
     REGISTER_REQUEST(Compaction);
     REGISTER_AGGREGATABLE_SUM(Compaction.DudCount, EMetricType::MT_DERIVATIVE);
@@ -479,7 +496,10 @@ void TIndexTabletActor::TMetrics::Update(
     const TNodeIndexCacheStats& nodeIndexCacheStats,
     const TNodeToSessionCounters& nodeToSessionCounters,
     const TMiscNodeStats& miscNodeStats,
-    const TInMemoryIndexStateStats& inMemoryIndexStateStats)
+    const TInMemoryIndexStateStats& inMemoryIndexStateStats,
+    const TBlobMetaMapStats& blobMetaMapStats,
+    const TIndexTabletState::TBackpressureThresholds& backpressureThresholds,
+    const TIndexTabletState::TBackpressureValues& backpressureValues)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -494,6 +514,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UsedLocksCount, stats.GetUsedLocksCount());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
+    Store(FreshBytesItemCount, stats.GetFreshBytesItemCount());
     Store(DeletedFreshBytesCount, stats.GetDeletedFreshBytesCount());
     Store(MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
     Store(MixedBlobsCount, stats.GetMixedBlobsCount());
@@ -505,6 +526,14 @@ void TIndexTabletActor::TMetrics::Update(
     Store(CMMixedBlobsCount, compactionStats.TotalBlobsCount);
     Store(CMDeletionMarkersCount, compactionStats.TotalDeletionsCount);
     Store(CMGarbageBlocksCount, compactionStats.TotalGarbageBlocksCount);
+
+    TString backpressureReason;
+    Store(
+        IsWriteAllowed,
+        TIndexTabletActor::IsWriteAllowed(
+            backpressureThresholds,
+            backpressureValues,
+            &backpressureReason));
 
     Store(MaxReadIops, performanceProfile.GetMaxReadIops());
     Store(MaxWriteIops, performanceProfile.GetMaxWriteIops());
@@ -541,6 +570,8 @@ void TIndexTabletActor::TMetrics::Update(
 
     Store(StatefulSessionsCount, sessionsStats.StatefulSessionsCount);
     Store(StatelessSessionsCount, sessionsStats.StatelessSessionsCount);
+    Store(ActiveSessionsCount, sessionsStats.ActiveSessionsCount);
+    Store(OrphanSessionsCount, sessionsStats.OrphanSessionsCount);
     Store(WritableChannelCount, channelsStats.WritableChannelCount);
     Store(UnwritableChannelCount, channelsStats.UnwritableChannelCount);
     Store(ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
@@ -554,6 +585,9 @@ void TIndexTabletActor::TMetrics::Update(
     Store(InMemoryIndexStateNodeAttrsCount, inMemoryIndexStateStats.NodeAttrsCount);
     Store(InMemoryIndexStateNodeAttrsCapacity, inMemoryIndexStateStats.NodeAttrsCapacity);
     Store(InMemoryIndexStateIsExhaustive, inMemoryIndexStateStats.IsNodeRefsExhaustive);
+
+    Store(MixedIndexLoadedRanges, blobMetaMapStats.LoadedRanges);
+    Store(MixedIndexOffloadedRanges, blobMetaMapStats.OffloadedRanges);
 
     Store(
         NodesOpenForWritingBySingleSession,
@@ -590,6 +624,7 @@ void TIndexTabletActor::TMetrics::Update(
     RenameNode.UpdatePrev(now);
     UnlinkNode.UpdatePrev(now);
     StatFileStore.UpdatePrev(now);
+    GetNodeXAttr.UpdatePrev(now);
 
     Cleanup.UpdatePrev(now);
     Flush.UpdatePrev(now);
@@ -698,7 +733,10 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         CalculateNodeIndexCacheStats(),
         GetNodeToSessionCounters(),
         GetMiscNodeStats(),
-        GetInMemoryIndexStateStats());
+        GetInMemoryIndexStateStats(),
+        GetBlobMetaMapStats(),
+        BuildBackpressureThresholds(),
+        GetBackpressureValues());
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -748,7 +786,10 @@ void TIndexTabletActor::HandleUpdateCounters(
         CalculateNodeIndexCacheStats(),
         GetNodeToSessionCounters(),
         GetMiscNodeStats(),
-        GetInMemoryIndexStateStats());
+        GetInMemoryIndexStateStats(),
+        GetBlobMetaMapStats(),
+        BuildBackpressureThresholds(),
+        GetBackpressureValues());
     SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;
@@ -843,6 +884,8 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetSuffer(Metrics.Suffer.load(std::memory_order_relaxed));
 
     stats->SetTotalBlocksCount(GetFileSystem().GetBlocksCount());
+
+    stats->SetFreshBytesItemCount(GetFreshBytesItemCount());
 }
 
 void TIndexTabletActor::HandleGetStorageStats(

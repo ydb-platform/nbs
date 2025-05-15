@@ -37,11 +37,13 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 static const TString DefaultDiskId = "path_to_test_volume";
+static const TString DefaultCloudId = "test_cloud";
+static const TString DefaultFolderId = "test_folder";
 
 ////////////////////////////////////////////////////////////////////////////////
 
 using TYdbStatsCallback =
-    std::function<NThreading::TFuture<NProto::TError>(const TVector<TYdbRow>& stats)>;
+    std::function<NThreading::TFuture<NProto::TError>(const TVector<TYdbStatsRow>& stats)>;
 
 class TYdbStatsMock:
     public IYdbVolumesStatsUploader
@@ -57,10 +59,9 @@ public:
     virtual ~TYdbStatsMock() = default;
 
     NThreading::TFuture<NProto::TError> UploadStats(
-        const TVector<TYdbRow>& stats,
-        const TVector<TYdbBlobLoadMetricRow>&) override
+        const TYdbRowData& rows) override
     {
-        return Callback(stats);
+        return Callback(rows.Stats);
     }
 
     void Start() override
@@ -95,7 +96,9 @@ NMonitoring::TDynamicCounters::TCounterPtr GetCounterToCheck(
     auto volumeCounters = counters.GetSubgroup("counters", "blockstore")
         ->GetSubgroup("component", "service_volume")
         ->GetSubgroup("host", "cluster")
-        ->GetSubgroup("volume", DefaultDiskId);
+        ->GetSubgroup("volume", DefaultDiskId)
+        ->GetSubgroup("cloud", DefaultCloudId)
+        ->GetSubgroup("folder", DefaultFolderId);
     return volumeCounters->GetCounter("MixedBytesCount");
 }
 
@@ -131,6 +134,8 @@ void RegisterVolume(
 {
     NProto::TVolume volume;
     volume.SetDiskId(diskId);
+    volume.SetCloudId(DefaultCloudId);
+    volume.SetFolderId(DefaultFolderId);
     volume.SetStorageMediaKind(kind);
     volume.SetIsSystem(isSystem);
     volume.SetPartitionsCount(1);
@@ -171,7 +176,8 @@ void SendDiskStats(
         0,
         0,
         volumeOptions & EVolumeTestOptions::VOLUME_HASCHECKPOINT,
-        NBlobMetrics::TBlobLoadMetrics());
+        NBlobMetrics::TBlobLoadMetrics(),
+        NKikimrTabletBase::TMetrics());
 
     auto volumeMsg = std::make_unique<TEvStatsService::TEvVolumeSelfCounters>(
         diskId,
@@ -893,7 +899,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
     Y_UNIT_TEST(ShouldReportYdbStatsInBatches)
     {
-        auto callback = [] (const TVector<TYdbRow>& stats)
+        auto callback = [] (const TVector<TYdbStatsRow>& stats)
         {
             Y_UNUSED(stats);
             return NThreading::MakeFuture(MakeError(S_OK));
@@ -917,7 +923,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldRetryStatsUploadInCaseOfFailure)
     {
         ui32 attemptCount = 0;
-        auto callback = [&] (const TVector<TYdbRow>& stats)
+        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
         {
             UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
 
@@ -949,7 +955,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         bool failUpload = true;
         ui32 callCnt = 0;
 
-        auto callback = [&] (const TVector<TYdbRow>& stats)
+        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
         {
             UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
 
@@ -993,7 +999,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldCorrectlyPrepareYdbStatsRequests)
     {
         TVector<TVector<TString>> batches;
-        auto callback = [&] (const TVector<TYdbRow>& stats)
+        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
         {
             TVector<TString> batch;
             for (const auto& x: stats) {
@@ -1045,7 +1051,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     {
         TVector<TVector<TString>> batches;
         bool uploadSeen = false;
-        auto callback = [&] (const TVector<TYdbRow>& stats)
+        auto callback = [&] (const TVector<TYdbStatsRow>& stats)
         {
             Y_UNUSED(stats);
             uploadSeen = true;
@@ -1121,6 +1127,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("component", "service_volume")
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", "vol0")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
                 ->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(42, actual);
@@ -1132,6 +1140,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("component", "service_volume")
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", "vol0")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
                 ->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(100500, actual);

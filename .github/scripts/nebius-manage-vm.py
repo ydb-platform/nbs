@@ -5,6 +5,7 @@ import os
 import random
 import string
 import time
+import grpc
 from typing import Optional
 import asyncio
 import requests
@@ -15,7 +16,7 @@ from github import Github
 
 from nebius.sdk import SDK
 from nebius.aio.service_error import RequestError
-from nebius.api.nebius.common.v1 import ResourceMetadata
+from nebius.api.nebius.common.v1 import ResourceMetadata, GetByNameRequest
 from nebius.api.nebius.compute.v1 import (
     DiskServiceClient,
     DiskSpec,
@@ -31,7 +32,6 @@ from nebius.api.nebius.compute.v1 import (
     GetInstanceRequest,
     DeleteInstanceRequest,
     DeleteDiskRequest,
-    ListDisksRequest,
     ExistingDisk,
 )
 
@@ -516,13 +516,23 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
 
     except RequestError as e:
         logger.error("Failed to create VM with request: %s", instance_request)
-        await remove_disk_by_id(sdk, args, disk_id)
-        logger.error("Response: %s", str(e.status), exc_info=True)
+        logger.error("Response: %s", str(e), exc_info=True)
         if request is not None:
             logger.error("Removing created instance with ID %s", request.resource_id)
-            remove_vm_by_id(sdk, request.resource_id)
+            await remove_vm_by_id(sdk, request.resource_id)
+            await remove_disk_by_id(sdk, args, disk_id)
+        else:
+            await remove_disk_by_id(sdk, args, disk_id)
         raise e
+
     instance_id = request.resource_id
+    logger.info("Operation status: %s", str(request.status()))
+    if request.status().code != grpc.StatusCode.OK:
+        logger.error("Failed to create VM with request: %s", instance_request)
+        await remove_vm_by_id(sdk, instance_id)
+        await remove_disk_by_id(sdk, args, disk_id)
+        raise RequestError("Failed to create VM")
+
     instance = await service.get(GetInstanceRequest(id=instance_id))
     name = instance.metadata.name
     logger.info("Created VM %s", instance)
@@ -608,12 +618,11 @@ async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name:
     disk_id = None
     service = DiskServiceClient(sdk)
     try:
-        result = await service.list(ListDisksRequest(parent_id=args.parent_id))
-        for disk in result.items:
-            if disk.metadata.name == DISK_NAME_PREFIX + instance_name:
-                disk_id = disk.metadata.id
-                break
-
+        request = GetByNameRequest(
+            parent_id=args.parent_id, name=DISK_NAME_PREFIX + instance_name
+        )
+        response = await service.get_by_name(request)
+        disk_id = response.metadata.id
         if disk_id is None:
             logger.error(
                 "Failed to find disk with name %s", DISK_NAME_PREFIX + instance_name
@@ -622,9 +631,11 @@ async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name:
 
     except Exception as e:
         logger.exception(
-            "Failed to get Disk with name %s", instance_name, exc_info=True
+            "Failed to get Disk with name %s, response: %s",
+            instance_name,
+            response,
+            exc_info=True,
         )
-        logger.error("Response: %s", result, exc_info=True)
         raise e
 
     await remove_disk_by_id(sdk, args, disk_id)

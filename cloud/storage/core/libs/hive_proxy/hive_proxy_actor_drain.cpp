@@ -113,7 +113,7 @@ STFUNC(TDrainNodeRequestActor::StateWork)
         HFunc(NKikimr::TEvHive::TEvDrainNodeResult, HandleDrainNodeResult);
 
         default:
-            HandleUnexpectedEvent(ev, LogComponent);
+            HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             break;
     }
 }

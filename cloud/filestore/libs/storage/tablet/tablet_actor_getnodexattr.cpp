@@ -129,6 +129,7 @@ void TIndexTabletActor::CompleteTx_GetNodeXAttr(
         response->Record,
         args.RequestInfo->CallContext,
         ctx);
+    Metrics.GetNodeXAttr.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

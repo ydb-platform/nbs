@@ -73,6 +73,12 @@ message TVolumeMeta
     // or if the volume has been restarted/reallocated (i.e. the partition has
     // restarted), or if the DR has replaced all lagging devices.
     TLaggingAgentsInfo LaggingAgentsInfo = 17;
+
+    // Whether active resync should emit critical events for found mismatches.
+    bool AlertResyncChecksumMismatch = 18;
+
+    // Ids of devices lost by disk agent.
+    repeated string LostDeviceIds = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -25,6 +25,8 @@ RECURSE_FOR_TESTS(
     placement_group_service_test
     private_service_nemesis_test
     private_service_test
+    with_broken_checkpoints_test
+    with_broken_checkpoints_nemesis_test
     snapshot_service_nemesis_test
     snapshot_service_test
     testcommon

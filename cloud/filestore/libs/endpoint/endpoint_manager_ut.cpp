@@ -473,7 +473,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
     {
         TString id = "id";
         TTempDir socketDir("./" + CreateGuidAsString());
-        auto unixSocketPath = socketDir.Path() / TFsPath("socket1/fs1.sock");
+        auto unixSocketPath = socketDir.Path() / TFsPath("socket1/disk1/fs1.sock");
         TString unixSocket = unixSocketPath.GetPath();
 
         UNIT_ASSERT(!unixSocketPath.Parent().Exists());

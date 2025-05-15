@@ -18,6 +18,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/history.h>
 #include <cloud/storage/core/libs/common/thread.h>
@@ -54,6 +55,7 @@ constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Seconds(60);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
+constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
 
 constexpr size_t REQUEST_HISTORY_SIZE = 1024;
 
@@ -86,6 +88,7 @@ struct TRequest
 
     TCallContextPtr CallContext;
     ui32 ReqId = 0;
+    ui64 ClientReqId = 0;
 
     TPooledBuffer InBuffer{};
     TPooledBuffer OutBuffer{};
@@ -108,8 +111,9 @@ class TActiveRequests
 {
 private:
     THashMap<ui32, TRequestPtr> Requests;
-    THistory<ui32> CompletedRequests = THistory<ui32>(REQUEST_HISTORY_SIZE);
-    THistory<ui32> TimedOutRequests = THistory<ui32>(REQUEST_HISTORY_SIZE);
+    THistory<ui32> CompletedRequests{REQUEST_HISTORY_SIZE};
+    THistory<ui32> TimedOutRequests{REQUEST_HISTORY_SIZE};
+    THistory<ui32> CancelledRequests{REQUEST_HISTORY_SIZE};
 
 public:
     ui32 CreateId()
@@ -169,6 +173,29 @@ public:
     bool Completed(ui32 reqId) const
     {
         return CompletedRequests.Contains(reqId);
+    }
+
+    [[nodiscard]] bool Cancelled(ui32 reqId) const
+    {
+        return CancelledRequests.Contains(reqId);
+    }
+
+    TSimpleList<TRequest> PopCancelledRequests(
+        const THashSet<ui64>& idsToCancel)
+    {
+        TSimpleList<TRequest> cancelledReqs;
+        for (auto& [rdmaReqId, req]: Requests) {
+            if (idsToCancel.contains(req->ClientReqId)) {
+                CancelledRequests.Put(rdmaReqId);
+                cancelledReqs.Enqueue(std::move(req));
+            }
+        }
+
+        for (const auto& req: cancelledReqs) {
+            Requests.erase(req.ReqId);
+        }
+
+        return cancelledReqs;
     }
 
     TVector<TRequestPtr> PopTimedOutRequests(ui64 timeoutCycles)
@@ -323,40 +350,83 @@ struct TEndpointCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TReconnect
+class TReconnect
 {
+private:
     const TDuration MaxDelay;
 
-    TDuration Delay;
+    std::optional<TBackoffDelayProvider> DelayProvider;
     TTimerHandle Timer;
     TAdaptiveLock Lock;
 
-    TReconnect(TDuration maxDelay)
+public:
+    explicit TReconnect(TDuration maxDelay)
         : MaxDelay(maxDelay)
     {}
+
+    ~TReconnect() = default;
 
     void Cancel()
     {
         auto guard = Guard(Lock);
-
-        Delay = TDuration::Zero();
-        Timer.Clear();
+        CancelLocked();
     }
 
-    void Schedule(TDuration minDelay = MIN_RECONNECT_DELAY)
+    void Schedule()
+    {
+        Schedule(MIN_RECONNECT_DELAY);
+    }
+
+    void Schedule(TDuration minDelay)
     {
         auto guard = Guard(Lock);
+        ScheduleLocked(minDelay, TDuration());
+    }
 
-        Delay = Min(Delay ? Delay * 2 : minDelay, MaxDelay);
-        Timer.Set(Delay);
+    void InstantReschedule(TDuration minDelay)
+    {
+        auto guard = Guard(Lock);
+        CancelLocked();
+        ScheduleLocked(minDelay, INSTANT_RECONNECT_DELAY);
     }
 
     bool Hanging() const
     {
         auto guard = Guard(Lock);
-
-        return Delay >= MaxDelay / 2;
+        if (!DelayProvider) {
+            return false;
+        }
+        return DelayProvider->GetDelay() >= MaxDelay / 2;
     }
+
+    int Handle() const
+    {
+        return Timer.Handle();
+    }
+
+private:
+    void CancelLocked()
+    {
+        DelayProvider.reset();
+        Timer.Clear();
+    }
+
+    void ScheduleLocked(TDuration minDelay, TDuration initialDelay)
+    {
+        if (!DelayProvider) {
+            DelayProvider.emplace(minDelay, MaxDelay);
+        }
+        const auto delay =
+            initialDelay ? initialDelay : DelayProvider->GetDelayAndIncrease();
+        Timer.Set(delay);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TClientRequestId: TListNode<TClientRequestId>
+{
+    ui64 ReqId = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -429,11 +499,15 @@ private:
     ui16 Generation = Max<ui16>();
 
     TLockFreeList<TRequest> InputRequests;
+    TLockFreeList<TClientRequestId> CancelRequests;
+    TEventHandle CancelRequestEvent;
     TEventHandle RequestEvent;
     TEventHandle DisconnectEvent;
 
     TSimpleList<TRequest> QueuedRequests;
     TActiveRequests ActiveRequests;
+
+    std::atomic<ui64> ReqIdPool{0};
 
 public:
     static TClientEndpoint* FromEvent(rdma_cm_event* event)
@@ -473,14 +547,17 @@ public:
         std::unique_ptr<TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) noexcept override;
-    void SendRequest(
+    ui64 SendRequest(
         TClientRequestPtr creq,
         TCallContextPtr callContext) noexcept override;
+    void CancelRequest(ui64 reqId) noexcept override;
+    void TryForceReconnect() noexcept override;
     TFuture<void> Stop() noexcept override;
 
     // called from CQ thread
     void HandleCompletionEvent(ibv_wc* wc) override;
     bool HandleInputRequests();
+    bool HandleCancelRequests();
     bool HandleCompletionEvents();
     bool AbortRequests() noexcept;
     bool Flushed() const;
@@ -497,6 +574,7 @@ private:
     void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status);
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
+    ui64 GetNewReqId() noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -533,7 +611,7 @@ TClientEndpoint::TClientEndpoint(
     // user data attached to connection events
     Connection->context = this;
 
-    Log.SetFormatter([=](ELogPriority p, TStringBuf msg) {
+    Log.SetFormatter([=, this](ELogPriority p, TStringBuf msg) {
         Y_UNUSED(p);
         return TStringBuilder() << "[" << Id << "] " << msg;
     });
@@ -751,12 +829,14 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
 }
 
 // implements IClientEndpoint
-void TClientEndpoint::SendRequest(
+ui64 TClientEndpoint::SendRequest(
     TClientRequestPtr creq,
     TCallContextPtr callContext) noexcept
 {
     TRequestPtr req(static_cast<TRequest*>(creq.release()));
     req->CallContext = std::move(callContext);
+
+    auto clientReqId = GetNewReqId();
 
     LWTRACK(
         RequestEnqueued,
@@ -764,12 +844,11 @@ void TClientEndpoint::SendRequest(
         req->CallContext->RequestId);
 
     if (!CheckState(EEndpointState::Connected)) {
-        AbortRequest(
-            std::move(req),
-            Status,
-            "endpoint is unavailable");
-        return;
+        AbortRequest(std::move(req), Status, "endpoint is unavailable");
+        return clientReqId;
     }
+
+    req->ClientReqId = clientReqId;
 
     Counters->RequestEnqueued();
     InputRequests.Enqueue(std::move(req));
@@ -777,6 +856,7 @@ void TClientEndpoint::SendRequest(
     if (WaitMode == EWaitMode::Poll) {
         RequestEvent.Set();
     }
+    return clientReqId;
 }
 
 bool TClientEndpoint::HandleInputRequests()
@@ -797,6 +877,9 @@ bool TClientEndpoint::HandleInputRequests()
 
 void TClientEndpoint::HandleQueuedRequests()
 {
+    if (!CheckState(EEndpointState::Connected)) {
+        return;
+    }
     while (QueuedRequests) {
         auto* send = SendQueue.Pop();
         if (!send) {
@@ -810,6 +893,77 @@ void TClientEndpoint::HandleQueuedRequests()
         Counters->RequestDequeued();
         SendRequest(std::move(req), send);
     }
+}
+
+void TClientEndpoint::CancelRequest(ui64 reqId) noexcept
+{
+    if (!CheckState(EEndpointState::Connected)) {
+        return;
+    }
+
+    auto reqIdForQueue = std::make_unique<TClientRequestId>();
+    reqIdForQueue->ReqId = reqId;
+    Counters->RequestEnqueued();
+    CancelRequests.Enqueue(std::move(reqIdForQueue));
+
+    if (WaitMode == EWaitMode::Poll) {
+        CancelRequestEvent.Set();
+    }
+}
+
+void TClientEndpoint::TryForceReconnect() noexcept
+{
+    switch (State) {
+        case EEndpointState::ResolvingAddress:
+        case EEndpointState::ResolvingRoute:
+        case EEndpointState::Connected:
+            return;
+        case EEndpointState::Connecting:
+        case EEndpointState::Disconnecting:
+        case EEndpointState::Disconnected:
+            break;
+    }
+
+    RDMA_DEBUG("Scheduling force reconnect");
+    Reconnect.InstantReschedule(MIN_CONNECT_TIMEOUT / 2);
+}
+
+bool TClientEndpoint::HandleCancelRequests()
+{
+    if (WaitMode == EWaitMode::Poll) {
+        CancelRequestEvent.Clear();
+    }
+
+    auto requests = CancelRequests.DequeueAll();
+    if (!requests) {
+        return false;
+    }
+    THashSet<ui64> reqsToCancel;
+
+    for (const auto& reqId: requests) {
+        reqsToCancel.emplace(reqId.ReqId);
+    }
+
+    // We should filter input and queued requests from cancelled ones to not
+    // lose cancel requests.
+    QueuedRequests.Append(InputRequests.DequeueAll());
+
+    auto cancelledReqs = QueuedRequests.DequeueIf(
+        [&](const TRequest& req)
+        { return reqsToCancel.contains(req.ClientReqId); });
+
+    cancelledReqs.Append(ActiveRequests.PopCancelledRequests(reqsToCancel));
+
+    const bool ret = !!cancelledReqs;
+
+    while (auto req = cancelledReqs.Dequeue()) {
+        AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
+    }
+
+    // We move requests from input to queued, so we should handle this new
+    // requests.
+    HandleQueuedRequests();
+    return ret;
 }
 
 bool TClientEndpoint::AbortRequests() noexcept
@@ -1013,6 +1167,11 @@ void TClientEndpoint::SendRequestCompleted(
         RDMA_INFO("SEND " << TWorkRequestId(send->wr.wr_id)
             << ": request has been completed before receiving send wc");
 
+    } else if (ActiveRequests.Cancelled(reqId)) {
+        RDMA_INFO(
+            "SEND " << TWorkRequestId(send->wr.wr_id)
+                    << ": request was cancelled before receiving send wc");
+
     } else {
         RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
             << ": request not found")
@@ -1116,7 +1275,7 @@ void TClientEndpoint::SetConnection(NVerbs::TConnectionPtr connection) noexcept
 
 int TClientEndpoint::ReconnectTimerHandle() const
 {
-    return Reconnect.Timer.Handle();
+    return Reconnect.Handle();
 }
 
 void TClientEndpoint::FlushQueues() noexcept
@@ -1185,6 +1344,11 @@ void TClientEndpoint::FreeRequest(TRequest* req) noexcept
         SendBuffers.ReleaseBuffer(req->InBuffer);
         RecvBuffers.ReleaseBuffer(req->OutBuffer);
     }
+}
+
+ui64 TClientEndpoint::GetNewReqId() noexcept
+{
+    return ReqIdPool.fetch_add(1);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1342,6 +1506,7 @@ private:
         Completion = 0,
         Request = 1,
         Disconnect = 2,
+        CancelRequest = 3,
     };
 
 private:
@@ -1414,6 +1579,11 @@ public:
                 PtrEventTag(endpoint, EPollEvent::Request));
 
             PollHandle.Attach(
+                endpoint->CancelRequestEvent.Handle(),
+                EPOLLIN,
+                PtrEventTag(endpoint, EPollEvent::CancelRequest));
+
+            PollHandle.Attach(
                 endpoint->DisconnectEvent.Handle(),
                 EPOLLIN,
                 PtrEventTag(endpoint, EPollEvent::Disconnect));
@@ -1427,6 +1597,7 @@ public:
         if (Config->WaitMode == EWaitMode::Poll) {
             PollHandle.Detach(endpoint->CompletionChannel->fd);
             PollHandle.Detach(endpoint->RequestEvent.Handle());
+            PollHandle.Detach(endpoint->CancelRequestEvent.Handle());
             PollHandle.Detach(endpoint->DisconnectEvent.Handle());
         }
     }
@@ -1478,6 +1649,10 @@ private:
                     endpoint->HandleInputRequests();
                     break;
 
+                case EPollEvent::CancelRequest:
+                    endpoint->HandleCancelRequests();
+                    break;
+
                 case EPollEvent::Disconnect:
                     endpoint->AbortRequests();
                     break;
@@ -1509,6 +1684,7 @@ private:
 
         for (const auto& endpoint: *endpoints) {
             try {
+                hasWork |= endpoint->HandleCancelRequests();
                 if (endpoint->CheckState(EEndpointState::Connected)) {
                     hasWork |= endpoint->HandleInputRequests();
                     hasWork |= endpoint->HandleCompletionEvents();

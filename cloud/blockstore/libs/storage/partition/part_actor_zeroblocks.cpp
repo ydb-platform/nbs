@@ -213,7 +213,10 @@ STFUNC(TZeroBlocksActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -277,8 +280,9 @@ void TPartitionActor::HandleZeroBlocks(
     ++WriteAndZeroRequestsInProgress;
 
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start zero blocks @%lu (range: %s)",
+        "[%lu][d:%s] Start zero blocks @%lu (range: %s)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId,
         DescribeRange(writeRange).data());
 
@@ -345,8 +349,9 @@ void TPartitionActor::HandleZeroBlocksCompleted(
 
     ui64 commitId = msg->CommitId;
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete zero blocks @%lu",
+        "[%lu][d:%s] Complete zero blocks @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);
@@ -354,9 +359,7 @@ void TPartitionActor::HandleZeroBlocksCompleted(
     ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * State->GetBlockSize();
 
-    // UpdateNetworkStat(ctx.Now(), requestBytes);
-    UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
@@ -419,8 +422,9 @@ void TPartitionActor::CompleteZeroBlocks(
 
     ui64 commitId = args.CommitId;
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete zero blocks @%lu",
+        "[%lu][d:%s] Complete zero blocks @%lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>();
@@ -448,9 +452,7 @@ void TPartitionActor::CompleteZeroBlocks(
 
     ui64 requestBytes = static_cast<ui64>(args.WriteRange.Size()) * State->GetBlockSize();
 
-    // UpdateNetworkStat(ctx.Now(), requestBytes);
-    UpdateCPUUsageStat(CyclesToDurationSafe(args.RequestInfo->GetExecCycles()).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);

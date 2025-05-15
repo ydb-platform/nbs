@@ -524,12 +524,33 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
     auto [cleanupRangeId, cleanupScore] = GetRangeToCleanup();
     const auto& stats = GetFileSystemStats();
     const auto compactionStats = GetCompactionMapStats(0);
-    const auto rangeCount = compactionStats.UsedRangesCount;
-    const auto avgCleanupScore = rangeCount
+
+    // Initially, the condition was based on the average number of deletion
+    // markers per used range without taking sparsity into account.
+    // It could lead to the situation when the range is not cleaned because
+    // the number of deletion markers is low despite the fact that the ratio
+    // between the number of deletion markers and the number of used blocks
+    // is very high.
+    //
+    // The new condition is based on the average number of deletion markers
+    // per used block. For the compatibility with the old condition, the
+    // number of blocks is converted to the number of ranges taking the
+    // assumption that the ranges are fully filled.
+    const double rangeCount =
+        Config->GetCalculateCleanupScoreBasedOnUsedBlocksCount()
+            ? static_cast<double>(stats.GetUsedBlocksCount()) /
+                  (BlockGroupSize * NodeGroupSize)
+            : static_cast<double>(compactionStats.UsedRangesCount);
+
+    const auto avgCleanupScore = rangeCount > 0.0
         ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
         : 0;
+
     const bool shouldCleanup =
-        avgCleanupScore >= Config->GetCleanupThresholdAverage();
+        rangeCount > 0.0
+            ? avgCleanupScore >= Config->GetCleanupThresholdAverage()
+            : stats.GetDeletionMarkersCount() > 0;
+
     bool isPriority = false;
 
     TString dummy;
@@ -562,6 +583,43 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
             || Config->GetNewCleanupEnabled()
             && cleanupScore && shouldCleanup
             || isPriority};
+}
+
+bool TIndexTabletActor::ShouldThrottleCleanup(
+    const NActors::TActorContext& ctx,
+    const TCleanupInfo& cleanupInfo) const
+{
+    if (!cleanupInfo.ShouldCleanup || cleanupInfo.IsPriority) {
+        return false;
+    }
+
+    if (Config->GetCleanupCpuThrottlingThresholdPercentage() == 0) {
+        return false;
+    }
+
+    const auto deletionMarkersCount =
+        GetFileSystemStats().GetDeletionMarkersCount();
+
+    const auto rangeCompactionStats = GetCompactionStats(cleanupInfo.RangeId);
+
+    const auto deletionMarkersCountAfterCleanup =
+        deletionMarkersCount >= rangeCompactionStats.DeletionsCount
+        ? deletionMarkersCount - rangeCompactionStats.DeletionsCount
+        : 0;
+
+    // Cleanup is to be throttled only when the number of deletion markers after
+    // cleanup will drop below the minimal observed amount of deletion markers.
+    // https://github.com/ydb-platform/nbs/pull/3268
+    const auto deletionMarkersCountThreshold =
+        GetMinDeletionMarkersCountSinceTabletStart();
+    if (deletionMarkersCountAfterCleanup >= deletionMarkersCountThreshold) {
+        return false;
+    }
+
+    const auto now = ctx.Now();
+    const double cleanupCpu =
+        Metrics.Cleanup.AverageSecondsPerSecond(now) * 100.0;
+    return cleanupCpu > Config->GetCleanupCpuThrottlingThresholdPercentage();
 }
 
 bool TIndexTabletActor::IsCloseToBackpressureThresholds(TString* message) const
@@ -681,11 +739,18 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
 
-    if (IsMainTablet()) {
-        *response->Record.MutableShardFileSystemIds() =
-            GetFileSystem().GetShardFileSystemIds();
-    }
+    *response->Record.MutableShardFileSystemIds() =
+        GetFileSystem().GetShardFileSystemIds();
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
+    response->Record.SetDirectoryCreationInShardsEnabled(
+        GetFileSystem().GetDirectoryCreationInShardsEnabled());
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s GetFileSystemTopology response: %s; Filesystem: %s",
+        LogTag.c_str(),
+        response->Record.ShortDebugString().c_str(),
+        GetFileSystem().ShortDebugString().c_str());
 
     NCloud::Reply(
         ctx,
@@ -910,6 +975,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -958,6 +1024,9 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(
             TEvIndexTabletPrivate::TEvLoadNodesRequest,
             HandleLoadNodesRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
+            HandleEnqueueBlobIndexOpIfNeeded);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -965,7 +1034,10 @@ STFUNC(TIndexTabletActor::StateInit)
             if (!RejectRequests(ev) &&
                 !HandleDefaultEvents(ev, SelfId()))
             {
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1014,6 +1086,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvLoadNodesRequest,
             HandleLoadNodesRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
+            HandleEnqueueBlobIndexOpIfNeeded);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -1029,7 +1104,10 @@ STFUNC(TIndexTabletActor::StateWork)
 
         default:
             if (!HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1065,6 +1143,8 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
+        IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
+
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
@@ -1094,7 +1174,10 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         default:
             if (!HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1113,6 +1196,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
@@ -1146,7 +1230,10 @@ STFUNC(TIndexTabletActor::StateBroken)
             HandleShardRequestCompleted);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -1241,8 +1328,13 @@ bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
     // shard can behave as a directory tablet only if it's explicitly allowed
     // via request headers AND it's properly configured (knows about other
     // shards)
-    if (headers.GetBehaveAsDirectoryTablet()
-            && !GetFileSystem().GetShardFileSystemIds().empty())
+    //
+    // Note that checking both that ShardFileSystemIds is not empty and that the
+    // DirectoryCreationInShardsEnabled flag is set might be excessive, because
+    // they are both supposed to be set at the same time
+    if (headers.GetBehaveAsDirectoryTablet() &&
+        !GetFileSystem().GetShardFileSystemIds().empty() &&
+        GetFileSystem().GetDirectoryCreationInShardsEnabled())
     {
         return false;
     }

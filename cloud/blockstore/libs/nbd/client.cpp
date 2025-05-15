@@ -352,7 +352,7 @@ public:
         const auto& volumeClient = VolumeClient;
         const auto& connection = Connection;
 
-        return future.Apply([=, request = std::move(request)] (auto f) mutable {
+        return future.Apply([=, this, request = std::move(request)] (auto f) mutable {
             auto error = f.ExtractValue();
 
             if (HasError(error)) {
@@ -365,7 +365,7 @@ public:
                 std::move(callContext),
                 std::move(request));
 
-            return future.Apply([=] (const auto& f) {
+            return future.Apply([=, this] (const auto& f) {
                 return HandleMountVolumeResponse(
                     f.GetValue(),
                     connection->GetExportInfo().GetValue());

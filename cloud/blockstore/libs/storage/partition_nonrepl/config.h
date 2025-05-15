@@ -52,6 +52,69 @@ public:
         NProto::EStorageMediaKind MediaKind;
     };
 
+    struct TNonreplicatedPartitionConfigInitParams
+    {
+        TDevices Devices;
+        TVolumeInfo VolumeInfo;
+        TString Name;
+        ui32 BlockSize;
+        NActors::TActorId ParentActorId;
+        NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
+        bool MuteIOErrors = false;
+        THashSet<TString> FreshDeviceIds;
+        THashSet<TString> OutdatedDeviceIds;
+        bool LaggingDevicesAllowed = false;
+        TDuration MaxTimedOutDeviceStateDuration;
+        bool MaxTimedOutDeviceStateDurationOverridden = false;
+        bool UseSimpleMigrationBandwidthLimiter = true;
+
+        TNonreplicatedPartitionConfigInitParams(
+                TDevices devices,
+                TVolumeInfo volumeInfo,
+                TString name,
+                ui32 blockSize,
+                NActors::TActorId parentActorId)
+            : Devices(std::move(devices))
+            , VolumeInfo(volumeInfo)
+            , Name(std::move(name))
+            , BlockSize(blockSize)
+            , ParentActorId(parentActorId)
+        {}
+
+        TNonreplicatedPartitionConfigInitParams(
+                TDevices devices,
+                TVolumeInfo volumeInfo,
+                TString name,
+                ui32 blockSize,
+                NActors::TActorId parentActorId,
+                NProto::EVolumeIOMode iOMode,
+                bool muteIOErrors,
+                THashSet<TString> freshDeviceIds,
+                THashSet<TString> outdatedDeviceIds,
+                bool laggingDevicesAllowed,
+                TDuration maxTimedOutDeviceStateDuration,
+                bool maxTimedOutDeviceStateDurationOverridden,
+                bool useSimpleMigrationBandwidthLimiter)
+            : Devices(std::move(devices))
+            , VolumeInfo(volumeInfo)
+            , Name(std::move(name))
+            , BlockSize(blockSize)
+            , ParentActorId(parentActorId)
+            , IOMode(iOMode)
+            , MuteIOErrors(muteIOErrors)
+            , FreshDeviceIds(std::move(freshDeviceIds))
+            , OutdatedDeviceIds(std::move(outdatedDeviceIds))
+            , LaggingDevicesAllowed(laggingDevicesAllowed)
+            , MaxTimedOutDeviceStateDuration(maxTimedOutDeviceStateDuration)
+            , MaxTimedOutDeviceStateDurationOverridden(
+                  maxTimedOutDeviceStateDurationOverridden)
+            , UseSimpleMigrationBandwidthLimiter(
+                  useSimpleMigrationBandwidthLimiter)
+        {}
+
+        ~TNonreplicatedPartitionConfigInitParams() = default;
+    };
+
 private:
     TDevices Devices;
     const NProto::EVolumeIOMode IOMode;
@@ -61,8 +124,11 @@ private:
     const NActors::TActorId ParentActorId;
     const bool MuteIOErrors;
     const THashSet<TString> FreshDeviceIds;
-    // List of devices that have outdated data. Can only appear on mirror disks.
-    const THashSet<TString> LaggingDeviceIds;
+    // List of devices that previously were lagging and now have outdated data.
+    // Can only appear on mirror disks.
+    const THashSet<TString> OutdatedDeviceIds;
+    // Whether a replica of a mirror disk is allowed to lag.
+    const bool LaggingDevicesAllowed;
     const TDuration MaxTimedOutDeviceStateDuration;
     const bool MaxTimedOutDeviceStateDurationOverridden;
     const bool UseSimpleMigrationBandwidthLimiter;
@@ -70,31 +136,23 @@ private:
     TVector<ui64> BlockIndices;
 
 public:
-    TNonreplicatedPartitionConfig(
-            TDevices devices,
-            NProto::EVolumeIOMode ioMode,
-            TString name,
-            ui32 blockSize,
-            TVolumeInfo volumeInfo,
-            NActors::TActorId parentActorId,
-            bool muteIOErrors,
-            THashSet<TString> freshDeviceIds,
-            THashSet<TString> laggingDeviceIds,
-            TDuration maxTimedOutDeviceStateDuration,
-            bool maxTimedOutDeviceStateDurationOverridden,
-            bool useSimpleMigrationBandwidthLimiter)
-        : Devices(std::move(devices))
-        , IOMode(ioMode)
-        , Name(std::move(name))
-        , BlockSize(blockSize)
-        , VolumeInfo(volumeInfo)
-        , ParentActorId(std::move(parentActorId))
-        , MuteIOErrors(muteIOErrors)
-        , FreshDeviceIds(std::move(freshDeviceIds))
-        , LaggingDeviceIds(std::move(laggingDeviceIds))
-        , MaxTimedOutDeviceStateDuration(maxTimedOutDeviceStateDuration)
-        , MaxTimedOutDeviceStateDurationOverridden(maxTimedOutDeviceStateDurationOverridden)
-        , UseSimpleMigrationBandwidthLimiter(useSimpleMigrationBandwidthLimiter)
+    explicit TNonreplicatedPartitionConfig(
+            TNonreplicatedPartitionConfigInitParams params)
+        : Devices(std::move(params.Devices))
+        , IOMode(params.IOMode)
+        , Name(std::move(params.Name))
+        , BlockSize(params.BlockSize)
+        , VolumeInfo(params.VolumeInfo)
+        , ParentActorId(std::move(params.ParentActorId))
+        , MuteIOErrors(params.MuteIOErrors)
+        , FreshDeviceIds(std::move(params.FreshDeviceIds))
+        , OutdatedDeviceIds(std::move(params.OutdatedDeviceIds))
+        , LaggingDevicesAllowed(params.LaggingDevicesAllowed)
+        , MaxTimedOutDeviceStateDuration(params.MaxTimedOutDeviceStateDuration)
+        , MaxTimedOutDeviceStateDurationOverridden(
+              params.MaxTimedOutDeviceStateDurationOverridden)
+        , UseSimpleMigrationBandwidthLimiter(
+              params.UseSimpleMigrationBandwidthLimiter)
     {
         Y_ABORT_UNLESS(Devices.size());
 
@@ -109,32 +167,34 @@ public:
     TNonreplicatedPartitionConfigPtr Fork(TDevices devices) const
     {
         THashSet<TString> freshDeviceIds;
-        THashSet<TString> laggingDeviceIds;
+        THashSet<TString> outdatedDeviceIds;
         for (const auto& device: devices) {
             const auto& uuid = device.GetDeviceUUID();
 
             if (FreshDeviceIds.contains(uuid)) {
                 freshDeviceIds.insert(uuid);
             }
-            if (LaggingDeviceIds.contains(uuid)) {
-                laggingDeviceIds.insert(uuid);
+            if (OutdatedDeviceIds.contains(uuid)) {
+                outdatedDeviceIds.insert(uuid);
             }
         }
 
-        return std::make_shared<TNonreplicatedPartitionConfig>(
+        TNonreplicatedPartitionConfigInitParams params{
             std::move(devices),
-            IOMode,
+            VolumeInfo,
             Name,
             BlockSize,
-            VolumeInfo,
             ParentActorId,
+            IOMode,
             MuteIOErrors,
             std::move(freshDeviceIds),
-            std::move(laggingDeviceIds),
+            std::move(outdatedDeviceIds),
+            LaggingDevicesAllowed,
             MaxTimedOutDeviceStateDuration,
             MaxTimedOutDeviceStateDurationOverridden,
-            UseSimpleMigrationBandwidthLimiter
-        );
+            UseSimpleMigrationBandwidthLimiter};
+        return std::make_shared<TNonreplicatedPartitionConfig>(
+            std::move(params));
     }
 
     const auto& GetDevices() const
@@ -187,9 +247,14 @@ public:
         return FreshDeviceIds;
     }
 
-    const THashSet<TString>& GetLaggingDeviceIds() const
+    const THashSet<TString>& GetOutdatedDeviceIds() const
     {
-        return LaggingDeviceIds;
+        return OutdatedDeviceIds;
+    }
+
+    bool GetLaggingDevicesAllowed() const
+    {
+        return LaggingDevicesAllowed;
     }
 
     auto GetMaxTimedOutDeviceStateDuration() const
@@ -234,20 +299,28 @@ public:
 
     bool DevicesReadyForReading(const TBlockRange64 blockRange) const
     {
-        return VisitDeviceRequests(
+        return DevicesReadyForReading(blockRange, {});
+    }
+
+    bool DevicesReadyForReading(
+        const TBlockRange64 blockRange,
+        const THashSet<TString>& excludeAgentIds) const
+    {
+        const bool result = VisitDeviceRequests(
             blockRange,
-            [&] (
-                const ui32 i,
+            [&](const ui32 i,
                 const TBlockRange64 requestRange,
                 const TBlockRange64 relativeRange)
             {
                 Y_UNUSED(requestRange);
                 Y_UNUSED(relativeRange);
 
-                return !Devices[i].GetDeviceUUID()
-                    || FreshDeviceIds.contains(Devices[i].GetDeviceUUID())
-                    || LaggingDeviceIds.contains(Devices[i].GetDeviceUUID());
+                return !Devices[i].GetDeviceUUID() ||
+                       excludeAgentIds.contains(Devices[i].GetAgentId()) ||
+                       FreshDeviceIds.contains(Devices[i].GetDeviceUUID()) ||
+                       OutdatedDeviceIds.contains(Devices[i].GetDeviceUUID());
             });
+        return result;
     }
 
     void AugmentErrorFlags(NCloud::NProto::TError& error) const
@@ -281,6 +354,25 @@ public:
         }
 
         return MakeError(code, std::move(message), flags);
+    }
+
+    auto SplitBlockRangeByDevicesBorder(const TBlockRange64 blockRange) const
+        -> TVector<TBlockRange64>
+    {
+        TVector<TBlockRange64> result;
+        VisitDeviceRequests(
+            blockRange,
+            [&](const ui32 i,
+                const TBlockRange64 requestRange,
+                const TBlockRange64 relativeRange)
+            {
+                Y_UNUSED(relativeRange);
+                Y_UNUSED(i);
+                result.emplace_back(requestRange);
+                return false;
+            });
+
+        return result;
     }
 
 private:

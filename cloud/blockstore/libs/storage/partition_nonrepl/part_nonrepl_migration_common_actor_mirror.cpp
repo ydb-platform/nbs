@@ -5,7 +5,10 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/migration_request_actor.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/mirror_request_actor.h>
+
+#include <cloud/storage/core/libs/common/verify.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -97,23 +100,32 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         }
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    if (TargetMigrationIsLagging) {
+        STORAGE_VERIFY(ActorOwner, TWellKnownEntityTypes::DISK, DiskId);
 
-    NCloud::Register<TMirrorRequestActor<TMethod>>(
-        ctx,
-        std::move(requestInfo),
-        TVector<TActorId>{SrcActorId},
-        DstActorId,
-        std::move(msg->Record),
-        DiskId,
-        SelfId(),
-        WriteAndZeroRequestsInProgress.AddWriteRequest(range));
+        // TMirrorRequestActor is used here just as a simple request actor.
+        NCloud::Register<TMirrorRequestActor<TMethod>>(
+            ctx,
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+            TVector<NActors::TActorId>{SrcActorId},
+            std::move(msg->Record),
+            DiskId,
+            SelfId(),   // parentActorId
+            WriteAndZeroRequestsInProgress.AddWriteRequest(range));
+    } else {
+        NCloud::Register<TMigrationRequestActor<TMethod>>(
+            ctx,
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+            ActorOwner ? SrcActorId : TActorId{},
+            DstActorId,
+            std::move(msg->Record),
+            DiskId,
+            SelfId(),   // parentActorId
+            WriteAndZeroRequestsInProgress.AddWriteRequest(range));
+    }
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
-        ChangedRangesMap.MarkChanged(range);
+        NonZeroRangesMap.MarkChanged(range);
     }
 }
 

@@ -105,6 +105,11 @@ TFileStat TIndexNode::Stat(const TString& name)
     return NLowLevel::StatAt(NodeFd, name);
 }
 
+NLowLevel::TFileSystemStat TIndexNode::StatFs() const
+{
+    return NLowLevel::StatFs(NodeFd);
+}
+
 TFileHandle TIndexNode::OpenHandle(int flags)
 {
     return NLowLevel::Open(NodeFd, flags, 0);
@@ -169,6 +174,7 @@ TNodeLoader::TNodeLoader(const TIndexNodePtr& rootNode)
     switch (NLowLevel::TFileId::EFileIdType(RootFileId.FileHandle.handle_type)) {
     case NLowLevel::TFileId::EFileIdType::Lustre:
     case NLowLevel::TFileId::EFileIdType::Weka:
+    case NLowLevel::TFileId::EFileIdType::VastNfs:
         break;
     default:
         ythrow TServiceError(E_FS_NOTSUPP)
@@ -187,6 +193,21 @@ TIndexNodePtr TNodeLoader::LoadNode(ui64 nodeId) const
         break;
     case NLowLevel::TFileId::EFileIdType::Weka:
         fileId.WekaInodeId.Id = nodeId;
+        break;
+    case NLowLevel::TFileId::EFileIdType::VastNfs:
+        fileId.VastNfsInodeId.IdHigh32 = (nodeId >> 32) & 0xffffffff;
+        fileId.VastNfsInodeId.IdLow32 = nodeId & 0xffffffff;
+        fileId.VastNfsInodeId.ServerId = nodeId;
+        // nfs client will try to resolve inode from cache
+        // https://github.com/torvalds/linux/blob/dd83757f6e686a2188997cb58b5975f744bb7786/fs/nfs/export.c#L93
+        // by comparing FileType field as well
+        // https://github.com/torvalds/linux/blob/dd83757f6e686a2188997cb58b5975f744bb7786/fs/nfs/inode.c#L327
+        // Since we can't deduce file type from inode number, we set it to
+        // regular file as optimization if the inode is not a regular file the
+        // kernel code will try to communicate with nfs server and resolve it
+        // there
+        // https://github.com/torvalds/linux/blob/dd83757f6e686a2188997cb58b5975f744bb7786/fs/nfs/export.c#L98
+        fileId.VastNfsInodeId.FileType = S_IFREG;
         break;
     default:
         ythrow TServiceError(E_FS_NOTSUPP);

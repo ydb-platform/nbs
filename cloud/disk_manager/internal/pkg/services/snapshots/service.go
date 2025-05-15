@@ -49,10 +49,11 @@ func (s *service) CreateSnapshot(
 				ZoneId: req.Src.ZoneId,
 				DiskId: req.Src.DiskId,
 			},
-			DstSnapshotId:       req.SnapshotId,
-			FolderId:            req.FolderId,
-			UseS3:               useS3,
-			UseProxyOverlayDisk: s.config.GetUseProxyOverlayDisk(),
+			DstSnapshotId:                    req.SnapshotId,
+			FolderId:                         req.FolderId,
+			UseS3:                            useS3,
+			UseProxyOverlayDisk:              s.config.GetUseProxyOverlayDisk(),
+			RetryBrokenDRBasedDiskCheckpoint: s.config.GetRetryBrokenDRBasedDiskCheckpoint(),
 		},
 	)
 }

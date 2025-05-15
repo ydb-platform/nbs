@@ -27,7 +27,7 @@ private:
     const TString FileSystemId;
     const TString SessionId;
     const ui64 SeqNo;
-    const TInstant Deadline;
+    const TInstant InactivityDeadline;
 
 public:
     TDestroySessionActor(
@@ -80,7 +80,7 @@ TDestroySessionActor::TDestroySessionActor(
     , FileSystemId(std::move(fileSystemId))
     , SessionId(std::move(sessionId))
     , SeqNo(seqNo)
-    , Deadline(Config->GetIdleSessionTimeout().ToDeadLine())
+    , InactivityDeadline(Config->GetIdleSessionTimeout().ToDeadLine())
 {}
 
 void TDestroySessionActor::Bootstrap(const TActorContext& ctx)
@@ -115,7 +115,7 @@ void TDestroySessionActor::HandleDestroySessionResponse(
 
     if (msg->GetStatus() == E_REJECTED) {
         // Pipe error
-        if (ctx.Now() < Deadline) {
+        if (ctx.Now() < InactivityDeadline) {
             return ctx.Schedule(
                 TDuration::Seconds(1),
                 new TEvents::TEvWakeup());
@@ -183,7 +183,10 @@ STFUNC(TDestroySessionActor::StateWork)
         IgnoreFunc(TEvServicePrivate::TEvPingSession);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

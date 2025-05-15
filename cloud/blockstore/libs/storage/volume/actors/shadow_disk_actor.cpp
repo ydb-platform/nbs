@@ -383,7 +383,10 @@ STFUNC(TAcquireShadowDiskActor::Work)
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -551,7 +554,8 @@ TShadowDiskActor::TShadowDiskActor(
               sourceDiskClientId,
               checkpointInfo.ShadowDiskState == EShadowDiskState::Ready),
           volumeActorId,
-          config->GetMaxShadowDiskFillIoDepth())
+          config->GetMaxShadowDiskFillIoDepth(),
+          volumeActorId)
     , RdmaClient(std::move(rdmaClient))
     , SrcConfig(std::move(srcConfig))
     , CheckpointId(checkpointInfo.CheckpointId)
@@ -620,7 +624,7 @@ bool TShadowDiskActor::OnMessage(
             TEvService::TEvReadBlocksLocalRequest,
             HandleReadBlocks<TEvService::TReadBlocksLocalMethod>);
 
-        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
 
         // Write/zero request.
         case TEvService::TEvWriteBlocksRequest::EventType: {
@@ -798,21 +802,20 @@ void TShadowDiskActor::CreateShadowDiskConfig()
         TInstant(),
         GetCheckpointShadowDiskType(SrcConfig->GetVolumeInfo().MediaKind)};
 
-    DstConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-        ShadowDiskDevices,
-        ReadOnlyMount() ? NProto::VOLUME_IO_ERROR_READ_ONLY
-                        : NProto::VOLUME_IO_OK,
-        ShadowDiskId,
-        SrcConfig->GetBlockSize(),
-        volumeInfo,
-        SelfId(),   // need to handle TEvRdmaUnavailable, TEvReacquireDisk
-        true,       // muteIOErrors
-        THashSet<TString>(),   // freshDeviceIds
-        THashSet<TString>(),   // laggingDeviceIds
-        TDuration(),           // maxTimedOutDeviceStateDuration
-        false,                 // maxTimedOutDeviceStateDurationOverridden
-        true                   // useSimpleMigrationBandwidthLimiter
-    );
+    TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+        params{
+            ShadowDiskDevices,
+            volumeInfo,
+            ShadowDiskId,
+            SrcConfig->GetBlockSize(),
+            SelfId(),   // need to handle TEvRdmaUnavailable, TEvReacquireDisk
+        };
+    params.MuteIOErrors = true;
+    params.IOMode = ReadOnlyMount() ? NProto::VOLUME_IO_ERROR_READ_ONLY
+                                    : NProto::VOLUME_IO_OK;
+
+    DstConfig =
+        std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 }
 
 void TShadowDiskActor::CreateShadowDiskPartitionActor(
@@ -851,7 +854,9 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         InitWork(
             ctx,
             SrcActorId,
+            SrcActorId,
             DstActorId,
+            true,   // takeOwnershipOverActors
             std::make_unique<TMigrationTimeoutCalculator>(
                 GetConfig()->GetMaxShadowDiskFillBandwidth(),
                 GetConfig()->GetExpectedDiskAgentSize(),
@@ -1214,9 +1219,16 @@ void TShadowDiskActor::HandleGetChangedBlocks(
 
         auto response =
             std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
-        *response->Record.MutableError() = MakeError(
-            E_REJECTED,
-            "Can't GetChangedBlocks when shadow disk is not ready.");
+
+        if (State == EActorState::Error) {
+            *response->Record.MutableError() = MakeError(
+                E_INVALID_STATE,
+                "Can't GetChangedBlocks when shadow disk is broken.");
+        } else {
+            *response->Record.MutableError() = MakeError(
+                E_REJECTED,
+                "Can't GetChangedBlocks when shadow disk is not ready.");
+        }
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -1226,7 +1238,7 @@ void TShadowDiskActor::HandleGetChangedBlocks(
     auto range = TBlockRange64::WithLength(
         msg->Record.GetStartIndex(),
         msg->Record.GetBlocksCount());
-    response->Record.SetMask(GetChangedBlocks(range));
+    response->Record.SetMask(GetNonZeroBlocks(range));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

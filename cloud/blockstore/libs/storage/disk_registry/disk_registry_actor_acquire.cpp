@@ -381,7 +381,10 @@ STFUNC(TAcquireDiskActor::StateAcquire)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -430,7 +433,7 @@ void TDiskRegistryActor::HandleAcquireDisk(
         return;
     }
 
-    State->FilterDevicesAtUnavailableAgents(diskInfo);
+    State->FilterDevicesForAcquire(diskInfo);
 
     TVector devices = std::move(diskInfo.Devices);
     for (auto& migration: diskInfo.Migrations) {

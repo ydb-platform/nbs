@@ -18,5 +18,7 @@ constexpr TStringBuf BackgroundOpsClientId = "migration";
 constexpr TStringBuf CheckHealthClientId = "check-health";
 constexpr TStringBuf AnyWriterClientId = "any-writer";
 constexpr TStringBuf ShadowDiskClientId = "shadow-disk-client";
+constexpr TStringBuf CheckRangeClientId = "check-range";
+constexpr TStringBuf CopyVolumeClientId = "copy-volume-client";
 
 }   // namespace NCloud::NBlockStore::NStorage

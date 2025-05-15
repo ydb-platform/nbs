@@ -141,7 +141,10 @@ STFUNC(TMarkReplacementDevicesActor::StateWork)
         HFunc(TEvDiskRegistry::TEvMarkReplacementDeviceResponse, HandleResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -385,18 +388,18 @@ void TDiskRegistryActor::ExecuteStartMigration(
             LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
                 "[%lu] Start migration failed. DiskId=%s DeviceId=%s Error=%s",
                 TabletID(),
-                diskId.c_str(),
-                deviceId.c_str(),
-                FormatError(result.GetError()).c_str()
+                diskId.Quote().c_str(),
+                deviceId.Quote().c_str(),
+                FormatError(result.GetError()).Quote().c_str()
             );
         } else {
             const auto& target = result.GetResult();
             LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Start migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %ul(%ul) }",
+                "[%lu] Start migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %lu(%lu) }",
                 TabletID(),
-                diskId.c_str(),
-                deviceId.c_str(),
-                target.GetDeviceUUID().c_str(),
+                diskId.Quote().c_str(),
+                deviceId.Quote().c_str(),
+                target.GetDeviceUUID().Quote().c_str(),
                 target.GetBlockSize(),
                 target.GetBlocksCount(),
                 target.GetUnadjustedBlockCount()
@@ -507,18 +510,18 @@ void TDiskRegistryActor::ExecuteStartForceMigration(
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Failed to start forced migration. DiskId=%s DeviceId=%s Error=%s",
             TabletID(),
-            args.SourceDiskId.c_str(),
-            args.SourceDeviceId.c_str(),
-            FormatError(result.GetError()).c_str()
+            args.SourceDiskId.Quote().c_str(),
+            args.SourceDeviceId.Quote().c_str(),
+            FormatError(result.GetError()).Quote().c_str()
         );
     } else {
         const auto& target = result.GetResult();
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Start force migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %ul(%ul) }",
+            "[%lu] Start force migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %lu(%lu) }",
             TabletID(),
-            args.SourceDiskId.c_str(),
-            args.SourceDeviceId.c_str(),
-            target.GetDeviceUUID().c_str(),
+            args.SourceDiskId.Quote().c_str(),
+            args.SourceDeviceId.Quote().c_str(),
+            target.GetDeviceUUID().Quote().c_str(),
             target.GetBlockSize(),
             target.GetBlocksCount(),
             target.GetUnadjustedBlockCount()

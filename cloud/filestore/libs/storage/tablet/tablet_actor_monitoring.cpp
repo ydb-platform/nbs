@@ -713,7 +713,10 @@ void DumpSessionHistory(
 /**
  * @brief Display sessions the tablet knows
  */
-void DumpSessions(IOutputStream& out, const TVector<TMonSessionInfo>& sessions)
+void DumpSessions(
+    IOutputStream& out,
+    const TVector<TMonSessionInfo>& sessions,
+    bool dumpSessionRegardlessOfSubSessions)
 {
     HTML(out) {
         TABLE_SORTABLE_CLASS("table table-bordered") {
@@ -726,12 +729,16 @@ void DumpSessions(IOutputStream& out, const TVector<TMonSessionInfo>& sessions)
                     TABLEH() { out << "SeqNo"; }
                     TABLEH() { out << "ReadOnly"; }
                     TABLEH() { out << "Owner"; }
+                    TABLEH() { out << "Deadline"; }
                 }
             }
             for (const auto& session: sessions) {
                 const auto recoveryTimestamp = TInstant::MicroSeconds(
                     session.ProtoInfo.GetRecoveryTimestampUs());
-                for (const auto& ss: session.SubSessions) {
+
+                auto dumpSubSession =
+                    [&](IOutputStream& out, const TSubSession& ss)
+                {
                     TABLER() {
                         TABLED() { out << session.ProtoInfo.GetClientId(); }
                         TABLED() { out << session.ProtoInfo.GetOriginFqdn(); }
@@ -744,6 +751,16 @@ void DumpSessions(IOutputStream& out, const TVector<TMonSessionInfo>& sessions)
                         TABLED() { out << ss.SeqNo; }
                         TABLED() { out << (ss.ReadOnly ? "True" : "False"); }
                         TABLED() { out << ToString(ss.Owner); }
+                        TABLED() { out << session.InactivityDeadline.ToString(); }
+                    }
+                };
+                if (session.SubSessions.empty()) {
+                    if (dumpSessionRegardlessOfSubSessions) {
+                        dumpSubSession(out, TSubSession{});
+                    }
+                } else {
+                    for (const auto& ss: session.SubSessions) {
+                        dumpSubSession(out, ss);
                     }
                 }
             }
@@ -852,7 +869,10 @@ struct TIndexTabletMonitoringActor
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET_WORKER,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -1269,13 +1289,13 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         {
             out << "Active Sessions";
         }
-        DumpSessions(out, GetActiveSessionInfos());
+        DumpSessions(out, GetActiveSessionInfos(), false);
 
         TAG(TH3)
         {
             out << "Orphan Sessions";
         }
-        DumpSessions(out, GetOrphanSessionInfos());
+        DumpSessions(out, GetOrphanSessionInfos(), true);
 
         TAG(TH3)
         {

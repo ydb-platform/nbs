@@ -6,6 +6,7 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 from library.python.testing.recipe import declare_recipe, set_env
 
+from cloud.disk_manager.test.recipe.common import get_ydb_binary_path
 from cloud.disk_manager.test.recipe.compute_launcher import ComputeLauncher
 from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher
 from cloud.disk_manager.test.recipe.kms_launcher import KmsLauncher
@@ -56,6 +57,7 @@ def parse_args(args):
     parser.add_argument("--creation-and-deletion-allowed-only-for-disks-with-id-prefix", type=str, default="")
     parser.add_argument("--disable-disk-registry-based-disks", action='store_true', default=False)
     parser.add_argument("--disk-agent-count", type=int, default=1)
+    parser.add_argument("--retry-broken-disk-registry-based-disk-checkpoint", action='store_true', default=False)
 
     args, _ = parser.parse_known_args(args=args)
     return args
@@ -79,9 +81,7 @@ def start(argv):
     s3.start()
     set_env("DISK_MANAGER_RECIPE_S3_PORT", str(s3.port))
 
-    ydb_binary_path = yatest_common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
-    if ydb_binary_path is None:
-        ydb_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    ydb_binary_path = get_ydb_binary_path()
     nbs_binary_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
     disk_agent_binary_path = yatest_common.binary_path("cloud/blockstore/apps/disk_agent/diskagentd")
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")
@@ -231,6 +231,7 @@ def start(argv):
             base_disk_id_prefix=base_disk_id_prefix,
             creation_and_deletion_allowed_only_for_disks_with_id_prefix=args.creation_and_deletion_allowed_only_for_disks_with_id_prefix,
             disable_disk_registry_based_disks=args.disable_disk_registry_based_disks,
+            retry_broken_disk_registry_based_disk_checkpoint=args.retry_broken_disk_registry_based_disk_checkpoint,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()

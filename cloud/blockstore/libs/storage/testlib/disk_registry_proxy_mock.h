@@ -154,7 +154,10 @@ private:
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY_PROXY,
+                    __PRETTY_FUNCTION__);
         }
     }
 
@@ -189,26 +192,6 @@ private:
                 dst.SetBlockSize(disk.BlockSize);
             }
         }
-    }
-
-    const NProto::TDeviceConfig* AllocateNextDevice(i32 prevNodeId)
-    {
-        for (int i = 0; i < State->Devices.ysize(); i++) {
-            if (State->DeviceIsAllocated[i]) {
-                continue;
-            }
-
-            if (State->AllocateDiskReplicasOnDifferentNodes &&
-                static_cast<i32>(State->Devices[i].GetNodeId()) <= prevNodeId)
-            {
-                continue;
-            }
-
-            State->DeviceIsAllocated[i] = true;
-            return &State->Devices[i];
-        }
-
-        return nullptr;
     }
 
     void HandleAllocateDisk(
@@ -260,7 +243,7 @@ private:
                         disk.Devices[i].GetBlocksCount() *
                             disk.Devices[i].GetBlockSize());
             } else {
-                const auto* device = AllocateNextDevice(prevNodeId);
+                const auto* device = State->AllocateNextDevice(prevNodeId);
                 if (!device) {
                     break;
                 }
@@ -277,7 +260,7 @@ private:
                             replica[i].GetBlocksCount() *
                                 replica[i].GetBlockSize());
                 } else {
-                    const auto* device = AllocateNextDevice(prevNodeId);
+                    const auto* device = State->AllocateNextDevice(prevNodeId);
                     if (!device) {
                         break;
                     }
@@ -340,6 +323,17 @@ private:
             response->Record.SetIOMode(disk.IOMode);
             response->Record.SetIOModeTs(disk.IOModeTs.MicroSeconds());
             response->Record.SetMuteIOErrors(disk.MuteIOErrors);
+        }
+
+        for (const auto& lostDevice: State->LostDeviceUUIDs) {
+            bool belongsToDisk = AnyOf(
+                disk.Devices,
+                [&](const auto& diskDevice)
+                { return diskDevice.GetDeviceUUID() == lostDevice; });
+
+            if (belongsToDisk) {
+                response->Record.AddLostDeviceUUIDs(lostDevice);
+            }
         }
 
        return response;

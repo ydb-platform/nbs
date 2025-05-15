@@ -109,8 +109,24 @@ IncludeCategories:
     Priority:        10
     SortPriority:    0
     CaseSensitive:   false
-  - Regex:           '^<cloud/.*\.h>'
+  - Regex:           '^<cloud/vm.*\.h>'
+    Priority:        19
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^<cloud/blockstore.*\.h>'
     Priority:        20
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^<cloud/filestore.*\.h>'
+    Priority:        21
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^<cloud/storage.*\.h>'
+    Priority:        22
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^<cloud/contrib.*\.h>'
+    Priority:        23
     SortPriority:    0
     CaseSensitive:   false
   - Regex:           '^<ydb/.*\.h>'

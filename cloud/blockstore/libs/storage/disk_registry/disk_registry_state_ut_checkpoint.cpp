@@ -27,7 +27,7 @@ namespace {
 constexpr ui32 AvailableBlockSizes[] =
     {4_KB, 8_KB, 16_KB, 32_KB, 64_KB, 128_KB};
 
-TDiskRegistryState MakeDiskRegistryState()
+std::unique_ptr<TDiskRegistryState> MakeDiskRegistryState()
 {
     auto agentConfig1 = AgentConfig(
         1,
@@ -91,7 +91,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        TDiskRegistryState state = MakeDiskRegistryState();
+        auto statePtr = MakeDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
 
         // Create source disk
         executor.WriteTx([&](TDiskRegistryDatabase db)
@@ -227,7 +228,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        TDiskRegistryState state = MakeDiskRegistryState();
+        auto statePtr = MakeDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
 
         // Create source disk
         executor.WriteTx(
@@ -283,7 +285,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        TDiskRegistryState state = MakeDiskRegistryState();
+        auto statePtr = MakeDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
 
         // Create source disk
         executor.WriteTx(
@@ -344,7 +347,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        TDiskRegistryState state = MakeDiskRegistryState();
+        auto statePtr = MakeDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
 
         // Create source disk
         executor.WriteTx(
@@ -443,7 +447,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        TDiskRegistryState state = MakeDiskRegistryState();
+        auto statePtr = MakeDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
 
         // Create source disk
         executor.WriteTx(
@@ -515,7 +520,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        TDiskRegistryState state = MakeDiskRegistryState();
+        auto statePtr = MakeDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
 
         // Create source disk
         executor.WriteTx(
@@ -634,7 +640,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        TDiskRegistryState state = MakeDiskRegistryState();
+        auto statePtr = MakeDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
 
         // Create source disk
         executor.WriteTx(
@@ -704,7 +711,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        TDiskRegistryState state = MakeDiskRegistryState();
+        auto statePtr = MakeDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
 
         // Create source disk
         executor.WriteTx(
@@ -771,8 +779,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
                 Device("dev-2", "uuid-2", "rack-1"),
             });
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder().WithKnownAgents({agentConfig}).Build();
+        TDiskRegistryState& state = *statePtr;
 
         // Create source disk
         executor.WriteTx(

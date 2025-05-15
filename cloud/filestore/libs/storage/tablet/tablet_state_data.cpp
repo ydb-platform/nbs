@@ -283,7 +283,7 @@ bool TIndexTabletState::HasActiveTruncateOp(ui64 nodeId) const
 bool TIndexTabletState::IsWriteAllowed(
     const TIndexTabletState::TBackpressureThresholds& thresholds,
     const TIndexTabletState::TBackpressureValues& values,
-    TString* message) const
+    TString* message)
 {
     if (values.Flush >= thresholds.Flush) {
         *message = TStringBuilder() << "freshBlocksDataSize: " << values.Flush;
@@ -384,6 +384,7 @@ void TIndexTabletState::WriteFreshBytes(
         data);
 
     IncrementFreshBytesCount(db, data.size());
+    UpdateFreshBytesItemCount();
 
     InvalidateReadAheadCache(nodeId);
 }
@@ -455,11 +456,24 @@ TFlushBytesStats TIndexTabletState::FinishFlushBytes(
         cnt,
         deletedCnt);
 
-    auto [freshBytes, deletedFreshBytes] = Impl->FreshBytes.GetTotalBytes();
+    auto freshBytes = Impl->FreshBytes.GetTotalBytes();
+    auto deletedFreshBytes = Impl->FreshBytes.GetTotalDeletedBytes();
     SetFreshBytesCount(db, freshBytes);
     SetDeletedFreshBytesCount(db, deletedFreshBytes);
+    UpdateFreshBytesItemCount();
 
     return {sz + deletedSz, completed};
+}
+
+ui32 TIndexTabletState::GetFreshBytesItemCount() const
+{
+    return FileSystemStats.GetFreshBytesItemCount();
+}
+
+void TIndexTabletState::UpdateFreshBytesItemCount()
+{
+    auto freshBytesItemCount = Impl->FreshBytes.GetTotalDataItemCount();
+    FileSystemStats.SetFreshBytesItemCount(freshBytesItemCount);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -571,16 +585,14 @@ void TIndexTabletState::DeleteFreshBlocks(
 ////////////////////////////////////////////////////////////////////////////////
 // MixedBlocks
 
-bool TIndexTabletState::LoadMixedBlocks(
-    TIndexTabletDatabase& db,
-    ui32 rangeId)
+bool TIndexTabletState::LoadMixedBlocks(IIndexTabletDatabase& db, ui32 rangeId)
 {
     if (Impl->MixedBlocks.IsLoaded(rangeId)) {
         Impl->MixedBlocks.RefRange(rangeId);
         return true;
     }
 
-    TVector<TIndexTabletDatabase::TMixedBlob> blobs;
+    TVector<TIndexTabletDatabase::IIndexTabletDatabase::TMixedBlob> blobs;
     TVector<TDeletionMarker> deletionMarkers;
 
     if (!db.ReadMixedBlocks(rangeId, blobs, AllocatorRegistry.GetAllocator(EAllocatorTag::BlockList)) ||
@@ -945,6 +957,7 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
     }
 
     DecrementDeletionMarkersCount(db, deletionMarkerCount);
+    UpdateMinDeletionMarkersCountSinceTabletStart();
 
     auto largeDeletionMarkers =
         Impl->LargeBlocks.ExtractProcessedDeletionMarkers();
@@ -1104,6 +1117,13 @@ ui32 TIndexTabletState::CalculateMixedIndexRangeGarbageBlockCount(
 {
     return Impl->MixedBlocks.CalculateGarbageBlockCount(rangeId);
 }
+
+
+TBlobMetaMapStats TIndexTabletState::GetBlobMetaMapStats() const
+{
+    return Impl->MixedBlocks.GetBlobMetaMapStats();
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // LargeBlocks
@@ -1450,7 +1470,7 @@ TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
 
 NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
 {
-    auto e = Impl->ShardBalancer.SelectShard(fileSize, shardId);
+    auto e = Impl->ShardBalancer->SelectShard(fileSize, shardId);
     if (HasError(e)) {
         return e;
     }
@@ -1460,7 +1480,7 @@ NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
 
 void TIndexTabletState::UpdateShardStats(const TVector<TShardStats>& stats)
 {
-    Impl->ShardBalancer.UpdateShardStats(stats);
+    Impl->ShardBalancer->UpdateShardStats(stats);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

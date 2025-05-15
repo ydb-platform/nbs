@@ -4,48 +4,21 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
+#include <google/protobuf/util/message_differencer.h>
+
 #include <util/stream/str.h>
 #include <util/system/hostname.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString TPartitionInfo::GetStatus() const
-{
-    TStringStream out;
-
-    switch (State) {
-        default:
-        case UNKNOWN:
-            out << "UNKNOWN";
-            break;
-        case STOPPED:
-            out << "STOPPED";
-            break;
-        case STARTED:
-            out << "STARTED";
-            break;
-        case FAILED:
-            out << "FAILED";
-            break;
-        case READY:
-            out << "READY";
-            break;
-    }
-
-    if (Message) {
-        out << ": " << Message;
-    }
-
-    return out.Str();
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -146,6 +119,7 @@ TVolumeState::TVolumeState(
         THashMap<TString, TVolumeClientState> infos,
         TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
+        TFollowerDisks followerDisks,
         bool startPartitionsNeeded)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -159,6 +133,7 @@ TVolumeState::TVolumeState(
     , MountHistory(std::move(mountHistory))
     , CheckpointStore(std::move(checkpointRequests), Config->GetDiskId())
     , StartPartitionsNeeded(startPartitionsNeeded)
+    , FollowerDisks(std::move(followerDisks))
 {
     Reset();
 
@@ -205,6 +180,8 @@ void TVolumeState::AddLaggingAgent(NProto::TLaggingAgent agent)
 std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
     const TString& agentId)
 {
+    ResetLaggingAgentMigrationState(agentId);
+
     auto agentIdPredicate = [&agentId](const auto& info)
     {
         return info.GetAgentId() == agentId;
@@ -219,6 +196,11 @@ std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
         return laggingAgent;
     }
     return std::nullopt;
+}
+
+bool TVolumeState::HasLaggingAgents() const
+{
+    return Meta.GetLaggingAgentsInfo().AgentsSize() != 0;
 }
 
 bool TVolumeState::HasLaggingInReplica(ui32 replicaIndex) const
@@ -240,6 +222,28 @@ THashSet<TString> TVolumeState::GetLaggingDevices() const
         }
     }
     return laggingDevices;
+}
+
+void TVolumeState::UpdateLaggingAgentMigrationState(
+    const TString& agentId,
+    ui64 cleanBlocks,
+    ui64 dirtyBlocks)
+{
+    CurrentlyMigratingLaggingAgents[agentId] = TLaggingAgentMigrationInfo{
+        .CleanBlocks = cleanBlocks,
+        .DirtyBlocks = dirtyBlocks,
+    };
+}
+
+void TVolumeState::ResetLaggingAgentMigrationState(const TString& agentId)
+{
+    CurrentlyMigratingLaggingAgents.erase(agentId);
+}
+
+auto TVolumeState::GetLaggingAgentsMigrationInfo() const
+    -> const THashMap<TString, TLaggingAgentMigrationInfo>&
+{
+    return CurrentlyMigratingLaggingAgents;
 }
 
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
@@ -275,17 +279,7 @@ bool TVolumeState::ShouldTrackUsedBlocks() const
     }
 
     const bool overlay = !GetBaseDiskId().empty();
-    if (overlay) {
-        return true;
-    }
-
-    // TODO(drbasic)
-    // For encrypted disk-registry based disks, we will continue to
-    // write a map of encrypted blocks for a while.
-    const auto mode = Meta.GetVolumeConfig().GetEncryptionDesc().GetMode();
-
-    return mode != NProto::NO_ENCRYPTION &&
-           mode != NProto::ENCRYPTION_AT_REST;
+    return overlay;
 }
 
 void TVolumeState::Reset()
@@ -421,6 +415,42 @@ bool TVolumeState::IsDiskRegistryMediaKind() const
     return NCloud::IsDiskRegistryMediaKind(Config->GetStorageMediaKind());
 }
 
+bool TVolumeState::HasPerformanceProfileModifications(
+    const TStorageConfig& config) const
+{
+    const NKikimrBlockStore::TVolumeConfig& volumeConfig =
+        GetMeta().GetVolumeConfig();
+
+    auto currentPerformanceProfile =
+        VolumeConfigToVolumePerformanceProfile(volumeConfig);
+
+    NProto::TVolumePerformanceProfile defaultPerformanceProfile;
+    {
+        const TVolumeParams volumeParams = ComputeVolumeParams(
+            config,
+            GetBlockSize(),
+            GetBlocksCount(),
+            static_cast<NProto::EStorageMediaKind>(
+                volumeConfig.GetStorageMediaKind()),
+            static_cast<ui32>(volumeConfig.GetPartitions().size()),
+            volumeConfig.GetCloudId(),
+            volumeConfig.GetFolderId(),
+            volumeConfig.GetDiskId(),
+            volumeConfig.GetIsSystem(),
+            !volumeConfig.GetBaseDiskId().empty());
+
+        NKikimrBlockStore::TVolumeConfig defaultVolumeConfig;
+        ResizeVolume(config, volumeParams, {}, {}, defaultVolumeConfig);
+        defaultPerformanceProfile =
+            VolumeConfigToVolumePerformanceProfile(defaultVolumeConfig);
+    }
+
+    using google::protobuf::util::MessageDifferencer;
+    return !MessageDifferencer::Equals(
+        currentPerformanceProfile,
+        defaultPerformanceProfile);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionInfo* TVolumeState::GetPartition(ui64 tabletId)
@@ -433,22 +463,22 @@ TPartitionInfo* TVolumeState::GetPartition(ui64 tabletId)
     return nullptr;
 }
 
-std::optional<ui32>
-TVolumeState::FindPartitionIndex(NActors::TActorId owner) const
+std::optional<ui32> TVolumeState::FindPartitionIndex(
+    NActors::TActorId partitionActorId) const
 {
     for (ui32 i = 0; i < Partitions.size(); ++i) {
-        if (Partitions[i].Owner == owner) {
+        if (Partitions[i].IsKnownActorId(partitionActorId)) {
             return i;
         }
     }
     return std::nullopt;
 }
 
-std::optional<ui64>
-TVolumeState::FindPartitionTabletId(NActors::TActorId owner) const
+std::optional<ui64> TVolumeState::FindPartitionTabletId(
+    NActors::TActorId partitionActorId) const
 {
     for (const auto& partition: Partitions) {
-        if (partition.Owner == owner) {
+        if (partition.IsKnownActorId(partitionActorId)) {
             return partition.TabletId;
         }
     }
@@ -472,7 +502,8 @@ TPartitionInfo::EState TVolumeState::UpdatePartitionsState()
 
         const bool allocated =
             bytes >= Config->GetBlockSize() * Config->GetBlocksCount();
-        const bool actorStarted = !!DiskRegistryBasedPartitionActor;
+        const bool actorStarted =
+            DiskRegistryBasedPartitionActor.GetTop() != TActorId();
         if (allocated && actorStarted) {
             PartitionsState = TPartitionInfo::READY;
         } else {
@@ -535,10 +566,10 @@ TString TVolumeState::GetPartitionsError() const
 }
 
 void TVolumeState::SetDiskRegistryBasedPartitionActor(
-    const NActors::TActorId& actor,
+    TActorsStack actors,
     TNonreplicatedPartitionConfigPtr config)
 {
-    DiskRegistryBasedPartitionActor = actor;
+    DiskRegistryBasedPartitionActor = std::move(actors);
     NonreplicatedPartitionConfig = std::move(config);
 }
 
@@ -856,29 +887,72 @@ const THashMultiMap<TActorId, TString>& TVolumeState::GetPipeServerId2ClientId()
     return ClientIdsByPipeServerId;
 }
 
-TVector<NProto::TDeviceConfig>
-TVolumeState::GetAllDevicesForAcquireRelease() const
+TVector<NProto::TDeviceConfig> TVolumeState::GetDevicesForAcquire() const
 {
-    const size_t allDevicesCount =
-        ((Meta.ReplicasSize() + 1) * Meta.DevicesSize()) +
-        GetMeta().MigrationsSize();
+    const THashSet<TString> deviceIdsToIgnore(
+        Meta.GetLostDeviceIds().begin(),
+        Meta.GetLostDeviceIds().end());
+    return GetDevicesForAcquireOrRelease(deviceIdsToIgnore);
+}
 
-    TVector<NProto::TDeviceConfig> resultDevices;
-    resultDevices.reserve(allDevicesCount);
+TVector<NProto::TDeviceConfig> TVolumeState::GetDevicesForRelease() const
+{
+    return GetDevicesForAcquireOrRelease({});
+}
 
-    for (const auto& device: Meta.GetDevices()) {
-        resultDevices.emplace_back(device);
-    }
-    for (const auto& replica: Meta.GetReplicas()) {
-        for (const auto& device: replica.GetDevices()) {
-            resultDevices.emplace_back(device);
+void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
+{
+    for (auto& followerInfo: FollowerDisks) {
+        if (followerInfo.LinkUUID == follower.LinkUUID) {
+            followerInfo = std::move(follower);
+            return;
         }
     }
-    for (const auto& migration: Meta.GetMigrations()) {
-        resultDevices.emplace_back(migration.GetTargetDevice());
-    }
+    FollowerDisks.push_back(std::move(follower));
+}
 
-    return resultDevices;
+void TVolumeState::RemoveFollower(const TString& linkUUID)
+{
+    EraseIf(
+        FollowerDisks,
+        [&](const TFollowerDiskInfo& follower)
+        { return follower.LinkUUID == linkUUID; });
+}
+
+std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerByUuid(
+    const TString& linkUUID) const
+{
+    for (const auto& follower: FollowerDisks) {
+        if (follower.LinkUUID == linkUUID) {
+            return follower;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerByDiskId(
+    const TString& diskId) const
+{
+    for (const auto& follower: FollowerDisks) {
+        if (follower.FollowerDiskId == diskId) {
+            return follower;
+        }
+    }
+    return std::nullopt;
+}
+
+void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)
+{
+    ScrubbingInfo.FullScanCount +=
+        ScrubbingInfo.CurrentRange.Start > counters.CurrentRange.Start ? 1 : 0;
+    ScrubbingInfo.Running = counters.Running;
+    ScrubbingInfo.CurrentRange = counters.CurrentRange;
+    ScrubbingInfo.Minors.insert(counters.Minors.begin(), counters.Minors.end());
+    ScrubbingInfo.Majors.insert(counters.Majors.begin(), counters.Majors.end());
+    ScrubbingInfo.Fixed.insert(counters.Fixed.begin(), counters.Fixed.end());
+    ScrubbingInfo.FixedPartial.insert(
+        counters.FixedPartial.begin(),
+        counters.FixedPartial.end());
 }
 
 bool TVolumeState::CanPreemptClient(
@@ -1099,6 +1173,39 @@ void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& block
         return;
     }
     CheckpointLight->Set(blockRange);
+}
+
+TVector<NProto::TDeviceConfig> TVolumeState::GetDevicesForAcquireOrRelease(
+    const THashSet<TString>& deviceIdsToIgnore) const
+{
+    const size_t allDevicesCount =
+        ((Meta.ReplicasSize() + 1) * Meta.DevicesSize()) +
+        GetMeta().MigrationsSize();
+
+    TVector<NProto::TDeviceConfig> resultDevices;
+    resultDevices.reserve(allDevicesCount);
+
+    auto addDeviceIfNeeded = [&](const auto& d)
+    {
+        if (deviceIdsToIgnore.contains(d.GetDeviceUUID())) {
+            return;
+        }
+        resultDevices.emplace_back(d);
+    };
+
+    for (const auto& device: Meta.GetDevices()) {
+        addDeviceIfNeeded(device);
+    }
+    for (const auto& replica: Meta.GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            addDeviceIfNeeded(device);
+        }
+    }
+    for (const auto& migration: Meta.GetMigrations()) {
+        addDeviceIfNeeded(migration.GetTargetDevice());
+    }
+
+    return resultDevices;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -248,6 +248,7 @@ private:
     const TRealInstanceId RealInstanceId;
 
     TRequestCounters RequestCounters;
+    TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
     TDuration InactivityTimeout;
     TInstant LastRemountTime;
@@ -716,6 +717,12 @@ public:
 
             for (auto& [key, instance]: holder.VolumeInfos) {
                 instance->RequestCounters.UpdateStats(updateIntervalFinished);
+                if (updateIntervalFinished) {
+                    Y_DEBUG_ABORT_UNLESS(instance->HasDowntimeCounter);
+                    if (instance->HasDowntimeCounter) {
+                        *instance->HasDowntimeCounter = hasDowntime;
+                    }
+                }
             }
             if (SufferCounters &&
                 volumeBase.PerfCalc.IsSuffering())
@@ -872,10 +879,13 @@ private:
         auto volumeGroup = Counters->GetSubgroup(
             "volume",
             volumeConfig.GetDiskId());
-        auto countersGroup = volumeGroup->GetSubgroup(
-            "instance",
-            realInstanceId.GetRealInstanceId());
+        auto countersGroup =
+            volumeGroup
+                ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
+                ->GetSubgroup("cloud", volumeConfig.GetCloudId())
+                ->GetSubgroup("folder", volumeConfig.GetFolderId());
         info->RequestCounters.Register(*countersGroup);
+        info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
 
         NUserCounter::RegisterServerVolumeInstance(
             *UserCounters,

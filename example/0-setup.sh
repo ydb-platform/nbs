@@ -148,6 +148,7 @@ setup_nonrepl_disk_registry() {
     setup_remote_disk_agent 1
     setup_remote_disk_agent 2
     setup_remote_disk_agent 3
+    setup_remote_disk_agent 4
 
     cat > "$BIN_DIR"/nbs/nbs-disk-registry.txt <<EOF
 KnownAgents {
@@ -169,6 +170,13 @@ KnownAgents {
     Devices: "remote3-1024-1"
     Devices: "remote3-1024-2"
     Devices: "remote3-1024-3"
+}
+
+KnownAgents {
+    AgentId: "remote4.cloud-example.net"
+    Devices: "remote4-1024-1"
+    Devices: "remote4-1024-2"
+    Devices: "remote4-1024-3"
 }
 
 KnownAgents {

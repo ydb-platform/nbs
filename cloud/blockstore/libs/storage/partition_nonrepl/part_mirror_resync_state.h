@@ -68,6 +68,10 @@ public:
         return ReplicaInfos;
     }
 
+    [[nodiscard]] bool DevicesReadyForReading(
+        ui32 replicaIndex,
+        const TBlockRange64 blockRange) const;
+
     bool AddPendingResyncRange(ui32 rangeId);
     bool StartNextResyncRange(ui32* rangeId);
     void FinishResyncRange(ui32 rangeId);

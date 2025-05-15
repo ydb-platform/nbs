@@ -148,7 +148,8 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError(), false)) {
+    if (HasError(msg->GetError())) {
+        HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
 
@@ -216,14 +217,15 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
+    TRequestData request;
     bool ok = InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy
-    );
+        &timeoutPolicy,
+        &request);
 
     if (!ok) {
         return;
@@ -238,7 +240,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId);
+    RequestsInProgress.AddReadRequest(actorId, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
@@ -254,7 +256,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ChecksumBlocks.AddRequest(time, requestBytes);
-    NetworkBytes += requestBytes;
+    NetworkBytes += sizeof(ui64);   //  Checksum is sent as a 64-bit integer.
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);

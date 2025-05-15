@@ -225,7 +225,9 @@ STFUNC(TScanDiskActor::StateWork)
 
         default:
             HandleUnexpectedEvent(
-                ev, TBlockStoreComponents::PARTITION_WORKER);
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -472,8 +474,9 @@ void TPartitionActor::HandleScanDiskBatch(
     const auto [gen, step] = ParseCommitId(msg->BlobId.CommitId());
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start scan batch (starting %u:%u)",
+        "[%lu][d:%s] Start scan batch (starting %u:%u)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         gen,
         step);
 
@@ -528,8 +531,9 @@ bool TPartitionActor::PrepareScanDiskBatch(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] PrepareScanDiskBatch completed (%u) %s",
+        "[%lu][d:%s] PrepareScanDiskBatch completed (%u) %s",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         static_cast<ui32>(progress),
         StringifyScanDiskBatchTx(args).c_str());
 
@@ -554,10 +558,7 @@ void TPartitionActor::CompleteScanDiskBatch(
 
     RemoveTransaction(*args.RequestInfo);
 
-    UpdateCPUUsageStat(CyclesToDurationSafe(
-        args.RequestInfo->GetExecCycles()
-    ).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
     const bool isScanCompleted = args.VisitCount == 0;
 

@@ -3,14 +3,17 @@ LIBRARY()
 #INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 GENERATE_ENUM_SERIALIZATION(checkpoint.h)
+GENERATE_ENUM_SERIALIZATION(follower_disk.h)
 
 SRCS(
     checkpoint.cpp
     checkpoint_light.cpp
     client_state.cpp
+    follower_disk.cpp
     helpers.cpp
     merge.cpp
     meta.cpp
+    requests_time_tracker.cpp
     requests_inflight.cpp
     retry_policy.cpp
     stripe.cpp

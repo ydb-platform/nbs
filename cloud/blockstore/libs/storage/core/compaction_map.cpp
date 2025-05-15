@@ -537,40 +537,6 @@ TVector<ui32> TCompactionMap::GetNonEmptyRanges() const
     return result;
 }
 
-TVector<TCompactionCounter> TCompactionMap::GetNonEmptyRanges(
-    ui32 blockIndex,
-    ui32 rangesCount) const
-{
-    if (!rangesCount) {
-        return {};
-    }
-
-    const ui32 groupStart = GetGroupStart(blockIndex, Impl->RangeSize);
-    auto rangeIndex = (blockIndex - groupStart) / Impl->RangeSize;
-
-    TVector<TCompactionCounter> result(Reserve(rangesCount));
-
-    for (auto groupIt = TImpl::TGroupByBlockIndexTree::TIterator(
-             Impl->GroupByBlockIndex.Find(groupStart));
-         groupIt != Impl->GroupByBlockIndex.End();
-         ++groupIt, rangeIndex = 0)
-    {
-        const auto& group = static_cast<TImpl::TGroupNode&>(*groupIt);
-        for (; rangeIndex < group.Stats.size(); ++rangeIndex) {
-            if (group.Stats[rangeIndex].BlobCount > 0) {
-                const auto groupRangeStart =
-                    group.BlockIndex + (rangeIndex * Impl->RangeSize);
-                result.emplace_back(groupRangeStart, group.Stats[rangeIndex]);
-                if (result.size() == rangesCount) {
-                    return result;
-                }
-            }
-        }
-    }
-
-    return result;
-}
-
 ui32 TCompactionMap::GetNonEmptyRangeCount() const
 {
     return Impl->GetNonEmptyRangeCount();

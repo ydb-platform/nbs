@@ -401,7 +401,7 @@ private:
         auto fs = FindFileSystem(id);
         if (!fs) {
             return T::ErrorResponse(E_ARGUMENT, TStringBuilder()
-                << "invalid file system: " << id.Quote());
+                << "local filestore doesn't exist: " << id.Quote());
         }
 
         try {
@@ -615,7 +615,7 @@ NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
     auto it = FileSystems.find(id);
     if (it == FileSystems.end()) {
         return TErrorResponse(S_FALSE, TStringBuilder()
-            << "invalid file system: " << id.Quote());
+            << "local filestore doesn't exist: " << id.Quote());
     }
 
     auto fsPaths = GetPaths(id);
@@ -693,7 +693,7 @@ TLocalFileSystemPtr TLocalFileStore::InitFileSystem(
         FileIOService);
 
     auto [it, inserted] = FileSystems.emplace(id, fs);
-    Y_ABORT_UNLESS(inserted);
+    Y_DEBUG_ABORT_UNLESS(inserted);
 
     return fs;
 }

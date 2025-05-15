@@ -41,7 +41,7 @@ void TFileSystem::Lookup(
                 } else {
                     fuse_entry_param entry = {};
                     entry.entry_timeout =
-                        Config->GetNegativeEntryTimeout().Seconds();
+                        Config->GetNegativeEntryTimeout().SecondsFloat();
                     self->ReplyEntry(
                         *callContext,
                         error,

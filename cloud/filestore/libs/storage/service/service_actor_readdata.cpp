@@ -271,16 +271,21 @@ void TReadDataActor::HandleDescribeDataResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
 
     TABLET_VERIFY(InFlightRequest);
 
-    InFlightRequest->Complete(ctx.Now(), msg->GetError());
+    InFlightRequest->Complete(ctx.Now(), error);
     FinalizeProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
         msg->Record);
 
     if (FAILED(msg->GetStatus())) {
-        ReadData(ctx, FormatError(msg->GetError()));
+        if (error.GetCode() != E_FS_THROTTLED) {
+            ReadData(ctx, FormatError(error));
+        } else {
+            HandleError(ctx, error);
+        }
         return;
     }
 
@@ -622,7 +627,10 @@ STFUNC(TReadDataActor::StateWork)
         HFunc(TEvBlobStorage::TEvGetResult, HandleReadBlobResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

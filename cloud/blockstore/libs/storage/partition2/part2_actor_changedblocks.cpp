@@ -248,7 +248,10 @@ STFUNC(TGetChangedBlocksActor::StateWork)
         HFunc(TEvService::TEvGetChangedBlocksResponse, HandleGetChangedBlocksResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -548,8 +551,7 @@ void TPartitionActor::FinalizeGetChangedBlocks(
 {
     UpdateStats(operation.Stats);
 
-    UpdateCPUUsageStats(ctx, CyclesToDurationSafe(operation.ExecCycles));
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx, operation.ExecCycles);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

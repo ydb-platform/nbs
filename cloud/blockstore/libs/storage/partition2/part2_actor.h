@@ -241,9 +241,20 @@ private:
 
     void SendStatsToService(const NActors::TActorContext& ctx);
 
+    // IRequestsInProgress implementation:
     bool WriteRequestInProgress() const override
     {
         return WriteAndZeroRequestsInProgress != 0;
+    }
+
+    void WaitForInFlightWrites() override
+    {
+        Y_ABORT("Unimplemented");
+    }
+
+    bool IsWaitingForInFlightWrites() const override
+    {
+        Y_ABORT("Unimplemented");
     }
 
     template <typename TMethod>
@@ -264,10 +275,11 @@ private:
         TRequestInfo& requestInfo,
         bool replyLocal);
 
-    void UpdateExecutorStats(const NActors::TActorContext& ctx);
     void UpdateNetworkStats(const NActors::TActorContext& ctx, ui64 value);
     void UpdateStorageStats(const NActors::TActorContext& ctx, i64 value);
-    void UpdateCPUUsageStats(const NActors::TActorContext& ctx, TDuration value);
+    void UpdateCPUUsageStat(
+        const NActors::TActorContext& ctx,
+        ui64 execCycles);
 
     void UpdateWriteThroughput(
         const NActors::TActorContext& ctx,
@@ -390,6 +402,8 @@ private:
     bool IsCompactRangePending(
         const TString& operationId,
         ui32& ranges) const;
+
+    [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
 
 private:
     STFUNC(StateBoot);

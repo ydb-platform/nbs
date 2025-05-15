@@ -57,13 +57,13 @@ NYdbStats::TPercentileCounterField CreatePercentileCounterField(const TVector<do
     return out;
 }
 
-NYdbStats::TYdbRow BuildStatsForUpload(
+NYdbStats::TYdbStatsRow BuildStatsForUpload(
     const TActorContext& ctx,
     const TVolumeStatsInfo& volume,
     TDuration updateInterval,
     TDuration uploadInterval)
 {
-    TYdbRow out;
+    TYdbStatsRow out;
 
     out.DiskId = volume.VolumeInfo.GetDiskId();
     out.Timestamp = ctx.Now().Seconds();
@@ -74,6 +74,7 @@ NYdbStats::TYdbRow BuildStatsForUpload(
     out.StorageMediaKind =
         static_cast<ui64>(volume.VolumeInfo.GetStorageMediaKind());
     out.HostName = FQDNHostName();
+    out.VolumeTabletId = volume.VolumeTabletId;
 
     const auto& disk = volume.PerfCounters;
 
@@ -104,6 +105,7 @@ NYdbStats::TYdbRow BuildStatsForUpload(
 #define BLOCKSTORE_SIMPLE_COUNTER(counter)                                     \
         out.counter = disk.VolumeSelfCounters.Simple.counter.Value;            \
 //  BLOCKSTORE_SIMPLE_COUNTER
+
     BLOCKSTORE_SIMPLE_COUNTER(MaxReadBandwidth);
     BLOCKSTORE_SIMPLE_COUNTER(MaxWriteBandwidth);
     BLOCKSTORE_SIMPLE_COUNTER(MaxReadIops);
@@ -345,9 +347,7 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
 
         YdbStatsRequestSentTs = ctx.Now();
 
-        StatsUploader->UploadStats(
-            YdbStatsRequests.front().first.Stats,
-            YdbStatsRequests.front().first.Metrics).Subscribe(
+        StatsUploader->UploadStats(YdbStatsRequests.front().first).Subscribe(
             [=] (const auto& future) {
                 if (auto p = weak.lock()) {
                     NProto::TError result;

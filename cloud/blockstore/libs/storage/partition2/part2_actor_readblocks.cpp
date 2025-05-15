@@ -690,7 +690,10 @@ STFUNC(TReadBlocksActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -1107,9 +1110,7 @@ void TPartitionActor::FinalizeReadBlocks(
     ui64 blocksCount = operation.Stats.GetUserReadCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * State->GetBlockSize();
 
-    UpdateNetworkStats(ctx, requestBytes);
-    UpdateCPUUsageStats(ctx, CyclesToDurationSafe(operation.ExecCycles));
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx, operation.ExecCycles);
 
     auto time = CyclesToDurationSafe(operation.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);

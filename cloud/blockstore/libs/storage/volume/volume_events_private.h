@@ -25,7 +25,9 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateCheckpointRequest,            __VA_ARGS__)                       \
     xxx(UpdateShadowDiskState,              __VA_ARGS__)                       \
     xxx(ReadMetaHistory,                    __VA_ARGS__)                       \
-    xxx(DeviceTimeouted,                    __VA_ARGS__)                       \
+    xxx(DeviceTimedOut,                     __VA_ARGS__)                       \
+    xxx(UpdateFollowerState,                __VA_ARGS__)                       \
+    xxx(TakeVolumeRequestId,                __VA_ARGS__)                       \
 // BLOCKSTORE_VOLUME_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -134,51 +136,64 @@ struct TEvVolumePrivate
     };
 
     //
-    // DeviceTimeouted
+    // DeviceTimedOut
     //
 
-    struct TDeviceTimeoutedRequest
+    struct TDeviceTimedOutRequest
     {
-        const TString DeviceUUID;
+        TString DeviceUUID;
 
-        explicit TDeviceTimeoutedRequest(TString deviceUUID)
+        explicit TDeviceTimedOutRequest(TString deviceUUID)
             : DeviceUUID(std::move(deviceUUID))
         {}
     };
 
-    struct TDeviceTimeoutedResponse
+    struct TDeviceTimedOutResponse
     {
     };
 
     //
-    // UpdateSmartMigrationState
+    // TakeVolumeRequestId
     //
 
-    struct TUpdateSmartMigrationState
+    struct TTakeVolumeRequestIdRequest
+    {
+    };
+
+    struct TTakeVolumeRequestIdResponse
+    {
+        ui64 VolumeRequestId = 0;
+    };
+
+    //
+    // UpdateLaggingAgentMigrationState
+    //
+
+    struct TUpdateLaggingAgentMigrationState
     {
         TString AgentId;
-        ui64 ProcessedBlockCount;
-        ui64 BlockCountNeedToBeProcessed;
+        ui64 CleanBlockCount;
+        ui64 DirtyBlockCount;
 
-        TUpdateSmartMigrationState(
+        TUpdateLaggingAgentMigrationState(
                 TString agentId,
-                ui64 processedBlockCount,
-                ui64 blockCountNeedToBeProcessed)
+                ui64 cleanBlockCount,
+                ui64 dirtyBlockCount)
             : AgentId(std::move(agentId))
-            , ProcessedBlockCount(processedBlockCount)
-            , BlockCountNeedToBeProcessed(blockCountNeedToBeProcessed)
+            , CleanBlockCount(cleanBlockCount)
+            , DirtyBlockCount(dirtyBlockCount)
         {}
     };
 
     //
-    // SmartMigrationFinished
+    // LaggingAgentMigrationFinished
     //
 
-    struct TSmartMigrationFinished
+    struct TLaggingAgentMigrationFinished
     {
         const TString AgentId;
 
-        explicit TSmartMigrationFinished(TString agentId)
+        explicit TLaggingAgentMigrationFinished(TString agentId)
             : AgentId(std::move(agentId))
         {}
     };
@@ -194,6 +209,7 @@ struct TEvVolumePrivate
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
         TVector<TString> RemovedLaggingDevices;
+        TVector<TString> LostDeviceIds;
         NProto::EVolumeIOMode IOMode;
         TInstant IOModeTs;
         bool MuteIOErrors;
@@ -204,6 +220,7 @@ struct TEvVolumePrivate
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
                 TVector<TString> removedLaggingDevices,
+                TVector<TString> lostDeviceIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
@@ -212,6 +229,7 @@ struct TEvVolumePrivate
             , Replicas(std::move(replicas))
             , FreshDeviceIds(std::move(freshDeviceIds))
             , RemovedLaggingDevices(std::move(removedLaggingDevices))
+            , LostDeviceIds(std::move(lostDeviceIds))
             , IOMode(ioMode)
             , IOModeTs(ioModeTs)
             , MuteIOErrors(muteIOErrors)
@@ -387,6 +405,48 @@ struct TEvVolumePrivate
     };
 
     //
+    //  UpdateFollowerStateRequest
+    //
+
+    struct TUpdateFollowerStateRequest
+    {
+        enum class EReason
+        {
+            FillProgressUpdate,
+            FillCompleted,
+            FillError,
+        };
+
+        TString FollowerUuid;
+        EReason Reason = EReason::FillError;
+        std::optional<ui64> MigratedBytes;
+
+        TUpdateFollowerStateRequest(
+                TString followerUuid,
+                EReason reason,
+                std::optional<ui64> migratedBytes)
+            : FollowerUuid(std::move(followerUuid))
+            , Reason(reason)
+            , MigratedBytes(migratedBytes)
+        {}
+    };
+
+    struct TUpdateFollowerStateResponse
+    {
+        TFollowerDiskInfo::EState NewState = TFollowerDiskInfo::EState::None;
+        std::optional<ui64> MigratedBytes;
+
+        TUpdateFollowerStateResponse() = default;
+
+        TUpdateFollowerStateResponse(
+                TFollowerDiskInfo::EState newState,
+                std::optional<ui64> migratedBytes)
+            : NewState(newState)
+            , MigratedBytes(migratedBytes)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -411,8 +471,8 @@ struct TEvVolumePrivate
         EvDevicesAcquireFinished,
         EvDevicesReleaseFinished,
         EvReportLaggingDevicesToDR,
-        EvUpdateSmartMigrationState,
-        EvSmartMigrationFinished,
+        EvUpdateLaggingAgentMigrationState,
+        EvLaggingAgentMigrationFinished,
 
         EvEnd
     };
@@ -461,14 +521,14 @@ struct TEvVolumePrivate
         EvUpdateReadWriteClientInfo
     >;
 
-    using TEvUpdateSmartMigrationState = TRequestEvent<
-        TUpdateSmartMigrationState,
-        EvUpdateSmartMigrationState
+    using TEvUpdateLaggingAgentMigrationState = TRequestEvent<
+        TUpdateLaggingAgentMigrationState,
+        EvUpdateLaggingAgentMigrationState
     >;
 
-    using TEvSmartMigrationFinished = TRequestEvent<
-        TSmartMigrationFinished,
-        EvSmartMigrationFinished
+    using TEvLaggingAgentMigrationFinished = TRequestEvent<
+        TLaggingAgentMigrationFinished,
+        EvLaggingAgentMigrationFinished
     >;
 
     using TEvReportLaggingDevicesToDR = TRequestEvent<

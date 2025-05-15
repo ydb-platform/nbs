@@ -40,6 +40,7 @@ private:
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TUnlinkNodeInShardResult Result;
+    bool ShouldUnlockUponCompletion;
 
 public:
     TUnlinkNodeInShardActor(
@@ -49,7 +50,8 @@ public:
         NProtoPrivate::TUnlinkNodeInShardRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result);
+        TUnlinkNodeInShardResult result,
+        bool shouldUnlockUponCompletion);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -78,7 +80,8 @@ TUnlinkNodeInShardActor::TUnlinkNodeInShardActor(
         NProtoPrivate::TUnlinkNodeInShardRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result)
+        TUnlinkNodeInShardResult result,
+        bool shouldUnlockUponCompletion)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
@@ -86,6 +89,7 @@ TUnlinkNodeInShardActor::TUnlinkNodeInShardActor(
     , RequestId(requestId)
     , OpLogEntryId(opLogEntryId)
     , Result(std::move(result))
+    , ShouldUnlockUponCompletion(shouldUnlockUponCompletion)
 {}
 
 void TUnlinkNodeInShardActor::Bootstrap(const TActorContext& ctx)
@@ -161,14 +165,26 @@ void TUnlinkNodeInShardActor::HandleUnlinkNodeResponse(
             Request.GetName().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s %s",
-            LogTag.c_str(),
-            message.c_str());
-
-        ReportReceivedNodeOpErrorFromShard(message);
+        if (ShouldUnlockUponCompletion &&
+            msg->GetError().GetCode() == E_FS_NOTEMPTY)
+        {
+            // The response from shard E_FS_NOTEMPTY is expected for directories
+            // and should not be considered erroneous
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s %s",
+                LogTag.c_str(),
+                message.c_str());
+        } else {
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s %s",
+                LogTag.c_str(),
+                message.c_str());
+            ReportReceivedNodeOpErrorFromShard(message);
+        }
 
         ReplyAndDie(ctx, msg->GetError());
         return;
@@ -214,12 +230,16 @@ void TUnlinkNodeInShardActor::ReplyAndDie(
     }
 
     using TResponse = TEvIndexTabletPrivate::TEvNodeUnlinkedInShard;
-    ctx.Send(ParentId, std::make_unique<TResponse>(
-        std::move(RequestInfo),
-        Request.GetHeaders().GetSessionId(),
-        RequestId,
-        OpLogEntryId,
-        std::move(Result)));
+    ctx.Send(
+        ParentId,
+        std::make_unique<TResponse>(
+            std::move(RequestInfo),
+            Request.GetHeaders().GetSessionId(),
+            RequestId,
+            OpLogEntryId,
+            std::move(Result),
+            ShouldUnlockUponCompletion,
+            Request.GetOriginalRequest()));
 
     Die(ctx);
 }
@@ -232,7 +252,10 @@ STFUNC(TUnlinkNodeInShardActor::StateWork)
         HFunc(TEvService::TEvUnlinkNodeResponse, HandleUnlinkNodeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -395,14 +418,27 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
     }
 
     if (args.ChildRef->IsExternal()) {
-        UnlinkExternalNode(
-            db,
-            args.ParentNodeId,
-            args.Name,
-            args.ChildRef->ShardId,
-            args.ChildRef->ShardNodeName,
-            args.ChildRef->MinCommitId,
-            args.CommitId);
+        // This external node can refer both to a file and a directory. In case
+        // of a file the request is not supposed to fail: we can unlink the node
+        // in the leader and then unlink the external node in the shard.
+        //
+        // In case of a directory we can't unlink the node in the leader if it's
+        // not empty. So a different approach is used here: this nodeRef is not
+        // unlocked and not removed until the confirmation from the shard is
+        // received that the node is unlinked.
+
+        if (!args.Request.GetUnlinkDirectory() ||
+            !GetFileSystem().GetDirectoryCreationInShardsEnabled())
+        {
+            UnlinkExternalNode(
+                db,
+                args.ParentNodeId,
+                args.Name,
+                args.ChildRef->ShardId,
+                args.ChildRef->ShardNodeName,
+                args.ChildRef->MinCommitId,
+                args.CommitId);
+        }
 
         // OpLogEntryId doesn't have to be a CommitId - it's just convenient to
         // use CommitId here in order not to generate some other unique ui64
@@ -461,8 +497,6 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         args.SessionId.c_str(),
         FormatError(args.Error).c_str());
 
-    UnlockNodeRef({args.ParentNodeId, args.Name});
-
     if (args.ParentNodeId != InvalidNodeId) {
         InvalidateNodeCaches(args.ParentNodeId);
     }
@@ -474,6 +508,20 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "UnlinkNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
+    }
+
+    bool shouldUnlockUponCompletion = true;
+    // If the node is external and it's a directory and creation of
+    // directories is enabled for this filesystem and the request is to be
+    // forwarded to the shard, then the nodeRef is not unlocked here as it
+    // is possible that the shard will reject the request. In this case the
+    // nodeRef will be unlocked afterwards
+    if (HasError(args.Error) || !args.ChildRef->IsExternal() ||
+        !args.Request.GetUnlinkDirectory() ||
+        !GetFileSystem().GetDirectoryCreationInShardsEnabled())
+    {
+        UnlockNodeRef({args.ParentNodeId, args.Name});
+        shouldUnlockUponCompletion = false;
     }
 
     if (!HasError(args.Error)) {
@@ -490,7 +538,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
                 args.OpLogEntry.GetUnlinkNodeInShardRequest(),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
-                NProto::TUnlinkNodeResponse{});
+                {},
+                shouldUnlockUponCompletion);
 
             return;
         }
@@ -520,6 +569,152 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
 
     auto response =
         std::make_unique<TEvService::TEvUnlinkNodeResponse>(args.Error);
+    CompleteResponse<TEvService::TUnlinkNodeMethod>(
+        response->Record,
+        args.RequestInfo->CallContext,
+        ctx);
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_CompleteUnlinkNode(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TCompleteUnlinkNode& args)
+{
+    Y_UNUSED(ctx, tx, args);
+
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+
+    // TODO(2674): we should pass commitId from the request, not generate it
+    args.CommitId = GetCurrentCommitId();
+
+    // validate parent node exists
+    if (!ReadNode(db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
+        return false;   // not ready
+    }
+
+    if (!args.ParentNode) {
+        args.Error = ErrorInvalidParent(args.ParentNodeId);
+        return true;
+    }
+
+    // validate target node exists
+    if (!ReadNodeRef(
+            db,
+            args.ParentNodeId,
+            args.CommitId,
+            args.Name,
+            args.ChildRef))
+    {
+        return false;   // not ready
+    }
+
+    if (!args.ChildRef) {
+        args.Error = ErrorInvalidTarget(args.ParentNodeId, args.Name);
+        return true;
+    }
+
+    if (!args.ChildRef->IsExternal()) {
+        // CompleteUnlinkNode should only be called as a completion of
+        // UnlinkNode for external nodes
+        auto message = Sprintf(
+            "CompleteUnlinkNode: %lu, %s is not external",
+            args.ParentNodeId,
+            args.Name.Quote().c_str());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return true;
+    }
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TCompleteUnlinkNode& args)
+{
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+
+    db.DeleteOpLogEntry(args.OpLogEntryId);
+
+    // If the original response was an error or prepare stage failed, we don't
+    // need to do anything
+    if (FAILED(args.Error.GetCode())) {
+        // It should be impossible to achieve this state
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s CompleteUnlinkNode is in invalid state: %s, original request: "
+            "%s",
+            LogTag.c_str(),
+            FormatError(args.Error).c_str(),
+            args.Request.ShortDebugString().c_str());
+        ReportInvalidNodeRefUponCompleteUnlinkNode(
+            TStringBuilder()
+            << "CompleteUnlinkNode: " << args.Request.ShortDebugString()
+            << ", Error: " << FormatError(args.Error));
+        return;
+    }
+    if (FAILED(args.Response.GetError().GetCode())) {
+        return;
+    }
+
+    args.CommitId = GenerateCommitId();
+    if (args.CommitId == InvalidCommitId) {
+        return RebootTabletOnCommitOverflow(ctx, "CompleteUnlinkNode");
+    }
+
+    UnlinkExternalNode(
+        db,
+        args.ParentNodeId,
+        args.Name,
+        args.ChildRef->ShardId,
+        args.ChildRef->ShardNodeName,
+        args.ChildRef->MinCommitId,
+        args.CommitId);
+}
+
+void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
+    const TActorContext& ctx,
+    TTxIndexTablet::TCompleteUnlinkNode& args)
+{
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s[%s] CompleteUnlinkNode completed (%s)",
+        LogTag.c_str(),
+        args.SessionId.c_str(),
+        FormatError(args.Error).c_str());
+
+    if (args.ParentNodeId != InvalidNodeId) {
+        InvalidateNodeCaches(args.ParentNodeId);
+    }
+    if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
+        InvalidateNodeCaches(args.ChildNode->NodeId);
+    }
+
+    if (!HasError(args.Error)) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Unlinking node in shard upon CompleteUnlinkNode: %s, %s",
+            LogTag.c_str(),
+            args.ChildRef->ShardId.c_str(),
+            args.ChildRef->ShardNodeName.c_str());
+
+        UnlockNodeRef({args.ParentNodeId, args.Name});
+    }
+
+    RemoveTransaction(*args.RequestInfo);
+    EnqueueBlobIndexOpIfNeeded(ctx);
+
+    Metrics.UnlinkNode.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
+
+    auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>(
+        FAILED(args.Error.GetCode()) ? args.Error : args.Response.GetError());
     CompleteResponse<TEvService::TUnlinkNodeMethod>(
         response->Record,
         args.RequestInfo->CallContext,
@@ -576,21 +771,26 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
 
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&res)) {
-            auto response =
-                std::make_unique<TEvService::TEvUnlinkNodeResponse>();
-            response->Record = std::move(*x);
+            // If the node is external and its lock has not been released yet,
+            // we should not respond to the client yet. We should remove the
+            // node ref (if the request was successful) and unlock the node ref
+            if (!msg->ShouldUnlockUponCompletion) {
+                auto response =
+                    std::make_unique<TEvService::TEvUnlinkNodeResponse>();
+                response->Record = std::move(*x);
 
-            CompleteResponse<TEvService::TUnlinkNodeMethod>(
-                response->Record,
-                msg->RequestInfo->CallContext,
-                ctx);
+                CompleteResponse<TEvService::TUnlinkNodeMethod>(
+                    response->Record,
+                    msg->RequestInfo->CallContext,
+                    ctx);
 
-            Metrics.UnlinkNode.Update(
-                1,
-                0,
-                ctx.Now() - msg->RequestInfo->StartedTs);
+                Metrics.UnlinkNode.Update(
+                    1,
+                    0,
+                    ctx.Now() - msg->RequestInfo->StartedTs);
 
-            NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+                NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+            }
         } else {
             TABLET_VERIFY_C(
                 0,
@@ -598,8 +798,25 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
         }
     }
 
+    // only if it is unlik operation and we should unlock node ref upon
+    // completion
     WorkerActors.erase(ev->Sender);
-    ExecuteTx<TDeleteOpLogEntry>(ctx, msg->OpLogEntryId);
+    if (std::holds_alternative<NProto::TUnlinkNodeResponse>(res) &&
+        msg->ShouldUnlockUponCompletion)
+    {
+        const auto& originalRequest = msg->OriginalRequest;
+        auto response = std::get<NProto::TUnlinkNodeResponse>(res);
+
+        AddTransaction<TEvService::TUnlinkNodeMethod>(*msg->RequestInfo);
+        ExecuteTx<TCompleteUnlinkNode>(
+            ctx,
+            msg->RequestInfo,
+            originalRequest,
+            msg->OpLogEntryId,
+            response);
+    } else {
+        ExecuteTx<TDeleteOpLogEntry>(ctx, msg->OpLogEntryId);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -610,7 +827,8 @@ void TIndexTabletActor::RegisterUnlinkNodeInShardActor(
     NProtoPrivate::TUnlinkNodeInShardRequest request,
     ui64 requestId,
     ui64 opLogEntryId,
-    TUnlinkNodeInShardResult result)
+    TUnlinkNodeInShardResult result,
+    bool shouldUnlockUponCompletion)
 {
     auto actor = std::make_unique<TUnlinkNodeInShardActor>(
         LogTag,
@@ -619,7 +837,8 @@ void TIndexTabletActor::RegisterUnlinkNodeInShardActor(
         std::move(request),
         requestId,
         opLogEntryId,
-        std::move(result));
+        std::move(result),
+        shouldUnlockUponCompletion);
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

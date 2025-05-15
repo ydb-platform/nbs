@@ -5,11 +5,13 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/system/tempfile.h>
 #include <util/thread/factory.h>
 #include <util/thread/lfqueue.h>
 
@@ -150,10 +152,19 @@ void SendRandomRequest(ITestVhostDevice& device)
 {
     thread_local auto eng = CreateRandomEngine();
 
-    std::uniform_int_distribution<ui64> dist1(0, 1);
-    EBlockStoreRequest type = dist1(eng) == 0
-        ? EBlockStoreRequest::WriteBlocks
-        : EBlockStoreRequest::ReadBlocks;
+    std::uniform_int_distribution<ui64> dist1(0, 2);
+    auto type = EBlockStoreRequest::WriteBlocks;
+    switch (dist1(eng)) {
+        case 0:
+            type = EBlockStoreRequest::WriteBlocks;
+            break;
+        case 1:
+            type = EBlockStoreRequest::ReadBlocks;
+            break;
+        default:
+            type = EBlockStoreRequest::ZeroBlocks;
+            break;
+    }
 
     std::uniform_int_distribution<ui64> dist2(0, 7999);
     ui64 from = dist2(eng) * 512;
@@ -193,7 +204,8 @@ Y_UNIT_TEST_SUITE(TServerStressTest)
         size_t consumerCount = 16;
         size_t providerCount = 4;
 
-        TString socketPath = "./socket";
+        const TString socketPath = "/tmp/socket.stress";
+        TVector<TTempFile> sockets;
         std::atomic<int> inflight = 0;
         std::atomic<int> completed = 0;
 
@@ -231,8 +243,9 @@ Y_UNIT_TEST_SUITE(TServerStressTest)
             auto storage = std::make_shared<TStressStorage>();
             Storages.push_back(storage);
 
+            sockets.emplace_back(TTempFile(socketPath + ToString(i + 1)));
             auto future = server->StartEndpoint(
-                socketPath + ToString(i + 1),
+                sockets.back().Name(),
                 std::move(storage),
                 TStorageOptions{
                     .DiskId = "disk" + ToString(i + 1),

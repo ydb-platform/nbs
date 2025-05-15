@@ -38,8 +38,15 @@ private:
     TAdaptiveLock Lock;
     size_t ResponseCount;
     NProto::TReadBlocksResponse Response;
+    NProto::TError Error;
 
     ui32 VoidBlockCount = 0;
+
+    // Indices of devices that participated in the request.
+    TStackVec<ui32, 2> DeviceIndices;
+
+    // Indices of devices where requests have resulted in errors.
+    TStackVec<ui32, 2> ErrorDeviceIndices;
 
 public:
     TRdmaRequestReadBlocksContext(
@@ -68,20 +75,22 @@ public:
         }
     }
 
-    void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
+    void HandleResult(
+        const TDeviceReadRequestContext& reqCtx,
+        TStringBuf buffer)
     {
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
 
         if (HasError(err)) {
-            *Response.MutableError() = std::move(err);
+            Error = std::move(err);
             return;
         }
 
         const auto& concreteProto =
             static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
         if (HasError(concreteProto.GetError())) {
-            *Response.MutableError() = concreteProto.GetError();
+            Error = concreteProto.GetError();
             return;
         }
 
@@ -91,7 +100,7 @@ public:
         ui64 b = 0;
         bool isAllZeroes = CheckVoidBlocks;
         while (offset < result.Data.size()) {
-            ui64 targetBlock = dr.StartIndexOffset + b;
+            ui64 targetBlock = reqCtx.StartIndexOffset + b;
             Y_ABORT_UNLESS(targetBlock < static_cast<ui64>(blocks.size()));
             ui64 bytes =
                 Min(result.Data.size() - offset, blocks[targetBlock].size());
@@ -110,7 +119,7 @@ public:
         }
 
         if (isAllZeroes) {
-            VoidBlockCount += dr.BlockCount;
+            VoidBlockCount += reqCtx.BlockCount;
         }
     }
 
@@ -123,13 +132,20 @@ public:
 
         auto guard = Guard(Lock);
 
-        auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
+        auto* reqCtx =
+            static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
+        DeviceIndices.emplace_back(reqCtx->DeviceIdx);
+
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dr, buffer);
+            HandleResult(*reqCtx, buffer);
         } else {
-            *Response.MutableError() = NRdma::ParseError(buffer);
+            Error = NRdma::ParseError(buffer);
+            ConvertRdmaErrorIfNeeded(status, Error);
+            if (NeedToNotifyAboutDeviceRequestError(Error)) {
+                ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
+            }
         }
 
         if (--ResponseCount != 0) {
@@ -138,7 +154,8 @@ public:
 
         // Got all device responses. Do processing.
 
-        ProcessError(*ActorSystem, *PartConfig, *Response.MutableError());
+        ProcessError(*ActorSystem, *PartConfig, Error);
+        *Response.MutableError() = Error;
         auto error = Response.GetError();
 
         const ui32 blockCount = Response.GetBlocks().BuffersSize();
@@ -163,6 +180,8 @@ public:
         completion->TotalCycles = RequestInfo->GetTotalCycles();
         completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;
         completion->VoidBlockCount = allZeroes ? blockCount : 0;
+        completion->DeviceIndices = DeviceIndices;
+        completion->ErrorDeviceIndices = ErrorDeviceIndices;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
@@ -230,7 +249,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         requestId,
         Config->GetOptimizeVoidBuffersTransferForReadsEnabled());
 
-    auto error = SendReadRequests(
+    auto [sentRequestCtx, error] = SendReadRequests(
         ctx,
         requestInfo->CallContext,
         msg->Record.GetHeaders(),
@@ -247,7 +266,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         return;
     }
 
-    RequestsInProgress.AddReadRequest(requestId);
+    RequestsInProgress.AddReadRequest(requestId, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

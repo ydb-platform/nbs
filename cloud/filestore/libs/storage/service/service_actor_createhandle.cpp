@@ -241,7 +241,10 @@ STFUNC(TCreateHandleActor::StateWork)
             HandleCreateHandleResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -279,7 +282,7 @@ void TStorageServiceActor::HandleCreateHandle(
 
     auto& headers = *msg->Record.MutableHeaders();
     headers.SetBehaveAsDirectoryTablet(
-        StorageConfig->GetDirectoryCreationInShardsEnabled());
+        filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
     if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
         // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(

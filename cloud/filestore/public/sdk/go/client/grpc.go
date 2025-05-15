@@ -34,11 +34,11 @@ type grpcClient struct {
 
 func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 	headers := req.GetHeaders()
-	headers.ClientId = client.clientID
+	headers.ClientId = []byte(client.clientID)
 
 	if val := ctx.Value(IdempotenceIDHeaderKey); val != nil {
-		if str, ok := val.(string); ok {
-			headers.IdempotenceId = str
+		if idempotenceID, ok := val.([]byte); ok {
+			headers.IdempotenceId = idempotenceID
 		}
 	}
 
@@ -58,8 +58,8 @@ func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 	headers.Timestamp = uint64(timestamp)
 
 	if val := ctx.Value(TraceIDHeaderKey); val != nil {
-		if str, ok := val.(string); ok {
-			headers.TraceId = str
+		if traceID, ok := val.([]byte); ok {
+			headers.TraceId = traceID
 		}
 	}
 
@@ -311,11 +311,11 @@ type grpcEndpointClient struct {
 
 func (client *grpcEndpointClient) setupHeaders(ctx context.Context, req request) {
 	headers := req.GetHeaders()
-	headers.ClientId = client.clientID
+	headers.ClientId = []byte(client.clientID)
 
 	if val := ctx.Value(IdempotenceIDHeaderKey); val != nil {
-		if str, ok := val.(string); ok {
-			headers.IdempotenceId = str
+		if idempotenceID, ok := val.([]byte); ok {
+			headers.IdempotenceId = idempotenceID
 		}
 	}
 
@@ -335,8 +335,8 @@ func (client *grpcEndpointClient) setupHeaders(ctx context.Context, req request)
 	headers.Timestamp = uint64(timestamp)
 
 	if val := ctx.Value(TraceIDHeaderKey); val != nil {
-		if str, ok := val.(string); ok {
-			headers.TraceId = str
+		if traceID, ok := val.([]byte); ok {
+			headers.TraceId = traceID
 		}
 	}
 

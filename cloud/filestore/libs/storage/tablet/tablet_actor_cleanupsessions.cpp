@@ -215,7 +215,10 @@ STFUNC(TSyncShardSessionsActor::StateWork)
             HandleSyncShardSessionsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -353,7 +356,10 @@ STFUNC(TCleanupSessionsActor::StateWork)
         HFunc(TEvIndexTablet::TEvDestroySessionResponse, HandleSessionDestroyed);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -470,7 +476,11 @@ void TIndexTabletActor::HandleCleanupSessions(
 
     CleanupSessionsScheduled = false;
 
-    auto sessions = GetTimeoutedSessions(ctx.Now());
+    Metrics.SessionCleanupAttempts.fetch_add(
+        1,
+        std::memory_order_relaxed);
+
+    auto sessions = GetTimedOutSessions(ctx.Now());
     if (sessions.empty()) {
         // nothing to do
         using TResponse = TEvIndexTabletPrivate::TEvCleanupSessionsResponse;

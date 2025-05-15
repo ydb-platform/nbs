@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
+#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/storage/core/libs/common/sglist.h>
@@ -12,6 +13,8 @@
 #include <util/string/printf.h>
 
 namespace NCloud::NBlockStore::NStorage {
+
+using namespace NThreading;
 
 namespace {
 
@@ -52,9 +55,16 @@ struct TRdmaClientTest::TRdmaEndpointImpl
     NProto::TError AllocationError;
     NProto::TError RdmaResponseError;
     NProto::TError ResponseError;
-    TRdmaClientTest::TMessageObserver MessageObserver;
+    TMessageObserver MessageObserver;
+    TForceReconnectObserver ForceReconnectObserver;
 
-    TRdmaEndpointImpl() = default;
+    ui64 NextRequestId = 0;
+    THashMap<ui64, NRdma::TClientRequestPtr> Requests;
+
+    TFuture<void> FutureToWaitBeforeRequestProcessing;
+
+    TRdmaEndpointImpl() : FutureToWaitBeforeRequestProcessing(MakeFuture())
+    {}
 
     TResultOrError<NRdma::TClientRequestPtr> AllocateRequest(
         NRdma::IClientHandlerPtr handler,
@@ -75,12 +85,36 @@ struct TRdmaClientTest::TRdmaEndpointImpl
         return NRdma::TClientRequestPtr(std::move(req));
     }
 
-    void SendRequest(
+    ui64 SendRequest(
         NRdma::TClientRequestPtr req,
         TCallContextPtr callContext) override
     {
         Y_UNUSED(callContext);
 
+        auto reqId = ++NextRequestId;
+
+        Requests[reqId] = std::move(req);
+
+        FutureToWaitBeforeRequestProcessing.Subscribe(
+            [self = this, reqId](const auto&)
+            {
+                auto it = self->Requests.find(reqId);
+
+                if (it == self->Requests.end()) {
+                    return;
+                }
+
+                auto req = std::move(it->second);
+                self->Requests.erase(it);
+
+                self->ContinueRequestSending(std::move(req));
+            });
+
+        return reqId;
+    }
+
+    void ContinueRequestSending(NRdma::TClientRequestPtr req)
+    {
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(req->RequestBuffer);
         Y_ENSURE_EX(!HasError(err), yexception() << err.GetMessage());
@@ -248,9 +282,35 @@ struct TRdmaClientTest::TRdmaEndpointImpl
             responseBytes);
     }
 
-    NThreading::TFuture<void> Stop() override
+    void CancelRequest(ui64 reqId) override
     {
-        return NThreading::MakeFuture();
+        auto it = Requests.find(reqId);
+        if (it == Requests.end()) {
+            return;
+        }
+
+        auto req = std::move(it->second);
+        Requests.erase(it);
+
+        auto len = NRdma::SerializeError(
+            E_CANCELLED,
+            "cancelled",
+            req->ResponseBuffer);
+
+        auto* handler = req->Handler.get();
+        handler->HandleResponse(std::move(req), NRdma::RDMA_PROTO_FAIL, len);
+    }
+
+    TFuture<void> Stop() override
+    {
+        return MakeFuture();
+    }
+
+    void TryForceReconnect() override
+    {
+        if (ForceReconnectObserver) {
+            ForceReconnectObserver();
+        }
     }
 
     TDeque<TString>& GetDeviceBlocks(
@@ -267,14 +327,14 @@ struct TRdmaClientTest::TRdmaEndpointImpl
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NThreading::TFuture<NRdma::IClientEndpointPtr> TRdmaClientTest::StartEndpoint(
+TFuture<NRdma::IClientEndpointPtr> TRdmaClientTest::StartEndpoint(
     TString host,
     ui32 port)
 {
     auto& ep = Endpoints[MakeKey(host, port)];
     if (!ep.Endpoint) {
         ep.Endpoint = std::make_shared<TRdmaEndpointImpl>();
-        ep.Promise = NThreading::NewPromise<NRdma::IClientEndpointPtr>();
+        ep.Promise = NewPromise<NRdma::IClientEndpointPtr>();
     }
     return ep.Promise;
 }
@@ -310,11 +370,28 @@ ui32 TRdmaClientTest::InitAllEndpointsWithError()
     return Endpoints.size();
 }
 
-void TRdmaClientTest::SetMessageObserver(TMessageObserver messageObserver)
+void TRdmaClientTest::SetMessageObserver(
+    const TMessageObserver& messageObserver)
 {
-    MessageObserver = messageObserver;
     for (auto& [_, endpointInfo]: Endpoints) {
-        endpointInfo.Endpoint->MessageObserver = MessageObserver;
+        endpointInfo.Endpoint->MessageObserver = messageObserver;
+    }
+}
+
+void TRdmaClientTest::SetForceReconnectObserver(
+    const TForceReconnectObserver& forceReconnectObserver)
+{
+    for (auto& [_, endpointInfo]: Endpoints) {
+        endpointInfo.Endpoint->ForceReconnectObserver = forceReconnectObserver;
+    }
+}
+
+void TRdmaClientTest::InjectFutureToWaitBeforeRequestProcessing(
+    const TFuture<void>& future)
+{
+    for (auto& x: Endpoints) {
+        auto& ep = static_cast<TRdmaEndpointImpl&>(*x.second.Endpoint);
+        ep.FutureToWaitBeforeRequestProcessing = future;
     }
 }
 

@@ -57,7 +57,8 @@ private:
             default:
                 HandleUnexpectedEvent(
                     ev,
-                    TBlockStoreComponents::DISK_AGENT_WORKER);
+                    TBlockStoreComponents::DISK_AGENT_WORKER,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -80,7 +81,12 @@ private:
         auto* msg = ev->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
         request->Record.Swap(&msg->Record);
 
-        if (Allocator) {
+        const bool canUseAllocator =
+            Allocator &&
+            // Don't reallocate if we have to send the request to other agents.
+            request->Record.GetReplicationTargets().empty();
+
+        if (canUseAllocator) {
             const auto& buffers = request->Record.GetBlocks().GetBuffers();
 
             ui64 bytesCount = 0;

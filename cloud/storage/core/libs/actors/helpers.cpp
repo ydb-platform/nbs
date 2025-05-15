@@ -10,59 +10,71 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString EventInfo(IEventHandle& ev)
+TString EventInfo(const IEventHandle& ev)
 {
     return ev.GetTypeName();
 }
 
-void LogUnexpectedEvent(
-    IEventHandle& ev,
-    int component)
+[[maybe_unused]] void LogUnexpectedEvent(
+    const IEventHandle& ev,
+    int component,
+    const TString& location)
 {
-    LOG_ERROR(*TlsActivationContext, component,
-        "Unexpected event: (0x%08X) %s",
+    LOG_ERROR(
+        *TlsActivationContext,
+        component,
+        "Unexpected event: (0x%08X) %s, %s",
         ev.GetTypeRewrite(),
-        EventInfo(ev).c_str());
+        EventInfo(ev).c_str(),
+        location.c_str());
 }
 
+
 void HandleUnexpectedEvent(
-    IEventHandle& ev,
-    int component)
+    const IEventHandle& ev,
+    int component,
+    const TString& location)
 {
 #if defined(NDEBUG)
-    LogUnexpectedEvent(ev, component);
+    LogUnexpectedEvent(ev, component, location);
 #else
     Y_ABORT(
-        "[%s] Unexpected event: (0x%08X) %s",
+        "[%s] Unexpected event: (0x%08X) %s, %s",
         TlsActivationContext->LoggerSettings()->ComponentName(component),
         ev.GetTypeRewrite(),
-        EventInfo(ev).c_str());
+        EventInfo(ev).c_str(),
+        location.c_str());
 #endif
 }
+
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
+
 void HandleUnexpectedEvent(
-    TAutoPtr<IEventHandle>& ev,
-    int component)
+    const TAutoPtr<IEventHandle>& ev,
+    int component,
+    const TString& location)
 {
-    HandleUnexpectedEvent(*ev, component);
+    HandleUnexpectedEvent(*ev, component, location);
 }
 
 void HandleUnexpectedEvent(
-    NActors::IEventHandlePtr& ev,
-    int component)
+    const NActors::IEventHandlePtr& ev,
+    int component,
+    const TString& location)
 {
-    HandleUnexpectedEvent(*ev, component);
+    HandleUnexpectedEvent(*ev, component, location);
 }
 
 void LogUnexpectedEvent(
-    TAutoPtr<IEventHandle>& ev,
-    int component)
+    const TAutoPtr<IEventHandle>& ev,
+    int component,
+    const TString& location)
 {
-    LogUnexpectedEvent(*ev, component);
+    LogUnexpectedEvent(*ev, component, location);
 }
 
 }   // namespace NCloud

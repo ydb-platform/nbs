@@ -44,7 +44,7 @@ void TGraphExecutor::Run()
         }
 
         for (TVertexId vertexId : ready) {
-            RunVertex(vertexId).Subscribe([=] (auto) {
+            RunVertex(vertexId).Subscribe([=, this] (auto) {
                 with_lock (Lock) {
                     for (const auto other : OutgoingEdges[vertexId]) {
                         auto& depCount = Vertex2DepCount[other];
@@ -70,7 +70,7 @@ TFuture<void> TGraphExecutor::RunVertex(TVertexId vertexId)
     TPromise<void> promise = NewPromise();
 
     ThreadPool.SafeAddFunc(
-        [=] () mutable {
+        [=, this] () mutable {
             Graph.Vertices[vertexId]();
             promise.SetValue();
         }

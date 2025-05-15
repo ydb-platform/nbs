@@ -11,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -51,15 +52,15 @@ func (t *createImageFromDiskTask) run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	nbsClient nbs.Client,
-	checkpointID string,
-) error {
+) (string, error) {
 
 	disk := t.request.SrcDisk
+
 	selfTaskID := execCtx.GetTaskID()
 
 	diskParams, err := nbsClient.Describe(ctx, disk.DiskId)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
@@ -74,28 +75,36 @@ func (t *createImageFromDiskTask) run(
 		Encryption:        diskParams.EncryptionDesc,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if imageMeta.Ready {
 		// Already created.
-		return nil
+		checkpointID := imageMeta.CheckpointID
+		if checkpointID == "" {
+			// Temporary solution for backwards compatibility. If checkpoint id
+			// is empty, then the image was created by an older version of Disk
+			// Manager. In that version checkpoint id is always the same as
+			// image id.
+			// TODO: remove it later.
+			checkpointID = t.request.DstImageId
+		}
+		return checkpointID, nil
 	}
 
-	err = nbsClient.CreateCheckpoint(
+	checkpointID, err := common.CreateCheckpoint(
 		ctx,
-		nbs.CheckpointParams{
-			DiskID:       disk.DiskId,
-			CheckpointID: checkpointID,
-		},
+		execCtx,
+		t.scheduler,
+		nbsClient,
+		t.request.SrcDisk,
+		t.request.DstImageId,
+		selfTaskID,
+		diskParams.IsDiskRegistryBasedDisk,
+		t.request.RetryBrokenDRBasedDiskCheckpoint,
 	)
 	if err != nil {
-		return err
-	}
-
-	err = nbsClient.EnsureCheckpointReady(ctx, disk.DiskId, checkpointID)
-	if err != nil {
-		return err
+		return "", err
 	}
 
 	taskID, err := t.scheduler.ScheduleZonalTask(
@@ -111,19 +120,19 @@ func (t *createImageFromDiskTask) run(
 		},
 	)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	t.state.DataplaneTaskID = taskID
 
 	response, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	typedResponse, ok := response.(*dataplane_protos.CreateSnapshotFromDiskResponse)
 	if !ok {
-		return errors.NewNonRetriableErrorf(
+		return "", errors.NewNonRetriableErrorf(
 			"invalid dataplane.CreateSnapshotFromDisk response type %T",
 			response,
 		)
@@ -140,16 +149,22 @@ func (t *createImageFromDiskTask) run(
 
 	err = execCtx.SaveState(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return t.storage.ImageCreated(
+	err = t.storage.ImageCreated(
 		ctx,
 		t.request.DstImageId,
+		checkpointID,
 		time.Now(),
 		uint64(t.state.ImageSize),
 		uint64(t.state.ImageStorageSize),
 	)
+	if err != nil {
+		return "", err
+	}
+
+	return checkpointID, nil
 }
 
 func (t *createImageFromDiskTask) Run(
@@ -158,15 +173,13 @@ func (t *createImageFromDiskTask) Run(
 ) error {
 
 	disk := t.request.SrcDisk
-	// NOTE: we use image id as checkpoint id.
-	checkpointID := t.request.DstImageId
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	err = t.run(ctx, execCtx, nbsClient, checkpointID)
+	checkpointID, err := t.run(ctx, execCtx, nbsClient)
 	if err != nil {
 		return err
 	}
@@ -201,19 +214,29 @@ func (t *createImageFromDiskTask) Cancel(
 ) error {
 
 	disk := t.request.SrcDisk
-
-	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
+	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	// NOTE: we use image id as checkpoint id.
-	checkpointID := t.request.DstImageId
-
-	// NBS-1873: Should always delete checkpoint.
-	err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+	checkpointID, err := common.CancelCheckpointCreation(
+		ctx,
+		t.scheduler,
+		nbsClient,
+		disk,
+		t.request.DstImageId,
+		execCtx.GetTaskID(),
+		t.request.RetryBrokenDRBasedDiskCheckpoint,
+	)
 	if err != nil {
 		return err
+	}
+
+	if checkpointID != "" {
+		err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return deleteImage(

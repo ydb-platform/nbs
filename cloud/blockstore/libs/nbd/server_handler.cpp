@@ -547,7 +547,7 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                ctx->ExecuteSimple([=] () mutable {
+                ctx->ExecuteSimple([=, this] () mutable {
                     ProcessReadRequest(
                         std::move(ctx),
                         std::move(requestCtx),
@@ -582,7 +582,7 @@ void TServerHandler::ProcessRequests(
                 }
 
                 ctx->ExecuteSimple(
-                    [=, data = std::move(requestData)] () mutable {
+                    [=, this, data = std::move(requestData)] () mutable {
                         ProcessWriteRequest(
                             std::move(ctx),
                             std::move(requestCtx),
@@ -613,7 +613,7 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                ctx->ExecuteSimple([=] () mutable {
+                ctx->ExecuteSimple([=, this] () mutable {
                     ProcessZeroRequest(
                         std::move(ctx),
                         std::move(requestCtx),
@@ -955,7 +955,9 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
         options.ClientId,
         options.BlockSize,
         options.UnalignedRequestsDisabled,
-        options.CheckBufferModificationDuringWriting);
+        options.CheckBufferModificationDuringWriting,
+        options.IsReliableMediaKind,
+        options.MaxZeroBlocksSubRequestSize);
 
     return std::make_shared<TServerHandlerFactory>(
         std::move(logging),

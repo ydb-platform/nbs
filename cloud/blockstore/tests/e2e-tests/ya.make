@@ -1,6 +1,11 @@
 PY3TEST()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+IF (SANITIZER_TYPE)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/large.inc)
+ELSE()
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+ENDIF()
+
 SPLIT_FACTOR(1)
 
 TEST_SRCS(

@@ -169,22 +169,20 @@ TNonreplicatedPartitionConfigPtr MakePartitionConfig(
     TDevices devices,
     bool useSimpleMigrationBandwidthLimiter)
 {
-    return std::make_shared<TNonreplicatedPartitionConfig>(
-        devices,
-        NProto::VOLUME_IO_OK,
-        "vol0",
-        4_KB,
-        TNonreplicatedPartitionConfig::TVolumeInfo{
-            Now(),
-            // only SSD/HDD distinction matters
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
-        NActors::TActorId(),
-        false,                 // muteIOErrors
-        THashSet<TString>(),   // freshDeviceIds
-        THashSet<TString>(),   // laggingDeviceIds
-        TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-        false,                 // maxTimedOutDeviceStateDurationOverridden
-        useSimpleMigrationBandwidthLimiter);
+    TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+        params{
+            std::move(devices),
+            TNonreplicatedPartitionConfig::TVolumeInfo{
+                Now(),
+                // only SSD/HDD distinction matters
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+            "vol0",
+            DefaultBlockSize,
+            NActors::TActorId()};
+    params.UseSimpleMigrationBandwidthLimiter =
+        useSimpleMigrationBandwidthLimiter;
+
+    return std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 }
 
 }   // namespace
@@ -381,6 +379,27 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
             2 * TDuration::Seconds(1) / 3,
             timeoutCalculator.CalculateTimeout(
                 TBlockRange64::WithLength(1024 * 3, 1024)));
+    }
+
+    Y_UNIT_TEST(ShouldWorkWithEmptyPartitionConfig)
+    {
+        TMigrationTimeoutCalculator timeoutCalculator(
+            16,
+            100500,
+            nullptr);
+
+        // Calculate timeout with inital bandwidth
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1) / 4,
+            timeoutCalculator.CalculateTimeout(
+                TBlockRange64::WithLength(0, 1024)));
+
+        // Calculate timeout with recommended bandwidth
+        timeoutCalculator.SetRecommendedBandwidth(40_MB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1) / 10,
+            timeoutCalculator.CalculateTimeout(
+                TBlockRange64::WithLength(1024 * 0, 1024)));
     }
 }
 

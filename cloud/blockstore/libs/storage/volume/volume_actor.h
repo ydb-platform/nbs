@@ -29,7 +29,9 @@
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
+#include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
+
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/protos/trace.pb.h>
 
@@ -192,6 +194,7 @@ private:
     TStorageConfigPtr GlobalStorageConfig;
     TStorageConfigPtr Config;
     bool HasStorageConfigPatch = false;
+    bool HasPerformanceProfileModifications = false;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -237,6 +240,7 @@ private:
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
         TVector<TString> RemovedLaggingDeviceIds;
+        TVector<TString> LostDeviceIds;
 
         void Clear()
         {
@@ -264,6 +268,7 @@ private:
         NProto::EVolumeAccessMode AccessMode;
         ui64 MountSeqNumber;
         TClientRequestPtr ClientRequest;
+        TVector<NProto::TDeviceConfig> DevicesToRelease;
 
         TAcquireReleaseDiskRequest(
                 TString clientId,
@@ -280,14 +285,16 @@ private:
 
         TAcquireReleaseDiskRequest(
                 TString clientId,
-                TClientRequestPtr clientRequest)
+                TClientRequestPtr clientRequest,
+                TVector<NProto::TDeviceConfig> devicesToRelease)
             : IsAcquire(false)
             , ClientId(std::move(clientId))
-            , AccessMode(NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE) // doesn't matter
-            , MountSeqNumber(0) // doesn't matter
+            , AccessMode(NProto::EVolumeAccessMode::
+                             VOLUME_ACCESS_READ_WRITE)   // doesn't matter
+            , MountSeqNumber(0)                          // doesn't matter
             , ClientRequest(std::move(clientRequest))
-        {
-        }
+            , DevicesToRelease(std::move(devicesToRelease))
+        {}
     };
     TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
@@ -297,6 +304,7 @@ private:
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
+    TRequestsTimeTracker RequestTimeTracker;
 
     // inflight VolumeRequestId -> duplicate request queue
     // we respond to duplicate requests as soon as our original request is completed
@@ -347,17 +355,22 @@ private:
 
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
 
-    THashSet<NActors::TActorId> StoppedPartitions;
+    using TPoisonCallback =
+        std::function<void(const NActors::TActorContext&, NProto::TError)>;
 
-    using TPoisonCallback = std::function<
-        void (const NActors::TActorContext&, NProto::TError)
-    >;
+    struct TPartitionDestroyCallback
+    {
+        const ui64 VolumeRequestId = 0;
+        const NActors::TActorId PartitionActorId;
+        TPoisonCallback PoisonCallback;
+        bool Destroyed = false;
+    };
 
-    TDeque<std::pair<NActors::TActorId, TPoisonCallback>> WaitForPartitions;
-
-    using TDiskRegistryBasedPartitionStoppedCallback =
-        std::function<void(const NActors::TActorContext&)>;
-    THashMap<ui64, TDiskRegistryBasedPartitionStoppedCallback> OnPartitionStopped;
+    // Stores callbacks that need to be called when receiving a PoisonTaken
+    // message from destroyed partition. Callbacks are called in FIFO order,
+    // even if the partitions are deleted in a different order.
+    TDeque<TPartitionDestroyCallback> WaitForPartitionDestroy;
+    ui64 PartitionRestartCounter = 0;
 
     TVector<ui64> GCCompletedPartitions;
 
@@ -402,6 +415,10 @@ private:
         }
     }
 
+    void UpdateTabletMetrics(
+        const NActors::TActorContext& ctx,
+        const NKikimrTabletBase::TMetrics& tabletMetrics);
+
     void SendPartStatsToService(const NActors::TActorContext& ctx);
     void DoSendPartStatsToService(
         const NActors::TActorContext& ctx,
@@ -424,14 +441,21 @@ private:
 
     void RenderConfig(IOutputStream& out) const;
     void RenderStatus(IOutputStream& out) const;
+    void RenderScrubbingStatus(IOutputStream& out) const;
     void RenderMigrationStatus(IOutputStream& out) const;
     void RenderResyncStatus(IOutputStream& out) const;
+    void RenderLaggingStatus(IOutputStream& out) const;
+    void RenderLaggingStateForDevice(
+        IOutputStream& out,
+        const NProto::TDeviceConfig& d);
     void RenderMountSeqNumber(IOutputStream& out) const;
     void RenderHistory(
         const TVolumeMountHistorySlice& history,
         const TVector<TVolumeMetaHistoryItem>& metaHistory,
         IOutputStream& out) const;
     void RenderCheckpoints(IOutputStream& out) const;
+    void RenderLinks(IOutputStream& out) const;
+    void RenderLatency(IOutputStream& out) const;
     void RenderTraces(IOutputStream& out) const;
     void RenderStorageConfig(IOutputStream& out) const;
     void RenderRawVolumeConfig(IOutputStream& out) const;
@@ -471,10 +495,19 @@ private:
     void StartPartitionsForGc(const NActors::TActorContext& ctx);
     void StopPartitions(
         const NActors::TActorContext& ctx,
-        TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped);
+        TPoisonCallback onPartitionStopped);
+    void StopDiskRegistryBasedPartition(
+        const NActors::TActorContext& ctx,
+        TPoisonCallback onPartitionStopped);
+    void OnDiskRegistryBasedPartitionStopped(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId sender,
+        ui64 volumeRequestId,
+        NProto::TError error);
 
     void SetupDiskRegistryBasedPartitions(const NActors::TActorContext& ctx);
 
+    bool LaggingDevicesAreAllowed() const;
     void ReportLaggingDevicesToDR(const NActors::TActorContext& ctx);
 
     void DumpUsageStats(
@@ -612,6 +645,11 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_RenderLatency(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_Default(
         const NActors::TActorContext& ctx,
         const TVolumeMountHistorySlice& history,
@@ -654,6 +692,10 @@ private:
 
     void HandlePartStatsSaved(
         const TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleScrubberCounters(
+        const TEvVolume::TEvScrubberCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteOrZeroCompleted(
@@ -744,6 +786,9 @@ private:
         const NActors::TActorContext& ctx);
 
     void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
+    void ReleaseReplacedDevices(
+        const NActors::TActorContext& ctx,
+        const TVector<NProto::TDeviceConfig>& replacedDevices);
 
     void ScheduleAcquireDiskIfNeeded(const NActors::TActorContext& ctx);
 
@@ -767,11 +812,15 @@ private:
         const NProto::TError& error,
         const NActors::TActorContext& ctx);
 
-    void ReleaseDisk(const NActors::TActorContext& ctx, const TString& clientId);
+    void ReleaseDisk(
+        const NActors::TActorContext& ctx,
+        const TString& clientId,
+        const TVector<NProto::TDeviceConfig>& devicesToRelease);
 
     void SendReleaseDevicesToAgents(
         const TString& clientId,
-        const NActors::TActorContext& ctx);
+        const NActors::TActorContext& ctx,
+        TVector<NProto::TDeviceConfig> devicesToRelease);
 
     void HandleDevicesReleasedFinished(
         const TEvVolumePrivate::TEvDevicesReleaseFinished::TPtr& ev,
@@ -780,6 +829,10 @@ private:
     void HandleAllocateDiskResponse(
         const TEvDiskRegistry::TEvAllocateDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleAllocateDiskError(
+        const NActors::TActorContext& ctx,
+        NProto::TError error);
 
     void HandleAddLaggingDevicesResponse(
         const TEvDiskRegistry::TEvAddLaggingDevicesResponse::TPtr& ev,
@@ -841,10 +894,6 @@ private:
         const NKikimr::TEvTabletPipe::TEvServerDestroyed::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleTabletMetrics(
-        NKikimr::TEvLocal::TEvTabletMetrics::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleUpdateMigrationState(
         const TEvVolume::TEvUpdateMigrationState::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -872,6 +921,7 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         NActors::TActorId newRecipient,
         ui64 volumeRequestId,
+        TBlockRange64 blockRange,
         ui64 traceTime,
         bool forkTraces,
         bool isMultipartition);
@@ -881,6 +931,7 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
         ui64 volumeRequestId,
+        TBlockRange64 blockRange,
         ui32 partitionId,
         ui64 traceTs);
 
@@ -1005,12 +1056,16 @@ private:
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleSmartMigrationFinished(
-        const TEvVolumePrivate::TEvSmartMigrationFinished::TPtr& ev,
+    void HandleLaggingAgentMigrationFinished(
+        const TEvVolumePrivate::TEvLaggingAgentMigrationFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleUpdateSmartMigrationState(
-        const TEvVolumePrivate::TEvUpdateSmartMigrationState::TPtr& ev,
+    void HandleUpdateLaggingAgentMigrationState(
+        const TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCheckRangeResponse(
+        const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void CreateCheckpointLightRequest(
@@ -1035,14 +1090,17 @@ private:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    NActors::TActorId WrapNonreplActorIfNeeded(
+    TActorsStack WrapNonreplActorIfNeeded(
         const NActors::TActorContext& ctx,
         NActors::TActorId nonreplicatedActorId,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
 
-    void RestartDiskRegistryBasedPartition(
+    // Restart partitions. If these were partition of DiskRegistry-based disk,
+    // then the onPartitionStopped callback will be called after the partition
+    // is stopped.
+    void RestartPartition(
         const NActors::TActorContext& ctx,
-        TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped);
+        TPoisonCallback onPartitionStopped);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)

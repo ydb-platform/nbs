@@ -212,13 +212,21 @@ TString FormatError(const NProto::TError& e)
     ui32 flag = 1;
     while (flags) {
         if (flags & 1) {
-            switch (flag) {
-                case NProto::EF_SILENT: {
+            switch (static_cast<NProto::EErrorFlag>(flag)) {
+                case NProto::EF_SILENT:
                     out << " f@silent";
                     break;
-                }
-
-                default: {}
+                case NProto::EF_HW_PROBLEMS_DETECTED:
+                    out << " f@hw_problems";
+                    break;
+                case NProto::EF_INSTANT_RETRIABLE:
+                    out << " f@instant_retry";
+                    break;
+                case NProto::EF_NONE:
+                case NProto::EErrorFlag_INT_MIN_SENTINEL_DO_NOT_USE_:
+                case NProto::EErrorFlag_INT_MAX_SENTINEL_DO_NOT_USE_:
+                    Y_DEBUG_ABORT_UNLESS(false);
+                    break;
             }
         }
 

@@ -9,6 +9,7 @@ RECURSE(
     client
     config_dispatcher
     csi_driver
+    direct_device_acquire
     disk_agent_config
     encryption_at_rest
     external_endpoint
@@ -26,6 +27,7 @@ RECURSE(
     python
     python_client
     rdma
+    rdma_disks
     recipes
     registration
     resize-disk

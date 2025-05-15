@@ -173,7 +173,10 @@ STFUNC(TAddConfirmedBlobsActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -203,8 +206,9 @@ void TPartitionActor::EnqueueAddConfirmedBlobsIfNeeded(
         );
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] AddConfirmedBlobs request sent: %lu",
+        "[%lu][d:%s] AddConfirmedBlobs request sent: %lu",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         request->CallContext->RequestId);
 
     NCloud::Send(
@@ -315,8 +319,9 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
     const TActorContext& ctx)
 {
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] AddConfirmedBlobs completed",
-        TabletID());
+        "[%lu][d:%s] AddConfirmedBlobs completed",
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str());
 
     const auto* msg = ev->Get();
 
@@ -325,8 +330,9 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
     Actors.Erase(ev->Sender);
     if (FAILED(msg->GetStatus())) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Stop tablet because of AddConfirmedBlobs error: %s",
+            "[%lu][d:%s] Stop tablet because of AddConfirmedBlobs error: %s",
             TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
             FormatError(msg->GetError()).data());
 
        ReportAddConfirmedBlobsError();
@@ -334,8 +340,7 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
        return;
     }
 
-    UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds());
-    UpdateExecutorStats(ctx);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.AddConfirmedBlobs.AddRequest(time);
 

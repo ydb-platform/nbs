@@ -336,7 +336,10 @@ STFUNC(TReadBlobActor::StateWork)
         HFunc(TEvBlobStorage::TEvGetResult, HandleGetResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -453,7 +456,6 @@ void TPartitionActor::HandleReadBlobCompleted(
 
     UpdateReadThroughput(ctx, channel, group, msg->BytesCount, isOverlayDisk);
     UpdateNetworkStats(ctx, msg->BytesCount);
-    UpdateExecutorStats(ctx);
 
     if (blobTabletId != TabletID()) {
         // Treat this situation as we were reading from base disk.

@@ -14,9 +14,16 @@ on:
       - 'synchronize'
       - 'reopened'
       - 'labeled'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
+
 jobs:
   check-running-allowed:
     runs-on: ubuntu-latest
@@ -29,40 +36,75 @@ jobs:
         with:
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           script: |
-            // How to interpret membership status code:
-            // https://docs.github.com/en/rest/orgs/members?apiVersion=2022-11-28#check-organization-membership-for-a-user
-            const userLogin = context.payload.pull_request.user.login;
-
-            const isOrgMember = async function () {
+            async function isOrgMember(owner, username) {
+              core.info(`Checking membership for user: ${username}`);
               try {
-                const response = await github.rest.orgs.checkMembershipForUser({
-                  org: context.payload.organization.login,
-                  username: userLogin,
+                const { data: membership } = await github.rest.orgs.getMembershipForUser({
+                  org: owner,
+                  username
                 });
-                return response.status == 204;
-              } catch (error) {
-                if (error.status && error.status == 404) {
+                if (membership?.state === 'active') {
+                  core.info(`${username} is confirmed as an org member`);
+                  return true;
+                } else {
+                  core.info(`${username} is not an active org member (state: ${membership?.state})`);
                   return false;
                 }
-                throw error;
+              } catch (error) {
+                // Often the call fails if the user isn't in the org or it's private
+                core.error(`Error checking membership for user ${username}: ${error.message}`);
+                return false;
               }
             }
 
-            if (context.payload.repository.owner.login == userLogin) {
-              console.log('User is repo owner')
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request.number;
+            const prAuthor = context.payload.pull_request.user.login;
+
+            core.info(`Starting membership check for PR #${prNumber} by @${prAuthor}`);
+
+            const authorIsOrgMember = await isOrgMember(owner, prAuthor);
+            if (authorIsOrgMember) {
+              core.info(`User @${prAuthor} is org member => authorized`);
               return true;
             }
 
-            if (await isOrgMember()) {
-              console.log('User is member')
-              return true;
+            core.info(`User @${prAuthor} is NOT an org member; checking for 'ok-to-test' label`);
+
+            let events;
+            try {
+              const resp = await github.rest.issues.listEvents({
+                owner,
+                repo,
+                issue_number: prNumber
+              });
+              events = resp.data;
+            } catch (error) {
+              core.error(`Error fetching issue events: ${error.message}`);
+              return false;
             }
 
-            const labels = context.payload.pull_request.labels;
-            const okToTestLabel = labels.find(
-              label => label.name == 'ok-to-test'
-            );
-            return okToTestLabel !== undefined;
+            // Find last 'labeled' event for 'ok-to-test'
+            const labeledOkToTest = events
+              .filter(e => e.event === 'labeled' && e.label?.name === 'ok-to-test')
+              .pop();
+
+            if (!labeledOkToTest) {
+              core.info("No 'ok-to-test' label found on this PR");
+              return false;
+            }
+
+            core.info(`Found 'ok-to-test' label event by @${labeledOkToTest.actor.login}, verifying if they are an org member...`);
+
+            const labelerLogin = labeledOkToTest.actor.login;
+            const labelerIsOrgMember = await isOrgMember(owner, labelerLogin);
+            if (!labelerIsOrgMember) {
+              core.info(`User @${labelerLogin} who labeled 'ok-to-test' is not an org member => not authorized`);
+              return false;
+            }
+
+            core.info(`'ok-to-test' label added by an org member => authorized`);
+            return true
       - name: comment-if-waiting-on-ok
         if: steps.check-ownership-membership.outputs.result == 'false' &&
             github.event.action == 'opened'
@@ -121,6 +163,7 @@ jobs:
 
         shell: bash
         run: |
+          set -x
           # Initialize variables
           build_target_components=""
           test_target_components=""
@@ -152,19 +195,19 @@ jobs:
               if [ "$contains" = "true" ]; then
                   build_target_components="${build_target_components}${build_component},"
                   test_target_components="${test_target_components}${test_component},"
-                  if [ "$should_asan" = "true" ] && [ "$has_asan_label" = "true" ]; then
+                  if [ "$should_asan" = "true" ] && [ "$HAS_ASAN_LABEL" = "true" ]; then
                       build_target_asan="${build_target_asan}${build_component},"
                       test_target_asan="${test_target_asan}${test_component},"
                   fi
-                  if [ "$should_tsan" = "true" ] && [ "$has_tsan_label" = "true" ]; then
+                  if [ "$should_tsan" = "true" ] && [ "$HAS_TSAN_LABEL" = "true" ]; then
                       build_target_tsan="${build_target_tsan}${build_component},"
                       test_target_tsan="${test_target_tsan}${test_component},"
                   fi
-                  if [ "$should_msan" = "true" ] && [ "$has_msan_label" = "true" ]; then
+                  if [ "$should_msan" = "true" ] && [ "$HAS_MSAN_LABEL" = "true" ]; then
                       build_target_msan="${build_target_msan}${build_component},"
                       test_target_msan="${test_target_msan}${test_component},"
                   fi
-                  if [ "$should_ubsan" = "true" ] && [ "$has_ubsan_label" = "true" ]; then
+                  if [ "$should_ubsan" = "true" ] && [ "$HAS_UBSAN_LABEL" = "true" ]; then
                       build_target_ubsan="${build_target_ubsan}${build_component},"
                       test_target_ubsan="${test_target_ubsan}${test_component},"
                   fi
@@ -175,11 +218,11 @@ jobs:
           }
 
           # Add components based on conditions
-          add_components "blockstore" "$contains_blockstore" "cloud/blockstore/apps/" "cloud/blockstore/"
-          add_components "filestore" "$contains_filestore" "cloud/filestore/apps/" "cloud/filestore/"
-          add_components "disk_manager" "$contains_disk_manager" "cloud/disk_manager/" "cloud/disk_manager/"
-          add_components "tasks" "$contains_tasks" "cloud/tasks/" "cloud/tasks/"
-          add_components "storage" "$contains_storage" "cloud/storage/" "cloud/storage/"
+          add_components "blockstore" "$CONTAINS_BLOCKSTORE" "cloud/blockstore/apps/" "cloud/blockstore/"
+          add_components "filestore" "$CONTAINS_FILESTORE" "cloud/filestore/apps/" "cloud/filestore/"
+          add_components "disk_manager" "$CONTAINS_DISK_MANAGER" "cloud/disk_manager/" "cloud/disk_manager/"
+          add_components "tasks" "$CONTAINS_TASKS" "cloud/tasks/" "cloud/tasks/"
+          add_components "storage" "$CONTAINS_STORAGE" "cloud/storage/" "cloud/storage/"
 
           # Remove trailing commas
           build_target_components=${build_target_components%,}
@@ -205,29 +248,29 @@ jobs:
 
           # Output to GitHub environment file
           {
-            echo "build_target=\"$build_target\""
-            echo "build_target_asan=\"$build_target_asan\""
-            echo "build_target_tsan=\"$build_target_tsan\""
-            echo "build_target_msan=\"$build_target_msan\""
-            echo "build_target_ubsan=\"$build_target_ubsan\""
+            echo "build_target=$build_target"
+            echo "build_target_asan=$build_target_asan"
+            echo "build_target_tsan=$build_target_tsan"
+            echo "build_target_msan=$build_target_msan"
+            echo "build_target_ubsan=$build_target_ubsan"
 
-            echo "test_target=\"$test_target\""
-            echo "test_target_asan=\"$test_target_asan\""
-            echo "test_target_tsan=\"$test_target_tsan\""
-            echo "test_target_msan=\"$test_target_msan\""
-            echo "test_target_ubsan=\"$test_target_ubsan\""
-          } >> $GITHUB_OUTPUT
+            echo "test_target=$test_target"
+            echo "test_target_asan=$test_target_asan"
+            echo "test_target_tsan=$test_target_tsan"
+            echo "test_target_msan=$test_target_msan"
+            echo "test_target_ubsan=$test_target_ubsan"
+          } | tee -a "$GITHUB_OUTPUT"
 
         env:
-          contains_blockstore: ${{ contains(github.event.pull_request.labels.*.name, 'blockstore') && 'true' || 'false' }}
-          contains_filestore: ${{ contains(github.event.pull_request.labels.*.name, 'filestore') && 'true' || 'false' }}
-          contains_disk_manager: ${{ contains(github.event.pull_request.labels.*.name, 'disk_manager') && 'true' || 'false' }}
-          contains_tasks: ${{ contains(github.event.pull_request.labels.*.name, 'tasks') && 'true' || 'false' }}
-          contains_storage: ${{ contains(github.event.pull_request.labels.*.name, 'storage') && 'true' || 'false' }}
-          has_asan_label: ${{ contains(github.event.pull_request.labels.*.name, 'asan') && 'true' || 'false' }}
-          has_tsan_label: ${{ contains(github.event.pull_request.labels.*.name, 'tsan') && 'true' || 'false' }}
-          has_msan_label: ${{ contains(github.event.pull_request.labels.*.name, 'msan') && 'true' || 'false' }}
-          has_ubsan_label: ${{ contains(github.event.pull_request.labels.*.name, 'ubsan') && 'true' || 'false' }}
+          CONTAINS_BLOCKSTORE: ${{ contains(github.event.pull_request.labels.*.name, 'blockstore') && 'true' || 'false' }}
+          CONTAINS_FILESTORE: ${{ contains(github.event.pull_request.labels.*.name, 'filestore') && 'true' || 'false' }}
+          CONTAINS_DISK_MANAGER: ${{ contains(github.event.pull_request.labels.*.name, 'disk_manager') && 'true' || 'false' }}
+          CONTAINS_TASKS: ${{ contains(github.event.pull_request.labels.*.name, 'tasks') && 'true' || 'false' }}
+          CONTAINS_STORAGE: ${{ contains(github.event.pull_request.labels.*.name, 'storage') && 'true' || 'false' }}
+          HAS_ASAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'asan') && 'true' || 'false' }}
+          HAS_TSAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'tsan') && 'true' || 'false' }}
+          HAS_MSAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'msan') && 'true' || 'false' }}
+          HAS_UBSAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ubsan') && 'true' || 'false' }}
   build_and_test:
     needs:
       - check-running-allowed
@@ -241,9 +284,9 @@ jobs:
       build_preset: "relwithdebinfo"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
-      run_tests: true
       cache_update_build: false
       cache_update_tests: false
+      number_of_retries: 3
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_asan:
@@ -260,9 +303,9 @@ jobs:
       vm_name_suffix: "-asan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
       cache_update_build: false
       cache_update_tests: false
+      number_of_retries: 1
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_tsan:
@@ -279,9 +322,9 @@ jobs:
       vm_name_suffix: "-tsan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
       cache_update_build: false
       cache_update_tests: false
+      number_of_retries: 1
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_msan:
@@ -298,9 +341,9 @@ jobs:
       vm_name_suffix: "-msan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
       cache_update_build: false
       cache_update_tests: false
+      number_of_retries: 1
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_ubsan:
@@ -317,8 +360,8 @@ jobs:
       vm_name_suffix: "-ubsan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
       cache_update_build: false
       cache_update_tests: false
+      number_of_retries: 1
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit

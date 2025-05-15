@@ -31,12 +31,13 @@ struct TFileId
     enum class EFileIdType
     {
         Lustre = 0x97,
-        Weka = 0x27
+        Weka = 0x27,
+        VastNfs = 0x8,
     };
 
     struct file_handle FileHandle;
     union {
-        struct
+        struct Y_PACKED
         {
             ui64 Seq;
             ui32 Oid;
@@ -45,13 +46,24 @@ struct TFileId
             ui32 ParentOid;
             ui32 ParentVer;
         } LustreFid;
-        struct
+        struct Y_PACKED
         {
             ui64 Id;
             ui64 Context;
             ui64 ParentId;
             ui64 ParentContext;
         } WekaInodeId;
+        struct Y_PACKED
+        {
+            uint32_t IdHigh32;
+            uint32_t IdLow32;
+            uint16_t FileType;
+            uint16_t Unused;
+            uint16_t ServerFhSize;
+            uint64_t ServerId;
+            uint64_t ServerView;
+            uint16_t ServerUnused;
+        } VastNfsInodeId;
         char Buffer[MAX_HANDLE_SZ] = {};
     };
 
@@ -60,6 +72,23 @@ struct TFileId
 
     TFileHandle Open(const TFileHandle& mountHandle, int flags);
     TString ToString() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFileSystemStat
+{
+    i64 Type = 0;           // Type of filesystem
+    i64 BlockSize = 0;      // Optimal transfer block size
+    ui64 TotalBlocks = 0;   // Total data blocks in filesystem
+    ui64 FreeBlocks = 0;    // Free blocks in filesystem
+    ui64 AvailBlocks = 0;   // Free blocks available to unprivileged user
+    ui64 TotalFiles = 0;    // Total file nodes in filesystem
+    ui64 FreeFiles = 0;     // Free file nodes in filesystem
+    i32 FsId[2] = {0, 0};   // Filesystem ID
+    i64 MaxNameLen = 0;     // Maximum length of filenames
+    i64 FragmentSize = 0;   // Fragment size
+    i64 MountFlags = 0;     // Mount flags of filesystem
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,6 +125,7 @@ TString ReadLink(const TFileHandle& handle);
 
 TFileStat Stat(const TFileHandle& handle);
 TFileStat StatAt(const TFileHandle& handle, const TString& name);
+TFileSystemStat StatFs(const TFileHandle& handle);
 
 TVector<std::pair<TString, TFileStat>> ListDirAt(
     const TFileHandle& handle,

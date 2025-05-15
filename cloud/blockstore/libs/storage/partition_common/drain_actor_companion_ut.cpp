@@ -51,9 +51,25 @@ private:
 public:
     TMyTestEnv()
     {
+        SetupLogging();
         NKikimr::SetupTabletServices(Runtime);
 
         Sender = Runtime.AllocateEdgeActor();
+    }
+
+    void SetupLogging()
+    {
+        Runtime.AppendToLogSettings(
+            TBlockStoreComponents::START,
+            TBlockStoreComponents::END,
+            GetComponentName);
+
+        for (ui32 i = TBlockStoreComponents::START;
+             i < TBlockStoreComponents::END;
+             ++i)
+        {
+            Runtime.SetLogPriority(i, NLog::PRI_TRACE);
+        }
     }
 
     TActorId Register(IActorPtr actor)
@@ -80,6 +96,14 @@ public:
             .GrabEdgeEvent<NPartition::TEvPartition::TEvDrainResponse>(
                 TDuration());
     }
+
+    THolder<NPartition::TEvPartition::TEvWaitForInFlightWritesResponse>
+    GrabWaitForInFlightWritesResponse()
+    {
+        return Runtime.GrabEdgeEvent<
+            NPartition::TEvPartition::TEvWaitForInFlightWritesResponse>(
+            TDuration());
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,6 +113,7 @@ class TActorWithDrain
     , private IRequestsInProgress
 {
     ui32 CurrentWriteRequestInProgress = 0;
+    bool WaitingForInFlightWrites = false;
     TDrainActorCompanion drainCompanion{*this, "LoggingId"};
 
 public:
@@ -100,7 +125,15 @@ public:
     {
         switch (ev->GetTypeRewrite()) {
             HFunc(NPartition::TEvPartition::TEvDrainRequest, HandleDrain);
+            HFunc(
+                NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+                HandleWaitForInFlightWrites);
             HFunc(TEvSetWriteInProgressCount, HandleSetWriteCount);
+            default:
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
         }
     }
 
@@ -110,6 +143,14 @@ private:
         return CurrentWriteRequestInProgress != 0;
     }
 
+    void WaitForInFlightWrites() override {
+        WaitingForInFlightWrites = true;
+    }
+
+    bool IsWaitingForInFlightWrites() const override {
+        return WaitingForInFlightWrites && WriteRequestInProgress();
+    }
+
     void HandleDrain(
         const NPartition::TEvPartition::TEvDrainRequest::TPtr& ev,
         const TActorContext& ctx)
@@ -117,11 +158,21 @@ private:
         drainCompanion.HandleDrain(ev, ctx);
     }
 
+    void HandleWaitForInFlightWrites(
+        const NPartition::TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        drainCompanion.HandleWaitForInFlightWrites(ev, ctx);
+    }
+
     void HandleSetWriteCount(
         const TEvSetWriteInProgressCount::TPtr& ev,
         const TActorContext& ctx)
     {
         CurrentWriteRequestInProgress = ev->Get()->WriteCount;
+        if (!WriteRequestInProgress()) {
+            WaitingForInFlightWrites = false;
+        }
         drainCompanion.ProcessDrainRequests(ctx);
     }
 };
@@ -314,6 +365,68 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
         {  // Assert no more drain responses
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(nullptr, drainResponse);
+        }
+    }
+
+    Y_UNIT_TEST(BasicWaitForInFlightWrites)
+    {
+        TMyTestEnv testEnv;
+
+        auto actorId = testEnv.Register(std::make_unique<TActorWithDrain>());
+
+        // Waiting for in-flight writes.
+        testEnv.Send(
+            actorId,
+            std::make_unique<
+                NPartition::TEvPartition::TEvWaitForInFlightWritesRequest>());
+        testEnv.DispatchEvents();
+
+        {   // Get the response
+            auto waitResponse = testEnv.GrabWaitForInFlightWritesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, waitResponse->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(WaitForInFlightWritesWithWriteInProgress)
+    {
+        TMyTestEnv testEnv;
+
+        auto actorId = testEnv.Register(std::make_unique<TActorWithDrain>());
+
+        // Set actor have one write inflight
+        testEnv.Send(actorId, std::make_unique<TEvSetWriteInProgressCount>(1));
+
+        // Waiting for in-flight writes.
+        testEnv.Send(
+            actorId,
+            std::make_unique<
+                NPartition::TEvPartition::TEvWaitForInFlightWritesRequest>());
+        testEnv.DispatchEvents();
+
+        {   // Assert waiting is not finished since the write is in progress
+            auto waitResponse = testEnv.GrabWaitForInFlightWritesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(nullptr, waitResponse);
+        }
+
+        // Sending another wait.
+        testEnv.Send(
+            actorId,
+            std::make_unique<
+                NPartition::TEvPartition::TEvWaitForInFlightWritesRequest>());
+        testEnv.DispatchEvents();
+
+        {   // It should be rejected because the actor is already waiting.
+            auto waitResponse = testEnv.GrabWaitForInFlightWritesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, waitResponse->GetStatus());
+        }
+
+        // Finish write
+        testEnv.Send(actorId, std::make_unique<TEvSetWriteInProgressCount>(0));
+        testEnv.DispatchEvents();
+
+        {   // Get the response
+            auto waitResponse = testEnv.GrabWaitForInFlightWritesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, waitResponse->GetStatus());
         }
     }
 }

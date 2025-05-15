@@ -31,6 +31,7 @@ struct TOptionsYdbBase
     TString SchemeShardDir;
     TString NodeBrokerAddress;
     ui32 NodeBrokerPort = 0;
+    ui32 NodeBrokerSecurePort = 0;
     bool UseNodeBrokerSsl = false;
     TString LocationFile;
 
@@ -38,6 +39,8 @@ struct TOptionsYdbBase
     bool SuppressVersionCheck = false;
 
     bool LoadCmsConfigs = false;
+
+    ui32 ActorSystemAvailableCpuCoresPercentage = 0;
 
     TOptionsYdbBase();
     virtual ~TOptionsYdbBase() = default;

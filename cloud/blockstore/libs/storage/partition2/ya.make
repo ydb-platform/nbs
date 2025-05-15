@@ -7,6 +7,7 @@ SRCS(
     part2_actor_addblobs.cpp
     part2_actor_addgarbage.cpp
     part2_actor_changedblocks.cpp
+    part2_actor_checkrange.cpp
     part2_actor_cleanup.cpp
     part2_actor_collectgarbage.cpp
     part2_actor_compaction.cpp

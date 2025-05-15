@@ -40,12 +40,12 @@ class CsiLoadTest(LocalLoadTest):
             grpc_unix_socket_path: str,
             sockets_temporary_directory: tempfile.TemporaryDirectory,
             vm_mode: bool,
-            local_fs_ids: list[str],
+            external_fs_configs,
             *args,
             **kwargs,
     ):
         super(CsiLoadTest, self).__init__(*args, **kwargs)
-        self.local_nfs_vhost = LocalNfsVhostRunner(local_fs_ids)
+        self.local_nfs_vhost = LocalNfsVhostRunner(external_fs_configs)
         self.local_nfs_vhost.start()
         self.sockets_temporary_directory = sockets_temporary_directory
         self.csi = NbsCsiDriverRunner(
@@ -71,7 +71,7 @@ class NbsCsiDriverRunner:
             sockets_dir: str,
             grpc_unix_socket_path: str,
             vm_mode: bool,
-            local_fs_config: dict[str, int] | None):
+            local_fs_config):
         csi_driver_dir = Path(
             common.binary_path("cloud/blockstore/tools/csi_driver/"),
         )
@@ -107,12 +107,8 @@ class NbsCsiDriverRunner:
             fs_override_path = (
                 Path(yatest_common.output_path()) / "local-filestore-override.txt"
             )
-            fs_config = [
-                {"fs_id": fs_id, "local_mount_path": "/mnt/local_fs"}
-                for fs_id in self._local_fs_config["local_fs_ids"]
-            ]
 
-            fs_override_path.write_text(json.dumps(fs_config))
+            fs_override_path.write_text(json.dumps(self._local_fs_config["external_fs_configs"]))
 
             args += [
                 f"--local-filestore-override={str(fs_override_path)}",
@@ -305,7 +301,7 @@ def cleanup_after_test(
     env.tear_down()
 
 
-def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, local_fs_ids: list[str] = []):
+def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, external_fs_configs=[]):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
@@ -333,7 +329,7 @@ def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, local_fs_id
         grpc_unix_socket_path=server_config_patch.UnixSocketPath,
         sockets_temporary_directory=temp_dir,
         vm_mode=vm_mode,
-        local_fs_ids=local_fs_ids,
+        external_fs_configs=external_fs_configs,
         endpoint="",
         server_app_config=server,
         storage_config_patches=None,
@@ -370,12 +366,12 @@ def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, local_fs_id
 
 
 class LocalNfsVhostRunner:
-    def __init__(self, local_fs_ids: list[str]):
-        self.local_fs_ids = local_fs_ids
+    def __init__(self, external_fs_configs):
+        self.external_fs_configs = external_fs_configs
         self.daemon = None
 
     def start(self):
-        if not self.local_fs_ids:
+        if not self.external_fs_configs:
             return
 
         endpoint_storage_dir = common.work_path() + '/local_nfs_endpoints'
@@ -416,7 +412,7 @@ class LocalNfsVhostRunner:
         if not self.daemon:
             return None
 
-        return dict(local_fs_ids=self.local_fs_ids,
+        return dict(external_fs_configs=self.external_fs_configs,
                     endpoint_port=self.endpoint_port,
                     filestore_port=self.filestore_port)
 

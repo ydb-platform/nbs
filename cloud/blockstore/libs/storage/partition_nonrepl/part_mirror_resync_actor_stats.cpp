@@ -1,6 +1,7 @@
 #include "part_mirror_resync_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -14,18 +15,38 @@ void TMirrorPartitionResyncActor::HandlePartCounters(
 {
     auto* msg = ev->Get();
 
-    if (ev->Sender == MirrorActorId) {
-        MirrorCounters = std::move(msg->DiskCounters);
-        NetworkBytes = msg->NetworkBytes;
-        CpuUsage = msg->CpuUsage;
-    } else {
-        LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
+    bool knownSender = ev->Sender == MirrorActorId;
+    for (const auto& replica: Replicas) {
+        knownSender |= replica.ActorId == ev->Sender;
+    }
+
+    if (!knownSender) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "Partition %s for disk %s counters not found",
             ToString(ev->Sender).c_str(),
             PartConfig->GetName().Quote().c_str());
 
         Y_DEBUG_ABORT_UNLESS(0);
+        return;
     }
+
+    if (!MirrorCounters) {
+        MirrorCounters = std::move(msg->DiskCounters);
+    } else {
+        MirrorCounters->AggregateWith(*msg->DiskCounters);
+    }
+
+    NetworkBytes += msg->NetworkBytes;
+    CpuUsage += msg->CpuUsage;
+}
+
+void TMirrorPartitionResyncActor::HandleScrubberCounters(
+    const TEvVolume::TEvScrubberCounters::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    ForwardMessageToActor(ev, ctx, StatActorId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,6 +59,7 @@ void TMirrorPartitionResyncActor::SendStats(const TActorContext& ctx)
 
     if (MirrorCounters) {
         stats->AggregateWith(*MirrorCounters);
+        MirrorCounters.reset();
     }
 
     auto request =
@@ -49,6 +71,9 @@ void TMirrorPartitionResyncActor::SendStats(const TActorContext& ctx)
             CpuUsage);
 
     NCloud::Send(ctx, StatActorId, std::move(request));
+
+    NetworkBytes = 0;
+    CpuUsage = TDuration();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

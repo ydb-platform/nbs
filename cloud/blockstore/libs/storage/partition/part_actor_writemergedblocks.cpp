@@ -474,7 +474,10 @@ STFUNC(TWriteMergedBlocksActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddUnconfirmedBlobsResponse, HandleAddUnconfirmedBlobsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -502,8 +505,9 @@ void TPartitionActor::WriteMergedBlocks(
     const auto maxBlocksInBlob = State->GetMaxBlocksInBlob();
 
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Writing merged blocks @%lu (range: %s)",
+        "[%lu][d:%s] Writing merged blocks @%lu (range: %s)",
         TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId,
         DescribeRange(writeRange).data()
     );

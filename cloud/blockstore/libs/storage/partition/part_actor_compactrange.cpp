@@ -37,14 +37,16 @@ private:
     const TActorId Tablet;
     const TVector<ui32> RangesToCompact;
     const TDuration RetryTimeout;
+    const ui32 RangeCountPerRun;
 
-    size_t CurrentBlock = 0;
+    size_t CurrentRangeIndex = 0;
 
 public:
     TForcedCompactionActor(
         const TActorId& tablet,
         TVector<ui32> rangesToCompact,
-        TDuration retryTimeout);
+        TDuration retryTimeout,
+        ui32 rangeCountPerRun);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -76,10 +78,12 @@ private:
 TForcedCompactionActor::TForcedCompactionActor(
         const TActorId& tablet,
         TVector<ui32> rangesToCompact,
-        TDuration retryTimeout)
+        TDuration retryTimeout,
+        ui32 rangeCountPerRun)
     : Tablet(tablet)
     , RangesToCompact(std::move(rangesToCompact))
     , RetryTimeout(retryTimeout)
+    , RangeCountPerRun(rangeCountPerRun)
 {}
 
 void TForcedCompactionActor::Bootstrap(const TActorContext& ctx)
@@ -90,9 +94,15 @@ void TForcedCompactionActor::Bootstrap(const TActorContext& ctx)
 
 void TForcedCompactionActor::SendCompactionRequest(const TActorContext& ctx)
 {
+    TVector<ui32> ranges(Reserve(RangeCountPerRun));
+    ranges.assign(
+        RangesToCompact.begin() + CurrentRangeIndex,
+        RangesToCompact.begin() +
+            Min(CurrentRangeIndex + RangeCountPerRun, RangesToCompact.size()));
+
     auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(
         MakeIntrusive<TCallContext>(),
-        RangesToCompact[CurrentBlock],
+        std::move(ranges),
         TCompactionOptions().
             set(ToBit(ECompactionOption::Forced)).
             set(ToBit(ECompactionOption::Full)));
@@ -123,7 +133,10 @@ STFUNC(TForcedCompactionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvCompactionResponse, HandleCompactionResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -153,8 +166,8 @@ void TForcedCompactionActor::HandleCompactionResponse(
         return;
     }
 
-    ++CurrentBlock;
-    if (CurrentBlock < RangesToCompact.size()) {
+    CurrentRangeIndex += RangeCountPerRun;
+    if (CurrentRangeIndex < RangesToCompact.size()) {
         SendCompactionRequest(ctx);
     } else {
         ReplyAndDie(ctx);
@@ -322,11 +335,23 @@ void TPartitionActor::EnqueueForcedCompaction(const TActorContext& ctx)
             compactInfo.OperationId,
             compactInfo.RangesToCompact.size());
 
+        const bool batchCompactionEnabledForCloud =
+            Config->IsBatchCompactionFeatureEnabled(
+                PartitionConfig.GetCloudId(),
+                PartitionConfig.GetFolderId(),
+                PartitionConfig.GetDiskId());
+        const bool batchCompactionEnabled =
+            Config->GetBatchCompactionEnabled() ||
+            batchCompactionEnabledForCloud;
+
         auto actorId = NCloud::Register<TForcedCompactionActor>(
             ctx,
             SelfId(),
             std::move(compactInfo.RangesToCompact),
-            Config->GetCompactionRetryTimeout());
+            Config->GetCompactionRetryTimeout(),
+            batchCompactionEnabled
+                ? Config->GetForcedCompactionRangeCountPerRun()
+                : 1);
 
         PendingForcedCompactionRequests.pop_front();
 

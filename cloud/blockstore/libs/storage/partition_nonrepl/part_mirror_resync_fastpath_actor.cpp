@@ -93,7 +93,7 @@ void TMirrorPartitionResyncFastPathActor::CompareChecksums(
                 TBlockStoreComponents::PARTITION,
                 "[%s] Resync range %s: checksum mismatch, %lu (0) != %lu (%d)"
                 ", fast path reading is not available",
-                Replicas[0].Name.c_str(),
+                Replicas[0].ReplicaId.c_str(),
                 DescribeRange(Range).c_str(),
                 firstChecksum,
                 checksum,
@@ -248,7 +248,10 @@ STFUNC(TMirrorPartitionResyncFastPathActor::StateWork)
         HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

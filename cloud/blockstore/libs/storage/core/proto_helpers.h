@@ -144,11 +144,19 @@ bool GetThrottlingEnabled(
     const TStorageConfig& config,
     const NProto::TPartitionConfig& partitionConfig);
 
+bool GetThrottlingEnabledZeroBlocks(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig);
+
 bool CompareVolumeConfigs(
     const NKikimrBlockStore::TVolumeConfig& prevConfig,
     const NKikimrBlockStore::TVolumeConfig& newConfig);
 
 ui32 GetWriteBlobThreshold(
+    const TStorageConfig& config,
+    const NCloud::NProto::EStorageMediaKind mediaKind);
+
+ui32 GetWriteMixedBlobThreshold(
     const TStorageConfig& config,
     const NCloud::NProto::EStorageMediaKind mediaKind);
 
@@ -227,5 +235,14 @@ ui64 GetVolumeRequestId(const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request
 ui64 GetVolumeRequestId(const NProto::TWriteDeviceBlocksRequest& request);
 ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
 
+ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksRequest& request);
+ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksLocalRequest& request);
+ui64 GetVolumeRequestId(const TEvService::TEvZeroBlocksRequest& request);
+ui64 GetVolumeRequestId(
+    const TEvDiskAgent::TEvDirectCopyBlocksRequest& request);
+
 TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
+
+NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
+    const NKikimrBlockStore::TVolumeConfig& volumeConfig);
 }   // namespace NCloud::NBlockStore::NStorage

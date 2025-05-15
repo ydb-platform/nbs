@@ -19,6 +19,23 @@ TProcessingBlocks::TProcessingBlocks(
     }
 }
 
+TProcessingBlocks::TProcessingBlocks(
+        ui64 blockCount,
+        ui32 blockSize,
+        TCompressedBitmap blockMap)
+    : BlockCount(blockCount)
+    , BlockSize(blockSize)
+    , BlockMap(std::make_unique<TCompressedBitmap>(std::move(blockMap)))
+{
+    SkipProcessedRanges();
+}
+
+TProcessingBlocks::TProcessingBlocks(
+    TProcessingBlocks&& other) noexcept = default;
+
+TProcessingBlocks& TProcessingBlocks::operator=(
+    TProcessingBlocks&& other) noexcept = default;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TProcessingBlocks::AbortProcessing()
@@ -101,7 +118,7 @@ ui64 TProcessingBlocks::GetBlockCountNeedToBeProcessed() const
 
 ui64 TProcessingBlocks::GetProcessedBlockCount() const
 {
-    if (BlockMap) {
+    if (IsProcessing()) {
         return BlockMap->Count();
     }
     return BlockCount;
@@ -111,7 +128,7 @@ ui64 TProcessingBlocks::CalculateNextProcessingIndex() const
 {
     return Min(
         BlockCount,
-        CurrentProcessingIndex + ProcessingRangeSize / BlockSize);
+        CurrentProcessingIndex + MigrationRangeSize / BlockSize);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

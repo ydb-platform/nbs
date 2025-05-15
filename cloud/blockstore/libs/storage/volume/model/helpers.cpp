@@ -55,7 +55,7 @@ const NProto::TDeviceConfig& GetDeviceConfig(
     return meta.GetMigrations(*deviceLocation.MigrationIndex).GetTargetDevice();
 }
 
-std::optional<TDeviceLocation> FindDeviceLocation(
+std::optional<TDeviceLocation> FindReplicaDeviceLocation(
     const NProto::TVolumeMeta& meta,
     TStringBuf deviceUUID)
 {
@@ -74,13 +74,25 @@ std::optional<TDeviceLocation> FindDeviceLocation(
         }
     }
 
+    return std::nullopt;
+}
+
+std::optional<TDeviceLocation> FindTargetMigrationDeviceLocation(
+    const NProto::TVolumeMeta& meta,
+    TStringBuf deviceUUID)
+{
+    auto deviceMatcher = [&deviceUUID](const auto& device)
+    {
+        return device.GetDeviceUUID() == deviceUUID;
+    };
+
     for (size_t i = 0; i < meta.MigrationsSize(); i++) {
         const auto& migration = meta.GetMigrations(i);
         if (!deviceMatcher(migration.GetTargetDevice())) {
             continue;
         }
         auto sourceLocation =
-            FindDeviceLocation(meta, migration.GetSourceDeviceId());
+            FindReplicaDeviceLocation(meta, migration.GetSourceDeviceId());
         if (!sourceLocation) {
             ReportDiskAllocationFailure(
                 TStringBuilder()
@@ -95,6 +107,18 @@ std::optional<TDeviceLocation> FindDeviceLocation(
     }
 
     return std::nullopt;
+}
+
+std::optional<TDeviceLocation> FindDeviceLocation(
+    const NProto::TVolumeMeta& meta,
+    TStringBuf deviceUUID)
+{
+    auto deviceLocation = FindReplicaDeviceLocation(meta, deviceUUID);
+    if (!deviceLocation) {
+        deviceLocation = FindTargetMigrationDeviceLocation(meta, deviceUUID);
+    }
+
+    return deviceLocation;
 }
 
 }   // namespace
@@ -131,7 +155,7 @@ std::optional<ui32> FindReplicaIndexByAgentId(
     for (const auto& migration: meta.GetMigrations()) {
         if (deviceMatcher(migration.GetTargetDevice())) {
             auto deviceLocation =
-                FindDeviceLocation(meta, migration.GetSourceDeviceId());
+                FindReplicaDeviceLocation(meta, migration.GetSourceDeviceId());
             if (deviceLocation) {
                 return deviceLocation->ReplicaIndex;
             }
@@ -166,7 +190,7 @@ TVector<NProto::TLaggingDevice> CollectLaggingDevices(
         const auto& targetDevice = migration.GetTargetDevice();
         if (deviceMatcher(targetDevice)) {
             auto deviceLocation =
-                FindDeviceLocation(meta, migration.GetSourceDeviceId());
+                FindReplicaDeviceLocation(meta, migration.GetSourceDeviceId());
             if (!deviceLocation) {
                 ReportDiskAllocationFailure(
                     TStringBuilder()
@@ -188,7 +212,7 @@ TVector<NProto::TLaggingDevice> CollectLaggingDevices(
 }
 
 bool HaveCommonRows(
-    const TVector<NProto::TLaggingDevice>& laggingCandidates,
+    const RepeatedPtrField<NProto::TLaggingDevice>& laggingCandidates,
     const RepeatedPtrField<NProto::TLaggingDevice>& alreadyLagging)
 {
     TLaggingDeviceIndexCmp cmp;
@@ -198,7 +222,7 @@ bool HaveCommonRows(
     Y_ABORT_UNLESS(IsSorted(alreadyLagging.begin(), alreadyLagging.end(), cmp));
 
     for (int i = 0, j = 0;
-         i < laggingCandidates.ysize() && j < alreadyLagging.size();)
+         i < laggingCandidates.size() && j < alreadyLagging.size();)
     {
         if (cmp(laggingCandidates[i], alreadyLagging[j])) {
             i++;
@@ -215,10 +239,10 @@ bool HaveCommonRows(
 bool RowHasFreshDevices(
     const NProto::TVolumeMeta& meta,
     ui32 rowIndex,
-    ui32 timeoutedDeviceReplicaIndex)
+    ui32 timedOutDeviceReplicaIndex)
 {
     for (size_t i = 0; i <= meta.ReplicasSize(); i++) {
-        if (i == timeoutedDeviceReplicaIndex) {
+        if (i == timedOutDeviceReplicaIndex) {
             continue;
         }
         const auto& devices = GetReplicaDevices(meta, i);
@@ -274,6 +298,36 @@ void UpdateLaggingDevicesAfterMetaUpdate(
     if (laggingAgents.empty()) {
         meta.MutableLaggingAgentsInfo()->Clear();
     }
+}
+
+TVector<NProto::TDeviceConfig> GetReplacedDevices(
+    const NProto::TVolumeMeta& oldMeta,
+    const NProto::TVolumeMeta& newMeta)
+{
+    TVector<NProto::TDeviceConfig> result;
+    for (size_t i = 0; i <= oldMeta.ReplicasSize(); i++) {
+        const auto& oldDevices = GetReplicaDevices(oldMeta, i);
+        const auto& newDevices = GetReplicaDevices(newMeta, i);
+
+        for (int deviceIdx = 0; deviceIdx < oldDevices.size(); deviceIdx++) {
+            if (oldDevices[deviceIdx].GetDeviceUUID() !=
+                newDevices[deviceIdx].GetDeviceUUID())
+            {
+                result.push_back(oldDevices[deviceIdx]);
+            }
+        }
+    }
+
+    for (const auto& oldMigration: oldMeta.GetMigrations()) {
+        auto targetLocation = FindDeviceLocation(
+            newMeta,
+            oldMigration.GetTargetDevice().GetDeviceUUID());
+        if (!targetLocation) {
+            result.push_back(oldMigration.GetTargetDevice());
+        }
+    }
+
+    return result;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -310,7 +310,10 @@ STFUNC(TCompactionActor::StateWork)
         HFunc(TEvIndexTabletPrivate::TEvAddBlobResponse, HandleAddBlobResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -323,6 +326,17 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
 {
     const auto compactionInfo = GetCompactionInfo();
     const auto cleanupInfo = GetCleanupInfo();
+
+    const bool shouldThrottleCleanup = ShouldThrottleCleanup(ctx, cleanupInfo);
+    if (shouldThrottleCleanup) {
+        // Without user operations, EnqueueBlobIndexOpIfNeeded will not be
+        // called and cleanup will not resume after throttling.
+        // Therefore we reschedule calling EnqueueBlobIndexOpIfNeeded.
+        ScheduleEnqueueBlobIndexOpIfNeeded(ctx);
+    }
+
+    const bool shouldCleanup =
+        cleanupInfo.ShouldCleanup && !shouldThrottleCleanup;
 
     if (IsBlobIndexOpsQueueEmpty()) {
         auto blobIndexOpsPriority = Config->GetBlobIndexOpsPriority();
@@ -339,7 +353,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
 
         switch (blobIndexOpsPriority) {
             case NProto::BIOP_CLEANUP_FIRST: {
-                if (cleanupInfo.ShouldCleanup) {
+                if (shouldCleanup) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 } else if (compactionInfo.ShouldCompact) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
@@ -350,7 +364,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
             case NProto::BIOP_COMPACTION_FIRST: {
                 if (compactionInfo.ShouldCompact) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
-                } else if (cleanupInfo.ShouldCleanup) {
+                } else if (shouldCleanup) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 }
                 break;
@@ -360,16 +374,27 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
                 if (compactionInfo.ShouldCompact) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
                 }
-                if (cleanupInfo.ShouldCleanup) {
+                if (shouldCleanup) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 }
                 break;
             }
         }
 
-        if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()
-                || GetDeletedFreshBytesCount()
-                >= Config->GetFlushBytesThreshold())
+        const bool shouldFlushBytesByFreshBytesCount =
+            GetFreshBytesCount() >= Config->GetFlushBytesThreshold();
+
+        const bool shouldFlushBytesByDeletedFreshBytesCount =
+            GetDeletedFreshBytesCount() >= Config->GetFlushBytesThreshold();
+
+        const bool shouldFlushBytesByFreshBytesItemCount =
+            Config->GetFlushBytesByItemCountEnabled()
+            && GetFreshBytesItemCount()
+                >= Config->GetFlushBytesItemCountThreshold();
+
+        if (shouldFlushBytesByFreshBytesCount
+            || shouldFlushBytesByDeletedFreshBytesCount
+            || shouldFlushBytesByFreshBytesItemCount)
         {
             AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
         }
@@ -422,6 +447,39 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
         default:
             TABLET_VERIFY(0);
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::ScheduleEnqueueBlobIndexOpIfNeeded(
+    const NActors::TActorContext& ctx)
+{
+    if (!EnqueueBlobIndexOpIfNeededScheduled) {
+        ctx.Schedule(
+            Config->GetEnqueueBlobIndexOpIfNeededScheduleInterval(),
+            new TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded());
+        EnqueueBlobIndexOpIfNeededScheduled = true;
+
+        LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+            "%s EnqueueBlobIndexOpIfNeeded scheduled",
+            LogTag.c_str());
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleEnqueueBlobIndexOpIfNeeded(
+    const TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+        "%s EnqueueBlobIndexOpIfNeeded received",
+        LogTag.c_str());
+
+    EnqueueBlobIndexOpIfNeededScheduled = false;
+    EnqueueBlobIndexOpIfNeeded(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

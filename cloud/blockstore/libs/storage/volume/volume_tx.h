@@ -43,6 +43,9 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ReadMetaHistory,                __VA_ARGS__)                           \
     xxx(AddLaggingAgent,                __VA_ARGS__)                           \
     xxx(RemoveLaggingAgent,             __VA_ARGS__)                           \
+    xxx(AddFollower,                    __VA_ARGS__)                           \
+    xxx(RemoveFollower,                 __VA_ARGS__)                           \
+    xxx(UpdateFollower,                 __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +80,7 @@ struct TTxVolume
         TVector<TRuntimeVolumeParamsValue> VolumeParams;
         TMaybe<bool> StartPartitionsNeeded;
         THashMap<TString, TVolumeClientState> Clients;
-        ui64 MountSeqNumber;
+        ui64 MountSeqNumber = 0;
         TVolumeMountHistorySlice MountHistory;
         TVector<TVolumeDatabase::TPartStats> PartStats;
         TVector<TCheckpointRequest> CheckpointRequests;
@@ -86,10 +89,10 @@ struct TTxVolume
         TMaybe<TCompressedBitmap> UsedBlocks;
         TMaybe<TVolumeDatabase::TThrottlerStateInfo> ThrottlerStateInfo;
         TMaybe<NProto::TStorageServiceConfig> StorageConfig;
+        TFollowerDisks FollowerDisks;
 
-        TLoadState(TInstant oldestLogEntry)
+        explicit TLoadState(TInstant oldestLogEntry)
             : OldestLogEntry(oldestLogEntry)
-            , MountSeqNumber(0)
         {}
 
         void Clear()
@@ -108,6 +111,7 @@ struct TTxVolume
             UsedBlocks.Clear();
             ThrottlerStateInfo.Clear();
             StorageConfig.Clear();
+            FollowerDisks.clear();
         }
     };
 
@@ -151,11 +155,13 @@ struct TTxVolume
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
         TVector<TString> RemovedLaggingDeviceIds;
+        TVector<TString> LostDeviceIds;
         NProto::EVolumeIOMode IOMode;
         TInstant IOModeTs;
         bool MuteIOErrors;
 
         bool LiteReallocation = false;
+        TVector<NProto::TDeviceConfig> ReplacedDevices;
 
         TUpdateDevices(
                 TDevices devices,
@@ -163,20 +169,21 @@ struct TTxVolume
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
                 TVector<TString> removedLaggingDeviceIds,
+                TVector<TString> lostDeviceIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
             : TUpdateDevices(
-                TRequestInfoPtr(),
-                std::move(devices),
-                std::move(migrations),
-                std::move(replicas),
-                std::move(freshDeviceIds),
-                std::move(removedLaggingDeviceIds),
-                ioMode,
-                ioModeTs,
-                muteIOErrors
-            )
+                  TRequestInfoPtr(),
+                  std::move(devices),
+                  std::move(migrations),
+                  std::move(replicas),
+                  std::move(freshDeviceIds),
+                  std::move(removedLaggingDeviceIds),
+                  std::move(lostDeviceIds),
+                  ioMode,
+                  ioModeTs,
+                  muteIOErrors)
         {}
 
         TUpdateDevices(
@@ -186,6 +193,7 @@ struct TTxVolume
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
                 TVector<TString> removedLaggingDeviceIds,
+                TVector<TString> lostDeviceIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
@@ -195,6 +203,7 @@ struct TTxVolume
             , Replicas(std::move(replicas))
             , FreshDeviceIds(std::move(freshDeviceIds))
             , RemovedLaggingDeviceIds(std::move(removedLaggingDeviceIds))
+            , LostDeviceIds(std::move(lostDeviceIds))
             , IOMode(ioMode)
             , IOModeTs(ioModeTs)
             , MuteIOErrors(muteIOErrors)
@@ -503,6 +512,7 @@ struct TTxVolume
             // nothing to do
         }
     };
+
     //
     // UpdateUsedBlocks
     //
@@ -575,11 +585,16 @@ struct TTxVolume
     {
         const TRequestInfoPtr RequestInfo;
         const bool ResyncEnabled;
+        const bool AlertResyncChecksumMismatch;
         bool ResyncWasNeeded = false;
 
-        TToggleResync(TRequestInfoPtr requestInfo, bool resyncEnabled)
+        TToggleResync(
+                TRequestInfoPtr requestInfo,
+                bool resyncEnabled,
+                bool alertResyncChecksumMismatch)
             : RequestInfo(std::move(requestInfo))
             , ResyncEnabled(resyncEnabled)
+            , AlertResyncChecksumMismatch(alertResyncChecksumMismatch)
         {}
 
         void Clear()
@@ -712,6 +727,8 @@ struct TTxVolume
         const TRequestInfoPtr RequestInfo;
         const NProto::TLaggingAgent Agent;
 
+        NProto::TError Error;
+
         TAddLaggingAgent(
                 TRequestInfoPtr requestInfo,
                 NProto::TLaggingAgent agent)
@@ -720,7 +737,9 @@ struct TTxVolume
         {}
 
         void Clear()
-        {}
+        {
+            Error.Clear();
+        }
     };
 
     //
@@ -733,6 +752,7 @@ struct TTxVolume
         const TString AgentId;
 
         NProto::TLaggingAgent RemovedLaggingAgent;
+        bool ShouldStartResync = false;
 
         TRemoveLaggingAgent(TRequestInfoPtr requestInfo, TString agentId)
             : RequestInfo(std::move(requestInfo))
@@ -742,6 +762,75 @@ struct TTxVolume
         void Clear()
         {
             RemovedLaggingAgent.Clear();
+            ShouldStartResync = false;
+        }
+    };
+
+    //
+    // AddFollower
+    //
+
+    struct TAddFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString FollowerDiskId;
+        TString LinkUUID;
+
+        TAddFollower(
+                TRequestInfoPtr requestInfo,
+                TString followerDiskId)
+            : RequestInfo(std::move(requestInfo))
+            , FollowerDiskId(std::move(followerDiskId))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // RemoveFollower
+    //
+
+    struct TRemoveFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString LinkUUID;
+
+        TRemoveFollower(
+                TRequestInfoPtr requestInfo,
+                TString linkUUID)
+            : RequestInfo(std::move(requestInfo))
+            , LinkUUID(std::move(linkUUID))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+
+    //
+    // UpdateFollower
+    //
+
+    struct TUpdateFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TFollowerDiskInfo FollowerInfo;
+
+        TUpdateFollower(
+                TRequestInfoPtr requestInfo,
+                TFollowerDiskInfo followerInfo)
+            : RequestInfo(std::move(requestInfo))
+            , FollowerInfo(std::move(followerInfo))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
         }
     };
 };

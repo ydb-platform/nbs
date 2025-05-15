@@ -28,9 +28,18 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NActors;
 using namespace NKikimr;
 
+using namespace std::chrono_literals;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+enum class EIOType {
+    Read = 0,
+    Write = 1,
+    Zero = 2,
+    Checksum = 3
+};
 
 struct TTestEnv
 {
@@ -40,6 +49,7 @@ struct TTestEnv
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
     NRdma::IClientPtr RdmaClient;
+    TStorageConfigPtr Config;
 
     static void AddDevice(
         ui32 nodeId,
@@ -85,7 +95,8 @@ struct TTestEnv
             TTestActorRuntime& runtime,
             NProto::EVolumeIOMode ioMode,
             TDevices devices,
-            bool optimizeVoidBuffersTransfer)
+            bool optimizeVoidBuffersTransfer,
+            bool laggingDevicesAllowed = false)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -109,6 +120,8 @@ struct TTestEnv
                 NCloud::NProto::TFeaturesConfig())
         );
 
+        Config = config;
+
         auto nodeId = Runtime.GetNodeId(0);
 
         Runtime.AddLocalService(
@@ -120,23 +133,21 @@ struct TTestEnv
             )
         );
 
-        auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(devices, DefaultBlockSize),
-            ioMode,
-            "test",
-            DefaultBlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{
-                Now(),
-                // only SSD/HDD distinction matters
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
-            VolumeActorId,
-            false,                 // muteIOErrors
-            THashSet<TString>(),   // freshDeviceIds
-            THashSet<TString>(),   // laggingDeviceIds
-            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-            false,                 // maxTimedOutDeviceStateDurationOverridden
-            false                  // useSimpleMigrationBandwidthLimiter
-        );
+        TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+            params{
+                ToLogicalBlocks(devices, DefaultBlockSize),
+                TNonreplicatedPartitionConfig::TVolumeInfo{
+                    Now(),
+                    // only SSD/HDD distinction matters
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+                "test",
+                DefaultBlockSize,
+                VolumeActorId};
+        params.IOMode = ioMode;
+        params.UseSimpleMigrationBandwidthLimiter = false;
+        params.LaggingDevicesAllowed = laggingDevicesAllowed;
+        auto partConfig =
+            std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
         auto part = std::make_unique<TNonreplicatedPartitionRdmaActor>(
             std::move(config),
@@ -202,6 +213,16 @@ struct TTestEnv
     {
         return static_cast<TRdmaClientTest&>(*RdmaClient);
     }
+};
+
+enum class EDataPlaneRequestType
+{
+    Read,
+    ReadLocal,
+    Write,
+    WriteLocal,
+    Zero,
+    Checksum,
 };
 
 }   // namespace
@@ -493,6 +514,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         }                                                                      \
 // READ_BLOCKS_E
 
+#define CHECKSUM_BLOCKS_E(error) {                                             \
+        client.SendChecksumBlocksRequest(blockRange1);                         \
+        auto response = client.RecvChecksumBlocksResponse();                   \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                            \
+            error.GetCode(),                                                   \
+            response->GetStatus(),                                             \
+            response->GetErrorReason());                                       \
+    }                                                                          \
+// CHECKSUM_BLOCKS_E
+
     Y_UNIT_TEST(ShouldLocalReadWriteWithErrors)
     {
         TTestBasicRuntime runtime;
@@ -572,6 +603,423 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         UNIT_ASSERT_VALUES_EQUAL(env.VolumeActorId, notifiedActor);
         UNIT_ASSERT_VALUES_EQUAL(1, notificationCount);
+    }
+
+    Y_UNIT_TEST(ShouldSendDeviceTimedOutOnResponseError)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            false,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        TActorId notifiedActor;
+        ui32 deviceTimedOutCount = 0;
+        THashSet<TString> devices;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest: {
+                        if (event->Recipient != env.VolumeActorId) {
+                            break;
+                        }
+                        notifiedActor = event->Recipient;
+                        auto* ev = static_cast<
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest*>(
+                            event->GetBase());
+                        devices.emplace(ev->DeviceUUID);
+                        ++deviceTimedOutCount;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        env.Rdma().InjectErrors(
+            {},
+            MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable"),
+            {});
+        env.Rdma().InitAllEndpoints();
+        const auto error = MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable");
+
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
+
+        WRITE_BLOCKS_E(error);
+        READ_BLOCKS_E(error, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+        runtime.DispatchEvents({}, 10ms);
+        runtime.AdvanceCurrentTime(
+            env.Config->GetLaggingDeviceTimeoutThreshold() + 1ms);
+        ZERO_BLOCKS_E(error);
+        runtime.DispatchEvents({}, 10ms);
+
+        THashSet<TString> expected = {"vasya", "petya"};
+        UNIT_ASSERT_VALUES_EQUAL(expected.size(), devices.size());
+        for (const auto& d: devices) {
+            UNIT_ASSERT(expected.contains(d));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOutCount);
+    }
+
+    void ShouldSendDeviceTimedOutOnAllocationError(EIOType ioType)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            false,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        TActorId notifiedActor;
+        ui32 deviceTimedOutCount = 0;
+        THashSet<TString> devices;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest: {
+                        if (event->Recipient != env.VolumeActorId) {
+                            break;
+                        }
+                        notifiedActor = event->Recipient;
+                        auto* ev = static_cast<
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest*>(
+                            event->GetBase());
+                        devices.emplace(ev->DeviceUUID);
+                        ++deviceTimedOutCount;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto error = MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable");
+        env.Rdma().InjectErrors(error, {}, {});
+        env.Rdma().InitAllEndpoints();
+
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
+
+        WRITE_BLOCKS_E(error);
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+
+        runtime.AdvanceCurrentTime(
+            env.Config->GetLaggingDeviceTimeoutThreshold() + 1ms);
+        switch (ioType) {
+            case EIOType::Read:
+                READ_BLOCKS_E(error, 0);
+                break;
+            case EIOType::Write:
+                WRITE_BLOCKS_E(error);
+                break;
+            case EIOType::Zero:
+                ZERO_BLOCKS_E(error);
+                break;
+            case EIOType::Checksum:
+                CHECKSUM_BLOCKS_E(error);
+                break;
+        }
+        runtime.DispatchEvents({}, 10ms);
+
+        THashSet<TString> expected = {"vasya"};
+        UNIT_ASSERT_VALUES_EQUAL(expected.size(), devices.size());
+        for (const auto& d: devices) {
+            UNIT_ASSERT(expected.contains(d));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, deviceTimedOutCount);
+    }
+
+    Y_UNIT_TEST(ShouldSendDeviceTimedOutOnAllocationError) {
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Read);
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Write);
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Zero);
+        ShouldSendDeviceTimedOutOnAllocationError(EIOType::Checksum);
+    }
+
+    Y_UNIT_TEST(ShouldResetDeviceTimedOutContextOnAgentIsBackOnline)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            false,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        TActorId notifiedActor;
+        ui32 deviceTimedOutCount = 0;
+        THashSet<TString> devices;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest: {
+                        if (event->Recipient != env.VolumeActorId) {
+                            break;
+                        }
+                        notifiedActor = event->Recipient;
+                        auto* ev = static_cast<
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest*>(
+                            event->GetBase());
+                        devices.emplace(ev->DeviceUUID);
+                        ++deviceTimedOutCount;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, env.Rdma().Endpoints.size());
+        const auto error = MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable");
+        env.Rdma().InjectErrors(error, {}, {});
+        ui32 forceReconnectCount = 0;
+        env.Rdma().SetForceReconnectObserver([&forceReconnectCount]()
+                                             { forceReconnectCount++; });
+        env.Rdma().InitAllEndpoints();
+
+        auto testDeviceTimedOutRoutine = [&]() {
+            const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
+
+            WRITE_BLOCKS_E(error);
+            runtime.DispatchEvents({}, 10ms);
+            UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+
+            runtime.AdvanceCurrentTime(
+                env.Config->GetLaggingDeviceTimeoutThreshold() + 1ms);
+            READ_BLOCKS_E(error, 0);
+            runtime.DispatchEvents({}, 10ms);
+
+            const THashSet<TString> expected = {"vasya"};
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), devices.size());
+            for (const auto& d: devices) {
+                UNIT_ASSERT(expected.contains(d));
+            }
+        };
+
+        testDeviceTimedOutRoutine();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, deviceTimedOutCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, forceReconnectCount);
+        client.SendRequest(
+            env.ActorId,
+            std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
+                Sprintf("agent-%u", runtime.GetNodeId(0))));
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&forceReconnectCount]()
+            {
+                return 1 == forceReconnectCount;
+            };
+            runtime.DispatchEvents(options);
+        }
+
+        devices.clear();
+        testDeviceTimedOutRoutine();
+        UNIT_ASSERT_VALUES_EQUAL(1, forceReconnectCount);
+    }
+
+    Y_UNIT_TEST(ShouldResetDeviceTimeoutInfoOnSucceededRequest)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            false,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        TActorId notifiedActor;
+        ui32 deviceTimedOutCount = 0;
+        THashSet<TString> devices;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest: {
+                        if (event->Recipient != env.VolumeActorId) {
+                            break;
+                        }
+                        notifiedActor = event->Recipient;
+                        auto* ev = static_cast<
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest*>(
+                            event->GetBase());
+                        devices.emplace(ev->DeviceUUID);
+                        ++deviceTimedOutCount;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        env.Rdma().InjectErrors(
+            {},
+            MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable"),
+            {});
+        env.Rdma().InitAllEndpoints();
+        const auto error = MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable");
+
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
+
+        WRITE_BLOCKS_E(error);
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+        runtime.AdvanceCurrentTime(
+            env.Config->GetLaggingDeviceTimeoutThreshold() / 2);
+
+        env.Rdma().InjectErrors({}, {}, {});
+        client.ZeroBlocks(blockRange1);
+
+        env.Rdma().InjectErrors(
+            {},
+            MakeError(E_RDMA_UNAVAILABLE, "rdma unavailable"),
+            {});
+        runtime.AdvanceCurrentTime(
+            env.Config->GetLaggingDeviceTimeoutThreshold() / 2 + 1ms);
+        WRITE_BLOCKS_E(error);
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+
+        runtime.AdvanceCurrentTime(
+            env.Config->GetLaggingDeviceTimeoutThreshold() + 1ms);
+        WRITE_BLOCKS_E(error);
+        runtime.DispatchEvents({}, 10ms);
+
+        THashSet<TString> expected = {"vasya", "petya"};
+        UNIT_ASSERT_VALUES_EQUAL(expected.size(), devices.size());
+        for (const auto& d: devices) {
+            UNIT_ASSERT(expected.contains(d));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOutCount);
+    }
+
+    void DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType requestType)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            false,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        auto promise = NThreading::NewPromise();
+        env.Rdma().InjectFutureToWaitBeforeRequestProcessing(promise.GetFuture());
+        env.Rdma().InitAllEndpoints();
+        const auto error = NProto::TError();
+
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 1);
+
+        TString data(DefaultBlockSize, 'A');
+
+        switch (requestType) {
+            case EDataPlaneRequestType::Read:
+                client.SendReadBlocksRequest(blockRange1);
+                break;
+            case EDataPlaneRequestType::ReadLocal:
+                client.SendReadBlocksLocalRequest(
+                    blockRange1,
+                    TGuardedSgList(
+                        {blockRange1.Size(),
+                         TBlockDataRef{data.data(), data.size()}}));
+                break;
+            case EDataPlaneRequestType::Write:
+                client.SendWriteBlocksRequest(blockRange1, 'a');
+                break;
+            case EDataPlaneRequestType::WriteLocal:
+                client.SendWriteBlocksLocalRequest(blockRange1, data);
+                break;
+            case EDataPlaneRequestType::Zero:
+                client.SendZeroBlocksRequest(blockRange1);
+                break;
+            case EDataPlaneRequestType::Checksum:
+                client.SendChecksumBlocksRequest(blockRange1);
+                break;
+        }
+
+        runtime.DispatchEvents({}, 10ms);
+        client.SendAgentIsUnavailable(
+            Sprintf("agent-%u", runtime.GetNodeId(0)));
+
+        auto checkResponse = [](const auto& resp)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, resp->GetError().GetCode());
+            UNIT_ASSERT(HasProtoFlag(
+                resp->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
+        };
+
+
+        switch (requestType) {
+            case EDataPlaneRequestType::Read:
+                checkResponse(client.RecvReadBlocksResponse());
+                break;
+            case EDataPlaneRequestType::ReadLocal:
+                checkResponse(client.RecvReadBlocksLocalResponse());
+                break;
+            case EDataPlaneRequestType::Write:
+                checkResponse(client.RecvWriteBlocksResponse());
+                break;
+            case EDataPlaneRequestType::WriteLocal:
+                checkResponse(client.RecvWriteBlocksLocalResponse());
+                break;
+            case EDataPlaneRequestType::Zero:
+                checkResponse(client.RecvZeroBlocksResponse());
+                break;
+            case EDataPlaneRequestType::Checksum:
+                checkResponse(client.RecvChecksumBlocksResponse());
+                break;
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableRead)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::Read);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableReadLocal)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::ReadLocal);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableWrite)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::Write);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableWriteLocal)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::WriteLocal);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableZero)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::Zero);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableChecksum)
+    {
+        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::Checksum);
     }
 
     Y_UNIT_TEST(ShouldUpdateStats)
@@ -777,12 +1225,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(10, writeRequestId);
         }
 
-        {   // background WriteBlocksLocal should NOT pass volume request id.
+        {   // background WriteBlocksLocal should pass volume request id.
             TString data(DefaultBlockSize, 'A');
             auto request =
                 client.CreateWriteBlocksLocalRequest(blockRange, data);
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
-            request->Record.MutableHeaders()->SetVolumeRequestId(10);
+            request->Record.MutableHeaders()->SetVolumeRequestId(11);
             client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
@@ -790,7 +1238,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL(0, writeRequestId);
+            UNIT_ASSERT_VALUES_EQUAL(11, writeRequestId);
         }
 
         {   // non-background WriteBlocks should pass volume request id.
@@ -809,10 +1257,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(20, writeRequestId);
         }
 
-        {   // background WriteBlocks should NOT pass volume request id.
+        {   // background WriteBlocks should pass volume request id.
             auto request = client.CreateWriteBlocksRequest(blockRange, 'A');
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
-            request->Record.MutableHeaders()->SetVolumeRequestId(20);
+            request->Record.MutableHeaders()->SetVolumeRequestId(21);
             client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
@@ -820,7 +1268,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL(0, writeRequestId);
+            UNIT_ASSERT_VALUES_EQUAL(21, writeRequestId);
         }
 
         {   // non-background ZeroBlocks should pass volume request id.
@@ -837,10 +1285,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(30, zeroRequestId);
         }
 
-        {   // background ZeroBlocks should NOT pass volume request id.
+        {   // background ZeroBlocks should pass volume request id.
             auto request = client.CreateZeroBlocksRequest(blockRange);
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
-            request->Record.MutableHeaders()->SetVolumeRequestId(30);
+            request->Record.MutableHeaders()->SetVolumeRequestId(31);
             client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
@@ -848,7 +1296,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL(0, zeroRequestId);
+            UNIT_ASSERT_VALUES_EQUAL(31, zeroRequestId);
         }
     }
 

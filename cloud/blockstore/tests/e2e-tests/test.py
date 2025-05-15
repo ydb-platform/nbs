@@ -1,9 +1,11 @@
 import logging
 import pytest
 import os
+import signal
 import shutil
 import subprocess
 import tempfile
+import time
 import yaml
 
 from pathlib import Path
@@ -36,6 +38,8 @@ def init(
         stored_endpoints_path=None,
         nbd_request_timeout=None,
         nbd_reconnect_delay=None,
+        proxy_restart_events=None,
+        max_zero_blocks_sub_request_size=None
 ):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
@@ -62,6 +66,8 @@ def init(
     server.ServerConfig.CopyFrom(server_config_patch)
     server.ServerConfig.ThreadsCount = thread_count()
     server.ServerConfig.StrictContractValidation = True
+    if max_zero_blocks_sub_request_size:
+        server.ServerConfig.MaxZeroBlocksSubRequestSize = max_zero_blocks_sub_request_size
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     subprocess.check_call(["modprobe", "nbd"], timeout=20)
     if stored_endpoints_path:
@@ -75,7 +81,8 @@ def init(
         with_netlink=with_netlink,
         stored_endpoints_path=stored_endpoints_path,
         nbd_request_timeout=nbd_request_timeout,
-        nbd_reconnect_delay=nbd_reconnect_delay)
+        nbd_reconnect_delay=nbd_reconnect_delay,
+        proxy_restart_events=proxy_restart_events)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
@@ -127,11 +134,98 @@ def log_called_process_error(exc):
     )
 
 
+def test_multiple_errors():
+    volume_name = "test-disk"
+    block_size = 4096
+    blocks_count = 1024
+    nbd_device = "/dev/nbd0"
+    socket_path = "/tmp/nbd.sock"
+    request_timeout = 2
+    runtime = request_timeout * 2
+    nbs_downtime = request_timeout + 1
+    iodepth = 1024
+
+    env, run = init(
+        with_netlink=True,
+        with_endpoint_proxy=True,
+        nbd_request_timeout=request_timeout,
+        proxy_restart_events=2)
+
+    try:
+        result = run(
+            "createvolume",
+            "--disk-id",
+            volume_name,
+            "--blocks-count",
+            str(blocks_count),
+            "--block-size",
+            str(block_size),
+        )
+        assert result.returncode == 0
+
+        result = run(
+            "startendpoint",
+            "--disk-id",
+            volume_name,
+            "--socket",
+            socket_path,
+            "--ipc-type",
+            "nbd",
+            "--persistent",
+            "--nbd-device",
+            nbd_device
+        )
+        assert result.returncode == 0
+
+        proc = subprocess.Popen(
+            [
+                "fio",
+                "--name=fio",
+                "--ioengine=libaio",
+                "--direct=1",
+                "--time_based=1",
+                "--rw=randrw",
+                "--rwmixread=50",
+                "--filename=" + nbd_device,
+                "--runtime=" + str(runtime),
+                "--blocksize=" + str(block_size),
+                "--iodepth=" + str(iodepth),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+
+        os.kill(env.nbs.pid, signal.SIGSTOP)
+        time.sleep(nbs_downtime)
+        os.kill(env.nbs.pid, signal.SIGCONT)
+
+        proc.communicate(timeout=60)
+
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+
+    finally:
+        run(
+            "stopendpoint",
+            "--socket",
+            socket_path,
+        )
+
+        result = run(
+            "destroyvolume",
+            "--disk-id",
+            volume_name,
+            input=volume_name,
+        )
+
+        cleanup_after_test(env)
+
+
 def test_stop_start():
     env, run = init(
         with_netlink=True,
         with_endpoint_proxy=True,
-        nbd_reconnect_delay="1s")
+        nbd_reconnect_delay=1)
 
     volume_name = "example-disk"
     block_size = 4096
@@ -226,11 +320,16 @@ def test_stop_start():
                          [(True, False), (True, True), (False, False), (False, True)])
 def test_resize_device(with_netlink, with_endpoint_proxy):
     stored_endpoints_path = Path(common.output_path()) / "stored_endpoints"
-    env, run = init(with_netlink, with_endpoint_proxy, stored_endpoints_path)
+    env, run = init(
+        with_netlink,
+        with_endpoint_proxy,
+        stored_endpoints_path,
+        max_zero_blocks_sub_request_size=512 * 1024 * 1024
+    )
 
     volume_name = "example-disk"
     block_size = 4096
-    blocks_count = 10000
+    blocks_count = 1310720
     volume_size = blocks_count * block_size
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
@@ -257,7 +356,7 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             "nbd",
             "--persistent",
             "--nbd-device",
-            nbd_device
+            nbd_device,
         )
         assert result.returncode == 0
 
@@ -271,7 +370,7 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
         assert volume_size == disk_size
 
         result = common.execute(
-            ["mkfs", "-t", "ext4", "-E", "nodiscard", nbd_device],
+            ["mkfs", "-t", "ext4", nbd_device],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT)
         assert result.returncode == 0

@@ -181,6 +181,13 @@ void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
     }
 }
 
+TDuration TDiskAgentActor::GetMaxRequestTimeout() const
+{
+    return Max(
+        Config->GetNonReplicatedMaxRequestTimeoutSSD(),
+        Config->GetNonReplicatedMaxRequestTimeoutHDD());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskAgentActor::HandleReportDelayedDiskAgentConfigMismatch(
@@ -302,7 +309,10 @@ STFUNC(TDiskAgentActor::StateInit)
                     ctx,
                     TBlockStoreComponents::DISK_AGENT,
                     "Unexpected request in Init state");
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_AGENT,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -402,7 +412,10 @@ STFUNC(TDiskAgentActor::StateWork)
                     ctx,
                     TBlockStoreComponents::DISK_AGENT,
                     "Unexpected request in Work state");
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_AGENT,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -426,7 +439,10 @@ STFUNC(TDiskAgentActor::StateIdle)
                     ctx,
                     TBlockStoreComponents::DISK_AGENT,
                     "Unexpected request in Idle state");
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_AGENT,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

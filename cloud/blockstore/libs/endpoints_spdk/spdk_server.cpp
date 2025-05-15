@@ -284,7 +284,7 @@ public:
         const NProto::TVolume& volume,
         ISessionPtr session) override
     {
-        return Executor->Execute([=] {
+        return Executor->Execute([=, this] {
             return DoStartEndpoint(request, volume, session);
         });
     }
@@ -301,7 +301,7 @@ public:
 
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
-        return Executor->Execute([=] {
+        return Executor->Execute([=, this] {
             return DoStopEndpoint(socketPath);
         });
     }
@@ -461,7 +461,7 @@ public:
         const NProto::TVolume& volume,
         ISessionPtr session) override
     {
-        return Executor->Execute([=] {
+        return Executor->Execute([=, this] {
             return DoStartEndpoint(request, volume, session);
         });
     }
@@ -478,7 +478,7 @@ public:
 
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
-        return Executor->Execute([=] {
+        return Executor->Execute([=, this] {
             return DoStopEndpoint(socketPath);
         });
     }

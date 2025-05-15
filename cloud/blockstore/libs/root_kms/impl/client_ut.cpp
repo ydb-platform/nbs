@@ -4,12 +4,17 @@
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/string.h>
 #include <util/system/env.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore {
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -33,11 +38,23 @@ struct TFixture
              .CertChainFile = GetEnv("FAKE_ROOT_KMS_CLIENT_CRT"),
              .PrivateKeyFile = GetEnv("FAKE_ROOT_KMS_CLIENT_KEY")});
         Client->Start();
+
+        while (!IsRootKmsAlive()) {
+            Sleep(1s);
+        }
     }
 
     void TearDown(NUnitTest::TTestContext&) override
     {
         Client->Stop();
+    }
+
+    bool IsRootKmsAlive() const
+    {
+        const auto future = Client->Decrypt(TString(), TString());
+        const auto& [_, error] = future.GetValueSync();
+
+        return error.GetCode() == E_GRPC_NOT_FOUND;
     }
 };
 

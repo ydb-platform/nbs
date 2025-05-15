@@ -134,6 +134,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"component", "storage_fs"},
                 {"host", "cluster"},
                 {"filesystem", "test"},
+                {"sensor", "FreshBytesItemCount"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
                 {"sensor", "GarbageQueueSize"}}, 0},
             {{
                 {"component", "storage_fs"},
@@ -301,6 +306,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "UsedSessionsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "StatefulSessionsCount"}, {"filesystem", "test"}}, 0},
             {{{"sensor", "StatelessSessionsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "ActiveSessionsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "OrphanSessionsCount"}, {"filesystem", "test"}}, 0},
             {{{"sensor", "SessionTimeouts"}, {"filesystem", "test"}}, 0},
         });
 
@@ -315,6 +322,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "StatefulSessionsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "StatelessSessionsCount"}, {"filesystem", "test"}}, 0},
             {{{"sensor", "SessionTimeouts"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "SessionCleanupAttempts"}, {"filesystem", "test"}}, 0},
         });
 
         Tablet->RebootTablet();
@@ -330,6 +338,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "StatefulSessionsCount"}, {"filesystem", "test"}}, 0},
             {{{"sensor", "StatelessSessionsCount"}, {"filesystem", "test"}}, 0},
             {{{"sensor", "SessionTimeouts"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "SessionCleanupAttempts"}, {"filesystem", "test"}}, 2},
         });
     }
 
@@ -695,13 +704,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         TTestRegistryVisitor visitor;
 
         const auto deletions = countrRewrites * BlockGroupSize;
-        const auto garbage = countrRewrites * BlockGroupSize;
         registry->Visit(TInstant::Zero(), visitor);
         // clang-format off
         visitor.ValidateExpectedCounters({
             {{{"sensor", "MaxBlobsInRange"}}, countrRewrites},
             {{{"sensor", "MaxDeletionsInRange"}}, deletions},
-            {{{"sensor", "MaxGarbageBlocksInRange"}}, garbage},
+            {{{"sensor", "MaxGarbageBlocksInRange"}}, 0},
         });
         // clang-format on
     }
@@ -736,13 +744,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCounters({
             {{{"sensor", "FreshBytesCount"}, {"filesystem", "test"}}, DefaultBlockSize - 1},
+            {{{"sensor", "FreshBytesItemCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "FreshBlocksCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "MixedBlobsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "CMMixedBlobsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "DeletionMarkersCount"}, {"filesystem", "test"}}, 64},
             {{{"sensor", "CMDeletionMarkersCount"}, {"filesystem", "test"}}, 64},
             {{{"sensor", "MixedBytesCount"}, {"filesystem", "test"}}, sz},
-            {{{"sensor", "CMGarbageBlocksCount"}, {"filesystem", "test"}}, 64},
+            {{{"sensor", "CMGarbageBlocksCount"}, {"filesystem", "test"}}, 0},
         });
         // clang-format on
 

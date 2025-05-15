@@ -16,8 +16,12 @@
 
 namespace NCloud::NBlockStore::NProto {
 
-    using TChecksumBlocksRequest = NProto::TChecksumDeviceBlocksRequest;
-    using TChecksumBlocksResponse = NProto::TChecksumDeviceBlocksResponse;
+using TChecksumBlocksRequest = NProto::TChecksumDeviceBlocksRequest;
+using TChecksumBlocksResponse = NProto::TChecksumDeviceBlocksResponse;
+
+struct TMultiAgentWriteRequest;
+struct TMultiAgentWriteResponse;
+
 }   // namespace NCloud::NBlockStore::NProto
 
 namespace NCloud::NBlockStore::NStorage {
@@ -26,6 +30,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 #define BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(xxx, ...)             \
     xxx(ChecksumBlocks, __VA_ARGS__)                                        \
+    xxx(MultiAgentWrite, __VA_ARGS__)                                       \
 // BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -139,6 +144,15 @@ struct TEvNonreplPartitionPrivate
 
     struct TRangeResynced
     {
+        enum class EStatus
+        {
+            Healthy,         // Range OK.
+            HealedAll,       // All blocks in range resynced
+            HealedPartial,   // Only a part of the blocks in the range were
+                             // resynced
+            HealedNone,      // Not a single block was resynced.
+        };
+
         TBlockRange64 Range;
         TInstant ChecksumStartTs;
         TDuration ChecksumDuration;
@@ -146,7 +160,9 @@ struct TEvNonreplPartitionPrivate
         TDuration ReadDuration;
         TInstant WriteStartTs;
         TDuration WriteDuration;
+        ui64 ExecCycles;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
+        EStatus Status;
 
         TRangeResynced(
                 TBlockRange64 range,
@@ -156,7 +172,9 @@ struct TEvNonreplPartitionPrivate
                 TDuration readDuration,
                 TInstant writeStartTs,
                 TDuration writeDuration,
-                TVector<IProfileLog::TBlockInfo> affectedBlockInfos)
+                ui64 execCycles,
+                TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
+                EStatus status)
             : Range(range)
             , ChecksumStartTs(checksumStartTs)
             , ChecksumDuration(checksumDuration)
@@ -164,7 +182,9 @@ struct TEvNonreplPartitionPrivate
             , ReadDuration(readDuration)
             , WriteStartTs(writeStartTs)
             , WriteDuration(writeDuration)
+            , ExecCycles(execCycles)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
+            , Status(status)
         {
         }
     };
@@ -202,8 +222,11 @@ struct TEvNonreplPartitionPrivate
         // Request execution total time.
         TDuration ExecutionTime;
 
-        // Indexes of devices that participated in the request.
+        // Indices of devices that participated in the request.
         TStackVec<ui32, 2> DeviceIndices;
+
+        // Indices of devices where requests have resulted in errors.
+        TStackVec<ui32, 2> ErrorDeviceIndices;
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;
@@ -239,6 +262,115 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    // CancelRequest
+    //
+
+    struct TCancelRequest
+    {
+        enum class EReason {
+            TimedOut,
+            Canceled
+        };
+
+        EReason Reason = EReason::TimedOut;
+    };
+
+    //
+    // AddLaggingAgent
+    //
+
+    struct TAddLaggingAgentRequest
+    {
+        NProto::TLaggingAgent LaggingAgent;
+
+        explicit TAddLaggingAgentRequest(NProto::TLaggingAgent laggingAgent)
+            : LaggingAgent(std::move(laggingAgent))
+        {}
+    };
+
+    //
+    // RemoveLaggingAgent
+    //
+
+    struct TRemoveLaggingAgentRequest
+    {
+        NProto::TLaggingAgent LaggingAgent;
+
+        explicit TRemoveLaggingAgentRequest(NProto::TLaggingAgent laggingAgent)
+            : LaggingAgent(std::move(laggingAgent))
+        {}
+    };
+
+    //
+    // AgentIsUnavailable
+    //
+
+    struct TAgentIsUnavailable
+    {
+        const NProto::TLaggingAgent LaggingAgent;
+
+        explicit TAgentIsUnavailable(NProto::TLaggingAgent laggingAgent)
+            : LaggingAgent(std::move(laggingAgent))
+        {}
+    };
+
+    //
+    // AgentIsBackOnline
+    //
+
+    struct TAgentIsBackOnline
+    {
+        const TString AgentId;
+
+        explicit TAgentIsBackOnline(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    //
+    // LaggingMigrationDisabled
+    //
+
+    struct TLaggingMigrationDisabled
+    {
+        const TString AgentId;
+
+        explicit TLaggingMigrationDisabled(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    //
+    // LaggingMigrationEnabled
+    //
+
+    struct TLaggingMigrationEnabled
+    {
+        const TString AgentId;
+
+        explicit TLaggingMigrationEnabled(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    struct TStartLaggingAgentMigration
+    {
+    };
+
+    //
+    // Inconsistent disk agent behavior for multi-agent write request.
+    //
+
+    struct TInconsistentDiskAgent
+    {
+        const TString AgentId;
+
+        explicit TInconsistentDiskAgent(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -250,6 +382,7 @@ struct TEvNonreplPartitionPrivate
         EvScrubbingNextRange,
         EvReadBlocksCompleted,
         EvWriteBlocksCompleted,
+        EvMultiAgentWriteBlocksCompleted,
         EvZeroBlocksCompleted,
         EvRangeMigrated,
         EvMigrateNextRange,
@@ -261,6 +394,15 @@ struct TEvNonreplPartitionPrivate
         EvReadResyncFastPathResponse,
         EvGetDeviceForRangeRequest,
         EvGetDeviceForRangeResponse,
+        EvCancelRequest,
+        EvAddLaggingAgentRequest,
+        EvRemoveLaggingAgentRequest,
+        EvAgentIsUnavailable,
+        EvAgentIsBackOnline,
+        EvStartLaggingAgentMigration,
+        EvLaggingMigrationDisabled,
+        EvLaggingMigrationEnabled,
+        EvInconsistentDiskAgent,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -274,6 +416,7 @@ struct TEvNonreplPartitionPrivate
     using TEvScrubbingNextRange = TResponseEvent<TEmpty, EvScrubbingNextRange>;
     using TEvReadBlocksCompleted = TResponseEvent<TOperationCompleted, EvReadBlocksCompleted>;
     using TEvWriteBlocksCompleted = TResponseEvent<TOperationCompleted, EvWriteBlocksCompleted>;
+    using TEvMultiAgentWriteBlocksCompleted = TResponseEvent<TOperationCompleted, EvMultiAgentWriteBlocksCompleted>;
     using TEvZeroBlocksCompleted = TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
     using TEvChecksumBlocksCompleted = TResponseEvent<TOperationCompleted, EvChecksumBlocksCompleted>;
 
@@ -321,8 +464,67 @@ struct TEvNonreplPartitionPrivate
         EvGetDeviceForRangeResponse
     >;
 
+    using TEvCancelRequest = TRequestEvent<TCancelRequest, EvCancelRequest>;
+
+    using TEvAddLaggingAgentRequest = TRequestEvent<
+        TAddLaggingAgentRequest,
+        EvAddLaggingAgentRequest
+    >;
+
+    using TEvRemoveLaggingAgentRequest = TRequestEvent<
+        TRemoveLaggingAgentRequest,
+        EvRemoveLaggingAgentRequest
+    >;
+
+    using TEvAgentIsUnavailable = TRequestEvent<
+        TAgentIsUnavailable,
+        EvAgentIsUnavailable
+    >;
+
+    using TEvAgentIsBackOnline = TRequestEvent<
+        TAgentIsBackOnline,
+        EvAgentIsBackOnline
+    >;
+
+    using TEvStartLaggingAgentMigration = TRequestEvent<
+        TStartLaggingAgentMigration,
+        EvStartLaggingAgentMigration
+    >;
+
+    using TEvLaggingMigrationDisabled = TRequestEvent<
+        TLaggingMigrationDisabled,
+        EvLaggingMigrationDisabled
+    >;
+
+    using TEvLaggingMigrationEnabled = TRequestEvent<
+        TLaggingMigrationEnabled,
+        EvLaggingMigrationEnabled
+    >;
+
+    using TEvInconsistentDiskAgent =
+        TRequestEvent<TInconsistentDiskAgent, EvInconsistentDiskAgent>;
+
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
 
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
+
+namespace NCloud::NBlockStore::NProto {
+
+struct TMultiAgentWriteRequest: public NProto::TWriteBlocksRequest
+{
+    using TGetDeviceForRangeResponse = NCloud::NBlockStore::NStorage::
+        TEvNonreplPartitionPrivate::TGetDeviceForRangeResponse;
+
+    ui32 BlockSize = 0;
+    TBlockRange64 Range;
+    TVector<TGetDeviceForRangeResponse> DevicesAndRanges;
+};
+
+struct TMultiAgentWriteResponse: public NProto::TWriteBlocksResponse
+{
+    bool InconsistentResponse = false;
+};
+
+}   // namespace NCloud::NBlockStore::NProto

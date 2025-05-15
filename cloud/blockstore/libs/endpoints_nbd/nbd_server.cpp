@@ -27,17 +27,20 @@ private:
     const ILoggingServicePtr Logging;
     const IServerStatsPtr ServerStats;
     const NProto::TChecksumFlags ChecksumFlags;
+    const ui32 MaxZeroBlocksSubRequestSize;
 
 public:
     TNbdEndpointListener(
             NBD::IServerPtr server,
             ILoggingServicePtr logging,
             IServerStatsPtr serverStats,
-            NProto::TChecksumFlags checksumFlags)
+            NProto::TChecksumFlags checksumFlags,
+            ui32 maxZeroBlocksSubRequestSize)
         : Server(std::move(server))
         , Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
         , ChecksumFlags(std::move(checksumFlags))
+        , MaxZeroBlocksSubRequestSize(maxZeroBlocksSubRequestSize)
     {}
 
     TFuture<NProto::TError> StartEndpoint(
@@ -55,6 +58,9 @@ public:
         options.CheckBufferModificationDuringWriting =
             ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
+        options.IsReliableMediaKind =
+            IsReliableMediaKind(volume.GetStorageMediaKind());
+        options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
 
         auto requestFactory = CreateServerHandlerFactory(
             CreateDefaultDeviceHandlerFactory(),
@@ -117,13 +123,15 @@ IEndpointListenerPtr CreateNbdEndpointListener(
     NBD::IServerPtr server,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
-    NProto::TChecksumFlags checksumFlags)
+    NProto::TChecksumFlags checksumFlags,
+    ui32 maxZeroBlocksSubRequestSize)
 {
     return std::make_shared<TNbdEndpointListener>(
         std::move(server),
         std::move(logging),
         std::move(serverStats),
-        std::move(checksumFlags));
+        std::move(checksumFlags),
+        maxZeroBlocksSubRequestSize);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

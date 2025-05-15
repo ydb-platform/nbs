@@ -221,9 +221,7 @@ private:
             request->MutableHeaders()->SetOriginFqdn(originFqdn);
 
             auto socketPath = TFsPath(request->GetEndpoint().GetSocketPath());
-            if (!socketPath.Parent().Exists()) {
-                socketPath.Parent().MkDir();
-            }
+            socketPath.Parent().MkDirs();
 
             auto future = StartEndpoint(
                 MakeIntrusive<TCallContext>(requestId),
@@ -369,7 +367,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
             auto future = endpoint->Endpoint->AlterAsync(
                 readOnly,
                 mountSeqNumber).Apply(
-                [=] (const TFuture<NProto::TError>& future) {
+                [=, this] (const TFuture<NProto::TError>& future) {
                     NProto::TStartEndpointResponse response;
                     auto error = future.GetValue();
                     if (!HasError(error)) {

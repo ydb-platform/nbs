@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/sglist_block_range.h>
 
 #include <util/generic/algorithm.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
@@ -108,41 +109,6 @@ private:
     ui64 Blocks(ui32 storage) const
     {
         return Offsets[storage] - StartOffset(storage);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TSgListBlockRange
-{
-    const ui32 BlockSize;
-
-    TSgList::const_iterator It;
-    ui64 Offset = 0;
-
-    TSgListBlockRange(const TSgList& sglist, ui32 blockSize)
-         : BlockSize(blockSize)
-         , It(sglist.begin())
-    {}
-
-    TSgList Next(ui64 blockCount)
-    {
-        TSgList sglist;
-        while (blockCount) {
-            const auto remains = It->Size() / BlockSize - Offset;
-            const auto n = std::min(remains, blockCount);
-
-            sglist.push_back({ It->Data() + Offset * BlockSize, n * BlockSize });
-            blockCount -= n;
-            Offset += n;
-
-            if (n == remains) {
-                Offset = 0;
-                ++It;
-            }
-        }
-
-        return sglist;
     }
 };
 

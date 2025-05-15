@@ -469,7 +469,10 @@ STFUNC(TWriteMixedBlocksActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -511,8 +514,9 @@ bool TPartitionActor::WriteMixedBlocks(
             }
 
             LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Writing mixed blocks @%lu (range: %s)",
+                "[%lu][d:%s] Writing mixed blocks @%lu (range: %s)",
                 TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
                 commitId,
                 DescribeRange(request->Data.Range).data()
             );

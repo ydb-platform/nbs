@@ -17,6 +17,39 @@ enum EBlobIndexOpsPriority
     BIOP_FAIR = 2;
 }
 
+enum EGuestCachingType
+{
+    // No caching is allowed, every CreateHandle forces a guest page cache
+    // invalidation
+    GCT_NONE = 0;
+    // The second RDONLY open call will be allowed not to invalidate the guest
+    // page cache if there are no other write handles and mtime of the file
+    // has not been changed since the last cache invalidation within a given
+    // session
+    GCT_SECOND_READ = 1;
+    // Same as GCT_SECOND_READ but the first RDONLY open call is also allowed
+    // to use the cache if the conditions regarding the write handles and
+    // mtime are met
+    GCT_ANY_READ = 2;
+}
+
+enum EShardBalancerPolicy
+{
+    // Shard balancer will use round robin policy and periodically reset the
+    // round robin pointer to the least loaded shard.
+    SBP_ROUND_ROBIN = 0;
+
+    // Shard balancer will randomly select a shard from the list of shards
+    // that have enough free space for a new file.
+    SBP_RANDOM = 1;
+
+    // Shard balancer will randomly select a shard from the list of shards
+    // that have enough free space for a new file. The probability of
+    // selecting a shard is proportional to the amount of free space
+    // available on the shard.
+    SBP_WEIGHTED_RANDOM = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //  !!!IMPORTANT!!!
@@ -527,4 +560,45 @@ message TStorageConfig
 
     // Enable write-back cache on FUSE server
     optional bool ServerWriteBackCacheEnabled = 420;
+
+    // If enabled, GarbageCompactionThresholdAverage in Cleanup will be compared
+    // to the scaled ratio of DeletionMarkersCount to UsedBlocksCount instead of
+    // UsedRangesCount.
+    optional bool CalculateCleanupScoreBasedOnUsedBlocksCount = 421;
+
+    // Use SSL for dynamic node registration.
+    optional bool NodeRegistrationUseSsl = 422;
+
+    // If set to true, in some cases the client is allowed not to invalidate the
+    // guest page cache associated with the inode. It is allowed only for
+    // handles to nodes that are not being edited and are already opened
+    // within a given session
+    optional bool GuestKeepCacheAllowed = 423;
+
+    optional EGuestCachingType GuestCachingType = 424;
+
+    // In addition to the actively opened handles the tablet will also keep
+    // in memory at most this number of the most recently used nodes
+    optional uint64 SessionHandleOffloadedStatsCapacity = 425;
+
+    // Limit CPU consumption by Cleanup when a massive amount
+    // of deletion markers is to be cleaned up after changing configuration.
+    // (for example after changing cleanup threshold or other parameters)
+    optional uint32 CleanupCpuThrottlingThresholdPercentage = 426;
+
+    // EnqueueBlobIndexOpIfNeeded will be called with this interval
+    // if background operations should run but have been throttled.
+    // (e.g. cleanup operation due to CleanupCpuThrottlingThresholdPercentage)
+    optional uint32 EnqueueBlobIndexOpIfNeededScheduleInterval = 427; // in ms
+
+    // Specifies the shard balancer policy to be used for the shard balancing.
+    // Has no effect if ShardBalancerEnabled is false.
+    optional EShardBalancerPolicy ShardBalancerPolicy = 428;
+
+    // The amount of data entries in the fresh bytes table that triggers
+    // flushing
+    optional uint32 FlushBytesItemCountThreshold = 429;
+
+    // Enable triggering FlushBytes by reaching FlushBytesItemCountThreshold
+    optional bool FlushBytesByItemCountEnabled = 430;
 }

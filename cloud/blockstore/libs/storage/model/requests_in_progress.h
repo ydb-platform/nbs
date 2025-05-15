@@ -1,17 +1,13 @@
 #pragma once
 
+#include "common_constants.h"
+#include "request_in_progress_impl.h"
+
+#include <cloud/blockstore/libs/common/block_range.h>
+
 #include <util/generic/hash.h>
 
 namespace NCloud::NBlockStore::NStorage {
-
-///////////////////////////////////////////////////////////////////////////////
-
-enum class EAllowedRequests
-{
-    ReadOnly,
-    WriteOnly,
-    ReadWrite,
-};
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -24,86 +20,73 @@ class TEmptyType
 class IRequestsInProgress
 {
 public:
-    virtual bool WriteRequestInProgress() const = 0;
+    virtual ~IRequestsInProgress() = default;
+
+    [[nodiscard]] virtual bool WriteRequestInProgress() const = 0;
+
+    virtual void WaitForInFlightWrites() = 0;
+    [[nodiscard]] virtual bool IsWaitingForInFlightWrites() const = 0;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
 
-template <typename TKey, typename TValue = TEmptyType>
-class TRequestsInProgress: public IRequestsInProgress
+template <typename TValue>
+struct TRequestInProgress
+{
+    TValue Value;
+    bool IsWrite = false;
+};
+
+template <EAllowedRequests TKind, typename TKey, typename TValue = TEmptyType>
+class TRequestsInProgress
+    : public IRequestsInProgress
+    , private TRequestsInProgressImpl<TKey, TRequestInProgress<TValue>>
 {
 public:
-    struct TRequest
-    {
-        TValue Value;
-        bool Write = false;
-    };
-    using TRequests = THashMap<TKey, TRequest>;
+    using TRequest = TRequestInProgress<TValue>;
 
 private:
-    EAllowedRequests AllowedRequests;
-    TRequests RequestsInProgress;
-    size_t WriteRequestCount = 0;
-    TKey RequestIdentityKeyCounter = {};
+    using TImpl = TRequestsInProgressImpl<TKey, TRequest>;
 
 public:
-    TRequestsInProgress(EAllowedRequests allowedRequests)
-        : AllowedRequests(allowedRequests)
-    {}
-
     ~TRequestsInProgress() = default;
 
-    TKey GenerateRequestId()
-    {
-        return RequestIdentityKeyCounter++;
-    }
-
-    void SetRequestIdentityKey(TKey value)
-    {
-        RequestIdentityKeyCounter = value;
-    }
+    using TImpl::AllRequests;
+    using TImpl::Empty;
+    using TImpl::ExtractRequest;
+    using TImpl::GenerateRequestId;
+    using TImpl::GetRequest;
+    using TImpl::GetRequestCount;
+    using TImpl::SetRequestIdentityKey;
 
     void AddReadRequest(const TKey& key, TValue value = {})
+        requires(IsReadAllowed<TKind>)
     {
-        Y_DEBUG_ABORT_UNLESS(!RequestsInProgress.contains(key));
-        Y_DEBUG_ABORT_UNLESS(
-            AllowedRequests == EAllowedRequests::ReadOnly ||
-            AllowedRequests == EAllowedRequests::ReadWrite);
-        RequestsInProgress.emplace(key, TRequest{std::move(value), false});
+        TImpl::AddRequest(
+            key,
+            TRequest{.Value = std::move(value), .IsWrite = false});
     }
 
     TKey AddReadRequest(TValue value)
+        requires(IsReadAllowed<TKind>)
     {
-        TKey key = RequestIdentityKeyCounter++;
-        AddReadRequest(key, std::move(value));
-        return key;
+        return TImpl::AddRequest(
+            TRequest{.Value = std::move(value), .IsWrite = false});
     }
 
     void AddWriteRequest(const TKey& key, TValue value = {})
+        requires(IsWriteAllowed<TKind>)
     {
-        Y_DEBUG_ABORT_UNLESS(!RequestsInProgress.contains(key));
-        Y_DEBUG_ABORT_UNLESS(
-            AllowedRequests == EAllowedRequests::WriteOnly ||
-            AllowedRequests == EAllowedRequests::ReadWrite);
-        RequestsInProgress.emplace(key, TRequest{std::move(value), true});
-        ++WriteRequestCount;
+        TImpl::AddRequest(
+            key,
+            TRequest{.Value = std::move(value), .IsWrite = true});
     }
 
     TKey AddWriteRequest(TValue value)
+        requires(IsWriteAllowed<TKind>)
     {
-        TKey key = RequestIdentityKeyCounter++;
-        AddWriteRequest(key, std::move(value));
-        return key;
-    }
-
-    TValue GetRequest(const TKey& key) const
-    {
-        if (auto* requestInfo = RequestsInProgress.FindPtr(key)) {
-            return requestInfo->Value;
-        } else {
-            Y_DEBUG_ABORT_UNLESS(0);
-        }
-        return {};
+        return TImpl::AddRequest(
+            TRequest{.Value = std::move(value), .IsWrite = true});
     }
 
     bool RemoveRequest(const TKey& key)
@@ -111,42 +94,22 @@ public:
         return ExtractRequest(key).has_value();
     }
 
-    std::optional<TValue> ExtractRequest(const TKey& key)
+    // IRequestsInProgress
+
+    [[nodiscard]] bool WriteRequestInProgress() const override
     {
-        auto it = RequestsInProgress.find(key);
-
-        if (it == RequestsInProgress.end()) {
-            Y_DEBUG_ABORT_UNLESS(0);
-            return std::nullopt;
-        }
-
-        if (it->second.Write) {
-            --WriteRequestCount;
-        }
-        TValue res = std::move(it->second.Value);
-        RequestsInProgress.erase(it);
-        return res;
+        return TImpl::WriteRequestInProgress();
     }
 
-    const TRequests& AllRequests() const
+    void WaitForInFlightWrites() override
     {
-        return RequestsInProgress;
+        TImpl::WaitForInFlightWrites();
     }
 
-    size_t GetRequestCount() const
+    [[nodiscard]] bool IsWaitingForInFlightWrites() const override
     {
-        return RequestsInProgress.size();
-    }
-
-    bool Empty() const
-    {
-        return GetRequestCount() == 0;
-    }
-
-    bool WriteRequestInProgress() const override
-    {
-        return WriteRequestCount != 0;
+        return TImpl::IsWaitingForInFlightWrites();
     }
 };
 
-}  // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

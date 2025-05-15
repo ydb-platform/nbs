@@ -47,7 +47,10 @@ private:
             HFunc(TEvSSProxy::TEvDescribeFileStoreResponse, HandleDescribeResponse);
 
             default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }

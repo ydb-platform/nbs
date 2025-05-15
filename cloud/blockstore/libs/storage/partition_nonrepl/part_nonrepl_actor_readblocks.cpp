@@ -18,6 +18,8 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
+
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
@@ -163,7 +165,8 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError(), false)) {
+    if (HasError(msg->GetError())) {
+        HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
 
@@ -182,7 +185,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
             STORAGE_CHECK_PRECONDITION(SkipVoidBlocksToOptimizeNetworkTransfer);
             destBuffer.resize(blockSize, 0);
             ++VoidBlockCount;
-        } else if (SkipVoidBlocksToOptimizeNetworkTransfer) {
+        } else {
             ++NonVoidBlockCount;
         }
     }
@@ -241,13 +244,15 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
+    TRequestData request;
     bool ok = InitRequests<TEvService::TReadBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy);
+        &timeoutPolicy,
+        &request);
 
     if (!ok) {
         return;
@@ -267,7 +272,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId);
+    RequestsInProgress.AddReadRequest(actorId, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
@@ -289,12 +294,15 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
     PartCounters->Interconnect.ReadBytes.Increment(requestBytes);
     PartCounters->Interconnect.ReadCount.Increment(1);
 
-    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+    const ui64 nonVoidBytes =
         static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();
-    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes +=
+    const ui64 voidBytes =
         static_cast<ui64>(msg->VoidBlockCount) * PartConfig->GetBlockSize();
+    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+        nonVoidBytes;
+    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes += voidBytes;
 
-    NetworkBytes += requestBytes;
+    NetworkBytes += nonVoidBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);

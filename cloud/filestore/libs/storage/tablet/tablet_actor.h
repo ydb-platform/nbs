@@ -90,9 +90,14 @@ private:
         std::atomic<i64> UsedSessionsCount{0};
         std::atomic<i64> UsedHandlesCount{0};
         std::atomic<i64> UsedLocksCount{0};
+
+        // Session stats
         std::atomic<i64> StatefulSessionsCount{0};
         std::atomic<i64> StatelessSessionsCount{0};
+        std::atomic<i64> ActiveSessionsCount{0};
+        std::atomic<i64> OrphanSessionsCount{0};
         std::atomic<i64> SessionTimeouts{0};
+        std::atomic<i64> SessionCleanupAttempts{0};
 
         std::atomic<i64> AllocatedCompactionRangesCount{0};
         std::atomic<i64> UsedCompactionRangesCount{0};
@@ -123,8 +128,13 @@ private:
         std::atomic<i64> InMemoryIndexStateNodeAttrsCapacity;
         std::atomic<i64> InMemoryIndexStateIsExhaustive;
 
+        // Mixed index in-memory stats
+        std::atomic<i64> MixedIndexLoadedRanges{0};
+        std::atomic<i64> MixedIndexOffloadedRanges{0};
+
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
+        std::atomic<i64> FreshBytesItemCount{0};
         std::atomic<i64> DeletedFreshBytesCount{0};
         std::atomic<i64> MixedBytesCount{0};
         std::atomic<i64> MixedBlobsCount{0};
@@ -136,6 +146,9 @@ private:
         std::atomic<i64> CMMixedBlobsCount{0};
         std::atomic<i64> CMDeletionMarkersCount{0};
         std::atomic<i64> CMGarbageBlocksCount{0};
+
+        // Write throttling
+        std::atomic<i64> IsWriteAllowed{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
@@ -209,6 +222,11 @@ private:
                 return Rate(now, RequestBytes, PrevRequestBytes);
             }
 
+            double AverageSecondsPerSecond(TInstant now) const
+            {
+                return Rate(now, TimeSumUs, PrevTimeSumUs) * 1e-6;
+            }
+
             ui64 AverageRequestSize() const
             {
                 const auto requestCount =
@@ -280,6 +298,7 @@ private:
         TRequestMetrics RenameNode;
         TRequestMetrics UnlinkNode;
         TRequestMetrics StatFileStore;
+        TRequestMetrics GetNodeXAttr;
 
         // background requests
         TCompactionMetrics Compaction;
@@ -323,7 +342,11 @@ private:
             const TNodeIndexCacheStats& nodeIndexCacheStats,
             const TNodeToSessionCounters& nodeToSessionCounters,
             const TMiscNodeStats& miscNodeStats,
-            const TInMemoryIndexStateStats& inMemoryIndexStateStats);
+            const TInMemoryIndexStateStats& inMemoryIndexStateStats,
+            const TBlobMetaMapStats& blobMetaMapStats,
+            const TIndexTabletState::TBackpressureThresholds&
+                backpressureThresholds,
+            const TIndexTabletState::TBackpressureValues& backpressureValues);
         void UpdatePerformanceMetrics(
             TInstant now,
             const TDiagnosticsConfig& diagConfig,
@@ -345,6 +368,7 @@ private:
     bool UpdateLeakyBucketCountersScheduled = false;
     bool SyncSessionsScheduled = false;
     bool CleanupSessionsScheduled = false;
+    bool EnqueueBlobIndexOpIfNeededScheduled = false;
 
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
 
@@ -473,6 +497,7 @@ private:
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
+    void ScheduleEnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
 
@@ -599,7 +624,8 @@ private:
         NProtoPrivate::TUnlinkNodeInShardRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result);
+        TUnlinkNodeInShardResult result,
+        bool shouldUnlockUponCompletion);
 
     void RegisterRenameNodeInDestinationActor(
         const NActors::TActorContext& ctx,
@@ -653,6 +679,9 @@ private:
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
     TCleanupInfo GetCleanupInfo() const;
+    bool ShouldThrottleCleanup(
+        const NActors::TActorContext& ctx,
+        const TCleanupInfo& cleanupInfo) const;
     bool IsCloseToBackpressureThresholds(TString* message) const;
 
     void HandleWakeup(
@@ -749,6 +778,10 @@ private:
 
     void HandleLoadCompactionMapChunkResponse(
         const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleEnqueueBlobIndexOpIfNeeded(
+        const TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
