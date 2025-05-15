@@ -10524,7 +10524,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             longRunningPingCount++;
                         }
                         break;
-                    case EReason::Finished:
+                    case EReason::FinishedOk:
                         longRunningFinishCount++;
                         break;
                     case EReason::Cancelled:
