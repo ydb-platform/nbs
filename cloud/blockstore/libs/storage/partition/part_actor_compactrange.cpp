@@ -326,7 +326,7 @@ void TPartitionActor::EnqueueForcedCompaction(const TActorContext& ctx)
         return;
     }
 
-    if (!CompactionMapLoadState.Finished) {
+    if (!CompactionMapLoadState->IsFinished()) {
         return;
     }
 

@@ -99,8 +99,9 @@ class TPartitionActor final
         {}
     };
 
-    struct TCompactionMapLoadState
+    class TCompactionMapLoadState
     {
+    public:
         struct TChunk
         {
             ui32 FirstRangeIdx = 0;
@@ -108,13 +109,43 @@ class TPartitionActor final
             bool OutOfOrder = false;
         };
 
-        ui32 TryToEnqueueOutOfOrderRange(ui32 rangeIndex);
-        bool ShouldRejectRequest(const THashSet<ui32>& rangeIndices);
+    public:
+        TCompactionMapLoadState(
+            ui32 maxRangesPerTx,
+            ui32 maxOutOfOrderChunksInflight);
 
-        ui32 RangesPerTx = 0;
-        ui32 MaxChunksInflight = 0;
+        void AddInOrderChunk();
+        void AddOutOfOrderChunk(ui32 firstRangeIdx);
+        void PopFrontChunk();
+        const TChunk& FrontChunk() const;
+
+        void SetFirstRangeIndex(ui32 idx)
+        {
+            FirstRangeIdx = idx;
+        }
+        bool ShouldRejectRequest(const THashSet<ui32>& rangeIndices);
+        bool IsFinished() const
+        {
+            return Finished;
+        }
+        void SetFinished()
+        {
+            Finished = true;
+        }
+        ui32 GetMaxRangesPerTx() const
+        {
+            return MaxRangesPerTx;
+        }
+
+    private:
+        ui32 TryToEnqueueOutOfOrderRange(ui32 rangeIndex);
+
+        const ui32 MaxRangesPerTx = 0;
+        const ui32 MaxOutOfOrderChunksInflight = 0;
+
         ui32 FirstRangeIdx = 0;
         bool Finished = false;
+        ui32 OutOfOrderChunkCount = 0;
         THashSet<ui32> LoadedOutOfOrderRangeIds;
         TDeque<TChunk> ChunksInflight;
     };
@@ -132,7 +163,7 @@ private:
     const NBlockCodecs::ICodec* BlobCodec;
 
     std::unique_ptr<TPartitionState> State;
-    TCompactionMapLoadState CompactionMapLoadState;
+    std::unique_ptr<TCompactionMapLoadState> CompactionMapLoadState;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;

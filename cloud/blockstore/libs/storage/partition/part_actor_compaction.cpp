@@ -1093,7 +1093,7 @@ void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
 
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
-    if (!CompactionMapLoadState.Finished) {
+    if (!CompactionMapLoadState->IsFinished()) {
         return;
     }
 

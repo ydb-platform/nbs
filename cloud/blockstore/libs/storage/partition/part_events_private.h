@@ -869,7 +869,7 @@ struct TEvPartitionPrivate
     struct TLoadCompactionMapChunkRequest
     {
         ui32 FirstRangeIdx = 0;
-        ui32 RangesPerTx = 0;
+        ui32 MaxRangesPerTx = 0;
     };
 
     //

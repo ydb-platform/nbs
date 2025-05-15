@@ -12479,7 +12479,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             waitOutOfOrderRangeIdx.pop_back();
                             return false;
                         }
-                        rangesLoaded += msg->RangesPerTx;
+                        rangesLoaded += msg->MaxRangesPerTx;
                         if (msg->FirstRangeIdx == 40 ||
                             msg->FirstRangeIdx == 80) {
                             UNIT_ASSERT(!delayEvent);

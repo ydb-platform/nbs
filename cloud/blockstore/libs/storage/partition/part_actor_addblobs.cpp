@@ -642,12 +642,12 @@ void TPartitionActor::HandleAddBlobs(
 {
     auto* msg = ev->Get();
 
-    if (!CompactionMapLoadState.Finished) {
+    if (!CompactionMapLoadState->IsFinished()) {
         const THashSet<ui32> rangeIndices =
             GetRangeIndices(msg->FreshBlobs, msg->MixedBlobs, msg->MergedBlobs);
 
         const bool shouldReject =
-            CompactionMapLoadState.ShouldRejectRequest(rangeIndices);
+            CompactionMapLoadState->ShouldRejectRequest(rangeIndices);
 
         if (shouldReject) {
             const auto error =
@@ -785,64 +785,6 @@ THashSet<ui32> TPartitionActor::GetRangeIndices(
     }
 
     return rangeIndices;
-}
-
-ui32 TPartitionActor::TCompactionMapLoadState::TryToEnqueueOutOfOrderRange(ui32 rangeIndex)
-{
-    bool shouldEnqueue = true;
-    ui32 outOfOrderRequestsInQueue = 0;
-
-    for (const auto& req: ChunksInflight) {
-        if (!req.OutOfOrder) {
-            const bool rangeEnqueued =
-                rangeIndex >= req.FirstRangeIdx &&
-                rangeIndex < (req.FirstRangeIdx + req.RangeCount);
-            if (rangeEnqueued) {
-                shouldEnqueue = false;
-                break;
-            }
-            continue;
-        }
-
-        if (req.FirstRangeIdx == rangeIndex) {
-            shouldEnqueue = false;
-            break;
-        }
-
-        if (++outOfOrderRequestsInQueue >= MaxChunksInflight) {
-            shouldEnqueue = false;
-            break;
-        }
-    }
-
-    if (shouldEnqueue) {
-        ChunksInflight.emplace_back(rangeIndex, 1, true);
-        ++outOfOrderRequestsInQueue;
-    }
-
-    return outOfOrderRequestsInQueue;
-}
-
-bool TPartitionActor::TCompactionMapLoadState::ShouldRejectRequest(const THashSet<ui32>& rangeIndices)
-{
-    bool shouldReject = false;
-
-    for (const ui32 rangeIndex: rangeIndices) {
-        const bool rangeLoaded =
-            rangeIndex < FirstRangeIdx ||
-            LoadedOutOfOrderRangeIds.contains(
-                rangeIndex);
-        if (!rangeLoaded) {
-            shouldReject = true;
-            const ui32 outOfOrderReqCount =
-                TryToEnqueueOutOfOrderRange(rangeIndex);
-            if (outOfOrderReqCount >= MaxChunksInflight) {
-                break;
-            }
-        }
-    }
-
-    return shouldReject;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -601,7 +601,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(DoNotStopVolumeTabletOnLockLost,                   bool,   false      )\
                                                                                \
     xxx(MaxCompactionRangesLoadingPerTx,                   ui32,   0          )\
-    xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,     ui32,   5          )\
+    xxx(MaxOutOfOrderCompactionMapChunksInflight,          ui32,   5          )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
