@@ -26,10 +26,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRdmaRequestReadBlocksHandler
-    : public TRdmaDeviceRequestHandler<TRdmaRequestReadBlocksHandler>
+    : public IRdmaDeviceRequestHandler
 {
-    using TBase = TRdmaDeviceRequestHandler<TRdmaRequestReadBlocksHandler>;
-
 private:
     const bool CheckVoidBlocks;
     NProto::TReadBlocksResponse Response;
@@ -45,7 +43,7 @@ public:
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
-        : TRdmaDeviceRequestHandler(
+        : IRdmaDeviceRequestHandler(
               actorSystem,
               std::move(partConfig),
               std::move(requestInfo),
@@ -66,7 +64,7 @@ public:
 
     NProto::TError ProcessSubResponse(
         const TDeviceRequestRdmaContext& reqCtx,
-        TStringBuf buffer)
+        TStringBuf buffer)  override
     {
         const auto& readReqCtx =
             static_cast<const TDeviceReadRequestContext&>(reqCtx);
@@ -114,13 +112,13 @@ public:
         return {};
     }
 
-    std::unique_ptr<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>
-    CreateCompletionEvent()
+    std::unique_ptr<IEventBase>
+    CreateCompletionEvent() override
     {
         const ui32 blockCount = Response.GetBlocks().BuffersSize();
         const bool allZeroes = VoidBlockCount == blockCount;
 
-        auto completion = TBase::CreateCompletionEvent<
+        auto completion = CreateCompletionEventImpl<
             TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
 
         completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;
@@ -131,8 +129,7 @@ public:
         return completion;
     }
 
-    std::unique_ptr<TEvService::TEvReadBlocksResponse> CreateResponse(
-        NProto::TError error)
+    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error) override
     {
         const ui32 blockCount = Response.GetBlocks().BuffersSize();
         const bool allZeroes = VoidBlockCount == blockCount;
