@@ -342,7 +342,10 @@ STFUNC(TAcquireDevicesActor::StateAcquire)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -357,7 +360,7 @@ void TVolumeActor::SendAcquireDevicesToAgents(
     ui64 mountSeqNumber,
     const TActorContext& ctx)
 {
-    auto devices = State->GetAllDevicesForAcquireRelease();
+    auto devices = State->GetDevicesForAcquire();
 
     auto actor = NCloud::Register<TAcquireDevicesActor>(
         ctx,

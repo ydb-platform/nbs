@@ -6,6 +6,7 @@ fio/qemu-vhost-local-test/cloud-blockstore-tests-fio-qemu-vhost-local-test
 fio/qemu-vhost-null-test/cloud-blockstore-tests-fio-qemu-vhost-null-test
 infra-cms/cloud-blockstore-tests-infra-cms
 loadtest/local-auth/cloud-blockstore-tests-loadtest-local-auth
+loadtest/local-bsgroup-failure/tests-loadtest-local-bsgroup-failure
 loadtest/local-change-device/blockstore-tests-loadtest-local-change-device
 loadtest/local-checkpoint/cloud-blockstore-tests-loadtest-local-checkpoint
 loadtest/local-discovery/cloud-blockstore-tests-loadtest-local-discovery
@@ -15,6 +16,7 @@ loadtest/local-encryption/cloud-blockstore-tests-loadtest-local-encryption
 loadtest/local-endpoints/cloud-blockstore-tests-loadtest-local-endpoints
 loadtest/local-metrics/cloud-blockstore-tests-loadtest-local-metrics
 loadtest/local-mirror/cloud-blockstore-tests-loadtest-local-mirror
+loadtest/local-mirror-lagging/blockstore-tests-loadtest-local-mirror-lagging
 loadtest/local-nemesis/cloud-blockstore-tests-loadtest-local-nemesis
 loadtest/local-newfeatures/cloud-blockstore-tests-loadtest-local-newfeatures
 loadtest/local-nonrepl/cloud-blockstore-tests-loadtest-local-nonrepl

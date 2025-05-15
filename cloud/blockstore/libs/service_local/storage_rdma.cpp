@@ -420,7 +420,7 @@ private:
         TCallContextPtr callContext,
         std::shared_ptr<typename T::TRequest> request)
     {
-        return TaskQueue->Execute([=] {
+        return TaskQueue->Execute([=, this] {
             return DoHandleRequest<T>(std::move(callContext), std::move(request));
         });
     }
@@ -459,7 +459,7 @@ private:
         ui32 status,
         size_t responseBytes) override
     {
-        TaskQueue->ExecuteSimple([=, req = std::move(req)] () mutable {
+        TaskQueue->ExecuteSimple([=, this, req = std::move(req)] () mutable {
             DoHandleResponse(std::move(req), status, responseBytes);
         });
     }
@@ -569,7 +569,7 @@ public:
                         TaskQueue);
 
                     auto endpoint = Client->StartEndpoint(ep.Host, ep.Port)
-                        .Subscribe([=] (const auto& future) {
+                        .Subscribe([=, this] (const auto& future) {
                             storage->Init(future.GetValue(), Client->IsAlignedDataEnabled());
                         });
 

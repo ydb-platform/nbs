@@ -195,7 +195,10 @@ STFUNC(THttpGarbageActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvCollectGarbageRequest, HandleCollectGarbageRequest);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

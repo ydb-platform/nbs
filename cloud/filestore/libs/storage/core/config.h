@@ -88,6 +88,8 @@ public:
     bool GetUseMixedBlocksInsteadOfAliveBlocksInCompaction() const;
     ui32 GetCollectGarbageThreshold() const;
     ui64 GetFlushBytesThreshold() const;
+    ui32 GetFlushBytesItemCountThreshold() const;
+    bool GetFlushBytesByItemCountEnabled() const;
     ui32 GetMaxDeleteGarbageBlobsPerTx() const;
     ui32 GetLoadedCompactionRangesPerTx() const;
 
@@ -300,9 +302,12 @@ public:
     ui64 GetShardAllocationUnit() const;
     ui64 GetAutomaticallyCreatedShardSize() const;
     bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
+
     bool GetShardIdSelectionInLeaderEnabled() const;
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
+    NProto::EShardBalancerPolicy GetShardBalancerPolicy() const;
+
     bool GetDirectoryCreationInShardsEnabled() const;
 
     bool GetGuestWriteBackCacheEnabled() const;

@@ -577,6 +577,9 @@ message TReplicationTarget
 
     // Start block index on target device.
     uint64 StartIndex = 3;
+
+    // Operation timeout (in milliseconds)
+    uint32 Timeout = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -691,6 +694,9 @@ message TAllocateDiskResponse
 
     // Devices that had been lagging.
     repeated TLaggingDevice RemovedLaggingDevices = 9;
+
+    // Devices that had been lost by disk agent.
+    repeated string LostDeviceUUIDs = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

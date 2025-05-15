@@ -203,7 +203,10 @@ STFUNC(TDirectCopyActor::StateWork)
             TEvDiskAgent::TEvZeroDeviceBlocksRequest,
             HandleZeroBlocksUndelivery);
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

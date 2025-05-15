@@ -310,7 +310,10 @@ STFUNC(TCompactionActor::StateWork)
         HFunc(TEvIndexTabletPrivate::TEvAddBlobResponse, HandleAddBlobResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -378,9 +381,20 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
             }
         }
 
-        if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()
-                || GetDeletedFreshBytesCount()
-                >= Config->GetFlushBytesThreshold())
+        const bool shouldFlushBytesByFreshBytesCount =
+            GetFreshBytesCount() >= Config->GetFlushBytesThreshold();
+
+        const bool shouldFlushBytesByDeletedFreshBytesCount =
+            GetDeletedFreshBytesCount() >= Config->GetFlushBytesThreshold();
+
+        const bool shouldFlushBytesByFreshBytesItemCount =
+            Config->GetFlushBytesByItemCountEnabled()
+            && GetFreshBytesItemCount()
+                >= Config->GetFlushBytesItemCountThreshold();
+
+        if (shouldFlushBytesByFreshBytesCount
+            || shouldFlushBytesByDeletedFreshBytesCount
+            || shouldFlushBytesByFreshBytesItemCount)
         {
             AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
         }

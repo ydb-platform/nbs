@@ -113,7 +113,7 @@ int TApp::Run(TBootstrap& bootstrap)
     if (options->Timeout != TDuration::Zero()) {
         bootstrap.GetScheduler()->Schedule(
             bootstrap.GetTimer()->Now() + options->Timeout,
-            [=] {
+            [=, this] {
                 Stop(EC_TIMEOUT);
             });
     }

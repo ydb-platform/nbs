@@ -1925,11 +1925,21 @@ func (s *storageYDB) forceFinishTask(
 	state.ModifiedAt = now
 	state.ChangedStateAt = now
 
-	transition := stateTransition{
-		lastState: &lastState,
-		newState:  state,
+	transitions := []stateTransition{
+		stateTransition{
+			lastState: &lastState,
+			newState:  state,
+		},
 	}
-	err = s.updateTaskStates(ctx, tx, []stateTransition{transition})
+
+	wakeupTransitions, err := s.prepareDependantsToWakeup(ctx, tx, &state)
+	if err != nil {
+		return err
+	}
+
+	transitions = append(transitions, wakeupTransitions...)
+
+	err = s.updateTaskStates(ctx, tx, transitions)
 	if err != nil {
 		return err
 	}

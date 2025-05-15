@@ -214,11 +214,7 @@ void TWriteBlobActor::ReplyAndDie(
             RequestInfo->CallContext->RequestId);
     }
 
-    if (HasError(response->GetError())) {
-        TLongRunningOperationCompanion::RequestCancelled(ctx);
-    } else {
-        TLongRunningOperationCompanion::RequestFinished(ctx);
-    }
+    TLongRunningOperationCompanion::RequestFinished(ctx, response->GetError());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -296,7 +292,10 @@ STFUNC(TWriteBlobActor::StateWork)
         HFunc(TEvBlobStorage::TEvPutResult, HandlePutResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

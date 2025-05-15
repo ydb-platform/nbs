@@ -636,7 +636,10 @@ STFUNC(TDiskRegistryActor::StateInit)
 
         default:
             if (!RejectRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -713,7 +716,10 @@ STFUNC(TDiskRegistryActor::StateWork)
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -763,7 +769,8 @@ STFUNC(TDiskRegistryActor::StateRestore)
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
                     ev,
-                    TBlockStoreComponents::DISK_REGISTRY);
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -830,7 +837,8 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
                     ev,
-                    TBlockStoreComponents::DISK_REGISTRY);
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -857,7 +865,10 @@ STFUNC(TDiskRegistryActor::StateZombie)
 
         default:
             if (!RejectRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

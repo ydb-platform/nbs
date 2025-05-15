@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
@@ -81,6 +82,9 @@ private:
     // To determine which agent has drained in-flight writes by cookie in the
     // response.
     THashMap<ui64, TString> CurrentDrainingAgents;
+
+    TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
+        TGetDeviceForRangeCompanion::EAllowedOperation::None};
 
     TPoisonPillHelper PoisonPillHelper;
 
@@ -209,6 +213,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocksLocal, TEvService);
+    BLOCKSTORE_IMPLEMENT_REQUEST(ChecksumBlocks, TEvNonreplPartitionPrivate);
     BLOCKSTORE_IMPLEMENT_REQUEST(
         WaitForInFlightWrites,
         NPartition::TEvPartition);

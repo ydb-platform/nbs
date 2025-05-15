@@ -117,8 +117,8 @@ void TRdmaEndpoint::HandleRequest(
     TStringBuf in,
     TStringBuf out)
 {
-    TaskQueue->ExecuteSimple([=] {
-        auto error = SafeExecute<NProto::TError>([=] {
+    TaskQueue->ExecuteSimple([=, this] {
+        auto error = SafeExecute<NProto::TError>([=, this] {
             return DoHandleRequest(context, callContext, in, out);
         });
 
@@ -195,10 +195,10 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
         std::move(callContext),
         std::move(req));
 
-    future.Subscribe([=] (auto future) {
+    future.Subscribe([=, this] (auto future) {
         auto response = ExtractResponse(future);
 
-        TaskQueue->ExecuteSimple([=] {
+        TaskQueue->ExecuteSimple([=, this] {
             auto guard = guardedSgList.Acquire();
             Y_ENSURE(guard);
 
@@ -240,10 +240,10 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
         std::move(callContext),
         std::move(req));
 
-    future.Subscribe([=] (auto future) {
+    future.Subscribe([=, this] (auto future) {
         auto response = ExtractResponse(future);
 
-        TaskQueue->ExecuteSimple([=] {
+        TaskQueue->ExecuteSimple([=, this] {
             Y_UNUSED(guardedSgList);
 
             size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
@@ -274,7 +274,7 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
         std::move(callContext),
         std::move(req));
 
-    future.Subscribe([=] (auto future) {
+    future.Subscribe([=, this] (auto future) {
         auto response = ExtractResponse(future);
 
         size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
@@ -325,7 +325,7 @@ public:
         const NProto::TVolume& volume,
         ISessionPtr session) override
     {
-        return Executor->Execute([=] {
+        return Executor->Execute([=, this] {
             return DoStartEndpoint(request, volume, session);
         });
     }
@@ -342,7 +342,7 @@ public:
 
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
-        return Executor->Execute([=] {
+        return Executor->Execute([=, this] {
             return DoStopEndpoint(socketPath);
         });
     }

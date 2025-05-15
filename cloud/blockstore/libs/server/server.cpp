@@ -744,7 +744,7 @@ private:
 
         auto* tag = AcquireCompletionTag();
         Response.Subscribe(
-            [=] (const auto& response) {
+            [=, this] (const auto& response) {
                 Y_UNUSED(response);
 
                 if (AtomicCas(&RequestState, ExecutionCompleted, ExecutingRequest)) {

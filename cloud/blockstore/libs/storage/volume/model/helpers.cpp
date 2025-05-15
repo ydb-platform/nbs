@@ -212,7 +212,7 @@ TVector<NProto::TLaggingDevice> CollectLaggingDevices(
 }
 
 bool HaveCommonRows(
-    const TVector<NProto::TLaggingDevice>& laggingCandidates,
+    const RepeatedPtrField<NProto::TLaggingDevice>& laggingCandidates,
     const RepeatedPtrField<NProto::TLaggingDevice>& alreadyLagging)
 {
     TLaggingDeviceIndexCmp cmp;
@@ -222,7 +222,7 @@ bool HaveCommonRows(
     Y_ABORT_UNLESS(IsSorted(alreadyLagging.begin(), alreadyLagging.end(), cmp));
 
     for (int i = 0, j = 0;
-         i < laggingCandidates.ysize() && j < alreadyLagging.size();)
+         i < laggingCandidates.size() && j < alreadyLagging.size();)
     {
         if (cmp(laggingCandidates[i], alreadyLagging[j])) {
             i++;

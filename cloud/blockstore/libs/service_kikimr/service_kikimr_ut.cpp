@@ -64,7 +64,10 @@ struct TTestServiceActor final
     STFUNC(StateWork)
     {
         if (!HandleRequests(ev)) {
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
         }
     }
 

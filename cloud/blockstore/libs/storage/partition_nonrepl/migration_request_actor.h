@@ -298,7 +298,8 @@ STFUNC(TMigrationRequestActor<TMethod>::StateWork)
         default:
             HandleUnexpectedEvent(
                 ev,
-                TBlockStoreComponents::PARTITION_WORKER);
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

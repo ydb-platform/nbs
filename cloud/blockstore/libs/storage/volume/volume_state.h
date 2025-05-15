@@ -349,6 +349,7 @@ public:
         const TString& agentId,
         ui64 cleanBlocks,
         ui64 dirtyBlocks);
+    void ResetLaggingAgentMigrationState(const TString& agentId);
     const THashMap<TString, TLaggingAgentMigrationInfo>&
     GetLaggingAgentsMigrationInfo() const;
 
@@ -781,7 +782,8 @@ public:
         return ForceMirrorResync;
     }
 
-    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
+    TVector<NProto::TDeviceConfig> GetDevicesForAcquire() const;
+    TVector<NProto::TDeviceConfig> GetDevicesForRelease() const;
 
     //
     // Followers
@@ -824,6 +826,9 @@ private:
     THashSet<TString> MakeFilteredDeviceIds() const;
 
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
+
+    TVector<NProto::TDeviceConfig> GetDevicesForAcquireOrRelease(
+        const THashSet<TString>& deviceIdsToIgnore) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

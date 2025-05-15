@@ -615,7 +615,7 @@ void TMirrorPartitionActor::HandleRemoveLaggingAgent(
         TBlockStoreComponents::PARTITION,
         "[%s] Removing lagging agent: %s, replica index: %u",
         DiskId.c_str(),
-        msg->LaggingAgent.GetAgentId().c_str(),
+        msg->LaggingAgent.GetAgentId().Quote().c_str(),
         msg->LaggingAgent.GetReplicaIndex());
 
     State.RemoveLaggingAgent(msg->LaggingAgent);
@@ -718,7 +718,7 @@ void TMirrorPartitionActor::HandleLockAndDrainRange(
         std::move(reqInfo),
         msg->Range);
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Range %s is blocked for writing requests",
@@ -736,7 +736,7 @@ void TMirrorPartitionActor::HandleReleaseRange(
     BlockRangeRequests.RemoveRequest(msg->Range);
 
     DrainActorCompanion.RemoveDrainRangeRequest(ctx, msg->Range);
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Releasing range %s for writing requests",
@@ -847,7 +847,10 @@ STFUNC(TMirrorPartitionActor::StateWork)
         IgnoreFunc(TEvents::TEvPoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -902,7 +905,10 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

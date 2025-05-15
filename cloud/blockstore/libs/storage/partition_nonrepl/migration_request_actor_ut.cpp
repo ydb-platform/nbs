@@ -45,7 +45,10 @@ public:
             HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteBlocks);
             IgnoreFunc(TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted);
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -302,7 +305,7 @@ Y_UNIT_TEST_SUITE(TMigrationRequestActorTest)
         auto counters = MakeIntrusive<TDynamicCounters>();
         InitCriticalEventsCounter(counters);
         auto unexpectedCookie =
-            counters->GetCounter("AppCriticalEvents/UnexpectedCookie", true);
+            counters->GetCounter("AppImpossibleEvents/UnexpectedCookie", true);
 
         SetupRuntime();
 

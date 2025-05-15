@@ -272,7 +272,10 @@ STFUNC(TSplitRequestSenderActor<TMethod>::StateWork)
         HFunc(TMethod::TRequest, HandleUndelivery);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -330,6 +333,7 @@ void TLaggingAgentsReplicaProxyActor::ReadBlocks(
                               << "Desired recipient actor is not "
                                  "nonreplicated partition for device: "
                               << deviceRequest.Device.GetDeviceUUID()
+                              << ", in range " << blockRange
                               << ", lagging agent: " << agentId
                               << ", disk id: " << PartConfig->GetName();
             ReportLaggingAgentsProxyWrongRecipientActor(message);
@@ -731,7 +735,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s went unavailable. Creating availability monitor",
+        "[%s] Agent %s went unavailable (lagging). Creating availability "
+        "monitor",
         PartConfig->GetName().c_str(),
         msg->LaggingAgent.GetAgentId().Quote().c_str());
 
@@ -751,6 +756,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     auto& state = AgentState[agentId];
     state.State = EAgentState::Unavailable;
     state.LaggingAgent = msg->LaggingAgent;
+    state.MigrationDisabled = false;
+    state.DrainFinished = false;
 
     RecalculateBlockRangeDataByBlockRangeEnd();
 
@@ -766,7 +773,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s block count: %lu, dirty block count: %lu",
+        "[%s] Lagging agent %s blocks map initialized. Block count: %lu, dirty "
+        "block count: %lu",
         PartConfig->GetName().c_str(),
         agentId.c_str(),
         PartConfig->GetBlockCount(),
@@ -826,6 +834,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
             return;
     }
     state->State = EAgentState::WaitingForDrain;
+    state->DrainFinished = false;
 
     LOG_INFO(
         ctx,
@@ -970,6 +979,13 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
         return;
     }
 
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] Drain is finished for lagging agent %s",
+        PartConfig->GetName().c_str(),
+        agentId.Quote().c_str());
+
     state->DrainFinished = true;
     if (state->MigrationDisabled) {
         return;
@@ -1056,6 +1072,13 @@ void TLaggingAgentsReplicaProxyActor::HandleReadBlocksLocal(
     ReadBlocks<TEvService::TReadBlocksLocalMethod>(ev, ctx);
 }
 
+void TLaggingAgentsReplicaProxyActor::HandleChecksumBlocks(
+    const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ForwardMessageToActor(ev, ctx, NonreplPartitionActorId);
+}
+
 void TLaggingAgentsReplicaProxyActor::HandleRWClientIdChanged(
     const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
     const TActorContext& ctx)
@@ -1097,6 +1120,12 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteBlocks);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
         HFunc(TEvService::TEvZeroBlocksRequest, HandleZeroBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            HandleChecksumBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
+            GetDeviceForRangeCompanion.HandleGetDeviceForRange);
 
         HFunc(
             TEvNonreplPartitionPrivate::TEvAgentIsUnavailable,
@@ -1125,7 +1154,10 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -1139,6 +1171,12 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateZombie)
         HFunc(TEvService::TEvReadBlocksRequest, RejectReadBlocks);
         HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
         HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            RejectChecksumBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
+            GetDeviceForRangeCompanion.RejectGetDeviceForRange);
+        HFunc(
             NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
             RejectWaitForInFlightWrites);
 
@@ -1151,7 +1189,10 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -641,14 +641,17 @@ public:
     [[nodiscard]] bool GetLaggingDevicesForMirror3DisksEnabled() const;
     [[nodiscard]] TDuration GetLaggingDeviceTimeoutThreshold() const;
     [[nodiscard]] TDuration GetLaggingDevicePingInterval() const;
+    [[nodiscard]] ui32 GetLaggingDeviceMaxMigrationBandwidth() const;
+    [[nodiscard]] ui32 GetLaggingDeviceMaxMigrationIoDepth() const;
     [[nodiscard]] bool GetResyncAfterLaggingAgentMigration() const;
     [[nodiscard]] bool GetMultiAgentWriteEnabled() const;
     [[nodiscard]] ui32 GetMultiAgentWriteRequestSizeThreshold() const;
+    [[nodiscard]] TDuration GetNetworkForwardingTimeout() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 
-    TDuration GetBlobStorageAsyncGetTimeoutHDD() const;
-    TDuration GetBlobStorageAsyncGetTimeoutSSD() const;
+    [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutHDD() const;
+    [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutSSD() const;
 
     [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
 

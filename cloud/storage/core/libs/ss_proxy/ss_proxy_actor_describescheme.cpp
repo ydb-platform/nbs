@@ -141,7 +141,7 @@ STFUNC(TDescribeSchemeActor::StateWork)
         HFunc(TEvSchemeShard::TEvDescribeSchemeResult, HandleDescribeSchemeResult);
 
         default:
-            HandleUnexpectedEvent(ev, LogComponent);
+            HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -89,14 +89,21 @@ async def main(
         parent_id=parent_id,
         filter=f"family IN ('{image_family_name}') AND status = 'READY'",
     )
+    result = []
     try:
-        response = await service.list(request)
+        while True:
+            response = await service.list(request)
+            result.extend(response.items)
+            if not response.next_page_token:
+                break
+            request.page_token = response.next_page_token
     except RequestError as e:
+        logger.info("Result: %s", result)
         logger.error("Failed to list images", exc_info=True)
         raise e
 
     candidate_images = []
-    for image in response.items:
+    for image in result:
         status = image.status.state.name
         created_at = image.metadata.created_at
         storage_size = convert_size(image.status.storage_size_bytes)

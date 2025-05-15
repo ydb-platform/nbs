@@ -564,17 +564,20 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(LaggingDevicesForMirror3DisksEnabled,     bool,      false               )\
     xxx(LaggingDeviceTimeoutThreshold,            TDuration, Seconds(5)          )\
     xxx(LaggingDevicePingInterval,                TDuration, MSeconds(500)       )\
+    xxx(LaggingDeviceMaxMigrationBandwidth,       ui32,      400                 )\
+    xxx(LaggingDeviceMaxMigrationIoDepth,         ui32,      1                   )\
     xxx(ResyncAfterLaggingAgentMigration,         bool,      false               )\
     xxx(MultiAgentWriteEnabled,                   bool,      false               )\
     xxx(MultiAgentWriteRequestSizeThreshold,      ui32,      0                   )\
+    xxx(NetworkForwardingTimeout,                 TDuration, MSeconds(100)       )\
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
     xxx(AllowLiteDiskReallocations,                     bool,      false         )\
     xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
-    xxx(BlobStorageAsyncGetTimeoutHDD,                  TDuration, Seconds(0)    )\
-    xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
+    xxx(BlobStorageAsyncRequestTimeoutHDD,              TDuration, Seconds(0)    )\
+    xxx(BlobStorageAsyncRequestTimeoutSSD,              TDuration, Seconds(0)    )\
                                                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
     xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\

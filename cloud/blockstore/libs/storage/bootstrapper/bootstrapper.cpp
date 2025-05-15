@@ -360,7 +360,10 @@ STFUNC(TBootstrapperActor::StateInit)
         HFunc(TEvBootstrapper::TEvStop, HandleStop);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::BOOTSTRAPPER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::BOOTSTRAPPER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -376,7 +379,10 @@ STFUNC(TBootstrapperActor::StateBoot)
         HFunc(TEvTablet::TEvReady, IgnoreEvent);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::BOOTSTRAPPER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::BOOTSTRAPPER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -405,7 +411,10 @@ STFUNC(TBootstrapperActor::StateWait)
         HFunc(TEvents::TEvWakeup, HandleWakeUp);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::BOOTSTRAPPER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::BOOTSTRAPPER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

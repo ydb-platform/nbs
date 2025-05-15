@@ -61,6 +61,9 @@ struct TFixture: public NUnitTest::TBaseFixture
         Runtime = PrepareTestActorRuntime(config, State);
         auto volume = GetVolumeClient();
 
+        const ui64 blockCount = DefaultDeviceBlockCount *
+                                DefaultDeviceBlockSize / DefaultBlockSize * 3;
+
         volume.UpdateVolumeConfig(
             0,
             0,
@@ -69,7 +72,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+            blockCount);
 
         volume.WaitReady();
     }
@@ -475,6 +478,106 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
         UNIT_ASSERT_EQUAL(response->GetError().GetCode(), E_REJECTED);
         UNIT_ASSERT_EQUAL(response->GetError().GetMessage(), "not delivered");
+    }
+
+    Y_UNIT_TEST_F(ShouldFilterLostDevicesDuringAcquire, TFixture)
+    {
+        SetupTest();
+
+        auto volume = GetVolumeClient();
+
+        auto response = volume.GetVolumeInfo();
+        auto diskInfo = response->Record.GetVolume();
+
+        TVector<TString> devices;
+        for (const auto& d: diskInfo.GetDevices()) {
+            devices.emplace_back(d.GetDeviceUUID());
+        }
+
+        State->LostDeviceUUIDs.emplace_back(devices[0]);
+
+        volume.ReallocateDisk();
+        // reallocate disk will trigger pipes reset, so reestablish connection
+        volume.ReconnectPipe();
+
+        THashSet<TString> acquiredDevices;
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAcquireDevicesRequest)
+                {
+                    auto* ev =
+                        static_cast<TEvDiskAgent::TEvAcquireDevicesRequest*>(
+                            event->GetBase());
+
+                    for (const auto& d: ev->Record.GetDeviceUUIDs()) {
+                        acquiredDevices.emplace(d);
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto writerClient = GetVolumeClient();
+
+        auto writer = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        writerClient.AddClient(writer);
+
+        // Lost device should not be acquired.
+        UNIT_ASSERT_VALUES_EQUAL(devices.size() - 1, acquiredDevices.size());
+        for (size_t i = 1; i < devices.size(); ++i) {
+            UNIT_ASSERT(acquiredDevices.contains(devices[i]));
+        }
+        acquiredDevices.clear();
+
+        State->LostDeviceUUIDs.clear();
+
+        volume.ReallocateDisk();
+        // reallocate disk will trigger pipes reset, so reestablish connection
+        volume.ReconnectPipe();
+
+        Runtime->AdvanceCurrentTime(2s);
+        Runtime->DispatchEvents({}, 10ms);
+
+        // All devices should be acquired.
+        UNIT_ASSERT_VALUES_EQUAL(devices.size(), acquiredDevices.size());
+        for (const auto& device: devices) {
+            UNIT_ASSERT(acquiredDevices.contains(device));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldMountVolumeWithOnlyLostDevices, TFixture)
+    {
+        SetupTest();
+
+        auto volume = GetVolumeClient();
+
+        auto response = volume.GetVolumeInfo();
+        auto diskInfo = response->Record.GetVolume();
+
+        // Mark all devices as lost.
+        for (const auto& d: diskInfo.GetDevices()) {
+            State->LostDeviceUUIDs.emplace_back(d.GetDeviceUUID());
+        }
+
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+
+        auto writerClient = GetVolumeClient();
+
+        auto writer = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        // Successful mount and unmount.
+        writerClient.AddClient(writer);
+        writerClient.RemoveClient(writer.GetClientId());
     }
 }
 

@@ -1,6 +1,6 @@
 component:server/sensor:AppCriticalEvents/DiskAllocationFailure=False
 component:server/sensor:AppCriticalEvents/InvalidTabletConfig=False
 component:server/sensor:AppCriticalEvents/ReassignTablet=False
-component:server/sensor:AppCriticalEvents/TabletCommitIdOverflow=False
+component:server/sensor:AppImpossibleEvents/TabletCommitIdOverflow=False
 component:service/sensor:ThrottlerPostponedRequests=True
 component:service/sensor:ThrottlerPostponedRequests/type:hdd=True

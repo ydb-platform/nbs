@@ -71,7 +71,10 @@ void TMirrorPartitionResyncActor::RejectPostponedRead(TPostponedRead& pr)
         HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -84,7 +87,10 @@ void TMirrorPartitionResyncActor::RejectFastPathRecord(TFastPathRecord& fpr)
         HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -301,7 +307,10 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -344,7 +353,10 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

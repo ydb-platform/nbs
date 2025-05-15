@@ -110,7 +110,7 @@ TESTS = [
 ]
 
 
-def __cleanup_file_devices(devices):
+def __remove_file_devices(devices):
     logging.info("Remove temporary device files")
     for d in devices:
         if d.path is not None:
@@ -305,7 +305,7 @@ def __run_test(test_case, use_rdma):
             nbs.stop()
             kikimr_cluster.stop()
     finally:
-        __cleanup_file_devices(devices)
+        __remove_file_devices(devices)
 
     return ret
 

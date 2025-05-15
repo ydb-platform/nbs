@@ -690,6 +690,8 @@ struct TServer: IEndpointProxyServer
         // kernel with different options if we need it for some reason
         ep.NbdOptions.BlockSize = request.GetBlockSize();
         ep.NbdOptions.BlocksCount = request.GetBlocksCount();
+        ep.NbdOptions.MaxZeroBlocksSubRequestSize =
+            request.GetMaxZeroBlocksSubRequestSize();
 
         ep.InternalUnixSocketPath = request.GetUnixSocketPath() + ".p";
         ep.ListenAddress = std::make_unique<TNetworkAddress>(
@@ -1086,7 +1088,7 @@ struct TServer: IEndpointProxyServer
     {
         PreStart();
 
-        Thread = SystemThreadFactory()->Run([=] () {
+        Thread = SystemThreadFactory()->Run([=, this] () {
             Loop();
         });
     }

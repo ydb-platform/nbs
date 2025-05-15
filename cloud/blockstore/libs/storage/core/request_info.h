@@ -137,17 +137,16 @@ inline TRequestInfoPtr CreateRequestInfo(
     return requestInfo;
 }
 
-template <typename TMethod>
-TRequestInfoPtr CreateRequestInfo(
+template <typename TResponse>
+TRequestInfoPtr CreateRequestInfoWithResponse(
     const NActors::TActorId& sender,
     ui64 cookie,
     TCallContextPtr callContext)
 {
-    auto callback = [] (
-        const NActors::TActorContext& ctx,
-        TRequestInfo& requestInfo)
+    auto callback =
+        [](const NActors::TActorContext& ctx, TRequestInfo& requestInfo)
     {
-        auto response = std::make_unique<typename TMethod::TResponse>(
+        auto response = std::make_unique<TResponse>(
             MakeError(E_REJECTED, "tablet is shutting down"));
 
         NCloud::Reply(ctx, requestInfo, std::move(response));
@@ -157,7 +156,19 @@ TRequestInfoPtr CreateRequestInfo(
         sender,
         cookie,
         std::move(callContext),
-        callback);
+        std::move(callback));
+}
+
+template <typename TMethod>
+TRequestInfoPtr CreateRequestInfo(
+    const NActors::TActorId& sender,
+    ui64 cookie,
+    TCallContextPtr callContext)
+{
+    return CreateRequestInfoWithResponse<typename TMethod::TResponse>(
+        sender,
+        cookie,
+        std::move(callContext));
 }
 
 }    // namespace NCloud::NBlockStore::NStorage

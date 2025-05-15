@@ -340,8 +340,8 @@ private:
 
     /**
      * Picks a random node from the observed nodes. It may be a
-     * non-existent node, but this is expected, as it is reasonable to to
-     * perform operations on non-existent nodes
+     * non-existent node, but this is expected, as it is reasonable to perform
+     * operations on non-existent nodes
      */
     TNode PickRandomNode()
     {

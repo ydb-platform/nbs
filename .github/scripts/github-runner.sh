@@ -76,7 +76,7 @@ pyOpenSSL
 packaging
 rapidgzip
 typing-extensions
-nebius==0.2.6
+nebius==0.2.28
 EOF
 sudo pip3 install -r /tmp/requirements.txt
 curl -L "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-${OS_ARCH}.tar.xz" | sudo tar -xJ -C /usr/local/bin/ --strip-components=1 --no-same-owner "ccache-${CCACHE_VERSION}-linux-${OS_ARCH}/ccache"

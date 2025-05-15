@@ -327,6 +327,21 @@ ui64 TDiskInfo::GetBlocksCount() const
     return result;
 }
 
+TVector<TBlockRange64> TDiskInfo::GetDeviceRanges() const
+{
+    TVector<TBlockRange64> result;
+    result.reserve(Devices.size());
+    ui64 startOffset = 0;
+    for (const auto& device: Devices) {
+        const ui64 logicalBlockCount =
+            device.GetBlockSize() * device.GetBlocksCount() / LogicalBlockSize;
+        result.push_back(
+            TBlockRange64::WithLength(startOffset, logicalBlockCount));
+        startOffset += logicalBlockCount;
+    }
+    return result;
+}
+
 TString TDiskInfo::GetPoolName() const
 {
     for (const auto& replica: Replicas) {
@@ -419,6 +434,8 @@ TDiskRegistryState::TDiskRegistryState(
         SelfCounters.Init(poolNames, Counters);
     }
 }
+
+TDiskRegistryState::~TDiskRegistryState() = default;
 
 void TDiskRegistryState::AllowNotifications(
     const TDiskId& diskId,
@@ -1018,19 +1035,21 @@ auto TDiskRegistryState::RegisterAgent(
             }
 
             AdjustDeviceIfNeeded(d, timestamp);
-            if (r.NewDevices.contains(uuid)) {
+            if (r.NewDeviceIds.contains(uuid)) {
                 SuspendDeviceIfNeeded(db, d);
             }
         }
 
         DeviceList.UpdateDevices(agent, DevicePoolConfigs, r.PrevNodeId);
 
-        for (const auto& uuid: r.NewDevices) {
+        for (const auto& uuid: r.NewDeviceIds) {
             if (!DeviceList.FindDiskId(uuid)) {
                 DeviceList.MarkDeviceAsDirty(uuid);
                 db.UpdateDirtyDevice(uuid, {});
             }
         }
+
+        ReallocateDisksWithLostOrReappearedDevices(db, r, disksToReallocate);
 
         THashSet<TDiskId> diskIds;
 
@@ -1105,6 +1124,74 @@ auto TDiskRegistryState::RegisterAgent(
         .AffectedDisks = std::move(affectedDisks),
         .DisksToReallocate = std::move(disksToReallocate),
         .DevicesToDisableIO = std::move(devicesToDisableIO)};
+}
+
+void TDiskRegistryState::ReallocateDisksWithLostOrReappearedDevices(
+    TDiskRegistryDatabase& db,
+    const TAgentList::TAgentRegistrationResult& r,
+    TVector<TDiskId>& disksToReallocate)
+{
+    const NProto::TAgentConfig& agent = r.Agent;
+    THashSet<TString> disksWithLostOrReappearedDevices;
+    for (const auto& lostDeviceId: r.LostDeviceIds) {
+        auto diskId = DeviceList.FindDiskId(lostDeviceId);
+        if (!diskId) {
+            continue;
+        }
+
+        auto* disk = Disks.FindPtr(diskId);
+        Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
+        if (!disk) {
+            continue;
+        }
+
+        auto [_, inserted] = disk->LostDeviceIds.emplace(lostDeviceId);
+        if (!inserted) {
+            continue;
+        }
+        disksWithLostOrReappearedDevices.emplace(diskId);
+    }
+
+    for (const auto& d: agent.GetDevices()) {
+        const auto& uuid = d.GetDeviceUUID();
+        if (r.LostDeviceIds.contains(uuid)) {
+            continue;
+        }
+
+        auto diskId = DeviceList.FindDiskId(uuid);
+        if (!diskId) {
+            continue;
+        }
+
+        auto* disk = Disks.FindPtr(diskId);
+        Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
+        if (!disk) {
+            continue;
+        }
+
+        if (!disk->LostDeviceIds.erase(uuid)) {
+            continue;
+        }
+
+        disksWithLostOrReappearedDevices.emplace(std::move(diskId));
+    }
+
+    for (const auto& diskId: disksWithLostOrReappearedDevices) {
+        AddReallocateRequest(db, diskId);
+        disksToReallocate.emplace_back(diskId);
+    }
+}
+
+auto TDiskRegistryState::GetLostDevicesForDisk(const TString& diskId) const
+    -> THashSet<TDeviceId>
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
+    if (!disk) {
+        return {};
+    }
+
+    return disk->LostDeviceIds;
 }
 
 NProto::TError TDiskRegistryState::UnregisterAgent(
@@ -5628,8 +5715,12 @@ bool TDiskRegistryState::TryUpdateDiskStateImpl(
 
     NProto::TDiskHistoryItem historyItem;
     historyItem.SetTimestamp(timestamp.MicroSeconds());
-    historyItem.SetMessage(TStringBuilder() << "state changed: "
-        << static_cast<int>(oldState) << " -> " << static_cast<int>(newState));
+    historyItem.SetMessage(
+        TStringBuilder() << "state changed: "
+                         << NProto::EDiskState_Name(oldState) << " ("
+                         << static_cast<int>(oldState) << ") -> "
+                         << NProto::EDiskState_Name(newState) << " ("
+                         << static_cast<int>(newState) << ")");
     disk.History.push_back(std::move(historyItem));
 
     UpdateAndReallocateDisk(db, diskId, disk);

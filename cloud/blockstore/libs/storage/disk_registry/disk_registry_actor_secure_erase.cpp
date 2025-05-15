@@ -234,7 +234,10 @@ STFUNC(TSecureEraseActor::StateErase)
         HFunc(TEvDiskAgent::TEvSecureEraseDeviceResponse, HandleSecureEraseDeviceResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -251,7 +254,10 @@ STFUNC(TSecureEraseActor::StateCleanup)
         HFunc(TEvDiskRegistryPrivate::TEvCleanupDevicesResponse, HandleCleanupDevicesResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -469,7 +469,10 @@ STFUNC(TReadDiskRegistryBasedOverlayActor<TMethod>::StateWork)
             HandleLongRunningBlobOperation);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -149,7 +149,10 @@ STFUNC(TDrainNodeActionActor::StateWork)
         HFunc(TEvHiveProxy::TEvDrainNodeResponse, HandleDrainNodeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

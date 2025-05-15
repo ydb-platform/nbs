@@ -161,7 +161,10 @@ STFUNC(TStorageServiceActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

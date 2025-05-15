@@ -11,6 +11,7 @@ namespace NCloud::NBlockStore::NClient {
 struct TProxyDeviceFactoryConfig
 {
     ui32 DefaultSectorSize = 0;
+    ui32 MaxZeroBlocksSubRequestSize = 0;
 };
 
 NBD::IDeviceFactoryPtr CreateProxyDeviceFactory(

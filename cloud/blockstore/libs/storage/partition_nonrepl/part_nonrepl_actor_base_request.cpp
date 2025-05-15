@@ -40,11 +40,21 @@ void TDiskAgentBaseRequestActor::Bootstrap(const TActorContext& ctx)
 
     Become(&TThis::StateWork);
 
+    TString devices = Accumulate(
+        DeviceRequests,
+        TString{},
+        [](const TString& acc, const TDeviceRequest& deviceRequest)
+        {
+            return acc ? acc + "|" + deviceRequest.Device.GetDeviceUUID()
+                       : deviceRequest.Device.GetDeviceUUID();
+        });
+
     LWTRACK(
-        RequestReceived_VolumeWorker,
+        RequestReceived_NonreplPartitionWorker,
         RequestInfo->CallContext->LWOrbit,
         RequestName,
-        RequestInfo->CallContext->RequestId);
+        RequestId,
+        devices);
 
     StartTime = ctx.Now();
     ctx.Schedule(
@@ -69,10 +79,10 @@ void TDiskAgentBaseRequestActor::Done(
     EStatus status)
 {
     LWTRACK(
-        ResponseSent_VolumeWorker,
+        ResponseSent_NonreplPartitionWorker,
         RequestInfo->CallContext->LWOrbit,
         RequestName,
-        RequestInfo->CallContext->RequestId);
+        RequestId);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -176,7 +186,10 @@ void TDiskAgentBaseRequestActor::StateWork(TAutoPtr<NActors::IEventHandle>& ev)
             HandleCancelRequest);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

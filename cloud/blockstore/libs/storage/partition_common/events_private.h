@@ -156,7 +156,7 @@ struct TEvPartitionCommonPrivate
         enum class EReason
         {
             LongRunningDetected,
-            Finished,
+            FinishedOk,
             Cancelled,
         };
 
@@ -165,18 +165,21 @@ struct TEvPartitionCommonPrivate
         const EReason Reason;
         const TDuration Duration;
         const ui32 GroupId;
+        const NProto::TError Error;
 
         TLongRunningOperation(
                 EOperation operation,
                 bool firstNotify,
                 TDuration duration,
                 ui32 groupId,
-                EReason reason)
+                EReason reason,
+                const NProto::TError& error)
             : Operation(operation)
             , FirstNotify(firstNotify)
             , Reason(reason)
             , Duration(duration)
             , GroupId(groupId)
+            , Error(error)
         {}
     };
 

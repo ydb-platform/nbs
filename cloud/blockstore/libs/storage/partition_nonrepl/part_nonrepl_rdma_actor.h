@@ -28,12 +28,12 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceRequestContext: public NRdma::TNullContext
+struct TDeviceRequestRdmaContext: public NRdma::TNullContext
 {
     ui32 DeviceIdx = 0;
 };
 
-struct TDeviceReadRequestContext: public TDeviceRequestContext
+struct TDeviceReadRequestContext: public TDeviceRequestRdmaContext
 {
     ui64 StartIndexOffset = 0;
     ui64 BlockCount = 0;
@@ -42,11 +42,21 @@ struct TDeviceReadRequestContext: public TDeviceRequestContext
 
 bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err);
 
+void ConvertRdmaErrorIfNeeded(ui32 rdmaStatus, NProto::TError& err);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TNonreplicatedPartitionRdmaActor final
     : public NActors::TActorBootstrapped<TNonreplicatedPartitionRdmaActor>
 {
+    struct TDeviceRequestContext
+    {
+        ui64 DeviceIndex = 0;
+        ui64 SentRequestId = 0;
+    };
+
+    using TRequestContext = TStackVec<TDeviceRequestContext, 2>;
+
 private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -56,14 +66,16 @@ private:
 
     // TODO implement DeviceStats and similar stuff
 
-    TRequestsInProgress<EAllowedRequests::ReadWrite, ui64> RequestsInProgress;
+    TRequestsInProgress<EAllowedRequests::ReadWrite, ui64, TRequestContext>
+        RequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         PartConfig->GetName()};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite,
         Config,
-        PartConfig};
+        PartConfig,
+        nullptr};
 
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr PartCounters;
@@ -126,7 +138,7 @@ private:
         const TBlockRange64& blockRange,
         TVector<TDeviceRequest>* deviceRequests);
 
-    NProto::TError SendReadRequests(
+    TResultOrError<TRequestContext> SendReadRequests(
         const NActors::TActorContext& ctx,
         TCallContextPtr callContext,
         const NProto::THeaders& headers,
@@ -167,6 +179,10 @@ private:
 
     void HandleAgentIsBackOnline(
         const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDeviceTimedOutResponse(
+        const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
