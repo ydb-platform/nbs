@@ -205,6 +205,7 @@ func (m *migrateSnapshotDatabaseTask) saveInflightSnapshots(
 	// Save all inflight snapshots to the state
 	for snapshotID := range snapshotsToMigrate.Vals() {
 		if common.Find(m.state.InflightSnapshots, snapshotID) {
+			snapshotsToMigrate.Remove(snapshotID)
 			continue
 		}
 
@@ -220,6 +221,8 @@ func (m *migrateSnapshotDatabaseTask) saveInflightSnapshots(
 		if err != nil {
 			return err
 		}
+
+		snapshotsToMigrate.Remove(snapshotID)
 	}
 
 	return nil
