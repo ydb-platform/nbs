@@ -305,7 +305,7 @@ Y_UNIT_TEST_SUITE(TMigrationRequestActorTest)
         auto counters = MakeIntrusive<TDynamicCounters>();
         InitCriticalEventsCounter(counters);
         auto unexpectedCookie =
-            counters->GetCounter("AppCriticalEvents/UnexpectedCookie", true);
+            counters->GetCounter("AppImpossibleEvents/UnexpectedCookie", true);
 
         SetupRuntime();
 
