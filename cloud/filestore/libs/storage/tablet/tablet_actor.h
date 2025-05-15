@@ -493,6 +493,10 @@ private:
 
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
+    void AddBlobIndexOpIfNeeded(
+        const NActors::TActorContext& ctx,
+        const TCompactionInfo& compactionInfo,
+        const TCleanupInfo& cleanupInfo);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
@@ -681,8 +685,12 @@ private:
     TCleanupInfo GetCleanupInfo() const;
     bool ShouldThrottleCleanup(
         const NActors::TActorContext& ctx,
-        const TCleanupInfo& cleanupInfo) const;
-    bool IsCloseToBackpressureThresholds(TString* message) const;
+        const TCleanupInfo& cleanupInfo,
+        const TBackgroundOpsBackpressureStatus& bpStatus) const;
+    EBackgroundOpBackpressureStatus GetBackgroundOpBackpressureStatus(
+        ui64 threshold,
+        ui64 value) const;
+    TBackgroundOpsBackpressureStatus GetBackgroundOpsBackpressureStatus() const;
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

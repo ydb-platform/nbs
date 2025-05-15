@@ -327,77 +327,8 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
     const auto compactionInfo = GetCompactionInfo();
     const auto cleanupInfo = GetCleanupInfo();
 
-    const bool shouldThrottleCleanup = ShouldThrottleCleanup(ctx, cleanupInfo);
-    if (shouldThrottleCleanup) {
-        // Without user operations, EnqueueBlobIndexOpIfNeeded will not be
-        // called and cleanup will not resume after throttling.
-        // Therefore we reschedule calling EnqueueBlobIndexOpIfNeeded.
-        ScheduleEnqueueBlobIndexOpIfNeeded(ctx);
-    }
-
-    const bool shouldCleanup =
-        cleanupInfo.ShouldCleanup && !shouldThrottleCleanup;
-
     if (IsBlobIndexOpsQueueEmpty()) {
-        auto blobIndexOpsPriority = Config->GetBlobIndexOpsPriority();
-        TString message;
-        if (IsCloseToBackpressureThresholds(&message)) {
-            // if we are close to our backpressure thresholds, we should fall
-            // back to fair scheduling so that all operations show some progress
-            blobIndexOpsPriority = NProto::BIOP_FAIR;
-            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-                "%s EnqueueBlobIndexOpIfNeeded: Falling back to BIOP_FAIR: %s",
-                LogTag.c_str(),
-                message.Quote().c_str());
-        }
-
-        switch (blobIndexOpsPriority) {
-            case NProto::BIOP_CLEANUP_FIRST: {
-                if (shouldCleanup) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
-                } else if (compactionInfo.ShouldCompact) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
-                }
-                break;
-            }
-
-            case NProto::BIOP_COMPACTION_FIRST: {
-                if (compactionInfo.ShouldCompact) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
-                } else if (shouldCleanup) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
-                }
-                break;
-            }
-
-            case NProto::BIOP_FAIR: {
-                if (compactionInfo.ShouldCompact) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
-                }
-                if (shouldCleanup) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
-                }
-                break;
-            }
-        }
-
-        const bool shouldFlushBytesByFreshBytesCount =
-            GetFreshBytesCount() >= Config->GetFlushBytesThreshold();
-
-        const bool shouldFlushBytesByDeletedFreshBytesCount =
-            GetDeletedFreshBytesCount() >= Config->GetFlushBytesThreshold();
-
-        const bool shouldFlushBytesByFreshBytesItemCount =
-            Config->GetFlushBytesByItemCountEnabled()
-            && GetFreshBytesItemCount()
-                >= Config->GetFlushBytesItemCountThreshold();
-
-        if (shouldFlushBytesByFreshBytesCount
-            || shouldFlushBytesByDeletedFreshBytesCount
-            || shouldFlushBytesByFreshBytesItemCount)
-        {
-            AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
-        }
+        AddBlobIndexOpIfNeeded(ctx, compactionInfo, cleanupInfo);
     }
 
     if (!EnqueueBackgroundBlobIndexOp()) {
@@ -446,6 +377,112 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
 
         default:
             TABLET_VERIFY(0);
+    }
+}
+
+void TIndexTabletActor::AddBlobIndexOpIfNeeded(
+    const TActorContext& ctx,
+    const TCompactionInfo& compactionInfo,
+    const TCleanupInfo& cleanupInfo)
+{
+    const auto backpressureStatus = GetBackgroundOpsBackpressureStatus();
+
+    const bool shouldThrottleCleanup =
+        ShouldThrottleCleanup(ctx, cleanupInfo, backpressureStatus);
+
+    if (shouldThrottleCleanup) {
+        // Without user operations, EnqueueBlobIndexOpIfNeeded will not be
+        // called and cleanup will not resume after throttling.
+        // Therefore we reschedule calling EnqueueBlobIndexOpIfNeeded.
+        ScheduleEnqueueBlobIndexOpIfNeeded(ctx);
+    }
+
+    const bool shouldCleanup =
+        cleanupInfo.ShouldCleanup && !shouldThrottleCleanup;
+
+
+    const bool shouldFlushBytesByFreshBytesCount =
+        GetFreshBytesCount() >= Config->GetFlushBytesThreshold();
+
+    const bool shouldFlushBytesByDeletedFreshBytesCount =
+        GetDeletedFreshBytesCount() >= Config->GetFlushBytesThreshold();
+
+    const bool shouldFlushBytesByFreshBytesItemCount =
+        Config->GetFlushBytesByItemCountEnabled()
+        && GetFreshBytesItemCount()
+            >= Config->GetFlushBytesItemCountThreshold();
+
+    const bool shouldFlushBytes =
+        shouldFlushBytesByFreshBytesCount
+        || shouldFlushBytesByDeletedFreshBytesCount
+        || shouldFlushBytesByFreshBytesItemCount;
+
+
+    const int compactionPriority = compactionInfo.ShouldCompact
+        ? static_cast<int>(backpressureStatus.Compaction)
+        : 0;
+
+    const int cleanupPriority = shouldCleanup
+        ? static_cast<int>(backpressureStatus.Cleanup)
+        : 0;
+
+    const int flushBytesPriority = shouldFlushBytes
+        ? static_cast<int>(backpressureStatus.FlushBytes)
+        : 0;
+
+    // Prioritize background operations whose optimization targets are close
+    // to their backpressure thresholds
+    const int maxPriority = Max(
+        compactionPriority,
+        cleanupPriority,
+        flushBytesPriority);
+
+    if (maxPriority == 0) {
+        // No background operations are needed to run
+        return;
+    }
+
+    if (compactionPriority == maxPriority || cleanupPriority == maxPriority) {
+        // Cleanup and compaction affect each other scores.
+        // It may be reasonable to schedule both of them even if they have
+        // different priorities.
+        switch (Config->GetBlobIndexOpsPriority()) {
+            case NProto::BIOP_CLEANUP_FIRST: {
+                if (compactionPriority > cleanupPriority) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
+                }
+                if (cleanupPriority > 0) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
+                }
+                break;
+            }
+            case NProto::BIOP_COMPACTION_FIRST: {
+                if (compactionPriority > 0) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
+                }
+                if (cleanupPriority > compactionPriority) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
+                }
+                break;
+            }
+            case NProto::BIOP_FAIR: {
+                if (compactionPriority == maxPriority) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
+                }
+                if (cleanupPriority == maxPriority) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
+                }
+                break;
+            }
+        }
+    }
+
+    // Growing the amount of fresh bytes is strictly unwanted because
+    // FlushBytes operation will run for a long time and this will result
+    // in high delays for user operations.
+    // Therefore FlushBytes operation is enqueued at any priority level.
+    if (flushBytesPriority > 0) {
+        AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
     }
 }
 

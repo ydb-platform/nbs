@@ -97,7 +97,7 @@ public:
     ui32 GetCleanupThresholdForBackpressure() const;
     ui32 GetCompactionThresholdForBackpressure() const;
     ui64 GetFlushBytesThresholdForBackpressure() const;
-    ui32 GetBackpressurePercentageForFairBlobIndexOpsPriority() const;
+    ui32 GetBackpressureThresholdPercentageForBackgroundOpsPriority() const;
 
     TString GetHDDSystemChannelPoolKind() const;
     TString GetHDDLogChannelPoolKind() const;
