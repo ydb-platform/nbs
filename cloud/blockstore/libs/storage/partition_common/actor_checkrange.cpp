@@ -17,7 +17,7 @@ using namespace NActors;
 TCheckRangeActor::TCheckRangeActor(
     const TActorId& partition,
     NProto::TCheckRangeRequest&& request,
-    TRequestInfoPtr&& requestInfo,
+    TRequestInfoPtr requestInfo,
     ui64 blockSize)
     : Partition(partition)
     , Request(std::move(request))

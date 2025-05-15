@@ -28,7 +28,7 @@ public:
     TCheckRangeActor(
         const NActors::TActorId& partition,
         NProto::TCheckRangeRequest&& request,
-        TRequestInfoPtr&& requestInfo,
+        TRequestInfoPtr requestInfo,
         ui64 blockSize);
 
     void Bootstrap(const NActors::TActorContext& ctx);
