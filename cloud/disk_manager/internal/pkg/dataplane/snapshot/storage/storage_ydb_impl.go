@@ -1422,7 +1422,7 @@ func (s *storageYDB) getSnapshotMeta(
 	return states[0].toSnapshotMeta(), nil
 }
 
-func (s *storageYDB) listAllSnapshots(
+func (s *storageYDB) listSnapshots(
 	ctx context.Context,
 	session *persistence.Session,
 ) (task_storage.StringSet, error) {

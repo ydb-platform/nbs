@@ -266,7 +266,7 @@ func (s *storageYDB) ListSnapshots(
 	err = s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			ids, err = s.listAllSnapshots(ctx, session)
+			ids, err = s.listSnapshots(ctx, session)
 			return err
 		},
 	)
