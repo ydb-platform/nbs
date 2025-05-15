@@ -268,7 +268,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         if (sleepMcs / OneMillion >
                             RealtimeTolerateFutureSeconds)
                         {
-                            return {};
+                            continue;
                         }
 
                         auto sleep = TDuration::MicroSeconds(sleepMcs);
