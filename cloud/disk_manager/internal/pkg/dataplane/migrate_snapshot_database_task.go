@@ -204,7 +204,7 @@ func (m *migrateSnapshotDatabaseTask) saveInflightSnapshots(
 	cfg := m.config
 	snapshotsInflightLimit := int(cfg.GetMigratingSnapshotsInflightLimit())
 
-	// Save all inflight snapshots to the state
+	// Persistently save all inflight snapshots to the state
 	for snapshotID := range snapshotsToMigrate.Vals() {
 		if common.Find(m.state.InflightSnapshots, snapshotID) {
 			snapshotsToMigrate.Remove(snapshotID)
@@ -219,15 +219,10 @@ func (m *migrateSnapshotDatabaseTask) saveInflightSnapshots(
 			m.state.InflightSnapshots,
 			snapshotID,
 		)
-		err := execCtx.SaveState(ctx)
-		if err != nil {
-			return err
-		}
-
 		snapshotsToMigrate.Remove(snapshotID)
 	}
 
-	return nil
+	return execCtx.SaveState(ctx)
 }
 
 func (m *migrateSnapshotDatabaseTask) scheduleInflightSnapshots(
