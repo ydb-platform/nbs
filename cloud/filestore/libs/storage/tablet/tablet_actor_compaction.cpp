@@ -331,7 +331,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
         AddBlobIndexOpIfNeeded(ctx, compactionInfo, cleanupInfo);
     }
 
-    while (EnqueueBackgroundBlobIndexOp()) {
+    while (AdvanceBackgroundBlobIndexOp()) {
         switch (GetCurrentBackgroundBlobIndexOp()) {
             case EBlobIndexOp::Compaction: {
                 ctx.Send(

@@ -1153,7 +1153,7 @@ public:
         return CurrentBackgroundBlobIndexOp;
     }
 
-    bool EnqueueBackgroundBlobIndexOp()
+    bool AdvanceBackgroundBlobIndexOp()
     {
         if (BlobIndexOps.Empty()) {
             return false;
