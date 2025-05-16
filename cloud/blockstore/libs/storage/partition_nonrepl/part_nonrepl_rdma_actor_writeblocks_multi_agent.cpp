@@ -321,7 +321,8 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         NCloud::Reply(
             ctx,
             *requestInfo,
-            std::make_unique<TEvService::TEvWriteBlocksResponse>(
+            std::make_unique<
+                TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
                 std::move(err)));
 
         return;

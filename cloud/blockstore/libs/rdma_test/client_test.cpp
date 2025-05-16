@@ -183,18 +183,24 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                 if (!HasError(ResponseError)) {
                     using TProto = NProto::TWriteDeviceBlocksRequest;
                     auto* request = static_cast<TProto*>(result.Proto.get());
-                    const auto blockCount =
-                        result.Data.size() / request->GetBlockSize();
-                    const size_t minSize = request->GetStartIndex() + blockCount;
-
-                    auto& blocks =
-                        GetDeviceBlocks(request->GetDeviceUUID(), minSize);
-
-                    ui64 offset = 0;
-                    for (ui32 i = request->GetStartIndex(); i < minSize; ++i) {
-                        blocks[i] =
-                            result.Data.substr(offset, request->GetBlockSize());
-                        offset += request->GetBlockSize();
+                    if (request->GetReplicationTargets().empty()) {
+                        PerformWrite(
+                            request->GetDeviceUUID(),
+                            result.Data,
+                            request->GetBlockSize(),
+                            request->GetStartIndex());
+                    } else {
+                        for (const auto& replicationTarget:
+                             request->GetReplicationTargets())
+                        {
+                            PerformWrite(
+                                replicationTarget.GetDeviceUUID(),
+                                result.Data,
+                                request->GetBlockSize(),
+                                replicationTarget.GetStartIndex());
+                            *response.AddReplicationResponses() =
+                                MakeError(S_OK);
+                        }
                     }
                 }
 
@@ -317,11 +323,31 @@ struct TRdmaClientTest::TRdmaEndpointImpl
         const TString& deviceUUID,
         size_t minBlockCount)
     {
+        Y_ABORT_UNLESS(deviceUUID);
+
         auto& blocks = Devices[deviceUUID];
         if (blocks.size() < minBlockCount) {
             blocks.resize(minBlockCount, TString(4_KB, 0));
         }
         return blocks;
+    }
+
+    void PerformWrite(
+        const TString& deviceUUID,
+        TStringBuf data,
+        ui32 blockSize,
+        ui64 startIndex)
+    {
+        const auto blockCount = data.size() / blockSize;
+        const size_t minSize = startIndex + blockCount;
+
+        auto& blocks = GetDeviceBlocks(deviceUUID, minSize);
+
+        ui64 offset = 0;
+        for (ui64 i = startIndex; i < minSize; ++i) {
+            blocks[i] = data.substr(offset, blockSize);
+            offset += blockSize;
+        }
     }
 };
 
