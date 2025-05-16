@@ -473,7 +473,12 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 
         {
             auto res = ReadBlocks(session, blockSize);
-            UNIT_ASSERT_C(!HasError(res), res);
+
+            // res is not a protobuf message based, so it cannot be serialized
+            // and printed via Out<>
+            const auto& baseRes = static_cast<
+                const NCloud::NBlockStore::NProto::TReadBlocksResponse&>(res);
+            UNIT_ASSERT_C(!HasError(res), baseRes);
         }
 
         {
