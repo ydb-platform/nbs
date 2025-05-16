@@ -331,52 +331,46 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
         AddBlobIndexOpIfNeeded(ctx, compactionInfo, cleanupInfo);
     }
 
-    if (!EnqueueBackgroundBlobIndexOp()) {
-        return;
-    }
-
-    switch (GetCurrentBackgroundBlobIndexOp()) {
-        case EBlobIndexOp::Compaction: {
-            ctx.Send(
-                SelfId(),
-                new TEvIndexTabletPrivate::TEvCompactionRequest(
-                    compactionInfo.RangeId,
-                    false)
-            );
-            break;
-        }
-
-        case EBlobIndexOp::Cleanup: {
-            ctx.Send(
-                SelfId(),
-                new TEvIndexTabletPrivate::TEvCleanupRequest(
-                    cleanupInfo.RangeId)
-            );
-            break;
-        }
-
-        case EBlobIndexOp::FlushBytes: {
-            // Flush blocked since FlushBytes op rewrites some fresh blocks as
-            // blobs
-            if (!FlushState.Enqueue()) {
-                StartBackgroundBlobIndexOp();
-                CompleteBlobIndexOp();
-                if (!IsBlobIndexOpsQueueEmpty()) {
-                    EnqueueBlobIndexOpIfNeeded(ctx);
-                }
-
+    while (EnqueueBackgroundBlobIndexOp()) {
+        switch (GetCurrentBackgroundBlobIndexOp()) {
+            case EBlobIndexOp::Compaction: {
+                ctx.Send(
+                    SelfId(),
+                    new TEvIndexTabletPrivate::TEvCompactionRequest(
+                        compactionInfo.RangeId,
+                        false)
+                );
                 return;
             }
 
-            ctx.Send(
-                SelfId(),
-                new TEvIndexTabletPrivate::TEvFlushBytesRequest()
-            );
-            break;
-        }
+            case EBlobIndexOp::Cleanup: {
+                ctx.Send(
+                    SelfId(),
+                    new TEvIndexTabletPrivate::TEvCleanupRequest(
+                        cleanupInfo.RangeId)
+                );
+                return;
+            }
 
-        default:
-            TABLET_VERIFY(0);
+            case EBlobIndexOp::FlushBytes: {
+                // Flush blocked since FlushBytes op rewrites some fresh blocks as
+                // blobs
+                if (!FlushState.Enqueue()) {
+                    StartBackgroundBlobIndexOp();
+                    CompleteBlobIndexOp();
+                    break;
+                }
+
+                ctx.Send(
+                    SelfId(),
+                    new TEvIndexTabletPrivate::TEvFlushBytesRequest()
+                );
+                return;
+            }
+
+            default:
+                TABLET_VERIFY(0);
+        }
     }
 }
 
@@ -443,9 +437,24 @@ void TIndexTabletActor::AddBlobIndexOpIfNeeded(
     }
 
     if (compactionPriority == maxPriority || cleanupPriority == maxPriority) {
-        // Cleanup and compaction affect each other scores.
-        // It may be reasonable to schedule both of them even if they have
-        // different priorities.
+        // Cleanup and Compaction affect each other scores. It may be reasonable
+        // to schedule both of them even if they have different priorities.
+        //
+        // For example, Cleanup is significantly cheaper to run and it can
+        // effectively reduce the compaction score without rewriting blobs.
+        //
+        // If both operations are needed, the logic is as follows:
+        // - both operations have the same priority: schedule Cleanup only,
+        //   Compaction only or both depending on BlobIndexOpsPriority.
+        // - one operation has higher priority than the other:
+        //   - the operation with the highest priority is always scheduled;
+        //   - the operation with the lowest priority is scheduled only if
+        //     BlobIndexOpsPriority gives it priority.
+        //
+        // By default, the priority is given to Cleanup. It means that it is
+        // always scheduled if it is needed, and Compaction is scheduled only
+        // when it has higher priority than Cleanup or Cleanup is not needed.
+
         switch (Config->GetBlobIndexOpsPriority()) {
             case NProto::BIOP_CLEANUP_FIRST: {
                 if (compactionPriority > cleanupPriority) {
