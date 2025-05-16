@@ -12133,8 +12133,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
                         break;
                     }
-                    case TEvService::EvReadBlocksResponse: {
-                        using TEv = TEvService::TEvReadBlocksResponse;
+                    case TEvService::EvReadBlocksLocalResponse: {
+                        using TEv = TEvService::TEvReadBlocksLocalResponse;
 
                         auto response = std::make_unique<TEv>(
                             MakeError(E_IO, "block is broken"));

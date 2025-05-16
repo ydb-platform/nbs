@@ -39,10 +39,26 @@ private:
 void TNonreplCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     const TString clientId{CheckRangeClientId};
-    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
+
+    TBlockRange64 range = TBlockRange64::MakeHalfOpenInterval(
+        Request.GetStartIndex(),
+        Request.GetStartIndex() + Request.GetBlocksCount());
+
+    Buffer = TGuardedBuffer(TString::Uninitialized(range.Size() * BlockSize));
+
+    auto sgList = Buffer.GetGuardedSgList();
+    auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
+    if (HasError(sgListOrError)){
+        ReplyAndDie(ctx, sgListOrError.GetError());
+        return;
+    }
+    SgList.SetSgList(sgListOrError.ExtractResult());
+
+    auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
 
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
+    request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetClientId(clientId);
@@ -78,7 +94,8 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
         ctx,
         SelfId(),
         std::move(record),
-        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
+        PartConfig->GetBlockSize());
 
     RequestsInProgress.AddReadRequest(actorId);
 }

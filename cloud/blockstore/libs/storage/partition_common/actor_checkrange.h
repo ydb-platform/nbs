@@ -20,16 +20,20 @@ protected:
     const NActors::TActorId Partition;
     const NProto::TCheckRangeRequest Request;
     const TRequestInfoPtr RequestInfo;
+    const ui64 BlockSize;
+    TGuardedBuffer<TString> Buffer;
+    TGuardedSgList SgList;
 
 public:
     TCheckRangeActor(
         const NActors::TActorId& partition,
         NProto::TCheckRangeRequest&& request,
-        TRequestInfoPtr&& requestInfo);
+        TRequestInfoPtr requestInfo,
+        ui64 blockSize);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
-private:
+protected:
     void ReplyAndDie(
         const NActors::TActorContext& ctx,
         const NProto::TError& error);
@@ -38,8 +42,9 @@ private:
         const NActors::TActorContext& ctx,
         std::unique_ptr<TEvVolume::TEvCheckRangeResponse>);
 
+private:
     void HandleReadBlocksResponse(
-        const TEvService::TEvReadBlocksResponse::TPtr& ev,
+        const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
