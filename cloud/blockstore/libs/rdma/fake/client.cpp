@@ -268,29 +268,30 @@ private:
                 Y_ABORT_IF(proto.Data);
                 return SendReadBlocksRequest(
                     ctx,
-                    static_cast<NProto::TReadDeviceBlocksRequest&>(
-                        *proto.Proto));
+                    std::move(static_cast<NProto::TReadDeviceBlocksRequest&>(
+                        *proto.Proto)));
 
             case TBlockStoreProtocol::WriteDeviceBlocksRequest:
                 return SendWriteBlocksRequest(
                     ctx,
-                    static_cast<NProto::TWriteDeviceBlocksRequest&>(
-                        *proto.Proto),
+                    std::move(static_cast<NProto::TWriteDeviceBlocksRequest&>(
+                        *proto.Proto)),
                     proto.Data);
 
             case TBlockStoreProtocol::ZeroDeviceBlocksRequest:
                 Y_ABORT_IF(proto.Data);
                 return SendZeroBlocksRequest(
                     ctx,
-                    static_cast<NProto::TZeroDeviceBlocksRequest&>(
-                        *proto.Proto));
+                    std::move(static_cast<NProto::TZeroDeviceBlocksRequest&>(
+                        *proto.Proto)));
 
             case TBlockStoreProtocol::ChecksumDeviceBlocksRequest:
                 Y_ABORT_IF(proto.Data);
                 return SendChecksumBlocksRequest(
                     ctx,
-                    static_cast<NProto::TChecksumDeviceBlocksRequest&>(
-                        *proto.Proto));
+                    std::move(
+                        static_cast<NProto::TChecksumDeviceBlocksRequest&>(
+                            *proto.Proto)));
 
             default:
                 return MakeError(
@@ -301,7 +302,7 @@ private:
 
     NProto::TError SendReadBlocksRequest(
         const TActorContext& ctx,
-        NProto::TReadDeviceBlocksRequest& proto)
+        NProto::TReadDeviceBlocksRequest&& proto)
     {
         LOG_DEBUG_S(
             ctx,
@@ -333,7 +334,7 @@ private:
 
     NProto::TError SendWriteBlocksRequest(
         const TActorContext& ctx,
-        NProto::TWriteDeviceBlocksRequest& proto,
+        NProto::TWriteDeviceBlocksRequest&& proto,
         TStringBuf requestData)
     {
         Y_ABORT_IF(requestData.empty());
@@ -369,7 +370,7 @@ private:
 
     NProto::TError SendZeroBlocksRequest(
         const TActorContext& ctx,
-        NProto::TZeroDeviceBlocksRequest& proto)
+        NProto::TZeroDeviceBlocksRequest&& proto)
     {
         LOG_DEBUG_S(
             ctx,
@@ -401,7 +402,7 @@ private:
 
     NProto::TError SendChecksumBlocksRequest(
         const TActorContext& ctx,
-        NProto::TChecksumDeviceBlocksRequest& proto)
+        NProto::TChecksumDeviceBlocksRequest&& proto)
     {
         LOG_DEBUG_S(
             ctx,
