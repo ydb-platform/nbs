@@ -43,7 +43,7 @@ struct TPartialChecksum
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceChecksumRequestHandler: public IRdmaDeviceRequestHandler
+class TDeviceChecksumRequestHandler final: public IRdmaDeviceRequestHandler
 {
 private:
     TMap<ui64, TPartialChecksum> Checksums;
@@ -51,6 +51,7 @@ private:
 public:
     using IRdmaDeviceRequestHandler::IRdmaDeviceRequestHandler;
 
+protected:
     NProto::TError ProcessSubResponse(
         const TDeviceRequestRdmaContext& reqCtx,
         TStringBuf buffer) override
@@ -78,7 +79,7 @@ public:
 
     std::unique_ptr<IEventBase> CreateCompletionEvent() override
     {
-        auto completion = CreateCompletionEventImpl<
+        auto completion = CreateConcreteCompletionEvent<
             TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>();
 
         auto& counters = *completion->Stats.MutableSysChecksumCounters();

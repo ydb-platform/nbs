@@ -25,8 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestReadBlocksHandler
-    : public IRdmaDeviceRequestHandler
+class TRdmaRequestReadBlocksHandler final: public IRdmaDeviceRequestHandler
 {
 private:
     const bool CheckVoidBlocks;
@@ -62,9 +61,10 @@ public:
         }
     }
 
+protected:
     NProto::TError ProcessSubResponse(
         const TDeviceRequestRdmaContext& reqCtx,
-        TStringBuf buffer)  override
+        TStringBuf buffer) override
     {
         const auto& readReqCtx =
             static_cast<const TDeviceReadRequestContext&>(reqCtx);
@@ -112,13 +112,12 @@ public:
         return {};
     }
 
-    std::unique_ptr<IEventBase>
-    CreateCompletionEvent() override
+    std::unique_ptr<IEventBase> CreateCompletionEvent() override
     {
         const ui32 blockCount = Response.GetBlocks().BuffersSize();
         const bool allZeroes = VoidBlockCount == blockCount;
 
-        auto completion = CreateCompletionEventImpl<
+        auto completion = CreateConcreteCompletionEvent<
             TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
 
         completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;

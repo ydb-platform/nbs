@@ -31,21 +31,21 @@ struct TDeviceRequestInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaWriteBlocksResponseHandler: public IRdmaDeviceRequestHandler
+class TRdmaWriteBlocksResponseHandler final: public IRdmaDeviceRequestHandler
 {
 private:
     bool ReplyLocal;
 
 public:
     TRdmaWriteBlocksResponseHandler(
-            TActorSystem* actorSystem,
-            TNonreplicatedPartitionConfigPtr partConfig,
-            TRequestInfoPtr requestInfo,
-            size_t requestCount,
-            bool replyLocal,
-            ui32 requestBlockCount,
-            NActors::TActorId parentActorId,
-            ui64 requestId)
+        TActorSystem* actorSystem,
+        TNonreplicatedPartitionConfigPtr partConfig,
+        TRequestInfoPtr requestInfo,
+        size_t requestCount,
+        bool replyLocal,
+        ui32 requestBlockCount,
+        NActors::TActorId parentActorId,
+        ui64 requestId)
         : IRdmaDeviceRequestHandler(
               actorSystem,
               std::move(partConfig),
@@ -57,6 +57,7 @@ public:
         , ReplyLocal(replyLocal)
     {}
 
+protected:
     NProto::TError ProcessSubResponse(
         const TDeviceRequestRdmaContext& reqCtx,
         TStringBuf buffer) override
@@ -80,15 +81,14 @@ public:
 
     std::unique_ptr<IEventBase> CreateCompletionEvent() override
     {
-        auto completion = CreateCompletionEventImpl<
+        auto completion = CreateConcreteCompletionEvent<
             TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>();
         auto& counters = *completion->Stats.MutableUserWriteCounters();
         counters.SetBlocksCount(GetRequestBlockCount());
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(
-        NProto::TError err) override
+    std::unique_ptr<IEventBase> CreateResponse(NProto::TError err) override
     {
         if (ReplyLocal) {
             return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
