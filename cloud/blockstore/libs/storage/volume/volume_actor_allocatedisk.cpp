@@ -111,28 +111,27 @@ bool ValidateDevices(
 
 std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer()
 {
-    const auto* ioModeTsDescriptor =
-        NProto::TVolumeMeta::GetDescriptor()->FindFieldByName("IOModeTs");
-    // These are two fields that will change during disk agent blue-green
-    // deploy.
-    const auto* nodeIdDescriptor =
-        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("NodeId");
-    const auto* rdmaPortDescriptor =
-        NProto::TRdmaEndpoint::GetDescriptor()->FindFieldByName("Port");
-    if (!nodeIdDescriptor || !rdmaPortDescriptor || !ioModeTsDescriptor) {
+    std::array descriptors{
+        NProto::TVolumeMeta::GetDescriptor()->FindFieldByName("IOModeTs"),
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("State"),
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("StateTs"),
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("StateMessage"),
+        // These are two fields that will change during disk agent blue-green
+        // deploy.
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("NodeId"),
+        NProto::TRdmaEndpoint::GetDescriptor()->FindFieldByName("Port")};
+
+    if (size_t index = FindIndex(descriptors, nullptr); index != NPOS) {
         ReportFieldDescriptorNotFound(
-            TStringBuilder()
-            << "Lite reallocation is impossible. nodeIdDescriptor = "
-            << static_cast<const void*>(nodeIdDescriptor)
-            << "; rdmaPortDescriptor = "
-            << static_cast<const void*>(rdmaPortDescriptor));
+            TStringBuilder() << "Lite reallocation is impossible. Descriptor #"
+                             << index << " is nullptr.");
         return nullptr;
     }
 
     auto diff = std::make_unique<MessageDifferencer>();
-    diff->IgnoreField(ioModeTsDescriptor);
-    diff->IgnoreField(nodeIdDescriptor);
-    diff->IgnoreField(rdmaPortDescriptor);
+    for (const auto* descriptor: descriptors) {
+        diff->IgnoreField(descriptor);
+    }
     diff->set_float_comparison(
         MessageDifferencer::FloatComparison::APPROXIMATE);
     diff->set_message_field_comparison(
