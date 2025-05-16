@@ -48,7 +48,7 @@ public:
               std::move(requestInfo),
               requestId,
               parentActorId,
-              0,
+              blockCount,
               requestCount)
         , CheckVoidBlocks(checkVoidBlocks)
     {
@@ -114,7 +114,7 @@ protected:
 
     std::unique_ptr<IEventBase> CreateCompletionEvent() override
     {
-        const ui32 blockCount = Response.GetBlocks().BuffersSize();
+        const ui32 blockCount = GetRequestBlockCount();
         const bool allZeroes = VoidBlockCount == blockCount;
 
         auto completion = CreateConcreteCompletionEvent<
