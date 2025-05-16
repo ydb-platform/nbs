@@ -1,11 +1,15 @@
 #include "part_mirror.h"
+
 #include "part_mirror_actor.h"
+#include "part_nonrepl.h"
 #include "part_nonrepl_actor.h"
 #include "ut_env.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/rdma/iface/client.h>
+#include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -60,6 +64,7 @@ struct TTestEnv
     TDiskAgentStatePtr DiskAgentState;
     TVector<TActorId> ReplicaActors;
     TDuration ScrubbingInterval;
+    NRdma::IClientPtr RdmaClient;
 
     static void AddDevice(
         ui32 nodeId,
@@ -118,7 +123,8 @@ struct TTestEnv
 
     explicit TTestEnv(
             TTestActorRuntime& runtime,
-            NProto::TStorageServiceConfig configBase = {})
+            NProto::TStorageServiceConfig configBase = {},
+            bool useRdma = false)
         : TTestEnv(
             runtime,
             DefaultDevices(runtime.GetNodeId(0)),
@@ -128,7 +134,8 @@ struct TTestEnv
             },
             {}, // migrations
             {}, // freshDeviceIds
-            std::move(configBase)
+            std::move(configBase),
+            useRdma
         )
     {
     }
@@ -139,12 +146,16 @@ struct TTestEnv
             TVector<TDevices> replicas,
             TMigrations migrations = {},
             THashSet<TString> freshDeviceIds = {},
-            NProto::TStorageServiceConfig configBase = {})
+            NProto::TStorageServiceConfig configBase = {},
+            bool useRdma = false)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
         , DiskAgentState(std::make_shared<TDiskAgentState>())
+        , RdmaClient(
+              useRdma ? std::make_shared<TRdmaClientTest>()
+                      : NRdma::IClientPtr())
     {
         SetupLogging();
 
@@ -222,7 +233,7 @@ struct TTestEnv
             partConfig,
             std::move(migrations),
             replicas,
-            nullptr, // rdmaClient
+            RdmaClient,
             VolumeActorId,
             TActorId() // resyncActorId
         );
@@ -271,12 +282,12 @@ struct TTestEnv
         TNonreplicatedPartitionConfigPtr partConfig,
         TString name)
     {
-        auto part = std::make_unique<TNonreplicatedPartitionActor>(
+        auto part = CreateNonreplicatedPartition(
             Config,
             CreateDiagnosticsConfig(),
             partConfig,
-            TActorId() // do not send stats
-        );
+            TActorId(), // do not send stats
+            RdmaClient);
 
         TActorId actorId(0, name);
         Runtime.AddLocalService(
@@ -303,6 +314,22 @@ struct TTestEnv
         client.WriteBlocks(range, fill);
     }
 
+    TString ReadReplica(size_t idx, TBlockRange64 range)
+    {
+        TPartitionClient client(Runtime, ReplicaActors[idx]);
+        auto response = client.ReadBlocks(range);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+        TString result;
+        for (const auto& block: response->Record.GetBlocks().GetBuffers()) {
+            char c = block[0];
+            result.push_back(c == 0 ? '.' : c);
+        }
+        return result;
+    }
+
     void SetupLogging()
     {
         Runtime.AppendToLogSettings(
@@ -314,6 +341,11 @@ struct TTestEnv
             Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
         }
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
+    }
+
+    TRdmaClientTest& Rdma()
+    {
+        return static_cast<TRdmaClientTest&>(*RdmaClient);
     }
 };
 
@@ -2907,7 +2939,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         DoShouldNotMigrateIfCantLockMigrationRange(true);
     }
 
-    Y_UNIT_TEST(ShouldExecuteMultiWriteRequests)
+    Y_UNIT_TEST(ShouldExecuteMultiWriteRequestsInterconnect)
     {
         TTestRuntime runtime;
 
@@ -2962,8 +2994,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
+        // Write pattern.
         {
-            client.WriteBlocks(TBlockRange64::WithLength(10, 5), 1);
+            client.WriteBlocks(TBlockRange64::WithLength(10, 5), 'A');
 
             UNIT_ASSERT_VALUES_EQUAL(3, describeRequestCount);
             UNIT_ASSERT_VALUES_EQUAL(3, device2WriteRange.size());
@@ -2986,7 +3019,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
             client.WriteBlocksLocal(
                 TBlockRange64::WithLength(20, 5),
-                TString(DefaultBlockSize, 'A'));
+                TString(DefaultBlockSize, 'B'));
 
             UNIT_ASSERT_VALUES_EQUAL(3, describeRequestCount);
             UNIT_ASSERT_VALUES_EQUAL(3, device2WriteRange.size());
@@ -3001,6 +3034,15 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 DescribeRange(TBlockRange64::WithLength(20, 5)),
                 DescribeRange(device2WriteRange["vasya#2"]));
+        }
+
+        // Check pattern.
+        {
+            for (size_t i = 0; i < 3; ++i) {
+                auto pattern =
+                    env.ReadReplica(i, TBlockRange64::WithLength(10, 15));
+                UNIT_ASSERT_VALUES_EQUAL("AAAAA.....BBBBB", pattern);
+            }
         }
 
         const ui64 bytesWritten = DefaultBlockSize * 5 * 2;
@@ -3021,6 +3063,47 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             bytesWritten,
             interconnect.WriteBytesMultiAgent.Value);
         UNIT_ASSERT_VALUES_EQUAL(2, interconnect.WriteCountMultiAgent.Value);
+    }
+
+    Y_UNIT_TEST(ShouldExecuteMultiWriteRequestsRdma)
+    {
+        TTestRuntime runtime;
+
+        NProto::TStorageServiceConfig config;
+        config.SetMultiAgentWriteEnabled(true);
+        TTestEnv env(runtime, std::move(config), true);
+        env.Rdma().InitAllEndpoints();
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        // Write pattern.
+        client.WriteBlocks(TBlockRange64::WithLength(10, 5), 'A');
+        client.WriteBlocksLocal(
+            TBlockRange64::WithLength(20, 5),
+            TString(DefaultBlockSize, 'B'));
+
+        // Check pattern.
+        for (size_t i = 0; i < 3; ++i) {
+            auto pattern =
+                env.ReadReplica(i, TBlockRange64::WithLength(10, 15));
+            UNIT_ASSERT_VALUES_EQUAL("AAAAA.....BBBBB", pattern);
+        }
+
+        const ui64 bytesWritten = DefaultBlockSize * 5 * 2;
+
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        UNIT_ASSERT_VALUES_EQUAL(2, counters.WriteBlocksMultiAgent.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            bytesWritten,
+            counters.WriteBlocksMultiAgent.RequestBytes);
+
+        auto& rdma = env.StorageStatsServiceState->Counters.Rdma;
+        UNIT_ASSERT_VALUES_EQUAL(bytesWritten, rdma.WriteBytesMultiAgent.Value);
+        UNIT_ASSERT_VALUES_EQUAL(2, rdma.WriteCountMultiAgent.Value);
     }
 
     Y_UNIT_TEST(ShouldFallbackFromMultiWriteRequestsWhenDiscoveryFailed)

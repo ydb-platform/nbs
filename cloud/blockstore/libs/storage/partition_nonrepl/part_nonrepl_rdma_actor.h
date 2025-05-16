@@ -31,6 +31,11 @@ namespace NCloud::NBlockStore::NStorage {
 struct TDeviceRequestRdmaContext: public NRdma::TNullContext
 {
     ui32 DeviceIdx = 0;
+
+    TDeviceRequestRdmaContext() = default;
+    explicit TDeviceRequestRdmaContext(ui32 deviceIdx)
+        : DeviceIdx(deviceIdx)
+    {}
 };
 
 struct TDeviceReadRequestContext: public TDeviceRequestRdmaContext
@@ -113,6 +118,7 @@ public:
 private:
     void KillActors(const NActors::TActorContext& ctx);
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
+    ui32 GetFlags() const;
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
     void NotifyDeviceTimedOutIfNeeded(
@@ -133,6 +139,16 @@ private:
     template <typename TMethod>
     bool InitRequests(
         const typename TMethod::TRequest& msg,
+        const NActors::TActorContext& ctx,
+        TRequestInfo& requestInfo,
+        const TBlockRange64& blockRange,
+        TVector<TDeviceRequest>* deviceRequests);
+
+    template <typename TRequest, typename TResponse>
+    bool InitRequests(
+        const char* methodName,
+        const bool isWriteMethod,
+        const TRequest& msg,
         const NActors::TActorContext& ctx,
         TRequestInfo& requestInfo,
         const TBlockRange64& blockRange,
@@ -165,6 +181,11 @@ private:
         const TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleMultiAgentWriteBlocksCompleted(
+        const TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted::
+            TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleZeroBlocksCompleted(
         const TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -194,6 +215,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ChecksumBlocks, TEvNonreplPartitionPrivate);
+    BLOCKSTORE_IMPLEMENT_REQUEST(MultiAgentWrite, TEvNonreplPartitionPrivate);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);
