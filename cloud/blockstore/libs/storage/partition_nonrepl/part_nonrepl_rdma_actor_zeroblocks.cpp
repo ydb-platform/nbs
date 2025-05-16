@@ -25,11 +25,12 @@ using TResponse = TEvService::TEvZeroBlocksResponse;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestZeroBlocksHandler: public IRdmaDeviceRequestHandler
+class TRdmaRequestZeroBlocksHandler final: public IRdmaDeviceRequestHandler
 {
 public:
     using IRdmaDeviceRequestHandler::IRdmaDeviceRequestHandler;
 
+protected:
     NProto::TError ProcessSubResponse(
         const TDeviceRequestRdmaContext& reqCtx,
         TStringBuf buffer) override
@@ -53,7 +54,7 @@ public:
 
     std::unique_ptr<IEventBase> CreateCompletionEvent() override
     {
-        auto completion = CreateCompletionEventImpl<
+        auto completion = CreateConcreteCompletionEvent<
             TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
         auto& counters = *completion->Stats.MutableUserWriteCounters();
         counters.SetBlocksCount(GetRequestBlockCount());

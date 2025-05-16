@@ -64,21 +64,6 @@ public:
         ui32 status,
         size_t responseBytes) override;
 
-    template <typename TCompletionEvent>
-    std::unique_ptr<TCompletionEvent> CreateCompletionEventImpl()
-    {
-        auto completion = std::make_unique<TCompletionEvent>(Error);
-
-        completion->RequestsResult.assign(
-            std::make_move_iterator(RequestsResult.begin()),
-            std::make_move_iterator(RequestsResult.end()));
-
-        completion->TotalCycles = RequestInfo->GetTotalCycles();
-        completion->ExecCycles = RequestInfo->GetExecCycles();
-
-        return completion;
-    }
-
     ui64 GetRequestBlockCount() const
     {
         return RequestBlockCount;
@@ -99,7 +84,22 @@ public:
         std::unique_ptr<NActors::IEventBase> ev,
         ui64 cookie = 0) const;
 
-private:
+protected:
+    template <typename TCompletionEvent>
+    std::unique_ptr<TCompletionEvent> CreateConcreteCompletionEvent()
+    {
+        auto completion = std::make_unique<TCompletionEvent>(Error);
+
+        completion->RequestsResult.assign(
+            std::make_move_iterator(RequestsResult.begin()),
+            std::make_move_iterator(RequestsResult.end()));
+
+        completion->TotalCycles = RequestInfo->GetTotalCycles();
+        completion->ExecCycles = RequestInfo->GetExecCycles();
+
+        return completion;
+    }
+
     virtual std::unique_ptr<NActors::IEventBase> CreateResponse(
         NProto::TError error) = 0;
 

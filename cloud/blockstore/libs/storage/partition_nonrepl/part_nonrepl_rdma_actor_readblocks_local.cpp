@@ -23,7 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestReadBlocksLocalHandler: public IRdmaDeviceRequestHandler
+class TRdmaRequestReadBlocksLocalHandler final: public IRdmaDeviceRequestHandler
 {
 private:
     const bool CheckVoidBlocks;
@@ -54,6 +54,7 @@ public:
         , SgList(std::move(sglist))
     {}
 
+protected:
     NProto::TError ProcessSubResponse(
         const TDeviceRequestRdmaContext& reqCtx,
         TStringBuf buffer) override
@@ -117,7 +118,7 @@ public:
         const auto requestBlockCount = GetRequestBlockCount();
         const bool allZeroes = VoidBlockCount == requestBlockCount;
 
-        auto completion = CreateCompletionEventImpl<
+        auto completion = CreateConcreteCompletionEvent<
             TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
         completion->NonVoidBlockCount = allZeroes ? 0 : requestBlockCount;
         completion->VoidBlockCount = allZeroes ? requestBlockCount : 0;
