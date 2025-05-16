@@ -197,13 +197,29 @@ message TDeviceInfo
 }
 
 message TAgentInfo {
+    enum EAgentState
+    {
+        AGENT_STATE_UNKNOWN = 0;
+        AGENT_STATE_ONLINE = 1;
+        AGENT_STATE_WARNING = 2;
+        AGENT_STATE_UNAVAILABLE = 3;
+    }
+
     // Agent  id.
     string AgentId = 1;
 
     // List of device info
     repeated TDeviceInfo Devices = 2;
-}
 
+    // Current state of the Disk Agent
+    EAgentState State = 3;
+
+    // Reason for agent state.
+    string StateMessage = 4;
+
+    // Timestamp when checkpoint was changed (in microseconds)
+    uint64 StateTs = 5;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Query agents info
