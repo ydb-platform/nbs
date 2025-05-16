@@ -58,7 +58,6 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryResumeDeviceFailed)                                        \
     xxx(DiskRegistryAgentDevicePoolConfigMismatch)                             \
     xxx(DiskRegistryPurgeHostError)                                            \
-    xxx(DiskRegistryCleanupAgentConfigError)                                   \
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
     xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
