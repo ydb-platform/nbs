@@ -267,9 +267,9 @@ void TDiskRegistryActor::CompleteAddDisk(
 
         if (args.ReplicaCount) {
             for (size_t i = 0; i < args.ReplicaCount + 1; ++i) {
-                auto diskId = GetReplicaDiskId(args.DiskId, i);
+                auto replicaId = GetReplicaDiskId(args.DiskId, i);
                 auto unavailableDevicesForDisk =
-                    State->GetUnavailableDevicesForDisk(diskId);
+                    State->GetUnavailableDevicesForDisk(replicaId);
 
                 response->Record.MutableUnavailableDeviceUUIDs()->Add(
                     std::make_move_iterator(unavailableDevicesForDisk.begin()),

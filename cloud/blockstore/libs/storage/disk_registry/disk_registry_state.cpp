@@ -1181,6 +1181,7 @@ auto TDiskRegistryState::GetUnavailableDevicesForDisk(
     if (!disk) {
         return {};
     }
+    Y_DEBUG_ABORT_UNLESS(!IsMasterDisk(diskId));
 
     THashSet<TDeviceId> unavailableDeviceIds = disk->LostDeviceIds;
 
