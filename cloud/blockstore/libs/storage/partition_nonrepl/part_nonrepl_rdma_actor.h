@@ -51,7 +51,7 @@ class TNonreplicatedPartitionRdmaActor final
 {
     struct TDeviceRequestContext
     {
-        ui64 DeviceIndex = 0;
+        ui32 DeviceIndex = 0;
         ui64 SentRequestId = 0;
     };
 
