@@ -7979,9 +7979,13 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
             }
         }
 
-        ret.emplace_back();
-        auto& agentInfo = ret.back();
+        auto& agentInfo = ret.emplace_back();
         agentInfo.SetAgentId(agent.GetAgentId());
+        agentInfo.SetState(
+            static_cast<NProto::TAgentInfo_EAgentState>(agent.GetState()));
+        agentInfo.SetStateMessage(agent.GetStateMessage());
+        agentInfo.SetStateTs(agent.GetStateTs());
+
         for (auto& [name, info]: deviceMap) {
             *agentInfo.AddDevices() = std::move(info);
         }
