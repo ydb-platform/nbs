@@ -119,10 +119,10 @@ auto MergeReadResponses(std::span<NProto::TReadBlocksLocalResponse> responsesToM
     auto result = MergeReadBlocksResponsesImpl(responsesToMerge);
 
     for (const auto& response : responsesToMerge) {
-        result.ScanDiskResults.insert(
-            result.ScanDiskResults.end(),
-            response.ScanDiskResults.begin(),
-            response.ScanDiskResults.end());
+        result.FailedBlobs.insert(
+            result.FailedBlobs.end(),
+            response.FailedBlobs.begin(),
+            response.FailedBlobs.end());
     }
 
     return result;

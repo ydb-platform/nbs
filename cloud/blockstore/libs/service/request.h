@@ -39,7 +39,7 @@ struct TReadBlocksLocalRequest
 
 struct TReadBlocksLocalResponse: public TReadBlocksResponse
 {
-    TVector<TString> CheckRangeResult;
+    TVector<TString> FailedBlobs;
 
     TReadBlocksLocalResponse() = default;
 

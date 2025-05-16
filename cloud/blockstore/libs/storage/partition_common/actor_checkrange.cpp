@@ -123,11 +123,11 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             TBlockStoreComponents::PARTITION,
             "reading error has occurred: " << FormatError(error));
         response->Record.MutableStatus()->CopyFrom(error);
-        if (!msg->Record.CheckRangeResult.empty()){
+        if (!msg->Record.FailedBlobs.empty()){
             response->Record.MutableStatus()
                 ->MutableMessage()
                 ->append("\n Broken blobs: ");
-            for (size_t i = 0; i < msg->Record.CheckRangeResult.size(); ++i){
+            for (size_t i = 0; i < msg->Record.FailedBlobs.size(); ++i){
                 if (i > 0){
                     response->Record.MutableStatus()
                     ->MutableMessage()
@@ -135,7 +135,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
                 }
                 response->Record.MutableStatus()
                 ->MutableMessage()
-                ->append(msg->Record.CheckRangeResult[i]);
+                ->append(msg->Record.FailedBlobs[i]);
             }
         }
     } else {

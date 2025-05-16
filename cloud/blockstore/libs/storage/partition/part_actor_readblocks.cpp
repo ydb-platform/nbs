@@ -167,9 +167,10 @@ IEventBasePtr CreateReadBlocksResponse(
     TVector<TString> failedBlobs)
 {
     if (replyLocal) {
-        auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
+        auto response =
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
         for (ui32 i = 0; i < failedBlobs.size(); ++i) {
-            response->Record.CheckRangeResult.push_back(failedBlobs[i]);
+            response->Record.FailedBlobs.push_back(failedBlobs[i]);
         }
         return response;
     } else {
