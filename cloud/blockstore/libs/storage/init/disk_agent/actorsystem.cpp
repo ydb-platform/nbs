@@ -7,10 +7,12 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent_stats/disk_agent_stats_actor.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/storage/init/common/actorsystem.h>
 #include <cloud/blockstore/libs/storage/undelivered/undelivered.h>
+
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 #include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
@@ -127,6 +129,20 @@ public:
                     TMailboxType::TinyReadAsFilled,
                     appData->UserPoolId));
         }
+
+        //
+        // DiskAgentStats Actor
+        //
+
+        auto cpuStat =
+            CreateDiskAgentStatsActor(Args.StorageConfig, Args.StatsFetcher);
+
+        setup->LocalServices.emplace_back(
+            TActorId(),
+            TActorSetupCmd(
+                cpuStat.release(),
+                TMailboxType::Revolving,
+                appData->BatchPoolId));
     }
 };
 
