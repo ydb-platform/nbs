@@ -64,7 +64,7 @@ void TCheckRangeActor::ReplyAndDie(
     const NProto::TError& error)
 {
     auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(error));
+        std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
