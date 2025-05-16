@@ -8337,19 +8337,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         volume.RebootTablet();
 
-        auto clientInfo = CreateVolumeClientInfo(
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL,
-            false);
-
         volume.GracefulShutdown();
         UNIT_ASSERT(partitionsStopped);
 
         // Check that volume after TEvGracefulShutdownRequest
-        // in zombie state and rejects requsts.
-        volume.SendGetVolumeInfoRequest();
-        auto response = volume.RecvGetVolumeInfoResponse();
-        UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
+        // not in zombie state.
+        volume.SendStatVolumeRequest();
+        auto response = volume.RecvStatVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldReturnClientsAndHostnameInStatVolumeResponse)
