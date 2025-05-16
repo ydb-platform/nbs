@@ -78,7 +78,7 @@ private:
     // returned. This flag should not be disregarded.
     [[nodiscard]] bool RegisterRequest(TModifyRequestPtr request);
 
-    NThreading::TFuture<NProto::TReadBlocksResponse>
+    NThreading::TFuture<NProto::TReadBlocksLocalResponse>
     ExecuteUnalignedReadRequest(
         TCallContextPtr ctx,
         TBlocksInfo blocksInfo,
