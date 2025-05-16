@@ -34,6 +34,7 @@ struct TReadBlocksLocalRequest
     TGuardedSgList Sglist;
     ui64 CommitId = 0;
     ui32 BlockSize = 0;
+    bool ShouldReportBlobIdsOnFailure = false;
 };
 
 using TReadBlocksLocalResponse = TReadBlocksResponse;
@@ -46,6 +47,7 @@ struct TWriteBlocksLocalRequest
     TGuardedSgList Sglist;
     ui32 BlocksCount = 0;
     ui32 BlockSize = 0;
+    TVector<TString> CheckRangeResult;
 };
 
 using TWriteBlocksLocalResponse = TWriteBlocksResponse;

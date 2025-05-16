@@ -35,7 +35,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
-    request->Record.SetRangeCheck(true);
+    //request->Record.Should(true);
 
     auto* headers = request->Record.MutableHeaders();
 

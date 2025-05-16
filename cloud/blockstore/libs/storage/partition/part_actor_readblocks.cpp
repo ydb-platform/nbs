@@ -169,17 +169,11 @@ IEventBasePtr CreateReadBlocksResponse(
     if (replyLocal) {
         auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
         for (ui32 i = 0; i < failedBlobs.size(); ++i) {
-            auto* blobId = response->Record.MutableScanDiskResults()->Add();
-            *blobId = std::move(failedBlobs[i]);
+            response->Record.CheckRangeResult.push_back(failedBlobs[i]);
         }
         return response;
     } else {
-        auto response = std::make_unique<TEvService::TEvReadBlocksResponse>(error);
-        for (ui32 i = 0; i < failedBlobs.size(); ++i) {
-            auto* blobId = response->Record.MutableScanDiskResults()->Add();
-            *blobId = std::move(failedBlobs[i]);
-        }
-        return response;
+        return std::make_unique<TEvService::TEvReadBlocksResponse>(error);
     }
 }
 
@@ -510,7 +504,7 @@ bool TReadBlocksActor::HandleError(
     const TBatchRequest& batch)
 {
     if (FAILED(error.GetCode())) {
-        if (ReportBlobIdsOnFailure) {
+        if (ReportBlobIdsOnFailure and ReplyLocal) {
             FailedBlobs.emplace_back(batch.BlobId.ToString());
 
             // scan disk should try to read all the data and report broken blobs
@@ -856,21 +850,30 @@ void TPartitionActor::HandleReadBlocks(
     const TEvService::TEvReadBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    HandleReadBlocksRequest<TEvService::TReadBlocksMethod>(ev, ctx, false);
+    HandleReadBlocksRequest<TEvService::TReadBlocksMethod>(
+        ev,
+        ctx,
+        false,
+        false);
 }
 
 void TPartitionActor::HandleReadBlocksLocal(
     const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    HandleReadBlocksRequest<TEvService::TReadBlocksLocalMethod>(ev, ctx, true);
+    HandleReadBlocksRequest<TEvService::TReadBlocksLocalMethod>(
+        ev,
+        ctx,
+        true,
+        ev->Get()->Record.ShouldReportBlobIdsOnFailure);
 }
 
 template <typename TMethod>
 void TPartitionActor::HandleReadBlocksRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx,
-    bool replyLocal)
+    bool replyLocal,
+    bool shouldReportBlobIdsOnFailure)
 {
     auto* msg = ev->Get();
 
@@ -938,7 +941,7 @@ void TPartitionActor::HandleReadBlocksRequest(
         ConvertRangeSafe(readRange),
         std::move(readHandler),
         replyLocal,
-        msg->Record.GetRangeCheck());
+        shouldReportBlobIdsOnFailure);
 }
 
 TMaybe<ui64> TPartitionActor::VerifyReadBlocksCheckpoint(
@@ -984,7 +987,7 @@ void TPartitionActor::ReadBlocks(
     const TBlockRange32& readRange,
     IReadBlocksHandlerPtr readHandler,
     bool replyLocal,
-    bool isCheckRange)
+    bool shouldReportBlobIdsOnFailure)
 {
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
@@ -1004,7 +1007,7 @@ void TPartitionActor::ReadBlocks(
         readRange,
         std::move(readHandler),
         replyLocal,
-        isCheckRange);
+        shouldReportBlobIdsOnFailure);
 }
 
 void TPartitionActor::HandleReadBlocksCompleted(

@@ -248,7 +248,8 @@ private:
     void HandleReadBlocksRequest(
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
-        bool replyLocal);
+        bool replyLocal,
+        bool shouldReportBlobIdsOnFailure);
 
     TMaybe<ui64> VerifyReadBlocksCheckpoint(
         const NActors::TActorContext& ctx,
