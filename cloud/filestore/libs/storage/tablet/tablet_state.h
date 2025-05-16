@@ -159,6 +159,33 @@ struct TDeleteMixedBlocksResult
     ui32 GarbageBlocksCount = 0;
 };
 
+enum class EBackgroundOpBackpressureStatus
+{
+    Normal = 1,
+    CloseToThreshold = 2,
+    ThresholdReached = 3,
+};
+
+struct TBackgroundOpsBackpressureStatus
+{
+    const EBackgroundOpBackpressureStatus Flush;
+    const EBackgroundOpBackpressureStatus FlushBytes;
+    const EBackgroundOpBackpressureStatus Compaction;
+    const EBackgroundOpBackpressureStatus Cleanup;
+
+    TBackgroundOpsBackpressureStatus(
+        EBackgroundOpBackpressureStatus flush,
+        EBackgroundOpBackpressureStatus flushBytes,
+        EBackgroundOpBackpressureStatus compaction,
+        EBackgroundOpBackpressureStatus cleanup)
+        : Flush(flush)
+        , FlushBytes(flushBytes)
+        , Compaction(compaction)
+        , Cleanup(cleanup)
+    {
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TIndexTabletState

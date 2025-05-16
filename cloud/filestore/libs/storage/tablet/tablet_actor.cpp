@@ -560,7 +560,8 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
     //
     // large deletion marker cleanup is a slower process and having too many
     // large deletion markers affects a much smaller percentage of workloads
-    if (!IsCloseToBackpressureThresholds(&dummy)) {
+    const auto backpressureStatus = GetBackgroundOpsBackpressureStatus();
+    if (backpressureStatus.Cleanup == EBackgroundOpBackpressureStatus::Normal) {
         if (auto priorityRange = NextPriorityRangeForCleanup()) {
             cleanupRangeId = priorityRange->RangeId;
             cleanupScore = Max<ui32>();
@@ -587,9 +588,14 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
 
 bool TIndexTabletActor::ShouldThrottleCleanup(
     const NActors::TActorContext& ctx,
-    const TCleanupInfo& cleanupInfo) const
+    const TCleanupInfo& cleanupInfo,
+    const TBackgroundOpsBackpressureStatus& bpStatus) const
 {
     if (!cleanupInfo.ShouldCleanup || cleanupInfo.IsPriority) {
+        return false;
+    }
+
+    if (bpStatus.Cleanup == EBackgroundOpBackpressureStatus::ThresholdReached) {
         return false;
     }
 
@@ -622,15 +628,41 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
     return cleanupCpu > Config->GetCleanupCpuThrottlingThresholdPercentage();
 }
 
-bool TIndexTabletActor::IsCloseToBackpressureThresholds(TString* message) const
+EBackgroundOpBackpressureStatus
+    TIndexTabletActor::GetBackgroundOpBackpressureStatus(
+        ui64 threshold,
+        ui64 value) const
 {
-    auto bpThresholds = BuildBackpressureThresholds();
-    const double scale =
-        Config->GetBackpressurePercentageForFairBlobIndexOpsPriority()
-        / 100.;
-    bpThresholds.CompactionScore *= scale;
-    bpThresholds.CleanupScore *= scale;
-    return !IsWriteAllowed(bpThresholds, GetBackpressureValues(), message);
+    if (value >= threshold) {
+        return EBackgroundOpBackpressureStatus::ThresholdReached;
+    }
+    const auto percentage =
+        Config->GetBackpressureThresholdPercentageForBackgroundOpsPriority();
+    const auto scaledThreshold = threshold * percentage / 100;
+    return value >= scaledThreshold
+        ? EBackgroundOpBackpressureStatus::CloseToThreshold
+        : EBackgroundOpBackpressureStatus::Normal;
+}
+
+TBackgroundOpsBackpressureStatus
+    TIndexTabletActor::GetBackgroundOpsBackpressureStatus() const
+{
+    const auto bpThresholds = BuildBackpressureThresholds();
+    const auto bpValues = GetBackpressureValues();
+    return {
+        GetBackgroundOpBackpressureStatus(
+            bpThresholds.Flush,
+            bpValues.Flush),
+        GetBackgroundOpBackpressureStatus(
+            bpThresholds.FlushBytes,
+            bpValues.FlushBytes),
+        GetBackgroundOpBackpressureStatus(
+            bpThresholds.CompactionScore,
+            bpValues.CompactionScore),
+        GetBackgroundOpBackpressureStatus(
+            bpThresholds.CleanupScore,
+            bpValues.CleanupScore),
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
