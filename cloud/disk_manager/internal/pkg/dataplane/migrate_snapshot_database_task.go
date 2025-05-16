@@ -173,7 +173,7 @@ func (m *migrateSnapshotDatabaseTask) migrateSnapshots(
 			return nil
 		}
 
-		err = m.scheduleInflightSnapshots(ctx, execCtx, mapping)
+		err = m.scheduleInflightSnapshotsAndSaveThemIntoMapping(ctx, execCtx, mapping)
 		if err != nil {
 			return err
 		}
@@ -225,7 +225,7 @@ func (m *migrateSnapshotDatabaseTask) updateInflightSnapshots(
 	return execCtx.SaveState(ctx)
 }
 
-func (m *migrateSnapshotDatabaseTask) scheduleInflightSnapshots(
+func (m *migrateSnapshotDatabaseTask) scheduleInflightSnapshotsAndSaveThemIntoMapping(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	mapping *snapshotToTasksMapping,
