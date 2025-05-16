@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -143,4 +144,6 @@ type Storage interface {
 		ctx context.Context,
 		disk *types.Disk,
 	) (snapshotID string, checkpointID string, err error)
+
+	ListSnapshots(ctx context.Context) (task_storage.StringSet, error)
 }
