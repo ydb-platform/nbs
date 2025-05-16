@@ -111,28 +111,20 @@ bool ValidateDevices(
 
 std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer()
 {
-    TVector<const NProtoBuf::FieldDescriptor*> descriptors;
-    descriptors.push_back(
-        NProto::TVolumeMeta::GetDescriptor()->FindFieldByName("IOModeTs"));
-    descriptors.push_back(
-        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("State"));
-    descriptors.push_back(
-        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("StateTs"));
-    descriptors.push_back(
-        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName(
-            "StateMessage"));
-    // These are two fields that will change during disk agent blue-green
-    // deploy.
-    descriptors.push_back(
-        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("NodeId"));
-    descriptors.push_back(
-        NProto::TRdmaEndpoint::GetDescriptor()->FindFieldByName("Port"));
+    std::array descriptors{
+        NProto::TVolumeMeta::GetDescriptor()->FindFieldByName("IOModeTs"),
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("State"),
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("StateTs"),
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("StateMessage"),
+        // These are two fields that will change during disk agent blue-green
+        // deploy.
+        NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("NodeId"),
+        NProto::TRdmaEndpoint::GetDescriptor()->FindFieldByName("Port")};
 
-    if (auto it = Find(descriptors, nullptr); it != descriptors.end()) {
+    if (size_t index = FindIndex(descriptors, nullptr); index != NPOS) {
         ReportFieldDescriptorNotFound(
-            TStringBuilder()
-            << "Lite reallocation is impossible. Descriptor #"
-            << std::distance(descriptors.begin(), it) << " is nullptr.");
+            TStringBuilder() << "Lite reallocation is impossible. Descriptor #"
+                             << index << " is nullptr.");
         return nullptr;
     }
 
