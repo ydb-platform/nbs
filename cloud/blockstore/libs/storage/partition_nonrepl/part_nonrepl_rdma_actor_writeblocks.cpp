@@ -38,14 +38,14 @@ private:
 
 public:
     TRdmaWriteBlocksResponseHandler(
-        TActorSystem* actorSystem,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TRequestInfoPtr requestInfo,
-        size_t requestCount,
-        bool replyLocal,
-        ui32 requestBlockCount,
-        NActors::TActorId parentActorId,
-        ui64 requestId)
+            TActorSystem* actorSystem,
+            TNonreplicatedPartitionConfigPtr partConfig,
+            TRequestInfoPtr requestInfo,
+            size_t requestCount,
+            bool replyLocal,
+            ui32 requestBlockCount,
+            NActors::TActorId parentActorId,
+            ui64 requestId)
         : IRdmaDeviceRequestHandler(
               actorSystem,
               std::move(partConfig),
@@ -88,7 +88,8 @@ protected:
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(NProto::TError err) override
+    std::unique_ptr<IEventBase> CreateResponse(
+        NProto::TError err) override
     {
         if (ReplyLocal) {
             return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
