@@ -99,6 +99,57 @@ class TPartitionActor final
         {}
     };
 
+    class TCompactionMapLoadState
+    {
+    public:
+        struct TChunk
+        {
+            ui32 FirstRangeIdx = 0;
+            ui32 RangeCount = 0;
+            bool OutOfOrder = false;
+        };
+
+    public:
+        TCompactionMapLoadState(
+            ui32 maxRangesPerTx,
+            ui32 maxOutOfOrderChunksInflight);
+
+        void AddInOrderChunk();
+        void AddOutOfOrderChunk(ui32 firstRangeIdx);
+        void PopFrontChunk();
+        const TChunk& FrontChunk() const;
+
+        void SetFirstRangeIndex(ui32 idx)
+        {
+            FirstRangeIdx = idx;
+        }
+        bool ShouldRejectRequest(const THashSet<ui32>& rangeIndices);
+        bool IsFinished() const
+        {
+            return Finished;
+        }
+        void SetFinished()
+        {
+            Finished = true;
+        }
+        ui32 GetMaxRangesPerTx() const
+        {
+            return MaxRangesPerTx;
+        }
+
+    private:
+        ui32 TryToEnqueueOutOfOrderRange(ui32 rangeIndex);
+
+        const ui32 MaxRangesPerTx = 0;
+        const ui32 MaxOutOfOrderChunksInflight = 0;
+
+        ui32 FirstRangeIdx = 0;
+        bool Finished = false;
+        ui32 OutOfOrderChunkCount = 0;
+        THashSet<ui32> LoadedOutOfOrderRangeIds;
+        TDeque<TChunk> ChunksInflight;
+    };
+
 private:
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
@@ -112,6 +163,7 @@ private:
     const NBlockCodecs::ICodec* BlobCodec;
 
     std::unique_ptr<TPartitionState> State;
+    std::unique_ptr<TCompactionMapLoadState> CompactionMapLoadState;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -657,6 +709,16 @@ private:
 
     void SetFirstGarbageCollectionCompleted();
     bool IsFirstGarbageCollectionCompleted() const;
+
+    void LoadNextCompactionMapChunk(const NActors::TActorContext& ctx);
+    void HandleLoadCompactionMapChunk(
+        const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    THashSet<ui32> GetRangeIndices(
+        const TVector<TAddFreshBlob>& freshBlobs,
+        const TVector<TAddMixedBlob>& mixedBlobs,
+        const TVector<TAddMergedBlob>& mergedBlobs) const;
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)
