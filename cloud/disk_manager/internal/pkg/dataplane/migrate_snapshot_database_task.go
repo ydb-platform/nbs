@@ -164,7 +164,7 @@ func (m *migrateSnapshotDatabaseTask) migrateSnapshots(
 	mapping := newSnapshotToTasksMapping()
 
 	for {
-		err := m.saveInflightSnapshots(ctx, execCtx, snapshotsToMigrate)
+		err := m.updateInflightSnapshots(ctx, execCtx, snapshotsToMigrate)
 		if err != nil {
 			return err
 		}
@@ -195,7 +195,7 @@ func (m *migrateSnapshotDatabaseTask) migrateSnapshots(
 	}
 }
 
-func (m *migrateSnapshotDatabaseTask) saveInflightSnapshots(
+func (m *migrateSnapshotDatabaseTask) updateInflightSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	snapshotsToMigrate tasks_storage.StringSet,
