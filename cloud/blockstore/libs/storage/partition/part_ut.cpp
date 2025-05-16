@@ -12474,6 +12474,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
     {
+        constexpr ui32 blockCount = 1024;
+
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(100_KB);
         auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
@@ -12516,17 +12518,25 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        const auto blockRange = TBlockRange32::WithLength(0, 1024);
-        auto request = partition.CreateReadBlocksRequest(blockRange, {});
-        request->Record.SetRangeCheck(true);
+        TGuardedBuffer<TString> Buffer = TGuardedBuffer(
+            TString::Uninitialized(blockCount * DefaultBlockSize));
+        auto sgList = Buffer.GetGuardedSgList();
+        auto sgListOrError =
+            SgListNormalize(sgList.Acquire().Get(), DefaultBlockSize);
+
+        UNIT_ASSERT(!HasError(sgListOrError));
+
+        auto request = partition.CreateReadBlocksLocalRequest(
+            TBlockRange32::WithLength(0, blockCount),
+            sgListOrError.ExtractResult());
+
+        request->Record.ShouldReportBlobIdsOnFailure = true;
 
         partition.SendToPipe(std::move(request));
 
-        auto response = partition.RecvReadBlocksResponse();
+        auto response = partition.RecvReadBlocksLocalResponse();
         UNIT_ASSERT_VALUES_UNEQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(
-            response->Record.FailedBlobs().size(),
-            2);
+        UNIT_ASSERT_VALUES_EQUAL(response->Record.FailedBlobs.size(), 2);
     }
 }
 
