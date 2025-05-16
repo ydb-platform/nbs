@@ -1235,7 +1235,12 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             UNIT_ASSERT_C(!HasError(writeResponse), writeResponse);
 
             auto localReadResponse = localReadFuture.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(localReadResponse), localReadResponse);
+            // localReadResponse is not a protobuf message based, so it cannot
+            // be serialized and printed via Out<>
+            const auto& baseResponse = static_cast<
+                const NCloud::NBlockStore::NProto::TReadBlocksResponse&>(
+                localReadResponse);
+            UNIT_ASSERT_C(!HasError(localReadResponse), baseResponse);
 
             auto localWriteResponse = localWriteFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(localWriteResponse), localWriteResponse);

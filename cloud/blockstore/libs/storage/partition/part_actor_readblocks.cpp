@@ -1201,7 +1201,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReadRange,
             args.ReplyLocal,
             args.ChecksumsEnabled,
-            args.IsCheckRange,
+            args.ShouldReportBlobIdsOnFailure,
             args.CommitId,
             std::move(requests),
             std::move(args.BlockInfos),

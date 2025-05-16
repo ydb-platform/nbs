@@ -52,6 +52,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
     request->Record.Sglist = SgList;
+    request->Record.ShouldReportBlobIdsOnFailure = true;
 
     auto* headers = request->Record.MutableHeaders();
 
@@ -122,7 +123,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             TBlockStoreComponents::PARTITION,
             "reading error has occurred: " << FormatError(error));
         response->Record.MutableStatus()->CopyFrom(error);
-        if (!msg->Record.GetScanDiskResults().empty()){
+        if (!msg->Record.().empty()){
             response->Record.MutableStatus()
                 ->MutableMessage()
                 ->append("\n Broken blobs: ");

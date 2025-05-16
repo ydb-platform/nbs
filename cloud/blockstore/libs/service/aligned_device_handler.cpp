@@ -276,7 +276,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     // sub-request and leave the rest in original sgList.
     request->Sglist = TakeHeadBlocks(sgList, requestBlockCount);
     if (request->Sglist.Empty()) {
-        return MakeFuture<NProto::TReadBlocksResponse>(
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(
             CreateErrorAcquireResponse());
     }
 
@@ -315,8 +315,8 @@ TAlignedDeviceHandler::ExecuteReadRequest(
                     std::move(sgList),
                     std::move(checkpointId));
             }
-            return MakeFuture<NProto::TReadBlocksResponse>(
-                TErrorResponse(E_CANCELLED));
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                                TErrorResponse(E_CANCELLED));
         });
 }
 

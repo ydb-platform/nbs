@@ -37,8 +37,16 @@ struct TReadBlocksLocalRequest
     bool ShouldReportBlobIdsOnFailure = false;
 };
 
-using TReadBlocksLocalResponse = TReadBlocksResponse;
+struct TReadBlocksLocalResponse: public TReadBlocksResponse
+{
+    TVector<TString> ScanDiskResults;
 
+    TReadBlocksLocalResponse() = default;
+
+    explicit TReadBlocksLocalResponse(const TReadBlocksResponse& base)
+        : TReadBlocksResponse(base)
+    {}
+};
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TWriteBlocksLocalRequest

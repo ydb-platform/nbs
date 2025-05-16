@@ -22,4 +22,7 @@ auto SplitReadRequest(
 auto MergeReadResponses(std::span<NProto::TReadBlocksResponse> responsesToMerge)
     -> NProto::TReadBlocksResponse;
 
+auto MergeReadResponses(
+    std::span<NProto::TReadBlocksLocalResponse> responsesToMerge)
+    -> NProto::TReadBlocksLocalResponse;
 }   // namespace NCloud::NBlockStore::NStorage

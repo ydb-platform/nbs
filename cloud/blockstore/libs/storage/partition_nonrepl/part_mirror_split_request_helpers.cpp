@@ -69,14 +69,15 @@ auto SplitReadRequest(
     return result;
 }
 
-auto MergeReadResponses(std::span<NProto::TReadBlocksResponse> responsesToMerge)
-    -> NProto::TReadBlocksResponse
+template <typename TResponse>
+TResponse MergeReadBlocksResponsesImpl(std::span<TResponse> responsesToMerge)
 {
-    NProto::TReadBlocksResponse result;
+    TResponse result;
 
     ui64 throttlerDelaySum = 0;
     bool allZeros = true;
     bool allBlocksEmpty = true;
+
     for (const auto& response: responsesToMerge) {
         if (HasError(response)) {
             return response;
@@ -103,6 +104,27 @@ auto MergeReadResponses(std::span<NProto::TReadBlocksResponse> responsesToMerge)
 
     // The unencrypted block mask is not used (Check pr #1771), so we don't have
     // to fill it out.
+    return result;
+}
+
+auto MergeReadResponses(std::span<NProto::TReadBlocksResponse> responsesToMerge)
+    -> NProto::TReadBlocksResponse
+{
+    return MergeReadBlocksResponsesImpl<NProto::TReadBlocksResponse>(responsesToMerge);
+}
+
+auto MergeReadResponses(std::span<NProto::TReadBlocksLocalResponse> responsesToMerge)
+    -> NProto::TReadBlocksLocalResponse
+{
+    auto result = MergeReadBlocksResponsesImpl(responsesToMerge);
+
+    for (const auto& response : responsesToMerge) {
+        result.ScanDiskResults.insert(
+            result.ScanDiskResults.end(),
+            response.ScanDiskResults.begin(),
+            response.ScanDiskResults.end());
+    }
+
     return result;
 }
 

@@ -45,9 +45,6 @@ message TReadBlocksRequest
 
     // Session identifier.
     string SessionId = 7;
-
-    // Return blob ids when read fails due to blob storage failure.
-    bool RangeCheck = 8;
 }
 
 message TReadBlocksResponse
@@ -70,9 +67,6 @@ message TReadBlocksResponse
     // If true, it means that all the data read was zeros.
     // It's a hint, false negatives are allowed.
     bool AllZeroes = 6;
-
-    // List of scan disk failed entities (blobs or ranges).
-    repeated string ScanDiskResults = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
