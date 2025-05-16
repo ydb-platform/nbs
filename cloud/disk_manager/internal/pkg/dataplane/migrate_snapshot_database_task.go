@@ -236,6 +236,21 @@ func (m *migrateSnapshotDatabaseTask) scheduleInflightSnapshots(
 			continue
 		}
 
+		// We expect that if snapshot is inflight
+		// and the task was restarted and the inflight snapshot creation
+		// was not finished before each scheduling iteration,
+		// the task would still be present in the database.
+		// (finished tasks are removed from the database).
+		//
+		// It is the same as the following statement:
+		// We expect the tasks not to hang between its start
+		// and scheduling of snapshots for longer than tasks collection interval.
+		//
+		// This assumption seems to be reasonable, because
+		// endedTasksExpirationTimeout is set to 96h by default, which is by
+		// several orders of magnitude greater than the time between task start
+		// and scheduling of snapshot migration task.
+		// This expectation allows us to avoid storing mappings in the database.
 		taskID, err := m.scheduleMigrateSnapshotTask(
 			ctx,
 			execCtx,
