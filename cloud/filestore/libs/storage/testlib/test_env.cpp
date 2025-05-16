@@ -455,7 +455,7 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
 {
     auto tabletId = ChangeDomain(Config.DomainUid, ++NextTabletId);
 
-    auto tabletFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
+    auto tabletFactory = [=, this] (const TActorId& owner, TTabletStorageInfo* storage) {
         Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::FileStore);
         auto actor = CreateIndexTablet(
             owner,
@@ -617,7 +617,7 @@ void TTestEnv::SetupLocalServiceConfig(
     TAppData& appData,
     TLocalConfig& localConfig)
 {
-    auto tabletFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
+    auto tabletFactory = [=, this] (const TActorId& owner, TTabletStorageInfo* storage) {
         Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::FileStore);
         auto actor = CreateIndexTablet(
             owner,

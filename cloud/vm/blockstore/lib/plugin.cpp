@@ -359,7 +359,7 @@ int TPlugin::MountVolumeAsync(
         *requestHandler->CallContext);
 
     future.Subscribe(
-        [=,
+        [=, this,
         diskId = sessionConfig.DiskId,
         requestHandler = std::move(requestHandler)] (const auto& future)
         {
@@ -483,7 +483,7 @@ int TPlugin::UnmountVolumeAsync(
         *requestHandler->CallContext);
 
     future.Subscribe(
-        [=,
+        [=, this,
         requestHandler = std::move(requestHandler)] (const auto& future)
         {
             ClientStats->ResponseReceived(
@@ -593,7 +593,7 @@ void TPlugin::HandleReadBlocks(
         *requestHandler->CallContext);
 
     future.Subscribe(
-        [=,
+        [=, this,
         sglist = std::move(guardedSgList),
         requestHandler = std::move(requestHandler)] (const auto& f) mutable
         {
@@ -661,7 +661,7 @@ void TPlugin::HandleWriteBlocks(
         *requestHandler->CallContext);
 
     future.Subscribe(
-        [=,
+        [=, this,
         sglist = std::move(guardedSgList),
         requestHandler = std::move(requestHandler)] (const auto& f) mutable
         {
@@ -725,7 +725,7 @@ void TPlugin::HandleZeroBlocks(
         *requestHandler->CallContext);
 
     future.Subscribe(
-        [=, requestHandler = std::move(requestHandler)] (const auto& f) {
+        [=, this, requestHandler = std::move(requestHandler)] (const auto& f) {
             ClientStats->ResponseReceived(
                 requestHandler->MetricRequest,
                 *requestHandler->CallContext);

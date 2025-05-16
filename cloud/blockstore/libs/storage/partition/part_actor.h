@@ -443,6 +443,8 @@ private:
         TDuration retryTimeout,
         TBlockBuffer blockBuffer);
 
+    [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);

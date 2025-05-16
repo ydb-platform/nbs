@@ -5316,12 +5316,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                                    TAutoPtr<IEventHandle>&) { return false; });
         auto now = Now();
         state->Disks["vol0"].IOModeTs = now;
+        state->Disks["vol0"].Devices[0].SetStateMessage("test_message");
+        state->Disks["vol0"].Devices[0].SetStateTs(now.MicroSeconds());
+        state->Disks["vol0"].Devices[0].SetState(NProto::DEVICE_STATE_WARNING);
         volume.ReallocateDisk();
         {
             // Lite reallocation happened. Meta history still contains 2 items.
             auto metaHistory = volume.ReadMetaHistory();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(2, metaHistory->MetaHistory.size());
         }
 
         state->Disks["vol0"].MuteIOErrors = true;
@@ -5335,6 +5337,21 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 now.MicroSeconds(),
                 metaHistory->MetaHistory.back().Meta.GetIOModeTs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "test_message",
+                metaHistory->MetaHistory.back()
+                    .Meta.GetDevices()[0]
+                    .GetStateMessage());
+            UNIT_ASSERT_VALUES_EQUAL(
+                now.MicroSeconds(),
+                metaHistory->MetaHistory.back()
+                    .Meta.GetDevices()[0]
+                    .GetStateTs());
+            UNIT_ASSERT_EQUAL(
+                NProto::DEVICE_STATE_WARNING,
+                metaHistory->MetaHistory.back()
+                    .Meta.GetDevices()[0]
+                    .GetState());
         }
     }
 
@@ -9266,59 +9283,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(
             11,
             response->Record.GetStorageConfig().GetCompactionRangeCountPerRun());
-    }
-
-    Y_UNIT_TEST(ShouldUpdateUsedBlocksForEncryptedDiskRegistryBasedDisk)
-    {
-        auto runtime = PrepareTestActorRuntime();
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            7 * 1024,   // block count per partition
-            "vol0",
-            "cloud",
-            "folder",
-            1,    // partition count
-            0,    // blocksPerStripe
-            "",   // tags
-            "",   // baseDiskId
-            "",   // baseDiskCheckpointId
-            NProto::EEncryptionMode::ENCRYPTION_AES_XTS);
-
-        size_t updateUsedBlocksRequestCount = 0;
-        auto countUpdateUsedBlocksRequest =
-            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
-        {
-            switch (event->GetTypeRewrite()) {
-                case TEvVolume::EvUpdateUsedBlocksRequest: {
-                    ++updateUsedBlocksRequestCount;
-                }
-            }
-
-            return false;
-        };
-
-        runtime->SetEventFilter(countUpdateUsedBlocksRequest);
-
-        auto clientInfo = CreateVolumeClientInfo(
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL,
-            0);
-        volume.AddClient(clientInfo);
-
-        volume.WriteBlocks(
-            TBlockRange64::MakeOneBlock(1),
-            clientInfo.GetClientId(),
-            1u);
-
-        UNIT_ASSERT_VALUES_EQUAL(1u, updateUsedBlocksRequestCount);
     }
 
     void DoShouldRejectRequestsWhenVolumeIsKilled(

@@ -8,6 +8,7 @@ SRCS(
     client_state_ut.cpp
     merge_ut.cpp
     requests_inflight_ut.cpp
+    requests_time_tracker_ut.cpp
     retry_policy_ut.cpp
     stripe_ut.cpp
     volume_params_ut.cpp

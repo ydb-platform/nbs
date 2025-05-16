@@ -808,6 +808,13 @@ bool TPartitionActor::IsFirstGarbageCollectionCompleted() const
     return FirstGarbageCollectionCompleted;
 }
 
+TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetBlobStorageAsyncRequestTimeoutSSD()
+               : Config->GetBlobStorageAsyncRequestTimeoutHDD();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
@@ -858,7 +865,10 @@ STFUNC(TPartitionActor::StateInit)
             if (!RejectRequests(ev) &&
                 !HandleDefaultEvents(ev, SelfId()))
             {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -913,7 +923,10 @@ STFUNC(TPartitionActor::StateWork)
             if (!HandleRequests(ev) &&
                 !HandleDefaultEvents(ev, SelfId()))
             {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -961,7 +974,10 @@ STFUNC(TPartitionActor::StateZombie)
 
         default:
             if (!RejectRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

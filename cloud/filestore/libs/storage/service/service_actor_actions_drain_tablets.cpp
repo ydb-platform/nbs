@@ -44,7 +44,10 @@ struct TDrainTabletsActionActor final
             HFunc(TEvHiveProxy::TEvDrainNodeResponse, HandleDrainResponse);
 
             default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }

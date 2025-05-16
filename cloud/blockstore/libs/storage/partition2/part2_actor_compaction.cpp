@@ -72,7 +72,7 @@ private:
     const TActorId Tablet;
     const ui64 CommitId;
     const TBlockRange32 BlockRange;
-    const TDuration ReadBlobTimeout;
+    const TDuration BlobStorageAsyncRequestTimeout;
     const ECompactionType CompactionType;
     TGarbageInfo GarbageInfo;
     TAffectedBlobInfos AffectedBlobInfos;
@@ -109,7 +109,7 @@ public:
         const TActorId& tablet,
         ui64 commitId,
         const TBlockRange32& blockRange,
-        TDuration readBlobTimeout,
+        TDuration blobStorageAsyncRequestTimeout,
         ECompactionType compactionType,
         TGarbageInfo garbageInfo,
         TAffectedBlobInfos affectedBlobInfos,
@@ -166,7 +166,7 @@ TCompactionActor::TCompactionActor(
         const TActorId& tablet,
         ui64 commitId,
         const TBlockRange32& blockRange,
-        TDuration readBlobTimeout,
+        TDuration blobStorageAsyncRequestTimeout,
         ECompactionType compactionType,
         TGarbageInfo garbageInfo,
         TAffectedBlobInfos affectedBlobInfos,
@@ -181,7 +181,7 @@ TCompactionActor::TCompactionActor(
     , Tablet(tablet)
     , CommitId(commitId)
     , BlockRange(blockRange)
-    , ReadBlobTimeout(readBlobTimeout)
+    , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
     , CompactionType(compactionType)
     , GarbageInfo(std::move(garbageInfo))
     , AffectedBlobInfos(std::move(affectedBlobInfos))
@@ -277,9 +277,10 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 {
     bool readBlobSent = false;
 
-    const auto readBlobDeadline = ReadBlobTimeout ?
-        ctx.Now() + ReadBlobTimeout :
-        TInstant::Max();
+    const auto readBlobDeadline =
+        BlobStorageAsyncRequestTimeout
+            ? ctx.Now() + BlobStorageAsyncRequestTimeout
+            : TInstant::Max();
 
     ui32 requestIndex = 0;
     for (auto& req: ReadRequests) {
@@ -563,7 +564,10 @@ STFUNC(TCompactionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -1185,12 +1189,6 @@ void TPartitionActor::CompleteCompaction(
             blobIndex++);
     }
 
-    auto readBlobTimeout =
-        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD ?
-        Config->GetBlobStorageAsyncGetTimeoutSSD() :
-        Config->GetBlobStorageAsyncGetTimeoutHDD();
-
-
     const auto compactionType =
         args.CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
             ECompactionType::Forced:
@@ -1205,7 +1203,7 @@ void TPartitionActor::CompleteCompaction(
         SelfId(),
         args.CommitId,
         args.BlockRange,
-        readBlobTimeout,
+        GetBlobStorageAsyncRequestTimeout(),
         compactionType,
         std::move(args.GarbageInfo),
         std::move(args.AffectedBlobInfos),

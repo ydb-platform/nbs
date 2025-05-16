@@ -234,15 +234,25 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     *newMeta.MutableDevices() = std::move(UnfinishedUpdateVolumeConfig.Devices);
     *newMeta.MutableMigrations() =
         std::move(UnfinishedUpdateVolumeConfig.Migrations);
+
     newMeta.ClearReplicas();
     for (auto& devices: UnfinishedUpdateVolumeConfig.Replicas) {
         auto* replica = newMeta.AddReplicas();
         *replica->MutableDevices() = std::move(devices);
     }
+
     newMeta.ClearFreshDeviceIds();
     for (auto& freshDeviceId: UnfinishedUpdateVolumeConfig.FreshDeviceIds) {
         *newMeta.AddFreshDeviceIds() = std::move(freshDeviceId);
     }
+
+    newMeta.ClearUnavailableDeviceIds();
+    for (auto& unavailableDeviceId:
+         UnfinishedUpdateVolumeConfig.UnavailableDeviceIds)
+    {
+        newMeta.AddUnavailableDeviceIds(std::move(unavailableDeviceId));
+    }
+
     if (State) {
         newMeta.MutableLaggingAgentsInfo()->CopyFrom(
             State->GetMeta().GetLaggingAgentsInfo());
@@ -256,6 +266,7 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     UnfinishedUpdateVolumeConfig.Replicas = {};
     UnfinishedUpdateVolumeConfig.FreshDeviceIds = {};
     UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds = {};
+    UnfinishedUpdateVolumeConfig.UnavailableDeviceIds = {};
 
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Updating volume config to version %u",

@@ -272,7 +272,10 @@ STFUNC(TSplitRequestSenderActor<TMethod>::StateWork)
         HFunc(TMethod::TRequest, HandleUndelivery);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -1120,6 +1123,9 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
             HandleChecksumBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
+            GetDeviceForRangeCompanion.HandleGetDeviceForRange);
 
         HFunc(
             TEvNonreplPartitionPrivate::TEvAgentIsUnavailable,
@@ -1148,7 +1154,10 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -1165,6 +1174,9 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateZombie)
             TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
             RejectChecksumBlocks);
         HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
+            GetDeviceForRangeCompanion.RejectGetDeviceForRange);
+        HFunc(
             NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
             RejectWaitForInFlightWrites);
 
@@ -1177,7 +1189,10 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

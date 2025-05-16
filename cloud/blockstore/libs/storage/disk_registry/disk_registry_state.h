@@ -2,12 +2,12 @@
 
 #include "public.h"
 
-#include "disk_registry_state_notification.h"
-
 #include "disk_registry_database.h"
 #include "disk_registry_private.h"
 #include "disk_registry_self_counters.h"
+#include "disk_registry_state_notification.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/agent_list.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
@@ -59,6 +59,7 @@ struct TDiskInfo
     TVector<NProto::TDiskHistoryItem> History;
 
     ui64 GetBlocksCount() const;
+    TVector<TBlockRange64> GetDeviceRanges() const;
     TString GetPoolName() const;
 };
 
@@ -266,6 +267,7 @@ class TDiskRegistryState
         NProto::TCheckpointReplica CheckpointReplica;
 
         TVector<TDeviceId> DeviceReplacementIds;
+        THashSet<TString> LostDeviceIds;
 
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
@@ -893,6 +895,9 @@ public:
         const TString& poolName,
         const ui64 totalByteCount) const;
 
+    THashSet<TDeviceId> GetUnavailableDevicesForDisk(
+        const TString& diskId) const;
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
@@ -924,8 +929,8 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         TInstant timestamp,
-        TVector<TDiskId>* affectedDisks,
-        TVector<TDiskId>* disksToReallocate);
+        TVector<TDiskId>& affectedDisks,
+        THashSet<TDiskId>& disksToReallocate);
 
     [[nodiscard]] TString GetDiskIdToNotify(const TString& diskId) const;
 
@@ -1359,6 +1364,10 @@ private:
     static bool MigrationCanBeStarted(
         const TDiskState& disk,
         const TString& deviceUUID);
+
+    void ReallocateDisksWithLostOrReappearedDevices(
+        const TAgentList::TAgentRegistrationResult& r,
+        THashSet<TDiskId>& disksToReallocate);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

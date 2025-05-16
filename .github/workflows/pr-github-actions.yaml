@@ -18,14 +18,6 @@ on:
       - 'labeled'
   workflow_dispatch:
     inputs:
-      nebius:
-        required: false
-        type: choice
-        default: "no"
-        description: "Run on nebius runners"
-        options:
-          - "yes"
-          - "no"
       allow_downgrade:
         description: 'Allow downgrade'
         required: false
@@ -53,7 +45,6 @@ defaults:
     shell: bash
 
 env:
-  nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebius')) || inputs.nebius == 'yes') }}
   allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
   large_tests: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'large-tests'))  && 'true' || inputs.large_tests == 'yes' }}
 
@@ -65,7 +56,6 @@ jobs:
   set-env:
     runs-on: ubuntu-latest
     outputs:
-      nebius: ${{ env.nebius == 'false' && 'no' || 'yes' }}
       allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
       large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
     # we don't need anything, but otherwise github will complain
@@ -222,13 +212,13 @@ jobs:
         with:
           scandir: .github
         env:
-          SHELLCHECK_OPTS: "-e SC2155,SC2086,SC2154,SC2164,SC2009,SC2015"
+          SHELLCHECK_OPTS: "-e SC2155,SC2086"
 
 
       - name: shellcheck for github actions shell scripts in .temporary dir
         uses: ludeeus/action-shellcheck@master
         env:
-          SHELLCHECK_OPTS: "-e SC2155,SC2086,SC2154,SC2164,SC2009,SC2015"
+          SHELLCHECK_OPTS: "-e SC2155,SC2086"
         with:
           scandir: .temporary
 
@@ -337,7 +327,7 @@ jobs:
     name: Create and delete VM
     uses: ./.github/workflows/create_and_delete_vm.yaml
     with:
-      nebius: ${{ needs.set-env.outputs.nebius }}
       allow_downgrade: ${{ needs.set-env.outputs.allow_downgrade }}
       large_tests: ${{ needs.set-env.outputs.large_tests }}
+      number_of_retries: 3
     secrets: inherit

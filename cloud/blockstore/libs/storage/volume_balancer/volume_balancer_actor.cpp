@@ -126,7 +126,10 @@ STFUNC(TRemoteVolumeStatActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME_BALANCER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME_BALANCER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -388,7 +391,10 @@ STFUNC(TVolumeBalancerActor::StateWork)
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME_BALANCER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME_BALANCER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

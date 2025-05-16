@@ -21,10 +21,10 @@ jobs:
       uses: ./.github/actions/s3cmd
       with:
         s3_bucket: ${{ vars.AWS_BUCKET }}
-        s3_endpoint: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' && vars.NEBIUS_AWS_ENDPOINT || vars.AWS_ENDPOINT }}
-        s3_website_suffix: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' && vars.NEBIUS_AWS_WEBSITE_SUFFIX || vars.AWS_WEBSITE_SUFFIX }}
-        s3_key_id: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' && secrets.NEBIUS_AWS_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
-        s3_key_secret: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' && secrets.NEBIUS_AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+        s3_endpoint: ${{ vars.NEBIUS_AWS_ENDPOINT }}
+        s3_website_suffix: ${{ vars.NEBIUS_AWS_WEBSITE_SUFFIX }}
+        s3_key_id: ${{ secrets.NEBIUS_AWS_ACCESS_KEY_ID }}
+        s3_key_secret: ${{ secrets.NEBIUS_AWS_SECRET_ACCESS_KEY }}
         folder_prefix: nebius-
         build_preset: "release"
         user: runner

@@ -47,7 +47,10 @@ private:
             HFunc(TResponse, HandleResponse);
 
             default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET_WORKER,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }

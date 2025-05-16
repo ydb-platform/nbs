@@ -163,6 +163,7 @@ jobs:
 
         shell: bash
         run: |
+          set -x
           # Initialize variables
           build_target_components=""
           test_target_components=""
@@ -194,19 +195,19 @@ jobs:
               if [ "$contains" = "true" ]; then
                   build_target_components="${build_target_components}${build_component},"
                   test_target_components="${test_target_components}${test_component},"
-                  if [ "$should_asan" = "true" ] && [ "$has_asan_label" = "true" ]; then
+                  if [ "$should_asan" = "true" ] && [ "$HAS_ASAN_LABEL" = "true" ]; then
                       build_target_asan="${build_target_asan}${build_component},"
                       test_target_asan="${test_target_asan}${test_component},"
                   fi
-                  if [ "$should_tsan" = "true" ] && [ "$has_tsan_label" = "true" ]; then
+                  if [ "$should_tsan" = "true" ] && [ "$HAS_TSAN_LABEL" = "true" ]; then
                       build_target_tsan="${build_target_tsan}${build_component},"
                       test_target_tsan="${test_target_tsan}${test_component},"
                   fi
-                  if [ "$should_msan" = "true" ] && [ "$has_msan_label" = "true" ]; then
+                  if [ "$should_msan" = "true" ] && [ "$HAS_MSAN_LABEL" = "true" ]; then
                       build_target_msan="${build_target_msan}${build_component},"
                       test_target_msan="${test_target_msan}${test_component},"
                   fi
-                  if [ "$should_ubsan" = "true" ] && [ "$has_ubsan_label" = "true" ]; then
+                  if [ "$should_ubsan" = "true" ] && [ "$HAS_UBSAN_LABEL" = "true" ]; then
                       build_target_ubsan="${build_target_ubsan}${build_component},"
                       test_target_ubsan="${test_target_ubsan}${test_component},"
                   fi
@@ -217,11 +218,11 @@ jobs:
           }
 
           # Add components based on conditions
-          add_components "blockstore" "$contains_blockstore" "cloud/blockstore/apps/" "cloud/blockstore/"
-          add_components "filestore" "$contains_filestore" "cloud/filestore/apps/" "cloud/filestore/"
-          add_components "disk_manager" "$contains_disk_manager" "cloud/disk_manager/" "cloud/disk_manager/"
-          add_components "tasks" "$contains_tasks" "cloud/tasks/" "cloud/tasks/"
-          add_components "storage" "$contains_storage" "cloud/storage/" "cloud/storage/"
+          add_components "blockstore" "$CONTAINS_BLOCKSTORE" "cloud/blockstore/apps/" "cloud/blockstore/"
+          add_components "filestore" "$CONTAINS_FILESTORE" "cloud/filestore/apps/" "cloud/filestore/"
+          add_components "disk_manager" "$CONTAINS_DISK_MANAGER" "cloud/disk_manager/" "cloud/disk_manager/"
+          add_components "tasks" "$CONTAINS_TASKS" "cloud/tasks/" "cloud/tasks/"
+          add_components "storage" "$CONTAINS_STORAGE" "cloud/storage/" "cloud/storage/"
 
           # Remove trailing commas
           build_target_components=${build_target_components%,}
@@ -247,29 +248,29 @@ jobs:
 
           # Output to GitHub environment file
           {
-            echo "build_target=\"$build_target\""
-            echo "build_target_asan=\"$build_target_asan\""
-            echo "build_target_tsan=\"$build_target_tsan\""
-            echo "build_target_msan=\"$build_target_msan\""
-            echo "build_target_ubsan=\"$build_target_ubsan\""
+            echo "build_target=$build_target"
+            echo "build_target_asan=$build_target_asan"
+            echo "build_target_tsan=$build_target_tsan"
+            echo "build_target_msan=$build_target_msan"
+            echo "build_target_ubsan=$build_target_ubsan"
 
-            echo "test_target=\"$test_target\""
-            echo "test_target_asan=\"$test_target_asan\""
-            echo "test_target_tsan=\"$test_target_tsan\""
-            echo "test_target_msan=\"$test_target_msan\""
-            echo "test_target_ubsan=\"$test_target_ubsan\""
-          } >> $GITHUB_OUTPUT
+            echo "test_target=$test_target"
+            echo "test_target_asan=$test_target_asan"
+            echo "test_target_tsan=$test_target_tsan"
+            echo "test_target_msan=$test_target_msan"
+            echo "test_target_ubsan=$test_target_ubsan"
+          } | tee -a "$GITHUB_OUTPUT"
 
         env:
-          contains_blockstore: ${{ contains(github.event.pull_request.labels.*.name, 'blockstore') && 'true' || 'false' }}
-          contains_filestore: ${{ contains(github.event.pull_request.labels.*.name, 'filestore') && 'true' || 'false' }}
-          contains_disk_manager: ${{ contains(github.event.pull_request.labels.*.name, 'disk_manager') && 'true' || 'false' }}
-          contains_tasks: ${{ contains(github.event.pull_request.labels.*.name, 'tasks') && 'true' || 'false' }}
-          contains_storage: ${{ contains(github.event.pull_request.labels.*.name, 'storage') && 'true' || 'false' }}
-          has_asan_label: ${{ contains(github.event.pull_request.labels.*.name, 'asan') && 'true' || 'false' }}
-          has_tsan_label: ${{ contains(github.event.pull_request.labels.*.name, 'tsan') && 'true' || 'false' }}
-          has_msan_label: ${{ contains(github.event.pull_request.labels.*.name, 'msan') && 'true' || 'false' }}
-          has_ubsan_label: ${{ contains(github.event.pull_request.labels.*.name, 'ubsan') && 'true' || 'false' }}
+          CONTAINS_BLOCKSTORE: ${{ contains(github.event.pull_request.labels.*.name, 'blockstore') && 'true' || 'false' }}
+          CONTAINS_FILESTORE: ${{ contains(github.event.pull_request.labels.*.name, 'filestore') && 'true' || 'false' }}
+          CONTAINS_DISK_MANAGER: ${{ contains(github.event.pull_request.labels.*.name, 'disk_manager') && 'true' || 'false' }}
+          CONTAINS_TASKS: ${{ contains(github.event.pull_request.labels.*.name, 'tasks') && 'true' || 'false' }}
+          CONTAINS_STORAGE: ${{ contains(github.event.pull_request.labels.*.name, 'storage') && 'true' || 'false' }}
+          HAS_ASAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'asan') && 'true' || 'false' }}
+          HAS_TSAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'tsan') && 'true' || 'false' }}
+          HAS_MSAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'msan') && 'true' || 'false' }}
+          HAS_UBSAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ubsan') && 'true' || 'false' }}
   build_and_test:
     needs:
       - check-running-allowed
@@ -283,9 +284,9 @@ jobs:
       build_preset: "relwithdebinfo"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
-      run_tests: true
       cache_update_build: false
       cache_update_tests: false
+      number_of_retries: 3
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_asan:
@@ -302,9 +303,9 @@ jobs:
       vm_name_suffix: "-asan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
       cache_update_build: false
       cache_update_tests: false
+      number_of_retries: 1
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_tsan:
@@ -321,9 +322,9 @@ jobs:
       vm_name_suffix: "-tsan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
       cache_update_build: false
       cache_update_tests: false
+      number_of_retries: 1
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_msan:
@@ -340,9 +341,9 @@ jobs:
       vm_name_suffix: "-msan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
       cache_update_build: false
       cache_update_tests: false
+      number_of_retries: 1
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
   build_and_test_ubsan:
@@ -359,8 +360,8 @@ jobs:
       vm_name_suffix: "-ubsan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      run_tests: true
       cache_update_build: false
       cache_update_tests: false
+      number_of_retries: 1
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit

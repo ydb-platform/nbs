@@ -40,13 +40,14 @@ SRCS(
 
     part_nonrepl.cpp
     part_nonrepl_actor.cpp
-    part_nonrepl_actor_checkrange.cpp
     part_nonrepl_actor_base_request.cpp
+    part_nonrepl_actor_checkrange.cpp
     part_nonrepl_actor_checksumblocks.cpp
     part_nonrepl_actor_readblocks.cpp
     part_nonrepl_actor_readblocks_local.cpp
     part_nonrepl_actor_stats.cpp
     part_nonrepl_actor_writeblocks.cpp
+    part_nonrepl_actor_writeblocks_multi_agent.cpp
     part_nonrepl_actor_zeroblocks.cpp
     part_nonrepl_common.cpp
 

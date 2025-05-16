@@ -58,7 +58,10 @@ STFUNC(TDiskRegistryMock::StateWork)
         HFunc(TEvDiskRegistryProxy::TEvSubscribeRequest, HandleSubscribe);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY,
+                __PRETTY_FUNCTION__);
     }
 }
 

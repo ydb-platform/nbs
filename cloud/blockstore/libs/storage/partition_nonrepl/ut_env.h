@@ -481,6 +481,17 @@ public:
         SendRequest(ActorId, std::move(req), ++RequestId);
     }
 
+    void SendAgentIsUnavailable(TString agentId)
+    {
+        NProto::TLaggingAgent laggingAgent;
+        laggingAgent.SetAgentId(std::move(agentId));
+        auto msg =
+            std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
+                std::move(laggingAgent));
+
+        SendRequest(ActorId, std::move(msg), ++RequestId);
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

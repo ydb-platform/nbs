@@ -12,15 +12,17 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteFilesystemTask struct {
-	storage resources.Storage
-	factory nfs.Factory
-	request *protos.DeleteFilesystemRequest
-	state   *protos.DeleteFilesystemTaskState
+	storage   resources.Storage
+	factory   nfs.Factory
+	scheduler tasks.Scheduler
+	request   *protos.DeleteFilesystemRequest
+	state     *protos.DeleteFilesystemTaskState
 }
 
 func (t *deleteFilesystemTask) Save() ([]byte, error) {
@@ -77,9 +79,26 @@ func (t *deleteFilesystemTask) deleteFilesystem(
 	}
 	defer client.Close()
 
-	err = client.Delete(ctx, filesystemID)
-	if err != nil {
-		return err
+	if filesystemMeta.IsExternal {
+		taskID, err := t.scheduler.ScheduleTask(
+			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
+			"filesystem.DeleteExternalFilesystem",
+			"",
+			t.request,
+		)
+		if err != nil {
+			return err
+		}
+
+		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = client.Delete(ctx, filesystemID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return t.storage.FilesystemDeleted(ctx, filesystemID, time.Now())

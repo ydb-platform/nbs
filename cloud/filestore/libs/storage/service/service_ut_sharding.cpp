@@ -625,7 +625,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             TString(1_MB, 'a'));
     }
 
-    SERVICE_TEST_SIMPLE(ShouldCheckAttrForNodeCreatedInShardViaLeader)
+    void DoShouldCheckAttrForNodeCreatedInShardViaLeader(
+        NProto::TStorageConfig& config,
+        TSetNodeAttrArgs newArgs,
+        bool shouldTriggerCriticalEvent)
     {
         TFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
@@ -675,7 +678,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             headers1,
             TCreateNodeArgs::File(RootNodeId, name))->Record.GetNode().GetId();
         UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId));
-        service.SetNodeAttr(headers1, fsConfig.Shard1Id, nodeId, 1_MB);
+        newArgs.Node = nodeId;
+        service.SetNodeAttr(headers1, fsConfig.Shard1Id, newArgs);
 
         const auto counters =
             env.GetCounters()->FindSubgroup("component", "service");
@@ -695,7 +699,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT_VALUES_EQUAL(nodeId, response->Record.GetNode().GetId());
 
-        UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            shouldTriggerCriticalEvent,
+            counter->GetAtomic());
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldCheckAttrForNodeCreatedInShardViaLeader)
+    {
+        // If the size is changed without mtime change, this is not an expected
+        // situation
+        DoShouldCheckAttrForNodeCreatedInShardViaLeader(
+            config,
+            TSetNodeAttrArgs(InvalidNodeId).SetSize(1_MB),
+            true);
+
+        // If the size is changed with mtime change, this is an acceptable
+        // situation and should not trigger the critical event
+        DoShouldCheckAttrForNodeCreatedInShardViaLeader(
+            config,
+            TSetNodeAttrArgs(InvalidNodeId)
+                .SetSize(1_MB)
+                .SetMTime(Max<ui64>()),
+            false);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(

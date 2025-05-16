@@ -21,40 +21,6 @@ using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-///////////////////////////////////////////////////////////////////////////////
-
-TDuration TNonreplicatedPartitionActor::TDeviceStat::WorstRequestTime() const
-{
-    TDuration result;
-    for (ui32 i = ResponseTimes.FirstIndex(); i < ResponseTimes.TotalSize();
-         ++i)
-    {
-        result = Max(result, ResponseTimes[i]);
-    }
-    return result;
-}
-
-TDuration TNonreplicatedPartitionActor::TDeviceStat::GetTimedOutStateDuration(
-    TInstant now) const
-{
-    return FirstTimedOutRequestStartTs ? (now - FirstTimedOutRequestStartTs) : TDuration();
-}
-
-bool TNonreplicatedPartitionActor::TDeviceStat::CooldownPassed(
-    TInstant now,
-    TDuration cooldownTimeout) const
-{
-    switch (DeviceStatus) {
-        case EDeviceStatus::Ok:
-        case EDeviceStatus::Unavailable:
-            return false;
-        case EDeviceStatus::SilentBroken:
-            return BrokenTransitionTs + cooldownTimeout < now;
-        case EDeviceStatus::Broken:
-            return true;
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
@@ -255,18 +221,42 @@ bool TNonreplicatedPartitionActor::InitRequests(
     TRequestTimeoutPolicy* timeoutPolicy,
     TRequestData* requestData)
 {
-    auto reply = [=] (
-        const TActorContext& ctx,
-        const TRequestInfo& requestInfo,
-        NProto::TError error)
+    return InitRequests<
+        typename TMethod::TRequest,
+        typename TMethod::TResponse>(
+        TMethod::Name,
+        IsWriteMethod<TMethod>,
+        msg,
+        ctx,
+        requestInfo,
+        blockRange,
+        deviceRequests,
+        timeoutPolicy,
+        requestData);
+}
+
+template <typename TRequest, typename TResponse>
+bool TNonreplicatedPartitionActor::InitRequests(
+    const char* methodName,
+    const bool isWriteMethod,
+    const TRequest& msg,
+    const NActors::TActorContext& ctx,
+    const TRequestInfo& requestInfo,
+    const TBlockRange64& blockRange,
+    TVector<TDeviceRequest>* deviceRequests,
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequestData* requestData)
+{
+    auto reply = [=](const TActorContext& ctx,
+                     const TRequestInfo& requestInfo,
+                     NProto::TError error)
     {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            std::move(error));
+        auto response = std::make_unique<TResponse>(std::move(error));
 
         LWTRACK(
             ResponseSent_Partition,
             requestInfo.CallContext->LWOrbit,
-            TMethod::Name,
+            methodName,
             requestInfo.CallContext->RequestId);
 
         NCloud::Reply(ctx, requestInfo, std::move(response));
@@ -284,11 +274,10 @@ bool TNonreplicatedPartitionActor::InitRequests(
         reply(
             ctx,
             requestInfo,
-            PartConfig->MakeError(E_ARGUMENT, TStringBuilder()
-                << "invalid block range ["
-                << "index: " << blockRange.Start
-                << ", count: " << blockRange.Size()
-                << "]"));
+            PartConfig->MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "invalid block range " << blockRange.Print()));
         return false;
     }
 
@@ -308,7 +297,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         return false;
     }
 
-    if (IsWriteMethod<TMethod> && PartConfig->IsReadOnly() &&
+    if (isWriteMethod && PartConfig->IsReadOnly() &&
         !msg.Record.GetHeaders().GetIsBackgroundRequest())
     {
         reply(
@@ -418,6 +407,19 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocks
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
     const TEvNonreplPartitionPrivate::TChecksumBlocksMethod::TRequest& msg,
+    const TActorContext& ctx,
+    const TRequestInfo& requestInfo,
+    const TBlockRange64& blockRange,
+    TVector<TDeviceRequest>* deviceRequests,
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequestData* requestData);
+
+template bool TNonreplicatedPartitionActor::InitRequests<
+    TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+    TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
+    const char* methodName,
+    const bool isWriteRequest,
+    const TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest& msg,
     const TActorContext& ctx,
     const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
@@ -668,9 +670,15 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.HandleGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+            HandleMultiAgentWrite);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted,
+            HandleMultiAgentWriteBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
 
         HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, HandleChecksumBlocks);
@@ -695,7 +703,10 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -741,7 +752,10 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

@@ -476,7 +476,10 @@ STFUNC(TFlushBytesActor::StateWork)
         HFunc(TEvIndexTabletPrivate::TEvAddBlobResponse, HandleAddBlobResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -168,12 +168,13 @@ void TIndexTabletState::LoadState(
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
 
-    Impl->ShardBalancer.SetParameters(
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    Impl->ShardBalancer = CreateShardBalancer(
+        config.GetShardBalancerPolicy(),
         GetBlockSize(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
-        config.GetShardBalancerMinFreeSpaceReserve());
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    Impl->ShardBalancer.UpdateShards({shardIds.begin(), shardIds.end()});
+        config.GetShardBalancerMinFreeSpaceReserve(),
+        TVector<TString>(shardIds.begin(), shardIds.end()));
 }
 
 void TIndexTabletState::UpdateConfig(
@@ -190,12 +191,13 @@ void TIndexTabletState::UpdateConfig(
     Impl->RangeIdHasher = CreateHasher(fileSystem);
     Impl->ThrottlingPolicy.Reset(throttlerConfig);
 
-    Impl->ShardBalancer.SetParameters(
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    Impl->ShardBalancer = CreateShardBalancer(
+        config.GetShardBalancerPolicy(),
         GetBlockSize(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
-        config.GetShardBalancerMinFreeSpaceReserve());
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    Impl->ShardBalancer.UpdateShards({shardIds.begin(), shardIds.end()});
+        config.GetShardBalancerMinFreeSpaceReserve(),
+        TVector<TString>(shardIds.begin(), shardIds.end()));
 }
 
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const

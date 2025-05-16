@@ -131,7 +131,10 @@ STFUNC(TGetFileStoreInfoActor::StateWork)
         HFunc(TEvSSProxy::TEvDescribeFileStoreResponse, HandleDescribeFileStoreResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

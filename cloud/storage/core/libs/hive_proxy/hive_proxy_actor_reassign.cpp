@@ -107,7 +107,7 @@ STFUNC(TReassignRequestActor::StateWork)
         HFunc(NKikimr::TEvHive::TEvTabletCreationResult, HandleTabletCreationResult);
 
         default:
-            HandleUnexpectedEvent(ev, LogComponent);
+            HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             break;
     }
 }

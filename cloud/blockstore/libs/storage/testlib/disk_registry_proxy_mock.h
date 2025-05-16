@@ -154,7 +154,10 @@ private:
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY_PROXY,
+                    __PRETTY_FUNCTION__);
         }
     }
 
@@ -322,7 +325,21 @@ private:
             response->Record.SetMuteIOErrors(disk.MuteIOErrors);
         }
 
-       return response;
+        for (const auto& unavailableDeviceUUID: State->UnavailableDeviceUUIDs) {
+            bool belongsToDisk = AnyOf(
+                disk.Devices,
+                [&](const auto& diskDevice)
+                {
+                    return diskDevice.GetDeviceUUID() == unavailableDeviceUUID;
+                });
+
+            if (belongsToDisk) {
+                response->Record.AddUnavailableDeviceUUIDs(
+                    unavailableDeviceUUID);
+            }
+        }
+
+        return response;
     }
 
     void HandleDeallocateDisk(

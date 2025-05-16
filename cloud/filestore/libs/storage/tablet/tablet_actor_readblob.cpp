@@ -308,7 +308,10 @@ STFUNC(TReadBlobActor::StateWork)
         HFunc(TEvBlobStorage::TEvGetResult, HandleGetResult);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

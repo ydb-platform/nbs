@@ -94,7 +94,10 @@ private:
             IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::HIVE_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::HIVE_PROXY,
+                    __PRETTY_FUNCTION__);
         }
     }
 

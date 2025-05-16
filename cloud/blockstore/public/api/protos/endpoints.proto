@@ -97,6 +97,7 @@ message TStartEndpointRequest
     }
 
     // Enable Discard/ZeroBlocks features for vhost device
+    // deprecated
     bool VhostDiscardEnabled = 27;
 }
 
@@ -249,6 +250,7 @@ message TStartProxyEndpointRequest
     // NBD StorageOptions.
     uint32 BlockSize = 4;
     uint64 BlocksCount = 5;
+    uint32 MaxZeroBlocksSubRequestSize = 6;
 }
 
 message TStartProxyEndpointResponse

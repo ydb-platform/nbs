@@ -136,6 +136,7 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
+        ui32 maxZeroBlocksSubRequestSize,
         bool checkBufferModificationDuringWriting,
         bool isReliableMediaKind)
     : Storage(
@@ -146,9 +147,11 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
     , ClientId(std::move(clientId))
     , BlockSize(blockSize)
     , MaxBlockCount(maxSubRequestSize / BlockSize)
+    , MaxBlockCountForZeroBlocksRequest(maxZeroBlocksSubRequestSize / BlockSize)
     , IsReliableMediaKind(isReliableMediaKind)
 {
     Y_ABORT_UNLESS(MaxBlockCount > 0);
+    Y_ABORT_UNLESS(MaxBlockCountForZeroBlocksRequest > 0);
 }
 
 TFuture<NProto::TReadBlocksLocalResponse> TAlignedDeviceHandler::Read(
@@ -409,7 +412,9 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
 {
     Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
 
-    auto requestBlockCount = std::min<ui32>(blocksInfo.Range.Size(), MaxBlockCount);
+    auto requestBlockCount = std::min<ui32>(
+        blocksInfo.Range.Size(),
+        MaxBlockCountForZeroBlocksRequest);
 
     auto request = std::make_shared<NProto::TZeroBlocksRequest>();
     request->MutableHeaders()->SetRequestId(ctx->RequestId);

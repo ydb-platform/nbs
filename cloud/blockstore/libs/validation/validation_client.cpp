@@ -794,7 +794,7 @@ bool TValidationClient::HandleRequest(
     auto diskId = request->GetDiskId();
     response = Client->UnmountVolume(
         std::move(callContext), std::move(request)
-    ).Subscribe([=] (const auto& future) {
+    ).Subscribe([=, this] (const auto& future) {
         if (!IsRequestFailed(future)) {
             UnmountVolume(diskId);
         }
@@ -836,7 +836,7 @@ bool TValidationClient::HandleRequest(
         std::move(callContext), std::move(request)
     );
 
-    response = f.Subscribe([=, blocks_ = std::move(blocks)] (const auto& future) {
+    response = f.Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
         if (!IsRequestFailed(future)) {
             const auto& response = future.GetValue();
 
@@ -898,7 +898,7 @@ bool TValidationClient::HandleRequest(
 
     auto f = Client->ReadBlocksLocal(std::move(callContext), request);
 
-    response = f.Subscribe([=, blocks = std::move(blocks)] (const auto& future) {
+    response = f.Subscribe([=, this, blocks = std::move(blocks)] (const auto& future) {
         if (!IsRequestFailed(future)) {
             auto guard = sgList.Acquire();
 
@@ -972,7 +972,7 @@ bool TValidationClient::HandleRequest(
 
     response = Client->WriteBlocks(
         std::move(callContext), std::move(request)
-    ).Subscribe([=, blocks_ = std::move(blocks)] (const auto& future) {
+    ).Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
         if (!IsRequestFailed(future)) {
             CompleteWrite(*volume, *range, blocks_);
         } else {
@@ -1023,7 +1023,7 @@ bool TValidationClient::HandleRequest(
 
         response = Client->WriteBlocksLocal(
             std::move(callContext), std::move(request)
-        ).Subscribe([=, blocks_ = std::move(blocks)] (const auto& future) {
+        ).Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
             if (!IsRequestFailed(future)) {
                 CompleteWrite(*volume, *range, blocks_);
             } else {
@@ -1071,7 +1071,7 @@ bool TValidationClient::HandleRequest(
 
     response = Client->ZeroBlocks(
         std::move(callContext), std::move(request)
-    ).Subscribe([=] (const auto& future) {
+    ).Subscribe([=, this] (const auto& future) {
         if (!IsRequestFailed(future)) {
             CompleteZero(*volume, *range);
         } else {

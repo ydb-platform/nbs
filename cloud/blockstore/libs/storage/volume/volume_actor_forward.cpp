@@ -137,6 +137,7 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
             ctx,
             ev,
             volumeRequestId,
+            blockRange,
             partitionRequests.front().PartitionId,
             traceTs);
 
@@ -157,6 +158,7 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
         ev,
         TActorId{},
         volumeRequestId,
+        blockRange,
         traceTs,
         false,
         IsWriteMethod<TMethod>);
@@ -184,6 +186,7 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
     const typename TMethod::TRequest::TPtr& ev,
     NActors::TActorId newRecipient,
     ui64 volumeRequestId,
+    TBlockRange64 blockRange,
     ui64 traceTime,
     bool forkTraces,
     bool isMultipartitionWriteOrZero)
@@ -235,6 +238,26 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
         ++MultipartitionWriteAndZeroRequestsInProgress;
     }
 
+    if constexpr (IsReadMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Read,
+            volumeRequestId,
+            blockRange,
+            traceTime);
+    } else if constexpr (IsExactlyWriteMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Write,
+            volumeRequestId,
+            blockRange,
+            traceTime);
+    } else if constexpr (IsZeroMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Zero,
+            volumeRequestId,
+            blockRange,
+            traceTime);
+    }
+
     return newEvent;
 }
 
@@ -243,6 +266,7 @@ void TVolumeActor::SendRequestToPartition(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
+    TBlockRange64 blockRange,
     ui32 partitionId,
     ui64 traceTime)
 {
@@ -269,6 +293,7 @@ void TVolumeActor::SendRequestToPartition(
         ev,
         partActorId,
         volumeRequestId,
+        blockRange,
         traceTime,
         true,
         false);
@@ -408,6 +433,7 @@ bool TVolumeActor::ReplyToOriginalRequest(
     ui64 volumeRequestId,
     std::unique_ptr<typename TMethod::TResponse> response)
 {
+    const bool success = !HasError(response->Record.GetError());
     if constexpr (IsWriteMethod<TMethod>) {
         ReplyToDuplicateRequests(
             ctx,
@@ -448,6 +474,10 @@ bool TVolumeActor::ReplyToOriginalRequest(
     }
 
     VolumeRequests.erase(it);
+    RequestTimeTracker.OnRequestFinished(
+        volumeRequestId,
+        success,
+        GetCycleCount());
 
     return true;
 }
@@ -752,13 +782,14 @@ void TVolumeActor::ForwardRequest(
     /*
      *  Validation of the request blocks range
      */
+    TBlockRange64 blockRange;
     if constexpr (IsReadOrWriteMethod<TMethod>) {
-        const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
-        if (!CheckReadWriteBlockRange(range)) {
+        blockRange = BuildRequestBlockRange(*msg, State->GetBlockSize());
+        if (!CheckReadWriteBlockRange(blockRange)) {
             replyError(MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
-                    << "invalid block range " << DescribeRange(range)));
+                    << "invalid block range " << DescribeRange(blockRange)));
             return;
         }
     }
@@ -784,12 +815,9 @@ void TVolumeActor::ForwardRequest(
      *  to the underlying (storage) layer.
      */
     if constexpr (IsWriteMethod<TMethod>) {
-        const auto range = BuildRequestBlockRange(
-            *msg,
-            State->GetBlockSize());
         auto addResult = WriteAndZeroRequestsInFlight.TryAddRequest(
             volumeRequestId,
-            range);
+            blockRange);
 
         if (!addResult.Added) {
             if (addResult.DuplicateRequestId
@@ -798,7 +826,7 @@ void TVolumeActor::ForwardRequest(
                 replyError(MakeError(E_REJECTED, TStringBuilder()
                     << "Request " << TMethod::Name
                     << " intersects with inflight write or zero request"
-                    << " (block range: " << DescribeRange(range) << ")"));
+                    << " (block range: " << DescribeRange(blockRange) << ")"));
                 return;
             }
 
@@ -839,7 +867,13 @@ void TVolumeActor::ForwardRequest(
     if constexpr (IsCheckpointMethod<TMethod>) {
         HandleCheckpointRequest<TMethod>(ctx, ev, isTraced, now);
     } else if (isSinglePartitionVolume) {
-        SendRequestToPartition<TMethod>(ctx, ev, volumeRequestId, 0, now);
+        SendRequestToPartition<TMethod>(
+            ctx,
+            ev,
+            volumeRequestId,
+            blockRange,
+            0,
+            now);
     } else {
         if (!HandleMultipartitionVolumeRequest<TMethod>(
                 ctx,

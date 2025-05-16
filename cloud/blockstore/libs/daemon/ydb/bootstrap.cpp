@@ -142,7 +142,7 @@ public:
 
     [[nodiscard]] bool IsAlignedDataEnabled() const override
     {
-        return Impl->IsAlignedDataEnabled();
+        return Impl ? Impl->IsAlignedDataEnabled() : false;
     }
 };
 
@@ -190,7 +190,10 @@ private:
             HFunc(TEvents::TEvWakeup, HandleTimeout);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }

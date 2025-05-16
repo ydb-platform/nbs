@@ -730,7 +730,7 @@ STFUNC(TRestoreValidationActor::StateWork)
             HandleGetVolumeInfoResponse)
 
         default:
-            HandleUnexpectedEvent(ev, Component);
+            HandleUnexpectedEvent(ev, Component, __PRETTY_FUNCTION__);
             break;
     }
 }

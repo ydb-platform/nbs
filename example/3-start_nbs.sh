@@ -27,6 +27,7 @@ nbsd \
     --diag-file          nbs/nbs-diag.txt \
     --auth-file          nbs/nbs-auth.txt \
     --dr-proxy-file      nbs/nbs-dr-proxy.txt \
+    --rdma-file          nbs/nbs-rdma.txt \
     --service            kikimr \
     --load-configs-from-cms \
     --profile-file       logs/profile-log.bin \
