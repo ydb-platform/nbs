@@ -316,7 +316,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
                     std::move(checkpointId));
             }
             return MakeFuture<NProto::TReadBlocksLocalResponse>(
-                                TErrorResponse(E_CANCELLED));
+                TErrorResponse(E_CANCELLED));
         });
 }
 

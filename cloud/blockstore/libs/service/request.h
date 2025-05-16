@@ -39,7 +39,7 @@ struct TReadBlocksLocalRequest
 
 struct TReadBlocksLocalResponse: public TReadBlocksResponse
 {
-    TVector<TString> ScanDiskResults;
+    TVector<TString> CheckRangeResult;
 
     TReadBlocksLocalResponse() = default;
 
@@ -55,7 +55,6 @@ struct TWriteBlocksLocalRequest
     TGuardedSgList Sglist;
     ui32 BlocksCount = 0;
     ui32 BlockSize = 0;
-    TVector<TString> CheckRangeResult;
 };
 
 using TWriteBlocksLocalResponse = TWriteBlocksResponse;
