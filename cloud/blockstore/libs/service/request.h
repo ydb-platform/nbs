@@ -47,6 +47,7 @@ struct TReadBlocksLocalResponse: public TReadBlocksResponse
         : TReadBlocksResponse(base)
     {}
 };
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TWriteBlocksLocalRequest
