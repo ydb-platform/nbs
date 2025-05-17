@@ -317,12 +317,13 @@ private:
         bool baseDisk);
 
     void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
+
     bool HandleError(
         const TActorContext& ctx,
         const NProto::TError& error,
         const TBatchRequest& batch);
 
-    bool HandleErrorFromDescribeVolume(
+    bool HandleError(
         const TActorContext& ctx,
         const NProto::TError& error);
 
@@ -508,7 +509,7 @@ bool TReadBlocksActor::HandleError(
         if (ReportBlobIdsOnFailure and ReplyLocal) {
             FailedBlobs.emplace_back(batch.BlobId.ToString());
 
-            // scan disk should try to read all the data and report broken blobs
+            // check range should try to read all the data and report broken blobs
             if (RequestsCompleted < RequestsScheduled || WaitBaseDiskRequests) {
                 return false;
             }
@@ -523,19 +524,16 @@ bool TReadBlocksActor::HandleError(
     return false;
 }
 
-bool TReadBlocksActor::HandleErrorFromDescribeVolume(
+bool TReadBlocksActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
     if (FAILED(error.GetCode())) {
-        if (ReportBlobIdsOnFailure) {
-            FailedBlobs.emplace_back("base disk describe");
-        }
-        auto response =
-            CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
+        auto response = CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
         ReplyAndDie(ctx, std::move(response), error);
         return true;
     }
+
     return false;
 }
 
@@ -639,7 +637,7 @@ void TReadBlocksActor::HandleDescribeBlocksCompleted(
 
     WaitBaseDiskRequests = false;
 
-    if (HandleErrorFromDescribeVolume(ctx, error)) {
+    if (HandleError(ctx, error)) {
         return;
     }
 

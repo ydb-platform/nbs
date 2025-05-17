@@ -473,7 +473,6 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 
         {
             auto res = ReadBlocks(session, blockSize);
-
             // res is not a protobuf message based, so it cannot be serialized
             // and printed via Out<>
             const auto& baseRes = static_cast<
