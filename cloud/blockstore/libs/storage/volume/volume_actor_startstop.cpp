@@ -415,8 +415,6 @@ void TVolumeActor::HandleGracefulShutdown(
     TerminateTransactions(ctx);
     KillActors(ctx);
     CancelRequests(ctx);
-
-    BecomeAux(ctx, STATE_ZOMBIE);
 }
 
 void TVolumeActor::StopPartitions(
