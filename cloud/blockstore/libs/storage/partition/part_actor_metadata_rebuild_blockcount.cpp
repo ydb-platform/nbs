@@ -315,7 +315,9 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
         gen,
         step);
 
-    AddTransaction<TEvPartitionPrivate::TMetadataRebuildBlockCountMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TMetadataRebuildBlockCountMethod>(
+        *requestInfo,
+        ETransactionType::RebuildBlockCount);
 
     ExecuteTx(ctx, CreateTx<TMetadataRebuildBlockCount>(
         requestInfo,

@@ -655,7 +655,9 @@ void TPartitionActor::HandleAddBlobs(
         "AddBlobs",
         requestInfo->CallContext->RequestId);
 
-    AddTransaction<TEvPartitionPrivate::TAddBlobsMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TAddBlobsMethod>(
+        *requestInfo,
+        ETransactionType::AddBlobs);
 
     ExecuteTx<TAddBlobs>(
         ctx,

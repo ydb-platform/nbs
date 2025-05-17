@@ -496,7 +496,10 @@ void TPartitionActor::WriteFreshBlocks(
                 DescribeRange(r.Data.Range).data()
             );
 
-            AddTransaction(*r.Data.RequestInfo, r.Data.RequestInfo->CancelRoutine);
+            AddTransaction(
+                *r.Data.RequestInfo,
+                ETransactionType::WriteFreshBlocks,
+                r.Data.RequestInfo->CancelRoutine);
 
             subRequests.emplace_back(
                 std::move(r.Data.RequestInfo),

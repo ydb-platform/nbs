@@ -176,6 +176,8 @@ void DumpTabletNotReady(IOutputStream& out);
 void BuildVolumeTabs(IOutputStream& out);
 void DumpTraceLog(IOutputStream& out, const TVector<ITraceReaderPtr>& Readers);
 
+void DumpLatency(IOutputStream& out, ui64 tabletId);
+
 TCgiParameters GatherHttpParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
 TCgiParameters GetHttpMethodParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
 HTTP_METHOD GetHttpMethodType(const NActors::NMon::TEvRemoteHttpInfo& msg);

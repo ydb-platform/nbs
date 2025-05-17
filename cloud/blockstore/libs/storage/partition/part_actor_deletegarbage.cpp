@@ -32,7 +32,9 @@ void TPartitionActor::HandleDeleteGarbage(
         "DeleteGarbage",
         requestInfo->CallContext->RequestId);
 
-    AddTransaction<TEvPartitionPrivate::TDeleteGarbageMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TDeleteGarbageMethod>(
+        *requestInfo,
+        ETransactionType::DeleteGarbage);
 
     ExecuteTx<TDeleteGarbage>(
         ctx,

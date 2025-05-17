@@ -944,7 +944,10 @@ void TPartitionActor::ReadBlocks(
         commitId,
         DescribeRange(readRange).data());
 
-    AddTransaction(*requestInfo, requestInfo->CancelRoutine);
+    AddTransaction(
+        *requestInfo,
+        ETransactionType::ReadBlocks,
+        requestInfo->CancelRoutine);
 
     ExecuteTx<TReadBlocks>(
         ctx,
