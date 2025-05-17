@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -320,7 +321,17 @@ void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 
     if (!Executor()->GetStats().IsFollower) {
-        ExecuteTx<TInitSchema>(ctx, PartitionConfig.GetBlocksCount());
+        auto requestInfo = CreateRequestInfo(
+            NActors::TActorId(),
+            CreateRequestId(),
+            MakeIntrusive<TCallContext>());
+
+        AddTransaction(
+            *requestInfo,
+            ETransactionType::InitSchema,
+            [](const NActors::TActorContext&, TRequestInfo&) {});
+
+        ExecuteTx<TInitSchema>(ctx, requestInfo, PartitionConfig.GetBlocksCount());
     }
 }
 
@@ -359,19 +370,25 @@ void TPartitionActor::KillActors(const TActorContext& ctx)
 }
 
 void TPartitionActor::AddTransaction(
-    TRequestInfo& transaction,
+    TRequestInfo& requestInfo,
+    ETransactionType transactionType,
     TRequestInfo::TCancelRoutine cancelRoutine)
 {
-    transaction.CancelRoutine = cancelRoutine;
+    requestInfo.CancelRoutine = cancelRoutine;
 
-    transaction.Ref();
+    requestInfo.Ref();
 
     STORAGE_VERIFY(
-        transaction.Empty(),
+        requestInfo.Empty(),
         TWellKnownEntityTypes::TABLET,
         TabletID());
 
-    ActiveTransactions.PushBack(&transaction);
+    ActiveTransactions.PushBack(&requestInfo);
+
+    TransactionTimeTracker.OnStarted(
+        transactionType,
+        requestInfo.Cookie,
+        GetCycleCount());
 }
 
 void TPartitionActor::RemoveTransaction(TRequestInfo& requestInfo)
@@ -380,6 +397,8 @@ void TPartitionActor::RemoveTransaction(TRequestInfo& requestInfo)
         !requestInfo.Empty(),
         TWellKnownEntityTypes::TABLET,
         TabletID());
+
+    TransactionTimeTracker.OnFinished(requestInfo.Cookie, GetCycleCount());
 
     requestInfo.Unlink();
 

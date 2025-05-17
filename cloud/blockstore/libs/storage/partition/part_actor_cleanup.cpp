@@ -174,7 +174,9 @@ void TPartitionActor::HandleCleanup(
 
     State->GetCleanupState().SetStatus(EOperationStatus::Started);
 
-    AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TCleanupMethod>(
+        *requestInfo,
+        ETransactionType::Cleanup);
 
     ExecuteTx<TCleanup>(
         ctx,
