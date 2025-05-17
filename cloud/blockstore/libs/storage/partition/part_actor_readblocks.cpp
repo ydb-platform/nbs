@@ -163,10 +163,16 @@ IEventBasePtr CreateReadBlocksResponse(
 
 IEventBasePtr CreateReadBlocksResponse(
     bool replyLocal,
-    const NProto::TError& error)
+    const NProto::TError& error,
+    TVector<TString> failedBlobs)
 {
     if (replyLocal) {
-        return std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
+        auto response =
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
+        for (ui32 i = 0; i < failedBlobs.size(); ++i) {
+            response->Record.FailedBlobs.push_back(failedBlobs[i]);
+        }
+        return response;
     } else {
         return std::make_unique<TEvService::TEvReadBlocksResponse>(error);
     }
@@ -268,6 +274,7 @@ private:
     const TBlockRange32 ReadRange;
     const bool ReplyLocal;
     const bool ChecksumsEnabled;
+    const bool ReportBlobIdsOnFailure;
 
     const ui64 CommitId;
 
@@ -282,6 +289,8 @@ private:
 
     bool WaitBaseDiskRequests = false;
 
+    TVector<TString> FailedBlobs;
+
 public:
     TReadBlocksActor(
         TRequestInfoPtr requestInfo,
@@ -293,6 +302,7 @@ public:
         const TBlockRange32& readRange,
         bool replyLocal,
         bool checksumsEnabled,
+        bool reportBlobIdsOnFailure,
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
@@ -307,7 +317,15 @@ private:
         bool baseDisk);
 
     void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
-    bool HandleError(const TActorContext& ctx, const NProto::TError& error);
+
+    bool HandleError(
+        const TActorContext& ctx,
+        const NProto::TError& error,
+        const TBatchRequest& batch);
+
+    bool HandleError(
+        const TActorContext& ctx,
+        const NProto::TError& error);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -347,6 +365,7 @@ TReadBlocksActor::TReadBlocksActor(
         const TBlockRange32& readRange,
         bool replyLocal,
         bool checksumsEnabled,
+        bool reportBlobIdsOnFailure,
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
@@ -360,6 +379,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReadRange(readRange)
     , ReplyLocal(replyLocal)
     , ChecksumsEnabled(checksumsEnabled)
+    , ReportBlobIdsOnFailure(reportBlobIdsOnFailure)
     , CommitId(commitId)
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
@@ -482,10 +502,34 @@ void TReadBlocksActor::NotifyCompleted(
 
 bool TReadBlocksActor::HandleError(
     const TActorContext& ctx,
+    const NProto::TError& error,
+    const TBatchRequest& batch)
+{
+    if (FAILED(error.GetCode())) {
+        if (ReportBlobIdsOnFailure and ReplyLocal) {
+            FailedBlobs.emplace_back(batch.BlobId.ToString());
+
+            // check range should try to read all the data and report broken blobs
+            if (RequestsCompleted < RequestsScheduled || WaitBaseDiskRequests) {
+                return false;
+            }
+        }
+
+        auto response =
+            CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
+        ReplyAndDie(ctx, std::move(response), error);
+        return true;
+    }
+
+    return false;
+}
+
+bool TReadBlocksActor::HandleError(
+    const TActorContext& ctx,
     const NProto::TError& error)
 {
     if (FAILED(error.GetCode())) {
-        auto response = CreateReadBlocksResponse(ReplyLocal, error);
+        auto response = CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
         ReplyAndDie(ctx, std::move(response), error);
         return true;
     }
@@ -527,7 +571,7 @@ bool TReadBlocksActor::VerifyChecksums(
             batch.Checksums[i]);
 
         if (HasError(error)) {
-            HandleError(ctx, error);
+            HandleError(ctx, error, batch);
             return false;
         }
     }
@@ -545,22 +589,22 @@ void TReadBlocksActor::HandleReadBlobResponse(
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
 
+    ui32 batchIndex = ev->Cookie;
+    auto& batch = BatchRequests[batchIndex];
+    Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
+
+    RequestsCompleted += batch.Requests.size();
+    Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
+
     const auto& error = msg->GetError();
-    if (HandleError(ctx, error)) {
+    if (HandleError(ctx, error, batch)) {
         return;
     }
-
-    ui32 batchIndex = ev->Cookie;
-
-    Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
-    auto& batch = BatchRequests[batchIndex];
 
     if (!VerifyChecksums(ctx, msg->BlockChecksums, batch)) {
         return;
     }
 
-    RequestsCompleted += batch.Requests.size();
-    Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
     if (RequestsCompleted < RequestsScheduled) {
         return;
     }
@@ -591,11 +635,11 @@ void TReadBlocksActor::HandleDescribeBlocksCompleted(
     auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
+    WaitBaseDiskRequests = false;
+
     if (HandleError(ctx, error)) {
         return;
     }
-
-    WaitBaseDiskRequests = false;
 
     TReadBlocksRequests requests;
     for (auto&& blockMark: std::move(msg->BlockMarks)) {
@@ -645,7 +689,7 @@ void TReadBlocksActor::HandlePoisonPill(
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
-    auto response = CreateReadBlocksResponse(ReplyLocal, error);
+    auto response = CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
     ReplyAndDie(ctx, std::move(response), error);
 }
 
@@ -808,21 +852,30 @@ void TPartitionActor::HandleReadBlocks(
     const TEvService::TEvReadBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    HandleReadBlocksRequest<TEvService::TReadBlocksMethod>(ev, ctx, false);
+    HandleReadBlocksRequest<TEvService::TReadBlocksMethod>(
+        ev,
+        ctx,
+        false,
+        false);
 }
 
 void TPartitionActor::HandleReadBlocksLocal(
     const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    HandleReadBlocksRequest<TEvService::TReadBlocksLocalMethod>(ev, ctx, true);
+    HandleReadBlocksRequest<TEvService::TReadBlocksLocalMethod>(
+        ev,
+        ctx,
+        true,
+        ev->Get()->Record.ShouldReportBlobIdsOnFailure);
 }
 
 template <typename TMethod>
 void TPartitionActor::HandleReadBlocksRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx,
-    bool replyLocal)
+    bool replyLocal,
+    bool shouldReportBlobIdsOnFailure)
 {
     auto* msg = ev->Get();
 
@@ -889,7 +942,8 @@ void TPartitionActor::HandleReadBlocksRequest(
         commitId,
         ConvertRangeSafe(readRange),
         std::move(readHandler),
-        replyLocal);
+        replyLocal,
+        shouldReportBlobIdsOnFailure);
 }
 
 TMaybe<ui64> TPartitionActor::VerifyReadBlocksCheckpoint(
@@ -911,7 +965,8 @@ TMaybe<ui64> TPartitionActor::VerifyReadBlocksCheckpoint(
                     E_NOT_FOUND,
                     TStringBuilder()
                         << "checkpoint not found: " << checkpointId.Quote(),
-                    flags));
+                    flags),
+                    {});
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -933,7 +988,8 @@ void TPartitionActor::ReadBlocks(
     ui64 commitId,
     const TBlockRange32& readRange,
     IReadBlocksHandlerPtr readHandler,
-    bool replyLocal)
+    bool replyLocal,
+    bool shouldReportBlobIdsOnFailure)
 {
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
@@ -952,7 +1008,8 @@ void TPartitionActor::ReadBlocks(
         commitId,
         readRange,
         std::move(readHandler),
-        replyLocal);
+        replyLocal,
+        shouldReportBlobIdsOnFailure);
 }
 
 void TPartitionActor::HandleReadBlocksCompleted(
@@ -1071,7 +1128,8 @@ void TPartitionActor::CompleteReadBlocks(
             flags);
         auto response = CreateReadBlocksResponse(
             args.ReplyLocal,
-            std::move(error));
+            error,
+            {});
 
         LWTRACK(
             ResponseSent_Partition,
@@ -1142,6 +1200,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReadRange,
             args.ReplyLocal,
             args.ChecksumsEnabled,
+            args.ShouldReportBlobIdsOnFailure,
             args.CommitId,
             std::move(requests),
             std::move(args.BlockInfos),

@@ -34,9 +34,19 @@ struct TReadBlocksLocalRequest
     TGuardedSgList Sglist;
     ui64 CommitId = 0;
     ui32 BlockSize = 0;
+    bool ShouldReportBlobIdsOnFailure = false;
 };
 
-using TReadBlocksLocalResponse = TReadBlocksResponse;
+struct TReadBlocksLocalResponse: public TReadBlocksResponse
+{
+    TVector<TString> FailedBlobs;
+
+    TReadBlocksLocalResponse() = default;
+
+    explicit TReadBlocksLocalResponse(const TReadBlocksResponse& base)
+        : TReadBlocksResponse(base)
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

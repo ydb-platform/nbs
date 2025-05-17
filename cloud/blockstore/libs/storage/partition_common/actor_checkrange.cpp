@@ -1,6 +1,7 @@
 #include "actor_checkrange.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
@@ -52,6 +53,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
     request->Record.Sglist = SgList;
+    request->Record.ShouldReportBlobIdsOnFailure = true;
 
     auto* headers = request->Record.MutableHeaders();
 
@@ -121,7 +123,24 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             ctx,
             TBlockStoreComponents::PARTITION,
             "reading error has occurred: " << FormatError(error));
-        response->Record.MutableStatus()->CopyFrom(error);
+
+        auto* status = response->Record.MutableStatus();
+        status->CopyFrom(error);
+
+        if (!msg->Record.FailedBlobs.empty()) {
+            TStringBuilder builder;
+            builder << "\n Broken blobs: [";
+
+            for (size_t i = 0; i < msg->Record.FailedBlobs.size(); ++i) {
+                if (i > 0) {
+                    builder << ", ";
+                }
+                builder << msg->Record.FailedBlobs[i];
+            }
+
+            builder << "]";
+            status->MutableMessage()->append(builder);
+        }
     } else {
         if (Request.GetCalculateChecksums()) {
             TBlockChecksum blockChecksum;

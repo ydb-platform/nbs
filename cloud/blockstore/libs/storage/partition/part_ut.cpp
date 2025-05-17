@@ -12471,6 +12471,73 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
+
+    Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
+    {
+        constexpr ui32 blockCount = 1024;
+
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(100_KB);
+        auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        {
+            const auto blockRange = TBlockRange32::WithLength(0, 512);
+            partition.WriteBlocks(blockRange, 1);
+        }
+
+        {
+            const auto blockRange = TBlockRange32::WithLength(512, 512);
+            partition.WriteBlocks(blockRange, 1);
+        }
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest: {
+                        auto response = std::make_unique<
+                            TEvPartitionCommonPrivate::TEvReadBlobResponse>(
+                            MakeError(E_IO, "Simulated blob read failure"));
+
+                        runtime->Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+
+                        return TTestActorRuntime::EEventAction::DROP;
+
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TGuardedBuffer<TString> Buffer = TGuardedBuffer(
+            TString::Uninitialized(blockCount * DefaultBlockSize));
+        auto sgList = Buffer.GetGuardedSgList();
+        auto sgListOrError =
+            SgListNormalize(sgList.Acquire().Get(), DefaultBlockSize);
+
+        UNIT_ASSERT(!HasError(sgListOrError));
+
+        auto request = partition.CreateReadBlocksLocalRequest(
+            TBlockRange32::WithLength(0, blockCount),
+            sgListOrError.ExtractResult());
+
+        request->Record.ShouldReportBlobIdsOnFailure = true;
+
+        partition.SendToPipe(std::move(request));
+
+        auto response = partition.RecvReadBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_UNEQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(response->Record.FailedBlobs.size(), 2);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
