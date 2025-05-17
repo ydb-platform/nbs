@@ -77,11 +77,12 @@ struct TTxPartition
 
     struct TInitSchema
     {
-        ui64 BlocksCount;
         const TRequestInfoPtr RequestInfo;
+        ui64 BlocksCount;
 
-        explicit TInitSchema(ui64 blocksCount)
-            : BlocksCount(blocksCount)
+        TInitSchema(TRequestInfoPtr requestInfo, ui64 blocksCount)
+            : RequestInfo(std::move(requestInfo))
+            , BlocksCount(blocksCount)
         {}
 
         void Clear()
@@ -112,8 +113,9 @@ struct TTxPartition
         TVector<TPartialBlobId> GarbageBlobs;
         TCommitIdToBlobsToConfirm UnconfirmedBlobs;
 
-        explicit TLoadState(ui64 blocksCount)
-            : UsedBlocks(blocksCount)
+        TLoadState(TRequestInfoPtr requestInfo, ui64 blocksCount)
+            : RequestInfo(std::move(requestInfo))
+            , UsedBlocks(blocksCount)
             , LogicalUsedBlocks(blocksCount)
         {}
 
@@ -1099,8 +1101,11 @@ struct TTxPartition
 
         ui64 UpdatedToIdx = 0;
 
-        TUpdateLogicalUsedBlocks(ui32 updateFromIdx)
-            : UpdateFromIdx(updateFromIdx)
+        TUpdateLogicalUsedBlocks(
+                TRequestInfoPtr requestInfo,
+                ui32 updateFromIdx)
+            : RequestInfo(std::move(requestInfo))
+            , UpdateFromIdx(updateFromIdx)
         {}
 
         void Clear()
@@ -1145,9 +1150,11 @@ struct TTxPartition
         TVector<TPartialBlobId> UnrecoverableBlobs;
 
         TConfirmBlobs(
+                TRequestInfoPtr requestInfo,
                 ui64 startCycleCount,
                 TVector<TPartialBlobId> unrecoverableBlobs)
-            : StartCycleCount(startCycleCount)
+            : RequestInfo(std::move(requestInfo))
+            , StartCycleCount(startCycleCount)
             , UnrecoverableBlobs(std::move(unrecoverableBlobs))
         {}
 

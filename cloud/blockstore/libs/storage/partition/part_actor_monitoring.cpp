@@ -391,7 +391,8 @@ void TPartitionActor::HandleHttpInfo(
     static const THttpHandlers getActions {{
         {"check",             &TPartitionActor::HandleHttpInfo_Check          },
         {"describe",          &TPartitionActor::HandleHttpInfo_Describe       },
-        {"view",              &TPartitionActor::HandleHttpInfo_View           }
+        {"view",              &TPartitionActor::HandleHttpInfo_View           },
+        {"getLatency",        &TPartitionActor::HandleHttpInfo_RenderLatency  },
     }};
 
     const auto* msg = ev->Get();
@@ -648,6 +649,10 @@ void TPartitionActor::HandleHttpInfo_Default(
                         *Info(),
                         *DiagnosticsConfig,
                         GetHiveTabletId(Config, ctx));
+                }
+
+                DIV_CLASS_ID("tab-pane", "Latency") {
+                    DumpLatency(out, Info()->TabletID);
                 }
 
                 DIV_CLASS_ID("tab-pane", "Index") {

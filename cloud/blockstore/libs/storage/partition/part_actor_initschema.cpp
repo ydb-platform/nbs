@@ -1,5 +1,7 @@
 #include "part_actor.h"
 
+#include <cloud/blockstore/libs/service/request_helpers.h>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
@@ -46,7 +48,19 @@ void TPartitionActor::CompleteInitSchema(
         TabletID(),
         PartitionConfig.GetDiskId().c_str());
 
-    ExecuteTx<TLoadState>(ctx, args.BlocksCount);
+    auto requestInfo = CreateRequestInfo(
+        NActors::TActorId(),
+        CreateRequestId(),
+        MakeIntrusive<TCallContext>());
+
+    AddTransaction(
+        *requestInfo,
+        ETransactionType::LoadState,
+        [](const NActors::TActorContext&, TRequestInfo&) {});
+
+    ExecuteTx<TLoadState>(ctx, requestInfo, args.BlocksCount);
+
+    RemoveTransaction(*args.RequestInfo);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

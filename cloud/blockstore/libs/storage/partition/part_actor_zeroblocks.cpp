@@ -293,7 +293,9 @@ void TPartitionActor::HandleZeroBlocks(
         GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
     if (requestSize < writeBlobThreshold) {
         // small writes will be accumulated in FreshBlocks table
-        AddTransaction<TEvService::TZeroBlocksMethod>(*requestInfo);
+        AddTransaction<TEvService::TZeroBlocksMethod>(
+            *requestInfo,
+            ETransactionType::ZeroBlocks);
 
         auto tx = CreateTx<TZeroBlocks>(
             requestInfo,

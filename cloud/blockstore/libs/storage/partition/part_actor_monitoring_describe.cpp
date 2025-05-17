@@ -260,6 +260,7 @@ void TPartitionActor::CompleteDescribeRange(
     GenerateBlobviewJS(out);
 
     SendHttpResponse(ctx, *args.RequestInfo, std::move(out.Str()));
+    RemoveTransaction(*args.RequestInfo);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -343,6 +344,7 @@ void TPartitionActor::CompleteDescribeBlob(
     GenerateBlobviewJS(out);
 
     SendHttpResponse(ctx, *args.RequestInfo, std::move(out.Str()));
+    RemoveTransaction(*args.RequestInfo);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -355,6 +357,11 @@ void TPartitionActor::HandleHttpInfo_Describe(
     if (const auto& range = params.Get("range")) {
         TBlockRange32 blockRange;
         if (TBlockRange32::TryParse(range, blockRange)) {
+            AddTransaction(
+                *requestInfo,
+                ETransactionType::DescribeRange,
+                [](const NActors::TActorContext&, TRequestInfo&) {});
+
             ExecuteTx<TDescribeRange>(
                 ctx,
                 std::move(requestInfo),
@@ -374,6 +381,11 @@ void TPartitionActor::HandleHttpInfo_Describe(
         TLogoBlobID blobId;
         TString errorExplanation;
         if (TLogoBlobID::Parse(blobId, blob, errorExplanation)) {
+            AddTransaction(
+                *requestInfo,
+                ETransactionType::DescribeBlob,
+                [](const NActors::TActorContext&, TRequestInfo&) {});
+
             ExecuteTx<TDescribeBlob>(
                 ctx,
                 std::move(requestInfo),

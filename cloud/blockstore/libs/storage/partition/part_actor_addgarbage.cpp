@@ -36,7 +36,9 @@ void TPartitionActor::HandleAddGarbage(
         "AddGarbage",
         requestInfo->CallContext->RequestId);
 
-    AddTransaction<TEvPartitionPrivate::TAddGarbageMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TAddGarbageMethod>(
+        *requestInfo,
+        ETransactionType::AddGarbage);
 
     ExecuteTx<TAddGarbage>(
         ctx,

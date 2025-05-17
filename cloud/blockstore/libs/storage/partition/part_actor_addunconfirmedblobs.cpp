@@ -23,7 +23,6 @@ void TPartitionActor::HandleAddUnconfirmedBlobs(
 {
     auto* msg = ev->Get();
 
-    using TMethod = TEvPartitionPrivate::TAddUnconfirmedBlobsMethod;
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -37,7 +36,9 @@ void TPartitionActor::HandleAddUnconfirmedBlobs(
         "AddUnconfirmedBlobs",
         requestInfo->CallContext->RequestId);
 
-    AddTransaction<TMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TAddUnconfirmedBlobsMethod>(
+        *requestInfo,
+        ETransactionType::AddUnconfirmedBlobs);
 
     ExecuteTx<TAddUnconfirmedBlobs>(
         ctx,

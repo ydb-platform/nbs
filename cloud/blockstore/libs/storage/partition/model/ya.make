@@ -4,14 +4,15 @@ LIBRARY()
 
 GENERATE_ENUM_SERIALIZATION(mixed_index_cache.h)
 GENERATE_ENUM_SERIALIZATION(operation_status.h)
+GENERATE_ENUM_SERIALIZATION(transaction_time_tracker.h)
 
 SRCS(
     barrier.cpp
     blob_index.cpp
     blob_to_confirm.cpp
-    block.cpp
     block_index.cpp
     block_mask.cpp
+    block.cpp
     checkpoint.cpp
     cleanup_queue.cpp
     commit_queue.cpp
@@ -19,6 +20,7 @@ SRCS(
     garbage_queue.cpp
     mixed_index_cache.cpp
     operation_status.cpp
+    transaction_time_tracker.cpp
 )
 
 PEERDIR(

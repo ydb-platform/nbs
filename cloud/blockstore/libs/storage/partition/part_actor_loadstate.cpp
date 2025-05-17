@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
@@ -260,6 +261,8 @@ void TPartitionActor::CompleteLoadState(
     State->InitUnconfirmedBlobs(std::move(args.UnconfirmedBlobs));
 
     FinalizeLoadState(ctx);
+
+    RemoveTransaction(*args.RequestInfo);
 }
 
 void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
@@ -313,7 +316,17 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
         State->GetLogicalUsedBlocks().Count()
     );
 
-    ExecuteTx<TUpdateLogicalUsedBlocks>(ctx, 0);
+    auto requestInfo = CreateRequestInfo(
+        NActors::TActorId(),
+        CreateRequestId(),
+        MakeIntrusive<TCallContext>());
+
+    AddTransaction(
+        *requestInfo,
+        ETransactionType::UpdateLogicalUsedBlocks,
+        [](const NActors::TActorContext&, TRequestInfo&) {});
+
+    ExecuteTx<TUpdateLogicalUsedBlocks>(ctx, requestInfo, 0);
 }
 
 bool TPartitionActor::PrepareUpdateLogicalUsedBlocks(
@@ -360,8 +373,22 @@ void TPartitionActor::CompleteUpdateLogicalUsedBlocks(
     if (args.UpdatedToIdx == State->GetLogicalUsedBlocks().Capacity()) {
         FinalizeLoadState(ctx);
     } else {
-        ExecuteTx<TUpdateLogicalUsedBlocks>(ctx, args.UpdatedToIdx);
+        auto requestInfo = CreateRequestInfo(
+            NActors::TActorId(),
+            CreateRequestId(),
+            MakeIntrusive<TCallContext>());
+
+        AddTransaction(
+            *requestInfo,
+            ETransactionType::UpdateLogicalUsedBlocks,
+            [](const NActors::TActorContext&, TRequestInfo&) {});
+
+        ExecuteTx<TUpdateLogicalUsedBlocks>(
+            ctx,
+            requestInfo,
+            args.UpdatedToIdx);
     }
+    RemoveTransaction(*args.RequestInfo);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

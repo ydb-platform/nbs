@@ -430,7 +430,9 @@ void TPartitionActor::HandleGetChangedBlocks(
         highCommitId,
         DescribeRange(readRange).data());
 
-    AddTransaction<TEvService::TGetChangedBlocksMethod>(*requestInfo);
+    AddTransaction<TEvService::TGetChangedBlocksMethod>(
+        *requestInfo,
+        ETransactionType::GetChangedBlocks);
 
     ExecuteTx<TGetChangedBlocks>(
         ctx,

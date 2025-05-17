@@ -1425,7 +1425,9 @@ void TPartitionActor::HandleCompaction(
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
-    AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TCompactionMethod>(
+        *requestInfo,
+        ETransactionType::Compaction);
 
     auto tx = CreateTx<TCompaction>(
         requestInfo,
