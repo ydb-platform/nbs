@@ -51,9 +51,9 @@ struct TRequestBuilder
     TRequestBuilder() = default;
 
     TRequestBuilder(
-        ui32 startIndex,
-        ui32 remainingBlocks,
-        ui32 blocksPerRequest)
+            ui32 startIndex,
+            ui32 remainingBlocks,
+            ui32 blocksPerRequest)
         : StartIndex(startIndex)
         , RemainingBlocks(remainingBlocks)
         , BlocksPerRequest(blocksPerRequest)
@@ -67,9 +67,8 @@ struct TRequestBuilder
 
         ui32 blocksInThisRequest = std::min(RemainingBlocks, BlocksPerRequest);
 
-        TBlockRange64 range = TBlockRange64::MakeHalfOpenInterval(
-            StartIndex,
-            StartIndex + blocksInThisRequest);
+        TBlockRange64 range =
+            TBlockRange64::WithLength(StartIndex, blocksInThisRequest);
 
         RemainingBlocks -= blocksInThisRequest;
         StartIndex += blocksInThisRequest;
