@@ -15,33 +15,35 @@ namespace NCloud::NBlockStore::NStorage {
 
 enum class ETransactionType
 {
+    ReadBlocks,
+    WriteFreshBlocks,
+    AddBlobs,
+    DescribeBlocks,
+    AddGarbage,
+    CollectGarbage,
+    DeleteGarbage,
+    Cleanup,
+    Compaction,
+
     InitSchema,
     LoadState,
-    AddBlobs,
-    AddGarbage,
     AddUnconfirmedBlobs,
     ConfirmBlobs,
-    Cleanup,
-    CollectGarbage,
-    Compaction,
     CreateCheckpoint,
     DeleteCheckpoint,
-    DeleteGarbage,
-    DescribeBlocks,
-    GetChangedBlocks,
     GetUsedBlocks,
     RebuildBlockCount,
     RebuildUsedBlocks,
-    ReadBlocks,
+
+    GetChangedBlocks,
     ScanDiskBatch,
-    WriteFreshBlocks,
     ZeroBlocks,
     UpdateLogicalUsedBlocks,
     CheckIndex,
     DescribeRange,
     DescribeBlob,
 
-    Total,
+    Total,   // Last value to show.
     None,
 };
 
