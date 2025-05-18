@@ -441,6 +441,26 @@ void OutputClientInfo(
     }
 }
 
+void RenderTextWithTooltip(
+    IOutputStream& out,
+    const TString& text,
+    const TString& tooltip)
+{
+    HTML(out)
+    {
+        DIV_CLASS("tooltip-latency")
+        {
+            out << text;
+            if (tooltip) {
+                SPAN_CLASS("tooltiptext-latency")
+                {
+                    out << tooltip;
+                }
+            }
+        }
+    }
+}
+
 void RenderLatencyTable(IOutputStream& out, const TString& parentId)
 {
     HTML (out) {
@@ -468,17 +488,7 @@ void RenderLatencyTable(IOutputStream& out, const TString& parentId)
             {
                 TABLER () {
                     TABLED () {
-                        DIV_CLASS("tooltip-latency")
-                        {
-                            out << descr;
-
-                            if (tooltip) {
-                                SPAN_CLASS("tooltiptext-latency")
-                                {
-                                    out << tooltip;
-                                }
-                            }
-                        }
+                        RenderTextWithTooltip(out, descr, tooltip);
                     }
                     TABLED_ATTRS({{"id", parentId + "_ok_" + key}})
                     {}
@@ -492,10 +502,73 @@ void RenderLatencyTable(IOutputStream& out, const TString& parentId)
     }
 }
 
+void RenderPercentilesTable(IOutputStream& out, const TString& parentId)
+{
+    HTML (out) {
+        TABLE_CLASS("table-latency")
+        {
+            TABLEHEAD()
+            {
+                TABLER()
+                {
+                    TABLEH()
+                    {
+                        RenderTextWithTooltip(out, "Perc", "Percentile");
+                    }
+                    TABLEH()
+                    {
+                        RenderTextWithTooltip(out, "R", "Read");
+                    }
+                    TABLEH()
+                    {
+                        RenderTextWithTooltip(out, "W", "Write");
+                    }
+                    TABLEH()
+                    {
+                        RenderTextWithTooltip(out, "Z", "Zero");
+                    }
+                    TABLEH()
+                    {
+                        RenderTextWithTooltip(out, "D", "Describe");
+                    }
+                }
+            }
+
+            for (const auto& [key, descr, tooltip]:
+                 TRequestsTimeTracker::GetPercentileBuckets())
+            {
+                TABLER () {
+                    TABLED () {
+                        DIV_CLASS("tooltip-latency")
+                        {
+                            out << descr;
+
+                            if (tooltip) {
+                                SPAN_CLASS("tooltiptext-latency")
+                                {
+                                    out << tooltip;
+                                }
+                            }
+                        }
+                    }
+                    TABLED_ATTRS({{"id", "R_" + parentId + "_ok_" + key}})
+                    {}
+                    TABLED_ATTRS({{"id", "W_" + parentId + "_ok_" + key}})
+                    {}
+                    TABLED_ATTRS({{"id", "Z_" + parentId + "_ok_" + key}})
+                    {}
+                    TABLED_ATTRS({{"id", "D_" + parentId + "_ok_" + key}})
+                    {}
+                }
+            }
+        }
+    }
+}
+
 void RenderSizeTable(IOutputStream& out, ui32 blockSize)
 {
     HTML (out) {
-        TABLE_CLASS("table table-bordered") {
+        TABLE_CLASS ("table table-bordered") {
             TABLEHEAD () {
                 TABLER () {
                     TABLEH () {
@@ -510,6 +583,9 @@ void RenderSizeTable(IOutputStream& out, ui32 blockSize)
                     TABLEH () {
                         out << "Zero";
                     }
+                    TABLEH () {
+                        out << "Describe";
+                    }
                 }
             }
             for (const auto& [key, descr, tooltip]:
@@ -517,18 +593,22 @@ void RenderSizeTable(IOutputStream& out, ui32 blockSize)
             {
                 TABLER () {
                     TABLED () {
-                        out << descr;
+                        TAG(TH4) {
+                            out << "Size: " << descr;
+                        }
+                        RenderPercentilesTable(out, key);
                     }
                     TABLED () {
                         RenderLatencyTable(out, "R_" + key);
                     }
-                    TABLED_ATTRS()
-                    {
+                    TABLED_ATTRS () {
                         RenderLatencyTable(out, "W_" + key);
                     }
-                    TABLED_ATTRS()
-                    {
+                    TABLED_ATTRS () {
                         RenderLatencyTable(out, "Z_" + key);
+                    }
+                    TABLED_ATTRS () {
+                        RenderLatencyTable(out, "D_" + key);
                     }
                 }
             }
@@ -1015,7 +1095,7 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
 
     const TString script = R"(
         <script>
-            function renderLatency(stat) {
+            function applyValues(stat) {
                 for (let key in stat) {
                     const element = document.getElementById(key);
                     if (element) {
@@ -1030,7 +1110,8 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
                 $.ajax({
                     url: url,
                     success: function(result) {
-                        renderLatency(result.stat);
+                        applyValues(result.stat);
+                        applyValues(result.percentiles);
                     },
                     error: function(jqXHR, status) {
                         console.log('error');
