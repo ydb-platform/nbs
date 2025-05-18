@@ -12474,7 +12474,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
     {
-        constexpr ui32 blockCount = 1024;
+        constexpr ui32 blobCount = 4;
+        constexpr ui32 blockCount = 512 * blobCount;
 
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(100_KB);
@@ -12483,13 +12484,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
         {
-            const auto blockRange = TBlockRange32::WithLength(0, 512);
-            partition.WriteBlocks(blockRange, 1);
-        }
-
-        {
-            const auto blockRange = TBlockRange32::WithLength(512, 512);
-            partition.WriteBlocks(blockRange, 1);
+            ui32 current_offset = 0;
+            for (ui32 i = 0; i < blobCount; ++i) {
+                const auto blockRange =
+                    TBlockRange32::WithLength(current_offset, 512);
+                partition.WriteBlocks(blockRange, 1);
+                current_offset += 512;
+            }
         }
 
         runtime->SetObserverFunc(
@@ -12536,7 +12537,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto response = partition.RecvReadBlocksLocalResponse();
         UNIT_ASSERT_VALUES_UNEQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(response->Record.FailedBlobs.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(response->Record.FailedBlobs.size(), blobCount);
     }
 }
 
