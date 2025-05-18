@@ -40,6 +40,7 @@ namespace {
 
 class TRdmaEndpoint final
     : public NRdma::IServerHandler
+    , public std::enable_shared_from_this<TRdmaEndpoint>
 {
 private:
     const IServerStatsPtr ServerStats;
@@ -118,27 +119,36 @@ void TRdmaEndpoint::HandleRequest(
     TStringBuf out)
 {
     TaskQueue->ExecuteSimple(
-        [this, context, callContext = std::move(callContext), in, out]() mutable
+        [self = weak_from_this(),
+         context,
+         callContext = std::move(callContext),
+         in,
+         out]() mutable
         {
             auto error = SafeExecute<NProto::TError>(
-                [this,
+                [self,
                  context,
                  callContext = std::move(callContext),
                  in,
                  out]() mutable
                 {
-                    return DoHandleRequest(
-                        context,
-                        std::move(callContext),
-                        in,
-                        out);
+                    if (auto p = self.lock()) {
+                        return p->DoHandleRequest(
+                            context,
+                            std::move(callContext),
+                            in,
+                            out);
+                    }
+                    return MakeError(E_CANCELLED);
                 });
 
             if (HasError(error)) {
-                Endpoint->SendError(
-                    context,
-                    error.GetCode(),
-                    error.GetMessage());
+                if (auto p = self.lock()) {
+                    p->Endpoint->SendError(
+                        context,
+                        error.GetCode(),
+                        error.GetMessage());
+                }
             }
         });
 }
@@ -208,16 +218,17 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
         std::move(req));
 
     future.Subscribe(
-        [this, guardedSgList = std::move(guardedSgList), out, context](
-            TFuture<NProto::TReadBlocksLocalResponse> future) mutable
+        [self = weak_from_this(),
+         taskQueue = TaskQueue,
+         guardedSgList = std::move(guardedSgList),
+         out,
+         context](TFuture<NProto::TReadBlocksLocalResponse> future) mutable
         {
-            auto response = ExtractResponse(future);
-
-            TaskQueue->ExecuteSimple(
-                [this,
+            taskQueue->ExecuteSimple(
+                [self = std::move(self),
                  guardedSgList = std::move(guardedSgList),
                  out,
-                 response = std::move(response),
+                 response = ExtractResponse(future),
                  context]()
                 {
                     auto guard = guardedSgList.Acquire();
@@ -231,8 +242,9 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
                             0,   // flags
                             response,
                             sglist);
-
-                    Endpoint->SendResponse(context, responseBytes);
+                    if (auto p = self.lock()) {
+                        p->Endpoint->SendResponse(context, responseBytes);
+                    }
                 });
         });
 
@@ -262,20 +274,21 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
         std::move(req));
 
     future.Subscribe(
-        [this, guardedSgList = std::move(guardedSgList), out, context](
-            TFuture<NProto::TWriteBlocksLocalResponse> future) mutable
+        [self = weak_from_this(),
+         taskQueue = TaskQueue,
+         guardedSgList = std::move(guardedSgList),
+         out,
+         context](TFuture<NProto::TWriteBlocksLocalResponse> future) mutable
         {
-            auto response = ExtractResponse(future);
-
-            TaskQueue->ExecuteSimple(
-                [this,
+            taskQueue->ExecuteSimple(
+                [self = std::move(self),
                  guardedSgList = std::move(guardedSgList),
                  out,
-                 response = std::move(response),
+                 response = ExtractResponse(future),
                  context]
                 {
-                    Y_UNUSED(
-                        guardedSgList);   // enlarge lifetime of guardedSgList
+                    // enlarge lifetime of guardedSgList
+                    Y_UNUSED(guardedSgList);
 
                     size_t responseBytes =
                         NRdma::TProtoMessageSerializer::Serialize(
@@ -283,8 +296,9 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
                             TBlockStoreProtocol::WriteBlocksResponse,
                             0,   // flags
                             response);
-
-                    Endpoint->SendResponse(context, responseBytes);
+                    if (auto p = self.lock()) {
+                        p->Endpoint->SendResponse(context, responseBytes);
+                    }
                 });
         });
 
@@ -307,7 +321,8 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
         std::move(req));
 
     future.Subscribe(
-        [this, out, context](TFuture<NProto::TZeroBlocksResponse> future)
+        [self = weak_from_this(), out, context](
+            TFuture<NProto::TZeroBlocksResponse> future)
         {
             auto response = ExtractResponse(future);
 
@@ -316,8 +331,9 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
                 TBlockStoreProtocol::ZeroBlocksResponse,
                 0,   // flags
                 response);
-
-            Endpoint->SendResponse(context, responseBytes);
+            if (auto p = self.lock()) {
+                p->Endpoint->SendResponse(context, responseBytes);
+            }
         });
 
     return {};
