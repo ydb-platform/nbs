@@ -117,18 +117,30 @@ void TRdmaEndpoint::HandleRequest(
     TStringBuf in,
     TStringBuf out)
 {
-    TaskQueue->ExecuteSimple([=, this] {
-        auto error = SafeExecute<NProto::TError>([=, this] {
-            return DoHandleRequest(context, callContext, in, out);
-        });
+    TaskQueue->ExecuteSimple(
+        [this, context, callContext = std::move(callContext), in, out]() mutable
+        {
+            auto error = SafeExecute<NProto::TError>(
+                [this,
+                 context,
+                 callContext = std::move(callContext),
+                 in,
+                 out]() mutable
+                {
+                    return DoHandleRequest(
+                        context,
+                        std::move(callContext),
+                        in,
+                        out);
+                });
 
-        if (HasError(error)) {
-            Endpoint->SendError(
-                context,
-                error.GetCode(),
-                error.GetMessage());
-        }
-    });
+            if (HasError(error)) {
+                Endpoint->SendError(
+                    context,
+                    error.GetCode(),
+                    error.GetMessage());
+            }
+        });
 }
 
 NProto::TError TRdmaEndpoint::DoHandleRequest(
@@ -147,7 +159,7 @@ NProto::TError TRdmaEndpoint::DoHandleRequest(
         case TBlockStoreProtocol::ReadBlocksRequest:
             return HandleReadBlocksRequest(
                 context,
-                callContext,
+                std::move(callContext),
                 static_cast<NProto::TReadBlocksRequest&>(*request.Proto),
                 request.Data,
                 out);
@@ -155,7 +167,7 @@ NProto::TError TRdmaEndpoint::DoHandleRequest(
         case TBlockStoreProtocol::WriteBlocksRequest:
             return HandleWriteBlocksRequest(
                 context,
-                callContext,
+                std::move(callContext),
                 static_cast<NProto::TWriteBlocksRequest&>(*request.Proto),
                 request.Data,
                 out);
@@ -163,7 +175,7 @@ NProto::TError TRdmaEndpoint::DoHandleRequest(
         case TBlockStoreProtocol::ZeroBlocksRequest:
             return HandleZeroBlocksRequest(
                 context,
-                callContext,
+                std::move(callContext),
                 static_cast<NProto::TZeroBlocksRequest&>(*request.Proto),
                 request.Data,
                 out);
@@ -195,25 +207,34 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
         std::move(callContext),
         std::move(req));
 
-    future.Subscribe([=, this] (auto future) {
-        auto response = ExtractResponse(future);
+    future.Subscribe(
+        [this, guardedSgList = std::move(guardedSgList), out, context](
+            TFuture<NProto::TReadBlocksLocalResponse> future) mutable
+        {
+            auto response = ExtractResponse(future);
 
-        TaskQueue->ExecuteSimple([=, this] {
-            auto guard = guardedSgList.Acquire();
-            Y_ENSURE(guard);
+            TaskQueue->ExecuteSimple(
+                [this,
+                 guardedSgList = std::move(guardedSgList),
+                 out,
+                 response = std::move(response),
+                 context]()
+                {
+                    auto guard = guardedSgList.Acquire();
+                    Y_ENSURE(guard);
 
-            const auto& sglist = guard.Get();
-            size_t responseBytes =
-                NRdma::TProtoMessageSerializer::SerializeWithData(
-                    out,
-                    TBlockStoreProtocol::ReadBlocksResponse,
-                    0,   // flags
-                    response,
-                    sglist);
+                    const auto& sglist = guard.Get();
+                    size_t responseBytes =
+                        NRdma::TProtoMessageSerializer::SerializeWithData(
+                            out,
+                            TBlockStoreProtocol::ReadBlocksResponse,
+                            0,   // flags
+                            response,
+                            sglist);
 
-            Endpoint->SendResponse(context, responseBytes);
+                    Endpoint->SendResponse(context, responseBytes);
+                });
         });
-    });
 
     return {};
 }
@@ -240,21 +261,32 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
         std::move(callContext),
         std::move(req));
 
-    future.Subscribe([=, this] (auto future) {
-        auto response = ExtractResponse(future);
+    future.Subscribe(
+        [this, guardedSgList = std::move(guardedSgList), out, context](
+            TFuture<NProto::TWriteBlocksLocalResponse> future) mutable
+        {
+            auto response = ExtractResponse(future);
 
-        TaskQueue->ExecuteSimple([=, this] {
-            Y_UNUSED(guardedSgList);
+            TaskQueue->ExecuteSimple(
+                [this,
+                 guardedSgList = std::move(guardedSgList),
+                 out,
+                 response = std::move(response),
+                 context]
+                {
+                    Y_UNUSED(
+                        guardedSgList);   // enlarge lifetime of guardedSgList
 
-            size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                out,
-                TBlockStoreProtocol::WriteBlocksResponse,
-                0,   // flags
-                response);
+                    size_t responseBytes =
+                        NRdma::TProtoMessageSerializer::Serialize(
+                            out,
+                            TBlockStoreProtocol::WriteBlocksResponse,
+                            0,   // flags
+                            response);
 
-            Endpoint->SendResponse(context, responseBytes);
+                    Endpoint->SendResponse(context, responseBytes);
+                });
         });
-    });
 
     return {};
 }
@@ -274,17 +306,19 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
         std::move(callContext),
         std::move(req));
 
-    future.Subscribe([=, this] (auto future) {
-        auto response = ExtractResponse(future);
+    future.Subscribe(
+        [this, out, context](TFuture<NProto::TZeroBlocksResponse> future)
+        {
+            auto response = ExtractResponse(future);
 
-        size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-            out,
-            TBlockStoreProtocol::ZeroBlocksResponse,
-            0,   // flags
-            response);
+            size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
+                out,
+                TBlockStoreProtocol::ZeroBlocksResponse,
+                0,   // flags
+                response);
 
-        Endpoint->SendResponse(context, responseBytes);
-    });
+            Endpoint->SendResponse(context, responseBytes);
+        });
 
     return {};
 }
@@ -325,7 +359,7 @@ public:
         const NProto::TVolume& volume,
         ISessionPtr session) override
     {
-        return Executor->Execute([=, this] {
+        return Executor->Execute([this, request, volume, session] {
             return DoStartEndpoint(request, volume, session);
         });
     }
@@ -342,9 +376,8 @@ public:
 
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
-        return Executor->Execute([=, this] {
-            return DoStopEndpoint(socketPath);
-        });
+        return Executor->Execute([this, socketPath]
+                                 { return DoStopEndpoint(socketPath); });
     }
 
     NProto::TError RefreshEndpoint(
