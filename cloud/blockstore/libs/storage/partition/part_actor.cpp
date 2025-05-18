@@ -387,7 +387,7 @@ void TPartitionActor::AddTransaction(
 
     TransactionTimeTracker.OnStarted(
         transactionType,
-        requestInfo.Cookie,
+        std::bit_cast<ui64>(&requestInfo),
         GetCycleCount());
 }
 
@@ -398,7 +398,9 @@ void TPartitionActor::RemoveTransaction(TRequestInfo& requestInfo)
         TWellKnownEntityTypes::TABLET,
         TabletID());
 
-    TransactionTimeTracker.OnFinished(requestInfo.Cookie, GetCycleCount());
+    TransactionTimeTracker.OnFinished(
+        std::bit_cast<ui64>(&requestInfo),
+        GetCycleCount());
 
     requestInfo.Unlink();
 
