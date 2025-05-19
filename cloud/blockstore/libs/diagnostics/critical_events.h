@@ -109,6 +109,7 @@ namespace NCloud::NBlockStore {
     xxx(EmptyRequestSgList)                                                    \
     xxx(LaggingAgentsProxyWrongRecipientActor)                                 \
     xxx(UnexpectedCookie)                                                      \
+    xxx(MultiAgentRequestAffectsTwoDevices)                                    \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
