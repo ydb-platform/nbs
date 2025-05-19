@@ -446,14 +446,11 @@ void RenderTextWithTooltip(
     const TString& text,
     const TString& tooltip)
 {
-    HTML(out)
-    {
-        DIV_CLASS("tooltip-latency")
-        {
+    HTML (out) {
+        DIV_CLASS ("tooltip-latency") {
             out << text;
             if (tooltip) {
-                SPAN_CLASS("tooltiptext-latency")
-                {
+                SPAN_CLASS ("tooltiptext-latency") {
                     out << tooltip;
                 }
             }
@@ -464,8 +461,7 @@ void RenderTextWithTooltip(
 void RenderLatencyTable(IOutputStream& out, const TString& parentId)
 {
     HTML (out) {
-        TABLE_CLASS("table-latency")
-        {
+        TABLE_CLASS ("table-latency") {
             TABLEHEAD () {
                 TABLER () {
                     TABLEH () {
@@ -490,12 +486,12 @@ void RenderLatencyTable(IOutputStream& out, const TString& parentId)
                     TABLED () {
                         RenderTextWithTooltip(out, descr, tooltip);
                     }
-                    TABLED_ATTRS({{"id", parentId + "_ok_" + key}})
-                    {}
-                    TABLED_ATTRS({{"id", parentId + "_fail_" + key}})
-                    {}
-                    TABLED_ATTRS({{"id", parentId + "_inflight_" + key}})
-                    {}
+                    TABLED_ATTRS ({{"id", parentId + "_ok_" + key}}) {
+                    }
+                    TABLED_ATTRS ({{"id", parentId + "_fail_" + key}}) {
+                    }
+                    TABLED_ATTRS ({{"id", parentId + "_inflight_" + key}}) {
+                    }
                 }
             }
         }
@@ -505,30 +501,22 @@ void RenderLatencyTable(IOutputStream& out, const TString& parentId)
 void RenderPercentilesTable(IOutputStream& out, const TString& parentId)
 {
     HTML (out) {
-        TABLE_CLASS("table-latency")
-        {
-            TABLEHEAD()
-            {
-                TABLER()
-                {
-                    TABLEH()
-                    {
+        TABLE_CLASS ("table-latency") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
                         RenderTextWithTooltip(out, "Perc", "Percentile");
                     }
-                    TABLEH()
-                    {
+                    TABLEH () {
                         RenderTextWithTooltip(out, "R", "Read");
                     }
-                    TABLEH()
-                    {
+                    TABLEH () {
                         RenderTextWithTooltip(out, "W", "Write");
                     }
-                    TABLEH()
-                    {
+                    TABLEH () {
                         RenderTextWithTooltip(out, "Z", "Zero");
                     }
-                    TABLEH()
-                    {
+                    TABLEH () {
                         RenderTextWithTooltip(out, "D", "Describe");
                     }
                 }
@@ -539,26 +527,16 @@ void RenderPercentilesTable(IOutputStream& out, const TString& parentId)
             {
                 TABLER () {
                     TABLED () {
-                        DIV_CLASS("tooltip-latency")
-                        {
-                            out << descr;
-
-                            if (tooltip) {
-                                SPAN_CLASS("tooltiptext-latency")
-                                {
-                                    out << tooltip;
-                                }
-                            }
-                        }
+                        RenderTextWithTooltip(out, descr, tooltip);
                     }
-                    TABLED_ATTRS({{"id", "R_" + parentId + "_ok_" + key}})
-                    {}
-                    TABLED_ATTRS({{"id", "W_" + parentId + "_ok_" + key}})
-                    {}
-                    TABLED_ATTRS({{"id", "Z_" + parentId + "_ok_" + key}})
-                    {}
-                    TABLED_ATTRS({{"id", "D_" + parentId + "_ok_" + key}})
-                    {}
+                    TABLED_ATTRS ({{"id", "R_" + parentId + "_ok_" + key}}) {
+                    }
+                    TABLED_ATTRS ({{"id", "W_" + parentId + "_ok_" + key}}) {
+                    }
+                    TABLED_ATTRS ({{"id", "Z_" + parentId + "_ok_" + key}}) {
+                    }
+                    TABLED_ATTRS ({{"id", "D_" + parentId + "_ok_" + key}}) {
+                    }
                 }
             }
         }
@@ -593,7 +571,7 @@ void RenderSizeTable(IOutputStream& out, ui32 blockSize)
             {
                 TABLER () {
                     TABLED () {
-                        TAG(TH4) {
+                        TAG (TH4) {
                             out << "Size: " << descr;
                         }
                         RenderPercentilesTable(out, key);
