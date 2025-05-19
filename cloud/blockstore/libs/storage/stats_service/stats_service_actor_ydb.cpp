@@ -434,13 +434,13 @@ void TStatsServiceActor::SplitRowsIntoRequests(
     }
 
     for (ui32 from = 0; from < rows.Groups.size();
-         from += Config->GetStatsUploadRowCount())
+         from += Config->GetStatsUploadRowChunkSize())
     {
         TStatsUploadRequest request;
         request.second = timestamp;
 
         ui32 to = std::min(
-            from + Config->GetStatsUploadRowCount(),
+            from + Config->GetStatsUploadRowChunkSize(),
             static_cast<ui32>(rows.Groups.size()));
         request.first.Groups.reserve(to - from);
 
@@ -512,7 +512,7 @@ void TStatsServiceActor::HandleUploadDisksStats(
         ));
     }
 
-    SplitRowsIntoRequests(rows, ctx);
+    SplitRowsIntoRequests(std::move(rows), ctx);
     PushYdbStats(ctx);
 
     ScheduleStatsUpload(ctx);

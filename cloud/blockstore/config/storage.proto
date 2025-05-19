@@ -1238,5 +1238,5 @@ message TStorageServiceConfig
     optional uint32 NetworkForwardingTimeout = 430;
 
     // Maximum number of rows to be wtitten to YDB in a single request.
-    optional uint32 StatsUploadRowCount = 431;
+    optional uint32 StatsUploadRowChunkSize = 431;
 }
