@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"hash/crc32"
 	"testing"
 	"time"
@@ -175,11 +176,29 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	testcommon.CancelOperation(t, ctx, client, operation.Id)
+	testcommon.WaitOperationEnded(t, ctx, operation.Id)
 
-	// Should wait here because checkpoint is deleted on operation cancel (and
-	// exact time of this event is unknown).
-	testcommon.WaitForCheckpointDoesNotExist(t, ctx, diskID, snapshotID)
-	testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+	snapshotMeta, err := testcommon.GetSnapshotMeta(ctx, snapshotID)
+
+	// If snapshot creation was cancelled, checkpoint should be deleted.
+	// Otherwise, there should be a checkpoint from snapshot.
+	if snapshotMeta == nil {
+		// Two possible cases here: GetSnapshotMeta returned nil with a
+		// “snapshot does not exist” error, or the snapshot is no longer
+		// ready (its status has changed to Deleting or Deleted).
+		require.ErrorContains(
+			t,
+			err,
+			fmt.Sprintf("snapshot with id %s does not exist", snapshotID),
+		)
+		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+	} else if !snapshotMeta.Ready {
+		require.NoError(t, err)
+		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+	} else {
+		require.NoError(t, err)
+		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
+	}
 
 	testcommon.CheckConsistency(t, ctx)
 }
