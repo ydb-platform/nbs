@@ -145,6 +145,8 @@ private:
 
     bool FirstGarbageCollectionCompleted = false;
 
+    ui64 VolumeTabletId;
+
 public:
     TPartitionActor(
         const NActors::TActorId& owner,
@@ -156,7 +158,8 @@ public:
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
         ui32 siblingCount,
-        const NActors::TActorId& volumeActorId);
+        const NActors::TActorId& volumeActorId,
+        ui64 volumeTabletId);
     ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;
