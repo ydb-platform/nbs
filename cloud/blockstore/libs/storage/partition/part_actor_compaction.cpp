@@ -857,7 +857,7 @@ void TCompactionActor::HandleReadBlobResponse(
         return;
     }
 
-    const size_t batchIndex = ev->Cookie;
+    ui32 batchIndex = ev->Cookie;
 
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
