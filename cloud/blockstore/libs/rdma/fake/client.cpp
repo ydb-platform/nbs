@@ -95,7 +95,7 @@ struct TEvFakeRdmaClient
         EvSendRequest,
         EvUpdateNodeId,
         EvCancelRequest,
-        EvOperationCompleted,
+        EvRequestCompleted,
 
         EvEnd
     };
@@ -106,7 +106,7 @@ struct TEvFakeRdmaClient
     using TEvUpdateNodeId = TResponseEvent<TUpdateNodeId, EvUpdateNodeId>;
     using TEvCancelRequest = TRequestEvent<TCancelRequest, EvCancelRequest>;
     using TEvRequestCompleted =
-        TRequestEvent<TRequestCompleted, EvOperationCompleted>;
+        TRequestEvent<TRequestCompleted, EvRequestCompleted>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -931,16 +931,17 @@ private:
         };
 
         auto it = Endpoints.find(msg->EndpointId);
-        if (it == Endpoints.end()) {
-            return;
-        }
-        LOG_INFO_S(
-            ctx,
-            TBlockStoreComponents::RDMA,
-            "Endpoint " << msg->EndpointId << " for agent "
-                        << it->second.AgentId.Quote() << " is stopped");
+        if (it != Endpoints.end()) {
+            LOG_INFO_S(
+                ctx,
+                TBlockStoreComponents::RDMA,
+                "Endpoint " << msg->EndpointId << " for agent "
+                            << it->second.AgentId.Quote() << " is stopped");
 
-        Endpoints.erase(it);
+            Endpoints.erase(it);
+        }
+
+        msg->Promise.SetValue();
     }
 
     void HandleSendRequest(
@@ -955,7 +956,7 @@ private:
                 std::move(msg->Request),
                 E_RDMA_UNAVAILABLE,
                 TStringBuilder()
-                    << "endpoint " << msg->EndpointId << " is not started");
+                    << "endpoint " << msg->EndpointId << " not found");
 
             return;
         }
@@ -972,23 +973,23 @@ private:
 
         auto& inflight = ep->InflightRequests;
 
-        LOG_INFO_S(
+        LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::RDMA,
             "Send request agentId" << ep->AgentId.Quote() << ", clientReqId "
                                    << msg->ClientReqId);
 
-        auto [it, inserted] = inflight.try_emplace(msg->ClientReqId);
-        Y_ABORT_UNLESS(inserted);
-
-        it->second = NCloud::Register<TExecuteRequestActor>(
-            ctx,
+        auto [it, inserted] = inflight.emplace(
             msg->ClientReqId,
-            msg->EndpointId,
-            SelfId(),
-            ep->NodeId,
-            std::move(msg->Request),
-            std::move(msg->CallContext));
+            NCloud::Register<TExecuteRequestActor>(
+                ctx,
+                msg->ClientReqId,
+                msg->EndpointId,
+                SelfId(),
+                ep->NodeId,
+                std::move(msg->Request),
+                std::move(msg->CallContext)));
+        Y_ABORT_UNLESS(inserted);
     }
 
     void HandleUpdateNodeId(
