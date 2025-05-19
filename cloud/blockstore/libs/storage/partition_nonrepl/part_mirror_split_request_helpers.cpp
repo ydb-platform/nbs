@@ -110,15 +110,17 @@ TResponse MergeReadBlocksResponsesImpl(std::span<TResponse> responsesToMerge)
 auto MergeReadResponses(std::span<NProto::TReadBlocksResponse> responsesToMerge)
     -> NProto::TReadBlocksResponse
 {
-    return MergeReadBlocksResponsesImpl<NProto::TReadBlocksResponse>(responsesToMerge);
+    return MergeReadBlocksResponsesImpl<NProto::TReadBlocksResponse>(
+        responsesToMerge);
 }
 
-auto MergeReadResponses(std::span<NProto::TReadBlocksLocalResponse> responsesToMerge)
+auto MergeReadResponses(
+    std::span<NProto::TReadBlocksLocalResponse> responsesToMerge)
     -> NProto::TReadBlocksLocalResponse
 {
     auto result = MergeReadBlocksResponsesImpl(responsesToMerge);
 
-    for (const auto& response : responsesToMerge) {
+    for (const auto& response: responsesToMerge) {
         result.FailedBlobs.insert(
             result.FailedBlobs.end(),
             response.FailedBlobs.begin(),

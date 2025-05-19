@@ -12537,7 +12537,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto response = partition.RecvReadBlocksLocalResponse();
         UNIT_ASSERT_VALUES_UNEQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(response->Record.FailedBlobs.size(), blobCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            blobCount,
+            response->Record.FailedBlobs.size());
     }
 }
 

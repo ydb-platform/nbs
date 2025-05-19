@@ -503,23 +503,23 @@ bool TReadBlocksActor::HandleError(
     const NProto::TError& error,
     const TBatchRequest& batch)
 {
-    if (FAILED(error.GetCode())) {
-        if (ReportBlobIdsOnFailure && ReplyLocal) {
-            FailedBlobs.emplace_back(batch.BlobId.ToString());
-
-            // check range should try to read all the data and report broken blobs
-            if (RequestsCompleted < RequestsScheduled || WaitBaseDiskRequests) {
-                return false;
-            }
-        }
-
-        auto response =
-            CreateReadBlocksResponse(ReplyLocal, error, std::move(FailedBlobs));
-        ReplyAndDie(ctx, std::move(response), error);
-        return true;
+    if (!HasError(error)) {
+        return false;
     }
 
-    return false;
+    if (ReportBlobIdsOnFailure && ReplyLocal) {
+        FailedBlobs.emplace_back(batch.BlobId.ToString());
+
+        // check range should try to read all the data and report broken blobs
+        if (RequestsCompleted < RequestsScheduled || WaitBaseDiskRequests) {
+            return false;
+        }
+    }
+
+    auto response =
+        CreateReadBlocksResponse(ReplyLocal, error, std::move(FailedBlobs));
+    ReplyAndDie(ctx, std::move(response), error);
+    return true;
 }
 
 bool TReadBlocksActor::HandleError(
@@ -967,7 +967,7 @@ TMaybe<ui64> TPartitionActor::VerifyReadBlocksCheckpoint(
                     TStringBuilder()
                         << "checkpoint not found: " << checkpointId.Quote(),
                     flags),
-                    {});
+                {});   // failedBlobs
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -1130,7 +1130,7 @@ void TPartitionActor::CompleteReadBlocks(
         auto response = CreateReadBlocksResponse(
             args.ReplyLocal,
             error,
-            {});
+            {});   // failedBlobs
 
         LWTRACK(
             ResponseSent_Partition,
