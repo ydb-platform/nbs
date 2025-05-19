@@ -142,7 +142,7 @@ private:
 
         msg->Record.ClearBlocks();
         auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
-            NProto::TReadBlocksLocalResponse(msg->Record));
+            NProto::TReadBlocksLocalResponse(std::move(msg->Record)));
 
         NCloud::Reply(ctx, *Request, std::move(response));
 

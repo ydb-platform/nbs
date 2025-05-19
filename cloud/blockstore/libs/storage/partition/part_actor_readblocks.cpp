@@ -164,7 +164,7 @@ IEventBasePtr CreateReadBlocksResponse(
 IEventBasePtr CreateReadBlocksResponse(
     bool replyLocal,
     const NProto::TError& error,
-    TVector<TString> failedBlobs)
+    TVector<TString>&& failedBlobs)
 {
     if (replyLocal) {
         auto response =
@@ -514,7 +514,7 @@ bool TReadBlocksActor::HandleError(
         }
 
         auto response =
-            CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
+            CreateReadBlocksResponse(ReplyLocal, error, std::move(FailedBlobs));
         ReplyAndDie(ctx, std::move(response), error);
         return true;
     }
@@ -527,7 +527,8 @@ bool TReadBlocksActor::HandleError(
     const NProto::TError& error)
 {
     if (FAILED(error.GetCode())) {
-        auto response = CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
+        auto response =
+            CreateReadBlocksResponse(ReplyLocal, error, std::move(FailedBlobs));
         ReplyAndDie(ctx, std::move(response), error);
         return true;
     }
@@ -591,8 +592,8 @@ void TReadBlocksActor::HandleReadBlobResponse(
     auto& batch = BatchRequests[batchIndex];
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
 
-    RequestsCompleted += batch.Requests.size();
     Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
+    RequestsCompleted += batch.Requests.size();
 
     const auto& error = msg->GetError();
     if (HandleError(ctx, error, batch)) {
@@ -687,7 +688,8 @@ void TReadBlocksActor::HandlePoisonPill(
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
-    auto response = CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
+    auto response =
+        CreateReadBlocksResponse(ReplyLocal, error, std::move(FailedBlobs));
     ReplyAndDie(ctx, std::move(response), error);
 }
 
@@ -853,8 +855,8 @@ void TPartitionActor::HandleReadBlocks(
     HandleReadBlocksRequest<TEvService::TReadBlocksMethod>(
         ev,
         ctx,
-        false,
-        false);
+        false,    // replyLocal
+        false);   // shouldReportBlobIdsOnFailure
 }
 
 void TPartitionActor::HandleReadBlocksLocal(
