@@ -43,8 +43,8 @@ struct TReadBlocksLocalResponse: public TReadBlocksResponse
 
     TReadBlocksLocalResponse() = default;
 
-    explicit TReadBlocksLocalResponse(const TReadBlocksResponse& base)
-        : TReadBlocksResponse(base)
+    explicit TReadBlocksLocalResponse(TReadBlocksResponse&& base)
+        : TReadBlocksResponse(std::move(base))
     {}
 };
 
