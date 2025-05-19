@@ -1,4 +1,5 @@
 #include "device_client.h"
+
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -133,6 +134,7 @@ struct TDeviceClientParams
 
 struct TFixture
     : public NUnitTest::TBaseFixture
+    , public IMultiagentWriteHandler
 {
     const TDuration ReleaseInactiveSessionsTimeout = 10s;
 
@@ -143,7 +145,19 @@ struct TFixture
         return TDeviceClient(
             ReleaseInactiveSessionsTimeout,
             std::move(params.Devices),
-            Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
+            Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+            this);
+    }
+
+    // Implements IMultiagentWriteHandler
+    NThreading::TFuture<TMultiAgentWriteResponseLocal> PerformMultiAgentWrite(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+
+        return {};
     }
 };
 

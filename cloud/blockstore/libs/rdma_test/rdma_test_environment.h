@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/rdma_test/memory_test_storage.h>
 #include <cloud/blockstore/libs/rdma_test/server_test_async.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/multi_agent_write.h>
 #include <cloud/blockstore/libs/storage/disk_agent/rdma_target.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -15,7 +16,23 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaTestEnvironment
+class TTestMultiagentWriteHandler: public IMultiagentWriteHandler
+{
+private:
+    TDeque<NProto::TWriteDeviceBlocksRequest> Requests;
+    TDeque<TMultiAgentWriteResponseLocal> Responses;
+
+public:
+    void PushMockResponse(TMultiAgentWriteResponseLocal response);
+    std::optional<NProto::TWriteDeviceBlocksRequest> PopInterceptedRequest();
+
+    // Implements IMultiagentWriteHandler
+    NThreading::TFuture<TMultiAgentWriteResponseLocal> PerformMultiAgentWrite(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) override;
+};
+
+struct TRdmaTestEnvironment : public TTestMultiagentWriteHandler
 {
     const TString ClientId = "client_1";
     const TString Device_1 = "uuid-1";
@@ -53,6 +70,11 @@ struct TRdmaTestEnvironment
         char fill,
         ui64 volumeRequestId = 0,
         bool isMultideviceRequest = false) const;
+
+    NProto::TWriteDeviceBlocksRequest MakeMultiAgentWriteRequest(
+        const TBlockRange64& blockRange,
+        char fill,
+        ui64 volumeRequestId) const;
 
     NProto::TReadDeviceBlocksRequest MakeReadRequest(
         const TBlockRange64& blockRange) const;
