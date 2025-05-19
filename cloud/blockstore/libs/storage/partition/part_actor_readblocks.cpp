@@ -504,7 +504,7 @@ bool TReadBlocksActor::HandleError(
     const TBatchRequest& batch)
 {
     if (FAILED(error.GetCode())) {
-        if (ReportBlobIdsOnFailure and ReplyLocal) {
+        if (ReportBlobIdsOnFailure && ReplyLocal) {
             FailedBlobs.emplace_back(batch.BlobId.ToString());
 
             // check range should try to read all the data and report broken blobs
@@ -570,7 +570,7 @@ bool TReadBlocksActor::VerifyChecksums(
             batch.Checksums[i]);
 
         if (HasError(error)) {
-            HandleError(ctx, error, batch);
+            HandleError(ctx, error);
             return false;
         }
     }
@@ -867,7 +867,7 @@ void TPartitionActor::HandleReadBlocksLocal(
     HandleReadBlocksRequest<TEvService::TReadBlocksLocalMethod>(
         ev,
         ctx,
-        true,
+        true,   // replyLocal
         ev->Get()->Record.ShouldReportBlobIdsOnFailure);
 }
 
