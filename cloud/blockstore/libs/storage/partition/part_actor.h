@@ -150,6 +150,7 @@ private:
     bool FirstGarbageCollectionCompleted = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
+    ui64 VolumeTabletId;
 
 public:
     TPartitionActor(
@@ -163,7 +164,8 @@ public:
         EStorageAccessMode storageAccessMode,
         ui32 partitionIndex,
         ui32 siblingCount,
-        const NActors::TActorId& volumeActorId);
+        const NActors::TActorId& volumeActorId,
+        ui64 volumeTabletId);
     ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;

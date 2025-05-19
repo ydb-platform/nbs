@@ -1,0 +1,14 @@
+{
+    "cmake.sourceDirectory": "/home/ge0rg/NBS/nbs/cloud/contrib/vhost",
+    "files.trimTrailingWhitespace": true,
+    "files.trimFinalNewlines": true,
+    "files.insertFinalNewline": true,
+    "[go]": {
+        "editor.rulers": [
+            {
+                "column": 80,
+                "color": "#ff0a0a"
+            }
+        ],
+    },
+}

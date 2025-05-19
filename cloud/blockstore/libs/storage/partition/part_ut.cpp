@@ -210,7 +210,8 @@ void InitTestActorRuntime(
                 storageAccessMode,
                 0,  // partitionIndex
                 1,  // siblingCount
-                VolumeActorId
+                VolumeActorId,
+                0
             );
             return tablet.release();
         };

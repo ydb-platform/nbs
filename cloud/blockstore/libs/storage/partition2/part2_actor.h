@@ -136,6 +136,8 @@ private:
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
 
+    ui64 VolumeTabletId;
+
 public:
     TPartitionActor(
         const NActors::TActorId& owner,
@@ -147,7 +149,8 @@ public:
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
         ui32 siblingCount,
-        const NActors::TActorId& VolumeActorId);
+        const NActors::TActorId& VolumeActorId,
+        ui64 volumeTabletId);
     ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;
