@@ -2115,9 +2115,9 @@ TBlockRanges BuildRanges(const TVector<TBlock>& blocks, ui32 maxRanges)
 
     TBlockRanges holeRanges;
     while (!holes.empty()) {
-        auto start = blocks[holes.top().FirstBlock].BlockIndex + 1;
-        auto end = blocks[holes.top().FirstBlock + 1].BlockIndex;
-        holeRanges.push_back(TBlockRange32::WithLength(start, end - start));
+        holeRanges.push_back(TBlockRange32::MakeClosedInterval(
+            blocks[holes.top().FirstBlock].BlockIndex + 1,
+            blocks[holes.top().FirstBlock + 1].BlockIndex - 1));
         holes.pop();
     }
 
@@ -2128,9 +2128,8 @@ TBlockRanges BuildRanges(const TVector<TBlock>& blocks, ui32 maxRanges)
     TBlockRanges blockRanges;
     ui32 blockIndex = blocks.front().BlockIndex;
     for (const auto& holeRange: holeRanges) {
-        blockRanges.push_back(TBlockRange32::WithLength(
-            blockIndex,
-            holeRange.Start - blockIndex));
+        blockRanges.push_back(
+            TBlockRange32::MakeClosedInterval(blockIndex, holeRange.Start - 1));
         blockIndex = holeRange.End + 1;
     }
     blockRanges.push_back(TBlockRange32::MakeClosedInterval(
