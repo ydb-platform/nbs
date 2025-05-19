@@ -926,10 +926,6 @@ private:
             TBlockStoreComponents::RDMA,
             "Stop endpoint " << msg->EndpointId);
 
-        Y_DEFER {
-            msg->Promise.SetValue();
-        };
-
         auto it = Endpoints.find(msg->EndpointId);
         if (it != Endpoints.end()) {
             LOG_INFO_S(
