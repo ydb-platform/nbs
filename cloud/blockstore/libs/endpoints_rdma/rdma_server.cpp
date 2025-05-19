@@ -231,18 +231,19 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
                  response = ExtractResponse(future),
                  context]()
                 {
-                    auto guard = guardedSgList.Acquire();
-                    Y_ENSURE(guard);
-
-                    const auto& sglist = guard.Get();
-                    size_t responseBytes =
-                        NRdma::TProtoMessageSerializer::SerializeWithData(
-                            out,
-                            TBlockStoreProtocol::ReadBlocksResponse,
-                            0,   // flags
-                            response,
-                            sglist);
                     if (auto p = self.lock()) {
+                        auto guard = guardedSgList.Acquire();
+                        Y_ENSURE(guard);
+
+                        const auto& sglist = guard.Get();
+                        size_t responseBytes =
+                            NRdma::TProtoMessageSerializer::SerializeWithData(
+                                out,
+                                TBlockStoreProtocol::ReadBlocksResponse,
+                                0,   // flags
+                                response,
+                                sglist);
+
                         p->Endpoint->SendResponse(context, responseBytes);
                     }
                 });
@@ -290,13 +291,13 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
                     // enlarge lifetime of guardedSgList
                     Y_UNUSED(guardedSgList);
 
-                    size_t responseBytes =
-                        NRdma::TProtoMessageSerializer::Serialize(
-                            out,
-                            TBlockStoreProtocol::WriteBlocksResponse,
-                            0,   // flags
-                            response);
                     if (auto p = self.lock()) {
+                        size_t responseBytes =
+                            NRdma::TProtoMessageSerializer::Serialize(
+                                out,
+                                TBlockStoreProtocol::WriteBlocksResponse,
+                                0,   // flags
+                                response);
                         p->Endpoint->SendResponse(context, responseBytes);
                     }
                 });
@@ -324,14 +325,15 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
         [self = weak_from_this(), out, context](
             TFuture<NProto::TZeroBlocksResponse> future)
         {
-            auto response = ExtractResponse(future);
-
-            size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                out,
-                TBlockStoreProtocol::ZeroBlocksResponse,
-                0,   // flags
-                response);
             if (auto p = self.lock()) {
+                auto response = ExtractResponse(future);
+
+                size_t responseBytes =
+                    NRdma::TProtoMessageSerializer::Serialize(
+                        out,
+                        TBlockStoreProtocol::ZeroBlocksResponse,
+                        0,   // flags
+                        response);
                 p->Endpoint->SendResponse(context, responseBytes);
             }
         });
