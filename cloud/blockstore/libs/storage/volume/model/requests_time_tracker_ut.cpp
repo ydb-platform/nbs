@@ -12,13 +12,21 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DumpValues(const NJson::TJsonValue::TMapType& map)
+size_t DumpValues(const NJson::TJsonValue::TMapType& map)
 {
+    TMap<TString, TString> ordered;
     for (const auto& [key, val]: map) {
+        ordered[key] = val.GetString();
+    }
+
+    size_t nonEmptyCount = 0;
+    for (const auto& [key, val]: ordered) {
         if (val != "" && val != "0" && val != "0 B") {
             Cout << key << "=" << val << Endl;
+            ++nonEmptyCount;
         }
     }
+    return nonEmptyCount;
 }
 
 }   // namespace
@@ -48,7 +56,7 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
             4096);
         NJson::TJsonValue value;
         NJson::ReadJsonTree(json, &value, true);
-        DumpValues(value["stat"].GetMap());
+        const auto nonEmptyStatCount = DumpValues(value["stat"].GetMap());
 
         auto get = [&](const TString& key)
         {
@@ -57,12 +65,17 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
 
         UNIT_ASSERT_VALUES_EQUAL("1", get("R_1_inflight_1000000"));
         UNIT_ASSERT_VALUES_EQUAL("1", get("R_1_inflight_2000000"));
-        UNIT_ASSERT_VALUES_EQUAL("2", get("R_1_inflight_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("2", get("R_1_inflight_Count"));
         UNIT_ASSERT_VALUES_EQUAL("1", get("R_Total_inflight_1000000"));
         UNIT_ASSERT_VALUES_EQUAL("1", get("R_Total_inflight_2000000"));
-        UNIT_ASSERT_VALUES_EQUAL("2", get("R_Total_inflight_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("2", get("R_Total_inflight_Count"));
         UNIT_ASSERT_VALUES_EQUAL("8.00 KiB", get("R_1_inflight_TotalSize"));
         UNIT_ASSERT_VALUES_EQUAL("8.00 KiB", get("R_Total_inflight_TotalSize"));
+        UNIT_ASSERT_VALUES_EQUAL(8, nonEmptyStatCount);
+
+        const auto nonEmptyPercentilesCount =
+            DumpValues(value["percentiles"].GetMap());
+        UNIT_ASSERT_VALUES_EQUAL(0, nonEmptyPercentilesCount);
     }
 
     Y_UNIT_TEST(ShouldCountFinishedSuccess)
@@ -105,23 +118,37 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
             4096);
         NJson::TJsonValue value;
         NJson::ReadJsonTree(json, &value, true);
-        DumpValues(value["stat"].GetMap());
 
-        auto get = [&](const TString& key)
+        const auto nonEmptyStatCount = DumpValues(value["stat"].GetMap());
+        auto getStat = [&](const TString& key)
         {
             return value["stat"][key];
         };
+        UNIT_ASSERT_VALUES_EQUAL("1", getStat("W_1_ok_1000000"));
+        UNIT_ASSERT_VALUES_EQUAL("1", getStat("W_1_ok_2000000"));
+        UNIT_ASSERT_VALUES_EQUAL("1", getStat("W_1_ok_5000000"));
+        UNIT_ASSERT_VALUES_EQUAL("3", getStat("W_1_ok_Count"));
+        UNIT_ASSERT_VALUES_EQUAL("1", getStat("W_Total_ok_1000000"));
+        UNIT_ASSERT_VALUES_EQUAL("1", getStat("W_Total_ok_2000000"));
+        UNIT_ASSERT_VALUES_EQUAL("1", getStat("W_Total_ok_5000000"));
+        UNIT_ASSERT_VALUES_EQUAL("3", getStat("W_Total_ok_Count"));
+        UNIT_ASSERT_VALUES_EQUAL("12.00 KiB", getStat("W_1_ok_TotalSize"));
+        UNIT_ASSERT_VALUES_EQUAL("12.00 KiB", getStat("W_Total_ok_TotalSize"));
+        UNIT_ASSERT_VALUES_EQUAL(10, nonEmptyStatCount);
 
-        UNIT_ASSERT_VALUES_EQUAL("1", get("W_1_ok_1000000"));
-        UNIT_ASSERT_VALUES_EQUAL("1", get("W_1_ok_2000000"));
-        UNIT_ASSERT_VALUES_EQUAL("1", get("W_1_ok_5000000"));
-        UNIT_ASSERT_VALUES_EQUAL("3", get("W_1_ok_Total"));
-        UNIT_ASSERT_VALUES_EQUAL("1", get("W_Total_ok_1000000"));
-        UNIT_ASSERT_VALUES_EQUAL("1", get("W_Total_ok_2000000"));
-        UNIT_ASSERT_VALUES_EQUAL("1", get("W_Total_ok_5000000"));
-        UNIT_ASSERT_VALUES_EQUAL("3", get("W_Total_ok_Total"));
-        UNIT_ASSERT_VALUES_EQUAL("12.00 KiB", get("W_1_ok_TotalSize"));
-        UNIT_ASSERT_VALUES_EQUAL("12.00 KiB", get("W_Total_ok_TotalSize"));
+        const auto nonEmptyPercentilesCount =
+            DumpValues(value["percentiles"].GetMap());
+        auto getPercentile = [&](const TString& key)
+        {
+            return value["percentiles"][key];
+        };
+        UNIT_ASSERT_VALUES_EQUAL("1.500s", getPercentile("W_1_ok_P50"));
+        UNIT_ASSERT_VALUES_EQUAL("4.100s", getPercentile("W_1_ok_P90"));
+        UNIT_ASSERT_VALUES_EQUAL("5.000s", getPercentile("W_1_ok_P100"));
+        UNIT_ASSERT_VALUES_EQUAL("1.500s", getPercentile("W_Total_ok_P50"));
+        UNIT_ASSERT_VALUES_EQUAL("4.100s", getPercentile("W_Total_ok_P90"));
+        UNIT_ASSERT_VALUES_EQUAL("5.000s", getPercentile("W_Total_ok_P100"));
+        UNIT_ASSERT_VALUES_EQUAL(24, nonEmptyPercentilesCount);
     }
 
     Y_UNIT_TEST(ShouldCountFinishedFail)
@@ -164,30 +191,35 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
             4096);
         NJson::TJsonValue value;
         NJson::ReadJsonTree(json, &value, true);
-        DumpValues(value["stat"].GetMap());
 
+        const auto nonEmptyStatCount = DumpValues(value["stat"].GetMap());
         auto get = [&](const TString& key)
         {
             return value["stat"][key];
         };
-
         UNIT_ASSERT_VALUES_EQUAL("1", get("Z_512_fail_5000000"));
-        UNIT_ASSERT_VALUES_EQUAL("1", get("Z_512_fail_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("1", get("Z_512_fail_Count"));
         UNIT_ASSERT_VALUES_EQUAL("2.00 MiB", get("Z_512_fail_TotalSize"));
 
         UNIT_ASSERT_VALUES_EQUAL("1", get("Z_1024_fail_2000000"));
-        UNIT_ASSERT_VALUES_EQUAL("1", get("Z_1024_fail_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("1", get("Z_1024_fail_Count"));
         UNIT_ASSERT_VALUES_EQUAL("2.34 MiB", get("Z_1024_fail_TotalSize"));
 
         UNIT_ASSERT_VALUES_EQUAL("1", get("Z_Inf_fail_1000000"));
-        UNIT_ASSERT_VALUES_EQUAL("1", get("Z_Inf_fail_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("1", get("Z_Inf_fail_Count"));
         UNIT_ASSERT_VALUES_EQUAL("7.81 MiB", get("Z_Inf_fail_TotalSize"));
 
         UNIT_ASSERT_VALUES_EQUAL("1", get("Z_Total_fail_1000000"));
         UNIT_ASSERT_VALUES_EQUAL("1", get("Z_Total_fail_2000000"));
         UNIT_ASSERT_VALUES_EQUAL("1", get("Z_Total_fail_5000000"));
-        UNIT_ASSERT_VALUES_EQUAL("3", get("Z_Total_fail_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("3", get("Z_Total_fail_Count"));
         UNIT_ASSERT_VALUES_EQUAL("12.16 MiB", get("Z_Total_fail_TotalSize"));
+
+        UNIT_ASSERT_VALUES_EQUAL(14, nonEmptyStatCount);
+
+        const auto nonEmptyPercentilesCount =
+            DumpValues(value["percentiles"].GetMap());
+        UNIT_ASSERT_VALUES_EQUAL(0, nonEmptyPercentilesCount);
     }
 }
 
