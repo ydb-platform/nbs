@@ -226,7 +226,7 @@ struct TEvNonreplPartitionPrivate
         {
             // Index of device that participated in the request and the
             // result of the request for that device.
-            ui32 DeviceIndex;
+            ui32 DeviceIndex = 0;
             NProto::TError Error;
         };
 
