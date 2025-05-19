@@ -169,7 +169,7 @@ IEventBasePtr CreateReadBlocksResponse(
     if (replyLocal) {
         auto response =
             std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
-            response->Record.FailedBlobs = std::move(failedBlobs);
+        response->Record.FailedBlobs = std::move(failedBlobs);
         return response;
     } else {
         return std::make_unique<TEvService::TEvReadBlocksResponse>(error);
