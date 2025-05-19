@@ -589,8 +589,9 @@ void TReadBlocksActor::HandleReadBlobResponse(
     RequestInfo->AddExecCycles(msg->ExecCycles);
 
     const size_t batchIndex = ev->Cookie;
-    auto& batch = BatchRequests[batchIndex];
+
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
+    auto& batch = BatchRequests[batchIndex];
 
     Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
     RequestsCompleted += batch.Requests.size();
