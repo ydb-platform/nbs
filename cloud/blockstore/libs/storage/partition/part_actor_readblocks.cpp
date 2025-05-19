@@ -593,8 +593,8 @@ void TReadBlocksActor::HandleReadBlobResponse(
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
 
-    Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
     RequestsCompleted += batch.Requests.size();
+    Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
 
     const auto& error = msg->GetError();
     if (HandleError(ctx, error, batch)) {
