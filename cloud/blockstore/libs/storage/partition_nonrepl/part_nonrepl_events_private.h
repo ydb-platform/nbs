@@ -224,14 +224,13 @@ struct TEvNonreplPartitionPrivate
 
         struct TDeviceRequestResult
         {
+            // Index of device that participated in the request and the
+            // result of the request for that device.
             ui32 DeviceIndex;
             NProto::TError Error;
         };
 
-        // Indices of devices that participated in the request and the result of
-        // the request for each device.
         TStackVec<TDeviceRequestResult, 2> RequestsResult;
-
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;

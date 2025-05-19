@@ -41,7 +41,7 @@ private:
     const ui32 RequestBlockCount;
     ui32 ResponseCount;
 
-    // Indices of devices that participated in the request.
+    // Results of requests for each device.
     TStackVec<TDeviceRequestResult, 2> RequestsResult;
 
     TAdaptiveLock Lock;

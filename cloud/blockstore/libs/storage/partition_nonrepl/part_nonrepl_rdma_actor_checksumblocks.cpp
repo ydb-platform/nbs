@@ -56,7 +56,7 @@ protected:
         const TDeviceRequestRdmaContext& reqCtx,
         TStringBuf buffer) override
     {
-        const auto& readReqCtx =
+        const auto& checksumReqCtx =
             static_cast<const TDeviceChecksumRequestContext&>(reqCtx);
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
@@ -71,9 +71,9 @@ protected:
             return concreteProto.GetError();
         }
 
-        Checksums[readReqCtx.RangeStartIndex] = {
+        Checksums[checksumReqCtx.RangeStartIndex] = {
             .Value = concreteProto.GetChecksum(),
-            .Size = readReqCtx.RangeSize};
+            .Size = checksumReqCtx.RangeSize};
         return {};
     }
 
