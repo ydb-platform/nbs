@@ -1,7 +1,9 @@
 #include "node.h"
 #include "node_registration_helpers.h"
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer.h>
 
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/core/base/location.h>
@@ -110,25 +112,45 @@ TMaybe<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     const TString& nodeBrokerAddress,
     const TRegisterDynamicNodeOptions& options,
     NClient::TKikimr& kikimr,
-    NKikimrConfig::TStaticNameserviceConfig& nsConfig)
+    NKikimrConfig::TStaticNameserviceConfig& nsConfig,
+    TLog& Log)
 {
     TMaybe<NKikimrConfig::TAppConfig> cmsConfig;
 
     auto configurator = kikimr.GetNodeConfigurator();
-    auto configResult = configurator.SyncGetNodeConfig(
-        nodeId,
-        hostName,
-        options.SchemeShardDir,
-        options.Settings.NodeType,
-        options.Domain);
 
-    if (!configResult.IsSuccess()) {
-        ythrow TServiceError(E_FAIL)
-            << "Unable to get config from " << nodeBrokerAddress.Quote()
-            << ": " << configResult.GetErrorMessage();
+    const auto timer = CreateWallClockTimer();
+    TBackoffDelayProvider retryDelayProvider(
+        options.Settings.LoadConfigsFromCmsRetryMinDelay,
+        options.Settings.LoadConfigsFromCmsRetryMaxDelay);
+    const auto deadline =
+        timer->Now() + options.Settings.LoadConfigsFromCmsTotalTimeout;
+    while (true) {
+        auto configResult = configurator.SyncGetNodeConfig(
+            nodeId,
+            hostName,
+            options.SchemeShardDir,
+            options.Settings.NodeType,
+            options.Domain);
+
+        if (configResult.IsSuccess()) {
+            cmsConfig = configResult.GetConfig();
+            break;
+        }
+
+        auto errorMessage = Sprintf(
+            "Unable to get config from %s: %s",
+            nodeBrokerAddress.Quote().c_str(),
+            configResult.GetErrorMessage().c_str());
+
+        if (deadline > timer->Now()) {
+            ythrow TServiceError(E_FAIL) << errorMessage;
+        }
+
+        auto delay = retryDelayProvider.GetDelayAndIncrease();
+        STORAGE_WARN(errorMessage << ". Will retry after " << delay);
+        Sleep(delay);
     }
-
-    cmsConfig = configResult.GetConfig();
 
     if (cmsConfig->HasNameserviceConfig()) {
         cmsConfig->MutableNameserviceConfig()
@@ -187,7 +209,8 @@ struct INodeRegistrant
     virtual ~INodeRegistrant() = default;
 
     virtual TResultOrError<TRegisterDynamicNodeResult> TryRegisterAndConfigure(
-        const TString& nodeBrokerAddress) = 0;
+        const TString& nodeBrokerAddress,
+        TLog& Log) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -223,7 +246,8 @@ struct TLegacyNodeRegistrant
     }
 
     TResultOrError<TRegisterDynamicNodeResult> TryRegisterAndConfigure(
-        const TString& nodeBrokerAddress) override
+        const TString& nodeBrokerAddress,
+        TLog& Log) override
     {
         NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
 
@@ -268,7 +292,8 @@ struct TLegacyNodeRegistrant
                 nodeBrokerAddress,
                 Options,
                 kikimr,
-                NsConfig);
+                NsConfig,
+                Log);
         }
 
         return TRegisterDynamicNodeResult {
@@ -319,7 +344,8 @@ struct TDiscoveryNodeRegistrant
     }
 
     TResultOrError<TRegisterDynamicNodeResult> TryRegisterAndConfigure(
-        const TString& nodeBrokerAddress) override
+        const TString& nodeBrokerAddress,
+        TLog& Log) override
     {
         auto result = TryToRegisterDynamicNodeViaDiscoveryService(
             Options,
@@ -357,7 +383,8 @@ struct TDiscoveryNodeRegistrant
                 nodeBrokerAddress,
                 Options,
                 kikimr,
-                NsConfig);
+                NsConfig,
+                Log);
         }
 
         return TRegisterDynamicNodeResult {
@@ -430,7 +457,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     for (;;) {
         const auto& nodeBrokerAddress = addrs[attempts++ % addrs.size()];
 
-        auto result = registrant->TryRegisterAndConfigure(nodeBrokerAddress);
+        auto result = registrant->TryRegisterAndConfigure(nodeBrokerAddress, Log);
 
         if (FAILED(result.GetError().GetCode())) {
             const auto& msg = result.GetError().GetMessage();
