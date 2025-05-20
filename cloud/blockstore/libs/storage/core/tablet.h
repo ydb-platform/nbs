@@ -9,7 +9,6 @@
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/tablet_flat/flat_database.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
@@ -22,8 +21,6 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 NKikimr::NTabletFlatExecutor::IMiniKQLFactory* NewMiniKQLFactory();
-
-ui64 CreateTransactionId();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -118,7 +115,8 @@ template <typename T>
 class TTabletBase
     : public NKikimr::NTabletFlatExecutor::TTabletExecutedFlat
 {
-    ITransactionTracker* TransactionTracker = nullptr;
+    ITransactionTracker* const TransactionTracker = nullptr;
+    ui64 TransactionIdGenerator = 0;
 
 public:
     TTabletBase(const NActors::TActorId& owner,
@@ -130,13 +128,12 @@ public:
 
 protected:
     template <typename TTx>
-    class TTransaction final
-        : public ITransactionBase
+    class TTransaction final: public ITransactionBase
     {
     private:
-        const ui64 TransactionId = CreateTransactionId();
+        T* const Self;
+        const ui64 TransactionId = {++Self->TransactionIdGenerator};
 
-        T* Self;
         typename TTx::TArgs Args;
 
         ui32 Generation = 0;
