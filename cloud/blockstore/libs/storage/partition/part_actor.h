@@ -150,7 +150,7 @@ private:
     bool FirstGarbageCollectionCompleted = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
-    ui64 VolumeTabletId;
+    const ui64 VolumeTabletId;
 
 public:
     TPartitionActor(

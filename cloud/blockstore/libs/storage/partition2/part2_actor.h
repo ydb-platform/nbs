@@ -136,7 +136,7 @@ private:
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
 
-    ui64 VolumeTabletId;
+    const ui64 VolumeTabletId;
 
 public:
     TPartitionActor(

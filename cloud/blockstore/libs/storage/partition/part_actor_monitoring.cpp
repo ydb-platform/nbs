@@ -476,8 +476,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                         *DiagnosticsConfig,
                         PartitionConfig.GetDiskId().c_str());
 
-                    TAG(TH3)
-                    {
+                    TAG (TH3) {
                         out << "<a href='../tablets?TabletID=" << VolumeTabletId
                             << "'>Volume</a>";
                     }

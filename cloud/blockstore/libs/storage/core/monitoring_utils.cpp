@@ -1083,10 +1083,8 @@ void DumpMonitoringPartitionLink(
     const TDiagnosticsConfig& config,
     const TString& diskId)
 {
-    HTML(out)
-    {
-        TAG(TH3)
-        {
+    HTML (out) {
+        TAG (TH3) {
             out << "<a href='" << GetMonitoringVolumeUrl(config, diskId)
                 << "'>Partition dashboards</a>";
         }
