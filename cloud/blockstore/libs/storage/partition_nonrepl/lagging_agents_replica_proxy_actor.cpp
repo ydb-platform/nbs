@@ -289,6 +289,7 @@ TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
+        ui32 replicaIndex,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,
@@ -298,6 +299,7 @@ TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
     , Migrations(std::move(migrations))
+    , ReplicaIndex(replicaIndex)
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , RwClientId(std::move(rwClientId))
@@ -746,14 +748,18 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
         std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
             msg->LaggingAgent));
 
-    const auto& agentId = msg->LaggingAgent.GetAgentId();
-    if (TAgentState* state = AgentState.FindPtr(agentId);
+    if (ReplicaIndex != msg->LaggingAgent.GetReplicaIndex()) {
+        return;
+    }
+
+    const auto& laggingAgentId = msg->LaggingAgent.GetAgentId();
+    if (TAgentState* state = AgentState.FindPtr(laggingAgentId);
         state && state->State == EAgentState::Unavailable)
     {
         return;
     }
 
-    auto& state = AgentState[agentId];
+    auto& state = AgentState[laggingAgentId];
     state.State = EAgentState::Unavailable;
     state.LaggingAgent = msg->LaggingAgent;
     state.MigrationDisabled = false;
@@ -776,7 +782,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
         "[%s] Lagging agent %s blocks map initialized. Block count: %lu, dirty "
         "block count: %lu",
         PartConfig->GetName().c_str(),
-        agentId.c_str(),
+        laggingAgentId.Quote().c_str(),
         PartConfig->GetBlockCount(),
         PartConfig->GetBlockCount() - state.CleanBlocksMap->Count());
 

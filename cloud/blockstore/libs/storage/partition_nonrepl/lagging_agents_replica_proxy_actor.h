@@ -48,6 +48,7 @@ private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
         Migrations;
+    const ui32 ReplicaIndex;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     TString RwClientId;
@@ -102,6 +103,7 @@ public:
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
+        ui32 replicaIndex,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,
