@@ -1,7 +1,6 @@
 import json
 import os
 import pytest
-import time
 
 import yatest.common as yatest_common
 import cloud.blockstore.tests.python.lib.daemon as daemon
@@ -9,9 +8,10 @@ import cloud.blockstore.tests.python.lib.daemon as daemon
 from cloud.blockstore.public.api.protos.encryption_pb2 import \
     ENCRYPTION_AT_REST, TEncryptionSpec
 
-from cloud.blockstore.public.sdk.python.client import CreateClient, Session
-from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
-    TAction, STORAGE_MEDIA_SSD_NONREPLICATED
+from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
+
+from cloud.blockstore.public.sdk.python.client import Session
+from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED
 from cloud.blockstore.config.root_kms_pb2 import TRootKmsConfig
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
@@ -68,7 +68,7 @@ def start_nbs_daemon(ydb):
 
     nbs = daemon.start_nbs(cfg)
 
-    client = CreateClient(f"localhost:{nbs.port}")
+    client = CreateTestClient(f"localhost:{nbs.port}")
     client.execute_action(
         action="DiskRegistrySetWritableState",
         input_bytes=str.encode('{"State": true}'))
@@ -80,29 +80,6 @@ def start_nbs_daemon(ydb):
     yield nbs
 
     nbs.kill()
-
-
-def _add_host(client, agent_id):
-    request = TCmsActionRequest()
-    action = request.Actions.add()
-    action.Type = TAction.ADD_HOST
-    action.Host = agent_id
-
-    return client.cms_action(request)
-
-
-def _wait_for_devices_to_be_cleared(client, expected_dirty_count=0):
-    while True:
-        response = client.execute_action(
-            action="BackupDiskRegistryState",
-            input_bytes=str.encode('{"BackupLocalDB": true}'))
-        bkp = json.loads(response)["Backup"]
-        agents = bkp.get("Agents", [])
-        dirty_devices = bkp.get("DirtyDevices", [])
-        dirty_count = len(dirty_devices)
-        if len(agents) != 0 and dirty_count == expected_dirty_count:
-            break
-        time.sleep(1)
 
 
 @pytest.fixture(name='disk_agent')
@@ -141,10 +118,10 @@ def start_disk_agent(ydb, nbs, agent_id):
     disk_agent = daemon.start_disk_agent(cfg)
     disk_agent.wait_for_registration()
 
-    client = CreateClient(f"localhost:{nbs.port}")
+    client = CreateTestClient(f"localhost:{nbs.port}")
 
-    _add_host(client, agent_id)
-    _wait_for_devices_to_be_cleared(client)
+    client.add_host(agent_id)
+    client.wait_for_devices_to_be_cleared()
 
     yield disk_agent
 
@@ -154,7 +131,7 @@ def start_disk_agent(ydb, nbs, agent_id):
 @pytest.mark.parametrize('method', ['features', 'encryption_spec'])
 def test_create_volume_with_default_ecnryption(nbs, disk_agent, method):
 
-    client = CreateClient(f"localhost:{nbs.port}")
+    client = CreateTestClient(f"localhost:{nbs.port}")
 
     # Feature EncryptionAtRestForDiskRegistryBasedDisks is enabled for vol0
     disk_id = "vol0"
