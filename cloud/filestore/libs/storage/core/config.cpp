@@ -271,6 +271,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         NProto::EGuestCachingType,                                             \
         NProto::GCT_NONE                                                      )\
     xxx(SessionHandleOffloadedStatsCapacity,       ui64,      0               )\
+    xxx(LoadConfigsFromCmsRetryMinDelay,   TDuration,  TDuration::Seconds(2)  )\
+    xxx(LoadConfigsFromCmsRetryMaxDelay,   TDuration,  TDuration::Seconds(512))\
+    xxx(LoadConfigsFromCmsTotalTimeout,    TDuration,  TDuration::Hours(1)    )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

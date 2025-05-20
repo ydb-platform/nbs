@@ -323,6 +323,10 @@ public:
     bool GetGuestKeepCacheAllowed() const;
     NProto::EGuestCachingType GetGuestCachingType() const;
     ui64 GetSessionHandleOffloadedStatsCapacity() const;
+
+    TDuration GetLoadConfigsFromCmsRetryMinDelay() const;
+    TDuration GetLoadConfigsFromCmsRetryMaxDelay() const;
+    TDuration GetLoadConfigsFromCmsTotalTimeout() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
