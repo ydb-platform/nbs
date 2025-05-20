@@ -59,6 +59,7 @@ private:
     TFlushedCommitIds FlushedCommitIdsFromChannel;
     const ui32 FlushedFreshBlobCount;
     const ui64 FlushedFreshBlobByteCount;
+    const TDuration BlobStorageAsyncRequestTimeout;
 
     TVector<TRequest> Requests;
     TVector<TBlockRange64> AffectedRanges;
@@ -80,6 +81,7 @@ public:
         TFlushedCommitIds flushedCommitIdsFromChannel,
         ui32 flushedFreshBlobCount,
         ui64 flushedFreshBlobByteCount,
+        TDuration blobStorageAsyncRequestTimeout,
         TVector<TRequest> requests);
 
     void Bootstrap(const TActorContext& ctx);
@@ -122,6 +124,7 @@ TFlushActor::TFlushActor(
         TFlushedCommitIds flushedCommitIdsFromChannel,
         ui32 flushedFreshBlobCount,
         ui64 flushedFreshBlobByteCount,
+        TDuration blobStorageAsyncRequestTimeout,
         TVector<TRequest> requests)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
@@ -131,6 +134,7 @@ TFlushActor::TFlushActor(
     , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
     , FlushedFreshBlobCount(flushedFreshBlobCount)
     , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
+    , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
     , Requests(std::move(requests))
 {}
 
@@ -191,11 +195,16 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
             continue;
         }
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            req.BlobContent.GetGuardedSgList(),
-            0,      // blockSizeForChecksums
-            true);  // async
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                req.BlobContent.GetGuardedSgList(),
+                0,      // blockSizeForChecksums
+                true,   // async
+                BlobStorageAsyncRequestTimeout
+                    ? ctx.Now() + BlobStorageAsyncRequestTimeout
+                    : TInstant::Max()   // deadline
+            );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -758,6 +767,7 @@ void TPartitionActor::HandleFlush(
             std::move(flushedCommitIdsFromChannel),
             State->GetUnflushedFreshBlobCount(),
             State->GetUnflushedFreshBlobByteCount(),
+            GetBlobStorageAsyncRequestTimeout(),
             std::move(requests));
 
         Actors.Insert(actor);

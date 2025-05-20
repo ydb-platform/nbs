@@ -84,7 +84,7 @@ Y_UNIT_TEST_SUITE(TProcessingBlocksTest)
         blocks.MarkProcessed(TBlockRange64::WithLength(1000, 500));
         blocks.MarkProcessed(TBlockRange64::WithLength(3000, 30000));
         blocks.MarkProcessed(
-            TBlockRange64::MakeHalfOpenInterval(35048, 1024 * 1024));
+            TBlockRange64::MakeClosedInterval(35048, 1024 * 1024 - 1));
         blocks.SkipProcessedRanges();
 
         UNIT_ASSERT(blocks.IsProcessing());

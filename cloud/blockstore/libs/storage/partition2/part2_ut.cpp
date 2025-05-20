@@ -7045,10 +7045,12 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             response->GetErrorReason());
     }
 
+    // The partition 2 write operations in compaction are not asynchronous,
+    // which is why the test is only for read requests.
     Y_UNIT_TEST(ShouldAbortCompactionIfReadBlobFailsWithDeadlineExceeded)
     {
         NProto::TStorageServiceConfig config;
-        config.SetBlobStorageAsyncGetTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
+        config.SetBlobStorageAsyncRequestTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -7094,6 +7096,41 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             runtime->DispatchEvents(options);
         }
         UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
+    }
+
+    Y_UNIT_TEST(ShouldAbortFlushIfWriteBlobFailsWithDeadlineExceeded)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetBlobStorageAsyncRequestTimeoutHDD(
+            TDuration::Seconds(1).MilliSeconds());
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(3, 33);
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+
+                if (ev->GetTypeRewrite() == TEvBlobStorage::EvVPut) {
+                    const auto* msg = ev->Get<TEvBlobStorage::TEvVPut>();
+                    if (msg->Record.GetHandleClass() ==
+                            NKikimrBlobStorage::AsyncBlob &&
+                        msg->Record.GetMsgQoS().HasDeadlineSeconds())
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        partition.SendFlushRequest();
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        auto response = partition.RecvFlushResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldAllowForcedCompactionRequestsInPresenseOfTabletCompaction)
@@ -7290,8 +7327,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
                         break;
                     }
-                    case TEvService::EvReadBlocksResponse: {
-                        using TEv = TEvService::TEvReadBlocksResponse;
+                    case TEvService::EvReadBlocksLocalResponse: {
+                        using TEv = TEvService::TEvReadBlocksLocalResponse;
 
                         auto response = std::make_unique<TEv>(
                             MakeError(E_IO, "block is broken"));

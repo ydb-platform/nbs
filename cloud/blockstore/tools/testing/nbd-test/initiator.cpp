@@ -185,7 +185,7 @@ private:
             std::move(callContext),
             std::move(req));
 
-        future.Subscribe([=] (auto f) mutable {
+        future.Subscribe([=, this] (auto f) mutable {
             guardedSgList.Close();
 
             auto response = ExtractResponse(f);
@@ -214,7 +214,7 @@ private:
             std::move(callContext),
             std::move(req));
 
-        future.Subscribe([=] (auto f) mutable {
+        future.Subscribe([=, this] (auto f) mutable {
             guardedSgList.Close();
 
             auto response = ExtractResponse(f);

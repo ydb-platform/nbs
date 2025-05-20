@@ -28,7 +28,7 @@ void TExecutor::Run()
             current = DoneCount++;
         }
 
-        RunAction(current).Subscribe([=] (auto future) {
+        RunAction(current).Subscribe([=, this] (auto future) {
             future.GetValue();  // re-throw exception
             ReadyEvent.Signal();
         });

@@ -20,15 +20,6 @@ void TDiskRegistryActor::HandleUpdateAgentStats(
         TabletID(),
         stats.GetNodeId());
 
-    // TODO: delete this after NBS-4571 is deployed at disk agents
-    for (auto& deviceStats: *stats.MutableDeviceStats()) {
-        if (deviceStats.GetDeviceName().empty()) {
-            if (auto* device = State->FindDevice(deviceStats.GetDeviceUUID())) {
-                deviceStats.SetDeviceName(device->GetDeviceName());
-            }
-        }
-    }
-
     auto error = State->UpdateAgentCounters(stats);
 
     if (HasError(error)) {

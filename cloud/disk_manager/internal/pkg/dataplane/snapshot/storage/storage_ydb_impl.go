@@ -15,6 +15,7 @@ import (
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -1419,4 +1420,47 @@ func (s *storageYDB) getSnapshotMeta(
 	}
 
 	return states[0].toSnapshotMeta(), nil
+}
+
+func (s *storageYDB) listSnapshots(
+	ctx context.Context,
+	session *persistence.Session,
+) (task_storage.StringSet, error) {
+
+	snapshots := task_storage.NewStringSet()
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshotStatusReady as Int64;
+		select id
+		from snapshots where status = $snapshotStatusReady
+	`, s.tablesPath),
+		persistence.ValueParam(
+			"$snapshotStatusReady",
+			persistence.Int64Value(int64(snapshotStatusReady)),
+		),
+	)
+	if err != nil {
+		return snapshots, err
+	}
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var id *string
+			err := res.Scan(&id)
+			if err != nil {
+				return snapshots, err
+			}
+
+			snapshots.Add(*id)
+		}
+	}
+
+	err = res.Err()
+	if err != nil {
+		return snapshots, task_errors.NewRetriableError(err)
+	}
+
+	return snapshots, nil
 }

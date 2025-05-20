@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -284,4 +285,12 @@ func (s *legacyStorage) GetIncremental(
 ) (snapshotID string, checkpointID string, err error) {
 
 	return "", "", task_errors.NewNonRetriableErrorf("not implemented")
+}
+
+func (s *legacyStorage) ListSnapshots(
+	ctx context.Context,
+) (task_storage.StringSet, error) {
+
+	return task_storage.NewStringSet(),
+		task_errors.NewNonRetriableErrorf("not implemented")
 }

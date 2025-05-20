@@ -21,7 +21,6 @@ namespace NCloud::NBlockStore {
     xxx(FailedToStartVolumeLocally)                                            \
     xxx(PublishDiskStateError)                                                 \
     xxx(EndpointRestoringError)                                                \
-    xxx(AcquiredDiskEraseAttempt)                                              \
     xxx(HangingYdbStatsRequest)                                                \
     xxx(UserNotificationError)                                                 \
     xxx(BackupPathDescriptionsFailure)                                         \
@@ -50,22 +49,15 @@ namespace NCloud::NBlockStore {
     xxx(ReceivedUnknownTaskId)                                                 \
     xxx(MigrationSourceNotFound)                                               \
     xxx(UnexpectedBatchMigration)                                              \
-    xxx(UnexpectedIdentifierRepetition)                                        \
     xxx(FreshDeviceNotFoundInConfig)                                           \
-    xxx(DiskAgentConfigMismatch)                                               \
     xxx(DiskRegistryDeviceNotFoundSoft)                                        \
     xxx(DiskRegistrySourceDiskNotFound)                                        \
     xxx(EndpointSwitchFailure)                                                 \
     xxx(ExternalEndpointUnexpectedExit)                                        \
-    xxx(DiskAgentSessionCacheUpdateError)                                      \
-    xxx(DiskAgentSessionCacheRestoreError)                                     \
-    xxx(DiskAgentSecureEraseDuringIo)                                          \
-    xxx(DiskAgentIoDuringSecureErase)                                          \
     xxx(BlockDigestMismatchInBlob)                                             \
     xxx(DiskRegistryResumeDeviceFailed)                                        \
     xxx(DiskRegistryAgentDevicePoolConfigMismatch)                             \
     xxx(DiskRegistryPurgeHostError)                                            \
-    xxx(DiskRegistryCleanupAgentConfigError)                                   \
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
     xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
@@ -74,6 +66,16 @@ namespace NCloud::NBlockStore {
     xxx(MirroredDiskResyncChecksumMismatch)                                    \
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
 // BLOCKSTORE_CRITICAL_EVENTS
+
+#define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
+    xxx(AcquiredDiskEraseAttempt)                                              \
+    xxx(DiskAgentConfigMismatch)                                               \
+    xxx(DiskAgentIoDuringSecureErase)                                          \
+    xxx(DiskAgentSecureEraseDuringIo)                                          \
+    xxx(DiskAgentSessionCacheRestoreError)                                     \
+    xxx(DiskAgentSessionCacheUpdateError)                                      \
+    xxx(UnexpectedIdentifierRepetition)                                        \
+// BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \
     xxx(TabletCommitIdOverflow)                                                \
@@ -107,6 +109,7 @@ namespace NCloud::NBlockStore {
     xxx(EmptyRequestSgList)                                                    \
     xxx(LaggingAgentsProxyWrongRecipientActor)                                 \
     xxx(UnexpectedCookie)                                                      \
+    xxx(MultiAgentRequestAffectsTwoDevices)                                    \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -120,6 +123,15 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
     BLOCKSTORE_CRITICAL_EVENTS(BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE)
 #undef BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE
+
+#define BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE(name)             \
+    TString Report##name(const TString& message = "");                         \
+    const TString GetCriticalEventFor##name();                                 \
+// BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
+
+    BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(
+        BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE)
+#undef BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 
 #define BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE(name)                      \
     TString Report##name(const TString& message = "");                         \

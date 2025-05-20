@@ -87,7 +87,7 @@ public:
         WriteRequestBoundsTracker.AddRequest(range);
 
         TImpl::AddRequest(
-            std::move(key),
+            key,
             {.Value = std::move(value), .IsWrite = true, .BlockRange = range});
     }
 

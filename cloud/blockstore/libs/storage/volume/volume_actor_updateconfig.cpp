@@ -246,9 +246,11 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
         *newMeta.AddFreshDeviceIds() = std::move(freshDeviceId);
     }
 
-    newMeta.ClearLostDeviceIds();
-    for (auto& lostDevice: UnfinishedUpdateVolumeConfig.LostDeviceIds) {
-        newMeta.AddLostDeviceIds(std::move(lostDevice));
+    newMeta.ClearUnavailableDeviceIds();
+    for (auto& unavailableDeviceId:
+         UnfinishedUpdateVolumeConfig.UnavailableDeviceIds)
+    {
+        newMeta.AddUnavailableDeviceIds(std::move(unavailableDeviceId));
     }
 
     if (State) {
@@ -264,7 +266,7 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     UnfinishedUpdateVolumeConfig.Replicas = {};
     UnfinishedUpdateVolumeConfig.FreshDeviceIds = {};
     UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds = {};
-    UnfinishedUpdateVolumeConfig.LostDeviceIds = {};
+    UnfinishedUpdateVolumeConfig.UnavailableDeviceIds = {};
 
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Updating volume config to version %u",

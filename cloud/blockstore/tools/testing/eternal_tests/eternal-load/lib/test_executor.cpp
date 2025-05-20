@@ -253,7 +253,7 @@ void TTestExecutor::DoReadRequest(ui16 rangeIdx)
         range.DataSize(),
         blockIdx * blockSize);
 
-    future.Subscribe([=] (const auto& f) mutable {
+    future.Subscribe([=, this] (const auto& f) mutable {
         OnResponse(startTs, rangeIdx, "read");
 
         try {
@@ -329,7 +329,7 @@ void TTestExecutor::DoWriteRequest(ui16 rangeIdx)
             partSize,
             blockIdx * blockSize + partOffset);
 
-        future.Subscribe([=] (const auto& f) mutable {
+        future.Subscribe([=, this] (const auto& f) mutable {
             OnResponse(startTs, rangeIdx, "write");
 
             try {
@@ -349,7 +349,7 @@ void TTestExecutor::DoWriteRequest(ui16 rangeIdx)
     }
 
     Futures[rangeIdx] = WaitAll(futures);
-    Futures[rangeIdx].Subscribe([=] (auto) {
+    Futures[rangeIdx].Subscribe([=, this] (auto) {
         RangesQueue.Enqueue(rangeIdx);
     });
 }

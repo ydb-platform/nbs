@@ -2,10 +2,13 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NClient {
 
@@ -48,7 +51,10 @@ protected:
             return false;
         }
 
-        output << result << Endl;
+        TString str;
+        google::protobuf::util::MessageToJsonString(result, &str);
+        output << str << Endl;
+
         return true;
     }
 };

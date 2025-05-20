@@ -99,6 +99,17 @@ ForEachMacros:
 IfMacros:
   - KJ_IF_MAYBE
   - with_lock
+  - DIV
+  - DIV_CLASS
+  - HTML
+  - SPAN_CLASS
+  - TABLE_CLASS
+  - TABLED
+  - TABLED_ATTRS
+  - TABLEH
+  - TABLEHEAD
+  - TABLER
+  - TAG
 IncludeBlocks:   Regroup
 IncludeCategories:
   - Regex:           '^\"public.h\"'

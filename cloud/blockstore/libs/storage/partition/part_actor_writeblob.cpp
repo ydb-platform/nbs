@@ -214,11 +214,7 @@ void TWriteBlobActor::ReplyAndDie(
             RequestInfo->CallContext->RequestId);
     }
 
-    if (HasError(response->GetError())) {
-        TLongRunningOperationCompanion::RequestCancelled(ctx);
-    } else {
-        TLongRunningOperationCompanion::RequestFinished(ctx);
-    }
+    TLongRunningOperationCompanion::RequestFinished(ctx, response->GetError());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);

@@ -201,7 +201,7 @@ public:
         }
 
         for (auto& ping: pings) {
-            ping.Subscribe([=, &instances] (TFuture<TPingResponseInfo> f) mutable {
+            ping.Subscribe([=, this, &instances] (TFuture<TPingResponseInfo> f) mutable {
                 bool done = false;
 
                 with_lock (instances.Lock) {

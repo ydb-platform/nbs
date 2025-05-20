@@ -141,11 +141,11 @@ TFuture<TInitializeSpdkResult> TSpdkInitializer::Start()
     }
 
     return WaitAll(futures)
-        .Apply([=] (const auto& future) {
+        .Apply([=, this] (const auto& future) {
             Y_UNUSED(future);
             return CreateNVMeTarget();
         })
-        .Apply([=] (const auto& future) {
+        .Apply([=, this] (const auto& future) {
             return Done(future.GetValue());
         });
 }
@@ -163,7 +163,7 @@ TFuture<void> TSpdkInitializer::RegisterMemoryDevice(const NProto::TMemoryDevice
     auto pool = args.GetPoolName();
 
     return result.Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             try {
                 auto guard = Guard(Lock);
 
@@ -189,7 +189,7 @@ TFuture<void> TSpdkInitializer::RegisterFileDevice(const NProto::TFileDeviceArgs
     auto pool = args.GetPoolName();
 
     return result.Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             try {
                 auto guard = Guard(Lock);
                 return ProcessDevice(future.GetValue(), deviceId, pool);
@@ -226,7 +226,7 @@ TFuture<void> TSpdkInitializer::RegisterNVMeDevices(
     auto pool = args.GetPoolName();
 
     return result.Apply(
-        [=] (auto future) mutable {
+        [=, this] (auto future) mutable {
             try {
                 auto devices = future.ExtractValue();
 
@@ -263,7 +263,7 @@ TFuture<void> TSpdkInitializer::AddTransport(const TString& transportId)
     auto result = Spdk->AddTransport(transportId);
 
     return result.Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             try {
                 future.TryRethrow();
 
@@ -279,7 +279,7 @@ TFuture<void> TSpdkInitializer::AddTransport(const TString& transportId)
 TFuture<void> TSpdkInitializer::StartListen(const TString& transportId)
 {
     return Spdk->StartListen(transportId).Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             try {
                 future.TryRethrow();
             } catch (...) {
@@ -326,7 +326,7 @@ TFuture<void> TSpdkInitializer::ProcessDevice(
     const TString& pool)
 {
     auto stats = QueryDeviceStats(name, id)
-        .Apply([=] (auto future) {
+        .Apply([=, this] (auto future) {
             auto config = future.ExtractValue();
             config.SetPoolName(pool);
             ProcessDeviceConfig(std::move(config));
@@ -341,7 +341,7 @@ TFuture<void> TSpdkInitializer::ProcessNVMeDevice(
     const TString& pool)
 {
     auto stats = QueryDeviceStats(name, id)
-        .Apply([=] (auto future) {
+        .Apply([=, this] (auto future) {
             auto config = future.ExtractValue();
             config.SetBaseName(baseName);
             config.SetPoolName(pool);
@@ -418,9 +418,9 @@ TFuture<NSpdk::ISpdkTargetPtr> TSpdkInitializer::CreateNVMeTarget()
         TVector<TString> { transportIds.begin(), transportIds.end() });
 
     return result.Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             auto target = future.GetValue();
-            return target->StartAsync().Apply([=] (const auto& future) {
+            return target->StartAsync().Apply([=, this] (const auto& future) {
                 try {
                     future.TryRethrow();
 

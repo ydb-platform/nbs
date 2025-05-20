@@ -895,7 +895,8 @@ public:
         const TString& poolName,
         const ui64 totalByteCount) const;
 
-    THashSet<TDeviceId> GetLostDevicesForDisk(const TString& diskId) const;
+    THashSet<TDeviceId> GetUnavailableDevicesForDisk(
+        const TString& diskId) const;
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
@@ -928,8 +929,8 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         TInstant timestamp,
-        TVector<TDiskId>* affectedDisks,
-        TVector<TDiskId>* disksToReallocate);
+        TVector<TDiskId>& affectedDisks,
+        THashSet<TDiskId>& disksToReallocate);
 
     [[nodiscard]] TString GetDiskIdToNotify(const TString& diskId) const;
 
@@ -1365,9 +1366,8 @@ private:
         const TString& deviceUUID);
 
     void ReallocateDisksWithLostOrReappearedDevices(
-        TDiskRegistryDatabase& db,
         const TAgentList::TAgentRegistrationResult& r,
-        TVector<TDiskId>& disksToReallocate);
+        THashSet<TDiskId>& disksToReallocate);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -325,18 +325,21 @@ private:
             response->Record.SetMuteIOErrors(disk.MuteIOErrors);
         }
 
-        for (const auto& lostDevice: State->LostDeviceUUIDs) {
+        for (const auto& unavailableDeviceUUID: State->UnavailableDeviceUUIDs) {
             bool belongsToDisk = AnyOf(
                 disk.Devices,
                 [&](const auto& diskDevice)
-                { return diskDevice.GetDeviceUUID() == lostDevice; });
+                {
+                    return diskDevice.GetDeviceUUID() == unavailableDeviceUUID;
+                });
 
             if (belongsToDisk) {
-                response->Record.AddLostDeviceUUIDs(lostDevice);
+                response->Record.AddUnavailableDeviceUUIDs(
+                    unavailableDeviceUUID);
             }
         }
 
-       return response;
+        return response;
     }
 
     void HandleDeallocateDisk(
