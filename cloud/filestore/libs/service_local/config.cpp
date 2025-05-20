@@ -34,8 +34,8 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
     xxx(ZeroCopyEnabled,             bool,          false                     )\
     xxx(GuestPageCacheDisabled,      bool,          false                     )\
     xxx(ExtendedAttributesDisabled,  bool,          false                     )\
-    xxx(ServerWriteBackCacheEnabled,   bool,        false                     )\
-    xxx(IgnoreNodeCacheOnListEnabled,  bool,        false                     )\
+    xxx(ServerWriteBackCacheEnabled, bool,          false                     )\
+    xxx(DontPopulateNodeCacheWhenListingNodes, bool, false                    )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \

@@ -119,7 +119,7 @@ message TLocalServiceConfig
     optional bool ServerWriteBackCacheEnabled = 19;
 
     // Don't populate node cache on ListNodes
-    optional bool IgnoreNodeCacheOnListEnabled = 20;
+    optional bool DontPopulateNodeCacheWhenListingNodes = 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
