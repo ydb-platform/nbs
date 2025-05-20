@@ -31,12 +31,19 @@ struct TDeviceRequestInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaWriteBlocksResponseHandler final: public IRdmaDeviceRequestHandler
+class TRdmaWriteBlocksResponseHandler final
+    : public TRdmaDeviceRequestHandlerBase<TRdmaWriteBlocksResponseHandler>
 {
+    using TBase =
+        TRdmaDeviceRequestHandlerBase<TRdmaWriteBlocksResponseHandler>;
+
 private:
     bool ReplyLocal;
 
 public:
+    using TRequestContext = TDeviceRequestRdmaContext;
+    using TResponseProto = NProto::TWriteDeviceBlocksResponse;
+
     TRdmaWriteBlocksResponseHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
@@ -46,7 +53,7 @@ public:
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
-        : IRdmaDeviceRequestHandler(
+        : TBase(
               actorSystem,
               std::move(partConfig),
               std::move(requestInfo),
@@ -57,29 +64,7 @@ public:
         , ReplyLocal(replyLocal)
     {}
 
-protected:
-    NProto::TError ProcessSubResponse(
-        const TDeviceRequestRdmaContext& reqCtx,
-        TStringBuf buffer) override
-    {
-        Y_UNUSED(reqCtx);
-        auto* serializer = TBlockStoreProtocol::Serializer();
-        auto [result, err] = serializer->Parse(buffer);
-
-        if (HasError(err)) {
-            return err;
-        }
-
-        const auto& concreteProto =
-            static_cast<NProto::TWriteDeviceBlocksResponse&>(*result.Proto);
-        if (HasError(concreteProto.GetError())) {
-            return concreteProto.GetError();
-        }
-
-        return {};
-    }
-
-    std::unique_ptr<IEventBase> CreateCompletionEvent() override
+    std::unique_ptr<IEventBase> CreateCompletionEvent()
     {
         auto completion = CreateConcreteCompletionEvent<
             TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>();
@@ -88,16 +73,15 @@ protected:
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(
-        NProto::TError err) override
+    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error) const
     {
         if (ReplyLocal) {
             return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
-                std::move(err));
+                std::move(error));
         }
 
         return std::make_unique<TEvService::TEvWriteBlocksResponse>(
-            std::move(err));
+            std::move(error));
     }
 };
 

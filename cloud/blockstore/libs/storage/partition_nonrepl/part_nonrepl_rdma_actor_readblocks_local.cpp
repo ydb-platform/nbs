@@ -23,8 +23,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestReadBlocksLocalHandler final: public IRdmaDeviceRequestHandler
+class TRdmaRequestReadBlocksLocalHandler final
+    : public TRdmaDeviceRequestHandlerBase<TRdmaRequestReadBlocksLocalHandler>
 {
+    using TBase =
+        TRdmaDeviceRequestHandlerBase<TRdmaRequestReadBlocksLocalHandler>;
+
 private:
     const bool CheckVoidBlocks;
     TGuardedSgList SgList;
@@ -32,6 +36,9 @@ private:
     ui32 VoidBlockCount = 0;
 
 public:
+    using TRequestContext = TDeviceReadRequestContext;
+    using TResponseProto = NProto::TReadDeviceBlocksResponse;
+
     TRdmaRequestReadBlocksLocalHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
@@ -42,7 +49,7 @@ public:
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
-        : IRdmaDeviceRequestHandler(
+        : TBase(
               actorSystem,
               std::move(partConfig),
               std::move(requestInfo),
@@ -54,44 +61,32 @@ public:
         , SgList(std::move(sglist))
     {}
 
-protected:
-    NProto::TError ProcessSubResponse(
-        const TDeviceRequestRdmaContext& reqCtx,
-        TStringBuf buffer) override
+    NProto::TError ProcessSubResponseProto(
+        const TRequestContext& ctx,
+        TResponseProto& proto,
+        TStringBuf responseData)
     {
-        const auto& readReqCtx =
-            static_cast<const TDeviceReadRequestContext&>(reqCtx);
+        Y_UNUSED(proto);
+
         auto guard = SgList.Acquire();
         if (!guard) {
             return MakeError(E_CANCELLED, "can't acquire sglist");
         }
-        auto* serializer = TBlockStoreProtocol::Serializer();
-        auto [result, err] = serializer->Parse(buffer);
 
-        if (HasError(err)) {
-            return err;
-        }
-
-        const auto& concreteProto =
-            static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
-        if (HasError(concreteProto.GetError())) {
-            return concreteProto.GetError();
-        }
-
-        TSgList data = guard.Get();
+        const TSgList& data = guard.Get();
 
         ui64 offset = 0;
         ui64 b = 0;
         bool isAllZeroes = CheckVoidBlocks;
-        while (offset < result.Data.size()) {
-            ui64 targetBlock = readReqCtx.StartIndexOffset + b;
+        while (offset < responseData.size()) {
+            ui64 targetBlock = ctx.StartIndexOffset + b;
             Y_ABORT_UNLESS(targetBlock < data.size());
             ui64 bytes =
-                Min(result.Data.size() - offset, data[targetBlock].Size());
+                Min(responseData.size() - offset, data[targetBlock].Size());
             Y_ABORT_UNLESS(bytes);
 
             char* dst = const_cast<char*>(data[targetBlock].Data());
-            const char* src = result.Data.data() + offset;
+            const char* src = responseData.data() + offset;
 
             if (isAllZeroes) {
                 isAllZeroes = IsAllZeroes(src, bytes);
@@ -107,13 +102,13 @@ protected:
         }
 
         if (isAllZeroes) {
-            VoidBlockCount += readReqCtx.BlockCount;
+            VoidBlockCount += ctx.BlockCount;
         }
 
         return {};
     }
 
-    std::unique_ptr<IEventBase> CreateCompletionEvent() override
+    std::unique_ptr<IEventBase> CreateCompletionEvent()
     {
         const auto requestBlockCount = GetRequestBlockCount();
         const bool allZeroes = VoidBlockCount == requestBlockCount;
@@ -128,7 +123,7 @@ protected:
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error) override
+    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error)
     {
         const bool allZeroes = VoidBlockCount == GetRequestBlockCount();
         auto response =

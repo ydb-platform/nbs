@@ -25,34 +25,19 @@ using TResponse = TEvService::TEvZeroBlocksResponse;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestZeroBlocksHandler final: public IRdmaDeviceRequestHandler
+class TRdmaRequestZeroBlocksHandler final
+    : public TRdmaDeviceRequestHandlerBase<TRdmaRequestZeroBlocksHandler>
 {
+    using TBase =
+        TRdmaDeviceRequestHandlerBase<TRdmaRequestZeroBlocksHandler>;
+
 public:
-    using IRdmaDeviceRequestHandler::IRdmaDeviceRequestHandler;
+    using TRequestContext = TDeviceRequestRdmaContext;
+    using TResponseProto = NProto::TZeroDeviceBlocksResponse;
 
-protected:
-    NProto::TError ProcessSubResponse(
-        const TDeviceRequestRdmaContext& reqCtx,
-        TStringBuf buffer) override
-    {
-        Y_UNUSED(reqCtx);
-        auto* serializer = TBlockStoreProtocol::Serializer();
-        auto [result, err] = serializer->Parse(buffer);
+    using TBase::TBase;
 
-        if (HasError(err)) {
-            return err;
-        }
-
-        const auto& concreteProto =
-            static_cast<NProto::TZeroDeviceBlocksResponse&>(*result.Proto);
-        if (HasError(concreteProto.GetError())) {
-            return concreteProto.GetError();
-        }
-
-        return {};
-    }
-
-    std::unique_ptr<IEventBase> CreateCompletionEvent() override
+    std::unique_ptr<IEventBase> CreateCompletionEvent()
     {
         auto completion = CreateConcreteCompletionEvent<
             TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
@@ -61,7 +46,7 @@ protected:
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error) override
+    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error)
     {
         return std::make_unique<TEvService::TEvZeroBlocksResponse>(
             std::move(error));

@@ -43,41 +43,35 @@ struct TPartialChecksum
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceChecksumRequestHandler final: public IRdmaDeviceRequestHandler
+class TDeviceChecksumRequestHandler final
+    : public TRdmaDeviceRequestHandlerBase<TDeviceChecksumRequestHandler>
 {
+    using TBase = TRdmaDeviceRequestHandlerBase<TDeviceChecksumRequestHandler>;
+
 private:
     TMap<ui64, TPartialChecksum> Checksums;
 
 public:
-    using IRdmaDeviceRequestHandler::IRdmaDeviceRequestHandler;
+    using TRequestContext = TDeviceChecksumRequestContext;
+    using TResponseProto = NProto::TChecksumDeviceBlocksResponse;
 
-protected:
-    NProto::TError ProcessSubResponse(
-        const TDeviceRequestRdmaContext& reqCtx,
-        TStringBuf buffer) override
+    using TBase::TBase;
+
+    NProto::TError ProcessSubResponseProto(
+        const TRequestContext& ctx,
+        TResponseProto& proto,
+        TStringBuf data)
     {
-        const auto& checksumReqCtx =
-            static_cast<const TDeviceChecksumRequestContext&>(reqCtx);
-        auto* serializer = TBlockStoreProtocol::Serializer();
-        auto [result, err] = serializer->Parse(buffer);
+        Y_UNUSED(data);
 
-        if (HasError(err)) {
-            return err;
-        }
+        Checksums[ctx.RangeStartIndex] = {
+            .Value = proto.GetChecksum(),
+            .Size = ctx.RangeSize};
 
-        const auto& concreteProto =
-            static_cast<NProto::TChecksumDeviceBlocksResponse&>(*result.Proto);
-        if (HasError(concreteProto.GetError())) {
-            return concreteProto.GetError();
-        }
-
-        Checksums[checksumReqCtx.RangeStartIndex] = {
-            .Value = concreteProto.GetChecksum(),
-            .Size = checksumReqCtx.RangeSize};
         return {};
     }
 
-    std::unique_ptr<IEventBase> CreateCompletionEvent() override
+    std::unique_ptr<IEventBase> CreateCompletionEvent()
     {
         auto completion = CreateConcreteCompletionEvent<
             TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>();
@@ -87,7 +81,7 @@ protected:
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(NProto::TError err) override
+    std::unique_ptr<IEventBase> CreateResponse(NProto::TError err)
     {
         TBlockChecksum checksum;
         for (const auto& [_, partialChecksum]: Checksums) {

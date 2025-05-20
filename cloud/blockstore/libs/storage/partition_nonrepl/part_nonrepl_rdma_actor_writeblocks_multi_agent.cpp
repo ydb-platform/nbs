@@ -32,14 +32,21 @@ struct TDeviceRequestInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaMultiWriteBlocksResponseHandler: public IRdmaDeviceRequestHandler
+class TRdmaMultiWriteBlocksResponseHandler
+    : public TRdmaDeviceRequestHandlerBase<TRdmaMultiWriteBlocksResponseHandler>
 {
+    using TBase =
+        TRdmaDeviceRequestHandlerBase<TRdmaMultiWriteBlocksResponseHandler>;
+
 private:
     const size_t ReplicationTargetCount = 0;
 
     bool InconsistentResponse = false;
 
 public:
+    using TRequestContext = TDeviceRequestRdmaContext;
+    using TResponseProto = NProto::TWriteDeviceBlocksResponse;
+
     TRdmaMultiWriteBlocksResponseHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
@@ -48,7 +55,7 @@ public:
             size_t replicationTargetCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
-        : IRdmaDeviceRequestHandler(
+        : TBase(
               actorSystem,
               std::move(partConfig),
               std::move(requestInfo),
@@ -59,34 +66,23 @@ public:
         , ReplicationTargetCount(replicationTargetCount)
     {}
 
-    NProto::TError ProcessSubResponse(
-        const TDeviceRequestRdmaContext& reqCtx,
-        TStringBuf buffer) override
+    NProto::TError ProcessSubResponseProto(
+        const TRequestContext& ctx,
+        TResponseProto& proto,
+        TStringBuf data)
     {
-        Y_UNUSED(reqCtx);
-        auto* serializer = TBlockStoreProtocol::Serializer();
-        auto [result, err] = serializer->Parse(buffer);
-
-        if (HasError(err)) {
-            return err;
-        }
-
-        const auto& concreteProto =
-            static_cast<NProto::TWriteDeviceBlocksResponse&>(*result.Proto);
-        if (HasError(concreteProto.GetError())) {
-            return concreteProto.GetError();
-        }
+        Y_UNUSED(ctx, data);
 
         bool subResponsesOk =
-            concreteProto.GetReplicationResponses().size() ==
+            proto.GetReplicationResponses().size() ==
                 static_cast<int>(ReplicationTargetCount) &&
             AllOf(
-                concreteProto.GetReplicationResponses(),
+                proto.GetReplicationResponses(),
                 [](const NProto::TError& subResponseError)
                 { return subResponseError.GetCode() == S_OK; });
         if (!subResponsesOk) {
             TString subResponses = Accumulate(
-                concreteProto.GetReplicationResponses(),
+                proto.GetReplicationResponses(),
                 TString{},
                 [](const TString& acc, const NProto::TError& err)
                 {
@@ -101,7 +97,7 @@ public:
     }
 
     std::unique_ptr<NActors::IEventBase> CreateResponse(
-        NProto::TError error) override
+        NProto::TError error)
     {
         auto response = std::make_unique<
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
@@ -110,7 +106,7 @@ public:
         return response;
     }
 
-    std::unique_ptr<NActors::IEventBase> CreateCompletionEvent() override
+    std::unique_ptr<NActors::IEventBase> CreateCompletionEvent()
     {
         auto completion = CreateConcreteCompletionEvent<
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted>();

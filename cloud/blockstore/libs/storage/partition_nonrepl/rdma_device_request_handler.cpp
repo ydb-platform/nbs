@@ -2,8 +2,6 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-namespace {
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void ConvertRdmaErrorIfNeeded(ui32 rdmaStatus, NProto::TError& err)
@@ -20,78 +18,6 @@ void ConvertRdmaErrorIfNeeded(ui32 rdmaStatus, NProto::TError& err)
             std::move(*err.MutableMessage()) + ", converted to E_REJECTED",
             flags);
     }
-}
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-IRdmaDeviceRequestHandler::IRdmaDeviceRequestHandler(
-        NActors::TActorSystem* actorSystem,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TRequestInfoPtr requestInfo,
-        ui64 requestId,
-        NActors::TActorId parentActorId,
-        ui32 requestBlockCount,
-        ui32 responseCount)
-    : ActorSystem(actorSystem)
-    , PartConfig(std::move(partConfig))
-    , RequestInfo(std::move(requestInfo))
-    , RequestId(requestId)
-    , ParentActorId(parentActorId)
-    , RequestBlockCount(requestBlockCount)
-    , ResponseCount(responseCount)
-{}
-
-bool IRdmaDeviceRequestHandler::HandleSubResponse(
-    TDeviceRequestRdmaContext& reqCtx,
-    ui32 status,
-    TStringBuf buffer)
-{
-    RequestsResult.emplace_back(reqCtx.DeviceIdx);
-
-    if (status == NRdma::RDMA_PROTO_OK) {
-        auto err = ProcessSubResponse(reqCtx, buffer);
-        if (HasError(err)) {
-            RequestsResult.back().Error = err;
-            Error = std::move(err);
-        }
-    } else {
-        Error = NRdma::ParseError(buffer);
-        ConvertRdmaErrorIfNeeded(status, Error);
-        RequestsResult.back().Error = Error;
-    }
-
-    --ResponseCount;
-    return ResponseCount == 0;
-}
-
-void IRdmaDeviceRequestHandler::HandleResponse(
-    NRdma::TClientRequestPtr req,
-    ui32 status,
-    size_t responseBytes)
-{
-    TRequestScope timer(*RequestInfo);
-    auto guard = Guard(Lock);
-
-    auto buffer = req->ResponseBuffer.Head(responseBytes);
-    auto* reqCtx = static_cast<TDeviceRequestRdmaContext*>(req->Context.get());
-
-    if (!HandleSubResponse(*reqCtx, status, buffer)) {
-        return;
-    }
-
-    ProcessError(*ActorSystem, *PartConfig, Error);
-
-    auto response = CreateResponse(std::move(Error));
-    auto completion = CreateCompletionEvent();
-
-    timer.Finish();
-
-    ActorSystem
-        ->Send(RequestInfo->Sender, response.release(), 0, RequestInfo->Cookie);
-
-    ActorSystem->Send(ParentActorId, completion.release(), 0, RequestId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
