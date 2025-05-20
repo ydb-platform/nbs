@@ -118,7 +118,8 @@ TString GetMonitoringNBSOverviewToTVUrl(const TDiagnosticsConfig& config)
 TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
-    const TString& storagePool)
+    const TString& storagePool,
+    const TString& dataKind)
 {
     constexpr TStringBuf GetFast =
         R"(q.0.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
@@ -126,9 +127,49 @@ TString GetMonitoringYDBGroupUrl(
     constexpr TStringBuf PutUserData =
         R"(q.1.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
         R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutUserData"})&q.1.name=B)";
+
+    if (dataKind == "Log") {
+        constexpr TStringBuf Url =
+            "%s/projects/%s/explorer/"
+            "queries?%s&%s&%s&from=now-1d&to=now&refresh=60000";
+        constexpr TStringBuf PutTabletLog =
+            R"(q.2.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+            R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutTabletLog"})&q.2.name=C)";
+
+        return Sprintf(
+            Url.data(),
+            config.GetMonitoringUrlData().MonitoringUrl.c_str(),
+            config.GetMonitoringUrlData().MonitoringYDBProject.c_str(),
+            Sprintf(GetFast.data(), storagePool.c_str(), groupId).c_str(),
+            Sprintf(PutUserData.data(), storagePool.c_str(), groupId).c_str(),
+            Sprintf(PutTabletLog.data(), storagePool.c_str(), groupId).c_str());
+    }
+
+    if (dataKind == "Merged" || dataKind == "Mixed") {
+        constexpr TStringBuf Url =
+            "%s/projects/%s/explorer/"
+            "queries?%s&%s&%s&%s&from=now-1d&to=now&refresh=60000";
+        constexpr TStringBuf GetAsync =
+            R"(q.2.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+            R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="GetAsync"})&q.2.name=C)";
+        constexpr TStringBuf PutAsyncBlob =
+            R"(q.3.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+            R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutAsyncBlob"})&q.3.name=D)";
+
+        return Sprintf(
+            Url.data(),
+            config.GetMonitoringUrlData().MonitoringUrl.c_str(),
+            config.GetMonitoringUrlData().MonitoringYDBProject.c_str(),
+            Sprintf(GetFast.data(), storagePool.c_str(), groupId).c_str(),
+            Sprintf(PutUserData.data(), storagePool.c_str(), groupId).c_str(),
+            Sprintf(GetAsync.data(), storagePool.c_str(), groupId).c_str(),
+            Sprintf(PutAsyncBlob.data(), storagePool.c_str(), groupId).c_str());
+    }
+
     constexpr TStringBuf Url =
         "%s/projects/%s/explorer/"
         "queries?%s&%s&from=now-1d&to=now&refresh=60000";
+
     return Sprintf(
         Url.data(),
         config.GetMonitoringUrlData().MonitoringUrl.c_str(),

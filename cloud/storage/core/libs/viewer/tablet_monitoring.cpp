@@ -74,7 +74,7 @@ void DumpChannel(
                     << "'>Status</a>";
             }
             const auto groupUrl =
-                getGroupUrl(latestEntry->GroupID, channel.StoragePool);
+                getGroupUrl(latestEntry->GroupID, channel.StoragePool, channelInfo.DataKind);
             if (groupUrl) {
                 TABLED()
                 {

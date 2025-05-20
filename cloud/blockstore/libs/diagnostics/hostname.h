@@ -37,7 +37,8 @@ TString GetMonitoringPartitionUrl(const TDiagnosticsConfig& config);
 TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
-    const TString& storagePool);
+    const TString& storagePool,
+    const TString& dataKind);
 
 TString GetMonitoringDashboardYDBGroupUrl(
     const TDiagnosticsConfig& config,

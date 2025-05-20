@@ -77,11 +77,15 @@ void DumpDownGroups(
                             for (const TTabletChannelInfo& channelInfo:
                                  matchedInfos)
                             {
+                                TString dataKind = TStringBuilder()
+                                                   << state.GetChannelDataKind(
+                                                          channelInfo.Channel);
                                 out << groupId << "&nbsp;<a href='"
                                     << GetMonitoringYDBGroupUrl(
                                            config,
                                            groupId,
-                                           channelInfo.StoragePool)
+                                           channelInfo.StoragePool,
+                                           dataKind)
                                     << "'>Graphs&nbsp;"
                                     << "(Channel=" << channelInfo.Channel
                                     << ")</a><br/>";
@@ -131,11 +135,12 @@ void DumpChannels(
         out,
         channelInfos,
         storage,
-        [&] (ui32 groupId, const TString& storagePool) {
+        [&] (ui32 groupId, const TString& storagePool, const TString& dataKind) {
             return GetMonitoringYDBGroupUrl(
                 config,
                 groupId,
-                storagePool);
+                storagePool,
+                dataKind);
         },
         [&](ui32 groupId)
         { return GetMonitoringDashboardYDBGroupUrl(config, groupId); },
