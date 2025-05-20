@@ -498,7 +498,6 @@ void TPartitionActor::WriteFreshBlocks(
 
             AddTransaction(
                 *r.Data.RequestInfo,
-                ETransactionType::WriteFreshBlocks,
                 r.Data.RequestInfo->CancelRoutine);
 
             subRequests.emplace_back(
@@ -514,11 +513,10 @@ void TPartitionActor::WriteFreshBlocks(
             }
         }
 
-        auto tx = CreateTx<TWriteBlocks>(
-            commitId,
-            std::move(subRequests)
-        );
-        ExecuteTx(ctx, std::move(tx));
+        ExecuteTx(
+            ctx,
+            CreateTx<TWriteBlocks>(commitId, std::move(subRequests)),
+            &TransactionTimeTracker);
     }
 }
 

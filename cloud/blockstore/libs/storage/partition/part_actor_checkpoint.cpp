@@ -74,9 +74,7 @@ void TPartitionActor::HandleCreateCheckpoint(
         return;
     }
 
-    AddTransaction<TEvService::TCreateCheckpointMethod>(
-        *requestInfo,
-        ETransactionType::CreateCheckpoint);
+    AddTransaction<TEvService::TCreateCheckpointMethod>(*requestInfo);
 
     TString idempotenceId = GetIdempotenceId(*msg);
 
@@ -98,7 +96,7 @@ void TPartitionActor::HandleCreateCheckpoint(
 
     auto nextTx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
     if (nextTx) {
-        ExecuteTx(ctx, std::move(nextTx));
+        ExecuteTx(ctx, std::move(nextTx), &TransactionTimeTracker);
     }
 }
 
@@ -224,7 +222,7 @@ void TPartitionActor::DeleteCheckpoint(
         return;
     }
 
-    AddTransaction<TMethod>(*requestInfo, ETransactionType::DeleteCheckpoint);
+    AddTransaction<TMethod>(*requestInfo);
 
     auto tx = CreateTx<TDeleteCheckpoint>(
         std::move(requestInfo),
@@ -238,7 +236,7 @@ void TPartitionActor::DeleteCheckpoint(
 
     auto nextTx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
     if (nextTx) {
-        ExecuteTx(ctx, std::move(nextTx));
+        ExecuteTx(ctx, std::move(nextTx), &TransactionTimeTracker);
     }
 }
 

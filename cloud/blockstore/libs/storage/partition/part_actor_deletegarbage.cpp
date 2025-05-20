@@ -32,16 +32,16 @@ void TPartitionActor::HandleDeleteGarbage(
         "DeleteGarbage",
         requestInfo->CallContext->RequestId);
 
-    AddTransaction<TEvPartitionPrivate::TDeleteGarbageMethod>(
-        *requestInfo,
-        ETransactionType::DeleteGarbage);
+    AddTransaction<TEvPartitionPrivate::TDeleteGarbageMethod>(*requestInfo);
 
-    ExecuteTx<TDeleteGarbage>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        msg->CommitId,
-        std::move(msg->NewBlobs),
-        std::move(msg->GarbageBlobs));
+        CreateTx<TDeleteGarbage>(
+            requestInfo,
+            msg->CommitId,
+            std::move(msg->NewBlobs),
+            std::move(msg->GarbageBlobs)),
+        &TransactionTimeTracker);
 }
 
 bool TPartitionActor::PrepareDeleteGarbage(

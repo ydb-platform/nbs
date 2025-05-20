@@ -4,7 +4,6 @@ LIBRARY()
 
 GENERATE_ENUM_SERIALIZATION(mixed_index_cache.h)
 GENERATE_ENUM_SERIALIZATION(operation_status.h)
-GENERATE_ENUM_SERIALIZATION(transaction_time_tracker.h)
 
 SRCS(
     barrier.cpp

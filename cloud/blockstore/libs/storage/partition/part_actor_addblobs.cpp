@@ -655,22 +655,22 @@ void TPartitionActor::HandleAddBlobs(
         "AddBlobs",
         requestInfo->CallContext->RequestId);
 
-    AddTransaction<TEvPartitionPrivate::TAddBlobsMethod>(
-        *requestInfo,
-        ETransactionType::AddBlobs);
+    AddTransaction<TEvPartitionPrivate::TAddBlobsMethod>(*requestInfo);
 
-    ExecuteTx<TAddBlobs>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        msg->CommitId,
-        std::move(msg->MixedBlobs),
-        std::move(msg->MergedBlobs),
-        std::move(msg->FreshBlobs),
-        msg->Mode,
-        std::move(msg->AffectedBlobs),
-        std::move(msg->AffectedBlocks),
-        std::move(msg->MixedBlobCompactionInfos),
-        std::move(msg->MergedBlobCompactionInfos));
+        CreateTx<TAddBlobs>(
+            requestInfo,
+            msg->CommitId,
+            std::move(msg->MixedBlobs),
+            std::move(msg->MergedBlobs),
+            std::move(msg->FreshBlobs),
+            msg->Mode,
+            std::move(msg->AffectedBlobs),
+            std::move(msg->AffectedBlocks),
+            std::move(msg->MixedBlobCompactionInfos),
+            std::move(msg->MergedBlobCompactionInfos)),
+        &TransactionTimeTracker);
 }
 
 bool TPartitionActor::PrepareAddBlobs(

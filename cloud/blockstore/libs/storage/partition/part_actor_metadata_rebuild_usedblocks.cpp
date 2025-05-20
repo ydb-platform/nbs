@@ -278,10 +278,12 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
         DescribeRange(blockRange).data());
 
     AddTransaction<TEvPartitionPrivate::TMetadataRebuildUsedBlocksMethod>(
-        *requestInfo,
-        ETransactionType::RebuildUsedBlocks);
+        *requestInfo);
 
-    ExecuteTx(ctx, CreateTx<TMetadataRebuildUsedBlocks>(requestInfo, blockRange));
+    ExecuteTx(
+        ctx,
+        CreateTx<TMetadataRebuildUsedBlocks>(requestInfo, blockRange),
+        &TransactionTimeTracker);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

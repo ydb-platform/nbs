@@ -271,15 +271,10 @@ void TPartitionActor::HandleHttpInfo_Check(
     if (const auto& range = params.Get("range")) {
         TBlockRange32 blockRange;
         if (TBlockRange32::TryParse(range, blockRange)) {
-            AddTransaction(
-                *requestInfo,
-                ETransactionType::CheckIndex,
-                [](const NActors::TActorContext&, TRequestInfo&) {});
-
-            ExecuteTx<TCheckIndex>(
+            ExecuteTx(
                 ctx,
-                std::move(requestInfo),
-                blockRange);
+                CreateTx<TCheckIndex>(std::move(requestInfo), blockRange),
+                &TransactionTimeTracker);
         } else {
             TString message = "invalid range specified: " + range.Quote();
             SendHttpResponse(

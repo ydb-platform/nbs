@@ -36,14 +36,12 @@ void TPartitionActor::HandleAddGarbage(
         "AddGarbage",
         requestInfo->CallContext->RequestId);
 
-    AddTransaction<TEvPartitionPrivate::TAddGarbageMethod>(
-        *requestInfo,
-        ETransactionType::AddGarbage);
+    AddTransaction<TEvPartitionPrivate::TAddGarbageMethod>(*requestInfo);
 
-    ExecuteTx<TAddGarbage>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        std::move(msg->BlobIds));
+        CreateTx<TAddGarbage>(requestInfo, std::move(msg->BlobIds)),
+        &TransactionTimeTracker);
 }
 
 bool TPartitionActor::PrepareAddGarbage(

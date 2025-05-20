@@ -321,11 +321,10 @@ private:
     void KillActors(const NActors::TActorContext& ctx);
     void AddTransaction(
         TRequestInfo& requestInfo,
-        ETransactionType transactionType,
         TRequestInfo::TCancelRoutine cancelRoutine);
 
     template <typename TMethod>
-    void AddTransaction(TRequestInfo& requestInfo, ETransactionType transactionType)
+    void AddTransaction(TRequestInfo& requestInfo)
     {
         auto cancelRoutine = [] (
             const NActors::TActorContext& ctx,
@@ -337,7 +336,7 @@ private:
             NCloud::Reply(ctx, requestInfo, std::move(response));
         };
 
-        AddTransaction(requestInfo, transactionType, cancelRoutine);
+        AddTransaction(requestInfo, cancelRoutine);
     }
     void RemoveTransaction(TRequestInfo& requestInfo);
     void TerminateTransactions(const NActors::TActorContext& ctx);

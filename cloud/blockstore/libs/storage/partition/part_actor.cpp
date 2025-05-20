@@ -2,7 +2,6 @@
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -321,17 +320,10 @@ void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 
     if (!Executor()->GetStats().IsFollower) {
-        auto requestInfo = CreateRequestInfo(
-            NActors::TActorId(),
-            CreateRequestId(),
-            MakeIntrusive<TCallContext>());
-
-        AddTransaction(
-            *requestInfo,
-            ETransactionType::InitSchema,
-            [](const NActors::TActorContext&, TRequestInfo&) {});
-
-        ExecuteTx<TInitSchema>(ctx, requestInfo, PartitionConfig.GetBlocksCount());
+        ExecuteTx(
+            ctx,
+            CreateTx<TInitSchema>(PartitionConfig.GetBlocksCount()),
+            &TransactionTimeTracker);
     }
 }
 
@@ -371,7 +363,6 @@ void TPartitionActor::KillActors(const TActorContext& ctx)
 
 void TPartitionActor::AddTransaction(
     TRequestInfo& requestInfo,
-    ETransactionType transactionType,
     TRequestInfo::TCancelRoutine cancelRoutine)
 {
     requestInfo.CancelRoutine = cancelRoutine;
@@ -384,11 +375,6 @@ void TPartitionActor::AddTransaction(
         TabletID());
 
     ActiveTransactions.PushBack(&requestInfo);
-
-    TransactionTimeTracker.OnStarted(
-        transactionType,
-        std::bit_cast<ui64>(&requestInfo),
-        GetCycleCount());
 }
 
 void TPartitionActor::RemoveTransaction(TRequestInfo& requestInfo)
@@ -397,10 +383,6 @@ void TPartitionActor::RemoveTransaction(TRequestInfo& requestInfo)
         !requestInfo.Empty(),
         TWellKnownEntityTypes::TABLET,
         TabletID());
-
-    TransactionTimeTracker.OnFinished(
-        std::bit_cast<ui64>(&requestInfo),
-        GetCycleCount());
 
     requestInfo.Unlink();
 

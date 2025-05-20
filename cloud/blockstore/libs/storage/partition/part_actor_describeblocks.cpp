@@ -108,15 +108,12 @@ void TPartitionActor::DescribeBlocks(
         commitId,
         DescribeRange(describeRange).data());
 
-    AddTransaction<TEvVolume::TDescribeBlocksMethod>(
-        *requestInfo,
-        ETransactionType::DescribeBlocks);
+    AddTransaction<TEvVolume::TDescribeBlocksMethod>(*requestInfo);
 
-    ExecuteTx<TDescribeBlocks>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        commitId,
-        describeRange);
+        CreateTx<TDescribeBlocks>(requestInfo, commitId, describeRange),
+        &TransactionTimeTracker);
 }
 
 void TPartitionActor::HandleDescribeBlocks(

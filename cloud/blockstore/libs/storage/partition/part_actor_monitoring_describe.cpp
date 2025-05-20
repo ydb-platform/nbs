@@ -260,7 +260,6 @@ void TPartitionActor::CompleteDescribeRange(
     GenerateBlobviewJS(out);
 
     SendHttpResponse(ctx, *args.RequestInfo, std::move(out.Str()));
-    RemoveTransaction(*args.RequestInfo);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -344,7 +343,6 @@ void TPartitionActor::CompleteDescribeBlob(
     GenerateBlobviewJS(out);
 
     SendHttpResponse(ctx, *args.RequestInfo, std::move(out.Str()));
-    RemoveTransaction(*args.RequestInfo);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -357,16 +355,13 @@ void TPartitionActor::HandleHttpInfo_Describe(
     if (const auto& range = params.Get("range")) {
         TBlockRange32 blockRange;
         if (TBlockRange32::TryParse(range, blockRange)) {
-            AddTransaction(
-                *requestInfo,
-                ETransactionType::DescribeRange,
-                [](const NActors::TActorContext&, TRequestInfo&) {});
-
-            ExecuteTx<TDescribeRange>(
+            ExecuteTx(
                 ctx,
-                std::move(requestInfo),
-                blockRange,
-                params.Get("blockfilter"));
+                CreateTx<TDescribeRange>(
+                    std::move(requestInfo),
+                    blockRange,
+                    params.Get("blockfilter")),
+                &TransactionTimeTracker);
         } else {
             TString message = "invalid range specified: " + range.Quote();
             RejectHttpRequest(
@@ -381,15 +376,12 @@ void TPartitionActor::HandleHttpInfo_Describe(
         TLogoBlobID blobId;
         TString errorExplanation;
         if (TLogoBlobID::Parse(blobId, blob, errorExplanation)) {
-            AddTransaction(
-                *requestInfo,
-                ETransactionType::DescribeBlob,
-                [](const NActors::TActorContext&, TRequestInfo&) {});
-
-            ExecuteTx<TDescribeBlob>(
+            ExecuteTx(
                 ctx,
-                std::move(requestInfo),
-                MakePartialBlobId(blobId));
+                CreateTx<TDescribeBlob>(
+                    std::move(requestInfo),
+                    MakePartialBlobId(blobId)),
+                &TransactionTimeTracker);
         } else {
             TStringBuilder message;
             message << "invalid blob specified: " + blob.Quote() +

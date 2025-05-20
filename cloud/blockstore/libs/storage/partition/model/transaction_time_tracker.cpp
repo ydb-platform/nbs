@@ -14,6 +14,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TString TransactionTypes[] = {
+#define TRANSACTION_NAME(name, ...) #name,
+    BLOCKSTORE_PARTITION_TRANSACTIONS(TRANSACTION_NAME)
+#undef TRANSACTION_NAME
+        "Total",
+};
+
 const TString& GetTimeBucketName(TDuration duration)
 {
     static const auto TimeNames = TRequestUsTimeBuckets::MakeNames();
@@ -35,7 +42,7 @@ TString TTransactionTimeTracker::TKey::GetHtmlPrefix() const
 {
     TStringBuilder builder;
 
-    builder << ToString(TransactionType);
+    builder << ToString(TransactionName);
 
     switch (Status) {
         case EStatus::Finished: {
@@ -52,66 +59,52 @@ TString TTransactionTimeTracker::TKey::GetHtmlPrefix() const
 
 ui64 TTransactionTimeTracker::THash::operator()(const TKey& key) const
 {
-    return IntHash(static_cast<size_t>(key.Status)) +
-           IntHash(static_cast<size_t>(key.TransactionType) << 2);
-}
-
-bool TTransactionTimeTracker::TEqual::operator()(
-    const TKey& lhs,
-    const TKey& rhs) const
-{
-    auto makeTie = [](const TKey& val)
-    {
-        return std::tie(val.TransactionType, val.Status);
-    };
-    return makeTie(lhs) == makeTie(rhs);
+    return MultiHash(static_cast<size_t>(key.Status), key.TransactionName);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TTransactionTimeTracker::TTransactionTimeTracker()
 {
-    for (size_t i = 0; i <= static_cast<size_t>(ETransactionType::Total); ++i) {
-        auto key = TKey{
-            .TransactionType = static_cast<ETransactionType>(i),
-            .Status = EStatus::Inflight};
+    for (const auto& transaction: TransactionTypes) {
+        auto key =
+            TKey{.TransactionName = transaction, .Status = EStatus::Inflight};
         Histograms[key];
     }
 }
 
 void TTransactionTimeTracker::OnStarted(
-    ETransactionType transactionType,
     ui64 transactionId,
+    TString transactionName,
     ui64 startTime)
 {
     Inflight.emplace(
         transactionId,
         TTransactionInflight{
             .StartTime = startTime,
-            .TransactionType = transactionType});
+            .TransactionName = std::move(transactionName)});
 }
 
 void TTransactionTimeTracker::OnFinished(ui64 transactionId, ui64 finishTime)
 {
-    TTransactionInflight transaction;
-    {
-        auto it = Inflight.find(transactionId);
-        if (it == Inflight.end()) {
-            return;
-        }
-        transaction = it->second;
-        Inflight.erase(transactionId);
+    auto it = Inflight.find(transactionId);
+    if (it == Inflight.end()) {
+        return;
     }
+
+    auto& transaction = it->second;
 
     auto duration = CyclesToDurationSafe(finishTime - transaction.StartTime);
 
     TKey key{
-        .TransactionType = transaction.TransactionType,
+        .TransactionName = std::move(transaction.TransactionName),
         .Status = EStatus::Finished};
     Histograms[key].Increment(duration.MicroSeconds());
 
-    key.TransactionType = ETransactionType::Total;
+    key.TransactionName = "Total";
     Histograms[key].Increment(duration.MicroSeconds());
+
+    Inflight.erase(transactionId);
 }
 
 TString TTransactionTimeTracker::GetStatJson(ui64 nowCycles) const
@@ -134,10 +127,10 @@ TString TTransactionTimeTracker::GetStatJson(ui64 nowCycles) const
 
     // Build inflight transaction counters
     auto getHtmlKey =
-        [](ETransactionType transactionType, TStringBuf timeBucketName)
+        [](const TString& transactionName, TStringBuf timeBucketName)
     {
         auto key = TKey{
-            .TransactionType = transactionType,
+            .TransactionName = transactionName,
             .Status = EStatus::Inflight};
         return key.GetHtmlPrefix() + timeBucketName;
     };
@@ -148,10 +141,10 @@ TString TTransactionTimeTracker::GetStatJson(ui64 nowCycles) const
         const auto& timeBucketName = GetTimeBucketName(
             CyclesToDurationSafe(nowCycles - transaction.StartTime));
 
-        ++inflight[getHtmlKey(transaction.TransactionType, timeBucketName)];
-        ++inflight[getHtmlKey(transaction.TransactionType, "Total")];
-        ++inflight[getHtmlKey(ETransactionType::Total, timeBucketName)];
-        ++inflight[getHtmlKey(ETransactionType::Total, "Total")];
+        ++inflight[getHtmlKey(transaction.TransactionName, timeBucketName)];
+        ++inflight[getHtmlKey(transaction.TransactionName, "Total")];
+        ++inflight[getHtmlKey("Total", timeBucketName)];
+        ++inflight[getHtmlKey("Total", "Total")];
     }
     for (const auto& [key, count]: inflight) {
         allStat[key] = "+ " + ToString(count);
@@ -170,11 +163,11 @@ TTransactionTimeTracker::GetTransactionBuckets()
 {
     TVector<TBucketInfo> result;
 
-    for (size_t i = 0; i <= static_cast<size_t>(ETransactionType::Total); ++i) {
+    for (const auto& transaction: TransactionTypes) {
         TBucketInfo bucket{
-            .TransactionType = static_cast<ETransactionType>(i),
-            .Key = ToString(static_cast<ETransactionType>(i)),
-            .Description = ToString(static_cast<ETransactionType>(i)),
+            .TransactionName = transaction,
+            .Key = transaction,
+            .Description = transaction,
             .Tooltip = ""};
         result.push_back(std::move(bucket));
     }
@@ -190,7 +183,7 @@ TTransactionTimeTracker::GetTimeBuckets()
         const auto us = TryFromString<ui64>(time);
 
         TBucketInfo bucket{
-            .TransactionType = ETransactionType::None,
+            .TransactionName = {},
             .Key = time,
             .Description =
                 us ? FormatDuration(TDuration::MicroSeconds(*us)) : time,
@@ -201,7 +194,7 @@ TTransactionTimeTracker::GetTimeBuckets()
         result.push_back(std::move(bucket));
     }
     result.push_back(TBucketInfo{
-        .TransactionType = ETransactionType::None,
+        .TransactionName = {},
         .Key = "Total",
         .Description = "Total",
         .Tooltip = ""});

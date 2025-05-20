@@ -293,9 +293,7 @@ void TPartitionActor::HandleZeroBlocks(
         GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
     if (requestSize < writeBlobThreshold) {
         // small writes will be accumulated in FreshBlocks table
-        AddTransaction<TEvService::TZeroBlocksMethod>(
-            *requestInfo,
-            ETransactionType::ZeroBlocks);
+        AddTransaction<TEvService::TZeroBlocksMethod>(*requestInfo);
 
         auto tx = CreateTx<TZeroBlocks>(
             requestInfo,
@@ -304,7 +302,7 @@ void TPartitionActor::HandleZeroBlocks(
 
         // start execution
         State->IncrementFreshBlocksInFlight(writeRange.Size());
-        ExecuteTx(ctx, std::move(tx));
+        ExecuteTx(ctx, std::move(tx), &TransactionTimeTracker);
     } else {
         // large writes could skip FreshBlocks table completely
         TVector<TAddMergedBlob> requests(

@@ -1,9 +1,8 @@
 #pragma once
 
-#include "public.h"
-
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/histogram.h>
+#include <cloud/blockstore/libs/storage/partition/part_tx.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
@@ -13,41 +12,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class ETransactionType
-{
-    ReadBlocks,
-    WriteFreshBlocks,
-    AddBlobs,
-    DescribeBlocks,
-    AddGarbage,
-    CollectGarbage,
-    DeleteGarbage,
-    Cleanup,
-    Compaction,
-
-    InitSchema,
-    LoadState,
-    AddUnconfirmedBlobs,
-    ConfirmBlobs,
-    CreateCheckpoint,
-    DeleteCheckpoint,
-    GetUsedBlocks,
-    RebuildBlockCount,
-    RebuildUsedBlocks,
-
-    GetChangedBlocks,
-    ScanDiskBatch,
-    ZeroBlocks,
-    UpdateLogicalUsedBlocks,
-    CheckIndex,
-    DescribeRange,
-    DescribeBlob,
-
-    Total,   // Last value to show.
-    None,
-};
-
-class TTransactionTimeTracker
+class TTransactionTimeTracker : public ITransactionTracker
 {
 public:
     enum class EStatus
@@ -58,7 +23,7 @@ public:
 
     struct TBucketInfo
     {
-        ETransactionType TransactionType;
+        TString TransactionName;
         TString Key;
         TString Description;
         TString Tooltip;
@@ -75,10 +40,12 @@ private:
 
     struct TKey
     {
-        ETransactionType TransactionType = ETransactionType::None;
+        TString TransactionName;
         EStatus Status = EStatus::Inflight;
 
         [[nodiscard]] TString GetHtmlPrefix() const;
+
+        bool operator==(const TKey& rhs) const = default;
     };
 
     struct THash
@@ -86,19 +53,14 @@ private:
         ui64 operator()(const TKey& key) const;
     };
 
-    struct TEqual
-    {
-        bool operator()(const TKey& lhs, const TKey& rhs) const;
-    };
-
     struct TTransactionInflight
     {
         ui64 StartTime = 0;
-        ETransactionType TransactionType = ETransactionType::None;
+        TString TransactionName;
     };
 
     THashMap<ui64, TTransactionInflight> Inflight;
-    THashMap<TKey, TTimeHistogram, THash, TEqual> Histograms;
+    THashMap<TKey, TTimeHistogram, THash> Histograms;
 
 public:
     TTransactionTimeTracker();
@@ -106,12 +68,13 @@ public:
     static TVector<TBucketInfo> GetTransactionBuckets();
     static TVector<TBucketInfo> GetTimeBuckets();
 
+    // Implements ITransactionTracker
     void OnStarted(
-        ETransactionType transactionType,
         ui64 transactionId,
-        ui64 startTime);
+        TString transactionName,
+        ui64 startTime) override;
 
-    void OnFinished(ui64 transactionId, ui64 finishTime);
+    void OnFinished(ui64 transactionId, ui64 finishTime) override;
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
 };

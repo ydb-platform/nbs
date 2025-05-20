@@ -480,15 +480,16 @@ void TPartitionActor::HandleScanDiskBatch(
         gen,
         step);
 
-    AddTransaction<TEvPartitionPrivate::TScanDiskBatchMethod>(
-        *requestInfo,
-        ETransactionType::ScanDiskBatch);
+    AddTransaction<TEvPartitionPrivate::TScanDiskBatchMethod>(*requestInfo);
 
-    ExecuteTx(ctx, CreateTx<TScanDiskBatch>(
-        requestInfo,
-        msg->BlobId,
-        msg->Count,
-        msg->FinalBlobId));
+    ExecuteTx(
+        ctx,
+        CreateTx<TScanDiskBatch>(
+            requestInfo,
+            msg->BlobId,
+            msg->Count,
+            msg->FinalBlobId),
+        &TransactionTimeTracker);
 }
 
 void TPartitionActor::HandleScanDiskCompleted(

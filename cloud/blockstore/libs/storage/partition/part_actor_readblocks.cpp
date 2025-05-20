@@ -944,18 +944,17 @@ void TPartitionActor::ReadBlocks(
         commitId,
         DescribeRange(readRange).data());
 
-    AddTransaction(
-        *requestInfo,
-        ETransactionType::ReadBlocks,
-        requestInfo->CancelRoutine);
+    AddTransaction(*requestInfo, requestInfo->CancelRoutine);
 
-    ExecuteTx<TReadBlocks>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        commitId,
-        readRange,
-        std::move(readHandler),
-        replyLocal);
+        CreateTx<TReadBlocks>(
+            requestInfo,
+            commitId,
+            readRange,
+            std::move(readHandler),
+            replyLocal),
+        &TransactionTimeTracker);
 }
 
 void TPartitionActor::HandleReadBlocksCompleted(

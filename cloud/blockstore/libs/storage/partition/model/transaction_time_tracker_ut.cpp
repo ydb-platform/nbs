@@ -31,11 +31,11 @@ Y_UNIT_TEST_SUITE(TTransactionTimeTrackerTest)
     {
         TTransactionTimeTracker timeTracker;
 
-        timeTracker.OnStarted(ETransactionType::ReadBlocks, 1, 0);
+        timeTracker.OnStarted(1, "ReadBlocks", 0);
 
         timeTracker.OnStarted(
-            ETransactionType::ReadBlocks,
             2,
+            "ReadBlocks",
             1000 * GetCyclesPerMillisecond());
 
         auto json = timeTracker.GetStatJson(2000 * GetCyclesPerMillisecond());
@@ -57,16 +57,16 @@ Y_UNIT_TEST_SUITE(TTransactionTimeTrackerTest)
     {
         TTransactionTimeTracker timeTracker;
 
-        timeTracker.OnStarted(ETransactionType::WriteFreshBlocks, 1, 0);
+        timeTracker.OnStarted(1, "WriteBlocks", 0);
 
         timeTracker.OnStarted(
-            ETransactionType::WriteFreshBlocks,
             2,
+            "WriteBlocks",
             1000 * GetCyclesPerMillisecond());
 
         timeTracker.OnStarted(
-            ETransactionType::WriteFreshBlocks,
             3,
+            "WriteBlocks",
             2000 * GetCyclesPerMillisecond());
 
         timeTracker.OnFinished(1, 3000 * GetCyclesPerMillisecond());
@@ -83,10 +83,10 @@ Y_UNIT_TEST_SUITE(TTransactionTimeTrackerTest)
             return value["stat"][key];
         };
 
-        UNIT_ASSERT_VALUES_EQUAL("1", get("WriteFreshBlocks_finished_1000000"));
-        UNIT_ASSERT_VALUES_EQUAL("1", get("WriteFreshBlocks_finished_2000000"));
-        UNIT_ASSERT_VALUES_EQUAL("1", get("WriteFreshBlocks_finished_5000000"));
-        UNIT_ASSERT_VALUES_EQUAL("3", get("WriteFreshBlocks_finished_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("1", get("WriteBlocks_finished_1000000"));
+        UNIT_ASSERT_VALUES_EQUAL("1", get("WriteBlocks_finished_2000000"));
+        UNIT_ASSERT_VALUES_EQUAL("1", get("WriteBlocks_finished_5000000"));
+        UNIT_ASSERT_VALUES_EQUAL("3", get("WriteBlocks_finished_Total"));
     }
 }
 

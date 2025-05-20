@@ -2,7 +2,6 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
@@ -240,21 +239,12 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
         TabletID(),
         PartitionConfig.GetDiskId().c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        CreateRequestId(),
-        MakeIntrusive<TCallContext>());
-
-    AddTransaction(
-        *requestInfo,
-        ETransactionType::ConfirmBlobs,
-        [](const NActors::TActorContext&, TRequestInfo&) {});
-
-    ExecuteTx<TConfirmBlobs>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        msg->StartCycleCount,
-        std::move(msg->UnrecoverableBlobs));
+        CreateTx<TConfirmBlobs>(
+            msg->StartCycleCount,
+            std::move(msg->UnrecoverableBlobs)),
+        &TransactionTimeTracker);
 }
 
 bool TPartitionActor::PrepareConfirmBlobs(
@@ -319,8 +309,6 @@ void TPartitionActor::CompleteConfirmBlobs(
     record.Ts = ctx.Now() - duration;
     record.Request = request;
     ProfileLog->Write(std::move(record));
-
-    RemoveTransaction(*args.RequestInfo);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

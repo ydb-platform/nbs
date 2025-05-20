@@ -23,12 +23,26 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 NKikimr::NTabletFlatExecutor::IMiniKQLFactory* NewMiniKQLFactory();
 
+ui64 CreateTransactionId();
+
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ITransactionBase
-    : public NKikimr::NTabletFlatExecutor::ITransaction
+class ITransactionTracker
+{
+public:
+    virtual ~ITransactionTracker() = default;
+
+    virtual void OnStarted(
+        ui64 transactionId,
+        TString transactionName,
+        ui64 startTime) = 0;
+    virtual void OnFinished(ui64 transactionId, ui64 finishTime) = 0;
+};
+
+struct ITransactionBase: public NKikimr::NTabletFlatExecutor::ITransaction
 {
     virtual void Init(const NActors::TActorContext& ctx) = 0;
+    ITransactionTracker* TransactionTracker = nullptr;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -117,6 +131,8 @@ protected:
         : public ITransactionBase
     {
     private:
+        const ui64 TransactionId = CreateTransactionId();
+
         T* Self;
         typename TTx::TArgs Args;
 
@@ -137,6 +153,13 @@ protected:
 
         void Init(const NActors::TActorContext&) override
         {
+            if (TransactionTracker) {
+                TransactionTracker->OnStarted(
+                    TransactionId,
+                    TTx::Name,
+                    GetCycleCount());
+            }
+
             TX_TRACK(TxInit);
             TX_FORK();
         }
@@ -183,6 +206,10 @@ protected:
 
         void Complete(const NActors::TActorContext& ctx) override
         {
+            if (TransactionTracker) {
+                TransactionTracker->OnFinished(TransactionId, GetCycleCount());
+            }
+
             TX_TRACK(TxComplete);
 
             LOG_DEBUG(ctx, T::LogComponent,
@@ -206,18 +233,18 @@ protected:
             std::forward<TArgs>(args)...);
     }
 
-    template <typename TTx, typename ...TArgs>
-    void ExecuteTx(const NActors::TActorContext& ctx, TArgs&& ...args)
+    template <typename TTx, typename... TArgs>
+    void ExecuteTx(const NActors::TActorContext& ctx, TArgs&&... args)
     {
-        auto tx = CreateTx<TTx>(std::forward<TArgs>(args)...);
-        tx->Init(ctx);
-        TTabletExecutedFlat::Execute(tx.release(), ctx);
+        ExecuteTx(ctx, CreateTx<TTx>(std::forward<TArgs>(args)...), nullptr);
     }
 
     void ExecuteTx(
         const NActors::TActorContext& ctx,
-        std::unique_ptr<ITransactionBase> tx)
+        std::unique_ptr<ITransactionBase> tx,
+        ITransactionTracker* transactionTracker = nullptr)
     {
+        tx->TransactionTracker = transactionTracker;
         tx->Init(ctx);
         TTabletExecutedFlat::Execute(tx.release(), ctx);
     }

@@ -174,15 +174,12 @@ void TPartitionActor::HandleCleanup(
 
     State->GetCleanupState().SetStatus(EOperationStatus::Started);
 
-    AddTransaction<TEvPartitionPrivate::TCleanupMethod>(
-        *requestInfo,
-        ETransactionType::Cleanup);
+    AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
 
-    ExecuteTx<TCleanup>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        commitId,
-        std::move(cleanupQueue));
+        CreateTx<TCleanup>(requestInfo, commitId, std::move(cleanupQueue)),
+        &TransactionTimeTracker);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

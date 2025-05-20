@@ -1,7 +1,6 @@
 #include "part_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
@@ -261,8 +260,6 @@ void TPartitionActor::CompleteLoadState(
     State->InitUnconfirmedBlobs(std::move(args.UnconfirmedBlobs));
 
     FinalizeLoadState(ctx);
-
-    RemoveTransaction(*args.RequestInfo);
 }
 
 void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
@@ -316,17 +313,10 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
         State->GetLogicalUsedBlocks().Count()
     );
 
-    auto requestInfo = CreateRequestInfo(
-        NActors::TActorId(),
-        CreateRequestId(),
-        MakeIntrusive<TCallContext>());
-
-    AddTransaction(
-        *requestInfo,
-        ETransactionType::UpdateLogicalUsedBlocks,
-        [](const NActors::TActorContext&, TRequestInfo&) {});
-
-    ExecuteTx<TUpdateLogicalUsedBlocks>(ctx, requestInfo, 0);
+    ExecuteTx(
+        ctx,
+        CreateTx<TUpdateLogicalUsedBlocks>(0),
+        &TransactionTimeTracker);
 }
 
 bool TPartitionActor::PrepareUpdateLogicalUsedBlocks(
@@ -373,22 +363,11 @@ void TPartitionActor::CompleteUpdateLogicalUsedBlocks(
     if (args.UpdatedToIdx == State->GetLogicalUsedBlocks().Capacity()) {
         FinalizeLoadState(ctx);
     } else {
-        auto requestInfo = CreateRequestInfo(
-            NActors::TActorId(),
-            CreateRequestId(),
-            MakeIntrusive<TCallContext>());
-
-        AddTransaction(
-            *requestInfo,
-            ETransactionType::UpdateLogicalUsedBlocks,
-            [](const NActors::TActorContext&, TRequestInfo&) {});
-
-        ExecuteTx<TUpdateLogicalUsedBlocks>(
+        ExecuteTx(
             ctx,
-            requestInfo,
-            args.UpdatedToIdx);
+            CreateTx<TUpdateLogicalUsedBlocks>(args.UpdatedToIdx),
+            &TransactionTimeTracker);
     }
-    RemoveTransaction(*args.RequestInfo);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

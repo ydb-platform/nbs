@@ -631,11 +631,12 @@ void TPartitionActor::HandleCollectGarbage(
 
         State->GetCollectGarbageState().SetStatus(EOperationStatus::Started);
 
-        AddTransaction<TEvPartitionPrivate::TCollectGarbageMethod>(
-            *requestInfo,
-            ETransactionType::CollectGarbage);
+        AddTransaction<TEvPartitionPrivate::TCollectGarbageMethod>(*requestInfo);
 
-        ExecuteTx<TCollectGarbage>(ctx, requestInfo, commitId);
+        ExecuteTx(
+            ctx,
+            CreateTx<TCollectGarbage>(requestInfo, commitId),
+            &TransactionTimeTracker);
         return;
     }
 

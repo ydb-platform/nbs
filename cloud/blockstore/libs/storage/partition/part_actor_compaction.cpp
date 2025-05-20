@@ -1425,9 +1425,7 @@ void TPartitionActor::HandleCompaction(
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
-    AddTransaction<TEvPartitionPrivate::TCompactionMethod>(
-        *requestInfo,
-        ETransactionType::Compaction);
+    AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
     auto tx = CreateTx<TCompaction>(
         requestInfo,
@@ -1440,7 +1438,7 @@ void TPartitionActor::HandleCompaction(
 
     if (minCommitId == commitId) {
         // start execution
-        ExecuteTx(ctx, std::move(tx));
+        ExecuteTx(ctx, std::move(tx), &TransactionTimeTracker);
     } else {
         // delay execution until all previous commits completed
         State->GetCommitQueue().Enqueue(std::move(tx), commitId);
