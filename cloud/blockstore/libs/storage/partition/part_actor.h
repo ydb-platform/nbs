@@ -145,7 +145,7 @@ private:
 
     bool FirstGarbageCollectionCompleted = false;
 
-    ui64 VolumeTabletId;
+    const ui64 VolumeTabletId;
 
 public:
     TPartitionActor(

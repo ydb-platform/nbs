@@ -152,8 +152,7 @@ void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
         TAG(TH3) { out << "Search Volume"; }
         BuildSearchButton(out);
 
-        TAG(TH3)
-        {
+        TAG (TH3) {
             out << "<a href='"
                 << GetMonitoringVolumeUrlWithoutDiskId(*DiagnosticsConfig);
             auto it = State.GetVolumes().begin();
