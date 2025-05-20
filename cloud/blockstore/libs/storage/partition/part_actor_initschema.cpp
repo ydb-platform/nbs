@@ -45,10 +45,7 @@ void TPartitionActor::CompleteInitSchema(
         TabletID(),
         PartitionConfig.GetDiskId().c_str());
 
-    ExecuteTx(
-        ctx,
-        CreateTx<TLoadState>(args.BlocksCount),
-        &TransactionTimeTracker);
+    ExecuteTx(ctx, CreateTx<TLoadState>(args.BlocksCount));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

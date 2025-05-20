@@ -325,8 +325,7 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
             msg->BlobId,
             msg->Count,
             msg->FinalBlobId,
-            msg->RebuildState),
-        &TransactionTimeTracker);
+            msg->RebuildState));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

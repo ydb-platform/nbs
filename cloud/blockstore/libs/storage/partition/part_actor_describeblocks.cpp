@@ -112,8 +112,7 @@ void TPartitionActor::DescribeBlocks(
 
     ExecuteTx(
         ctx,
-        CreateTx<TDescribeBlocks>(requestInfo, commitId, describeRange),
-        &TransactionTimeTracker);
+        CreateTx<TDescribeBlocks>(requestInfo, commitId, describeRange));
 }
 
 void TPartitionActor::HandleDescribeBlocks(

@@ -439,8 +439,7 @@ void TPartitionActor::HandleGetChangedBlocks(
             ConvertRangeSafe(readRange),
             lowCommitId,
             highCommitId,
-            msg->Record.GetIgnoreBaseDisk()),
-        &TransactionTimeTracker);
+            msg->Record.GetIgnoreBaseDisk()));
 }
 
 bool TPartitionActor::PrepareGetChangedBlocks(

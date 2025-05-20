@@ -669,8 +669,7 @@ void TPartitionActor::HandleAddBlobs(
             std::move(msg->AffectedBlobs),
             std::move(msg->AffectedBlocks),
             std::move(msg->MixedBlobCompactionInfos),
-            std::move(msg->MergedBlobCompactionInfos)),
-        &TransactionTimeTracker);
+            std::move(msg->MergedBlobCompactionInfos)));
 }
 
 bool TPartitionActor::PrepareAddBlobs(

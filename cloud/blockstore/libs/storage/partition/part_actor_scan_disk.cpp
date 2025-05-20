@@ -488,8 +488,7 @@ void TPartitionActor::HandleScanDiskBatch(
             requestInfo,
             msg->BlobId,
             msg->Count,
-            msg->FinalBlobId),
-        &TransactionTimeTracker);
+            msg->FinalBlobId));
 }
 
 void TPartitionActor::HandleScanDiskCompleted(

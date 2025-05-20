@@ -953,8 +953,7 @@ void TPartitionActor::ReadBlocks(
             commitId,
             readRange,
             std::move(readHandler),
-            replyLocal),
-        &TransactionTimeTracker);
+            replyLocal));
 }
 
 void TPartitionActor::HandleReadBlocksCompleted(

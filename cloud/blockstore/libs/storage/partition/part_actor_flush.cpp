@@ -748,8 +748,7 @@ void TPartitionActor::HandleFlush(
 
         ExecuteTx(
             ctx,
-            CreateTx<TFlushToDevNull>(requestInfo, std::move(freshBlocks)),
-            &TransactionTimeTracker);
+            CreateTx<TFlushToDevNull>(requestInfo, std::move(freshBlocks)));
     } else {
         State->GetCommitQueue().AcquireBarrier(commitId);
         State->GetGarbageQueue().AcquireBarrier(commitId);

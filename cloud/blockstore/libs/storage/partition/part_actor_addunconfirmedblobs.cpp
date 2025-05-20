@@ -44,8 +44,7 @@ void TPartitionActor::HandleAddUnconfirmedBlobs(
         CreateTx<TAddUnconfirmedBlobs>(
             requestInfo,
             msg->CommitId,
-            std::move(msg->Blobs)),
-        &TransactionTimeTracker);
+            std::move(msg->Blobs)));
 }
 
 bool TPartitionActor::PrepareAddUnconfirmedBlobs(

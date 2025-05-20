@@ -42,7 +42,6 @@ public:
 struct ITransactionBase: public NKikimr::NTabletFlatExecutor::ITransaction
 {
     virtual void Init(const NActors::TActorContext& ctx) = 0;
-    ITransactionTracker* TransactionTracker = nullptr;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,10 +118,14 @@ template <typename T>
 class TTabletBase
     : public NKikimr::NTabletFlatExecutor::TTabletExecutedFlat
 {
+    ITransactionTracker* TransactionTracker = nullptr;
+
 public:
     TTabletBase(const NActors::TActorId& owner,
-                NKikimr::TTabletStorageInfoPtr storage)
+                NKikimr::TTabletStorageInfoPtr storage,
+                ITransactionTracker* transactionTracker)
         : TTabletExecutedFlat(storage.Get(), owner, NewMiniKQLFactory())
+        , TransactionTracker(transactionTracker)
     {}
 
 protected:
@@ -153,8 +156,8 @@ protected:
 
         void Init(const NActors::TActorContext&) override
         {
-            if (TransactionTracker) {
-                TransactionTracker->OnStarted(
+            if (Self->TransactionTracker) {
+                Self->TransactionTracker->OnStarted(
                     TransactionId,
                     TTx::Name,
                     GetCycleCount());
@@ -206,8 +209,10 @@ protected:
 
         void Complete(const NActors::TActorContext& ctx) override
         {
-            if (TransactionTracker) {
-                TransactionTracker->OnFinished(TransactionId, GetCycleCount());
+            if (Self->TransactionTracker) {
+                Self->TransactionTracker->OnFinished(
+                    TransactionId,
+                    GetCycleCount());
             }
 
             TX_TRACK(TxComplete);
@@ -236,15 +241,13 @@ protected:
     template <typename TTx, typename... TArgs>
     void ExecuteTx(const NActors::TActorContext& ctx, TArgs&&... args)
     {
-        ExecuteTx(ctx, CreateTx<TTx>(std::forward<TArgs>(args)...), nullptr);
+        ExecuteTx(ctx, CreateTx<TTx>(std::forward<TArgs>(args)...));
     }
 
     void ExecuteTx(
         const NActors::TActorContext& ctx,
-        std::unique_ptr<ITransactionBase> tx,
-        ITransactionTracker* transactionTracker = nullptr)
+        std::unique_ptr<ITransactionBase> tx)
     {
-        tx->TransactionTracker = transactionTracker;
         tx->Init(ctx);
         TTabletExecutedFlat::Execute(tx.release(), ctx);
     }

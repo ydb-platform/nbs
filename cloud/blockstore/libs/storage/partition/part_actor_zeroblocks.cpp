@@ -302,7 +302,7 @@ void TPartitionActor::HandleZeroBlocks(
 
         // start execution
         State->IncrementFreshBlocksInFlight(writeRange.Size());
-        ExecuteTx(ctx, std::move(tx), &TransactionTimeTracker);
+        ExecuteTx(ctx, std::move(tx));
     } else {
         // large writes could skip FreshBlocks table completely
         TVector<TAddMergedBlob> requests(

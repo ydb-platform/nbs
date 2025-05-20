@@ -243,8 +243,7 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
         ctx,
         CreateTx<TConfirmBlobs>(
             msg->StartCycleCount,
-            std::move(msg->UnrecoverableBlobs)),
-        &TransactionTimeTracker);
+            std::move(msg->UnrecoverableBlobs)));
 }
 
 bool TPartitionActor::PrepareConfirmBlobs(

@@ -360,8 +360,7 @@ void TPartitionActor::HandleHttpInfo_Describe(
                 CreateTx<TDescribeRange>(
                     std::move(requestInfo),
                     blockRange,
-                    params.Get("blockfilter")),
-                &TransactionTimeTracker);
+                    params.Get("blockfilter")));
         } else {
             TString message = "invalid range specified: " + range.Quote();
             RejectHttpRequest(
@@ -380,8 +379,7 @@ void TPartitionActor::HandleHttpInfo_Describe(
                 ctx,
                 CreateTx<TDescribeBlob>(
                     std::move(requestInfo),
-                    MakePartialBlobId(blobId)),
-                &TransactionTimeTracker);
+                    MakePartialBlobId(blobId)));
         } else {
             TStringBuilder message;
             message << "invalid blob specified: " + blob.Quote() +

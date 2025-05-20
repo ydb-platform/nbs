@@ -40,8 +40,7 @@ void TPartitionActor::HandleDeleteGarbage(
             requestInfo,
             msg->CommitId,
             std::move(msg->NewBlobs),
-            std::move(msg->GarbageBlobs)),
-        &TransactionTimeTracker);
+            std::move(msg->GarbageBlobs)));
 }
 
 bool TPartitionActor::PrepareDeleteGarbage(

@@ -282,8 +282,7 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
 
     ExecuteTx(
         ctx,
-        CreateTx<TMetadataRebuildUsedBlocks>(requestInfo, blockRange),
-        &TransactionTimeTracker);
+        CreateTx<TMetadataRebuildUsedBlocks>(requestInfo, blockRange));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

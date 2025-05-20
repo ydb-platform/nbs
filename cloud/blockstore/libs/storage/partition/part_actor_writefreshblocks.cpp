@@ -515,8 +515,7 @@ void TPartitionActor::WriteFreshBlocks(
 
         ExecuteTx(
             ctx,
-            CreateTx<TWriteBlocks>(commitId, std::move(subRequests)),
-            &TransactionTimeTracker);
+            CreateTx<TWriteBlocks>(commitId, std::move(subRequests)));
     }
 }
 

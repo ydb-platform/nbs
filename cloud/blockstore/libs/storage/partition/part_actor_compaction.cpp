@@ -1438,7 +1438,7 @@ void TPartitionActor::HandleCompaction(
 
     if (minCommitId == commitId) {
         // start execution
-        ExecuteTx(ctx, std::move(tx), &TransactionTimeTracker);
+        ExecuteTx(ctx, std::move(tx));
     } else {
         // delay execution until all previous commits completed
         State->GetCommitQueue().Enqueue(std::move(tx), commitId);

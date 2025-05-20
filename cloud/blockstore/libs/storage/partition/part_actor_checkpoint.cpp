@@ -96,7 +96,7 @@ void TPartitionActor::HandleCreateCheckpoint(
 
     auto nextTx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
     if (nextTx) {
-        ExecuteTx(ctx, std::move(nextTx), &TransactionTimeTracker);
+        ExecuteTx(ctx, std::move(nextTx));
     }
 }
 
@@ -236,7 +236,7 @@ void TPartitionActor::DeleteCheckpoint(
 
     auto nextTx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
     if (nextTx) {
-        ExecuteTx(ctx, std::move(nextTx), &TransactionTimeTracker);
+        ExecuteTx(ctx, std::move(nextTx));
     }
 }
 

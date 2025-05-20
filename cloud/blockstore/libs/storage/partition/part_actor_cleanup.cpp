@@ -178,8 +178,7 @@ void TPartitionActor::HandleCleanup(
 
     ExecuteTx(
         ctx,
-        CreateTx<TCleanup>(requestInfo, commitId, std::move(cleanupQueue)),
-        &TransactionTimeTracker);
+        CreateTx<TCleanup>(requestInfo, commitId, std::move(cleanupQueue)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

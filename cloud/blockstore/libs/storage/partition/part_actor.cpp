@@ -50,7 +50,7 @@ TPartitionActor::TPartitionActor(
         ui32 siblingCount,
         const TActorId& volumeActorId)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
+    , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -320,10 +320,7 @@ void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 
     if (!Executor()->GetStats().IsFollower) {
-        ExecuteTx(
-            ctx,
-            CreateTx<TInitSchema>(PartitionConfig.GetBlocksCount()),
-            &TransactionTimeTracker);
+        ExecuteTx(ctx, CreateTx<TInitSchema>(PartitionConfig.GetBlocksCount()));
     }
 }
 
