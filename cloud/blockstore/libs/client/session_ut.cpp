@@ -473,11 +473,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 
         {
             auto res = ReadBlocks(session, blockSize);
-            // res is not a protobuf message based, so it cannot be serialized
-            // and printed via Out<>
-            const auto& baseRes = static_cast<
-                const NCloud::NBlockStore::NProto::TReadBlocksResponse&>(res);
-            UNIT_ASSERT_C(!HasError(res), baseRes);
+            UNIT_ASSERT_C(!HasError(res), res);
         }
 
         {
@@ -1825,3 +1821,17 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 }
 
 }   // namespace NCloud::NBlockStore::NClient
+
+template <>
+inline void Out<NCloud::NBlockStore::NProto::TReadBlocksLocalResponse>(
+    IOutputStream& out,
+    const NCloud::NBlockStore::NProto::TReadBlocksLocalResponse& value)
+{
+    out << value.ShortDebugString();
+
+    out << " FailedBlobs: [";
+    for (const auto& blob: value.FailedBlobs) {
+        out << blob << ", ";
+    }
+    out << "]";
+}
