@@ -117,6 +117,9 @@ message TLocalServiceConfig
 
     // Enable write-back cache on FUSE server
     optional bool ServerWriteBackCacheEnabled = 19;
+
+    // Don't populate node cache on ListNodes
+    optional bool IgnoreNodeCacheOnListEnabled = 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
