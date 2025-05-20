@@ -25,9 +25,7 @@ TSgList ResizeIOVector(NProto::TIOVector& iov, ui32 blockCount, ui32 blockSize)
     return sglist;
 }
 
-TSgList GetSgList(const NProto::TWriteBlocksRequest& request)
-{
-    const auto& iov = request.GetBlocks();
+TSgList GetSgList(const NProto::TIOVector& iov) {
     TSgList sglist(Reserve(iov.BuffersSize()));
 
     for (const auto& buffer: iov.GetBuffers()) {
@@ -39,6 +37,11 @@ TSgList GetSgList(const NProto::TWriteBlocksRequest& request)
     }
 
     return sglist;
+}
+
+TSgList GetSgList(const NProto::TWriteBlocksRequest& request)
+{
+    return GetSgList(request.GetBlocks());
 }
 
 TResultOrError<TSgList> GetSgList(

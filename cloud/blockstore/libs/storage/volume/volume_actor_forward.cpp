@@ -256,6 +256,12 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
             volumeRequestId,
             blockRange,
             traceTime);
+    }  else if constexpr (IsDescribeBlocksMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Describe,
+            volumeRequestId,
+            blockRange,
+            traceTime);
     }
 
     return newEvent;
@@ -779,12 +785,18 @@ void TVolumeActor::ForwardRequest(
         }
     }
 
+    // Fill block range.
+    TBlockRange64 blockRange;
+    if constexpr (
+        IsReadOrWriteMethod<TMethod> || IsDescribeBlocksMethod<TMethod>)
+    {
+        blockRange = BuildRequestBlockRange(*msg, State->GetBlockSize());
+    }
+
     /*
      *  Validation of the request blocks range
      */
-    TBlockRange64 blockRange;
     if constexpr (IsReadOrWriteMethod<TMethod>) {
-        blockRange = BuildRequestBlockRange(*msg, State->GetBlockSize());
         if (!CheckReadWriteBlockRange(blockRange)) {
             replyError(MakeError(
                 E_ARGUMENT,

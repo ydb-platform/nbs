@@ -589,6 +589,7 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
                 DiagnosticsConfig,
                 replicaInfo.Config,
                 replicaInfo.Migrations,
+                replicaIndex,
                 ProfileLog,
                 BlockDigestGenerator,
                 State.GetRWClientId(),
@@ -597,11 +598,13 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
         State.SetLaggingReplicaProxy(replicaIndex, proxyActorId);
     }
 
-    NCloud::Send<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
-        ctx,
-        State.GetReplicaActors()[replicaIndex],
-        0,   // cookie
-        msg->LaggingAgent);
+    for (const auto replicaActor: State.GetReplicaActors()) {
+        NCloud::Send<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
+            ctx,
+            replicaActor,
+            0,   // cookie
+            msg->LaggingAgent);
+    }
     State.AddLaggingAgent(std::move(msg->LaggingAgent));
 }
 

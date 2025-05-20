@@ -880,7 +880,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             });
 
         TVector<TActorId> readActors;
-        TVector<NProto::TLaggingAgent> unavailableAgents;
+        TSet<TString> unavailableAgents;
+        size_t unavailableAgentsRequestCount = 0;
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
@@ -896,7 +897,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
                         const auto* msg =
                             event->Get<TEvNonreplPartitionPrivate::
                                            TEvAgentIsUnavailable>();
-                        unavailableAgents.push_back(msg->LaggingAgent);
+                        unavailableAgents.insert(msg->LaggingAgent.GetAgentId());
+                        ++unavailableAgentsRequestCount;
                         break;
                     }
                     case TEvents::TEvPoisonPill::EventType: {
@@ -935,23 +937,29 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         env.AddLaggingAgent("agent-7");
         // 1 from mirror partition, 1 from lagging proxy, 2 from migration
         // partition
-        UNIT_ASSERT_VALUES_EQUAL(4, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(6, unavailableAgentsRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(1, mirrorActorChildren.size());
         TActorId replica2Proxy = mirrorActorChildren.back();
         unavailableAgents.clear();
+        unavailableAgentsRequestCount = 0;
 
         // uuid-8 is lagging
         env.AddLaggingAgent("agent-8");
-        UNIT_ASSERT_VALUES_EQUAL(4, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(6, unavailableAgentsRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(1, mirrorActorChildren.size());
         unavailableAgents.clear();
+        unavailableAgentsRequestCount = 0;
 
         // uuid-3 is lagging
         env.AddLaggingAgent("agent-3");
-        UNIT_ASSERT_VALUES_EQUAL(2, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, unavailableAgents.size());
+        UNIT_ASSERT_VALUES_EQUAL(7, unavailableAgentsRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(2, mirrorActorChildren.size());
         TActorId replica1Proxy = mirrorActorChildren.back();
         unavailableAgents.clear();
+        unavailableAgentsRequestCount = 0;
 
         // The first and second replicas
         const auto firstRow = TBlockRange64::MakeOneBlock(DeviceBlockCount - 1);
@@ -1276,6 +1284,172 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             "uuid-m",
             deviceEnd,
             'C');
+    }
+
+    Y_UNIT_TEST(ShouldCancelWriteRequestsOnAllReplicas)
+    {
+        constexpr ui32 AgentCount = 3;
+        TTestBasicRuntime runtime(AgentCount);
+
+        TTestEnv env(runtime);
+
+        TPartitionClient client(runtime, env.MirrorPartActorId);
+
+        size_t writeDeviceBlocksRequestCount = 0;
+        const auto timeoutWriteDeviceBlocksRequests =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                    ++writeDeviceBlocksRequestCount;
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // Start write request.
+        runtime.SetEventFilter(timeoutWriteDeviceBlocksRequests);
+        client.SendWriteBlocksRequest(TBlockRange64::MakeOneBlock(100), 'B');
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDeviceBlocksRequestCount);
+
+        size_t cancelledRequestCount = 0;
+        auto countCanceledResponses =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvService::EvWriteBlocksResponse: {
+                    using TResponse = TEvService::TEvWriteBlocksResponse;
+                    const auto& record = event->Get<TResponse>()->Record;
+                    if (record.GetError().GetCode() == E_REJECTED &&
+                        HasProtoFlag(
+                            record.GetError().GetFlags(),
+                            NProto::EF_INSTANT_RETRIABLE))
+                    {
+                        ++cancelledRequestCount;
+                    }
+                    break;
+                }
+            }
+            return false;
+        };
+
+        runtime.SetEventFilter(countCanceledResponses);
+
+        // First replica is lagging.
+        env.AddLaggingAgent(env.Replicas[0][0].GetAgentId());
+
+        // Write request cancelled.
+        auto response = client.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+        UNIT_ASSERT_C(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_INSTANT_RETRIABLE),
+            FormatError(response->GetError()));
+
+        // Expect all WriteDeviceBlocksRequest requests to be cancelled.
+        // 3 from TNonreplicatedPartitionActor, 1 from TMirrorPartitionActor
+        UNIT_ASSERT_VALUES_EQUAL(4, cancelledRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldCancelReadRequestsOnlyForLaggingReplica)
+    {
+        constexpr ui32 AgentCount = 3;
+        TTestBasicRuntime runtime(AgentCount);
+
+        TTestEnv env(runtime);
+
+        TPartitionClient client(runtime, env.MirrorPartActorId);
+
+        size_t readDeviceBlocksRequestCount = 0;
+        const auto timeoutReadDeviceBlocksRequests =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvReadDeviceBlocksRequest: {
+                    ++readDeviceBlocksRequestCount;
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // Start three read request to to different replicas.
+        runtime.SetEventFilter(timeoutReadDeviceBlocksRequests);
+        client.SendReadBlocksRequest(TBlockRange64::MakeOneBlock(100));
+        client.SendReadBlocksRequest(TBlockRange64::MakeOneBlock(100));
+        client.SendReadBlocksRequest(TBlockRange64::MakeOneBlock(100));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(3, readDeviceBlocksRequestCount);
+
+        size_t cancelledRequestCount = 0;
+        auto countCanceledResponses =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvService::EvReadBlocksResponse: {
+                    using TResponse = TEvService::TEvReadBlocksResponse;
+                    const auto& record = event->Get<TResponse>()->Record;
+                    if (record.GetError().GetCode() == E_REJECTED &&
+                        HasProtoFlag(
+                            record.GetError().GetFlags(),
+                            NProto::EF_INSTANT_RETRIABLE))
+                    {
+                        ++cancelledRequestCount;
+                    }
+                    break;
+                }
+            }
+            return false;
+        };
+
+        runtime.SetEventFilter(countCanceledResponses);
+
+        // First replica is lagging.
+        env.AddLaggingAgent(env.Replicas[0][0].GetAgentId());
+
+        // one Read request cancelled.
+        auto response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+        UNIT_ASSERT_C(
+            HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE),
+            FormatError(response->GetError()));
+
+        // Expect one ReadDeviceBlocksRequest requests to be cancelled.
+        // 1 from TNonreplicatedPartitionActor, 1 from TMirrorPartitionActor
+        UNIT_ASSERT_VALUES_EQUAL(2, cancelledRequestCount);
+
+        // Expect requests to second ant third replicas timedout since we stole
+        // response
+        response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+        UNIT_ASSERT_C(
+            !HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE),
+            FormatError(response->GetError()));
+
+        response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+        UNIT_ASSERT_C(
+            !HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE),
+            FormatError(response->GetError()));
     }
 }
 

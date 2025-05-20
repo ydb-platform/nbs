@@ -392,7 +392,7 @@ struct TTestEnv
             const auto& device = devices[i];
             if (device.GetNodeId() == nodeId) {
                 laggingAgent.SetAgentId(device.GetAgentId());
-                laggingAgent.SetReplicaIndex(0);
+                laggingAgent.SetReplicaIndex(replicaIndex);
 
                 NProto::TLaggingDevice* laggingDevice =
                     laggingAgent.AddDevices();
@@ -421,6 +421,7 @@ struct TTestEnv
                     CreateDiagnosticsConfig(),
                     PartConfig->Fork(GetReplicaDevices(replicaIndex)),
                     Migrations,
+                    replicaIndex,
                     CreateProfileLogStub(),
                     CreateBlockDigestGeneratorStub(),
                     "",   // rwClientId

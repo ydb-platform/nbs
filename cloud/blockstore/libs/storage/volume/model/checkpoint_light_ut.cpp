@@ -38,7 +38,7 @@ Y_UNIT_TEST_SUITE(TCheckpointLightTests)
     Y_UNIT_TEST(ShouldDiffCheckpoint)
     {
         const int blocksCount = 10;
-        const auto& fillRange = TBlockRange64::MakeHalfOpenInterval(1, 4);
+        const auto& fillRange = TBlockRange64::WithLength(1, 3);
 
         TCheckpointLight checkpoint(blocksCount);
         checkpoint.CreateCheckpoint("Checkpoint_1");
@@ -71,23 +71,23 @@ Y_UNIT_TEST_SUITE(TCheckpointLightTests)
         UNIT_ASSERT(!SUCCEEDED(checkpoint.FindDirtyBlocksBetweenCheckpoints(
             "Checkpoint_1",
             "Checkpoint_2",
-            TBlockRange64::MakeHalfOpenInterval(0, 11),
+            TBlockRange64::WithLength(0, 11),
             &mask).GetCode()));
         UNIT_ASSERT(!SUCCEEDED(checkpoint.FindDirtyBlocksBetweenCheckpoints(
             "Checkpoint_1",
             "Checkpoint_2",
-            TBlockRange64::MakeHalfOpenInterval(5, 12),
+            TBlockRange64::WithLength(5, 7),
             &mask).GetCode()));
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, checkpoint.FindDirtyBlocksBetweenCheckpoints(
             "Checkpoint_1",
             "Checkpoint_2",
-            TBlockRange64::MakeHalfOpenInterval(0, 10),
+            TBlockRange64::WithLength(0, 10),
             &mask).GetCode());
         UNIT_ASSERT_VALUES_EQUAL(S_OK, checkpoint.FindDirtyBlocksBetweenCheckpoints(
             "Checkpoint_1",
             "Checkpoint_2",
-            TBlockRange64::MakeHalfOpenInterval(3, 5),
+            TBlockRange64::WithLength(3, 2),
             &mask).GetCode());
     }
 
@@ -96,11 +96,11 @@ Y_UNIT_TEST_SUITE(TCheckpointLightTests)
         const int blocksCount = 10;
         TCheckpointLight checkpoint(blocksCount);
 
-        const auto& blockRangeFull = TBlockRange64::MakeHalfOpenInterval(0, 10);
+        const auto& blockRangeFull = TBlockRange64::WithLength(0, 10);
 
         checkpoint.CreateCheckpoint("Checkpoint_1");
-        checkpoint.Set(TBlockRange64::MakeHalfOpenInterval(2, 4));
-        checkpoint.Set(TBlockRange64::MakeHalfOpenInterval(6, 9));
+        checkpoint.Set(TBlockRange64::WithLength(2, 2));
+        checkpoint.Set(TBlockRange64::WithLength(6, 3));
         checkpoint.CreateCheckpoint("Checkpoint_2");
 
         {
@@ -119,7 +119,7 @@ Y_UNIT_TEST_SUITE(TCheckpointLightTests)
             auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints(
                 "Checkpoint_1",
                 "Checkpoint_2",
-                TBlockRange64::MakeHalfOpenInterval(3, 9),
+                TBlockRange64::WithLength(3, 6),
                 &mask);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(0b00111001, ui8(mask[0]));
@@ -129,7 +129,7 @@ Y_UNIT_TEST_SUITE(TCheckpointLightTests)
             auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints(
                 "Checkpoint_1",
                 "Checkpoint_2",
-                TBlockRange64::MakeHalfOpenInterval(0, 8),
+                TBlockRange64::WithLength(0, 8),
                 &mask);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(0b11001100, ui8(mask[0]));
@@ -139,7 +139,7 @@ Y_UNIT_TEST_SUITE(TCheckpointLightTests)
             auto error = checkpoint.FindDirtyBlocksBetweenCheckpoints(
                 "Checkpoint_1",
                 "Checkpoint_2",
-                TBlockRange64::MakeHalfOpenInterval(8, 10),
+                TBlockRange64::WithLength(8, 2),
                 &mask);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(0b00000001, ui8(mask[0]));
