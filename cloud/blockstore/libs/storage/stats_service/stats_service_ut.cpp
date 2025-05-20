@@ -1209,7 +1209,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetStatsUploadDiskCount(1);
-        storageServiceConfig.SetStatsUploadRowChunkSize(3);
+        storageServiceConfig.SetStatsUploadMaxRowsPerTx(3);
         storageServiceConfig.SetStatsUploadInterval(
             TDuration::Seconds(300).MilliSeconds());
         storageServiceConfig.SetStatsUploadRetryTimeout(

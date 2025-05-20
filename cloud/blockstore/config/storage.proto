@@ -1237,6 +1237,6 @@ message TStorageServiceConfig
     // the MultiAgentWrite request was executed.
     optional uint32 NetworkForwardingTimeout = 430;
 
-    // Maximum number of rows to be wtitten to YDB in a single request.
-    optional uint32 StatsUploadRowChunkSize = 431;
+    // Maximum number of rows to be written to YDB in a single request.
+    optional uint32 StatsUploadMaxRowsPerTx = 431;
 }

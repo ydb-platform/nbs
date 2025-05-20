@@ -476,7 +476,7 @@ public:
     bool GetEnableConversionIntoMixedIndexV2() const;
 
     ui32 GetStatsUploadDiskCount() const;
-    ui32 GetStatsUploadRowChunkSize() const;
+    ui32 GetStatsUploadMaxRowsPerTx() const;
     TDuration GetStatsUploadRetryTimeout() const;
 
     bool GetRemoteMountOnly() const;

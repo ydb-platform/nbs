@@ -434,13 +434,13 @@ void TStatsServiceActor::SplitRowsIntoRequests(
     }
 
     for (ui32 from = 0; from < rows.Groups.size();
-         from += Config->GetStatsUploadRowChunkSize())
+         from += Config->GetStatsUploadMaxRowsPerTx())
     {
         TStatsUploadRequest request;
         request.second = timestamp;
 
         ui32 to = std::min(
-            from + Config->GetStatsUploadRowChunkSize(),
+            from + Config->GetStatsUploadMaxRowsPerTx(),
             static_cast<ui32>(rows.Groups.size()));
         request.first.Groups.reserve(to - from);
 
