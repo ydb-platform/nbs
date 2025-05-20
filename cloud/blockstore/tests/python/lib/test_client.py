@@ -37,12 +37,12 @@ class TestClient:
         return self.cms_action(request)
 
     @_handle_errors
-    def wait_for_devices_to_be_cleared(self, expected_dirty_count=0):
+    def wait_for_devices_to_be_cleared(self, expected_dirty_count=0, poll_interval=1):
         while True:
             bkp = self.backup_disk_registry_state()
             if len(bkp.get("DirtyDevices", [])) == expected_dirty_count:
                 break
-            time.sleep(1)
+            time.sleep(poll_interval)
 
     @_handle_errors
     def kill_tablet(self, tabletId):
@@ -64,7 +64,7 @@ class TestClient:
         self.kill_tablet(tablet_id)
 
     @_handle_errors
-    def wait_agent_state(self, agent_id, desired_state):
+    def wait_agent_state(self, agent_id, desired_state, poll_interval=1):
         while True:
             bkp = self.backup_disk_registry_state()
             agent = [x for x in bkp["Agents"] if x['AgentId'] == agent_id]
@@ -72,7 +72,7 @@ class TestClient:
 
             if agent[0].get("State") == desired_state:
                 break
-            time.sleep(1)
+            time.sleep(poll_interval)
 
 
 def CreateTestClient(
