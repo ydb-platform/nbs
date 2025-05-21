@@ -12471,6 +12471,159 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
+
+    Y_UNIT_TEST(ShouldRejectWriteIfCompactionMapIsNotLoaded)
+    {
+        auto config = DefaultConfig();
+        config.SetMaxCompactionRangesLoadingPerTx(1);
+
+        auto runtime = PrepareTestActorRuntime(config, 1024);
+
+        TAutoPtr<IEventHandle> capturedLoadCMRequest;
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvLoadCompactionMapChunkRequest: {
+                        UNIT_ASSERT(!capturedLoadCMRequest);
+                        capturedLoadCMRequest = event.Release();
+                        return true;
+                    }
+                }
+                return false;
+            }
+        );
+
+        TPartitionClient partition(*runtime);
+
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        UNIT_ASSERT(capturedLoadCMRequest);
+        runtime->Send(capturedLoadCMRequest.Release());
+
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAddRequestToLoadCompactionMapRangeIfNotLoaded)
+    {
+        const ui32 rangeCount = 100;
+
+        auto config = DefaultConfig();
+        config.SetMaxCompactionRangesLoadingPerTx(5);
+
+        auto runtime = PrepareTestActorRuntime(config, rangeCount * 1024);
+
+        TPartitionClient partition(*runtime);
+
+        for (ui32 i = 0; i < rangeCount; ++i) {
+            partition.WriteBlocks(TBlockRange32::WithLength(i * 1024, 256), i);
+        }
+
+        std::vector<ui32> waitOutOfOrderRangeIdx;
+        TAutoPtr<IEventHandle> delayEvent;
+        ui32 rangesLoaded = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvLoadCompactionMapChunkRequest: {
+                        auto* msg =
+                            event->Get<TEvPartitionPrivate::
+                                           TEvLoadCompactionMapChunkRequest>();
+                        if (!waitOutOfOrderRangeIdx.empty()) {
+                            UNIT_ASSERT_EQUAL(
+                                waitOutOfOrderRangeIdx.back(),
+                                msg->FirstRangeIdx);
+                            waitOutOfOrderRangeIdx.pop_back();
+                            return false;
+                        }
+                        rangesLoaded += msg->MaxRangesPerTx;
+                        if (msg->FirstRangeIdx == 40 ||
+                            msg->FirstRangeIdx == 80) {
+                            UNIT_ASSERT(!delayEvent);
+                            delayEvent = event.Release();
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+                return false;
+            });
+
+        partition.RebootTablet();
+
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(42 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(66 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(83 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        waitOutOfOrderRangeIdx = { 83, 66 };
+
+        UNIT_ASSERT(delayEvent);
+        runtime->Send(delayEvent.Release());
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT(waitOutOfOrderRangeIdx.empty());
+
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(42 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(66 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(83 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+
+        UNIT_ASSERT(delayEvent);
+        runtime->Send(delayEvent.Release());
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_GE(rangesLoaded, rangeCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
