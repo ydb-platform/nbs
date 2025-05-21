@@ -393,6 +393,14 @@ func isAbortedError(e error) bool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func CreateTryAgainError(msg string) *nbs_client.ClientError {
+	return &nbs_client.ClientError{
+		Code:    nbs_client.E_TRY_AGAIN,
+		Message: msg}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
 	mediaKind, err := getStorageMediaKind(kind)
 	if err != nil {

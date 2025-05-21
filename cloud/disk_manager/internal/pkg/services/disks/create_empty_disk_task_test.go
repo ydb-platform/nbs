@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -193,7 +192,9 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 	require.Equal(t, err, assert.AnError)
 }
 
-func TestCreateEmptyLocalDiskTaskTryAgainShouldNotIncrementRetriableErrorsCount(t *testing.T) {
+func TestCreateLocalDiskTaskTryAgainErrorShouldBeConvertedToInterruptExecutionError(
+	t *testing.T,
+) {
 	ctx := context.Background()
 	storage := storage_mocks.NewStorageMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
@@ -230,10 +231,11 @@ func TestCreateEmptyLocalDiskTaskTryAgainShouldNotIncrementRetriableErrorsCount(
 		Kind:        types.DiskKind_DISK_KIND_SSD_LOCAL,
 		CloudID:     "cloud",
 		FolderID:    "folder",
-	}).Return(&nbs_client.ClientError{
-		Code:    nbs_client.E_TRY_AGAIN,
-		Message: "Unable to allocate local disk: secure erase has not finished yet.",
-	})
+	}).Return(
+		nbs.CreateTryAgainError(
+			"Unable to allocate local disk: secure erase has not finished yet.",
+		),
+	)
 
 	err := task.Run(ctx, execCtx)
 
