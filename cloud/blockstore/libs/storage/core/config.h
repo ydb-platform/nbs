@@ -680,6 +680,8 @@ public:
 
     [[nodiscard]] bool GetDoNotStopVolumeTabletOnLockLost() const;
 
+    [[nodiscard]] bool GetUsingSchemeShardForDescribeVolume() const;
+
     [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
     GetLinkedDiskFillBandwidth() const;
 };
