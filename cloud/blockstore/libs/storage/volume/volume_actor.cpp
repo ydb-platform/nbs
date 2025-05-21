@@ -66,7 +66,7 @@ TVolumeActor::TVolumeActor(
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
+    , TTabletBase(owner, std::move(storage), nullptr)
     , GlobalStorageConfig(config)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))

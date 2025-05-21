@@ -355,11 +355,12 @@ void TPartitionActor::HandleHttpInfo_Describe(
     if (const auto& range = params.Get("range")) {
         TBlockRange32 blockRange;
         if (TBlockRange32::TryParse(range, blockRange)) {
-            ExecuteTx<TDescribeRange>(
+            ExecuteTx(
                 ctx,
-                std::move(requestInfo),
-                blockRange,
-                params.Get("blockfilter"));
+                CreateTx<TDescribeRange>(
+                    std::move(requestInfo),
+                    blockRange,
+                    params.Get("blockfilter")));
         } else {
             TString message = "invalid range specified: " + range.Quote();
             RejectHttpRequest(
@@ -374,10 +375,11 @@ void TPartitionActor::HandleHttpInfo_Describe(
         TLogoBlobID blobId;
         TString errorExplanation;
         if (TLogoBlobID::Parse(blobId, blob, errorExplanation)) {
-            ExecuteTx<TDescribeBlob>(
+            ExecuteTx(
                 ctx,
-                std::move(requestInfo),
-                MakePartialBlobId(blobId));
+                CreateTx<TDescribeBlob>(
+                    std::move(requestInfo),
+                    MakePartialBlobId(blobId)));
         } else {
             TStringBuilder message;
             message << "invalid blob specified: " + blob.Quote() +

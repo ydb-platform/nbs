@@ -313,7 +313,7 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
         State->GetLogicalUsedBlocks().Count()
     );
 
-    ExecuteTx<TUpdateLogicalUsedBlocks>(ctx, 0);
+    ExecuteTx(ctx, CreateTx<TUpdateLogicalUsedBlocks>(0));
 }
 
 bool TPartitionActor::PrepareUpdateLogicalUsedBlocks(
@@ -360,7 +360,7 @@ void TPartitionActor::CompleteUpdateLogicalUsedBlocks(
     if (args.UpdatedToIdx == State->GetLogicalUsedBlocks().Capacity()) {
         FinalizeLoadState(ctx);
     } else {
-        ExecuteTx<TUpdateLogicalUsedBlocks>(ctx, args.UpdatedToIdx);
+        ExecuteTx(ctx, CreateTx<TUpdateLogicalUsedBlocks>(args.UpdatedToIdx));
     }
 }
 

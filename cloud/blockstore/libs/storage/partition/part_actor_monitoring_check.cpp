@@ -258,6 +258,7 @@ void TPartitionActor::CompleteCheckIndex(
         args.RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    RemoveTransaction(*args.RequestInfo);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -270,10 +271,9 @@ void TPartitionActor::HandleHttpInfo_Check(
     if (const auto& range = params.Get("range")) {
         TBlockRange32 blockRange;
         if (TBlockRange32::TryParse(range, blockRange)) {
-            ExecuteTx<TCheckIndex>(
+            ExecuteTx(
                 ctx,
-                std::move(requestInfo),
-                blockRange);
+                CreateTx<TCheckIndex>(std::move(requestInfo), blockRange));
         } else {
             TString message = "invalid range specified: " + range.Quote();
             SendHttpResponse(

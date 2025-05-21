@@ -47,7 +47,7 @@ TPartitionActor::TPartitionActor(
         ui32 siblingCount,
         const TActorId& volumeActorId)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
+    , TTabletBase(owner, std::move(storage), nullptr)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
