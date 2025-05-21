@@ -183,8 +183,8 @@ NProto::TError TShardBalancerWeightedRandom::SelectShard(
     const auto randomValue = RandomNumber<ui64>(totalFreeSpace);
 
     // For array [5, 3] the prefix sums will be [0, 5, 8]
-    // random value in range [0, 5) will produce lower bound 1
-    // random value in range [5, 8) will produce lower bound 2
+    // random value in range [0, 5) will produce upper bound 1
+    // random value in range [5, 8) will produce upper bound 2
     auto* it = UpperBound(
         WeightPrefixSums.begin(),
         WeightPrefixSums.end(),
