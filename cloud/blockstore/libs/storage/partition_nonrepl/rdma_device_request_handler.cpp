@@ -88,22 +88,10 @@ void IRdmaDeviceRequestHandler::HandleResponse(
 
     timer.Finish();
 
-    SendEvent(RequestInfo->Sender, std::move(response), RequestInfo->Cookie);
-    SendEvent(ParentActorId, std::move(completion), RequestId);
-}
+    ActorSystem
+        ->Send(RequestInfo->Sender, response.release(), 0, RequestInfo->Cookie);
 
-void IRdmaDeviceRequestHandler::SendEvent(
-    NActors::TActorId recipient,
-    std::unique_ptr<NActors::IEventBase> ev,
-    ui64 cookie) const
-{
-    auto completionEvent = std::make_unique<NActors::IEventHandle>(
-        recipient,
-        NActors::TActorId(),
-        ev.release(),
-        0,
-        cookie);
-    ActorSystem->Send(completionEvent.release());
+    ActorSystem->Send(ParentActorId, completion.release(), 0, RequestId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -84,11 +84,6 @@ public:
         return *RequestInfo;
     }
 
-    void SendEvent(
-        NActors::TActorId recipient,
-        std::unique_ptr<NActors::IEventBase> ev,
-        ui64 cookie = 0) const;
-
 protected:
     template <typename TCompletionEvent>
     std::unique_ptr<TCompletionEvent> CreateConcreteCompletionEvent()
