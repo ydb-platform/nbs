@@ -15,6 +15,9 @@ DEPENDS(
     cloud/disk_manager/cmd/disk-manager-init-db
     cloud/disk_manager/cmd/disk-manager-admin
     cloud/disk_manager/test/mocks/metadata
+
+    cloud/tasks/test/nemesis
+
     contrib/python/moto/bin
 )
 

@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "part_counters.h"
-#include "part_database.h"
 #include "part_events_private.h"
 #include "part_state.h"
 #include "part_tx.h"
@@ -22,6 +21,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
+#include <cloud/blockstore/libs/storage/partition/model/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
@@ -144,6 +144,8 @@ private:
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
 
     bool FirstGarbageCollectionCompleted = false;
+
+    TTransactionTimeTracker TransactionTimeTracker;
 
 public:
     TPartitionActor(
@@ -320,11 +322,11 @@ private:
 
     void KillActors(const NActors::TActorContext& ctx);
     void AddTransaction(
-        TRequestInfo& transaction,
+        TRequestInfo& requestInfo,
         TRequestInfo::TCancelRoutine cancelRoutine);
 
     template <typename TMethod>
-    void AddTransaction(TRequestInfo& transaction)
+    void AddTransaction(TRequestInfo& requestInfo)
     {
         auto cancelRoutine = [] (
             const NActors::TActorContext& ctx,
@@ -336,9 +338,9 @@ private:
             NCloud::Reply(ctx, requestInfo, std::move(response));
         };
 
-        AddTransaction(transaction, cancelRoutine);
+        AddTransaction(requestInfo, cancelRoutine);
     }
-    void RemoveTransaction(TRequestInfo& transaction);
+    void RemoveTransaction(TRequestInfo& requestInfo);
     void TerminateTransactions(const NActors::TActorContext& ctx);
     void ReleaseTransactions();
 
@@ -518,6 +520,11 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_ScanDisk(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderLatency(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

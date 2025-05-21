@@ -9,7 +9,6 @@
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/tablet_flat/flat_database.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
@@ -25,8 +24,19 @@ NKikimr::NTabletFlatExecutor::IMiniKQLFactory* NewMiniKQLFactory();
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ITransactionBase
-    : public NKikimr::NTabletFlatExecutor::ITransaction
+class ITransactionTracker
+{
+public:
+    virtual ~ITransactionTracker() = default;
+
+    virtual void OnStarted(
+        ui64 transactionId,
+        TString transactionName,
+        ui64 startTime) = 0;
+    virtual void OnFinished(ui64 transactionId, ui64 finishTime) = 0;
+};
+
+struct ITransactionBase: public NKikimr::NTabletFlatExecutor::ITransaction
 {
     virtual void Init(const NActors::TActorContext& ctx) = 0;
 };
@@ -105,19 +115,25 @@ template <typename T>
 class TTabletBase
     : public NKikimr::NTabletFlatExecutor::TTabletExecutedFlat
 {
+    ITransactionTracker* const TransactionTracker = nullptr;
+    ui64 TransactionIdGenerator = 0;
+
 public:
     TTabletBase(const NActors::TActorId& owner,
-                NKikimr::TTabletStorageInfoPtr storage)
+                NKikimr::TTabletStorageInfoPtr storage,
+                ITransactionTracker* transactionTracker)
         : TTabletExecutedFlat(storage.Get(), owner, NewMiniKQLFactory())
+        , TransactionTracker(transactionTracker)
     {}
 
 protected:
     template <typename TTx>
-    class TTransaction final
-        : public ITransactionBase
+    class TTransaction final: public ITransactionBase
     {
     private:
-        T* Self;
+        T* const Self;
+        const ui64 TransactionId = {++Self->TransactionIdGenerator};
+
         typename TTx::TArgs Args;
 
         ui32 Generation = 0;
@@ -137,6 +153,13 @@ protected:
 
         void Init(const NActors::TActorContext&) override
         {
+            if (Self->TransactionTracker) {
+                Self->TransactionTracker->OnStarted(
+                    TransactionId,
+                    TTx::Name,
+                    GetCycleCount());
+            }
+
             TX_TRACK(TxInit);
             TX_FORK();
         }
@@ -183,6 +206,12 @@ protected:
 
         void Complete(const NActors::TActorContext& ctx) override
         {
+            if (Self->TransactionTracker) {
+                Self->TransactionTracker->OnFinished(
+                    TransactionId,
+                    GetCycleCount());
+            }
+
             TX_TRACK(TxComplete);
 
             LOG_DEBUG(ctx, T::LogComponent,
@@ -206,12 +235,10 @@ protected:
             std::forward<TArgs>(args)...);
     }
 
-    template <typename TTx, typename ...TArgs>
-    void ExecuteTx(const NActors::TActorContext& ctx, TArgs&& ...args)
+    template <typename TTx, typename... TArgs>
+    void ExecuteTx(const NActors::TActorContext& ctx, TArgs&&... args)
     {
-        auto tx = CreateTx<TTx>(std::forward<TArgs>(args)...);
-        tx->Init(ctx);
-        TTabletExecutedFlat::Execute(tx.release(), ctx);
+        ExecuteTx(ctx, CreateTx<TTx>(std::forward<TArgs>(args)...));
     }
 
     void ExecuteTx(

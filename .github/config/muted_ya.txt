@@ -1,3 +1,6 @@
 cloud/filestore/tests/fio_index/mount-kikimr-test *
 cloud/filestore/tests/fio_index/mount-local-test *
 cloud/disk_manager/internal/pkg/facade/filesystem_service_nemesis_test filesystem_service_nemesis_test.TestFilesystemServiceCreateExternalFilesystem
+cloud/filestore/libs/storage/service/ut TStorageServiceShardingTest.ShouldAggregateFileSystemMetricsInBackgroundWithDirectoriesInShardsWithShardIdSelectionInLeader
+cloud/filestore/libs/storage/tablet/model/ut TShardBalancerTest.ShouldBalanceShardsRandom
+cloud/filestore/libs/storage/tablet/model/ut TShardBalancerTest.ShouldBalanceShardsWeightedRandom

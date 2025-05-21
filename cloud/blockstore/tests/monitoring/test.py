@@ -220,7 +220,7 @@ class TestKikimrPartitionTablet:
         check_tablet_get(
             self.session, self.base_url,
             self.partition_id, {},
-            ["Overview", "Tables", "Channels", "Index"])
+            ["Overview", "Tables", "Channels", "Latency", "Index"])
 
     def run(self, nbs, nbs_http_port):
         self.nbs = nbs

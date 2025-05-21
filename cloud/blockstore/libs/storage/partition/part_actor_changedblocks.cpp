@@ -432,13 +432,14 @@ void TPartitionActor::HandleGetChangedBlocks(
 
     AddTransaction<TEvService::TGetChangedBlocksMethod>(*requestInfo);
 
-    ExecuteTx<TGetChangedBlocks>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        ConvertRangeSafe(readRange),
-        lowCommitId,
-        highCommitId,
-        msg->Record.GetIgnoreBaseDisk());
+        CreateTx<TGetChangedBlocks>(
+            requestInfo,
+            ConvertRangeSafe(readRange),
+            lowCommitId,
+            highCommitId,
+            msg->Record.GetIgnoreBaseDisk()));
 }
 
 bool TPartitionActor::PrepareGetChangedBlocks(

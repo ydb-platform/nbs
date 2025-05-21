@@ -34,9 +34,9 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
-    TBlockRange64 range = TBlockRange64::MakeHalfOpenInterval(
+    TBlockRange64 range = TBlockRange64::WithLength(
         Request.GetStartIndex(),
-        Request.GetStartIndex() + Request.GetBlocksCount());
+        Request.GetBlocksCount());
 
     Buffer = TGuardedBuffer(TString::Uninitialized(range.Size() * BlockSize));
 
@@ -66,7 +66,7 @@ void TCheckRangeActor::ReplyAndDie(
     const NProto::TError& error)
 {
     auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(error));
+        std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 

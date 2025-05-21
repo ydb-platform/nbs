@@ -81,6 +81,8 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"dataplane.DeleteSnapshotData":                  func() proto.Message { return &dataplane_protos.DeleteSnapshotDataTaskState{} },
 	"dataplane.DeleteDiskFromIncremental":           func() proto.Message { return &dataplane_protos.DeleteDiskFromIncrementalState{} },
 	"dataplane.CreateDRBasedDiskCheckpoint":         func() proto.Message { return &dataplane_protos.CreateDRBasedDiskCheckpointTaskState{} },
+	"dataplane.MigrateSnapshotTask":                 func() proto.Message { return &dataplane_protos.MigrateSnapshotTaskState{} },
+	"dataplane.MigrateSnapshotDatabaseTask":         func() proto.Message { return &dataplane_protos.MigrateSnapshotDatabaseTaskState{} },
 	"disks.CreateEmptyDisk":                         func() proto.Message { return &disk_protos.CreateEmptyDiskTaskState{} },
 	"disks.CreateOverlayDisk":                       func() proto.Message { return &disk_protos.CreateOverlayDiskTaskState{} },
 	"disks.CreateDiskFromImage":                     func() proto.Message { return &disk_protos.CreateDiskFromImageTaskState{} },

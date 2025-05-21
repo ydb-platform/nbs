@@ -58,6 +58,7 @@ SRCS(
     part_nonrepl_rdma_actor_readblocks_local.cpp
     part_nonrepl_rdma_actor_stats.cpp
     part_nonrepl_rdma_actor_writeblocks.cpp
+    part_nonrepl_rdma_actor_writeblocks_multi_agent.cpp
     part_nonrepl_rdma_actor_zeroblocks.cpp
 
     part_nonrepl_migration.cpp

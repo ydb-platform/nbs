@@ -1003,14 +1003,15 @@ void TPartitionActor::ReadBlocks(
 
     AddTransaction(*requestInfo, requestInfo->CancelRoutine);
 
-    ExecuteTx<TReadBlocks>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        commitId,
-        readRange,
-        std::move(readHandler),
-        replyLocal,
-        shouldReportBlobIdsOnFailure);
+        CreateTx<TReadBlocks>(
+            requestInfo,
+            commitId,
+            readRange,
+            std::move(readHandler),
+            replyLocal,
+            shouldReportBlobIdsOnFailure));
 }
 
 void TPartitionActor::HandleReadBlocksCompleted(

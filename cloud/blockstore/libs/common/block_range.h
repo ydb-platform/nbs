@@ -73,15 +73,6 @@ struct TBlockRange
             static_cast<TBlockIndex>(end));
     }
 
-    // Create half interval range [start, excludedEnd).
-    static TBlockRange MakeHalfOpenInterval(
-        TBlockIndex start,
-        TBlockIndex excludedEnd)
-    {
-        Y_DEBUG_ABORT_UNLESS(start < excludedEnd);
-        return TBlockRange{start, excludedEnd - 1};
-    }
-
     // Create a range with start and length. It is guaranteed that there will be
     // no overflow for the end of the interval. Therefore, the constructed range
     // may be shorter than the requested one.
