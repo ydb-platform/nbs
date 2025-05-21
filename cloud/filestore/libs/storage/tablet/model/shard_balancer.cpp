@@ -185,7 +185,7 @@ NProto::TError TShardBalancerWeightedRandom::SelectShard(
     // For array [5, 3] the prefix sums will be [0, 5, 8]
     // random value in range [0, 5) will produce lower bound 1
     // random value in range [5, 8) will produce lower bound 2
-    auto* it = LowerBound(
+    auto* it = UpperBound(
         WeightPrefixSums.begin(),
         WeightPrefixSums.end(),
         randomValue);
