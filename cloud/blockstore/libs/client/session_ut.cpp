@@ -1829,8 +1829,8 @@ inline void Out<NCloud::NBlockStore::NProto::TReadBlocksLocalResponse>(
 {
     out << value.ShortDebugString();
 
-    out << " FailedBlobs: [";
-    for (const auto& blob: value.FailedBlobs) {
+    out << " FailedInfoPtr->FailedRanges: [";
+    for (const auto& blob: value.FailInfo.FailedRanges) {
         out << blob << ", ";
     }
     out << "]";

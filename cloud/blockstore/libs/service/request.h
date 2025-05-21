@@ -37,9 +37,13 @@ struct TReadBlocksLocalRequest
     bool ShouldReportBlobIdsOnFailure = false;
 };
 
+struct TExtendedFailInfo{
+    TVector<TString> FailedRanges;
+};
+
 struct TReadBlocksLocalResponse: public TReadBlocksResponse
 {
-    TVector<TString> FailedBlobs;
+    TExtendedFailInfo FailInfo;
 
     TReadBlocksLocalResponse() = default;
 

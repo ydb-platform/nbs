@@ -121,10 +121,10 @@ auto MergeReadResponses(
     auto result = MergeReadBlocksResponsesImpl(responsesToMerge);
 
     for (const auto& response: responsesToMerge) {
-        result.FailedBlobs.insert(
-            result.FailedBlobs.end(),
-            response.FailedBlobs.begin(),
-            response.FailedBlobs.end());
+        result.FailInfo.FailedRanges.insert(
+            result.FailInfo.FailedRanges.end(),
+            response.FailInfo.FailedRanges.begin(),
+            response.FailInfo.FailedRanges.end());
     }
 
     return result;

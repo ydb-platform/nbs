@@ -8,6 +8,7 @@
 #include <util/generic/string.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -65,8 +66,7 @@ void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
+    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -127,18 +127,15 @@ void TCheckRangeActor::HandleReadBlocksResponse(
         auto* status = response->Record.MutableStatus();
         status->CopyFrom(error);
 
-        if (!msg->Record.FailedBlobs.empty()) {
+        if (!msg->Record.FailInfo.FailedRanges.empty()) {
             TStringBuilder builder;
-            builder << "\n Broken blobs: [";
+            builder << "\n Broken blobs: ["
+                    << JoinRange(
+                           ", ",
+                           msg->Record.FailInfo.FailedRanges.begin(),
+                           msg->Record.FailInfo.FailedRanges.end())
+                    << "]";
 
-            for (size_t i = 0; i < msg->Record.FailedBlobs.size(); ++i) {
-                if (i > 0) {
-                    builder << ", ";
-                }
-                builder << msg->Record.FailedBlobs[i];
-            }
-
-            builder << "]";
             status->MutableMessage()->append(builder);
         }
     } else {
