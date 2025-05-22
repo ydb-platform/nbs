@@ -50,7 +50,7 @@ TPartitionActor::TPartitionActor(
         ui32 siblingCount,
         const TActorId& volumeActorId)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
+    , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -320,7 +320,7 @@ void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 
     if (!Executor()->GetStats().IsFollower) {
-        ExecuteTx<TInitSchema>(ctx, PartitionConfig.GetBlocksCount());
+        ExecuteTx(ctx, CreateTx<TInitSchema>(PartitionConfig.GetBlocksCount()));
     }
 }
 
@@ -359,19 +359,19 @@ void TPartitionActor::KillActors(const TActorContext& ctx)
 }
 
 void TPartitionActor::AddTransaction(
-    TRequestInfo& transaction,
+    TRequestInfo& requestInfo,
     TRequestInfo::TCancelRoutine cancelRoutine)
 {
-    transaction.CancelRoutine = cancelRoutine;
+    requestInfo.CancelRoutine = cancelRoutine;
 
-    transaction.Ref();
+    requestInfo.Ref();
 
     STORAGE_VERIFY(
-        transaction.Empty(),
+        requestInfo.Empty(),
         TWellKnownEntityTypes::TABLET,
         TabletID());
 
-    ActiveTransactions.PushBack(&transaction);
+    ActiveTransactions.PushBack(&requestInfo);
 }
 
 void TPartitionActor::RemoveTransaction(TRequestInfo& requestInfo)

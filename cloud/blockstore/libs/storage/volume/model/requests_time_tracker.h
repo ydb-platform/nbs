@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/histogram.h>
 
+#include <library/cpp/json/writer/json_value.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/maybe.h>
@@ -18,10 +20,11 @@ class TRequestsTimeTracker
 public:
     enum class ERequestType
     {
-        Read = 0,
-        Write = 1,
-        Zero = 2,
-        Last = Zero,
+        Read,
+        Write,
+        Zero,
+        Describe,
+        Last = Describe,
     };
 
     struct TBucketInfo
@@ -78,11 +81,14 @@ private:
     THashMap<ui64, TRequestInflight> InflightRequests;
     THashMap<TKey, TTimeHistogram, THash, TEqual> Histograms;
 
+    [[nodiscard]] NJson::TJsonValue BuildPercentilesJson() const;
+
 public:
     explicit TRequestsTimeTracker();
 
     static TVector<TBucketInfo> GetSizeBuckets(ui32 blockSize);
     static TVector<TBucketInfo> GetTimeBuckets();
+    static TVector<TBucketInfo> GetPercentileBuckets();
 
     void OnRequestStarted(
         ERequestType requestType,

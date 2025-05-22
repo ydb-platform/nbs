@@ -237,6 +237,7 @@ void BuildPartitionTabs(IOutputStream& out)
         << "</li>"
         << "<li><a href='#Tables' data-toggle='tab'>Tables</a>" << "</li>"
         << "<li><a href='#Channels' data-toggle='tab'>Channels</a>" << "</li>"
+        << "<li><a href='#Latency' data-toggle='tab'>Latency</a>" << "</li>"
         << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>" << "</ul>";
 }
 
@@ -1051,6 +1052,7 @@ void DumpTabletNotReady(IOutputStream& out)
         }
     }
 }
+
 
 TCgiParameters GatherHttpParameters(const TEvRemoteHttpInfo& msg)
 {

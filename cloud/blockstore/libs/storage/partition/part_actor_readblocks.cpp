@@ -946,13 +946,14 @@ void TPartitionActor::ReadBlocks(
 
     AddTransaction(*requestInfo, requestInfo->CancelRoutine);
 
-    ExecuteTx<TReadBlocks>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        commitId,
-        readRange,
-        std::move(readHandler),
-        replyLocal);
+        CreateTx<TReadBlocks>(
+            requestInfo,
+            commitId,
+            readRange,
+            std::move(readHandler),
+            replyLocal));
 }
 
 void TPartitionActor::HandleReadBlocksCompleted(

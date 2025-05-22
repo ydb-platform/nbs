@@ -277,9 +277,12 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
         PartitionConfig.GetDiskId().c_str(),
         DescribeRange(blockRange).data());
 
-    AddTransaction<TEvPartitionPrivate::TMetadataRebuildUsedBlocksMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TMetadataRebuildUsedBlocksMethod>(
+        *requestInfo);
 
-    ExecuteTx(ctx, CreateTx<TMetadataRebuildUsedBlocks>(requestInfo, blockRange));
+    ExecuteTx(
+        ctx,
+        CreateTx<TMetadataRebuildUsedBlocks>(requestInfo, blockRange));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

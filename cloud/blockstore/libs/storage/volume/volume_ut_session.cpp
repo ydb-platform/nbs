@@ -362,8 +362,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
         writerClient.SendAddClientRequest(writer);
         auto response = writerClient.RecvAddClientResponse();
-        UNIT_ASSERT_EQUAL(response->GetError().GetCode(), E_REJECTED);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetMessage(), "timeout");
+        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_TIMEOUT);
     }
 
     Y_UNIT_TEST_F(ShouldPassErrorsFromDiskAgent, TFixture)
@@ -453,6 +452,50 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         writerClient.AddClient(writer);
     }
 
+    Y_UNIT_TEST_F(ShouldIgnoreTimeoutIfMuteIoErrorsFlagIsSet, TFixture)
+    {
+        SetupTest(100ms);
+
+        auto writerClient = GetVolumeClient();
+
+        std::unique_ptr<IEventHandle> stollenResponse;
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAcquireDevicesResponse)
+                {
+                    stollenResponse.reset(event.Release());
+                    return TTestActorRuntimeBase::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto writer = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        auto& disk = State->Disks.at("vol0");
+        disk.IOMode = NProto::VOLUME_IO_ERROR_READ_ONLY;
+        disk.IOModeTs = Runtime->GetCurrentTime();
+        disk.MuteIOErrors = true;
+
+        for (auto& device: disk.Devices) {
+            State->UnavailableDeviceUUIDs.emplace_back(device.GetDeviceUUID());
+        };
+
+        auto volume = GetVolumeClient();
+        volume.ReallocateDisk();
+        // reallocate disk will trigger pipes reset, so reestablish connection
+        volume.ReconnectPipe();
+
+        writerClient.AddClient(writer);
+
+        writerClient.RemoveClient(writer.GetClientId());
+    }
+
     Y_UNIT_TEST_F(ShouldHandleRequestsUndelivery, TFixture)
     {
         SetupTest();
@@ -480,7 +523,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         UNIT_ASSERT_EQUAL(response->GetError().GetMessage(), "not delivered");
     }
 
-    Y_UNIT_TEST_F(ShouldFilterLostDevicesDuringAcquire, TFixture)
+    Y_UNIT_TEST_F(ShouldFilterUnavailableDevicesDuringAcquire, TFixture)
     {
         SetupTest();
 
@@ -494,7 +537,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
             devices.emplace_back(d.GetDeviceUUID());
         }
 
-        State->LostDeviceUUIDs.emplace_back(devices[0]);
+        State->UnavailableDeviceUUIDs.emplace_back(devices[0]);
 
         volume.ReallocateDisk();
         // reallocate disk will trigger pipes reset, so reestablish connection
@@ -535,7 +578,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         }
         acquiredDevices.clear();
 
-        State->LostDeviceUUIDs.clear();
+        State->UnavailableDeviceUUIDs.clear();
 
         volume.ReallocateDisk();
         // reallocate disk will trigger pipes reset, so reestablish connection
@@ -551,7 +594,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldMountVolumeWithOnlyLostDevices, TFixture)
+    Y_UNIT_TEST_F(ShouldMountVolumeWithOnlyUnavailableDevices, TFixture)
     {
         SetupTest();
 
@@ -562,7 +605,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
         // Mark all devices as lost.
         for (const auto& d: diskInfo.GetDevices()) {
-            State->LostDeviceUUIDs.emplace_back(d.GetDeviceUUID());
+            State->UnavailableDeviceUUIDs.emplace_back(d.GetDeviceUUID());
         }
 
         volume.ReallocateDisk();

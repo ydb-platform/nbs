@@ -60,7 +60,7 @@ struct TDiskRegistryState: TAtomicRefCount<TDiskRegistryState>
     ui32 FinishMigrationRequests = 0;
     THashSet<TString> DeviceReplacementUUIDs;
 
-    TVector<TString> LostDeviceUUIDs;
+    TVector<TString> UnavailableDeviceUUIDs;
 
     TVector<std::pair<TString, NProto::EAgentState>> AgentStates;
 

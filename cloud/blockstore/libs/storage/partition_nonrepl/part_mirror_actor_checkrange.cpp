@@ -37,10 +37,25 @@ private:
 void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     const TString clientId{CheckRangeClientId};
-    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
+    TBlockRange64 range = TBlockRange64::WithLength(
+        Request.GetStartIndex(),
+        Request.GetBlocksCount());
+
+    Buffer = TGuardedBuffer(TString::Uninitialized(range.Size() * BlockSize));
+
+    auto sgList = Buffer.GetGuardedSgList();
+    auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
+    if (HasError(sgListOrError)){
+        ReplyAndDie(ctx, sgListOrError.GetError());
+        return;
+    }
+    SgList.SetSgList(sgListOrError.ExtractResult());
+
+    auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
 
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
+    request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetReplicaCount(Request.headers().GetReplicaCount());
@@ -77,7 +92,8 @@ void TMirrorPartitionActor::HandleCheckRange(
         ctx,
         SelfId(),
         std::move(record),
-        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
+        State.GetBlockSize());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

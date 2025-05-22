@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - 'ydb/docs/**'
       - '.github/**'
+      - '!.github/config/**'
       - 'example/**'
       - 'doc/**'
       - '**.md'

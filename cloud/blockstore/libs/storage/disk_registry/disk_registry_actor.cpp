@@ -41,7 +41,7 @@ TDiskRegistryActor::TDiskRegistryActor(
         NNotify::IServicePtr notifyService,
         ILoggingServicePtr logging)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
+    , TTabletBase(owner, std::move(storage), nullptr)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , LogbrokerService(std::move(logbrokerService))

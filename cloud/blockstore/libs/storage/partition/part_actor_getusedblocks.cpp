@@ -36,9 +36,7 @@ void TPartitionActor::HandleGetUsedBlocks(
 
     AddTransaction<TEvVolume::TGetUsedBlocksMethod>(*requestInfo);
 
-    ExecuteTx<TGetUsedBlocks>(
-        ctx,
-        requestInfo);
+    ExecuteTx(ctx, CreateTx<TGetUsedBlocks>(requestInfo));
 }
 
 bool TPartitionActor::PrepareGetUsedBlocks(

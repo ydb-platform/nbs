@@ -110,11 +110,9 @@ void TPartitionActor::DescribeBlocks(
 
     AddTransaction<TEvVolume::TDescribeBlocksMethod>(*requestInfo);
 
-    ExecuteTx<TDescribeBlocks>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        commitId,
-        describeRange);
+        CreateTx<TDescribeBlocks>(requestInfo, commitId, describeRange));
 }
 
 void TPartitionActor::HandleDescribeBlocks(
