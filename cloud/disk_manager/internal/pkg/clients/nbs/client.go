@@ -130,7 +130,7 @@ func isDiskRegistryBasedDisk(mediaKind core_protos.EStorageMediaKind) bool {
 	return false
 }
 
-func isLocalDisk(mediaKind core_protos.EStorageMediaKind) bool {
+func isLocalDiskMediaKind(mediaKind core_protos.EStorageMediaKind) bool {
 	switch mediaKind {
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_LOCAL,
 		core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL:
@@ -138,6 +138,15 @@ func isLocalDisk(mediaKind core_protos.EStorageMediaKind) bool {
 	}
 
 	return false
+}
+
+func isLocalDisk(kind types.DiskKind) bool {
+	mediaKind, err := getStorageMediaKind(kind)
+	if err != nil {
+		return false
+	}
+
+	return isLocalDiskMediaKind(mediaKind)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -391,6 +400,17 @@ func isAbortedError(e error) bool {
 	return false
 }
 
+func isTryAgainError(e error) bool {
+	var clientErr *nbs_client.ClientError
+	if errors.As(e, &clientErr) {
+		if clientErr.Code == nbs_client.E_TRY_AGAIN {
+			return true
+		}
+	}
+
+	return false
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func CreateTryAgainError(msg string) *nbs_client.ClientError {
@@ -408,26 +428,6 @@ func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
 	}
 
 	return isDiskRegistryBasedDisk(mediaKind)
-}
-
-func IsLocalDisk(kind types.DiskKind) bool {
-	mediaKind, err := getStorageMediaKind(kind)
-	if err != nil {
-		return false
-	}
-
-	return isLocalDisk(mediaKind)
-}
-
-func IsTryAgainError(e error) bool {
-	var clientErr *nbs_client.ClientError
-	if errors.As(e, &clientErr) {
-		if clientErr.Code == nbs_client.E_TRY_AGAIN {
-			return true
-		}
-	}
-
-	return false
 }
 
 func IsDiskNotFoundError(e error) bool {
@@ -468,8 +468,8 @@ func IsAlterPlacementGroupMembershipPublicError(e error) bool {
 }
 
 func IsLocalDiskAllocationTryAgainError(e error, kind types.DiskKind) bool {
-	return IsTryAgainError(e) &&
-		IsLocalDisk(kind) &&
+	return isTryAgainError(e) &&
+		isLocalDisk(kind) &&
 		strings.Contains(
 			e.Error(),
 			"Unable to allocate local disk: secure erase has not finished yet")
