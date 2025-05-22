@@ -110,7 +110,7 @@ private:
 
     void PushYdbStats(const NActors::TActorContext& ctx);
 
-    void SplitRowsIntoRequests(
+    TVector<TStatsUploadRequest> SplitRowsIntoRequests(
         NYdbStats::TYdbRowData rows,
         const NActors::TActorContext& ctx);
 

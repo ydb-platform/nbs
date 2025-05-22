@@ -416,10 +416,16 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
     }
 }
 
-void TStatsServiceActor::SplitRowsIntoRequests(
+TVector<TStatsServiceActor::TStatsUploadRequest>
+TStatsServiceActor::SplitRowsIntoRequests(
     NYdbStats::TYdbRowData rows,
     const TActorContext& ctx)
 {
+    TVector<TStatsUploadRequest> requests;
+    requests.reserve(
+        1 + (rows.Groups.size() + Config->GetStatsUploadMaxRowsPerTx() - 1) /
+                Config->GetStatsUploadMaxRowsPerTx());
+
     auto timestamp = ctx.Now();
 
     if (rows.Stats.size() || rows.Metrics.size() || rows.Partitions.size()) {
@@ -430,7 +436,7 @@ void TStatsServiceActor::SplitRowsIntoRequests(
         request.first.Metrics = std::move(rows.Metrics);
         request.first.Partitions = std::move(rows.Partitions);
 
-        YdbStatsRequests.push_back(std::move(request));
+        requests.push_back(std::move(request));
     }
 
     for (ui32 from = 0; from < rows.Groups.size();
@@ -449,8 +455,10 @@ void TStatsServiceActor::SplitRowsIntoRequests(
             rows.Groups.begin() + to,
             std::back_inserter(request.first.Groups));
 
-        YdbStatsRequests.push_back(std::move(request));
+        requests.push_back(std::move(request));
     }
+
+    return requests;
 }
 
 void TStatsServiceActor::HandleUploadDisksStats(
@@ -512,7 +520,10 @@ void TStatsServiceActor::HandleUploadDisksStats(
         ));
     }
 
-    SplitRowsIntoRequests(std::move(rows), ctx);
+    for (auto& request: SplitRowsIntoRequests(std::move(rows), ctx)) {
+        YdbStatsRequests.push_back(std::move(request));
+    }
+
     PushYdbStats(ctx);
 
     ScheduleStatsUpload(ctx);
