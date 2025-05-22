@@ -313,6 +313,7 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::ListKeyrings:
         case EBlockStoreRequest::DescribeEndpoint:
         case EBlockStoreRequest::RefreshEndpoint:
+        case EBlockStoreRequest::CancelEndpointInFlightRequests:
         case EBlockStoreRequest::QueryAgentsInfo:
         case EBlockStoreRequest::CreateVolumeLink:
         case EBlockStoreRequest::DestroyVolumeLink:

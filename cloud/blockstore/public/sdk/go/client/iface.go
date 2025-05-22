@@ -148,6 +148,11 @@ type ClientIface interface {
 		req *protos.TRefreshEndpointRequest,
 	) (*protos.TRefreshEndpointResponse, error)
 
+	CancelEndpointInFlightRequests(
+		ctx context.Context,
+		req *protos.TCancelEndpointInFlightRequestsRequest,
+	) (*protos.TCancelEndpointInFlightRequestsResponse, error)
+
 	//
 	// Checkpoint operations.
 	//

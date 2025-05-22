@@ -4,6 +4,7 @@
 #include "alter_volume.h"
 #include "assign_volume.h"
 #include "backup_volume.h"
+#include "cancel_endpoint_in_flight_requests.h"
 #include "check_range.h"
 #include "create_checkpoint.h"
 #include "create_placement_group.h"
@@ -90,6 +91,7 @@ struct THandlerFactory
         { "queryavailablestorage", NewQueryAvailableStorageCommand },
         { "readblocks", NewReadBlocksCommand },
         { "refreshendpoint", NewRefreshEndpointCommand },
+        { "cancelendpointinflightrequests", NewCancelEndpointInFlightRequestsCommand },
         { "resizevolume", NewResizeVolumeCommand },
         { "restorevolume", NewRestoreVolumeCommand },
         { "resumedevice", NewResumeDeviceCommand },

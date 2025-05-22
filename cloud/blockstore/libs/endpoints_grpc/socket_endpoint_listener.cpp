@@ -319,6 +319,14 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
+    NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) override
+    {
+        Y_UNUSED(socketPath);
+        return MakeError(
+            E_NOT_IMPLEMENTED,
+            "Can't cancel in-flight requests for GRPC endpoint");
+    }
 };
 
 }   // namespace

@@ -91,6 +91,9 @@ public:
         });
     }
 
+    // void CancelInFlightRequests() override
+    // {}
+
     void Update(ui64 blocksCount) override
     {
         Y_UNUSED(blocksCount);

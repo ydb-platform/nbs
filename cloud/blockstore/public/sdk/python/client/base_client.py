@@ -41,6 +41,7 @@ NBS_CLIENT_METHODS = [
     "start_endpoint",
     "stop_endpoint",
     "refresh_endpoint",
+    "cancel_endpoint_in_flight_requests",
     "execute_action",
     "kick_endpoint",
     "cms_action",

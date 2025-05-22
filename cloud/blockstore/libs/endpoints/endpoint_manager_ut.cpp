@@ -343,6 +343,13 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
+    NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) override
+    {
+        Y_UNUSED(socketPath);
+        return {};
+    }
+
     TMap<TString, TTestEndpoint> GetEndpoints() const
     {
         return Endpoints;

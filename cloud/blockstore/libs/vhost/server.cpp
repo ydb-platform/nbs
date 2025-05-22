@@ -183,6 +183,25 @@ public:
         return NProto::TError();
     }
 
+    void CancelRequests()
+    {
+        auto cancelError = MakeError(E_CANCELLED, "Request is cancelled");
+        with_lock (RequestsLock) {
+            TLog& Log = AppCtx.Log;
+            STORAGE_INFO(
+                "Cancel requests for endpoint "
+                << SocketPath.Quote() << " with " << RequestsInFlight.Size()
+                << " inflight requests");
+
+            RequestsInFlight.ForEach(
+                [&](TRequest* request)
+                {
+                    CompleteRequest(*request, cancelError);
+                    request->Unlink();
+                });
+        }
+    }
+
     TFuture<NProto::TError> Stop(bool deleteSocket)
     {
         if (Stopped.test_and_set()) {
@@ -598,6 +617,9 @@ public:
         const TString& socketPath,
         ui64 blocksCount) override;
 
+    NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) override;
+
 private:
     void InitExecutors();
 
@@ -794,6 +816,37 @@ NProto::TError TServer::UpdateEndpoint(
 
     if (endpoint) {
         endpoint->Update(blocksCount);
+    }
+    return NProto::TError{};
+}
+
+NProto::TError TServer::CancelEndpointInFlightRequests(
+    const TString& socketPath)
+{
+    if (ShouldStop.test()) {
+        NProto::TError error;
+        error.SetCode(E_FAIL);
+        error.SetMessage("Vhost server is stopped");
+        return MakeError(E_FAIL, "Vhost server is stopped");
+    }
+
+    TEndpointPtr endpoint;
+
+    with_lock (Lock) {
+        auto it = EndpointMap.find(socketPath);
+        if (it == EndpointMap.end()) {
+            return MakeError(
+                S_FALSE,
+                TStringBuilder()
+                    << "endpoint " << socketPath.Quote() << " is not started");
+        }
+
+        auto* executor = it->second;
+        endpoint = executor->GetEndpoint(socketPath);
+    }
+
+    if (endpoint) {
+        endpoint->CancelRequests();
     }
     return NProto::TError{};
 }

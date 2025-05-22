@@ -7,6 +7,7 @@ SRCS(
     assign_volume.cpp
     backup_volume.cpp
     bootstrap.cpp
+    cancel_endpoint_in_flight_requests.cpp
     check_range.cpp
     command.cpp
     create_checkpoint.cpp
