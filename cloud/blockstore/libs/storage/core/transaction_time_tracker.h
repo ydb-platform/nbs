@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/histogram.h>
-#include <cloud/blockstore/libs/storage/partition/part_tx.h>
+#include <cloud/blockstore/libs/storage/core/tablet.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
@@ -11,6 +11,12 @@
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// A class for tracking the time taken by transactions and implementing the
+// ITransactionTracker interface. This class maintains histograms for different
+// statuses of transactions and provides methods to track when transactions
+// start and finish. It also allows retrieval of statistical information in JSON
+// format.
 
 class TTransactionTimeTracker : public ITransactionTracker
 {
@@ -59,14 +65,16 @@ private:
         TString TransactionName;
     };
 
+    const TVector<TString> TransactionTypes;
+
     THashMap<ui64, TTransactionInflight> Inflight;
     THashMap<TKey, TTimeHistogram, THash> Histograms;
 
 public:
-    TTransactionTimeTracker();
+    explicit TTransactionTimeTracker(std::span<const TString> transactionTypes);
 
-    static TVector<TBucketInfo> GetTransactionBuckets();
-    static TVector<TBucketInfo> GetTimeBuckets();
+    [[nodiscard]] TVector<TBucketInfo> GetTransactionBuckets() const;
+    [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
 
     // Implements ITransactionTracker
     void OnStarted(

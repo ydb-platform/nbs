@@ -632,7 +632,8 @@ void TVolumeActor::HandleHttpInfo(
 
     const THttpHandlers getActions {{
         {"rendernpinfo", &TActor::HandleHttpInfo_RenderNonreplPartitionInfo },
-        {"getLatency", &TActor::HandleHttpInfo_RenderLatency },
+        {"getRequestsLatency", &TActor::HandleHttpInfo_GetRequestsLatency },
+        {"getTransactionsLatency", &TActor::HandleHttpInfo_GetTransactionsLatency },
     }};
 
     auto* msg = ev->Get();
@@ -736,6 +737,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* checkpointsTabName = "Checkpoints";
     const char* linksTabName = "Links";
     const char* latencyTabName = "Latency";
+    const char* transactionsTabName = "Transactions";
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
     const char* rawVolumeConfigTabName = "RawVolumeConfig";
@@ -748,6 +750,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* checkpointsTab = inactiveTab;
     const char* linksTab = inactiveTab;
     const char* latencyTab = inactiveTab;
+    const char* transactionsTab = inactiveTab;
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
@@ -762,6 +765,8 @@ void TVolumeActor::HandleHttpInfo_Default(
         linksTab = activeTab;
     } else if (tabName == latencyTabName) {
         latencyTab = activeTab;
+    } else if (tabName == transactionsTabName) {
+        transactionsTab = activeTab;
     } else if (tabName == tracesTabName) {
         tracesTab = activeTab;
     } else if (tabName == storageConfigTabName) {
@@ -773,6 +778,8 @@ void TVolumeActor::HandleHttpInfo_Default(
     TStringStream out;
 
     HTML(out) {
+        AddLatencyCSS(out);
+
         DIV_CLASS_ID("container-fluid", "tabs") {
             BuildVolumeTabs(out);
 
@@ -796,6 +803,10 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(latencyTab, latencyTabName) {
                     RenderLatency(out);
+                }
+
+                DIV_CLASS_ID(transactionsTab, transactionsTabName) {
+                    RenderTransactions(out);
                 }
 
                 DIV_CLASS_ID(tracesTab, tracesTabName) {
@@ -1073,7 +1084,7 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
 
     const TString script = R"(
         <script>
-            function applyValues(stat) {
+            function applyRequestsValues(stat) {
                 for (let key in stat) {
                     const element = document.getElementById(key);
                     if (element) {
@@ -1082,14 +1093,14 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
                 }
             }
 
-            function loadLatency() {
-                var url = '?action=getLatency';
+            function loadRequestsLatency() {
+                var url = '?action=getRequestsLatency';
                 url += '&TabletID=)" + ToString(TabletID()) + R"(';
                 $.ajax({
                     url: url,
                     success: function(result) {
-                        applyValues(result.stat);
-                        applyValues(result.percentiles);
+                        applyRequestsValues(result.stat);
+                        applyRequestsValues(result.percentiles);
                     },
                     error: function(jqXHR, status) {
                         console.log('error');
@@ -1097,8 +1108,8 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
                 });
             }
 
-            setInterval(function() { loadLatency(); }, 1000);
-            loadLatency();
+            setInterval(function() { loadRequestsLatency(); }, 1000);
+            loadRequestsLatency();
         </script>
         )";
 
@@ -1161,6 +1172,13 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         DIV_CLASS ("row") {
             RenderSizeTable(out, State->GetBlockSize());
         }
+    }
+}
+
+void TVolumeActor::RenderTransactions(IOutputStream& out) const
+{
+    HTML (out) {
+        DumpLatency(out, TabletID(), TransactionTimeTracker);
     }
 }
 
@@ -2418,12 +2436,13 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TVolumeActor::HandleHttpInfo_RenderLatency(
+void TVolumeActor::HandleHttpInfo_GetRequestsLatency(
     const NActors::TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
     Y_UNUSED(params);
+
     if (!State) {
         return;
     }
@@ -2436,6 +2455,21 @@ void TVolumeActor::HandleHttpInfo_RenderLatency(
                 GetCycleCount(),
                 State->GetBlockSize())));
 }
+
+void TVolumeActor::HandleHttpInfo_GetTransactionsLatency(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            TransactionTimeTracker.GetStatJson(GetCycleCount())));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::RejectHttpRequest(

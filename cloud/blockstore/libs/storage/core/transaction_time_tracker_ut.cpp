@@ -12,6 +12,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TString TransactionNames[] = {
+    "ReadBlocks",
+    "WriteBlocks",
+    "Total",
+};
+
 void DumpValues(const NJson::TJsonValue::TMapType& map)
 {
     for (const auto& [key, val]: map) {
@@ -29,7 +35,7 @@ Y_UNIT_TEST_SUITE(TTransactionTimeTrackerTest)
 {
     Y_UNIT_TEST(ShouldCountInflight)
     {
-        TTransactionTimeTracker timeTracker;
+        TTransactionTimeTracker timeTracker(TransactionNames);
 
         timeTracker.OnStarted(1, "ReadBlocks", 0);
 
@@ -55,7 +61,7 @@ Y_UNIT_TEST_SUITE(TTransactionTimeTrackerTest)
 
     Y_UNIT_TEST(ShouldCountFinished)
     {
-        TTransactionTimeTracker timeTracker;
+        TTransactionTimeTracker timeTracker(TransactionNames);
 
         timeTracker.OnStarted(1, "WriteBlocks", 0);
 

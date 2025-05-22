@@ -12,6 +12,7 @@ ENDIF()
 
 SRCS(
     ../compaction_map_benchmark.cpp
+    ../transaction_time_tracker_benchmark.cpp
 )
 
 PEERDIR(
