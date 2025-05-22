@@ -373,14 +373,14 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(CMGarbageBlocksCount, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IsWriteAllowed, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(CompactionBackpressureValue, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(CleanupBackpressureValue, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(FlushBackpressureValue, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(FlushBytesBackpressureValue, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(CompactionBackpressureThreshold, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(CleanupBackpressureThreshold, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(FlushBackpressureThreshold, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(FlushBytesBackpressureValue, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(FlushBytesBackpressureThreshold, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CompactionBackpressureValue, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CompactionBackpressureThreshold, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CleanupBackpressureValue, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CleanupBackpressureThreshold, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
@@ -543,14 +543,14 @@ void TIndexTabletActor::TMetrics::Update(
             backpressureValues,
             &backpressureReason));
 
-    Store(CompactionBackpressureValue, backpressureValues.CompactionScore);
-    Store(CleanupBackpressureValue, backpressureValues.CleanupScore);
     Store(FlushBackpressureValue, backpressureValues.Flush);
-    Store(FlushBytesBackpressureValue, backpressureValues.FlushBytes);
-    Store(CompactionBackpressureThreshold, backpressureThresholds.CompactionScore);
-    Store(CleanupBackpressureThreshold, backpressureThresholds.CleanupScore);
     Store(FlushBackpressureThreshold, backpressureThresholds.Flush);
+    Store(FlushBytesBackpressureValue, backpressureValues.FlushBytes);
     Store(FlushBytesBackpressureThreshold, backpressureThresholds.FlushBytes);
+    Store(CompactionBackpressureValue, backpressureValues.CompactionScore);
+    Store(CompactionBackpressureThreshold, backpressureThresholds.CompactionScore);
+    Store(CleanupBackpressureValue, backpressureValues.CleanupScore);
+    Store(CleanupBackpressureThreshold, backpressureThresholds.CleanupScore);
 
     Store(MaxReadIops, performanceProfile.GetMaxReadIops());
     Store(MaxWriteIops, performanceProfile.GetMaxWriteIops());

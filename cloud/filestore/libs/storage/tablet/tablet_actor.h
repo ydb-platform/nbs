@@ -149,14 +149,14 @@ private:
 
         // Backpressure Write throttling
         std::atomic<i64> IsWriteAllowed{0};
-        std::atomic<i64> CompactionBackpressureValue{0};
-        std::atomic<i64> CleanupBackpressureValue{0};
         std::atomic<i64> FlushBackpressureValue{0};
-        std::atomic<i64> FlushBytesBackpressureValue{0};
-        std::atomic<i64> CompactionBackpressureThreshold{0};
-        std::atomic<i64> CleanupBackpressureThreshold{0};
         std::atomic<i64> FlushBackpressureThreshold{0};
+        std::atomic<i64> FlushBytesBackpressureValue{0};
         std::atomic<i64> FlushBytesBackpressureThreshold{0};
+        std::atomic<i64> CompactionBackpressureValue{0};
+        std::atomic<i64> CompactionBackpressureThreshold{0};
+        std::atomic<i64> CleanupBackpressureValue{0};
+        std::atomic<i64> CleanupBackpressureThreshold{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
