@@ -166,6 +166,9 @@ void TFileSystem::ReplyCreate(
     fuse_entry_param entry = {};
     if (!UpdateNodeCache(attrs, entry)) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
+        ReportErrorWasSentToTheGuest(
+            TStringBuilder()
+            << "ino: " << entry.ino << ", generation: " << entry.generation);
         return;
     }
 
@@ -192,6 +195,9 @@ void TFileSystem::ReplyEntry(
     fuse_entry_param entry = {};
     if (!UpdateNodeCache(attrs, entry)) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
+        ReportErrorWasSentToTheGuest(
+            TStringBuilder()
+            << "ino: " << entry.ino << ", generation: " << entry.generation);
         return;
     }
 
@@ -233,6 +239,9 @@ void TFileSystem::ReplyAttr(
     fuse_entry_param entry = {};
     if (!UpdateNodeCache(attrs, entry)) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
+        ReportErrorWasSentToTheGuest(
+            TStringBuilder()
+            << "ino: " << entry.ino << ", generation: " << entry.generation);
         return;
     }
 
