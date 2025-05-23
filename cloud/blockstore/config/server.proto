@@ -55,6 +55,12 @@ message TShardInfo
     optional EShardDataTransport Transport = 6;
 
     repeated string Hosts = 7;
+
+    uint32 ShardDescribeHostCnt = 8;
+
+    string FixedHost = 9;
+
+    uint32 MinConnections = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

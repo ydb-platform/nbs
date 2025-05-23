@@ -33,6 +33,7 @@
 #include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
+#include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -492,9 +493,22 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     describeRequest->MutableHeaders()->CopyFrom(headers);
     describeRequest->SetDiskId(diskId);
 
-    auto future = Service->DescribeVolume(
+    NProto::TClientAppConfig clientAppConfig;
+    auto& config = *clientAppConfig.MutableClientConfig();
+
+    config = Options.DefaultClientConfig;
+    config.SetClientId(FQDNHostName());
+
+    // TODO: choose correct timeouts
+    auto clientConfig = std::make_shared<TClientAppConfig>(std::move(clientAppConfig));
+
+    auto future = DescribeRemoteVolume(
         std::move(callContext),
-        std::move(describeRequest));
+        std::move(describeRequest),
+        Service,
+        RemoteStorageProvider,
+        Logging,
+        std::move(clientConfig));
 
     return Executor->WaitFor(future);
 }
@@ -663,65 +677,13 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto clientConfig = CreateClientConfig(request);
 
     if (shardId != Config->GetShardId()) {
-        auto endpointResult = RemoteStorageProvider->CreateStorage(
+        auto endpoints = RemoteStorageProvider->CreateStorage(
             shardId,
-            clientConfig,
-            clientId);
-        if (FAILED(endpointResult.GetError().GetCode())) {
-            return endpointResult.GetError();
-        }
-        auto endpoints = endpointResult.ExtractResult();
+            clientConfig);
+
         service = endpoints.Service;
-        storage = CreateRemoteEndpoint(endpoints.Storage);
-    }
-
-/*
-    if (suId != Config->GetShardId()) {
-        auto index = RandomNumber(Config->GetShardMap()[suId].size());
-        if (Config->GetShardTransport() == NProto::GRPC) {
-            NProto::TShardHostInfo info;
-            info.SetFqdn(Config->GetShardMap()[suId][index].GetFqdn());
-            info.SetControlPort(Config->GetShardMap()[suId][index].GetControlPort());
-
-            service = CreateSuDataService(Timer, Scheduler, Logging, Monitoring, info, clientId);
-            service->Start();
-
-            storage = CreateRemoteEndpoint(service);
-        } else if (Config->GetShardTransport() == NProto::RDMA) {
-            NProto::TShardHostInfo info;
-            info.SetFqdn(Config->GetShardMap()[suId][index].GetFqdn());
-            info.SetControlPort(Config->GetShardMap()[suId][index].GetControlPort());
-
-            service = CreateSuDataService(Timer, Scheduler, Logging, Monitoring, info, clientId);
-            service->Start();
-
-            auto rdmaConfig = std::make_shared<NRdma::TClientConfig>();
-
-            if (!RdmaClient) {
-                RdmaClient = NRdma::CreateClient(
-                    NRdma::NVerbs::CreateVerbs(),
-                    Logging,
-                    Monitoring,
-                    std::move(rdmaConfig));
-
-                RdmaClient->Start();
-            }
-
-            TRdmaEndpointConfig rdmaEndpoint {
-                .Address = Config->GetShardMap()[suId][index].GetFqdn(),
-                .Port = Config->GetShardMap()[suId][index].GetRdmaPort(),
-            };
-
-            ClientEndpoint = CreateRdmaEndpointClient(
-                Logging,
-                RdmaClient,
-                service,
-                rdmaEndpoint);
-            ClientEndpoint->Start();
-
-            storage = CreateRemoteEndpoint(ClientEndpoint);
-        }
-    }*/ else {
+        storage = CreateRemoteEndpoint(endpoints.StorageService);
+    } else {
         auto future = StorageProvider->CreateStorage(volume, clientId, accessMode)
             .Apply([] (const auto& f) {
                 auto storage = f.GetValue();

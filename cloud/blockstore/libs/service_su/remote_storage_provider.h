@@ -15,40 +15,28 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRemoteShardEndpoints
+struct TRemoteShardEndpoint
 {
     IBlockStorePtr Service;
-    IBlockStorePtr Storage;
-
-    TRemoteShardEndpoints() = default;
-
-    TRemoteShardEndpoints(IBlockStorePtr service, IBlockStorePtr storage)
-        : Service(std::move(service))
-        , Storage(std::move(storage))
-    {}
+    IBlockStorePtr StorageService;
 };
+
+using TRemoteEndpoints = THashMap<TString, TRemoteShardEndpoint>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct IRemoteStorageProvider
+    : public IStartable
 {
     virtual ~IRemoteStorageProvider() = default;
 
-    virtual TResultOrError<TRemoteShardEndpoints> CreateStorage(
+    [[nodiscard]] virtual TRemoteShardEndpoint CreateStorage(
         const TString& shardId,
-        NClient::TClientAppConfigPtr clientConfig,
-        std::optional<TString> clientId) = 0;
+        NClient::TClientAppConfigPtr clientConfig) = 0;
+
+    [[nodiscard]] virtual TRemoteEndpoints GetRemoteEndpoints(
+        NClient::TClientAppConfigPtr clientConfig)  = 0;
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TTransportFactory = std::function<IBlockStorePtr(const TString&, const NProto::TShardInfo, std::optional<TString> clientId)>;
-using TServiceFactory = std::function<IBlockStorePtr(const TString&, const NProto::TShardInfo&, std::optional<TString> clientId)>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TRemoteStorageFactories =
-    TVector<std::pair<NProto::EShardDataTransport, TTransportFactory>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -58,6 +46,7 @@ IRemoteStorageProviderPtr CreateRemoteStorageProvider(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
+    NClient::IClientPtr grpcClient,
     NRdma::IClientPtr rdmaClient);
 
 }   // namespace NCloud::NBlockStore::NServer

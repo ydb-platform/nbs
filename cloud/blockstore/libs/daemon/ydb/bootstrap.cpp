@@ -389,6 +389,14 @@ void TBootstrapYdb::InitRdmaServer()
         Logging,
         Monitoring,
         std::move(rdmaConfig));
+
+    if (!RdmaServer) {
+        RdmaServer = NRdma::CreateServer(
+            NRdma::NVerbs::CreateVerbs(),
+            Logging,
+            Monitoring,
+            std::move(rdmaConfig));
+    }
 }
 
 void TBootstrapYdb::InitKikimrService()
