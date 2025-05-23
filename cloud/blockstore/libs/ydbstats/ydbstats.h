@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-
 #include <cloud/blockstore/libs/diagnostics/public.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -54,6 +53,8 @@ IYdbStoragePtr CreateYdbStorage(
     TYdbStatsConfigPtr config,
     ILoggingServicePtr logging,
     NIamClient::IIamTokenClientPtr tokenProvider);
+
+IStartable* AsStartable(IYdbStoragePtr storagePtr);
 
 IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
     TYdbStatsConfigPtr config,
