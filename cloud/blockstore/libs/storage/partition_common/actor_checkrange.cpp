@@ -129,7 +129,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
 
         if (!msg->Record.FailInfo.FailedRanges.empty()) {
             TStringBuilder builder;
-            builder << "\n Broken blobs: ["
+            builder << ", Broken blobs:\n ["
                     << JoinRange(
                            ", ",
                            msg->Record.FailInfo.FailedRanges.begin(),

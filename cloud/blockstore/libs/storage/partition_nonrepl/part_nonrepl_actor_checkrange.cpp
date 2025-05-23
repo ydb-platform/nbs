@@ -96,7 +96,7 @@ void TNonreplCheckRangeActor::HandleReadBlocksResponse(
 
         if (!msg->Record.FailInfo.FailedRanges.empty()) {
             TStringBuilder builder;
-            builder << "\n Fail in ranges: ["
+            builder << ", Fail in ranges:\n ["
                     << JoinRange(
                            ", ",
                            msg->Record.FailInfo.FailedRanges.begin(),

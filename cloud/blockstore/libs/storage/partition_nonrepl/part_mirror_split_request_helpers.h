@@ -25,4 +25,5 @@ auto MergeReadResponses(std::span<NProto::TReadBlocksResponse> responsesToMerge)
 auto MergeReadResponses(
     std::span<NProto::TReadBlocksLocalResponse> responsesToMerge)
     -> NProto::TReadBlocksLocalResponse;
+
 }   // namespace NCloud::NBlockStore::NStorage

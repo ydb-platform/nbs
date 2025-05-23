@@ -29,7 +29,7 @@ class TMirrorCheckRangeActor final: public TCheckRangeActor
 public:
     using TCheckRangeActor::TCheckRangeActor;
 
-private:
+protected:
     void SendReadBlocksRequest(const TActorContext& ctx) override;
 
     void HandleReadBlocksResponse(
@@ -61,7 +61,7 @@ void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
     request->Record.Sglist = SgList;
-request->Record.ShouldReportFailedRangesOnFailure = true;
+    request->Record.ShouldReportFailedRangesOnFailure = true;
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetReplicaCount(Request.headers().GetReplicaCount());
@@ -91,7 +91,7 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponse(
 
         if (!msg->Record.FailInfo.FailedRanges.empty()) {
             TStringBuilder builder;
-            builder << "\n Broken ranges: ["
+            builder << ", Broken ranges:\n ["
                     << JoinRange(
                            ", ",
                            msg->Record.FailInfo.FailedRanges.begin(),

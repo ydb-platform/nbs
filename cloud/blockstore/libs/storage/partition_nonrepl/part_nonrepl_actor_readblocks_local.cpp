@@ -124,8 +124,9 @@ NActors::IEventBasePtr TDiskAgentReadLocalActor::MakeResponse(
 {
     auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
         std::move(error));
-    if (ShouldReportBlockRangeOnFailure){
-        response->Record.FailInfo.FailedRanges.push_back(DescribeRange(BlockRange).c_str());
+    if (ShouldReportBlockRangeOnFailure) {
+        response->Record.FailInfo.FailedRanges.push_back(
+            DescribeRange(BlockRange));
     }
     return response;
 }

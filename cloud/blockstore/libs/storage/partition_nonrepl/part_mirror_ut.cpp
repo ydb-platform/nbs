@@ -3636,7 +3636,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TTestBasicRuntime runtime;
 
-
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -3644,8 +3643,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
             },
-            {}, // migrations
-            {}  // freshDeviceIds
+            {},   // migrations
+            {}    // freshDeviceIds
         );
 
         TPartitionClient client(runtime, env.ActorId);
@@ -3659,9 +3658,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvReadDeviceBlocksRequest: {
-                        auto response = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksResponse>(
-                            MakeError(E_IO, "Simulated read failure")
-                        );
+                        auto response = std::make_unique<
+                            TEvDiskAgent::TEvReadDeviceBlocksResponse>(
+                            MakeError(E_IO, "Simulated read failure"));
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
@@ -3677,19 +3676,15 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-
-
         const size_t dataSize = blockCount * DefaultBlockSize;
         TString buffer(dataSize, 100);
         TSgList sgList{TBlockDataRef{buffer.data(), buffer.size()}};
 
         auto range = TBlockRange64::WithLength(0, blockCount);
-        auto request = client.CreateReadBlocksLocalRequest(
-            range,
-            TGuardedSgList(sgList));
+        auto request =
+            client.CreateReadBlocksLocalRequest(range, TGuardedSgList(sgList));
 
         request->Record.ShouldReportFailedRangesOnFailure = true;
-
 
         client.SendRequest(env.ActorId, std::move(request));
 

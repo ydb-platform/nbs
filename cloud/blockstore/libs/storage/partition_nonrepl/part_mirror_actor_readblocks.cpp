@@ -253,7 +253,7 @@ void TRequestActor<TMethod>::Done(const TActorContext& ctx)
     if constexpr (IsLocalMethod<TMethod>) {
         if (ShouldReportBlockRangeOnFailure) {
             response->Record.FailInfo.FailedRanges.push_back(
-                DescribeRange(Range).c_str());
+                DescribeRange(Range));
         }
     }
 

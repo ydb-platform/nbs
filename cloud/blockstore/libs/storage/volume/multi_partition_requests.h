@@ -106,28 +106,15 @@ private:
         ui32 requestNo,
         NProto::TReadBlocksLocalResponse& dst)
     {
-        auto& buffers = *dst.MutableBlocks()->MutableBuffers();
-        buffers.Reserve(OriginalRange.Size());
-        while (static_cast<ui32>(buffers.size()) < OriginalRange.Size()) {
-            buffers.Add();
-        }
+        Merge(
+            static_cast<NProto::TReadBlocksResponse&>(src),
+            requestNo,
+            static_cast<NProto::TReadBlocksResponse&>(dst));
 
-        auto& srcBuffers = *src.MutableBlocks()->MutableBuffers();
-        for (ui32 i = 0; i < static_cast<ui32>(srcBuffers.size()); ++i) {
-            const auto index = RelativeToGlobalIndex(
-                BlocksPerStripe,
-                PartitionRequests[requestNo].BlockRange.Start + i,
-                PartitionsCount,
-                PartitionRequests[requestNo].PartitionId);
-
-            buffers[index - OriginalRange.Start] = std::move(srcBuffers[i]);
-        }
-        if (!src.FailInfo.FailedRanges.empty()) {
-            dst.FailInfo.FailedRanges.insert(
-                dst.FailInfo.FailedRanges.end(),
-                src.FailInfo.FailedRanges.begin(),
-                src.FailInfo.FailedRanges.end());
-        }
+        dst.FailInfo.FailedRanges.insert(
+            dst.FailInfo.FailedRanges.end(),
+            src.FailInfo.FailedRanges.begin(),
+            src.FailInfo.FailedRanges.end());
     }
 
     void Merge(
@@ -298,27 +285,19 @@ private:
         NProto::TCheckRangeResponse& dst)
     {
         Y_UNUSED(requestNo);
-        auto getMessageAfterNewline = [](const auto& response) -> TString
+        auto getExtendedInfo = [](const auto& response) -> TString
         {
-            TString message = response.GetStatus().GetMessage();
-            size_t pos = message.find('\n');
-            if (pos != TString::npos && pos + 1 < message.length()) {
-                return message.substr(pos);
-            }
-            return "";
+            return TString(TStringBuf{response.GetStatus().GetMessage()}.SplitOff('\n'));
         };
 
-        if (src.GetError().GetCode() > dst.GetError().GetCode()) {
-            dst.MutableError()->CopyFrom(src.GetError());
-        }
+        MergeCommonFields(src, dst);
 
         if (src.GetStatus().GetCode() > dst.GetStatus().GetCode()) {
-            auto extendedInfo = getMessageAfterNewline(dst);
+            auto extendedInfo = getExtendedInfo(dst);
             dst.MutableStatus()->CopyFrom(src.GetStatus());
             dst.MutableStatus()->MutableMessage()->append(extendedInfo);
         } else {
-            dst.MutableStatus()->MutableMessage()->append(
-                getMessageAfterNewline(src));
+            dst.MutableStatus()->MutableMessage()->append(getExtendedInfo(src));
         }
     }
 
