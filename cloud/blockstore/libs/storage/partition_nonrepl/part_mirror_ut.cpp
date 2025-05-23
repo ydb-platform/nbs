@@ -2469,8 +2469,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                             0);
 
                         return TTestActorRuntime::EEventAction::DROP;
-
-                        break;
                     }
                 }
 

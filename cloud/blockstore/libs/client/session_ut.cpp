@@ -1821,17 +1821,3 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 }
 
 }   // namespace NCloud::NBlockStore::NClient
-
-template <>
-inline void Out<NCloud::NBlockStore::NProto::TReadBlocksLocalResponse>(
-    IOutputStream& out,
-    const NCloud::NBlockStore::NProto::TReadBlocksLocalResponse& value)
-{
-    out << value.ShortDebugString();
-
-    out << " FailedInfoPtr->FailedRanges: [";
-    for (const auto& blob: value.FailInfo.FailedRanges) {
-        out << blob << ", ";
-    }
-    out << "]";
-}

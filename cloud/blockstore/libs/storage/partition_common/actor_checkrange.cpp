@@ -54,7 +54,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
     request->Record.Sglist = SgList;
-    request->Record.ShouldReportBlobIdsOnFailure = true;
+    request->Record.ShouldReportFailedRangesOnFailure = true;
 
     auto* headers = request->Record.MutableHeaders();
 

@@ -2019,7 +2019,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
                         return TTestActorRuntime::EEventAction::DROP;
 
-                        break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -2590,6 +2589,67 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT(
                 response->GetErrorReason().Contains("request timed out"));
         }
+    }
+
+    Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
+    {
+        constexpr ui64 defaultDeviceBlockCount = 1024 * 256;  // = 128MiB
+        constexpr ui64 lastBlock = defaultDeviceBlockCount + 1;
+        constexpr ui64 blockCount = 100;
+
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+        {
+            const auto blockRange = TBlockRange64::WithLength(0, lastBlock);
+            client.WriteBlocks(blockRange, 1);
+        }
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvReadBlocksRequest: {
+                        auto response = std::make_unique<
+                        TEvService::TEvReadBlobResponse>(
+                            MakeError(E_IO, "Simulated blob read failure"));
+
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+
+
+        const size_t dataSize = blockCount * DefaultBlockSize;
+        TString buffer(dataSize, 100);
+        TSgList sgList{TBlockDataRef{buffer.data(), buffer.size()}};
+
+        auto request = client.CreateReadBlocksLocalRequest(
+            TBlockRange64::WithLength(lastBlock - blockCount, blockCount),
+            TGuardedSgList(sgList));
+
+        request->Record.ShouldReportFailedRangesOnFailure = true;
+
+
+        client.SendRequest(env.ActorId, std::move(request));
+
+        auto response = client.RecvReadBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_UNEQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            response->Record.FailInfo.FailedRanges.size());
     }
 }
 

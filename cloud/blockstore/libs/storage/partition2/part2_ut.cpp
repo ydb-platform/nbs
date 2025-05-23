@@ -7343,8 +7343,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                             0);
 
                         return TTestActorRuntime::EEventAction::DROP;
-
-                        break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -7545,8 +7543,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                             0);
 
                         return TTestActorRuntime::EEventAction::DROP;
-
-                        break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);

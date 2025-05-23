@@ -635,11 +635,11 @@ void TReadBlocksActor::HandleDescribeBlocksCompleted(
     auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    WaitBaseDiskRequests = false;
-
     if (HandleError(ctx, error)) {
         return;
     }
+
+    WaitBaseDiskRequests = false;
 
     TReadBlocksRequests requests;
     for (auto&& blockMark: std::move(msg->BlockMarks)) {
@@ -857,7 +857,7 @@ void TPartitionActor::HandleReadBlocks(
         ev,
         ctx,
         false,    // replyLocal
-        false);   // shouldReportBlobIdsOnFailure
+        false);   // shouldReportFailedRangesOnFailure
 }
 
 void TPartitionActor::HandleReadBlocksLocal(
@@ -868,7 +868,7 @@ void TPartitionActor::HandleReadBlocksLocal(
         ev,
         ctx,
         true,   // replyLocal
-        ev->Get()->Record.ShouldReportBlobIdsOnFailure);
+        ev->Get()->Record.ShouldReportFailedRangesOnFailure);
 }
 
 template <typename TMethod>

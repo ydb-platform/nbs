@@ -29,10 +29,12 @@ private:
     TActorSystem* ActorSystem;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TRequestInfoPtr RequestInfo;
+    const ui32 RequestStartIndex;
     const ui32 RequestBlockCount;
     const NActors::TActorId ParentActorId;
     const ui64 RequestId;
     const bool CheckVoidBlocks;
+    const bool ShouldReportBlockRangeOnFailure;
 
     TAdaptiveLock Lock;
     size_t ResponseCount;
@@ -54,17 +56,21 @@ public:
             TRequestInfoPtr requestInfo,
             size_t requestCount,
             TGuardedSgList sglist,
+            ui32 requestStartIndex,
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId,
-            bool checkVoidBlocks)
+            bool checkVoidBlocks,
+            bool shouldReportBlockRangeOnFailure)
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
+        , RequestStartIndex(requestStartIndex)
         , RequestBlockCount(requestBlockCount)
         , ParentActorId(parentActorId)
         , RequestId(requestId)
         , CheckVoidBlocks(checkVoidBlocks)
+        , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
         , ResponseCount(requestCount)
         , SgList(std::move(sglist))
     {}
@@ -163,6 +169,12 @@ public:
         auto response =
             std::make_unique<TEvService::TEvReadBlocksLocalResponse>(Error);
         response->Record.SetAllZeroes(allZeroes);
+        if (ShouldReportBlockRangeOnFailure){
+            const auto blockRange = TBlockRange64::WithLength(
+                RequestStartIndex,
+                RequestBlockCount);
+            response->Record.FailInfo.FailedRanges.push_back(DescribeRange(blockRange).c_str());
+        }
         auto event = std::make_unique<IEventHandle>(
             RequestInfo->Sender,
             TActorId(),
@@ -244,10 +256,12 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         requestInfo,
         deviceRequests.size(),
         std::move(msg->Record.Sglist),
+        msg->Record.GetStartIndex(),
         msg->Record.GetBlocksCount(),
         SelfId(),
         requestId,
-        Config->GetOptimizeVoidBuffersTransferForReadsEnabled());
+        Config->GetOptimizeVoidBuffersTransferForReadsEnabled(),
+        msg->Record.ShouldReportFailedRangesOnFailure);
 
     auto [sentRequestCtx, error] = SendReadRequests(
         ctx,

@@ -895,7 +895,7 @@ void TPartitionActor::HandleReadBlocksLocal(
         ev,
         ctx,
         true,   // replyLocal
-        ev->Get()->Record.ShouldReportBlobIdsOnFailure);
+        ev->Get()->Record.ShouldReportFailedRangesOnFailure);
 }
 
 template <typename TMethod>

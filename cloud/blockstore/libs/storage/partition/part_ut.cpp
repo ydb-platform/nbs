@@ -12149,8 +12149,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             0);
 
                         return TTestActorRuntime::EEventAction::DROP;
-
-                        break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -12512,8 +12510,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             0);
 
                         return TTestActorRuntime::EEventAction::DROP;
-
-                        break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -12531,7 +12527,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             TBlockRange32::WithLength(0, blockCount),
             sgListOrError.ExtractResult());
 
-        request->Record.ShouldReportBlobIdsOnFailure = true;
+        request->Record.ShouldReportFailedRangesOnFailure = true;
 
         partition.SendToPipe(std::move(request));
 

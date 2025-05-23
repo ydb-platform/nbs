@@ -269,12 +269,27 @@ private:
         NProto::TCheckRangeResponse& dst)
     {
         Y_UNUSED(requestNo);
+        auto getMessageAfterNewline = [](const auto& response) -> TString
+        {
+            TString message = response.GetStatus().GetMessage();
+            size_t pos = message.find('\n');
+            if (pos != TString::npos && pos + 1 < message.length()) {
+                return message.substr(pos + 1);
+            }
+            return "";
+        };
+
         if (src.GetError().GetCode() > dst.GetError().GetCode()) {
             dst.MutableError()->CopyFrom(src.GetError());
         }
 
         if (src.GetStatus().GetCode() > dst.GetStatus().GetCode()) {
+            auto extendedInfo = getMessageAfterNewline(dst);
             dst.MutableStatus()->CopyFrom(src.GetStatus());
+            dst.MutableStatus()->MutableMessage()->append(extendedInfo);
+        } else {
+            dst.MutableStatus()->MutableMessage()->append(
+                getMessageAfterNewline(src));
         }
     }
 

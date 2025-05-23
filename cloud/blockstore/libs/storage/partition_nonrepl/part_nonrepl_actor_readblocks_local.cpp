@@ -31,6 +31,8 @@ class TDiskAgentReadLocalActor final
 private:
     const NProto::TReadBlocksLocalRequest Request;
     const bool SkipVoidBlocksToOptimizeNetworkTransfer;
+    const TBlockRange64 BlockRange;
+    const bool ShouldReportBlockRangeOnFailure;
 
     ui32 RequestsCompleted = 0;
     ui32 VoidBlockCount = 0;
@@ -43,6 +45,8 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TBlockRange64 range,
+        bool shouldReportBlockRangeOnFailure,
         const TActorId& part);
 
 protected:
@@ -69,6 +73,8 @@ TDiskAgentReadLocalActor::TDiskAgentReadLocalActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TBlockRange64 range,
+        bool shouldReportBlockRangeOnFailure,
         const TActorId& part)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
@@ -82,6 +88,8 @@ TDiskAgentReadLocalActor::TDiskAgentReadLocalActor(
     , SkipVoidBlocksToOptimizeNetworkTransfer(
           Request.GetHeaders().GetOptimizeNetworkTransfer() ==
           NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
+    , BlockRange(range)
+    , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
 {}
 
 void TDiskAgentReadLocalActor::SendRequest(const TActorContext& ctx)
@@ -114,8 +122,12 @@ void TDiskAgentReadLocalActor::SendRequest(const TActorContext& ctx)
 NActors::IEventBasePtr TDiskAgentReadLocalActor::MakeResponse(
     NProto::TError error)
 {
-    return std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
+    auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
         std::move(error));
+    if (ShouldReportBlockRangeOnFailure){
+        response->Record.FailInfo.FailedRanges.push_back(DescribeRange(BlockRange).c_str());
+    }
+    return response;
 }
 
 TDiskAgentBaseRequestActor::TCompletionEventAndBody
@@ -267,6 +279,8 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
+        blockRange,
+        msg->Record.ShouldReportFailedRangesOnFailure,
         SelfId());
 
     RequestsInProgress.AddReadRequest(actorId, std::move(request));
