@@ -283,12 +283,16 @@ void TBootstrapBase::Init()
         Configs->DiagnosticsConfig->GetHistogramCounterOptions());
 
     if (!VolumeStats) {
+        const bool skipZeroBlocksStatsForYdbBasedDisks =
+            Configs->ServerConfig->GetVhostDiscardEnabled();
         VolumeStats = CreateVolumeStats(
             Monitoring,
             Configs->DiagnosticsConfig,
+            Configs->ServerConfig,
             clientInactivityTimeout,
             EVolumeStatsType::EServerStats,
-            Timer);
+            Timer,
+            skipZeroBlocksStatsForYdbBasedDisks);
     }
 
     ServerStats = CreateServerStats(

@@ -131,7 +131,8 @@ IVolumeStatsPtr CreateVolumeStats(
     TDiagnosticsConfigPtr diagnosticsConfig,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
-    ITimerPtr timer);
+    ITimerPtr timer,
+    bool skipZeroBlocksStatsForYdbBasedDisks);
 
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,

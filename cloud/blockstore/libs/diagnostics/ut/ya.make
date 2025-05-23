@@ -6,6 +6,13 @@ PEERDIR(
     cloud/storage/core/libs/common
 
     library/cpp/eventlog/dumper
+    library/cpp/resource
+)
+
+RESOURCE(
+    res/user_server_volume_instance_test.json                  user_server_volume_instance_test
+    res/user_service_volume_instance_test.json                 user_service_volume_instance_test
+    res/user_server_volume_instance_skip_zero_blocks_test.json user_server_volume_instance_skip_zero_blocks_test
 )
 
 SRCS(
