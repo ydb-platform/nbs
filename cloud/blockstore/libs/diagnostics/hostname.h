@@ -34,6 +34,9 @@ TString GetMonitoringVolumeUrl(
 
 TString GetMonitoringPartitionUrl(const TDiagnosticsConfig& config);
 
+TString
+GetQueries(ui32 groupId, const TString& storagePool, const TString& dataKind);
+
 TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,

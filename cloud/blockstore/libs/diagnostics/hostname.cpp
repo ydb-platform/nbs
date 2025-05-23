@@ -115,51 +115,89 @@ TString GetMonitoringNBSOverviewToTVUrl(const TDiagnosticsConfig& config)
            << data.MonitoringClusterName << "&p.host=" << GetShortHostName();
 }
 
+TString
+GetQueries(ui32 groupId, const TString& storagePool, const TString& dataKind)
+{
+    constexpr TStringBuf QueryPattern =
+        R"(q.%u.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="%s"})&q.%u.name=%s)";
+
+    constexpr std::array<TStringBuf, 2> DefaultHandleclasses(
+        {"GetFast", "PutUserData"});
+    constexpr std::array<TStringBuf, 3> LogHandleclasses(
+        {"GetFast", "PutUserData", "PutTabletLog"});
+    constexpr std::array<TStringBuf, 4> MergedAndMixedHandleclasses(
+        {"GetFast", "PutUserData", "GetAsync", "PutAsyncBlob"});
+
+    constexpr std::array<TStringBuf, 4> QueryNames({"A", "B", "C", "D"});
+
+    TStringBuilder queries;
+
+    if (dataKind == "Log") {
+        for (ui32 queryIdx = 0; queryIdx < LogHandleclasses.size(); ++queryIdx)
+        {
+            queries << Sprintf(
+                           QueryPattern.data(),
+                           queryIdx,
+                           storagePool.c_str(),
+                           groupId,
+                           LogHandleclasses.at(queryIdx).Data(),
+                           queryIdx,
+                           QueryNames.at(queryIdx).Data())
+                           .c_str()
+                    << "&";
+        }
+
+        return queries.c_str();
+    }
+
+    if (dataKind == "Merged" || dataKind == "Mixed") {
+        for (ui32 queryIdx = 0; queryIdx < MergedAndMixedHandleclasses.size();
+             ++queryIdx)
+        {
+            queries << Sprintf(
+                           QueryPattern.data(),
+                           queryIdx,
+                           storagePool.c_str(),
+                           groupId,
+                           MergedAndMixedHandleclasses.at(queryIdx).Data(),
+                           queryIdx,
+                           QueryNames.at(queryIdx).Data())
+                           .c_str()
+                    << "&";
+        }
+
+        return queries.c_str();
+    }
+
+    for (ui32 queryIdx = 0; queryIdx < DefaultHandleclasses.size(); ++queryIdx)
+    {
+        queries << Sprintf(
+                       QueryPattern.data(),
+                       queryIdx,
+                       storagePool.c_str(),
+                       groupId,
+                       DefaultHandleclasses.at(queryIdx).Data(),
+                       queryIdx,
+                       QueryNames.at(queryIdx).Data())
+                       .c_str()
+                << "&";
+    }
+
+    return queries.c_str();
+}
+
 TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
     const TString& storagePool,
     const TString& dataKind)
 {
-    constexpr TStringBuf GetFast =
-        R"(q.0.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
-        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="GetFast"})&q.0.name=A)";
-    constexpr TStringBuf PutUserData =
-        R"(q.1.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
-        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutUserData"})&q.1.name=B)";
-    constexpr TStringBuf PutTabletLog =
-        R"(q.2.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
-        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutTabletLog"})&q.2.name=C)";
-    constexpr TStringBuf GetAsync =
-        R"(q.2.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
-        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="GetAsync"})&q.2.name=C)";
-    constexpr TStringBuf PutAsyncBlob =
-        R"(q.3.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
-        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutAsyncBlob"})&q.3.name=D)";
-
     constexpr TStringBuf Url =
         "%s/projects/%s/explorer/"
         "queries?%sfrom=now-1d&to=now&refresh=60000";
 
-    TStringBuilder queries;
-    queries << Sprintf(GetFast.data(), storagePool.c_str(), groupId).c_str()
-            << "&"
-            << Sprintf(PutUserData.data(), storagePool.c_str(), groupId).c_str()
-            << "&";
-
-    if (dataKind == "Log") {
-        queries << Sprintf(PutTabletLog.data(), storagePool.c_str(), groupId)
-                       .c_str()
-                << "&";
-    }
-
-    if (dataKind == "Merged" || dataKind == "Mixed") {
-        queries
-            << Sprintf(GetAsync.data(), storagePool.c_str(), groupId).c_str()
-            << "&"
-            << Sprintf(PutAsyncBlob.data(), storagePool.c_str(), groupId)
-                   .c_str();
-    }
+    auto queries = GetQueries(groupId, storagePool, dataKind);
 
     return Sprintf(
         Url.data(),
