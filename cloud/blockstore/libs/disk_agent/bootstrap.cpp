@@ -414,9 +414,13 @@ bool TBootstrap::InitKikimrService()
         }
     }
 
+    auto registrant =
+        CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);
+
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,
         registerOpts,
+        std::move(registrant),
         Log);
 
     if (cmsConfig) {
