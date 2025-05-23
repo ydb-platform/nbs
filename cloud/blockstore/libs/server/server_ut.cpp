@@ -813,6 +813,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->UploadClientMetricsHandler =
@@ -827,11 +828,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetDataPort(port)
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetDataPort(port)
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
@@ -862,6 +865,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TFsPath unixSocket(CreateGuidAsString() + ".sock");
         TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
         ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
@@ -878,11 +882,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetUnixSocketPath(unixSocket.GetPath())
+            .SetPort(port)
             .SetDataPort(dataPort)
             .BuildServer(nullptr, service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetUnixSocketPath(unixSocket.GetPath())
+            .SetPort(port)
             .SetDataPort(dataPort)
             .BuildClient();
 
@@ -913,8 +919,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
     Y_UNIT_TEST(ShouldHandleRequestsWithUnixSocket)
     {
         TPortManager portManager;
-        ui16 serverPort = portManager.GetPort(9001);
-        ui16 clientPort = portManager.GetPort(9002);
+        ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
         TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         auto service = std::make_shared<TTestService>();
@@ -938,12 +944,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetDataPort(serverPort)
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .SetUnixSocketPath(unixSocket.GetPath())
             .BuildServer(nullptr, service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetDataPort(clientPort)
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .SetUnixSocketPath(unixSocket.GetPath())
             .BuildClient();
 
@@ -1140,8 +1148,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
     Y_UNIT_TEST(ShouldHandleRequestsWithUnixSocketAfterRestart)
     {
         TPortManager portManager;
-        ui16 serverPort = portManager.GetPort(9001);
-        ui16 clientPort = portManager.GetPort(9002);
+        ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
         TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         auto service = std::make_shared<TTestService>();
@@ -1154,12 +1162,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetDataPort(serverPort)
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .SetUnixSocketPath(unixSocket.GetPath())
             .BuildServer(nullptr, service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetDataPort(clientPort)
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .SetUnixSocketPath(unixSocket.GetPath())
             .BuildClient();
 
@@ -1173,7 +1183,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         {
             server->Stop();
             server = testFactory.CreateServerBuilder()
-                .SetDataPort(serverPort)
+                .SetPort(port)
+                .SetDataPort(dataPort)
                 .SetUnixSocketPath(unixSocket.GetPath())
                 .BuildServer(nullptr, service);
             server->Start();
@@ -1317,6 +1328,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
@@ -1348,11 +1360,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetDataPort(port)
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetDataPort(port)
+            .SetPort(port)
+            .SetDataPort(dataPort)
             .BuildClient();
 
         server->Start();
