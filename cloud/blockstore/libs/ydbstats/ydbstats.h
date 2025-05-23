@@ -1,12 +1,13 @@
 #pragma once
 
 #include "public.h"
-#include "ydbrow.h"
-#include "ydbscheme.h"
+
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/iam/iface/public.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -17,6 +18,26 @@
 namespace NCloud::NBlockStore::NYdbStats {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+struct TYDBTableSchemes
+{
+    TStatsTableSchemePtr Stats;
+    TStatsTableSchemePtr History;
+    TStatsTableSchemePtr Archive;
+    TStatsTableSchemePtr Metrics;
+    TStatsTableSchemePtr Groups;
+    TStatsTableSchemePtr Partitions;
+
+    TYDBTableSchemes(
+        TStatsTableSchemePtr stats,
+        TStatsTableSchemePtr history,
+        TStatsTableSchemePtr archive,
+        TStatsTableSchemePtr metrics,
+        TStatsTableSchemePtr groups,
+        TStatsTableSchemePtr partitions);
+    TYDBTableSchemes(TDuration statsTtl, TDuration archiveTtl);
+    ~TYDBTableSchemes();
+};
 
 struct IYdbVolumesStatsUploader
     : public IStartable
@@ -29,6 +50,11 @@ struct IYdbVolumesStatsUploader
 
 ////////////////////////////////////////////////////////////////////////////////
 
+IYdbStoragePtr CreateYdbStorage(
+    TYdbStatsConfigPtr config,
+    ILoggingServicePtr logging,
+    NIamClient::IIamTokenClientPtr tokenProvider);
+
 IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
     TYdbStatsConfigPtr config,
     ILoggingServicePtr logging,
@@ -40,15 +66,3 @@ IYdbVolumesStatsUploaderPtr CreateVolumesStatsUploaderStub();
 }   // namespace NCloud::NBlockStore::NYdbStats
 
 ////////////////////////////////////////////////////////////////////////////////
-
-struct TYDBTableNames
-{
-    TString Stats;
-    TString History;
-    TString Archive;
-    TString Metrics;
-    TString Groups;
-    TString Partitions;
-
-    TYDBTableNames() = default;
-};

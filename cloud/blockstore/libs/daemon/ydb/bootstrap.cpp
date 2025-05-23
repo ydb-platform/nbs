@@ -16,7 +16,6 @@
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
-#include <cloud/blockstore/libs/rdma/fake/client.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
@@ -26,9 +25,10 @@
 #include <cloud/blockstore/libs/notify/config.h>
 #include <cloud/blockstore/libs/notify/notify.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/rdma/iface/probes.h>
+#include <cloud/blockstore/libs/rdma/fake/client.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
+#include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/blockstore/libs/root_kms/iface/key_provider.h>
@@ -40,11 +40,10 @@
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
-#include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/init/server/actorsystem.h>
-#include <cloud/blockstore/libs/ydbstats/ydbscheme.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstorage.h>
 
@@ -60,8 +59,8 @@
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
-#include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
+#include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
 
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
@@ -524,12 +523,8 @@ void TBootstrapYdb::InitKikimrService()
             logging,
             YdbStorage,
             NYdbStats::TYDBTableSchemes(
-                NYdbStats::CreateStatsTableScheme(statsConfig->GetStatsTableTtl()),
-                NYdbStats::CreateHistoryTableScheme(),
-                NYdbStats::CreateArchiveStatsTableScheme(statsConfig->GetArchiveStatsTableTtl()),
-                NYdbStats::CreateBlobLoadMetricsTableScheme(),
-                NYdbStats::CreateGroupsTableScheme(),
-                NYdbStats::CreatePartitionsTableScheme()));
+                statsConfig->GetStatsTableTtl(),
+                statsConfig->GetArchiveStatsTableTtl()));
     } else {
         StatsUploader = NYdbStats::CreateVolumesStatsUploaderStub();
     }

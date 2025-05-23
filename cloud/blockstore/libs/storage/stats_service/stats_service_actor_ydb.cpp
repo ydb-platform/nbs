@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-#include <cloud/blockstore/libs/ydbstats/ydbstats.h>
+
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/weighted_percentile.h>
 
