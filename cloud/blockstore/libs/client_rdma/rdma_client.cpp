@@ -516,4 +516,23 @@ IBlockStorePtr CreateRdmaEndpointClient(
     return endpoint;
 }
 
+NThreading::TFuture<IBlockStorePtr> CreateRdmaEndpointClientAsync(
+    ILoggingServicePtr logging,
+    NRdma::IClientPtr client,
+    IBlockStorePtr volumeClient,
+    const TRdmaEndpointConfig& config)
+{
+    auto endpoint =
+        TRdmaEndpoint::Create(std::move(logging), std::move(volumeClient));
+
+    auto promise = NewPromise<IBlockStorePtr>();
+
+    auto future = client->StartEndpoint(config.Address, config.Port);
+    future.Subscribe([endpoint = std::move(endpoint), promise = promise] (const auto& future) mutable {
+        endpoint->Init(future.GetValue());
+        promise.SetValue(endpoint);
+    });
+    return promise.GetFuture();
+}
+
 }   // namespace NCloud::NBlockStore::NClient

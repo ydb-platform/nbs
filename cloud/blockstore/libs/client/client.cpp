@@ -70,6 +70,21 @@ const char AUTH_METHOD[] = "Bearer";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+
+template <typename TRequest>
+concept HasClientId = requires (TRequest r)
+{
+    { r.GetHeaders().GetClientId()} -> std::same_as<TString>;
+};
+
+template <typename TRequest>
+concept HasInstanceId = requires (TRequest r)
+{
+    { r.GetInstanceId() } -> std::same_as<TString>;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TError CompleteReadBlocksLocalRequest(
     NProto::TReadBlocksLocalRequest& request,
     const NProto::TReadBlocksLocalResponse& response)
@@ -320,6 +335,9 @@ private:
     TResponse Response;
     grpc::Status Status;
 
+    TString ClientId;
+    TString InstanceId;
+
 public:
     TRequestHandler(
             TAppContext& appCtx,
@@ -408,7 +426,9 @@ private:
     void PrepareRequestContext()
     {
         auto& headers = *Request->MutableHeaders();
-        headers.SetClientId(AppCtx.Config->GetClientId());
+        if (!AppCtx.Config->GetNoClientId()) {
+            headers.SetClientId(AppCtx.Config->GetClientId());
+        }
 
         auto now = TInstant::Now();
 
@@ -429,6 +449,14 @@ private:
         if (!RequestId) {
             RequestId = CreateRequestId();
             headers.SetRequestId(RequestId);
+        }
+
+        if constexpr (HasClientId<TRequest>) {
+            ClientId = Request->GetHeaders().GetClientId();
+        }
+
+        if constexpr (HasInstanceId<TRequest>) {
+            InstanceId = Request->GetInstanceId();
         }
 
         DiskId = GetDiskId(*Request);
@@ -577,7 +605,17 @@ public:
 
     IBlockStorePtr CreateEndpoint() override;
 
+    IBlockStorePtr CreateEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure) override;
+
     IBlockStorePtr CreateDataEndpoint() override;
+
+    IBlockStorePtr CreateDataEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure) override;
 
     IBlockStorePtr CreateDataEndpoint(
         const TString& socketPath) override;
@@ -624,7 +662,7 @@ TClient::TClient(
     Monitoring = std::move(monitoring);
     ClientStats = std::move(clientStats);
 
-    Y_ABORT_UNLESS(Config->GetClientId());
+    Y_ABORT_UNLESS(Config->GetClientId() || Config->GetNoClientId());
 
     GrpcLoggerInit(
         logging->CreateLog("GRPC"),
@@ -1103,11 +1141,54 @@ IBlockStorePtr TClient::CreateEndpoint()
     }
 }
 
+IBlockStorePtr TClient::CreateEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure)
+{
+    with_lock (EndpointLock) {
+        Y_ENSURE(port);
+        auto address = Join(":", host, port);
+
+        auto channel = CreateTcpSocketChannel(address, isSecure);
+        if (!channel) {
+            ythrow TServiceError(E_FAIL)
+                << "could not start gRPC client";
+        }
+
+        return std::make_shared<TEndpoint>(
+            shared_from_this(),
+            NProto::TBlockStoreService::NewStub(std::move(channel)));
+    }
+}
+
+
 IBlockStorePtr TClient::CreateDataEndpoint()
 {
     with_lock (EndpointLock) {
         InitDataEndpoint();
         return DataEndpoint;
+    }
+}
+
+IBlockStorePtr TClient::CreateDataEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure)
+{
+    with_lock (EndpointLock) {
+        Y_ENSURE(port);
+        auto address = Join(":", host, port);
+
+        auto channel = CreateTcpSocketChannel(address, isSecure);
+        if (!channel) {
+            ythrow TServiceError(E_FAIL)
+                << "could not start gRPC client";
+        }
+
+        return std::make_shared<TDataEndpoint>(
+            shared_from_this(),
+            NProto::TBlockStoreDataService::NewStub(std::move(channel)));
     }
 }
 
@@ -1134,7 +1215,7 @@ TResultOrError<IClientPtr> CreateClient(
     IMonitoringServicePtr monitoring,
     IServerStatsPtr clientStats)
 {
-    if (!config->GetClientId()) {
+    if (!config->GetClientId() && !config->GetNoClientId()) {
         return MakeError(E_ARGUMENT, "ClientId not set");
     }
 

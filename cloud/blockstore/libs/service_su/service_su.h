@@ -22,67 +22,14 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TSuServiceMap = THashMap<TString, IBlockStorePtr>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct ISuDiscoveryService
-    : public IBlockStore
-{
-    virtual IBlockStorePtr GetSuProxyService(TString suId) = 0;
-};
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct IRemoteSuServiceFactory
-{
-    virtual ~IRemoteSuServiceFactory() = default;
-    virtual IBlockStorePtr GetSuService(TString suId) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-IBlockStorePtr CreateSuService(
-    ITimerPtr timer,
-    ISchedulerPtr scheduler,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    const TString& host,
-    ui32 port,
-    std::optional<TString> clientId = {});
-
-IBlockStorePtr CreateSuDataService(
-    ITimerPtr timer,
-    ISchedulerPtr scheduler,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    const TString& host,
-    ui32 port,
-    std::optional<TString> clientId = {});
-
-ISuDiscoveryServicePtr CreateSuDiscoveryService(
-    IBlockStorePtr service,
-    ITimerPtr timer,
-    ISchedulerPtr scheduler,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    const TServerAppConfigPtr& config);
-
-
 IStoragePtr CreateRemoteEndpoint(IBlockStorePtr endpoint);
 
-IBlockStorePtr CreateRemoteGrpcService(
-    ITimerPtr timer,
-    ISchedulerPtr scheduler,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    const TString& host,
-    ui64 port,
-    std::optional<TString> clientId = {});
+NThreading::TFuture<NProto::TDescribeVolumeResponse> DescribeRemoteVolume(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TDescribeVolumeRequest> request,
+    const IBlockStorePtr localService,
+    const IRemoteStorageProviderPtr suProvider,
+    const ILoggingServicePtr logging,
+    NClient::TClientAppConfigPtr clientConfig);
 
 }   // namespace NCloud::NBlockStore::NServer

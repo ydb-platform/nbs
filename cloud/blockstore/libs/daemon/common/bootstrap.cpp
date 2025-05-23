@@ -372,7 +372,9 @@ void TBootstrapBase::Init()
         Logging,
         CreateEncryptionKeyProvider(KmsKeyProvider, RootKmsKeyProvider));
 
-    ServiceWithDicovery = CreateSuDiscoveryService(Service, Timer,Scheduler,Logging,Monitoring, Configs->ServerConfig);
+    NProto::TClientAppConfig clientAppConfig;
+    auto& config = *clientAppConfig.MutableClientConfig();
+    config.SetNoClientId(true);
 
     RemoteStorageProvider = CreateRemoteStorageProvider(
         Configs->ServerConfig,
@@ -380,6 +382,13 @@ void TBootstrapBase::Init()
         Scheduler,
         Logging,
         Monitoring,
+        NClient::CreateClient(
+            std::make_shared<NClient::TClientAppConfig>(clientAppConfig),
+            Timer,
+            Scheduler,
+            Logging,
+            Monitoring,
+            CreateServerStatsStub()).GetResult(),
         RdmaClient
     );
 
@@ -391,8 +400,7 @@ void TBootstrapBase::Init()
         RequestStats,
         VolumeStats,
         ServerStats,
-        //Service,
-        ServiceWithDicovery,
+        Service,
         RemoteStorageProvider,
         StorageProvider,
         RdmaClient,
@@ -920,7 +928,6 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(EndpointProxyClient);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
-    START_COMMON_COMPONENT(ServiceWithDicovery);
     START_COMMON_COMPONENT(VhostServer);
     START_COMMON_COMPONENT(NbdServer);
     START_COMMON_COMPONENT(GrpcEndpointListener);
@@ -931,6 +938,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(RdmaClient);
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
+    START_COMMON_COMPONENT(RemoteStorageProvider);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -983,7 +991,7 @@ void TBootstrapBase::Stop()
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
-
+    STOP_COMMON_COMPONENT(RemoteStorageProvider);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaClient);
@@ -994,7 +1002,6 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(GrpcEndpointListener);
     STOP_COMMON_COMPONENT(NbdServer);
     STOP_COMMON_COMPONENT(VhostServer);
-    STOP_COMMON_COMPONENT(ServiceWithDicovery);
     STOP_COMMON_COMPONENT(Service);
     STOP_COMMON_COMPONENT(EndpointManager);
     STOP_COMMON_COMPONENT(EndpointProxyClient);
