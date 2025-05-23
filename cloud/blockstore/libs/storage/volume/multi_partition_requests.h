@@ -303,7 +303,7 @@ private:
             TString message = response.GetStatus().GetMessage();
             size_t pos = message.find('\n');
             if (pos != TString::npos && pos + 1 < message.length()) {
-                return message.substr(pos + 1);
+                return message.substr(pos);
             }
             return "";
         };

@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 
@@ -249,8 +250,11 @@ void TRequestActor<TMethod>::Done(const TActorContext& ctx)
     auto response = std::make_unique<typename TMethod::TResponse>();
     response->Record = std::move(Response);
 
-    if constexpr (std::is_same_v<decltype(*response), NProto::TReadBlocksLocalResponse> && ShouldReportBlockRangeOnFailure){
-        response->Record.FailInfo.FailedRanges.push_back(DescribeRange(Range).c_str());
+    if constexpr (IsLocalMethod<TMethod>) {
+        if (ShouldReportBlockRangeOnFailure) {
+            response->Record.FailInfo.FailedRanges.push_back(
+                DescribeRange(Range).c_str());
+        }
     }
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));

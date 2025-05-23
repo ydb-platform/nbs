@@ -2000,6 +2000,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                         using TEv = TEvVolume::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
                         error = msg->GetStatus();
+                        status = msg->Record.GetStatus().GetCode();
+
                         break;
                     }
                     case TEvService::EvReadBlocksLocalResponse: {
@@ -2036,7 +2038,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
             runtime.DispatchEvents(options, TDuration::Seconds(3));
 
-            UNIT_ASSERT_VALUES_EQUAL(E_IO, response->Record.GetStatus().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
         };
 
@@ -2593,28 +2595,36 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
     Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
     {
-        constexpr ui64 defaultDeviceBlockCount = 1024 * 256;  // = 128MiB
-        constexpr ui64 lastBlock = defaultDeviceBlockCount + 1;
-        constexpr ui64 blockCount = 100;
+        constexpr ui64 blocksPerDevice = 4_MB / DefaultBlockSize;
+        constexpr ui64 blockCount = blocksPerDevice + 100;
 
         TTestBasicRuntime runtime;
 
-        TTestEnv env(runtime);
+        TDevices devices;
+        for (ui32 i = 0; i < 2; ++i) {
+            TTestEnv::AddDevice(
+                runtime.GetNodeId(0),
+                blocksPerDevice,
+                Sprintf("vasya%u", i),
+                devices);
+        }
+
+        TTestEnv env(runtime, {.Devices = std::move(devices)});
+
         TPartitionClient client(runtime, env.ActorId);
         {
-            const auto blockRange = TBlockRange64::WithLength(0, lastBlock);
-            client.WriteBlocks(blockRange, 1);
+            const auto blockRange = TBlockRange64::WithLength(0, blockCount);
+            client.WriteBlocks(blockRange, 42);
         }
 
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvReadBlocksRequest: {
-                        auto response = std::make_unique<
-                        TEvService::TEvReadBlobResponse>(
-                            MakeError(E_IO, "Simulated blob read failure"));
-
+                    case TEvDiskAgent::EvReadDeviceBlocksRequest: {
+                        auto response = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksResponse>(
+                            MakeError(E_IO, "Simulated read failure")
+                        );
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
@@ -2636,8 +2646,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TString buffer(dataSize, 100);
         TSgList sgList{TBlockDataRef{buffer.data(), buffer.size()}};
 
+        auto range = TBlockRange64::WithLength(0, blockCount);
         auto request = client.CreateReadBlocksLocalRequest(
-            TBlockRange64::WithLength(lastBlock - blockCount, blockCount),
+            range,
             TGuardedSgList(sgList));
 
         request->Record.ShouldReportFailedRangesOnFailure = true;
@@ -2648,8 +2659,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         auto response = client.RecvReadBlocksLocalResponse();
         UNIT_ASSERT_VALUES_UNEQUAL(S_OK, response->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            1,
             response->Record.FailInfo.FailedRanges.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DescribeRange(range).c_str(),
+            response->Record.FailInfo.FailedRanges[0]);
     }
 }
 

@@ -169,11 +169,11 @@ public:
         auto response =
             std::make_unique<TEvService::TEvReadBlocksLocalResponse>(Error);
         response->Record.SetAllZeroes(allZeroes);
-        if (ShouldReportBlockRangeOnFailure){
-            const auto blockRange = TBlockRange64::WithLength(
-                RequestStartIndex,
-                RequestBlockCount);
-            response->Record.FailInfo.FailedRanges.push_back(DescribeRange(blockRange).c_str());
+        if (ShouldReportBlockRangeOnFailure) {
+            const auto blockRange =
+                TBlockRange64::WithLength(RequestStartIndex, RequestBlockCount);
+            response->Record.FailInfo.FailedRanges.push_back(
+                DescribeRange(blockRange).c_str());
         }
         auto event = std::make_unique<IEventHandle>(
             RequestInfo->Sender,

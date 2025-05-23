@@ -1,6 +1,6 @@
 #include "part_mirror_actor.h"
-#include <cloud/blockstore/libs/common/block_checksum.h>
 
+#include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -61,6 +61,7 @@ void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
     request->Record.Sglist = SgList;
+request->Record.ShouldReportFailedRangesOnFailure = true;
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetReplicaCount(Request.headers().GetReplicaCount());
