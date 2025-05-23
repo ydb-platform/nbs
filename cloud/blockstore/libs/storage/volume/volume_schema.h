@@ -279,31 +279,86 @@ struct TVolumeSchema
         {
         };
 
+        struct CreatedAt
+            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
         struct FollowerDiskId
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+            : public Column<3, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct ScaleUnitId: public Column<3, NKikimr::NScheme::NTypeIds::String>
+        struct ScaleUnitId: public Column<4, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct State: public Column<4, NKikimr::NScheme::NTypeIds::Uint32>
+        struct State: public Column<5, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
         struct MigratedBytes
-            : public Column<5, NKikimr::NScheme::NTypeIds::Uint64>
+            : public Column<6, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct MediaKind
+            : public Column<7, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct ErrorMessage
+            : public Column<8, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
         using TKey = TableKey<Uuid>;
         using TColumns = TableColumns<
             Uuid,
+            CreatedAt,
             FollowerDiskId,
             ScaleUnitId,
             State,
-            MigratedBytes>;
+            MigratedBytes,
+            MediaKind,
+            ErrorMessage>;
+    };
+
+    struct LeaderDisks: public TTableSchema<12>
+    {
+        struct Uuid: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct CreatedAt
+            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+        struct LeaderDiskId
+            : public Column<3, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct ScaleUnitId: public Column<4, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct State: public Column<5, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct ErrorMessage
+            : public Column<6, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        using TKey = TableKey<Uuid>;
+        using TColumns = TableColumns<
+            Uuid,
+            CreatedAt,
+            LeaderDiskId,
+            ScaleUnitId,
+            State,
+            ErrorMessage>;
     };
 
     using TTables = SchemaTables<
@@ -317,7 +372,8 @@ struct TVolumeSchema
         ThrottlerState,
         MetaHistory,
         VolumeParams,
-        FollowerDisks
+        FollowerDisks,
+        LeaderDisks
     >;
 };
 

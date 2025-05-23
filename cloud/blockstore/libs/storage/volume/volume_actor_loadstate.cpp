@@ -49,7 +49,12 @@ bool TVolumeActor::PrepareLoadState(
             args.OutdatedCheckpointRequestIds),
         db.ReadThrottlerState(args.ThrottlerStateInfo),
         db.ReadStorageConfig(args.StorageConfig),
-        db.ReadFollowers(args.FollowerDisks),
+        db.ReadFollowers(
+            args.Meta ? args.Meta->GetVolumeConfig().GetDiskId() : "",
+            args.FollowerDisks),
+        db.ReadLeaders(
+            args.Meta ? args.Meta->GetVolumeConfig().GetDiskId() : "",
+            args.LeaderDisks),
     };
 
     if (args.Meta) {
@@ -139,6 +144,7 @@ void TVolumeActor::CompleteLoadState(
             std::move(volumeHistory),
             std::move(args.CheckpointRequests),
             std::move(args.FollowerDisks),
+            std::move(args.LeaderDisks),
             startPartitionsNeeded);
 
         HasPerformanceProfileModifications =

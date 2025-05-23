@@ -14,6 +14,15 @@ import "cloud/storage/core/protos/media.proto";
 import "cloud/storage/core/protos/trace.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
+// Follower volume notification
+
+enum EFollowerNotificationReason
+{
+    FOLLOWER_NOTIFICATION_REASON_CREATED = 0;
+    FOLLOWER_NOTIFICATION_REASON_DESTROYED = 1;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 // Volume client info.
 
 message TVolumeClientInfo
@@ -739,6 +748,36 @@ message TLinkLeaderVolumeToFollowerResponse
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 3;
 }
+
+message TNotifyFollowerVolumeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Follower volume.
+    string DiskId = 2;
+
+    // Uuid of link.
+    string LinkUUID = 3;
+
+    EFollowerNotificationReason Reason = 4;
+
+    // Leader volume.
+    string LeaderDiskId = 5;
+
+    // Leader volume scale unit.
+    string LeaderScaleUnitId = 6;
+}
+
+message TNotifyFollowerVolumeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Unlink volume request/response.
