@@ -68,7 +68,10 @@ TBootstrapCommon::TBootstrapCommon(
     , ModuleFactories(std::move(moduleFactories))
     , UserCounters(std::move(userCounters))
 {
-    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
+    TLogSettings logSettings;
+    logSettings.BackendFileName = Configs->GetLogBackendFileName();
+
+    BootstrapLogging = CreateLoggingService("console", logSettings);
     BootstrapLogging->Start();
 
     Log = BootstrapLogging->CreateLog(logComponent);
@@ -204,6 +207,7 @@ void TBootstrapCommon::InitDiagnostics()
 {
     if (!ActorSystem) {
         TLogSettings logSettings;
+        logSettings.BackendFileName = Configs->GetLogBackendFileName();
 
         if (Configs->Options->VerboseLevel) {
             auto level = GetLogLevel(Configs->Options->VerboseLevel);
