@@ -34,6 +34,7 @@ struct TConfigInitializerYdbBase
     ui32 GetMonitoringPort() const override;
     TString GetMonitoringAddress() const override;
     ui32 GetMonitoringThreads() const override;
+    TString GetLogBackendFileName() const override;
 
     virtual void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) = 0;
 

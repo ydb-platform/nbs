@@ -202,7 +202,10 @@ void TBootstrapBase::ParseOptions(int argc, char** argv)
 
 void TBootstrapBase::Init()
 {
-    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
+    TLogSettings logSettings;
+    logSettings.BackendFileName = Configs->GetLogBackendFileName();
+
+    BootstrapLogging = CreateLoggingService("console", logSettings);
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
     SetCriticalEventsLog(Log);
     Configs->Log = Log;
@@ -717,6 +720,7 @@ void TBootstrapBase::InitDbgConfigs()
     TLogSettings logSettings;
     logSettings.FiltrationLevel =
         static_cast<ELogPriority>(Configs->GetLogDefaultLevel());
+    logSettings.BackendFileName = Configs->GetLogBackendFileName();
 
     Logging = CreateLoggingService("console", logSettings);
 

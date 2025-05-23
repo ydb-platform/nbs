@@ -256,7 +256,10 @@ void TBootstrap::InitHTTPServer()
 
 void TBootstrap::Init()
 {
-    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
+    TLogSettings logSettings;
+    logSettings.BackendFileName = Configs->GetLogConfig().GetBackendFileName();
+
+    BootstrapLogging = CreateLoggingService("console", logSettings);
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 

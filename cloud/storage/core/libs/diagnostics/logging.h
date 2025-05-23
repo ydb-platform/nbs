@@ -23,6 +23,7 @@ struct TLogSettings
     ELogPriority FiltrationLevel = TLOG_INFO;
     bool UseLocalTimestamps = false;
     bool SuppressNewLine = false;
+    TString BackendFileName;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
