@@ -112,6 +112,7 @@ private:
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
     const NBlockCodecs::ICodec* BlobCodec;
+    const ui64 VolumeTabletId;
 
     TLogTitle LogTitle;
 
@@ -150,7 +151,6 @@ private:
     bool FirstGarbageCollectionCompleted = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
-    const ui64 VolumeTabletId;
 
 public:
     TPartitionActor(

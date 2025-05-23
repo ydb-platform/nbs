@@ -153,20 +153,25 @@ void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
         BuildSearchButton(out);
 
         TAG (TH3) {
+            out << "Volumes ";
             out << "<a href='"
                 << GetMonitoringVolumeUrlWithoutDiskId(*DiagnosticsConfig);
-            auto it = State.GetVolumes().begin();
-            if (it != State.GetVolumes().end()) {
+            for (auto it = State.GetVolumes().begin();
+                 it != State.GetVolumes().end();
+                 ++it)
+            {
                 out << it->second->DiskId;
-                ++it;
+
+                auto next = it;
+                ++next;
+
+                if (next != State.GetVolumes().end()) {
+                    out << "|";
+                }
             }
-            for (; it != State.GetVolumes().end(); ++it) {
-                out << "|" << it->second->DiskId;
-            }
-            out << "'>Volumes dashboards</a>";
+            out << "'>[dashboard]</a>";
         }
 
-        TAG(TH3) { out << "Volumes"; }
         RenderDownDisks(out);
         RenderVolumeList(out);
 
