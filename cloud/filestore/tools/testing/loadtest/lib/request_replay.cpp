@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/eventlog/eventlog.h>
@@ -30,8 +31,7 @@ IReplayRequestGenerator::IReplayRequestGenerator(
     options.FileName = Spec.GetFileName();
     options.ForceStrongOrdering = true;
 
-    if (const auto sleep = Spec.GetMaxSleepUs
-        ()) {
+    if (const auto sleep = Spec.GetMaxSleepUs()) {
         MaxSleepUs = sleep;
     }
 
@@ -164,7 +164,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 ++MessagesProcessed;
                 ui64 timediff =
                     (request.GetTimestampMcs() - TimestampMicroSeconds) *
-                                Spec.GetTimeScale();
+                    Spec.GetTimeScale();
                 TimestampMicroSeconds = request.GetTimestampMcs();
                 if (timediff > MaxSleepUs) {
                     STORAGE_DEBUG(
