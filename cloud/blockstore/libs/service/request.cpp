@@ -52,7 +52,7 @@ TStringBuf GetPrivateRequestName(EPrivateRequestType requestType)
 }   // namespace NCloud::NBlockStore
 
 template <>
-inline void Out<NCloud::NBlockStore::NProto::TReadBlocksLocalResponse>(
+void Out<NCloud::NBlockStore::NProto::TReadBlocksLocalResponse>(
     IOutputStream& out,
     const NCloud::NBlockStore::NProto::TReadBlocksLocalResponse& value)
 {
