@@ -681,7 +681,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             diagConfig,
             inactivityTimeout,
             EVolumeStatsType::EServerStats,
-            CreateWallClockTimer());
+            CreateWallClockTimer(),
+            false);
 
         Mount(
             volumeStats,
@@ -842,7 +843,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             config,
             TDuration::Max(),
             EVolumeStatsType::EServerStats,
-            timer);
+            timer,
+            false);
 
         TVector<TString> clients = {"client1", "client2"};
         TVector<TString> volumes = {"test1", "test2"};
@@ -948,7 +950,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             config,
             TDuration::Max(),
             EVolumeStatsType::EServerStats,
-            timer);
+            timer,
+            false);
 
         TString client {"client1"};
         TString volume {"test1"};
@@ -1030,7 +1033,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             config,
             TDuration::Max(),
             EVolumeStatsType::EServerStats,
-            timer);
+            timer,
+            false);
 
         TString client {"client1"};
         TString volume {"test1"};

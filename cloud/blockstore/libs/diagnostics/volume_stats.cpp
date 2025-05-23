@@ -460,6 +460,7 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const EVolumeStatsType Type;
     const ITimerPtr Timer;
+    const bool SkipZeroBlocksStatsForYdbBasedDisks;
     const THashSet<TString> CloudIdsWithStrictSLA;
 
     TDynamicCountersPtr Counters;
@@ -486,12 +487,15 @@ public:
             TDuration inactiveClientsTimeout,
             TDiagnosticsConfigPtr diagnosticsConfig,
             EVolumeStatsType type,
-            ITimerPtr timer)
+            ITimerPtr timer,
+            bool skipZeroBlocksStatsForYdbBasedDisks)
         : Monitoring(std::move(monitoring))
         , InactiveClientsTimeout(inactiveClientsTimeout)
         , DiagnosticsConfig(std::move(diagnosticsConfig))
         , Type(type)
         , Timer(std::move(timer))
+        , SkipZeroBlocksStatsForYdbBasedDisks(
+            skipZeroBlocksStatsForYdbBasedDisks)
         , CloudIdsWithStrictSLA([] (const TVector<TString>& v) {
             return THashSet<TString>(v.begin(), v.end());
         }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
@@ -893,6 +897,8 @@ private:
             volumeConfig.GetFolderId(),
             volumeConfig.GetDiskId(),
             realInstanceId.GetInstanceId(),
+            SkipZeroBlocksStatsForYdbBasedDisks &&
+                !IsDiskRegistryMediaKind(volumeConfig.GetStorageMediaKind()),
             countersGroup);
 
         return info;
@@ -1073,7 +1079,8 @@ IVolumeStatsPtr CreateVolumeStats(
     TDiagnosticsConfigPtr diagnosticsConfig,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
-    ITimerPtr timer)
+    ITimerPtr timer,
+    bool skipZeroBlocksStatsForYdbBasedDisks)
 {
     Y_DEBUG_ABORT_UNLESS(diagnosticsConfig);
     return std::make_shared<TVolumeStats>(
@@ -1081,7 +1088,8 @@ IVolumeStatsPtr CreateVolumeStats(
         inactiveClientsTimeout,
         std::move(diagnosticsConfig),
         type,
-        std::move(timer));
+        std::move(timer),
+        skipZeroBlocksStatsForYdbBasedDisks);
 }
 
 IVolumeStatsPtr CreateVolumeStats(
@@ -1096,7 +1104,8 @@ IVolumeStatsPtr CreateVolumeStats(
         inactiveClientsTimeout,
         std::make_shared<TDiagnosticsConfig>(diagnosticsConfig),
         type,
-        std::move(timer));
+        std::move(timer),
+        false);
 }
 
 
