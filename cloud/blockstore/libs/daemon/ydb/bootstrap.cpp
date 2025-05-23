@@ -45,7 +45,6 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/init/server/actorsystem.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
-#include <cloud/blockstore/libs/ydbstats/ydbstorage.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/aio/service.h>
@@ -293,7 +292,7 @@ IStartable* TBootstrapYdb::GetAsyncLogger()        { return AsyncLogger.get(); }
 IStartable* TBootstrapYdb::GetStatsAggregator()    { return StatsAggregator.get(); }
 IStartable* TBootstrapYdb::GetClientPercentiles()  { return ClientPercentiles.get(); }
 IStartable* TBootstrapYdb::GetStatsUploader()      { return StatsUploader.get(); }
-IStartable* TBootstrapYdb::GetYdbStorage()         { return YdbStorage.get(); }
+IStartable* TBootstrapYdb::GetYdbStorage()         { return AsStartable(YdbStorage); }
 IStartable* TBootstrapYdb::GetTraceSerializer()    { return TraceSerializer.get(); }
 IStartable* TBootstrapYdb::GetLogbrokerService()   { return LogbrokerService.get(); }
 IStartable* TBootstrapYdb::GetNotifyService()      { return NotifyService.get(); }

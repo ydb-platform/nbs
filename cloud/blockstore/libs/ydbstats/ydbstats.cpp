@@ -987,6 +987,11 @@ TYDBTableSchemes::TYDBTableSchemes(TDuration statsTtl, TDuration archiveTtl)
 
 TYDBTableSchemes::~TYDBTableSchemes() = default;
 
+IStartable* AsStartable(IYdbStoragePtr storagePtr)
+{
+    return storagePtr.get();
+}
+
 IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
     TYdbStatsConfigPtr config,
     ILoggingServicePtr logging,
