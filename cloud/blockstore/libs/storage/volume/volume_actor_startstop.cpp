@@ -649,6 +649,7 @@ void TVolumeActor::HandleBootExternalResponse(
     auto storageAccessMode = State->GetStorageAccessMode();
     auto siblingCount = State->GetPartitions().size();
     auto selfId = SelfId();
+    auto volumeTabletId = TabletID();
 
     auto factory = [=](
                        const TActorId& owner,
@@ -669,7 +670,8 @@ void TVolumeActor::HandleBootExternalResponse(
                        std::move(partitionConfig),
                        storageAccessMode,
                        siblingCount,
-                       selfId)
+                       selfId,
+                       volumeTabletId)
                 .release();
         } else {
             return NPartition2::CreatePartitionTablet(
@@ -682,7 +684,8 @@ void TVolumeActor::HandleBootExternalResponse(
                        std::move(partitionConfig),
                        storageAccessMode,
                        siblingCount,
-                       selfId)
+                       selfId,
+                       volumeTabletId)
                 .release();
         }
     };
