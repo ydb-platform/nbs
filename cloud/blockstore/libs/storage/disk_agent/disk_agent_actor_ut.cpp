@@ -60,6 +60,17 @@ TFsPath TryGetRamDrivePath()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TNullStorageProvider: public IStorageProvider
+{
+    NThreading::TFuture<IStoragePtr> CreateStorage(
+        const NProto::TVolume&,
+        const TString&,
+        NProto::EVolumeAccessMode) override
+    {
+        return {};
+    }
+};
+
 struct TTestNvmeManager
     : NNvme::INvmeManager
 {
@@ -6483,6 +6494,83 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 ->RecvResponse<TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldHandleMultiWriteFromRdmaPath,
+        TMultiWriteFixture)
+    {
+        auto logging = CreateLoggingService("console");
+        auto agentState = TDiskAgentState(
+            Runtime->GetActorSystem(0),
+            DiskAgent1->DiskAgentActorId(),
+            std::make_shared<TStorageConfig>(
+                NProto::TStorageServiceConfig{},
+                std::make_shared<NFeatures::TFeaturesConfig>()),
+            std::make_shared<TDiskAgentConfig>(),
+            nullptr,   // spdk
+            CreateCachingAllocator(TDefaultAllocator::Instance(), 0, 0, 0),
+            std::make_shared<TNullStorageProvider>(),
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            logging,
+            nullptr,   // rdmaServer
+            NNvme::CreateNvmeManager(TDuration()),
+            nullptr,   // rdmaTargetConfig
+            TOldRequestCounters());
+
+        auto deviceClient = TDeviceClient(
+            TDuration(),
+            {},
+            logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+            &agentState);
+
+        auto request = std::make_shared<NProto::TWriteDeviceBlocksRequest>();
+        {
+            request->MutableHeaders()->SetClientId(ClientId);
+            request->SetBlockSize(DefaultBlockSize);
+            {
+                NProto::TReplicationTarget target;
+                target.SetNodeId(DiskAgent1->GetNodeId());
+                target.SetDeviceUUID("DA1-1");
+                target.SetStartIndex(1);
+                request->MutableReplicationTargets()->Add(std::move(target));
+            }
+            {
+                NProto::TReplicationTarget target;
+                target.SetNodeId(DiskAgent2->GetNodeId());
+                target.SetDeviceUUID("DA2-1");
+                target.SetStartIndex(2);
+                request->MutableReplicationTargets()->Add(std::move(target));
+            }
+            request->MutableBlocks()->AddBuffers(TString(BlockSize, 'a'));
+        }
+
+        // Send request through TDiskAgentState.
+        auto future = deviceClient.PerformMultiAgentWrite(
+            MakeIntrusive<TCallContext>(static_cast<ui64>(100)),
+            std::move(request));
+
+        // Handle request in actor system.
+        Runtime->DispatchEvents({}, 1s);
+
+        // Get response through future.
+        const auto& response = future.GetValue();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, response.ReplicationResponses.size());
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.ReplicationResponses[0].GetCode(),
+            FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.ReplicationResponses[1].GetCode(),
+            FormatError(response.GetError()));
     }
 }
 

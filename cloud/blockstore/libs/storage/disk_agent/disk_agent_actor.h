@@ -235,6 +235,11 @@ private:
         const TEvDiskAgentPrivate::TEvParsedWriteDeviceBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleMultiAgentWriteDeviceBlocks(
+        const TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest::TPtr&
+            ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
 

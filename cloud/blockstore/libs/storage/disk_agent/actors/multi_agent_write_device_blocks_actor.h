@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/multi_agent_write.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -12,15 +13,23 @@ namespace NCloud::NBlockStore::NStorage {
 
 // Sends a write request to the disk-agents specified in ReplicationTargets.
 // Then wait for all writes to be completed and send a response.
+// The response can be sent in two ways. If the client provided the
+// responsePromise, the response will be transmitted using that. Otherwise,
+// TEvWriteDeviceBlocksResponse will be sent through the actor system.
 class TMultiAgentWriteDeviceBlocksActor final
     : public NActors::TActorBootstrapped<TMultiAgentWriteDeviceBlocksActor>
 {
+public:
+    using TOptionalPromise =
+        std::optional<NThreading::TPromise<TMultiAgentWriteResponseLocal>>;
+
 private:
     const NActors::TActorId Parent;
     const TRequestInfoPtr RequestInfo;
     const TDuration MaxRequestTimeout;
 
     NProto::TWriteDeviceBlocksRequest Request;
+    TOptionalPromise ResponsePromise;
     TVector<std::optional<NProto::TError>> Responses;
 
 public:
@@ -28,6 +37,7 @@ public:
         const NActors::TActorId& parent,
         TRequestInfoPtr requestInfo,
         NProto::TWriteDeviceBlocksRequest request,
+        TOptionalPromise responsePromise,
         TDuration maxRequestTimeout);
 
     void Bootstrap(const NActors::TActorContext& ctx);

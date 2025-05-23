@@ -34,6 +34,8 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
     }
 
     State = std::make_unique<TDiskAgentState>(
+        TActivationContext::ActorSystem(),
+        ctx.SelfID,
         Config,
         AgentConfig,
         Spdk,

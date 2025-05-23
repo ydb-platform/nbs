@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/multi_agent_write.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <util/generic/string.h>
@@ -169,6 +170,16 @@ struct TEvDiskAgentPrivate
     };
 
     //
+    // MultiAgentWriteDeviceBlocksRequest
+    //
+
+    struct TMultiAgentWriteDeviceBlocksRequest
+    {
+        NProto::TWriteDeviceBlocksRequest Record;
+        NThreading::TPromise<TMultiAgentWriteResponseLocal> ResponsePromise;
+    };
+
+    //
     // Events declaration
     //
 
@@ -187,6 +198,8 @@ struct TEvDiskAgentPrivate
         EvParsedReadDeviceBlocksRequest,
         EvParsedWriteDeviceBlocksRequest,
         EvParsedZeroDeviceBlocksRequest,
+
+        EvMultiAgentWriteDeviceBlocksRequest,
 
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
@@ -221,6 +234,10 @@ struct TEvDiskAgentPrivate
     using TEvParsedWriteDeviceBlocksRequest = TRequestEvent<
         TParsedWriteDeviceBlocksRequest,
         EvParsedWriteDeviceBlocksRequest>;
+
+    using TEvMultiAgentWriteDeviceBlocksRequest = TRequestEvent<
+        TMultiAgentWriteDeviceBlocksRequest,
+        EvMultiAgentWriteDeviceBlocksRequest>;
 
     BLOCKSTORE_DECLARE_EVENTS(UpdateSessionCache)
 };

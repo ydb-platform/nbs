@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
@@ -237,6 +238,8 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentState::TDiskAgentState(
+        NActors::TActorSystem* actorSystem,
+        NActors::TActorId diskAgentId,
         TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
         NSpdk::ISpdkEnvPtr spdk,
@@ -249,7 +252,9 @@ TDiskAgentState::TDiskAgentState(
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters)
-    : StorageConfig(std::move(storageConfig))
+    : ActorSystem(actorSystem)
+    , DiskAgentId(diskAgentId)
+    , StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
     , Spdk(std::move(spdk))
     , Allocator(std::move(allocator))
@@ -496,10 +501,12 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                 uuids.push_back(x.first);
             }
 
+            IMultiagentWriteHandler* multiagentWriteHandler = this;
             DeviceClient = std::make_shared<TDeviceClient>(
                 AgentConfig->GetReleaseInactiveSessionsTimeout(),
                 std::move(uuids),
-                Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
+                Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+                multiagentWriteHandler);
 
             InitRdmaTarget();
 
@@ -840,6 +847,30 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 
             return response;
         });
+}
+
+NThreading::TFuture<TMultiAgentWriteResponseLocal>
+TDiskAgentState::PerformMultiAgentWrite(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request)
+{
+    auto req = std::make_unique<
+        TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest>();
+    req->Record.Swap(request.get());
+    req->ResponsePromise =
+        NThreading::NewPromise<TMultiAgentWriteResponseLocal>();
+    req->CallContext = std::move(callContext);
+
+    auto future = req->ResponsePromise.GetFuture();
+
+    auto newEv = std::make_unique<NActors::IEventHandle>(
+        DiskAgentId,
+        NActors::TActorId(),
+        req.release());
+
+    ActorSystem->Send(newEv.release());
+
+    return future;
 }
 
 void TDiskAgentState::CheckIOTimeouts(TInstant now)

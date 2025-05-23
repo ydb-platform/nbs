@@ -386,6 +386,10 @@ STFUNC(TDiskAgentActor::StateWork)
             TEvDiskAgentPrivate::TEvParsedWriteDeviceBlocksRequest,
             HandleParsedWriteDeviceBlocks);
 
+        HFunc(
+            TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest,
+            HandleMultiAgentWriteDeviceBlocks);
+
         case TEvDiskAgentPrivate::EvParsedReadDeviceBlocksRequest:
             HandleReadDeviceBlocks(
                 *reinterpret_cast<
