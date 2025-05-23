@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/protos/tablet.pb.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -75,6 +76,26 @@ struct TEvStatsService
                 NProto::TVolume config)
             : DiskId(std::move(diskId))
             , Config(std::move(config))
+        {}
+    };
+
+    //
+    // PartitionBootExternalCompleted notification
+    //
+
+    struct TPartitionBootExternalCompleted
+    {
+        const TString DiskId;
+        const ui64 PartitionTabletId;
+        TVector<NKikimr::TTabletChannelInfo> ChannelInfos;
+
+        TPartitionBootExternalCompleted(
+                TString diskId,
+                ui64 partitionTabletId,
+                TVector<NKikimr::TTabletChannelInfo> channelInfos)
+            : DiskId(std::move(diskId))
+            , PartitionTabletId(partitionTabletId)
+            , ChannelInfos(std::move(channelInfos))
         {}
     };
 
@@ -186,6 +207,7 @@ struct TEvStatsService
         EvRegisterVolume,
         EvUnregisterVolume,
         EvVolumeConfigUpdated,
+        EvPartitionBootExternalCompleted,
         EvVolumePartCounters,
         EvVolumeSelfCounters,
         EvGetVolumeStatsRequest,
@@ -212,6 +234,11 @@ struct TEvStatsService
     using TEvVolumeConfigUpdated = TRequestEvent<
         TVolumeConfigUpdated,
         EvVolumeConfigUpdated
+    >;
+
+    using TEvPartitionBootExternalCompleted = TRequestEvent<
+        TPartitionBootExternalCompleted,
+        EvPartitionBootExternalCompleted
     >;
 
     using TEvVolumePartCounters = TRequestEvent<

@@ -110,6 +110,10 @@ private:
 
     void PushYdbStats(const NActors::TActorContext& ctx);
 
+    TVector<TStatsUploadRequest> SplitRowsIntoRequests(
+        NYdbStats::TYdbRowData rows,
+        const NActors::TActorContext& ctx);
+
     [[nodiscard]] ui32 CalcBandwidthLimit(const TString& sourceId) const;
     void ScheduleCleanupBackgroundSources(
         const NActors::TActorContext& ctx) const;
@@ -135,6 +139,10 @@ private:
 
     void HandleUnregisterVolume(
         const TEvStatsService::TEvUnregisterVolume::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePartitionBootExternalCompleted(
+        const TEvStatsService::TEvPartitionBootExternalCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleVolumePartCounters(

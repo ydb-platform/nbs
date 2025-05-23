@@ -634,6 +634,14 @@ void TVolumeActor::HandleBootExternalResponse(
         msg->StorageInfo->TabletID,
         partTabletId);
 
+    {
+        auto request = std::make_unique<TEvStatsService::TEvPartitionBootExternalCompleted>(
+            State->GetDiskId(),
+            partTabletId,
+            msg->StorageInfo->Channels);
+        NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
+    }
+
     if (msg->SuggestedGeneration > part->SuggestedGeneration) {
         part->SuggestedGeneration = msg->SuggestedGeneration;
     }
