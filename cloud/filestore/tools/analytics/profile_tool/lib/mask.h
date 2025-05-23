@@ -32,7 +32,10 @@ private:
     ui16 MaxExtentionLength = 0;
 
 public:
-    TMaskSensitiveData(const EMode mode, const TString& seed, ui16 maxExtentionLength);
+    TMaskSensitiveData(
+        const EMode mode,
+        const TString& seed,
+        ui16 maxExtentionLength);
     bool Advance();
     TString Transform(const TString& str, const ui64 nodeId);
     void MaskSensitiveData(const TString& in, const TString& out);
