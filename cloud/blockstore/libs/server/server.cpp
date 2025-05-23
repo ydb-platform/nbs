@@ -364,6 +364,12 @@ public:
     {
         Storage->RemoveClient(clientSocket);
     }
+
+    void CancelInFlightRequests() override
+    {
+        auto result = Service->CancelEndpointInFlightRequests(nullptr, nullptr);
+        Y_DEBUG_ABORT_UNLESS(!result.GetValueSync().HasError());
+    }
 };
 
 IClientStoragePtr CreateEndpointClientStorage(

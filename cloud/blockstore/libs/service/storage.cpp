@@ -140,7 +140,7 @@ public:
     TVector<TInflightRequest> ExtractTimedOut(TInstant now)
     {
         TVector<TInflightRequest> result;
-        if (MaxRequestDuration == TDuration::Zero()) {
+        if (MaxRequestDuration == TDuration::Zero() && now != TInstant()) {
             return result;
         }
 
@@ -215,6 +215,8 @@ public:
         std::shared_ptr<NProto::TZeroBlocksRequest> request,
         ui32 requestBlockSize) const;
 
+    void CancelInFlightRequests();
+
     TFuture<NProto::TError> EraseDevice(
         NProto::EDeviceEraseMethod method) const;
 
@@ -233,6 +235,9 @@ private:
 
     template <typename TResponse>
     void CheckIOTimeouts(TInflightTracker<TResponse>& inflights, TInstant now);
+
+    template <typename TResponse>
+    static void CancelInFlightRequests(TInflightTracker<TResponse>& inflights);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -331,7 +336,7 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
         std::move(localRequest));
 
     auto promise = NewPromise<NProto::TReadBlocksResponse>();
-    const auto id =  InflightReads->RegisterRequest(now, promise);
+    const auto id = InflightReads->RegisterRequest(now, promise);
 
     future.Subscribe(
         [inflightReads = InflightReads,
@@ -551,6 +556,26 @@ TFuture<NProto::TZeroBlocksResponse> TStorageAdapter::TImpl::ZeroBlocks(
     return promise;
 }
 
+void TStorageAdapter::TImpl::CancelInFlightRequests()
+{
+    CancelInFlightRequests(*InflightReads);
+    CancelInFlightRequests(*InflightWrites);
+    CancelInFlightRequests(*InflightZeros);
+}
+
+template <typename TResponse>
+void TStorageAdapter::TImpl::CancelInFlightRequests(
+    TInflightTracker<TResponse>& inflights)
+{
+    auto requests = inflights.ExtractTimedOut(TInstant());
+    for (auto& inflight: requests) {
+        TResponse response;
+        *response.MutableError() =
+            MakeError(E_CANCELLED, "Request is cancelled");
+        inflight.Promise.TrySetValue(std::move(response));
+    }
+}
+
 TFuture<NProto::TError> TStorageAdapter::TImpl::EraseDevice(
     NProto::EDeviceEraseMethod method) const
 {
@@ -722,6 +747,11 @@ TFuture<NProto::TZeroBlocksResponse> TStorageAdapter::ZeroBlocks(
         std::move(callContext),
         std::move(request),
         requestBlockSize);
+}
+
+void TStorageAdapter::CancelInFlightRequests() const
+{
+    Impl->CancelInFlightRequests();
 }
 
 TFuture<NProto::TError> TStorageAdapter::EraseDevice(

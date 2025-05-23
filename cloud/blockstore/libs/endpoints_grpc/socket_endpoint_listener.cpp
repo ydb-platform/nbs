@@ -3,11 +3,12 @@
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
+#include <cloud/blockstore/libs/server/client_storage_factory.h>
+#include <cloud/blockstore/libs/server/endpoint_service_base.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
-#include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/storage.h>
-#include <cloud/blockstore/libs/server/client_storage_factory.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/uds/endpoint_poller.h>
@@ -21,48 +22,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpointServiceBase
-    : public IBlockStore
-{
-public:
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-        {                                                                      \
-            return CreateUnsupportedResponse<NProto::T##name##Response>(       \
-                std::move(callContext),                                        \
-                std::move(request));                                           \
-        }                                                                      \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
-
-private:
-    template <typename TResponse, typename TRequest>
-    TFuture<TResponse> CreateUnsupportedResponse(
-        TCallContextPtr callContext,
-        std::shared_ptr<TRequest> request)
-    {
-        Y_UNUSED(callContext);
-        Y_UNUSED(request);
-
-        auto requestType = GetBlockStoreRequest<TRequest>();
-        const auto& requestName = GetBlockStoreRequestName(requestType);
-
-        return MakeFuture<TResponse>(TErrorResponse(
-            E_FAIL,
-            TStringBuilder()
-                << "Unsupported endpoint request: " << requestName.Quote()));
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TEndpointService final
-    : public TEndpointServiceBase
+class TEndpointService final: public TEndpointServiceBase
 {
 private:
     const TString DiskId;
@@ -195,6 +155,18 @@ public:
             BlockSize);
     }
 
+    TFuture<NProto::TCancelEndpointInFlightRequestsResponse>
+    CancelEndpointInFlightRequests(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TCancelEndpointInFlightRequestsRequest> request)
+        override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+        StorageAdapter.CancelInFlightRequests();
+        return MakeFuture(NProto::TCancelEndpointInFlightRequestsResponse());
+    }
+
 private:
     template <typename TResponse, typename TRequest>
     TResponse ValidateRequest(TRequest& request)
@@ -322,10 +294,7 @@ public:
     NProto::TError CancelEndpointInFlightRequests(
         const TString& socketPath) override
     {
-        Y_UNUSED(socketPath);
-        return MakeError(
-            E_NOT_IMPLEMENTED,
-            "Can't cancel in-flight requests for GRPC endpoint");
+        return EndpointPoller->CancelEndpointInFlightRequests(socketPath);
     }
 };
 

@@ -21,5 +21,8 @@ using IServerPtr = std::shared_ptr<IServer>;
 struct IClientStorageFactory;
 using IClientStorageFactoryPtr = std::shared_ptr<IClientStorageFactory>;
 
+class TEndpointServiceBase;
+using TEndpointServiceBasePtr = std::shared_ptr<TEndpointServiceBase>;
+
 }   // namespace NServer
 }   // namespace NCloud::NBlockStore

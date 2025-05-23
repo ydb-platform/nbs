@@ -234,6 +234,21 @@ public:
         return {};
     }
 
+    NProto::TError CancelEndpointInFlightRequests(const TString& unixSocketPath)
+    {
+        TGuard g(EndpointLock);
+
+        const auto* endpoint = Endpoints.FindPtr(unixSocketPath);
+        if (!endpoint || !*endpoint) {
+            return MakeError(
+                S_FALSE,
+                TStringBuilder() << "Endpoint " << unixSocketPath.Quote()
+                                 << " has not been started");
+        }
+        endpoint->get()->ClientStorage->CancelInFlightRequests();
+        return {};
+    }
+
 private:
     void StopListenEndpointImpl(const TEndpointPtr& endpoint, bool deleteSocket)
     {
@@ -370,6 +385,12 @@ NProto::TError TEndpointPoller::StartListenEndpoint(
 NProto::TError TEndpointPoller::StopListenEndpoint(const TString& unixSocketPath)
 {
     return Impl->StopListenEndpoint(unixSocketPath);
+}
+
+NProto::TError TEndpointPoller::CancelEndpointInFlightRequests(
+    const TString& unixSocketPath)
+{
+    return Impl->CancelEndpointInFlightRequests(unixSocketPath);
 }
 
 }   // namespace NCloud::NStorage::NServer

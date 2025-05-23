@@ -17,6 +17,8 @@ struct IClientStorage
         NCloud::NProto::ERequestSource source) = 0;
 
     virtual void RemoveClient(const TSocketHolder& clientSocket) = 0;
+
+    virtual void CancelInFlightRequests() = 0;
 };
 
 using IClientStoragePtr = std::shared_ptr<IClientStorage>;

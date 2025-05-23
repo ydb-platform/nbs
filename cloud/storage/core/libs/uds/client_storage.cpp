@@ -21,6 +21,9 @@ struct TClientStorageStub final
     {
         Y_UNUSED(socket);
     }
+
+    void CancelInFlightRequests() override
+    {}
 };
 
 }   // namespace

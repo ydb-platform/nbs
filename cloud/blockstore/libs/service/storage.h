@@ -88,6 +88,8 @@ public:
         std::shared_ptr<NProto::TZeroBlocksRequest> request,
         ui32 requestBlockSize) const;
 
+    void CancelInFlightRequests() const;
+
     NThreading::TFuture<NProto::TError> EraseDevice(
         NProto::EDeviceEraseMethod method) const;
 

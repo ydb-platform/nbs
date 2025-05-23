@@ -36,6 +36,9 @@ public:
         IClientStoragePtr clientStorage);
 
     NProto::TError StopListenEndpoint(const TString& unixSocketPath);
+
+    NProto::TError CancelEndpointInFlightRequests(
+        const TString& unixSocketPath);
 };
 
 }   // namespace NCloud::NStorage::NServer
