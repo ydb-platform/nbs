@@ -14,6 +14,8 @@
 
 #include <util/generic/guid.h>
 
+#include <filesystem>
+
 namespace NCloud::NFileStore::NProfileTool {
 
 constexpr TStringBuf OutProfileLogLabel = "out-profile-log";
@@ -28,6 +30,7 @@ private:
     TString PathToOutProfileLog;
     TMaskSensitiveData::EMode Mode{};
     TString Seed;
+    ui16 MaxExtentionLength = 0;
 
 public:
     TMaskCommand()
@@ -45,6 +48,8 @@ public:
             .DefaultValue("nodeid");
 
         Opts.AddLongOption("seed", "Seed for hash mode").StoreResult(&Seed);
+        Opts.AddLongOption("keepext", "Keep file extention, max length")
+            .StoreResult(&MaxExtentionLength);
     }
 
     bool Init(NLastGetopt::TOptsParseResultException& parseResult) override
@@ -70,7 +75,7 @@ public:
 
     int Execute() override
     {
-        TMaskSensitiveData mask{Mode, Seed};
+        TMaskSensitiveData mask{Mode, Seed, MaxExtentionLength};
         mask.MaskSensitiveData(PathToProfileLog, PathToOutProfileLog);
         return 0;
     }
@@ -78,9 +83,13 @@ public:
 
 }   // namespace
 
-TMaskSensitiveData::TMaskSensitiveData(const EMode mode, const TString& seed)
+TMaskSensitiveData::TMaskSensitiveData(
+    const EMode mode,
+    const TString& seed,
+    ui16 maxExtentionLength)
     : Mode{mode}
     , Seed{seed ? seed : CreateGuidAsString()}
+    , MaxExtentionLength{maxExtentionLength}
 {}
 
 bool TMaskSensitiveData::Advance()
@@ -100,16 +109,26 @@ bool TMaskSensitiveData::Advance()
 }
 
 TString TMaskSensitiveData::Transform(const TString& str, const ui64 nodeId)
+
 {
+    TString extension;
+    if (MaxExtentionLength > 0) {
+        std::filesystem::path filePath = std::string(str); //.c_str();
+        extension = filePath.extension().string();
+        if (!filePath.stem().empty() && extension.size() > MaxExtentionLength + 1) { // 1 for dot
+            extension = "";
+        }
+    }
+
     switch (Mode) {
         case EMode::Empty: {
-            return "";
+            return extension;
         }
         case EMode::NodeId: {
-            return "nodeid-" + ToString(nodeId);
+            return "nodeid-" + ToString(nodeId) + extension;
         }
         case EMode::Hash: {
-            return MD5::Data(Seed + str);
+            return MD5::Data(Seed + str) + extension;
         }
     }
 }
