@@ -7560,7 +7560,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             TBlockRange32::WithLength(0, blockCount),
             sgListOrError.ExtractResult());
 
-        request->Record.ShouldReportBlobIdsOnFailure = true;
+        request->Record.ShouldReportFailedRangesOnFailure = true;
 
         partition.SendToPipe(std::move(request));
 
