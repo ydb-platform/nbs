@@ -110,6 +110,7 @@ private:
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
     const NBlockCodecs::ICodec* BlobCodec;
+    const ui64 VolumeTabletId;
 
     std::unique_ptr<TPartitionState> State;
 
@@ -144,8 +145,6 @@ private:
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
 
     bool FirstGarbageCollectionCompleted = false;
-
-    const ui64 VolumeTabletId;
 
 public:
     TPartitionActor(

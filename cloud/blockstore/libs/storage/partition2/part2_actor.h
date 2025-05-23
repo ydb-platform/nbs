@@ -101,6 +101,7 @@ private:
     const ui32 SiblingCount;
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
+    const ui64 VolumeTabletId;
 
     std::unique_ptr<TPartitionState> State;
 
@@ -135,8 +136,6 @@ private:
 
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
-
-    const ui64 VolumeTabletId;
 
 public:
     TPartitionActor(
