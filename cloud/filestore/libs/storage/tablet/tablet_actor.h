@@ -147,8 +147,16 @@ private:
         std::atomic<i64> CMDeletionMarkersCount{0};
         std::atomic<i64> CMGarbageBlocksCount{0};
 
-        // Write throttling
+        // Backpressure Write throttling
         std::atomic<i64> IsWriteAllowed{0};
+        std::atomic<i64> FlushBackpressureValue{0};
+        std::atomic<i64> FlushBackpressureThreshold{0};
+        std::atomic<i64> FlushBytesBackpressureValue{0};
+        std::atomic<i64> FlushBytesBackpressureThreshold{0};
+        std::atomic<i64> CompactionBackpressureValue{0};
+        std::atomic<i64> CompactionBackpressureThreshold{0};
+        std::atomic<i64> CleanupBackpressureValue{0};
+        std::atomic<i64> CleanupBackpressureThreshold{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
@@ -493,6 +501,10 @@ private:
 
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
+    void AddBlobIndexOpIfNeeded(
+        const NActors::TActorContext& ctx,
+        const TCompactionInfo& compactionInfo,
+        const TCleanupInfo& cleanupInfo);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
@@ -681,8 +693,12 @@ private:
     TCleanupInfo GetCleanupInfo() const;
     bool ShouldThrottleCleanup(
         const NActors::TActorContext& ctx,
-        const TCleanupInfo& cleanupInfo) const;
-    bool IsCloseToBackpressureThresholds(TString* message) const;
+        const TCleanupInfo& cleanupInfo,
+        const TBackgroundOpsBackpressureStatus& bpStatus) const;
+    EBackgroundOpBackpressureStatus GetBackgroundOpBackpressureStatus(
+        ui64 threshold,
+        ui64 value) const;
+    TBackgroundOpsBackpressureStatus GetBackgroundOpsBackpressureStatus() const;
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
