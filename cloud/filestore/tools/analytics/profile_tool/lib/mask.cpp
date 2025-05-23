@@ -108,7 +108,6 @@ bool TMaskSensitiveData::Advance()
 }
 
 TString TMaskSensitiveData::Transform(const TString& str, const ui64 nodeId)
-
 {
     TString extension;
     if (MaxExtentionLength > 0) {
