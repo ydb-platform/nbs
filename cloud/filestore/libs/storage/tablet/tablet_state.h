@@ -174,10 +174,10 @@ struct TBackgroundOpsBackpressureStatus
     const EBackgroundOpBackpressureStatus Cleanup;
 
     TBackgroundOpsBackpressureStatus(
-        EBackgroundOpBackpressureStatus flush,
-        EBackgroundOpBackpressureStatus flushBytes,
-        EBackgroundOpBackpressureStatus compaction,
-        EBackgroundOpBackpressureStatus cleanup)
+            EBackgroundOpBackpressureStatus flush,
+            EBackgroundOpBackpressureStatus flushBytes,
+            EBackgroundOpBackpressureStatus compaction,
+            EBackgroundOpBackpressureStatus cleanup)
         : Flush(flush)
         , FlushBytes(flushBytes)
         , Compaction(compaction)
