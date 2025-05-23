@@ -102,6 +102,35 @@ private:
     }
 
     void Merge(
+        NProto::TReadBlocksLocalResponse& src,
+        ui32 requestNo,
+        NProto::TReadBlocksLocalResponse& dst)
+    {
+        auto& buffers = *dst.MutableBlocks()->MutableBuffers();
+        buffers.Reserve(OriginalRange.Size());
+        while (static_cast<ui32>(buffers.size()) < OriginalRange.Size()) {
+            buffers.Add();
+        }
+
+        auto& srcBuffers = *src.MutableBlocks()->MutableBuffers();
+        for (ui32 i = 0; i < static_cast<ui32>(srcBuffers.size()); ++i) {
+            const auto index = RelativeToGlobalIndex(
+                BlocksPerStripe,
+                PartitionRequests[requestNo].BlockRange.Start + i,
+                PartitionsCount,
+                PartitionRequests[requestNo].PartitionId);
+
+            buffers[index - OriginalRange.Start] = std::move(srcBuffers[i]);
+        }
+        if (!src.FailInfo.FailedRanges.empty()) {
+            dst.FailInfo.FailedRanges.insert(
+                dst.FailInfo.FailedRanges.end(),
+                src.FailInfo.FailedRanges.begin(),
+                src.FailInfo.FailedRanges.end());
+        }
+    }
+
+    void Merge(
         NProto::TReadBlocksResponse& src,
         ui32 requestNo,
         NProto::TReadBlocksResponse& dst)
@@ -122,36 +151,6 @@ private:
             );
 
             buffers[index - OriginalRange.Start] = std::move(srcBuffers[i]);
-        }
-    }
-
-    void Merge(
-        NProto::TReadBlocksLocalResponse& src,
-        ui32 requestNo,
-        NProto::TReadBlocksLocalResponse& dst)
-    {
-        auto& buffers = *dst.MutableBlocks()->MutableBuffers();
-        buffers.Reserve(OriginalRange.Size());
-        while (static_cast<ui32>(buffers.size()) < OriginalRange.Size()) {
-            buffers.Add();
-        }
-
-        auto& srcBuffers = *src.MutableBlocks()->MutableBuffers();
-        for (ui32 i = 0; i < static_cast<ui32>(srcBuffers.size()); ++i) {
-            const auto index = RelativeToGlobalIndex(
-                BlocksPerStripe,
-                PartitionRequests[requestNo].BlockRange.Start + i,
-                PartitionsCount,
-                PartitionRequests[requestNo].PartitionId
-            );
-
-            buffers[index - OriginalRange.Start] = std::move(srcBuffers[i]);
-        }
-        if (!src.FailInfo.FailedRanges.empty()){
-            dst.FailInfo.FailedRanges.insert(
-                dst.FailInfo.FailedRanges.end(),
-                src.FailInfo.FailedRanges.begin(),
-                src.FailInfo.FailedRanges.end());
         }
     }
 
