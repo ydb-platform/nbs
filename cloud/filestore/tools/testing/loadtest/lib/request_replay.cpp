@@ -30,7 +30,8 @@ IReplayRequestGenerator::IReplayRequestGenerator(
     options.FileName = Spec.GetFileName();
     options.ForceStrongOrdering = true;
 
-    if (const auto sleep = Spec.GetMaxSleepMcs()) {
+    if (const auto sleep = Spec.GetMaxSleepUs
+        ()) {
         MaxSleepUs = sleep;
     }
 
@@ -167,7 +168,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 TimestampMicroSeconds = request.GetTimestampMcs();
                 if (timediff > MaxSleepUs) {
                     STORAGE_DEBUG(
-                        "Ignore too long timediff=%lu MaxSleepMcs=%lu ",
+                        "Ignore too long timediff=%lu MaxSleepUs=%lu ",
                         timediff,
                         MaxSleepUs);
 

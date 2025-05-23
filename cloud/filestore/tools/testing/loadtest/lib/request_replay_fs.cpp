@@ -941,8 +941,7 @@ private:
                 logRequest.GetNodeInfo().GetParentNodeId();
         }
 
-        // TODO(proller): can create and truncate to known size missing file by
-        // flag
+        // TODO(proller): Create missing file and truncate to known size
 
         TFsPath fullname;
         if (logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId) {
