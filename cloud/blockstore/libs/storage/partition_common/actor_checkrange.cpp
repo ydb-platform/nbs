@@ -1,12 +1,14 @@
 #include "actor_checkrange.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/generic/string.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -52,6 +54,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
     request->Record.Sglist = SgList;
+    request->Record.ShouldReportFailedRangesOnFailure = true;
 
     auto* headers = request->Record.MutableHeaders();
 
@@ -63,8 +66,7 @@ void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
+    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -121,7 +123,21 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             ctx,
             TBlockStoreComponents::PARTITION,
             "reading error has occurred: " << FormatError(error));
-        response->Record.MutableStatus()->CopyFrom(error);
+
+        auto* status = response->Record.MutableStatus();
+        status->CopyFrom(error);
+
+        if (!msg->Record.FailInfo.FailedRanges.empty()) {
+            TStringBuilder builder;
+            builder << ", Broken blobs:\n ["
+                    << JoinRange(
+                           ", ",
+                           msg->Record.FailInfo.FailedRanges.begin(),
+                           msg->Record.FailInfo.FailedRanges.end())
+                    << "]";
+
+            status->MutableMessage()->append(builder);
+        }
     } else {
         if (Request.GetCalculateChecksums()) {
             TBlockChecksum blockChecksum;

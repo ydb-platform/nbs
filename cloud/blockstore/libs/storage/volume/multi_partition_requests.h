@@ -102,6 +102,22 @@ private:
     }
 
     void Merge(
+        NProto::TReadBlocksLocalResponse& src,
+        ui32 requestNo,
+        NProto::TReadBlocksLocalResponse& dst)
+    {
+        Merge(
+            static_cast<NProto::TReadBlocksResponse&>(src),
+            requestNo,
+            static_cast<NProto::TReadBlocksResponse&>(dst));
+
+        dst.FailInfo.FailedRanges.insert(
+            dst.FailInfo.FailedRanges.end(),
+            src.FailInfo.FailedRanges.begin(),
+            src.FailInfo.FailedRanges.end());
+    }
+
+    void Merge(
         NProto::TReadBlocksResponse& src,
         ui32 requestNo,
         NProto::TReadBlocksResponse& dst)
@@ -269,12 +285,19 @@ private:
         NProto::TCheckRangeResponse& dst)
     {
         Y_UNUSED(requestNo);
-        if (src.GetError().GetCode() > dst.GetError().GetCode()) {
-            dst.MutableError()->CopyFrom(src.GetError());
-        }
+        auto getExtendedInfo = [](const auto& response) -> TString
+        {
+            return TString(TStringBuf{response.GetStatus().GetMessage()}.SplitOff('\n'));
+        };
+
+        MergeCommonFields(src, dst);
 
         if (src.GetStatus().GetCode() > dst.GetStatus().GetCode()) {
+            auto extendedInfo = getExtendedInfo(dst);
             dst.MutableStatus()->CopyFrom(src.GetStatus());
+            dst.MutableStatus()->MutableMessage()->append(extendedInfo);
+        } else {
+            dst.MutableStatus()->MutableMessage()->append(getExtendedInfo(src));
         }
     }
 
