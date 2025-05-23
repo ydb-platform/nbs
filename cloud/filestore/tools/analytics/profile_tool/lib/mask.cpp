@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "command.h"
-#include "util/folder/path.h"
 
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
@@ -13,6 +12,7 @@
 #include <library/cpp/digest/md5/md5.h>
 #include <library/cpp/getopt/last_getopt.h>
 
+#include <util/folder/path.h>
 #include <util/generic/guid.h>
 
 namespace NCloud::NFileStore::NProfileTool {
