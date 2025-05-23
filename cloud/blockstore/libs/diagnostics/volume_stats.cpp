@@ -887,12 +887,16 @@ private:
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
 
+        auto reportZeroBlocksMetrics =
+            DiagnosticsConfig->GetReportZeroBlocksMetricsForYDBBasedDisks() ||
+            IsDiskRegistryMediaKind(volumeConfig.GetStorageMediaKind());
         NUserCounter::RegisterServerVolumeInstance(
             *UserCounters,
             volumeConfig.GetCloudId(),
             volumeConfig.GetFolderId(),
             volumeConfig.GetDiskId(),
             realInstanceId.GetInstanceId(),
+            reportZeroBlocksMetrics,
             countersGroup);
 
         return info;

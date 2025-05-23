@@ -223,4 +223,7 @@ message TDiagnosticsConfig
 
     // Type of fetching CPU stats
     optional NCloud.NProto.EStatsFetcherType StatsFetcherType = 52;
+
+    // Report ZeroBlocks metrics as part of WriteBlocks metrics
+    optional bool ReportZeroBlocksMetricsForYDBBasedDisks = 53;
 }
