@@ -55,6 +55,7 @@ struct TTestStats
 
     TString Name;
     bool Success = true;
+    bool Stopping = false;
     TMap<NProto::EAction, TStats> ActionStats;
 };
 
@@ -571,7 +572,7 @@ private:
 
     bool ShouldStop() const
     {
-        return !TestStats.Success || LimitsReached();
+        return TestStats.Stopping || !TestStats.Success || LimitsReached();
     }
 
     bool LimitsReached() const
@@ -591,7 +592,7 @@ private:
         auto self = weak_from_this();
         const auto future = RequestGenerator->ExecuteNextRequest();
         if (!future.Initialized()) {
-            TestStats.Success = false;
+            TestStats.Stopping = true;
             return false;
         }
         ++CurrentIoDepth;

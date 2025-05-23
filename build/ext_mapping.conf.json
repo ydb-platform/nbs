@@ -20,7 +20,10 @@
         "6318551696": "https://storage.eu-north1.nebius.cloud/nbs-oss-resources/vhd-ubuntu1604-ci-stable",
         "9413258143": "https://storage.eu-north1.nebius.cloud/nbs-oss-resources/csi-sanity",
         "976686287": "https://storage.eu-north1.nebius.cloud/nbs-oss-resources/libbreakpad_init_nbs.so",
-        "976687783": "https://storage.eu-north1.nebius.cloud/nbs-oss-resources/minidump-2-core"
+        "976687783": "https://storage.eu-north1.nebius.cloud/nbs-oss-resources/minidump-2-core",
+        "1000000000": "https://storage.eu-north1.nebius.cloud/nbs-oss-resources/test/replay/fstest.log",
+        "1000000001": "https://storage.eu-north1.nebius.cloud/nbs-oss-resources/test/replay/jpeg.log",
+        "1000000002": "https://storage.eu-north1.nebius.cloud/nbs-oss-resources/test/replay/sqlite.log"
     },
     "resources_descriptions": {
         "4081472014": "cloud/blockstore/tests/loadtest/selftest",
@@ -41,7 +44,10 @@
         "2831814743": "cloud/disk_manager/internal/pkg/dataplane/url/tests|cloud/disk_manager/internal/pkg/dataplane/url/vmdk/tests",
         "9413258143": "csi-sanity tests binary: https://github.com/kubernetes-csi/csi-test",
         "976686287": "breakpad init library",
-        "976687783": "minidump-2-core binary"
+        "976687783": "minidump-2-core binary",
+        "1000000000": "test data: filesystem profile log obtained by running https://github.com/zfsonlinux/fstest",
+        "1000000001": "test data: filesystem profile log obtained by building and running tests https://github.com/libjpeg-turbo/libjpeg-turbo.git",
+        "1000000002": "test data: filesystem profile log obtained by building and running tests https://github.com/sqlite/sqlite.git"
     },
     "tasks": {}
 }
