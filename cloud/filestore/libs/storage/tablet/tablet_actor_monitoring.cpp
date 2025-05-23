@@ -780,10 +780,11 @@ void DumpChannels(
         out,
         channelInfos,
         storage,
-        [&] (ui32 groupId, const TString& storagePool) {
+        [&] (ui32 groupId, const TString& storagePool, const TString& dataKind) {
             // TODO: group mon url
             Y_UNUSED(groupId);
             Y_UNUSED(storagePool);
+            Y_UNUSED(dataKind);
             return TString();
         },
         [&] (ui32 groupId) {

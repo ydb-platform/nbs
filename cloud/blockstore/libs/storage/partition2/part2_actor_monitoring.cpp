@@ -105,11 +105,21 @@ void DumpChannels(
                                     << "'>Status</a>";
                             }
                             TABLED() {
+                                TString dataKind;
+                                if (channel.Channel <
+                                    static_cast<ui32>(cps.size()))
+                                {
+                                    dataKind = TStringBuilder()
+                                               << static_cast<EChannelDataKind>(
+                                                      cps[channel.Channel]
+                                                          .GetDataKind());
+                                }
                                 out << "<a href='"
                                     << GetMonitoringYDBGroupUrl(
                                            config,
                                            latestEntry->GroupID,
-                                           channel.StoragePool)
+                                           channel.StoragePool,
+                                           dataKind)
                                     << "'>Graphs</a>";
                                 auto monitoringDashboardUrl =
                                     GetMonitoringDashboardYDBGroupUrl(

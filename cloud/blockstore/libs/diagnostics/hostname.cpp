@@ -115,26 +115,95 @@ TString GetMonitoringNBSOverviewToTVUrl(const TDiagnosticsConfig& config)
            << data.MonitoringClusterName << "&p.host=" << GetShortHostName();
 }
 
+TString
+GetQueries(ui32 groupId, const TString& storagePool, const TString& dataKind)
+{
+    constexpr TStringBuf QueryPattern =
+        R"(q.%u.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="%s"})&q.%u.name=%s)";
+
+    constexpr std::array<TStringBuf, 2> DefaultHandleclasses(
+        {"GetFast", "PutUserData"});
+    constexpr std::array<TStringBuf, 3> LogHandleclasses(
+        {"GetFast", "PutUserData", "PutTabletLog"});
+    constexpr std::array<TStringBuf, 4> MergedAndMixedHandleclasses(
+        {"GetFast", "PutUserData", "GetAsync", "PutAsyncBlob"});
+
+    constexpr std::array<TStringBuf, 4> QueryNames({"A", "B", "C", "D"});
+
+    TStringBuilder queries;
+
+    if (dataKind == "Log") {
+        for (ui32 queryIdx = 0; queryIdx < LogHandleclasses.size(); ++queryIdx)
+        {
+            queries << Sprintf(
+                           QueryPattern.data(),
+                           queryIdx,
+                           storagePool.c_str(),
+                           groupId,
+                           LogHandleclasses.at(queryIdx).Data(),
+                           queryIdx,
+                           QueryNames.at(queryIdx).Data())
+                           .c_str()
+                    << "&";
+        }
+
+        return queries.c_str();
+    }
+
+    if (dataKind == "Merged" || dataKind == "Mixed") {
+        for (ui32 queryIdx = 0; queryIdx < MergedAndMixedHandleclasses.size();
+             ++queryIdx)
+        {
+            queries << Sprintf(
+                           QueryPattern.data(),
+                           queryIdx,
+                           storagePool.c_str(),
+                           groupId,
+                           MergedAndMixedHandleclasses.at(queryIdx).Data(),
+                           queryIdx,
+                           QueryNames.at(queryIdx).Data())
+                           .c_str()
+                    << "&";
+        }
+
+        return queries.c_str();
+    }
+
+    for (ui32 queryIdx = 0; queryIdx < DefaultHandleclasses.size(); ++queryIdx)
+    {
+        queries << Sprintf(
+                       QueryPattern.data(),
+                       queryIdx,
+                       storagePool.c_str(),
+                       groupId,
+                       DefaultHandleclasses.at(queryIdx).Data(),
+                       queryIdx,
+                       QueryNames.at(queryIdx).Data())
+                       .c_str()
+                << "&";
+    }
+
+    return queries.c_str();
+}
+
 TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
-    const TString& storagePool)
+    const TString& storagePool,
+    const TString& dataKind)
 {
-    constexpr TStringBuf GetFast =
-        R"(q.0.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
-        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="GetFast"})&q.0.name=A)";
-    constexpr TStringBuf PutUserData =
-        R"(q.1.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
-        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutUserData"})&q.1.name=B)";
     constexpr TStringBuf Url =
         "%s/projects/%s/explorer/"
-        "queries?%s&%s&from=now-1d&to=now&refresh=60000";
+        "queries?%sfrom=now-1d&to=now&refresh=60000";
+
+    auto queries = GetQueries(groupId, storagePool, dataKind);
+
     return Sprintf(
         Url.data(),
         config.GetMonitoringUrlData().MonitoringUrl.c_str(),
         config.GetMonitoringUrlData().MonitoringYDBProject.c_str(),
-        Sprintf(GetFast.data(), storagePool.c_str(), groupId).c_str(),
-        Sprintf(PutUserData.data(), storagePool.c_str(), groupId).c_str());
+        queries.c_str());
 }
 
 TString GetMonitoringDashboardYDBGroupUrl(
