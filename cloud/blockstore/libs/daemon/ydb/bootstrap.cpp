@@ -394,6 +394,9 @@ void TBootstrapYdb::InitKikimrService()
             Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
         .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
         .RegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
+        .LoadConfigsFromCmsRetryMinDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
+        .LoadConfigsFromCmsRetryMaxDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
+        .LoadConfigsFromCmsTotalTimeout = Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
         .PathToGrpcCaFile = Configs->StorageConfig->GetNodeRegistrationRootCertsFile(),
         .PathToGrpcCertFile = cert.CertFile,
         .PathToGrpcPrivateKeyFile = cert.CertPrivateKeyFile,
@@ -440,9 +443,13 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("Configs initialized");
 
+    auto registrant =
+        CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);
+
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,
         registerOpts,
+        std::move(registrant),
         Log);
 
     if (cmsConfig) {

@@ -17,6 +17,10 @@ struct TNodeRegistrationSettings
     TDuration ErrorTimeout;
     TDuration RegistrationTimeout;
 
+    TDuration LoadConfigsFromCmsRetryMinDelay;
+    TDuration LoadConfigsFromCmsRetryMaxDelay;
+    TDuration LoadConfigsFromCmsTotalTimeout;
+
     TString PathToGrpcCaFile;
     TString PathToGrpcCertFile;
     TString PathToGrpcPrivateKeyFile;

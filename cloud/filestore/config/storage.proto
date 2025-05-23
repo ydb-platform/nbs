@@ -601,4 +601,9 @@ message TStorageConfig
 
     // Enable triggering FlushBytes by reaching FlushBytesItemCountThreshold
     optional bool FlushBytesByItemCountEnabled = 430;
+
+    // Retry policy when unable to get configs from CMS, in ms
+    optional uint32 LoadConfigsFromCmsRetryMinDelay = 431;
+    optional uint32 LoadConfigsFromCmsRetryMaxDelay = 432;
+    optional uint32 LoadConfigsFromCmsTotalTimeout = 433;
 }

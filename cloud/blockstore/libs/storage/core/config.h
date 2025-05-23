@@ -683,6 +683,10 @@ public:
 
     [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
     GetLinkedDiskFillBandwidth() const;
+
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMinDelay() const;
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMaxDelay() const;
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsTotalTimeout() const;
 };
 
 ui64 GetAllocationUnit(

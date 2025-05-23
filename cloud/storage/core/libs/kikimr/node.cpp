@@ -1,7 +1,9 @@
 #include "node.h"
 #include "node_registration_helpers.h"
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer.h>
 
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/core/base/location.h>
@@ -104,7 +106,7 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TMaybe<NKikimrConfig::TAppConfig> GetConfigsFromCms(
+TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     ui32 nodeId,
     const TString& hostName,
     const TString& nodeBrokerAddress,
@@ -112,8 +114,6 @@ TMaybe<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     NClient::TKikimr& kikimr,
     NKikimrConfig::TStaticNameserviceConfig& nsConfig)
 {
-    TMaybe<NKikimrConfig::TAppConfig> cmsConfig;
-
     auto configurator = kikimr.GetNodeConfigurator();
     auto configResult = configurator.SyncGetNodeConfig(
         nodeId,
@@ -123,16 +123,17 @@ TMaybe<NKikimrConfig::TAppConfig> GetConfigsFromCms(
         options.Domain);
 
     if (!configResult.IsSuccess()) {
-        ythrow TServiceError(E_FAIL)
-            << "Unable to get config from " << nodeBrokerAddress.Quote()
-            << ": " << configResult.GetErrorMessage();
+        return MakeError(
+            E_FAIL,
+            "Unable to get config from " + nodeBrokerAddress.Quote() + ": " +
+                configResult.GetErrorMessage());
     }
 
-    cmsConfig = configResult.GetConfig();
+    auto cmsConfig = configResult.GetConfig();
 
-    if (cmsConfig->HasNameserviceConfig()) {
-        cmsConfig->MutableNameserviceConfig()
-            ->SetSuppressVersionCheck(nsConfig.GetSuppressVersionCheck());
+    if (cmsConfig.HasNameserviceConfig()) {
+        cmsConfig.MutableNameserviceConfig()->SetSuppressVersionCheck(
+            nsConfig.GetSuppressVersionCheck());
     }
 
     return cmsConfig;
@@ -182,16 +183,6 @@ NDiscovery::TNodeRegistrationResult TryToRegisterDynamicNodeViaDiscoveryService(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct INodeRegistrant
-{
-    virtual ~INodeRegistrant() = default;
-
-    virtual TResultOrError<TRegisterDynamicNodeResult> TryRegisterAndConfigure(
-        const TString& nodeBrokerAddress) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TLegacyNodeRegistrant
     : public INodeRegistrant
 {
@@ -222,7 +213,7 @@ struct TLegacyNodeRegistrant
         Location = TNodeLocation(proto);
     }
 
-    TResultOrError<TRegisterDynamicNodeResult> TryRegisterAndConfigure(
+    TResultOrError<TRegistrationResult> TryRegister(
         const TString& nodeBrokerAddress) override
     {
         NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
@@ -259,22 +250,34 @@ struct TLegacyNodeRegistrant
             }
         }
 
+        return TRegistrationResult{result.GetNodeId(), result.GetScopeId()};
+    }
+
+    TResultOrError<TMaybe<NKikimrConfig::TAppConfig>> TryConfigure(
+        const TString& nodeBrokerAddress,
+        ui32 nodeId) override
+    {
+        NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
+
         TMaybe<NKikimrConfig::TAppConfig> cmsConfig;
 
-        if (Options.LoadCmsConfigs) {
-            cmsConfig = GetConfigsFromCms(
-                result.GetNodeId(),
-                HostName,
-                nodeBrokerAddress,
-                Options,
-                kikimr,
-                NsConfig);
+        if (!Options.LoadCmsConfigs) {
+            return TMaybe<NKikimrConfig::TAppConfig>{};
         }
 
-        return TRegisterDynamicNodeResult {
-            result.GetNodeId(),
-            result.GetScopeId() ,
-            std::move(cmsConfig)};
+        auto result = GetConfigsFromCms(
+            nodeId,
+            HostName,
+            nodeBrokerAddress,
+            Options,
+            kikimr,
+            NsConfig);
+
+        if (result.HasError()) {
+            return result.GetError();
+        }
+
+        return TMaybe<NKikimrConfig::TAppConfig>{result.ExtractResult()};
     }
 };
 
@@ -318,7 +321,7 @@ struct TDiscoveryNodeRegistrant
         Settings.Path(Options.SchemeShardDir);
     }
 
-    TResultOrError<TRegisterDynamicNodeResult> TryRegisterAndConfigure(
+    TResultOrError<TRegistrationResult> TryRegister(
         const TString& nodeBrokerAddress) override
     {
         auto result = TryToRegisterDynamicNodeViaDiscoveryService(
@@ -346,27 +349,38 @@ struct TDiscoveryNodeRegistrant
             }
         }
 
-        TMaybe<NKikimrConfig::TAppConfig> cmsConfig;
-
-        if (Options.LoadCmsConfigs) {
-            NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
-
-            cmsConfig = GetConfigsFromCms(
-                result.GetNodeId(),
-                HostName,
-                nodeBrokerAddress,
-                Options,
-                kikimr,
-                NsConfig);
-        }
-
-        return TRegisterDynamicNodeResult {
+        return TRegistrationResult{
             result.GetNodeId(),
             NActors::TScopeId{
                 result.GetScopeTabletId(),
-                result.GetScopePathId()
-            },
-            std::move(cmsConfig)};
+                result.GetScopePathId()}};
+    }
+
+    TResultOrError<TMaybe<NKikimrConfig::TAppConfig>> TryConfigure(
+        const TString& nodeBrokerAddress,
+        ui32 nodeId) override
+    {
+        NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
+
+        TMaybe<NKikimrConfig::TAppConfig> cmsConfig;
+
+        if (!Options.LoadCmsConfigs) {
+            return TMaybe<NKikimrConfig::TAppConfig>{};
+        }
+
+        auto result = GetConfigsFromCms(
+            nodeId,
+            HostName,
+            nodeBrokerAddress,
+            Options,
+            kikimr,
+            NsConfig);
+
+        if (result.HasError()) {
+            return result.GetError();
+        }
+
+        return TMaybe<NKikimrConfig::TAppConfig>{result.ExtractResult()};
     }
 };
 
@@ -374,13 +388,50 @@ struct TDiscoveryNodeRegistrant
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRegisterDynamicNodeResult RegisterDynamicNode(
+TNodeRegistrantPtr CreateNodeRegistrant(
     NKikimrConfig::TAppConfigPtr appConfig,
     const TRegisterDynamicNodeOptions& options,
     TLog& Log)
 {
     auto& nsConfig = *appConfig->MutableNameserviceConfig();
     auto& dnConfig = *appConfig->MutableDynamicNodeConfig();
+
+    const auto& hostName = FQDNHostName();
+    const auto& hostAddress = GetNetworkAddress(hostName);
+
+    if (options.UseNodeBrokerSsl) {
+        STORAGE_WARN("Trying to register with discovery service: ");
+        return std::make_unique<TDiscoveryNodeRegistrant>(
+            hostName,
+            hostAddress,
+            options,
+            nsConfig,
+            dnConfig);
+    }
+    const TNodeLocation location(
+        options.DataCenter,
+        {},
+        options.Rack,
+        ToString(options.Body));
+    STORAGE_WARN(
+        "Trying to register with legacy service: " << location.ToString());
+    return std::make_unique<TLegacyNodeRegistrant>(
+        hostName,
+        hostAddress,
+        options,
+        nsConfig,
+        dnConfig);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TRegisterDynamicNodeResult RegisterDynamicNode(
+    NKikimrConfig::TAppConfigPtr appConfig,
+    const TRegisterDynamicNodeOptions& options,
+    TNodeRegistrantPtr registrant,
+    TLog& Log)
+{
+    auto& nsConfig = *appConfig->MutableNameserviceConfig();
 
     const auto& hostName = FQDNHostName();
     const auto& hostAddress = GetNetworkAddress(hostName);
@@ -406,31 +457,15 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
             << "neither NodeBrokerAddress nor NodeBrokerPort specified";
     }
 
-    std::unique_ptr<INodeRegistrant> registrant;
-    if (options.UseNodeBrokerSsl) {
-        STORAGE_WARN("Trying to register with discovery service: ");
-        registrant = std::make_unique<TDiscoveryNodeRegistrant>(
-            hostName,
-            hostAddress,
-            options,
-            nsConfig,
-            dnConfig);
-    } else {
-        const TNodeLocation location(options.DataCenter, {}, options.Rack, ToString(options.Body));
-        STORAGE_WARN("Trying to register with legacy service: " << location.ToString());
-        registrant = std::make_unique<TLegacyNodeRegistrant>(
-            hostName,
-            hostAddress,
-            options,
-            nsConfig,
-            dnConfig);
-    }
+    ui32 nodeId = 0;
+    NActors::TScopeId scopeId;
+    TString registeredNodeBrokerAddress;
 
     ui32 attempts = 0;
     for (;;) {
         const auto& nodeBrokerAddress = addrs[attempts++ % addrs.size()];
 
-        auto result = registrant->TryRegisterAndConfigure(nodeBrokerAddress);
+        auto result = registrant->TryRegister(nodeBrokerAddress);
 
         if (FAILED(result.GetError().GetCode())) {
             const auto& msg = result.GetError().GetMessage();
@@ -439,8 +474,10 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
                     << "Cannot register dynamic node: " << msg;
             }
 
-            STORAGE_WARN("Failed to register dynamic node at " << nodeBrokerAddress.Quote()
-                << ": " << msg);
+            STORAGE_WARN(
+                "Failed to register dynamic node at "
+                << nodeBrokerAddress.Quote() << ": " << msg
+                << ". Will retry after " << options.Settings.ErrorTimeout);
             Sleep(options.Settings.ErrorTimeout);
             continue;
         }
@@ -449,8 +486,42 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
             "Registered dynamic node at " << nodeBrokerAddress.Quote() <<
             " with address " << hostAddress.Quote() << " with node id " << std::get<0>(result.GetResult()));
 
-        return result.ExtractResult();
+        registeredNodeBrokerAddress = nodeBrokerAddress;
+        std::tie(nodeId, scopeId) = result.ExtractResult();
     }
+
+    TMaybe<NKikimrConfig::TAppConfig> configurationResult;
+
+    const auto timer = CreateWallClockTimer();
+    TBackoffDelayProvider retryDelayProvider(
+        options.Settings.LoadConfigsFromCmsRetryMinDelay,
+        options.Settings.LoadConfigsFromCmsRetryMaxDelay);
+    const auto deadline =
+        timer->Now() + options.Settings.LoadConfigsFromCmsTotalTimeout;
+    for (;;) {
+        auto result =
+            registrant->TryConfigure(registeredNodeBrokerAddress, nodeId);
+
+        if (FAILED(result.GetError().GetCode())) {
+            const auto& msg = result.GetError().GetMessage();
+            if (deadline > timer->Now()) {
+                ythrow TServiceError(E_FAIL)
+                    << "Cannot configure dynamic node: " << msg;
+            }
+
+            auto delay = retryDelayProvider.GetDelayAndIncrease();
+            STORAGE_WARN(
+                "Failed to configure dynamic node at "
+                << registeredNodeBrokerAddress.Quote() << ": " << msg
+                << ". Will retry after " << delay);
+            Sleep(retryDelayProvider.GetDelayAndIncrease());
+            continue;
+        }
+
+        configurationResult = result.ExtractResult();
+    }
+
+    return {nodeId, scopeId, std::move(configurationResult)};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
