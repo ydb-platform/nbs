@@ -1,15 +1,15 @@
-import json
 import logging
 import os
 import pytest
 import requests
 import time
 
-from cloud.blockstore.public.sdk.python.client import CreateClient, Session
+from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
+
+from cloud.blockstore.public.sdk.python.client import Session
 from cloud.blockstore.public.sdk.python.client.error import ClientError
 from cloud.blockstore.public.sdk.python.client.error_codes import EResult
-from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
-    TAction, STORAGE_MEDIA_SSD_NONREPLICATED
+from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED
 from cloud.blockstore.config.disk_pb2 import DISK_AGENT_BACKEND_NULL
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
@@ -56,7 +56,7 @@ def start_nbs_daemon(ydb):
 
     daemon = start_nbs(cfg)
 
-    client = CreateClient(f"localhost:{daemon.port}")
+    client = CreateTestClient(f"localhost:{daemon.port}")
     client.execute_action(
         action="DiskRegistrySetWritableState",
         input_bytes=str.encode('{"State": true}'))
@@ -147,35 +147,9 @@ def create_disk_agent_configurators(ydb, agent_ids, data_path):
     return configurators
 
 
-def _backup(client):
-    response = client.execute_action(
-        action="BackupDiskRegistryState",
-        input_bytes=str.encode('{"BackupLocalDB": true}'))
-
-    return json.loads(response)["Backup"]
-
-
-def _add_host(client, agent_id):
-    request = TCmsActionRequest()
-    action = request.Actions.add()
-    action.Type = TAction.ADD_HOST
-    action.Host = agent_id
-
-    return client.cms_action(request)
-
-
-# wait for devices to be cleared
-def _wait_devices(client):
-    while True:
-        bkp = _backup(client)
-        if bkp.get("DirtyDevices", 0) == 0:
-            break
-        time.sleep(1)
-
-
 def test_change_rack(nbs, agent_ids, disk_agent_configurators):
 
-    client = CreateClient(f"localhost:{nbs.port}")
+    client = CreateTestClient(f"localhost:{nbs.port}")
 
     # run agents
 
@@ -185,11 +159,11 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
 
     for agent_id, agent in zip(agent_ids, agents):
         agent.wait_for_registration()
-        r = _add_host(client, agent_id)
+        r = client.add_host(agent_id)
         assert len(r.ActionResults) == 1
         assert r.ActionResults[0].Result.Code == 0
 
-    bkp = _backup(client)
+    bkp = client.backup_disk_registry_state()
 
     assert len(bkp['Agents']) == len(agent_ids)
     for agent in bkp['Agents']:
@@ -199,7 +173,7 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
             assert d.get('State') is None  # online
             assert d['Rack'] == 'c:RACK'   # default rack
 
-    _wait_devices(client)
+    client.wait_for_devices_to_be_cleared()
 
     # create volumes
 
@@ -228,14 +202,15 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
     # restart agents
     for i, agent in enumerate(agents):
         agent.kill()
-        agent = start_disk_agent(disk_agent_configurators[i], name=f'{agent_ids[i]}.new')
+        agent = start_disk_agent(
+            disk_agent_configurators[i], name=f'{agent_ids[i]}.new')
         agent.wait_for_registration()
         agents[i] = agent
 
     # check that all disks and devices are online, and each disk_agent has its
     # own rack
 
-    bkp = _backup(client)
+    bkp = client.backup_disk_registry_state()
 
     bkp['Agents'].sort(key=lambda x: x['AgentId'])
     bkp['Disks'].sort(key=lambda x: x['DiskId'])
@@ -261,7 +236,7 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
 
 def test_null_backend(nbs, agent_ids, disk_agent_configurators):
 
-    client = CreateClient(f"localhost:{nbs.port}")
+    client = CreateTestClient(f"localhost:{nbs.port}")
 
     agent_id = agent_ids[0]
     configurator = disk_agent_configurators[0]
@@ -270,11 +245,11 @@ def test_null_backend(nbs, agent_ids, disk_agent_configurators):
     agent = start_disk_agent(configurator, name=agent_id)
 
     agent.wait_for_registration()
-    r = _add_host(client, agent_id)
+    r = client.add_host(agent_id)
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
-    _wait_devices(client)
+    client.wait_for_devices_to_be_cleared()
 
     client.create_volume(
         disk_id="vol1",
@@ -335,23 +310,24 @@ def test_disable_io_for_broken_devices(
 
     # setup a serial number for NVMENBS01
     m = configurator.files["disk-agent"].PathToSerialNumberMapping.add()
-    m.Path = os.path.join(_get_agent_data_path(agent_id, data_path), 'NVMENBS01')
+    m.Path = os.path.join(_get_agent_data_path(
+        agent_id, data_path), 'NVMENBS01')
     m.SerialNumber = 'SN'
 
     logger = logging.getLogger("client")
     logger.setLevel(logging.DEBUG)
 
-    client = CreateClient(f"localhost:{nbs.port}", log=logger)
+    client = CreateTestClient(f"localhost:{nbs.port}", log=logger)
 
     # run an agent
     agent = start_disk_agent(configurator, name=agent_id)
 
     agent.wait_for_registration()
-    r = _add_host(client, agent_id)
+    r = client.add_host(agent_id)
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
-    _wait_devices(client)
+    client.wait_for_devices_to_be_cleared()
 
     # create a volume
     client.create_volume(
@@ -361,7 +337,7 @@ def test_disable_io_for_broken_devices(
         storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
         cloud_id="test")
 
-    bkp = _backup(client)
+    bkp = client.backup_disk_registry_state()
     assert len(bkp['Disks']) == 1
     assert len(bkp['Disks'][0]['DeviceUUIDs']) == 1
     assert len(bkp['Agents']) == 1
@@ -402,6 +378,6 @@ def test_disable_io_for_broken_devices(
 
     session.unmount_volume()
 
-    bkp = _backup(client)
+    bkp = client.backup_disk_registry_state()
     for d in bkp['Agents'][0]['Devices']:
         assert d.get('SerialNumber') == 'XXX'

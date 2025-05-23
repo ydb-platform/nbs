@@ -1,4 +1,3 @@
-import json
 import os
 import pytest
 import time
@@ -6,8 +5,10 @@ import time
 import yatest.common as yatest_common
 import cloud.blockstore.tests.python.lib.daemon as daemon
 
+from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
+
 from cloud.blockstore.public.sdk.python.client.error_codes import EResult
-from cloud.blockstore.public.sdk.python.client import CreateClient, Session
+from cloud.blockstore.public.sdk.python.client import Session
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_MEDIA_SSD_MIRROR3
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
@@ -56,27 +57,18 @@ def start_nbs_daemon(ydb):
 
     nbs = daemon.start_nbs(cfg)
 
-    client = CreateClient(f"localhost:{nbs.port}")
+    client = CreateTestClient(f"localhost:{nbs.port}")
     client.execute_action(
         action="DiskRegistrySetWritableState",
         input_bytes=str.encode('{"State": true}'))
     client.update_disk_registry_config({
         "KnownDevicePools":
             [{"Kind": "DEVICE_POOL_KIND_DEFAULT", "AllocationUnit": DEVICE_SIZE}]
-        })
+    })
 
     yield nbs
 
     nbs.kill()
-
-
-def _add_host(client, agent_id):
-    request = TCmsActionRequest()
-    action = request.Actions.add()
-    action.Type = TAction.ADD_HOST
-    action.Host = agent_id
-
-    return client.cms_action(request)
 
 
 def _remove_host(client, agent_id):
@@ -91,10 +83,7 @@ def _remove_host(client, agent_id):
 def _wait_for_devices_to_be_cleared(client, expected_agent_count, expected_dirty_count=0):
 
     while True:
-        response = client.execute_action(
-            action="BackupDiskRegistryState",
-            input_bytes=str.encode('{"BackupLocalDB": true}'))
-        bkp = json.loads(response)["Backup"]
+        bkp = client.backup_disk_registry_state()
         agents = bkp.get("Agents", [])
         dirty_devices = bkp.get("DirtyDevices", [])
         dirty_count = len(dirty_devices)
@@ -118,7 +107,8 @@ def _create_disk_agent_configurator(ydb, i):
     data_path = os.path.join(data_path, "dev", "disk", "by-partlabel")
     ensure_path_exists(data_path)
 
-    file_size = DEVICE_HEADER + DEVICE_SIZE * DEVICE_COUNT + (DEVICE_COUNT - 1) * DEVICE_PADDING
+    file_size = DEVICE_HEADER + DEVICE_SIZE * \
+        DEVICE_COUNT + (DEVICE_COUNT - 1) * DEVICE_PADDING
 
     with open(os.path.join(data_path, 'NVMENBS01'), 'wb') as f:
         os.truncate(f.fileno(), file_size)
@@ -151,11 +141,11 @@ def test_m3_rdma_simple_io(ydb, nbs):
 
     disk_agents = [daemon.start_disk_agent(cfg) for cfg in disk_agent_configs]
 
-    client = CreateClient(f"localhost:{nbs.port}")
+    client = CreateTestClient(f"localhost:{nbs.port}")
 
     for i, disk_agent in enumerate(disk_agents):
         disk_agent.wait_for_registration()
-        _add_host(client, _get_agent_id(i))
+        client.add_host(_get_agent_id(i))
 
     _wait_for_devices_to_be_cleared(client, len(disk_agents))
 
@@ -189,11 +179,11 @@ def test_m3_rdma_restart_disk_agent_during_migration(ydb, nbs):
 
     disk_agents = [daemon.start_disk_agent(cfg) for cfg in disk_agent_configs]
 
-    client = CreateClient(f"localhost:{nbs.port}")
+    client = CreateTestClient(f"localhost:{nbs.port}")
 
     for i, disk_agent in enumerate(disk_agents):
         disk_agent.wait_for_registration()
-        _add_host(client, _get_agent_id(i))
+        client.add_host(_get_agent_id(i))
 
     _wait_for_devices_to_be_cleared(client, len(disk_agents))
 
