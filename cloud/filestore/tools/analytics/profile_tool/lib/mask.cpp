@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "command.h"
+#include "util/folder/path.h"
 
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
@@ -13,8 +14,6 @@
 #include <library/cpp/getopt/last_getopt.h>
 
 #include <util/generic/guid.h>
-
-#include <filesystem>
 
 namespace NCloud::NFileStore::NProfileTool {
 
@@ -113,9 +112,8 @@ TString TMaskSensitiveData::Transform(const TString& str, const ui64 nodeId)
 {
     TString extension;
     if (MaxExtentionLength > 0) {
-        std::filesystem::path filePath = std::string(str); //.c_str();
-        extension = filePath.extension().string();
-        if (!filePath.stem().empty() && extension.size() > MaxExtentionLength + 1) { // 1 for dot
+        extension = TFsPath(str).GetExtension();
+        if (extension.size() > MaxExtentionLength) {
             extension = "";
         }
     }
