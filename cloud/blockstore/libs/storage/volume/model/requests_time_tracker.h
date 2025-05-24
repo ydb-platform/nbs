@@ -34,7 +34,6 @@ public:
         TString Tooltip;
     };
 
-private:
     enum class ERequestStatus
     {
         Inflight,
@@ -42,6 +41,7 @@ private:
         Fail,
     };
 
+private:
     struct TTimeHistogram: public THistogram<TRequestUsTimeBuckets>
     {
         size_t BlockCount = 0;
@@ -78,13 +78,29 @@ private:
         ERequestType RequestType = ERequestType::Read;
     };
 
+    struct TFirstRequest
+    {
+        ui64 StartTime = 0;
+        ui64 FinishTime = 0;
+        size_t FailCount = 0;
+    };
+
+    const ui64 ConstructionTime;
+
+    std::array<TFirstRequest, static_cast<size_t>(ERequestType::Last)>
+        FirstRequests;
     THashMap<ui64, TRequestInflight> InflightRequests;
     THashMap<TKey, TTimeHistogram, THash, TEqual> Histograms;
 
     [[nodiscard]] NJson::TJsonValue BuildPercentilesJson() const;
 
+    [[nodiscard]] TString CalcRequestFirstTime(
+        const TRequestInflight& request,
+        bool success,
+        ui64 finishTime);
+
 public:
-    explicit TRequestsTimeTracker();
+    explicit TRequestsTimeTracker(const ui64 constructionTime);
 
     static TVector<TBucketInfo> GetSizeBuckets(ui32 blockSize);
     static TVector<TBucketInfo> GetTimeBuckets();
@@ -96,7 +112,8 @@ public:
         TBlockRange64 blockRange,
         ui64 startTime);
 
-    void OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
+    [[nodiscard]] TString
+    OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize) const;
 };

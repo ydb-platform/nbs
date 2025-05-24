@@ -480,10 +480,20 @@ bool TVolumeActor::ReplyToOriginalRequest(
     }
 
     VolumeRequests.erase(it);
-    RequestTimeTracker.OnRequestFinished(
+    const auto logMessage = RequestTimeTracker.OnRequestFinished(
         volumeRequestId,
         success,
         GetCycleCount());
+    if (logMessage) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Disk: %s, Generation: %u. %s",
+            TabletID(),
+            State->GetDiskId().Quote().c_str(),
+            Executor()->Generation(),
+            logMessage.c_str());
+    }
 
     return true;
 }
