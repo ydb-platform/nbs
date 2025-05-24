@@ -120,16 +120,10 @@ public:
             Last = cpuLack;
             return retval;
         } catch (...) {
-            auto errorMessage = BuildErrorMessageFromException();
+            auto errorMessage = TStringBuilder() << "Netlink socket error "
+                                                 << CurrentExceptionMessage();
             return MakeError(E_FAIL, errorMessage);
         }
-    }
-
-    TString BuildErrorMessageFromException()
-    {
-        auto msg = TStringBuilder() << "IO error";
-        msg << " with exception " << CurrentExceptionMessage();
-        return msg;
     }
 };
 

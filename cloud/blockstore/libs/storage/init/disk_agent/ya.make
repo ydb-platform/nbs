@@ -13,6 +13,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_registry_proxy
     cloud/blockstore/libs/storage/disk_registry_proxy/model
     cloud/blockstore/libs/storage/init/common
+    cloud/blockstore/libs/storage/stats_fetcher
     cloud/blockstore/libs/storage/undelivered
 
     cloud/storage/core/libs/api

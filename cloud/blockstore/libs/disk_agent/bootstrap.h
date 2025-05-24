@@ -11,6 +11,8 @@
 #include <cloud/blockstore/libs/service_local/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
+
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/http/simple_http_server.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
@@ -71,6 +73,7 @@ private:
     IStorageProviderPtr AioStorageProvider;
     NNvme::INvmeManagerPtr NvmeManager;
     NRdma::IServerPtr RdmaServer;
+    NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;

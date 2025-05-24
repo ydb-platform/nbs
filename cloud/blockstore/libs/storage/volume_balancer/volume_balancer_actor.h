@@ -40,7 +40,6 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr InitiallyPreempted;
 
     NMonitoring::TDynamicCounters::TCounterPtr CpuWait;
-    NMonitoring::TDynamicCounters::TCounterPtr CpuWaitFailure;
 
     std::unique_ptr<TVolumeBalancerState> State;
 
