@@ -42,6 +42,9 @@ public:
     };
 
 private:
+    constexpr static size_t RequestTypeCount =
+        static_cast<size_t>(ERequestType::Last) + 1;
+
     struct TTimeHistogram: public THistogram<TRequestUsTimeBuckets>
     {
         size_t BlockCount = 0;
@@ -87,8 +90,7 @@ private:
 
     const ui64 ConstructionTime;
 
-    std::array<TFirstRequest, static_cast<size_t>(ERequestType::Last)>
-        FirstRequests;
+    std::array<TFirstRequest, RequestTypeCount> FirstRequests;
     THashMap<ui64, TRequestInflight> InflightRequests;
     THashMap<TKey, TTimeHistogram, THash, TEqual> Histograms;
 
