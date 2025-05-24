@@ -1,6 +1,7 @@
 #include "stats_fetcher.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/netlink/socket.h>
 
@@ -120,16 +121,11 @@ public:
             Last = cpuLack;
             return retval;
         } catch (...) {
-            auto errorMessage = BuildErrorMessageFromException();
+            auto errorMessage = ReportCpuWaitCounterReadError(
+                TStringBuilder()
+                << "Netlink socket error " << CurrentExceptionMessage());
             return MakeError(E_FAIL, errorMessage);
         }
-    }
-
-    TString BuildErrorMessageFromException()
-    {
-        auto msg = TStringBuilder() << "IO error";
-        msg << " with exception " << CurrentExceptionMessage();
-        return msg;
     }
 };
 
