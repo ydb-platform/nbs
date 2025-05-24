@@ -316,7 +316,7 @@ void TPartitionActor::HandleHttpInfo_View(
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TPartitionActor::HandleHttpInfo_RenderLatency(
+void TPartitionActor::HandleHttpInfo_GetTransactionsLatency(
     const TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)

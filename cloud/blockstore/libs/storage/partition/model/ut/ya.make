@@ -12,7 +12,6 @@ SRCS(
     fresh_blob_ut.cpp
     garbage_queue_ut.cpp
     mixed_index_cache_ut.cpp
-    transaction_time_tracker_ut.cpp
 )
 
 PEERDIR(

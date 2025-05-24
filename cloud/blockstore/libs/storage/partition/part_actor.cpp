@@ -38,6 +38,13 @@ const TPartitionActor::TStateInfo TPartitionActor::States[STATE_MAX] = {
     { "Zombie", (IActor::TReceiveFunc)&TPartitionActor::StateZombie },
 };
 
+const TString PartitionTransactions[] = {
+#define TRANSACTION_NAME(name, ...) #name,
+    BLOCKSTORE_PARTITION_TRANSACTIONS(TRANSACTION_NAME)
+#undef TRANSACTION_NAME
+        "Total",
+};
+
 TPartitionActor::TPartitionActor(
         const TActorId& owner,
         TTabletStorageInfoPtr storage,
@@ -61,6 +68,7 @@ TPartitionActor::TPartitionActor(
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
+    , TransactionTimeTracker(PartitionTransactions)
 {}
 
 TPartitionActor::~TPartitionActor()

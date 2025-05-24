@@ -14,13 +14,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const TString TransactionTypes[] = {
-#define TRANSACTION_NAME(name, ...) #name,
-    BLOCKSTORE_PARTITION_TRANSACTIONS(TRANSACTION_NAME)
-#undef TRANSACTION_NAME
-        "Total",
-};
-
 const TString& GetTimeBucketName(TDuration duration)
 {
     static const auto TimeNames = TRequestUsTimeBuckets::MakeNames();
@@ -64,7 +57,9 @@ ui64 TTransactionTimeTracker::THash::operator()(const TKey& key) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TTransactionTimeTracker::TTransactionTimeTracker()
+TTransactionTimeTracker::TTransactionTimeTracker(
+        std::span<const TString> transactionTypes)
+    : TransactionTypes(transactionTypes.begin(), transactionTypes.end())
 {
     for (const auto& transaction: TransactionTypes) {
         auto key =
@@ -159,7 +154,7 @@ TString TTransactionTimeTracker::GetStatJson(ui64 nowCycles) const
 }
 
 TVector<TTransactionTimeTracker::TBucketInfo>
-TTransactionTimeTracker::GetTransactionBuckets()
+TTransactionTimeTracker::GetTransactionBuckets() const
 {
     TVector<TBucketInfo> result;
 
@@ -175,7 +170,7 @@ TTransactionTimeTracker::GetTransactionBuckets()
 }
 
 TVector<TTransactionTimeTracker::TBucketInfo>
-TTransactionTimeTracker::GetTimeBuckets()
+TTransactionTimeTracker::GetTimeBuckets() const
 {
     TVector<TBucketInfo> result;
     TDuration last;

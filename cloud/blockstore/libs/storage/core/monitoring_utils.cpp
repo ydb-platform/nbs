@@ -54,6 +54,91 @@ TStringBuf AlertClassFromLevel(EAlertLevel alertLevel)
     }
 }
 
+
+void RenderLatencyCell(
+    IOutputStream& out,
+    const TString& trKey,
+    const TString& timeKey)
+{
+    HTML (out) {
+        TABLED () {
+            DIV_CLASS ("latency-item") {
+                DIV_CLASS_ID(" ", trKey + "_finished_" + timeKey)
+                {}
+                DIV_CLASS_ID(" ", trKey + "_inflight_" + timeKey)
+                {}
+            }
+        }
+    }
+}
+
+void DumpLatencyForTransactions(
+    IOutputStream& out,
+    const TTransactionTimeTracker& transactionTimeTracker,
+    const std::span<const TTransactionTimeTracker::TBucketInfo> transactions)
+{
+    HTML (out) {
+        TABLEHEAD () {
+            TABLER () {
+                TABLEH () {
+                    out << "Latency";
+                }
+                for (const auto& trInfo: transactions) {
+                    TABLEH () {
+                        out << trInfo.Description;
+                    }
+                }
+            }
+        }
+
+        for (const auto& [tr, timeKey, timeDescr, timeTooltip]:
+             transactionTimeTracker.GetTimeBuckets())
+        {
+            TABLER () {
+                TABLED () {
+                    DIV_CLASS ("tooltip-latency") {
+                        out << timeDescr;
+
+                        if (timeTooltip) {
+                            SPAN_CLASS ("tooltiptext-latency") {
+                                out << timeTooltip;
+                            }
+                        }
+                    }
+                }
+
+                for (const auto& trInfo: transactions) {
+                    RenderLatencyCell(out, trInfo.Key, timeKey);
+                }
+            }
+        }
+    }
+}
+
+void DumpLatencyForTransactions(
+    IOutputStream& out,
+    size_t columnCount,
+    const TTransactionTimeTracker& transactionTimeTracker)
+{
+    const auto trBuckets = transactionTimeTracker.GetTransactionBuckets();
+
+    HTML (out) {
+        TABLE_CLASS ("table-latency") {
+            for (size_t i = 0; i < trBuckets.size(); i += columnCount) {
+                const std::size_t chunkSize =
+                    Min(columnCount, trBuckets.size() - i);
+                const std::span<const TTransactionTimeTracker::TBucketInfo>
+                    transactionChunk{&trBuckets[i], chunkSize};
+
+                DumpLatencyForTransactions(
+                    out,
+                    transactionTimeTracker,
+                    transactionChunk);
+            }
+        }
+    }
+}
+
 }   // namespace
 
 namespace NMonitoringUtils {
@@ -226,6 +311,7 @@ void BuildVolumeTabs(IOutputStream& out)
         << "<li><a href='#Checkpoints' data-toggle='tab'>Checkpoints</a></li>"
         << "<li><a href='#Links' data-toggle='tab'>Links</a></li>"
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a></li>"
+        << "<li><a href='#Transactions' data-toggle='tab'>Transactions</a></li>"
         << "<li><a href='#Traces' data-toggle='tab'>Traces</a></li>"
         << "<li><a href='#StorageConfig' data-toggle='tab'>StorageConfig</a></li></ul>";
 }
@@ -1053,6 +1139,114 @@ void DumpTabletNotReady(IOutputStream& out)
     }
 }
 
+void AddLatencyCSS(IOutputStream& out)
+{
+    const TString style = R"(
+        <style>
+            .table-latency {
+                width: 100%;
+                border-collapse: collapse;
+                padding: 0;
+            }
+            .table-latency th,
+            .table-latency td {
+                padding: 0 8px 0 8px;
+                border: 1px solid black;
+            }
+            .table-latency th {
+                font-weight: bold;
+                text-align: center;
+            }
+            .table-latency td {
+                padding: 0 8px 0 8px;
+                border-top: none;
+                border-bottom: none;
+            }
+            .table-latency tr:last-child {
+                border-bottom: 1px solid black;
+            }
+
+            .tooltip-latency {
+                position: relative;
+                display: inline-block;
+            }
+            .tooltip-latency .tooltiptext-latency {
+                visibility: hidden;
+                width: 120px;
+                background-color: black;
+                color: #fff;
+                text-align: center;
+                border-radius: 6px;
+                padding: 5px 0;
+                position: absolute;
+                z-index: 1;
+            }
+            .tooltip-latency:hover .tooltiptext-latency {
+                visibility: visible;
+            }
+
+            .latency-item {
+                display: flex;
+                width: 100%;
+            }
+            .latency-item > div {
+                flex: 1 1 0;
+                text-align: right;
+            }
+        </style>
+        )";
+    HTML (out) {
+        out << style;
+    }
+}
+
+void DumpLatency(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TTransactionTimeTracker& transactionTimeTracker)
+{
+    const TString script = R"(
+        <script>
+            function renderTransactionsLatency(stat) {
+                for (let key in stat) {
+                    const element = document.getElementById(key);
+                    if (element) {
+                        element.textContent = stat[key];
+                    }
+                }
+            }
+            function loadTransactionsLatency() {
+                var url = '?action=getTransactionsLatency';
+                url += '&TabletID=)" +
+                           ToString(tabletId) + R"(';
+                $.ajax({
+                    url: url,
+                    success: function(result) {
+                        renderTransactionsLatency(result.stat);
+                    },
+                    error: function(jqXHR, status) {
+                        console.log('error');
+                    }
+                });
+            }
+            setInterval(function() { loadTransactionsLatency(); }, 1000);
+            loadTransactionsLatency();
+        </script>
+        )";
+
+    HTML (out) {
+        out << script;
+
+        TAG (TH3) {
+            out << "Transactions";
+        }
+        DumpLatencyForTransactions(out, 9, transactionTimeTracker);
+
+        TAG (TH3) {
+            out << "Groups";
+        }
+    }
+}
 
 TCgiParameters GatherHttpParameters(const TEvRemoteHttpInfo& msg)
 {

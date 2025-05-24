@@ -12,6 +12,7 @@ SRCS(
     metrics_ut.cpp
     mount_token_ut.cpp
     proto_helpers_ut.cpp
+    transaction_time_tracker_ut.cpp
     ts_ring_buffer_ut.cpp
     volume_label_ut.cpp
     volume_model_ut.cpp
