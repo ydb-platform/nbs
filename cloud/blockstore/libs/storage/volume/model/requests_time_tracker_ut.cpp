@@ -37,7 +37,7 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
 {
     Y_UNIT_TEST(ShouldCountInflight)
     {
-        TRequestsTimeTracker requestsTimeTracker;
+        TRequestsTimeTracker requestsTimeTracker(0);
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Read,
@@ -80,41 +80,48 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
 
     Y_UNIT_TEST(ShouldCountFinishedSuccess)
     {
-        TRequestsTimeTracker requestsTimeTracker;
+        TRequestsTimeTracker requestsTimeTracker(0);
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Write,
             1,
-            TBlockRange64::MakeOneBlock(0),
-            0);
-
-        requestsTimeTracker.OnRequestStarted(
-            TRequestsTimeTracker::ERequestType::Write,
-            2,
             TBlockRange64::MakeOneBlock(0),
             1000 * GetCyclesPerMillisecond());
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Write,
-            3,
+            2,
             TBlockRange64::MakeOneBlock(0),
             2000 * GetCyclesPerMillisecond());
 
-        requestsTimeTracker.OnRequestFinished(
-            1,
-            true,
-            3000 * GetCyclesPerMillisecond());
-        requestsTimeTracker.OnRequestFinished(
-            2,
-            true,
-            3000 * GetCyclesPerMillisecond());
-        requestsTimeTracker.OnRequestFinished(
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Write,
             3,
-            true,
+            TBlockRange64::MakeOneBlock(0),
             3000 * GetCyclesPerMillisecond());
 
+        auto log = requestsTimeTracker.OnRequestFinished(
+            2,
+            true,
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "The first successful Write request was started at 2.000s finished "
+            "at 4.000s. The very first request was started at 999.999ms, Failed "
+            "requests: 0",
+            log);
+        log = requestsTimeTracker.OnRequestFinished(
+            1,
+            true,
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_VALUES_EQUAL("", log);
+        log = requestsTimeTracker.OnRequestFinished(
+            3,
+            true,
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_VALUES_EQUAL("", log);
+
         auto json = requestsTimeTracker.GetStatJson(
-            5000 * GetCyclesPerMillisecond(),
+            6000 * GetCyclesPerMillisecond(),
             4096);
         NJson::TJsonValue value;
         NJson::ReadJsonTree(json, &value, true);
@@ -153,41 +160,44 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
 
     Y_UNIT_TEST(ShouldCountFinishedFail)
     {
-        TRequestsTimeTracker requestsTimeTracker;
+        TRequestsTimeTracker requestsTimeTracker(0);
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Zero,
             1,
             TBlockRange64::WithLength(0, 512),
-            0);
+            1000 * GetCyclesPerMillisecond());
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Zero,
             2,
             TBlockRange64::WithLength(0, 600),
-            1000 * GetCyclesPerMillisecond());
+            2000 * GetCyclesPerMillisecond());
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Zero,
             3,
             TBlockRange64::WithLength(0, 2000),
-            2000 * GetCyclesPerMillisecond());
+            3000 * GetCyclesPerMillisecond());
 
-        requestsTimeTracker.OnRequestFinished(
+        auto log = requestsTimeTracker.OnRequestFinished(
             1,
             false,
-            3000 * GetCyclesPerMillisecond());
-        requestsTimeTracker.OnRequestFinished(
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_VALUES_EQUAL("", log);
+        log = requestsTimeTracker.OnRequestFinished(
             2,
             false,
-            3000 * GetCyclesPerMillisecond());
-        requestsTimeTracker.OnRequestFinished(
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_VALUES_EQUAL("", log);
+        log = requestsTimeTracker.OnRequestFinished(
             3,
             false,
-            3000 * GetCyclesPerMillisecond());
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_VALUES_EQUAL("", log);
 
         auto json = requestsTimeTracker.GetStatJson(
-            5000 * GetCyclesPerMillisecond(),
+            6000 * GetCyclesPerMillisecond(),
             4096);
         NJson::TJsonValue value;
         NJson::ReadJsonTree(json, &value, true);
@@ -220,6 +230,23 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
         const auto nonEmptyPercentilesCount =
             DumpValues(value["percentiles"].GetMap());
         UNIT_ASSERT_VALUES_EQUAL(0, nonEmptyPercentilesCount);
+
+        // Successful request
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Zero,
+            4,
+            TBlockRange64::WithLength(0, 600),
+            7000 * GetCyclesPerMillisecond());
+
+        log = requestsTimeTracker.OnRequestFinished(
+            4,
+            true,
+            10000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "The first successful Zero request was started at 7.000s finished "
+            "at 10.000s. The very first request was started at 999.999ms, "
+            "Failed requests: 3",
+            log);
     }
 }
 
