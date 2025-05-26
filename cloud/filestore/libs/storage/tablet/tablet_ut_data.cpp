@@ -2620,7 +2620,72 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         };
 
+        auto checkFlushBackpressureValues = [&](ui64 value, ui64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "FlushBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "FlushBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
+        auto checkCompactionBackpressureValues = [&](ui64 value, ui64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "CompactionBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "CompactionBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
+        auto checkCleanupBackpressureValues = [&](ui64 value, ui64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "CleanupBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "CleanupBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
+        auto checkFlushBytesBackpressureValues = [&](ui64 value, ui64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "FlushBytesBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "FlushBytesBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
         checkIsWriteAllowed(true);
+        checkFlushBackpressureValues(0, 2 * block);
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
@@ -2634,6 +2699,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
 
             checkIsWriteAllowed(false);
+            checkFlushBackpressureValues(2 * block, 2 * block);
         }
 
         tablet.Flush();
@@ -2653,6 +2719,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+            checkCompactionBackpressureValues(8, 8);
         }
 
         ui32 rangeId = GetMixedRangeIndex(id, 0);
@@ -2670,6 +2738,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+            checkCleanupBackpressureValues(20, 20);
         }
 
         tablet.Cleanup(rangeId); // 1 blob
@@ -2683,6 +2753,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+            checkFlushBytesBackpressureValues(block / 2, block / 2);
         }
 
         tablet.FlushBytes(); // 2 blobs
