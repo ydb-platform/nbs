@@ -405,13 +405,19 @@ void TMultiPartitionRequestActor<TMethod>::HandlePartitionResponse(
     auto* msg = ev->Get();
 
     const ui32 requestNo = ev->Cookie;
+    Cerr<<"HandlePartitionResponse"<<Endl;
 
     if (FAILED(msg->GetStatus())) {
         Record.MutableError()->CopyFrom(msg->GetError());
         if constexpr (
             std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>)
         {
-            Merge(msg->Record, requestNo, Record);
+            Cerr<<"TReadBlocksLocalMethod"<<Endl;
+            Cerr<<msg->Record.FailInfo.FailedRanges.empty()<< "endl "<<Endl;
+            if (!msg->Record.FailInfo.FailedRanges.empty()){
+                Cerr<<"Merging"<<Endl;
+                Merge(msg->Record, requestNo, Record);
+            }
         }
     } else {
         Merge(msg->Record, requestNo, Record);
