@@ -441,7 +441,6 @@ func WaitForNoCheckpointsExist(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
-	checkpointID string,
 ) {
 
 	waitUntilCheckpointsMeetRequirements(
