@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/blockstore/private/api/protos/volume.pb.h>
+#include <cloud/blockstore/private/api/protos/disk.pb.h>
 
 #include <library/cpp/json/json_writer.h>
 
