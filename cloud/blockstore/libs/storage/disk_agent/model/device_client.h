@@ -1,7 +1,5 @@
 #pragma once
 
-#include "multi_agent_write.h"
-
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
@@ -47,15 +45,13 @@ private:
 
     const TDuration ReleaseInactiveSessionsTimeout;
     const TDevicesState Devices;
-    IMultiagentWriteHandler* const MultiagentWriteHandler = nullptr;
     TLog Log;
 
 public:
     TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
         TVector<TString> uuids,
-        TLog log,
-        IMultiagentWriteHandler* multiagentWriteHandler);
+        TLog log);
 
     TDeviceClient(const TDeviceClient&) = delete;
     TDeviceClient& operator=(const TDeviceClient&) = delete;
@@ -87,10 +83,6 @@ public:
 
     TSessionInfo GetWriterSession(const TString& uuid) const;
     TVector<TSessionInfo> GetReaderSessions(const TString& uuid) const;
-
-    NThreading::TFuture<TMultiAgentWriteResponsePrivate> PerformMultiAgentWrite(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) const;
 
     // Return E_IO error on I/O operations.
     void DisableDevice(const TString& uuid) const;

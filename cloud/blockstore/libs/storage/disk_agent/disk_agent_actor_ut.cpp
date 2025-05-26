@@ -6,9 +6,11 @@
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
 #include <contrib/ydb/library/actors/core/mon.h>
@@ -59,17 +61,6 @@ TFsPath TryGetRamDrivePath()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-struct TNullStorageProvider: public IStorageProvider
-{
-    NThreading::TFuture<IStoragePtr> CreateStorage(
-        const NProto::TVolume&,
-        const TString&,
-        NProto::EVolumeAccessMode) override
-    {
-        return {};
-    }
-};
 
 struct TTestNvmeManager
     : NNvme::INvmeManager
@@ -6501,29 +6492,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         TMultiWriteFixture)
     {
         auto logging = CreateLoggingService("console");
-        auto agentState = TDiskAgentState(
+        auto multiAgentWriteHandler = CreateMultiAgentWriteHandler(
             Runtime->GetActorSystem(0),
-            DiskAgent1->DiskAgentActorId(),
-            std::make_shared<TStorageConfig>(
-                NProto::TStorageServiceConfig{},
-                std::make_shared<NFeatures::TFeaturesConfig>()),
-            std::make_shared<TDiskAgentConfig>(),
-            nullptr,   // spdk
-            CreateCachingAllocator(TDefaultAllocator::Instance(), 0, 0, 0),
-            std::make_shared<TNullStorageProvider>(),
-            CreateProfileLogStub(),
-            CreateBlockDigestGeneratorStub(),
-            logging,
-            nullptr,   // rdmaServer
-            NNvme::CreateNvmeManager(TDuration()),
-            nullptr,   // rdmaTargetConfig
-            TOldRequestCounters());
-
-        auto deviceClient = TDeviceClient(
-            TDuration(),
-            {},
-            logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
-            &agentState);
+            DiskAgent1->DiskAgentActorId());
 
         auto request = std::make_shared<NProto::TWriteDeviceBlocksRequest>();
         {
@@ -6546,8 +6517,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->MutableBlocks()->AddBuffers(TString(BlockSize, 'a'));
         }
 
-        // Send request through TDiskAgentState.
-        auto future = deviceClient.PerformMultiAgentWrite(
+        // Send request through multiAgentWriteHandler.
+        auto future = multiAgentWriteHandler->PerformMultiAgentWrite(
             MakeIntrusive<TCallContext>(static_cast<ui64>(100)),
             std::move(request));
 

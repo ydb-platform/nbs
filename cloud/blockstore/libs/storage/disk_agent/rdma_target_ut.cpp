@@ -402,7 +402,8 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
             mockResponse.Error = MakeError(S_OK);
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
-            env.PushMockResponse(std::move(mockResponse));
+            env.MultiAgentWriteHandler->PushMockResponse(
+                std::move(mockResponse));
         }
 
         NProto::TWriteDeviceBlocksRequest request =
@@ -421,7 +422,8 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
             FormatError(response.GetError()));
 
         // Check request forwarded to actor system match with original.
-        auto interceptedRequest = env.PopInterceptedRequest();
+        auto interceptedRequest =
+            env.MultiAgentWriteHandler->PopInterceptedRequest();
         UNIT_ASSERT(interceptedRequest);
         const auto forwardedRequest = TStringBuilder()
                                       << interceptedRequest->AsJSON();
@@ -439,7 +441,8 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
             mockResponse.Error = MakeError(S_OK);
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
-            env.PushMockResponse(std::move(mockResponse));
+            env.MultiAgentWriteHandler->PushMockResponse(
+                std::move(mockResponse));
         }
 
         // Set handbrake and begin write request.

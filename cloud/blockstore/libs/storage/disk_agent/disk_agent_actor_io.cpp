@@ -351,7 +351,7 @@ void TDiskAgentActor::HandleWriteDeviceBlocks(
             SelfId(),
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
             std::move(msg->Record),
-            std::nullopt,
+            TMultiAgentWriteDeviceBlocksActor::TResponsePromise(),
             GetMaxRequestTimeout());
         return;
     }
@@ -378,7 +378,7 @@ void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
             SelfId(),
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
             std::move(msg->Record),
-            std::nullopt,
+            TMultiAgentWriteDeviceBlocksActor::TResponsePromise(),
             GetMaxRequestTimeout());
         return;
     }

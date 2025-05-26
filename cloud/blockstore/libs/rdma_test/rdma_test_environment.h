@@ -16,7 +16,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestMultiagentWriteHandler: public IMultiagentWriteHandler
+class TTestMultiAgentWriteHandler: public IMultiAgentWriteHandler
 {
 private:
     TDeque<NProto::TWriteDeviceBlocksRequest> Requests;
@@ -26,18 +26,21 @@ public:
     void PushMockResponse(TMultiAgentWriteResponsePrivate response);
     std::optional<NProto::TWriteDeviceBlocksRequest> PopInterceptedRequest();
 
-    // Implements IMultiagentWriteHandler
+    // Implements IMultiAgentWriteHandler
     NThreading::TFuture<TMultiAgentWriteResponsePrivate> PerformMultiAgentWrite(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) override;
 };
 
-struct TRdmaTestEnvironment : public TTestMultiagentWriteHandler
+using TTestMultiAgentWriteHandlerPtr = std::shared_ptr<TTestMultiAgentWriteHandler>;
+
+struct TRdmaTestEnvironment
 {
     const TString ClientId = "client_1";
     const TString Device_1 = "uuid-1";
     const TString Host = "host";
     const ui32 Port = 11111;
+    const TTestMultiAgentWriteHandlerPtr MultiAgentWriteHandler;
 
     std::shared_ptr<TRdmaAsyncTestServer> Server{
         std::make_shared<TRdmaAsyncTestServer>()};

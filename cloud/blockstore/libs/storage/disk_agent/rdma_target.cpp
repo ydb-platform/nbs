@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/multi_agent_write.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
@@ -142,6 +143,7 @@ private:
     TLog Log;
 
     const TDeviceClientPtr DeviceClient;
+    const IMultiAgentWriteHandlerPtr MultiAgentWriteHandler;
 
     std::weak_ptr<NRdma::IServerEndpoint> Endpoint;
     const NRdma::TProtoMessageSerializer* Serializer =
@@ -154,12 +156,14 @@ public:
             THashMap<TString, TStorageAdapterPtr> devices,
             ITaskQueuePtr taskQueue,
             TDeviceClientPtr deviceClient,
+            IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
             TOldRequestCounters oldRequestCounters,
             bool rejectLateRequests)
         : Devices(
               MakeDevices(std::move(devices), std::move(oldRequestCounters)))
         , TaskQueue(std::move(taskQueue))
         , DeviceClient(std::move(deviceClient))
+        , MultiAgentWriteHandler(std::move(multiAgentWriteHandler))
         , RejectLateRequests(rejectLateRequests)
     {}
 
@@ -871,7 +875,7 @@ private:
     void ContinueHandleRequest(
         TMultiAgentWriteContinuationData continuationData) const
     {
-        auto future = DeviceClient->PerformMultiAgentWrite(
+        auto future = MultiAgentWriteHandler->PerformMultiAgentWrite(
             std::move(continuationData.ExecutionData.CallContext),
             std::move(continuationData.ExecutionData.Request));
 
@@ -1149,6 +1153,7 @@ public:
             ILoggingServicePtr logging,
             NRdma::IServerPtr server,
             TDeviceClientPtr deviceClient,
+            IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
             THashMap<TString, TStorageAdapterPtr> devices,
             ITaskQueuePtr taskQueue)
         : Config(std::move(config))
@@ -1160,6 +1165,7 @@ public:
             std::move(devices),
             std::move(taskQueue),
             std::move(deviceClient),
+            std::move(multiAgentWriteHandler),
             std::move(oldRequestCounters),
             Config->RejectLateRequests);
     }
@@ -1208,6 +1214,7 @@ IRdmaTargetPtr CreateRdmaTarget(
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
+    IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
     THashMap<TString, TStorageAdapterPtr> devices)
 {
     auto threadPool = CreateThreadPool("RDMA", config->WorkerThreads);
@@ -1219,6 +1226,7 @@ IRdmaTargetPtr CreateRdmaTarget(
         std::move(logging),
         std::move(server),
         std::move(deviceClient),
+        std::move(multiAgentWriteHandler),
         std::move(devices),
         std::move(threadPool));
 }

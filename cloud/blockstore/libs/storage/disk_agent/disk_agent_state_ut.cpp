@@ -164,8 +164,6 @@ TStorageConfigPtr CreateStorageConfig()
 auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
 {
     return std::make_unique<TDiskAgentState>(
-        nullptr,
-        NActors::TActorId(),
         CreateStorageConfig(),
         std::move(config),
         NSpdk::CreateEnvStub(),
@@ -177,7 +175,9 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
         nullptr,   // rdmaServer
         nullptr,   // nvmeManager
         nullptr,   // rdmaTargetConfig
-        TOldRequestCounters());
+        TOldRequestCounters(),
+        nullptr   // multiAgentWriteHandler
+    );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -357,8 +357,6 @@ struct TFiles
     auto CreateDiskAgentStateNull(TDiskAgentConfigPtr config)
     {
         return std::make_unique<TDiskAgentState>(
-            nullptr,
-            NActors::TActorId(),
             CreateStorageConfig(),
             std::move(config),
             nullptr,   // spdk
@@ -370,7 +368,9 @@ struct TFiles
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
-            TOldRequestCounters());
+            TOldRequestCounters(),
+            nullptr   // multiAgentWriteHandler
+        );
     }
 };
 
@@ -530,8 +530,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto config = CreateNullConfig({ .Files = Nvme3s });
 
         TDiskAgentState state(
-            nullptr,
-            NActors::TActorId(),
             CreateStorageConfig(),
             config,
             nullptr,   // spdk
@@ -546,7 +544,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
-            TOldRequestCounters());
+            TOldRequestCounters(),
+            nullptr   // multiAgentWriteHandler
+        );
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
@@ -745,8 +745,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 auto config = std::make_shared<TDiskAgentConfig>(cfg, "rack", 1000);
 
                 TDiskAgentState state(
-                    nullptr,
-                    NActors::TActorId(),
                     CreateStorageConfig(),
                     config,
                     nullptr,   // spdk
@@ -761,7 +759,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     nullptr,   // rdmaServer
                     NvmeManager,
                     nullptr,   // rdmaTargetConfig
-                    TOldRequestCounters());
+                    TOldRequestCounters(),
+                    nullptr   // multiAgentWriteHandler
+                );
 
                 auto future = state.Initialize();
                 const auto& r = future.GetValue(WaitTimeout);
@@ -818,8 +818,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         TDiskAgentState state(
-            nullptr,
-            NActors::TActorId(),
             CreateStorageConfig(),
             std::make_shared<TDiskAgentConfig>(std::move(config), "rack", 1000),
             nullptr,   // spdk
@@ -831,7 +829,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaServer
             std::make_shared<TTestNvmeManager>(),
             nullptr,   // rdmaTargetConfig
-            TOldRequestCounters());
+            TOldRequestCounters(),
+            nullptr   // multiAgentWriteHandler
+        );
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
@@ -1241,8 +1241,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
 
         TDiskAgentState state(
-            nullptr,
-            NActors::TActorId(),
             CreateStorageConfig(),
             config,
             nullptr,   // spdk
@@ -1254,7 +1252,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
-            TOldRequestCounters());
+            TOldRequestCounters(),
+            nullptr   // multiAgentWriteHandler
+        );
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
@@ -1402,8 +1402,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         });
 
         auto state = std::make_unique<TDiskAgentState>(
-            nullptr,
-            NActors::TActorId(),
             CreateStorageConfig(),
             config,
             nullptr,   // spdk
@@ -1415,7 +1413,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
-            TOldRequestCounters());
+            TOldRequestCounters(),
+            nullptr   // multiAgentWriteHandler
+        );
 
         auto future = state->Initialize();
         const auto& result = future.GetValue(WaitTimeout);
@@ -1485,8 +1485,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         });
 
         auto state = std::make_unique<TDiskAgentState>(
-            nullptr,
-            NActors::TActorId(),
             CreateStorageConfig(),
             config,
             nullptr,   // spdk
@@ -1498,7 +1496,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
-            TOldRequestCounters());
+            TOldRequestCounters(),
+            nullptr   // multiAgentWriteHandler
+        );
 
         auto future = state->Initialize();
         const auto& result = future.GetValue(WaitTimeout);
@@ -1566,8 +1566,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto newState = [&](auto discoveryConfig)
         {
             return std::make_unique<TDiskAgentState>(
-                nullptr,
-                NActors::TActorId(),
                 CreateStorageConfig(),
                 CreateNullConfig(
                     {.DiscoveryConfig = discoveryConfig,
@@ -1581,7 +1579,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 nullptr,   // rdmaServer
                 NvmeManager,
                 nullptr,   // rdmaTargetConfig
-                TOldRequestCounters());
+                TOldRequestCounters(),
+                nullptr   // multiAgentWriteHandler
+            );
         };
 
         {

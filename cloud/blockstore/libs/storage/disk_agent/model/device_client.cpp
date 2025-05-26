@@ -15,11 +15,9 @@ namespace NCloud::NBlockStore::NStorage {
 TDeviceClient::TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
         TVector<TString> uuids,
-        TLog log,
-        IMultiagentWriteHandler* multiagentWriteHandler)
+        TLog log)
     : ReleaseInactiveSessionsTimeout(releaseInactiveSessionsTimeout)
     , Devices(MakeDevices(std::move(uuids)))
-    , MultiagentWriteHandler(multiagentWriteHandler)
     , Log(std::move(log))
 {}
 
@@ -347,16 +345,6 @@ TVector<TDeviceClient::TSessionInfo> TDeviceClient::GetReaderSessions(
     }
 
     return {};
-}
-
-NThreading::TFuture<TMultiAgentWriteResponsePrivate>
-TDeviceClient::PerformMultiAgentWrite(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) const
-{
-    return MultiagentWriteHandler->PerformMultiAgentWrite(
-        std::move(callContext),
-        std::move(request));
 }
 
 void TDeviceClient::DisableDevice(const TString& uuid) const

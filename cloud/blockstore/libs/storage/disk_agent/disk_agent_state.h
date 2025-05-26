@@ -20,9 +20,6 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
-
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/hash.h>
@@ -32,7 +29,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiskAgentState: public IMultiagentWriteHandler
+class TDiskAgentState
 {
 private:
     struct TDeviceState
@@ -44,8 +41,6 @@ private:
     };
 
 private:
-    NActors::TActorSystem* ActorSystem;
-    const NActors::TActorId DiskAgentId;
     const TStorageConfigPtr StorageConfig;
     const TDiskAgentConfigPtr AgentConfig;
     const NSpdk::ISpdkEnvPtr Spdk;
@@ -53,6 +48,7 @@ private:
     const IStorageProviderPtr StorageProvider;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const IMultiAgentWriteHandlerPtr MultiAgentWriteHandler;
 
     ILoggingServicePtr Logging;
     TLog Log;
@@ -72,8 +68,6 @@ private:
 
 public:
     TDiskAgentState(
-        NActors::TActorSystem* actorSystem,
-        NActors::TActorId diskAgentId,
         TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
         NSpdk::ISpdkEnvPtr spdk,
@@ -85,7 +79,8 @@ public:
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
-        TOldRequestCounters oldRequestCounters);
+        TOldRequestCounters oldRequestCounters,
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler);
 
     struct TInitializeResult
     {
@@ -125,11 +120,6 @@ public:
     NThreading::TFuture<NProto::TChecksumDeviceBlocksResponse> Checksum(
         TInstant now,
         NProto::TChecksumDeviceBlocksRequest request);
-
-    // Implements IMultiagentWriteHandler
-    NThreading::TFuture<TMultiAgentWriteResponsePrivate> PerformMultiAgentWrite(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) override;
 
     void CheckIOTimeouts(TInstant now);
 

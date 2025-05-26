@@ -16,7 +16,6 @@
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
@@ -238,8 +237,6 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentState::TDiskAgentState(
-        NActors::TActorSystem* actorSystem,
-        NActors::TActorId diskAgentId,
         TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
         NSpdk::ISpdkEnvPtr spdk,
@@ -251,16 +248,16 @@ TDiskAgentState::TDiskAgentState(
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
-        TOldRequestCounters oldRequestCounters)
-    : ActorSystem(actorSystem)
-    , DiskAgentId(diskAgentId)
-    , StorageConfig(std::move(storageConfig))
+        TOldRequestCounters oldRequestCounters,
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler)
+    : StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
     , Spdk(std::move(spdk))
     , Allocator(std::move(allocator))
     , StorageProvider(std::move(storageProvider))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , MultiAgentWriteHandler(std::move(multiAgentWriteHandler))
     , Logging(std::move(logging))
     , Log(Logging->CreateLog("BLOCKSTORE_DISK_AGENT"))
     , RdmaServer(std::move(rdmaServer))
@@ -481,6 +478,7 @@ void TDiskAgentState::InitRdmaTarget()
             Logging,
             RdmaServer,
             DeviceClient,
+            MultiAgentWriteHandler,
             std::move(devices));
 
         RdmaTarget->Start();
@@ -501,12 +499,10 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                 uuids.push_back(x.first);
             }
 
-            IMultiagentWriteHandler* multiagentWriteHandler = this;
             DeviceClient = std::make_shared<TDeviceClient>(
                 AgentConfig->GetReleaseInactiveSessionsTimeout(),
                 std::move(uuids),
-                Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
-                multiagentWriteHandler);
+                Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
 
             InitRdmaTarget();
 
@@ -847,30 +843,6 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 
             return response;
         });
-}
-
-NThreading::TFuture<TMultiAgentWriteResponsePrivate>
-TDiskAgentState::PerformMultiAgentWrite(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request)
-{
-    auto req = std::make_unique<
-        TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest>();
-    req->Record.Swap(request.get());
-    req->ResponsePromise =
-        NThreading::NewPromise<TMultiAgentWriteResponsePrivate>();
-    req->CallContext = std::move(callContext);
-
-    auto future = req->ResponsePromise.GetFuture();
-
-    auto newEv = std::make_unique<NActors::IEventHandle>(
-        DiskAgentId,
-        NActors::TActorId(),
-        req.release());
-
-    ActorSystem->Send(newEv.release());
-
-    return future;
 }
 
 void TDiskAgentState::CheckIOTimeouts(TInstant now)

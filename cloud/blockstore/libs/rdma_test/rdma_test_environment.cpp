@@ -11,13 +11,15 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TTestMultiagentWriteHandler::PushMockResponse(
+void TTestMultiAgentWriteHandler::PushMockResponse(
     TMultiAgentWriteResponsePrivate response)
 {
     Responses.push_back(std::move(response));
 }
 
-std::optional<NProto::TWriteDeviceBlocksRequest> TTestMultiagentWriteHandler::PopInterceptedRequest() {
+std::optional<NProto::TWriteDeviceBlocksRequest>
+TTestMultiAgentWriteHandler::PopInterceptedRequest()
+{
     if (Requests.empty()) {
         return std::nullopt;
     }
@@ -27,7 +29,7 @@ std::optional<NProto::TWriteDeviceBlocksRequest> TTestMultiagentWriteHandler::Po
 }
 
 NThreading::TFuture<TMultiAgentWriteResponsePrivate>
-TTestMultiagentWriteHandler::PerformMultiAgentWrite(
+TTestMultiAgentWriteHandler::PerformMultiAgentWrite(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request)
 {
@@ -49,7 +51,8 @@ TTestMultiagentWriteHandler::PerformMultiAgentWrite(
 ////////////////////////////////////////////////////////////////////////////////
 
 TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
-    : Storage(std::make_shared<TMemoryTestStorage>(deviceSize))
+    : MultiAgentWriteHandler(std::make_shared<TTestMultiAgentWriteHandler>())
+    , Storage(std::make_shared<TMemoryTestStorage>(deviceSize))
 {
     THashMap<TString, TStorageAdapterPtr> devices;
     devices[Device_1] = std::make_shared<TStorageAdapter>(
@@ -65,12 +68,10 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         uuids.push_back(key);
     }
 
-    IMultiagentWriteHandler* multiagentWriteHandler = this;
     DeviceClient = std::make_shared<TDeviceClient>(
         TDuration::MilliSeconds(100),
         uuids,
-        Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
-        multiagentWriteHandler);
+        Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
 
     DeviceClient->AcquireDevices(
         uuids,
@@ -103,6 +104,7 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         Logging,
         Server,
         DeviceClient,
+        MultiAgentWriteHandler,
         std::move(devices));
 
     RdmaTarget->Start();

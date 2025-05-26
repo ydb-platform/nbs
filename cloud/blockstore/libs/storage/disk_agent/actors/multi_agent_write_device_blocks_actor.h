@@ -20,8 +20,8 @@ class TMultiAgentWriteDeviceBlocksActor final
     : public NActors::TActorBootstrapped<TMultiAgentWriteDeviceBlocksActor>
 {
 public:
-    using TOptionalPromise =
-        std::optional<NThreading::TPromise<TMultiAgentWriteResponsePrivate>>;
+    using TResponsePromise =
+        NThreading::TPromise<TMultiAgentWriteResponsePrivate>;
 
 private:
     const NActors::TActorId Parent;
@@ -29,7 +29,7 @@ private:
     const TDuration MaxRequestTimeout;
 
     NProto::TWriteDeviceBlocksRequest Request;
-    TOptionalPromise ResponsePromise;
+    TResponsePromise ResponsePromise;
     TVector<std::optional<NProto::TError>> Responses;
 
 public:
@@ -37,7 +37,7 @@ public:
         const NActors::TActorId& parent,
         TRequestInfoPtr requestInfo,
         NProto::TWriteDeviceBlocksRequest request,
-        TOptionalPromise responsePromise,
+        TResponsePromise responsePromise,
         TDuration maxRequestTimeout);
 
     void Bootstrap(const NActors::TActorContext& ctx);

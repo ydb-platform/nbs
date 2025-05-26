@@ -22,6 +22,10 @@ namespace NStorage {
 // the actor system and does not depend on the proto.
 struct TMultiAgentWriteResponsePrivate
 {
+
+    NProto::TError Error;
+    TVector<NProto::TError> ReplicationResponses;
+
     TMultiAgentWriteResponsePrivate() = default;
 
     TMultiAgentWriteResponsePrivate(TErrorResponse&& error)
@@ -37,21 +41,20 @@ struct TMultiAgentWriteResponsePrivate
     {
         return Error;
     }
-
-    NProto::TError Error;
-    TVector<NProto::TError> ReplicationResponses;
 };
 
-class IMultiagentWriteHandler
+class IMultiAgentWriteHandler
 {
 public:
-    virtual ~IMultiagentWriteHandler() = default;
+    virtual ~IMultiAgentWriteHandler() = default;
 
     virtual NThreading::TFuture<TMultiAgentWriteResponsePrivate>
     PerformMultiAgentWrite(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) = 0;
 };
+
+using IMultiAgentWriteHandlerPtr = std::shared_ptr<IMultiAgentWriteHandler>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
