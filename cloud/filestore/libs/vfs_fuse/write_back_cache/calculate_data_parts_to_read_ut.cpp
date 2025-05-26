@@ -15,12 +15,53 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename T>
+IOutputStream& PrintValues(
+    IOutputStream& out,
+    const TVector<T>& values)
+{
+    out << "[";
+    for (size_t i = 0; i != values.size();) {
+        out << values[i];
+        i++;
+        if (i != values.size()) {
+            out << ", ";
+        }
+    }
+    return out;
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTestCaseWriteDataEntry
 {
     ui64 Handle = 0;
     ui64 Offset = 0;
     ui64 Length = 0;
 };
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    const TTestCaseWriteDataEntry& e)
+{
+    out << "{"
+        << "Handle: " << e.Handle << ", "
+        << "Offset: " << e.Offset << ", "
+        << "Length: " << e.Length
+        << "}";
+    return out;
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    const TVector<TTestCaseWriteDataEntry>& entries)
+{
+    return PrintValues(out, entries);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TTestCaseWriteDataEntryPart
 {
@@ -56,7 +97,12 @@ IOutputStream& operator<<(
     return out;
 }
 
-}   // namespace
+IOutputStream& operator<<(
+    IOutputStream& out,
+    const TVector<TTestCaseWriteDataEntryPart>& parts)
+{
+    return PrintValues(out, parts);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -116,14 +162,17 @@ struct TCalculateDataPartsToReadTestBootstrap
         TVector<TWriteDataEntryPart> res;
         res.push_back(parts.front());
 
+        // merge consecutive parts
         for (size_t partIndex = 1; partIndex < parts.size(); partIndex++) {
             auto offset = res.back().Offset;
 
             while (partIndex < parts.size()) {
-                const bool extendsPrevPart =
+                bool extendsPrevPart =
                     res.back().Source == parts[partIndex].Source;
+                extendsPrevPart =
+                    extendsPrevPart && offset + 1 == parts[partIndex].Offset;
 
-                if (!extendsPrevPart || offset + 1 != parts[partIndex].Offset) {
+                if (!extendsPrevPart) {
                     res.push_back(parts[partIndex]);
                     break;
                 }
@@ -223,7 +272,10 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
                 part.Length);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(expectedParts, actualParts);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expectedParts,
+            actualParts,
+            "failed for test case with entries: " << testCaseEntries);
     }
 
     void TestShouldCorrectlyCalculateDataPartsToReadWithReferenceImpl(
@@ -257,7 +309,10 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             0,
             MaxLength);
 
-        UNIT_ASSERT_VALUES_EQUAL(expectedParts, actualParts);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expectedParts,
+            actualParts,
+            "failed for test case with entries: " << testCaseEntries);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateDataPartsToRead)
