@@ -29,7 +29,7 @@ private:
     TString PathToOutProfileLog;
     TMaskSensitiveData::EMode Mode{};
     TString Seed;
-    ui16 MaxExtentionLength = 0;
+    ui16 MaxExtensionLength = 0;
 
 public:
     TMaskCommand()
@@ -47,8 +47,8 @@ public:
             .DefaultValue("nodeid");
 
         Opts.AddLongOption("seed", "Seed for hash mode").StoreResult(&Seed);
-        Opts.AddLongOption("keepext", "Keep file extention, max length")
-            .StoreResult(&MaxExtentionLength);
+        Opts.AddLongOption("keep-file-extension", "Keep file extention, max length")
+            .StoreResult(&MaxExtensionLength);
     }
 
     bool Init(NLastGetopt::TOptsParseResultException& parseResult) override
@@ -74,7 +74,7 @@ public:
 
     int Execute() override
     {
-        TMaskSensitiveData mask{Mode, Seed, MaxExtentionLength};
+        TMaskSensitiveData mask{Mode, Seed, MaxExtensionLength};
         mask.MaskSensitiveData(PathToProfileLog, PathToOutProfileLog);
         return 0;
     }
@@ -85,10 +85,10 @@ public:
 TMaskSensitiveData::TMaskSensitiveData(
     const EMode mode,
     const TString& seed,
-    ui16 maxExtentionLength)
+    ui16 maxExtensionLength)
         : Mode{mode}
         , Seed{seed ? seed : CreateGuidAsString()}
-        , MaxExtentionLength{maxExtentionLength}
+        , MaxExtensionLength{maxExtensionLength}
 {}
 
 bool TMaskSensitiveData::Advance()
@@ -110,9 +110,9 @@ bool TMaskSensitiveData::Advance()
 TString TMaskSensitiveData::Transform(const TString& str, const ui64 nodeId)
 {
     TString extension;
-    if (MaxExtentionLength > 0) {
+    if (MaxExtensionLength > 0) {
         extension = TFsPath(str).GetExtension();
-        if (extension.size() > MaxExtentionLength) {
+        if (extension.size() > MaxExtensionLength) {
             extension = "";
         }
     }

@@ -29,13 +29,13 @@ private:
 
     // Some random string but stable in one session
     const TString Seed;
-    ui16 MaxExtentionLength = 0;
+    ui16 MaxExtensionLength = 0;
 
 public:
     TMaskSensitiveData(
         const EMode mode,
         const TString& seed,
-        ui16 maxExtentionLength);
+        ui16 maxExtensionLength);
     bool Advance();
     TString Transform(const TString& str, const ui64 nodeId);
     void MaskSensitiveData(const TString& in, const TString& out);
