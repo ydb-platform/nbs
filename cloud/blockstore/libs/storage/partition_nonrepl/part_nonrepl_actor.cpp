@@ -752,9 +752,6 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.RejectGetDeviceForRange);
-        HFunc(
-            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
-            RejectMultiAgentWrite);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
