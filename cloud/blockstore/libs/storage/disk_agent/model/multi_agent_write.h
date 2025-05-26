@@ -18,11 +18,13 @@ namespace NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TMultiAgentWriteResponseLocal
+// The response to the TMultiAgentWriteRequest, which is not transmitted through
+// the actor system and does not depend on the proto.
+struct TMultiAgentWriteResponsePrivate
 {
-    TMultiAgentWriteResponseLocal() = default;
+    TMultiAgentWriteResponsePrivate() = default;
 
-    TMultiAgentWriteResponseLocal(TErrorResponse&& error)
+    TMultiAgentWriteResponsePrivate(TErrorResponse&& error)
         : Error(std::move(error))
     {}
 
@@ -45,7 +47,7 @@ class IMultiagentWriteHandler
 public:
     virtual ~IMultiagentWriteHandler() = default;
 
-    virtual NThreading::TFuture<TMultiAgentWriteResponseLocal>
+    virtual NThreading::TFuture<TMultiAgentWriteResponsePrivate>
     PerformMultiAgentWrite(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) = 0;

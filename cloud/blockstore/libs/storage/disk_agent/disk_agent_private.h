@@ -176,7 +176,7 @@ struct TEvDiskAgentPrivate
     struct TMultiAgentWriteDeviceBlocksRequest
     {
         NProto::TWriteDeviceBlocksRequest Record;
-        NThreading::TPromise<TMultiAgentWriteResponseLocal> ResponsePromise;
+        NThreading::TPromise<TMultiAgentWriteResponsePrivate> ResponsePromise;
     };
 
     //

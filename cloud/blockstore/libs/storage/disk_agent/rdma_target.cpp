@@ -888,15 +888,15 @@ private:
     {
         HandleMultiAgentWriteBlocksResponse(
             continuationData.RequestDetails,
-            MakeFuture<TMultiAgentWriteResponseLocal>(
+            MakeFuture<TMultiAgentWriteResponsePrivate>(
                 TErrorResponse(resultCode, overlapDetails)));
     }
 
     void HandleMultiAgentWriteBlocksResponse(
         const TRequestDetails& requestDetails,
-        NThreading::TFuture<TMultiAgentWriteResponseLocal> future) const
+        NThreading::TFuture<TMultiAgentWriteResponsePrivate> future) const
     {
-        const TMultiAgentWriteResponseLocal& response = future.GetValue();
+        const TMultiAgentWriteResponsePrivate& response = future.GetValue();
         const NProto::TError& error = response.GetError();
 
         if (HasError(error)) {

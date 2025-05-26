@@ -849,7 +849,7 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
         });
 }
 
-NThreading::TFuture<TMultiAgentWriteResponseLocal>
+NThreading::TFuture<TMultiAgentWriteResponsePrivate>
 TDiskAgentState::PerformMultiAgentWrite(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request)
@@ -858,7 +858,7 @@ TDiskAgentState::PerformMultiAgentWrite(
         TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest>();
     req->Record.Swap(request.get());
     req->ResponsePromise =
-        NThreading::NewPromise<TMultiAgentWriteResponseLocal>();
+        NThreading::NewPromise<TMultiAgentWriteResponsePrivate>();
     req->CallContext = std::move(callContext);
 
     auto future = req->ResponsePromise.GetFuture();

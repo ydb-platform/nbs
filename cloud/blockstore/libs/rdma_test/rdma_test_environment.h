@@ -20,14 +20,14 @@ class TTestMultiagentWriteHandler: public IMultiagentWriteHandler
 {
 private:
     TDeque<NProto::TWriteDeviceBlocksRequest> Requests;
-    TDeque<TMultiAgentWriteResponseLocal> Responses;
+    TDeque<TMultiAgentWriteResponsePrivate> Responses;
 
 public:
-    void PushMockResponse(TMultiAgentWriteResponseLocal response);
+    void PushMockResponse(TMultiAgentWriteResponsePrivate response);
     std::optional<NProto::TWriteDeviceBlocksRequest> PopInterceptedRequest();
 
     // Implements IMultiagentWriteHandler
-    NThreading::TFuture<TMultiAgentWriteResponseLocal> PerformMultiAgentWrite(
+    NThreading::TFuture<TMultiAgentWriteResponsePrivate> PerformMultiAgentWrite(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) override;
 };

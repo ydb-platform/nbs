@@ -150,7 +150,7 @@ struct TFixture
     }
 
     // Implements IMultiagentWriteHandler
-    NThreading::TFuture<TMultiAgentWriteResponseLocal> PerformMultiAgentWrite(
+    NThreading::TFuture<TMultiAgentWriteResponsePrivate> PerformMultiAgentWrite(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) override
     {

@@ -88,7 +88,7 @@ public:
     TSessionInfo GetWriterSession(const TString& uuid) const;
     TVector<TSessionInfo> GetReaderSessions(const TString& uuid) const;
 
-    NThreading::TFuture<TMultiAgentWriteResponseLocal> PerformMultiAgentWrite(
+    NThreading::TFuture<TMultiAgentWriteResponsePrivate> PerformMultiAgentWrite(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) const;
 

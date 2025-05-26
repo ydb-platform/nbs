@@ -398,7 +398,7 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         TRdmaTestEnvironment env;
 
         {   // Mock response from actor system.
-            TMultiAgentWriteResponseLocal mockResponse;
+            TMultiAgentWriteResponsePrivate mockResponse;
             mockResponse.Error = MakeError(S_OK);
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
@@ -435,7 +435,7 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         TRdmaTestEnvironment env(4_MB, 2);
 
         {   // Mock response from actor system.
-            TMultiAgentWriteResponseLocal mockResponse;
+            TMultiAgentWriteResponsePrivate mockResponse;
             mockResponse.Error = MakeError(S_OK);
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));

@@ -21,7 +21,7 @@ class TMultiAgentWriteDeviceBlocksActor final
 {
 public:
     using TOptionalPromise =
-        std::optional<NThreading::TPromise<TMultiAgentWriteResponseLocal>>;
+        std::optional<NThreading::TPromise<TMultiAgentWriteResponsePrivate>>;
 
 private:
     const NActors::TActorId Parent;

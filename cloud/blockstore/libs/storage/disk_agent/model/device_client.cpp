@@ -349,7 +349,7 @@ TVector<TDeviceClient::TSessionInfo> TDeviceClient::GetReaderSessions(
     return {};
 }
 
-NThreading::TFuture<TMultiAgentWriteResponseLocal>
+NThreading::TFuture<TMultiAgentWriteResponsePrivate>
 TDeviceClient::PerformMultiAgentWrite(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) const
