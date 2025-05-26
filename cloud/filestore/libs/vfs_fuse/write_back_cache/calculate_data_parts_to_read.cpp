@@ -22,7 +22,7 @@ auto TWriteBackCache::CalculateDataPartsToRead(
         size_t Order = 0;
     };
 
-    TVector<TPoint> points(Reserve(entries.size()));
+    TVector<TPoint> points(Reserve(2*entries.size()));
 
     for (size_t i = 0; i < entries.size(); i++) {
         const auto* entry = entries[i];
@@ -49,7 +49,7 @@ auto TWriteBackCache::CalculateDataPartsToRead(
         return l.Offset < r.Offset;
     });
 
-    TVector<TWriteDataEntryPart> res(Reserve(entries.size()));
+    TVector<TWriteDataEntryPart> res(Reserve(points.size()));
 
     const auto& heapComparator = [] (const auto& l, const auto& r) {
         return l.Order < r.Order;

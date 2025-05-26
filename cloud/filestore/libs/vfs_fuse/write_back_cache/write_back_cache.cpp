@@ -87,6 +87,9 @@ public:
         , AutomaticFlushPeriod(automaticFlushPeriod)
         , WriteDataRequestsQueue(filePath, capacityBytes)
     {
+        // should fit 1 MiB of data plus some headers (assume 1 KiB is enough)
+        Y_ABORT_UNLESS(capacityBytes >= 1024*1024 + 1024);
+
         WriteDataRequestsQueue.Visit([&] (auto, auto serializedRequest) {
             NProto::TWriteDataRequest parsedRequest;
             // TODO(svartmetal): avoid parsing with copy
@@ -139,7 +142,7 @@ public:
     }
 
     // should be protected by |Lock|
-    TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
+    TVector<TWriteDataEntryPart> CalculateCachedDataPartsToRead(
         ui64 handle,
         ui64 startingFromOffset,
         ui64 length)
@@ -153,6 +156,12 @@ public:
             entriesIter->second,
             startingFromOffset,
             length);
+    }
+
+    // should be protected by |Lock|
+    TVector<TWriteDataEntryPart> CalculateCachedDataPartsToRead(ui64 handle)
+    {
+        return CalculateCachedDataPartsToRead(handle, 0, 0);
     }
 
     // should be protected by |Lock|
@@ -185,7 +194,7 @@ public:
         TVector<TWriteDataEntryPart> parts;
 
         with_lock (Lock) {
-            parts = CalculateDataPartsToRead(
+            parts = CalculateCachedDataPartsToRead(
                 request->GetHandle(),
                 request->GetOffset(),
                 request->GetLength());
@@ -297,12 +306,12 @@ public:
     {
         with_lock (Lock) {
             for (auto* entry: entries) {
-                entry->Flushed = true;
+                entry->FlushStatus = EFlushStatus::Finished;
             }
 
             while (!WriteDataEntries.Empty()) {
                 auto* entry = WriteDataEntries.Front();
-                if (!entry->Flushed) {
+                if (entry->FlushStatus != EFlushStatus::Finished) {
                     return;
                 }
 
@@ -346,7 +355,8 @@ public:
 
             const auto nothingToFlush = [] (const TWriteDataEntry* e)
             {
-                return e->Flushing || e->Flushed;
+                return e->FlushStatus == EFlushStatus::Started ||
+                    e->FlushStatus == EFlushStatus::Finished;
             };
 
             // TODO(svartmetal): optimise, can be done in O(1)
@@ -368,7 +378,7 @@ public:
                 currFlushId
             };
 
-            auto parts = CalculateDataPartsToRead(handle, 0, 0);
+            auto parts = CalculateCachedDataPartsToRead(handle);
             EraseIf(
                 parts,
                 [=] (const auto& x) { return nothingToFlush(x.Source); });
@@ -413,7 +423,7 @@ public:
                     continue;
                 }
 
-                entry->Flushing = true;
+                entry->FlushStatus = EFlushStatus::Started;
                 entriesToFlush.push_back(entry);
             }
         }
@@ -490,7 +500,8 @@ public:
         with_lock (Lock) {
             const auto nothingToFlush = [] (const TWriteDataEntry& e)
             {
-                return e.Flushing || e.Flushed;
+                return e.FlushStatus == EFlushStatus::Started ||
+                    e.FlushStatus == EFlushStatus::Finished;
             };
 
             // TODO(svartmetal): optimise, can be done in O(1)

@@ -53,6 +53,13 @@ private:
     // only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
+    enum class EFlushStatus
+    {
+        NotStarted,
+        Started,
+        Finished
+    };
+
     struct TWriteDataEntry
         : public TIntrusiveListItem<TWriteDataEntry>
     {
@@ -78,8 +85,7 @@ private:
             return Offset + Length;
         }
 
-        bool Flushing = false;
-        bool Flushed = false;
+        EFlushStatus FlushStatus = EFlushStatus::NotStarted;
     };
 
     struct TWriteDataEntryPart
