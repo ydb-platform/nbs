@@ -3630,9 +3630,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
     {
-        constexpr ui64 blockCount =
-            2500;   // in DefaultDevices first one has 2048 blocks, so we would
-                    // read from first two devices
+        constexpr ui64 blockCount = 2500;   // in DefaultDevices
+                                            // first one has 2048 blocks, so we
+                                            // would read from first two devices
 
         TTestBasicRuntime runtime;
 

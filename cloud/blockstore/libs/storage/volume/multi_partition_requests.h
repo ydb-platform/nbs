@@ -408,6 +408,11 @@ void TMultiPartitionRequestActor<TMethod>::HandlePartitionResponse(
 
     if (FAILED(msg->GetStatus())) {
         Record.MutableError()->CopyFrom(msg->GetError());
+        if constexpr (
+            std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>)
+        {
+            Merge(msg->Record, requestNo, Record);
+        }
     } else {
         Merge(msg->Record, requestNo, Record);
     }
