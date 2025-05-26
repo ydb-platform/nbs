@@ -642,6 +642,24 @@ void TPartitionActor::HandleAddBlobs(
 {
     auto* msg = ev->Get();
 
+    if (!CompactionMapLoadState->IsFinished()) {
+        const THashSet<ui32> rangeIndices =
+            GetRangeIndices(msg->FreshBlobs, msg->MixedBlobs, msg->MergedBlobs);
+
+        const bool shouldReject =
+            CompactionMapLoadState->ShouldRejectRequest(rangeIndices);
+
+        if (shouldReject) {
+            const auto error =
+                MakeError(E_REJECTED, "compaction state not loaded yet");
+            auto response =
+                std::make_unique<TEvPartitionPrivate::TEvAddBlobsResponse>(
+                    error);
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -737,6 +755,37 @@ void TPartitionActor::CompleteAddBlobs(
 
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.AddBlobs.AddRequest(time);
+}
+
+THashSet<ui32> TPartitionActor::GetRangeIndices(
+    const TVector<TAddFreshBlob>& freshBlobs,
+    const TVector<TAddMixedBlob>& mixedBlobs,
+    const TVector<TAddMergedBlob>& mergedBlobs) const
+{
+    const auto& compactionMap = State->GetCompactionMap();
+
+    THashSet<ui32> rangeIndices;
+
+    for (const auto& blob: freshBlobs) {
+        if (!blob.Blocks.empty()) {
+            rangeIndices.emplace(
+                compactionMap.GetRangeIndex(blob.Blocks.front().BlockIndex));
+        }
+    }
+
+    for (const auto& blob: mixedBlobs) {
+        for (const auto& block: blob.Blocks) {
+            rangeIndices.emplace(compactionMap.GetRangeIndex(block));
+        }
+    }
+
+    for (const auto& blob: mergedBlobs) {
+        const auto rangeStart =
+            compactionMap.GetRangeStart(blob.BlockRange.Start);
+        rangeIndices.emplace(compactionMap.GetRangeIndex(rangeStart));
+    }
+
+    return rangeIndices;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

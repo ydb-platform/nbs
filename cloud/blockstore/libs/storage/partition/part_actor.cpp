@@ -854,6 +854,7 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
         HFunc(TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted, HandleLoadFreshBlobsCompleted);
         HFunc(TEvPartitionPrivate::TEvConfirmBlobsCompleted, HandleConfirmBlobsCompleted);
+        HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
 
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
 
@@ -907,6 +908,7 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvGetChangedBlocksCompleted, HandleGetChangedBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted, HandleAddConfirmedBlobsCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted, HandleDescribeBlocksCompleted);
+        HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 

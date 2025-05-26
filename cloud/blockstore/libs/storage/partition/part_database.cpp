@@ -979,17 +979,29 @@ void TPartitionDatabase::DeleteCompactionMap(ui32 blockIndex)
 bool TPartitionDatabase::ReadCompactionMap(
     TVector<TCompactionCounter>& compactionMap)
 {
+    return ReadCompactionMap(compactionMap, 0, Max<ui32>());
+}
+
+bool TPartitionDatabase::ReadCompactionMap(
+    TVector<TCompactionCounter>& compactionMap,
+    ui32 startingFromRangeIdx,
+    ui32 rangeCount)
+{
     using TTable = TPartitionSchema::CompactionMap;
 
     auto it = Table<TTable>()
-        .Range()
+        .GreaterOrEqual(startingFromRangeIdx)
         .Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
-    while (it.IsValid()) {
+    if (rangeCount != Max<ui32>()) {
+        compactionMap.reserve(compactionMap.size() + rangeCount);
+    }
+
+    for (ui32 count = 0; it.IsValid() && count != rangeCount; ++count) {
         compactionMap.emplace_back(
             it.GetValue<TTable::BlockIndex>(),
             TRangeStat{
