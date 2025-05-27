@@ -70,6 +70,7 @@ TPartitionActor::TPartitionActor(
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
+    , VolumeTabletId(volumeTabletId)
     , LogTitle(
           TabletID(),
           PartitionConfig.GetDiskId(),
@@ -77,7 +78,6 @@ TPartitionActor::TPartitionActor(
           partitionIndex,
           siblingCount)
     , TransactionTimeTracker(PartitionTransactions)
-    , VolumeTabletId(volumeTabletId)
 {}
 
 TPartitionActor::~TPartitionActor()

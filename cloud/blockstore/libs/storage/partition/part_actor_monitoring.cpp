@@ -478,7 +478,7 @@ void TPartitionActor::HandleHttpInfo_Default(
 
                     TAG (TH3) {
                         out << "<a href='../tablets?TabletID=" << VolumeTabletId
-                            << "'>Volume</a>";
+                            << "'>Volume tablet</a>";
                     }
 
                     TAG(TH3) { out << "State"; }
