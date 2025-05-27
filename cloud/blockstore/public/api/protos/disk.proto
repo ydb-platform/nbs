@@ -219,7 +219,7 @@ message TAgentInfo {
     // Reason for agent state.
     string StateMessage = 4;
 
-    // Timestamp when checkpoint was changed (in microseconds)
+    // Timestamp when state has been changed (in microseconds)
     uint64 StateTs = 5;
 }
 
