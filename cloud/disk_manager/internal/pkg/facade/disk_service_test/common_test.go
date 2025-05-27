@@ -64,6 +64,107 @@ func testDiskServiceCreateEmptyDiskWithZoneID(t *testing.T, zoneID string) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func testCreateDiskFromImage(
+	t *testing.T,
+	diskKind disk_manager.DiskKind,
+	imageSize uint64,
+	pooled bool,
+	diskSize uint64,
+	diskFolderId string,
+	encryptionDesc *disk_manager.EncryptionDesc,
+	zoneID string,
+) {
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	imageID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "_image"
+
+	diskContentInfo := testcommon.CreateImage(
+		t,
+		ctx,
+		imageID,
+		imageSize,
+		"folder",
+		pooled,
+	)
+
+	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: imageID,
+		},
+		Size: int64(diskSize),
+		Kind: diskKind,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: zoneID,
+			DiskId: diskID,
+		},
+		FolderId:       diskFolderId,
+		EncryptionDesc: encryptionDesc,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+	require.NoError(t, err)
+	// We should provide correct zone for NBS client because only unsharded
+	// zones and shards are configured in the NBS client config.
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
+
+	if encryptionDesc != nil {
+		encryption, err := disks.PrepareEncryptionDesc(encryptionDesc)
+		require.NoError(t, err)
+
+		err = nbsClient.ValidateCrc32WithEncryption(
+			ctx,
+			diskID,
+			diskContentInfo,
+			encryption,
+		)
+		require.NoError(t, err)
+	} else {
+		err = nbsClient.ValidateCrc32(
+			ctx,
+			diskID,
+			diskContentInfo,
+		)
+		require.NoError(t, err)
+	}
+
+	diskParams, err := nbsClient.Describe(ctx, diskID)
+	require.NoError(t, err)
+	if pooled {
+		// Check that disk is overlay.
+		require.NotEmpty(t, diskParams.BaseDiskID)
+	} else {
+		// Check that disk is not overlay.
+		require.Empty(t, diskParams.BaseDiskID)
+	}
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func testDiskServiceCreateDiskFromImageWithForceNotLayeredWithZoneID(
 	t *testing.T,
 	zoneID string,
