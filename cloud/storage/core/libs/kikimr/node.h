@@ -5,8 +5,7 @@
 #include "node_registration_settings.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/timer.h>
-#include <cloud/storage/core/libs/common/sleeper.h>
+#include <cloud/storage/core/libs/common/time_control.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <contrib/ydb/core/protos/config.pb.h>
@@ -76,7 +75,6 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     const TRegisterDynamicNodeOptions& options,
     INodeRegistrantPtr registrant,
     TLog& Log,
-    ITimerPtr timer = CreateWallClockTimer(),
-    ISleeperPtr sleeper = CreateDefaultSleeper());
+    ITimeControlPtr timeControl = CreateDefaultSleeper());
 
 }   // namespace NCloud::NStorage

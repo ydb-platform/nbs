@@ -1,8 +1,7 @@
 #include "node.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/sleeper_test.h>
-#include <cloud/storage/core/libs/common/timer_test.h>
+#include <cloud/storage/core/libs/common/time_control_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
@@ -48,13 +47,21 @@ TRegisterDynamicNodeOptions CreateRegisterOptions(bool loadConfigs)
     };
 }
 
-decltype(auto) CreateTestEnvironment()
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestEnvironment
 {
-    auto timer = std::make_shared<TTestTimer>();
-    auto sleeper = std::make_shared<TTestSleeper>(timer);
+    std::shared_ptr<TTestTimeControl> TimeControl;
+    TLog Logger;
+    NKikimrConfig::TAppConfigPtr AppConfig;
+};
+
+TTestEnvironment CreateTestEnvironment()
+{
+    auto timeControl = std::make_shared<TTestTimeControl>();
     auto log = TLog{};
     auto appConfig = std::make_shared<NKikimrConfig::TAppConfig>();
-    return std::tuple{timer, sleeper, log, appConfig};
+    return {.TimeControl = timeControl, .Logger = log, .AppConfig = appConfig};
 }
 
 }   // namespace
@@ -77,15 +84,14 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);
 
-        auto [timer, sleeper, log, appConfig] = CreateTestEnvironment();
+        auto [timeControl, log, appConfig] = CreateTestEnvironment();
 
         auto [nodeId, scopeId, maybeConfig] = RegisterDynamicNode(
             appConfig,
             options,
             std::move(registrant),
             log,
-            timer,
-            sleeper);
+            timeControl);
 
         ASSERT_EQ(nodeId, DefaultNodeId);
         ASSERT_EQ(scopeId, DefaultScopeId);
@@ -108,19 +114,18 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);
 
-        auto [timer, sleeper, log, appConfig] = CreateTestEnvironment();
+        auto [timeControl, log, appConfig] = CreateTestEnvironment();
 
         auto [nodeId, scopeId, maybeConfig] = RegisterDynamicNode(
             appConfig,
             options,
             std::move(registrant),
             log,
-            timer,
-            sleeper);
+            timeControl);
 
-        ASSERT_EQ(sleeper->SleepDurations.size(), 2UL);
-        EXPECT_EQ(sleeper->SleepDurations[0], TDuration::Seconds(1));
-        EXPECT_EQ(sleeper->SleepDurations[1], TDuration::Seconds(1));
+        ASSERT_EQ(timeControl->SleepDurations.size(), 2UL);
+        EXPECT_EQ(timeControl->SleepDurations[0], TDuration::Seconds(1));
+        EXPECT_EQ(timeControl->SleepDurations[1], TDuration::Seconds(1));
 
         ASSERT_EQ(nodeId, DefaultNodeId);
         ASSERT_EQ(scopeId, (NActors::TScopeId{4UL, 5UL}));
@@ -137,7 +142,7 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(false);
 
-        auto [timer, sleeper, log, appConfig] = CreateTestEnvironment();
+        auto [timeControl, log, appConfig] = CreateTestEnvironment();
 
         EXPECT_THROW(
             RegisterDynamicNode(
@@ -145,13 +150,12 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
                 options,
                 std::move(registrant),
                 log,
-                timer,
-                sleeper),
+                timeControl),
             TServiceError);
 
-        ASSERT_EQ(sleeper->SleepDurations.size(), 2UL);
-        EXPECT_EQ(sleeper->SleepDurations[0], TDuration::Seconds(1));
-        EXPECT_EQ(sleeper->SleepDurations[1], TDuration::Seconds(1));
+        ASSERT_EQ(timeControl->SleepDurations.size(), 2UL);
+        EXPECT_EQ(timeControl->SleepDurations[0], TDuration::Seconds(1));
+        EXPECT_EQ(timeControl->SleepDurations[1], TDuration::Seconds(1));
     }
 
     Y_UNIT_TEST(ShouldRetryConfigurationWithExponentialBackoff)
@@ -167,7 +171,7 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);
 
-        auto [timer, sleeper, log, appConfig] = CreateTestEnvironment();
+        auto [timeControl, log, appConfig] = CreateTestEnvironment();
 
         EXPECT_THROW(
             RegisterDynamicNode(
@@ -175,15 +179,14 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
                 options,
                 std::move(registrant),
                 log,
-                timer,
-                sleeper),
+                timeControl),
             TServiceError);
 
-        ASSERT_EQ(sleeper->SleepDurations.size(), 4UL);
-        EXPECT_EQ(sleeper->SleepDurations[0], TDuration::Seconds(1));
-        EXPECT_EQ(sleeper->SleepDurations[1], TDuration::Seconds(2));
-        EXPECT_EQ(sleeper->SleepDurations[2], TDuration::Seconds(4));
-        EXPECT_EQ(sleeper->SleepDurations[3], TDuration::Seconds(8));
+        ASSERT_EQ(timeControl->SleepDurations.size(), 4UL);
+        EXPECT_EQ(timeControl->SleepDurations[0], TDuration::Seconds(1));
+        EXPECT_EQ(timeControl->SleepDurations[1], TDuration::Seconds(2));
+        EXPECT_EQ(timeControl->SleepDurations[2], TDuration::Seconds(4));
+        EXPECT_EQ(timeControl->SleepDurations[3], TDuration::Seconds(8));
     }
 }
 

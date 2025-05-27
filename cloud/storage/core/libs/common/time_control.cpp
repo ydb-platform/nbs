@@ -1,4 +1,4 @@
-#include "sleeper.h"
+#include "time_control.h"
 
 #include <util/datetime/base.h>
 
@@ -6,11 +6,16 @@ namespace NCloud {
 
 namespace {
 
-struct TSleeper: public ISleeper
+struct TTimeControl: public ITimeControl
 {
     void Sleep(TDuration duration) override
     {
         ::Sleep(duration);
+    }
+
+    TInstant Now() override
+    {
+        return TInstant::Now();
     }
 };
 
@@ -18,9 +23,9 @@ struct TSleeper: public ISleeper
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ISleeperPtr CreateDefaultSleeper()
+ITimeControlPtr CreateDefaultSleeper()
 {
-    return std::make_shared<TSleeper>();
+    return std::make_shared<TTimeControl>();
 }
 
 }   // namespace NCloud

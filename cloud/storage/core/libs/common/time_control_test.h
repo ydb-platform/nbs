@@ -1,26 +1,21 @@
 #pragma once
 
-#include "sleeper.h"
+#include "time_control.h"
 #include "timer_test.h"
 #include "util/generic/vector.h"
 
-#include <utility>
-
 namespace NCloud {
 
-struct TTestSleeper: public ISleeper
+struct TTestTimeControl: public ITimeControl
 {
 private:
-    std::shared_ptr<TTestTimer> Timer;
+    TTestTimer Timer;
 
 public:
     TVector<TDuration> SleepDurations;
 
-    explicit TTestSleeper(std::shared_ptr<TTestTimer> timer)
-        : Timer(std::move(timer))
-    {}
-
     void Sleep(TDuration duration) override;
+    TInstant Now() override;
 };
 
 }   // namespace NCloud

@@ -1,4 +1,5 @@
 #include "node.h"
+
 #include "node_registration_helpers.h"
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -9,19 +10,18 @@
 #include <contrib/ydb/core/base/location.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
 
 #include <util/generic/vector.h>
 #include <util/network/address.h>
 #include <util/network/socket.h>
 #include <util/random/shuffle.h>
-#include <util/string/join.h>
 #include <util/stream/file.h>
+#include <util/string/join.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NStorage {
@@ -183,8 +183,7 @@ NDiscovery::TNodeRegistrationResult TryToRegisterDynamicNodeViaDiscoveryService(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TLegacyNodeRegistrant
-    : public INodeRegistrant
+struct TLegacyNodeRegistrant: public INodeRegistrant
 {
     const TString HostName;
     const TString HostAddress;
@@ -195,11 +194,11 @@ struct TLegacyNodeRegistrant
     TNodeLocation Location;
 
     TLegacyNodeRegistrant(
-            TString hostName,
-            TString hostAddress,
-            const TRegisterDynamicNodeOptions& options,
-            NKikimrConfig::TStaticNameserviceConfig& nsConfig,
-            NKikimrConfig::TDynamicNodeConfig& dnConfig)
+        TString hostName,
+        TString hostAddress,
+        const TRegisterDynamicNodeOptions& options,
+        NKikimrConfig::TStaticNameserviceConfig& nsConfig,
+        NKikimrConfig::TDynamicNodeConfig& dnConfig)
         : HostName(std::move(hostName))
         , HostAddress(std::move(hostAddress))
         , Options(options)
@@ -231,7 +230,7 @@ struct TLegacyNodeRegistrant
             HostAddress,
             HostName,
             Location,
-            false, // fixedNodeId
+            false,   // fixedNodeId
             path);
 
         if (!result.IsSuccess()) {
@@ -269,8 +268,7 @@ struct TLegacyNodeRegistrant
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDiscoveryNodeRegistrant
-    : public INodeRegistrant
+struct TDiscoveryNodeRegistrant: public INodeRegistrant
 {
     const TString HostName;
     const TString HostAddress;
@@ -282,11 +280,11 @@ struct TDiscoveryNodeRegistrant
     NDiscovery::TNodeRegistrationSettings Settings;
 
     TDiscoveryNodeRegistrant(
-            TString hostName,
-            TString hostAddress,
-            const TRegisterDynamicNodeOptions& options,
-            NKikimrConfig::TStaticNameserviceConfig& nsConfig,
-            NKikimrConfig::TDynamicNodeConfig& dnConfig)
+        TString hostName,
+        TString hostAddress,
+        const TRegisterDynamicNodeOptions& options,
+        NKikimrConfig::TStaticNameserviceConfig& nsConfig,
+        NKikimrConfig::TDynamicNodeConfig& dnConfig)
         : HostName(std::move(hostName))
         , HostAddress(std::move(hostAddress))
         , Options(options)
@@ -396,14 +394,27 @@ INodeRegistrantPtr CreateNodeRegistrant(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * Registers a dynamic node with retry policies:
+ *
+ * 1. **Registration Phase**:
+ *    - Retries up to `Settings.MaxAttempts` times.
+ *    - Fixed delay (`Settings.ErrorTimeout`) between attempts.
+ *
+ * 2. **Configuration Phase** (if `LoadCmsConfigs` is true):
+ *    - Retries indefinitely with exponential backoff.
+ *    - Backoff range: [`LoadConfigsFromCmsRetryMinDelay`,
+ * `LoadConfigsFromCmsRetryMaxDelay`].
+ *    - Total timeout: `LoadConfigsFromCmsTotalTimeout`.
+ *
+ * Throws `TServiceError` on unrecoverable failures.
+ */
 TRegisterDynamicNodeResult RegisterDynamicNode(
     NKikimrConfig::TAppConfigPtr appConfig,
     const TRegisterDynamicNodeOptions& options,
     INodeRegistrantPtr registrant,
     TLog& Log,
-    ITimerPtr timer,
-    ISleeperPtr sleeper
-)
+    ITimeControlPtr timeControl)
 {
     auto& nsConfig = *appConfig->MutableNameserviceConfig();
 
@@ -415,8 +426,8 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         addrs.push_back(options.NodeBrokerAddress);
     } else {
         auto port = options.UseNodeBrokerSsl && options.NodeBrokerSecurePort
-            ? options.NodeBrokerSecurePort
-            : options.NodeBrokerPort;
+                        ? options.NodeBrokerSecurePort
+                        : options.NodeBrokerPort;
         if (port) {
             for (const auto& node: nsConfig.GetNode()) {
                 addrs.emplace_back(Join(":", node.GetHost(), port));
@@ -452,7 +463,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
                 "Failed to register dynamic node at "
                 << nodeBrokerAddress.Quote() << ": " << msg
                 << ". Will retry after " << options.Settings.ErrorTimeout);
-            sleeper->Sleep(options.Settings.ErrorTimeout);
+            timeControl->Sleep(options.Settings.ErrorTimeout);
             continue;
         }
 
@@ -473,7 +484,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         options.Settings.LoadConfigsFromCmsRetryMinDelay,
         options.Settings.LoadConfigsFromCmsRetryMaxDelay);
     const auto deadline =
-        timer->Now() + options.Settings.LoadConfigsFromCmsTotalTimeout;
+        timeControl->Now() + options.Settings.LoadConfigsFromCmsTotalTimeout;
     for (;;) {
         if (!options.LoadCmsConfigs) {
             break;
@@ -484,7 +495,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
 
         if (FAILED(result.GetError().GetCode())) {
             const auto& msg = result.GetError().GetMessage();
-            if (deadline < timer->Now()) {
+            if (deadline < timeControl->Now()) {
                 ythrow TServiceError(E_FAIL)
                     << "Cannot configure dynamic node: " << msg;
             }
@@ -494,7 +505,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
                 "Failed to configure dynamic node at "
                 << registeredNodeBrokerAddress.Quote() << ": " << msg
                 << ". Will retry after " << delay);
-            sleeper->Sleep(delay);
+            timeControl->Sleep(delay);
             continue;
         }
 
@@ -506,4 +517,4 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     return {nodeId, scopeId, std::move(configurationResult)};
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NStorage
