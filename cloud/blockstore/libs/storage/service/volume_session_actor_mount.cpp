@@ -1175,12 +1175,14 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
                 VolumeInfo->PreemptionSource);
         }
 
-        LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-            mountStr <<
-            " , binding " << EVolumeBinding_Name(VolumeInfo->BindingType) <<
-            " , source " << EPreemptionSource_Name(VolumeInfo->PreemptionSource) <<
-            " , result (" << msg->GetStatus() <<
-            "): " << msg->GetError().GetMessage().Quote());
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            mountStr << " , binding "
+                     << EVolumeBinding_Name(VolumeInfo->BindingType)
+                     << " , source "
+                     << EPreemptionSource_Name(VolumeInfo->PreemptionSource)
+                     << " , result (" << FormatError(msg->GetError()) << ")");
 
         SendInternalMountVolumeResponse(
             ctx,
