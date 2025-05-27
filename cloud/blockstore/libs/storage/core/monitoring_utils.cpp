@@ -54,18 +54,36 @@ TStringBuf AlertClassFromLevel(EAlertLevel alertLevel)
     }
 }
 
-
-void RenderLatencyCell(
+void RenderCellWithTooltip(
     IOutputStream& out,
-    const TString& trKey,
+    const TString& text,
+    const TString& tooltip)
+{
+    HTML (out) {
+        TABLED () {
+            DIV_CLASS ("tooltip-latency") {
+                out << text;
+                if (tooltip) {
+                    SPAN_CLASS ("tooltiptext-latency") {
+                        out << tooltip;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void RenderTxLatencyCell(
+    IOutputStream& out,
+    const TString& txKey,
     const TString& timeKey)
 {
     HTML (out) {
         TABLED () {
             DIV_CLASS ("latency-item") {
-                DIV_CLASS_ID(" ", trKey + "_finished_" + timeKey)
+                DIV_CLASS_ID(" ", txKey + "_finished_" + timeKey)
                 {}
-                DIV_CLASS_ID(" ", trKey + "_inflight_" + timeKey)
+                DIV_CLASS_ID(" ", txKey + "_inflight_" + timeKey)
                 {}
             }
         }
@@ -83,32 +101,22 @@ void DumpLatencyForTransactions(
                 TABLEH () {
                     out << "Latency";
                 }
-                for (const auto& trInfo: transactions) {
+                for (const auto& txInfo: transactions) {
                     TABLEH () {
-                        out << trInfo.Description;
+                        out << txInfo.Description;
                     }
                 }
             }
         }
 
-        for (const auto& [tr, timeKey, timeDescr, timeTooltip]:
+        for (const auto& [_, timeKey, timeDescr, timeTooltip]:
              transactionTimeTracker.GetTimeBuckets())
         {
             TABLER () {
-                TABLED () {
-                    DIV_CLASS ("tooltip-latency") {
-                        out << timeDescr;
+                RenderCellWithTooltip(out, timeDescr, timeTooltip);
 
-                        if (timeTooltip) {
-                            SPAN_CLASS ("tooltiptext-latency") {
-                                out << timeTooltip;
-                            }
-                        }
-                    }
-                }
-
-                for (const auto& trInfo: transactions) {
-                    RenderLatencyCell(out, trInfo.Key, timeKey);
+                for (const auto& txInfo: transactions) {
+                    RenderTxLatencyCell(out, txInfo.Key, timeKey);
                 }
             }
         }
@@ -120,15 +128,15 @@ void DumpLatencyForTransactions(
     size_t columnCount,
     const TTransactionTimeTracker& transactionTimeTracker)
 {
-    const auto trBuckets = transactionTimeTracker.GetTransactionBuckets();
+    const auto buckets = transactionTimeTracker.GetTransactionBuckets();
 
     HTML (out) {
         TABLE_CLASS ("table-latency") {
-            for (size_t i = 0; i < trBuckets.size(); i += columnCount) {
+            for (size_t i = 0; i < buckets.size(); i += columnCount) {
                 const std::size_t chunkSize =
-                    Min(columnCount, trBuckets.size() - i);
+                    Min(columnCount, buckets.size() - i);
                 const std::span<const TTransactionTimeTracker::TBucketInfo>
-                    transactionChunk{&trBuckets[i], chunkSize};
+                    transactionChunk{&buckets[i], chunkSize};
 
                 DumpLatencyForTransactions(
                     out,

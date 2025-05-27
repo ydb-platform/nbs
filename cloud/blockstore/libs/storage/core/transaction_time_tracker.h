@@ -12,7 +12,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// A class for tracking the time taken by transactions and implementing the
+// A class for tracking time taken by transactions and implementing the
 // ITransactionTracker interface. This class maintains histograms for different
 // statuses of transactions and provides methods to track when transactions
 // start and finish. It also allows retrieval of statistical information in JSON
