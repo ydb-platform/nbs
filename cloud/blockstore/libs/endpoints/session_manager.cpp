@@ -15,8 +15,8 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/service_su/remote_storage_provider.h>
-#include <cloud/blockstore/libs/service_su/service_su.h>
+#include <cloud/blockstore/libs/sharding/describe.h>
+#include <cloud/blockstore/libs/sharding/remote_storage_provider.h>
 #include <cloud/blockstore/libs/validation/validation.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -308,7 +308,7 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IServerStatsPtr ServerStats;
     const IBlockStorePtr Service;
-    const IRemoteStorageProviderPtr RemoteStorageProvider;
+    const NSharding::IRemoteStorageProviderPtr RemoteStorageProvider;
     const IStorageProviderPtr StorageProvider;
     const NRdma::IClientPtr RdmaClient;
     const IThrottlerProviderPtr ThrottlerProvider;
@@ -334,7 +334,7 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             IBlockStorePtr service,
-            IRemoteStorageProviderPtr remoteStorageProvider,
+            NSharding::IRemoteStorageProviderPtr remoteStorageProvider,
             IStorageProviderPtr storageProvider,
             NRdma::IClientPtr rdmaClient,
             IThrottlerProviderPtr throttlerProvider,
@@ -489,26 +489,25 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers)
 {
+    auto [multiShardFuture, handling] = DescribeRemoteVolume(
+        diskId,
+        headers,
+        Service,
+        RemoteStorageProvider,
+        Logging,
+        Options.DefaultClientConfig);
+
+    if (handling) {
+        return Executor->WaitFor(multiShardFuture);
+    }
+
     auto describeRequest = std::make_shared<NProto::TDescribeVolumeRequest>();
     describeRequest->MutableHeaders()->CopyFrom(headers);
     describeRequest->SetDiskId(diskId);
 
-    NProto::TClientAppConfig clientAppConfig;
-    auto& config = *clientAppConfig.MutableClientConfig();
-
-    config = Options.DefaultClientConfig;
-    config.SetClientId(FQDNHostName());
-
-    // TODO: choose correct timeouts
-    auto clientConfig = std::make_shared<TClientAppConfig>(std::move(clientAppConfig));
-
-    auto future = DescribeRemoteVolume(
+    auto future = Service->DescribeVolume(
         std::move(callContext),
-        std::move(describeRequest),
-        Service,
-        RemoteStorageProvider,
-        Logging,
-        std::move(clientConfig));
+        std::move(describeRequest));
 
     return Executor->WaitFor(future);
 }
@@ -676,13 +675,13 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
 
     auto clientConfig = CreateClientConfig(request);
 
-    if (shardId != Config->GetShardId()) {
-        auto endpoints = RemoteStorageProvider->CreateStorage(
+    if (!shardId.empty()) {
+        auto shardClient = RemoteStorageProvider->GetShardClient(
             shardId,
             clientConfig);
 
-        service = endpoints.Service;
-        storage = CreateRemoteEndpoint(endpoints.StorageService);
+        service = shardClient.GetService();
+        storage = shardClient.GetStorage();
     } else {
         auto future = StorageProvider->CreateStorage(volume, clientId, accessMode)
             .Apply([] (const auto& f) {
@@ -865,7 +864,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    IRemoteStorageProviderPtr remoteStorageProvider,
+    NSharding::IRemoteStorageProviderPtr remoteStorageProvider,
     IStorageProviderPtr storageProvider,
     NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,

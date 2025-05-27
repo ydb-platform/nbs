@@ -13,7 +13,7 @@
 #include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
-#include <cloud/blockstore/libs/service_su/public.h>
+#include <cloud/blockstore/libs/sharding/public.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 
@@ -75,8 +75,6 @@ struct TSessionManagerOptions
 
     NProto::TClientConfig DefaultClientConfig;
     NClient::THostPerformanceProfile HostProfile;
-
-    TString ShardId;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,7 +88,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    IRemoteStorageProviderPtr remoteStorageProvider,
+    NSharding::IRemoteStorageProviderPtr remoteStorageProvider,
     IStorageProviderPtr storageProvider,
     NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,

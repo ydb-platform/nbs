@@ -14,7 +14,7 @@ PEERDIR(
     cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/root_kms/impl
     cloud/blockstore/libs/service
-    cloud/blockstore/libs/service_su
+    cloud/blockstore/libs/sharding
     cloud/blockstore/libs/spdk/iface
 
     cloud/storage/core/libs/daemon

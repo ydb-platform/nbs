@@ -14,7 +14,7 @@
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
-#include <cloud/blockstore/libs/service_su/public.h>
+#include <cloud/blockstore/libs/sharding/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/vhost/public.h>
@@ -58,7 +58,7 @@ protected:
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
-    IRemoteStorageProviderPtr RemoteStorageProvider;
+    NSharding::IRemoteStorageProviderPtr RemoteStorageProvider;
     ISocketEndpointListenerPtr GrpcEndpointListener;
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;

@@ -1,0 +1,62 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EShardDataTransport
+{
+    GRPC = 0;
+    NBD = 1;
+    RDMA = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TShardInfo
+{
+    // Id of the shard.
+    optional string ShardId = 1;
+
+    // Insecure Grpc port number.
+    optional uint32 GrpcPort = 2;
+
+    // RDMA port number.
+    optional uint32 RdmaPort = 4;
+
+    // NBD port number.
+    optional uint32 NbdPort = 5;
+
+    // Secure GRPC port number.
+    optional uint32 SecureGrpcPort = 6;
+
+    // Transport for this shard.
+    optional EShardDataTransport Transport = 7;
+
+    // List of host belonging to this shard.
+    repeated string Hosts = 8;
+
+    // Number of host in a shard to send Describe requests during volume
+    // lookup.
+    optional uint32 ShardDescribeHostCnt = 9;
+
+    // Host to connect to during describe and endpoint creation.
+    // For debugging.
+    optional string FixedHost = 10;
+
+    // Number of host in a shard to have connections to.
+    optional uint32 MinShardConnections = 11;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TShardingConfig
+{
+    // Mapping from ShardId to fqdn hosts.
+    repeated TShardInfo Shards = 121;
+
+    // Shard Id, nbs belongs to.
+    optional string ShardId = 122;
+}

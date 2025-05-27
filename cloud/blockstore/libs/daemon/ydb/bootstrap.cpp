@@ -324,6 +324,7 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitKmsClientConfig();
     Configs->InitRootKmsConfig();
     Configs->InitComputeClientConfig();
+    Configs->InitShardingConfig();
 }
 
 void TBootstrapYdb::InitSpdk()

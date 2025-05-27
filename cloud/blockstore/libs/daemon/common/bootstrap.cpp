@@ -68,8 +68,7 @@
 #include <cloud/blockstore/libs/service_throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_tracker.h>
 #include <cloud/blockstore/libs/service_throttling/throttling.h>
-#include <cloud/blockstore/libs/service_su/service_su.h>
-#include <cloud/blockstore/libs/service_su/remote_storage_provider.h>
+#include <cloud/blockstore/libs/sharding/remote_storage_provider.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
@@ -358,7 +357,6 @@ void TBootstrapBase::Init()
         = Configs->EndpointConfig->GetClientConfig();
     sessionManagerOptions.HostProfile = Configs->HostPerformanceProfile;
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
-    sessionManagerOptions.ShardId = Configs->ServerConfig->GetShardId();
 
     if (!KmsKeyProvider) {
         KmsKeyProvider = CreateKmsKeyProviderStub();
@@ -377,7 +375,7 @@ void TBootstrapBase::Init()
     config.SetNoClientId(true);
 
     RemoteStorageProvider = CreateRemoteStorageProvider(
-        Configs->ServerConfig,
+        Configs->ShardingConfig,
         Timer,
         Scheduler,
         Logging,
@@ -755,6 +753,7 @@ void TBootstrapBase::InitDbgConfigs()
     Configs->InitDiagnosticsConfig();
     Configs->InitDiscoveryConfig();
     Configs->InitSpdkEnvConfig();
+    Configs->InitShardingConfig();
 
     TLogSettings logSettings;
     logSettings.FiltrationLevel =

@@ -24,7 +24,6 @@ PEERDIR(
     cloud/blockstore/libs/service
     cloud/blockstore/libs/service_kikimr
     cloud/blockstore/libs/service_local
-    cloud/blockstore/libs/service_su
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_agent

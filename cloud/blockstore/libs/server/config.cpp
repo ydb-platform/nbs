@@ -1,5 +1,7 @@
 #include "config.h"
 
+#include <cloud/blockstore/config/sharding.pb.h>
+
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -108,10 +110,7 @@ constexpr TDuration Seconds(int s)
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
-    xxx(ShardMap,                    TShardMap ,             {}               )\
-    xxx(ShardId,                     TString,                {}               )\
-    xxx(ShardTransport,              NProto::EShardDataTransport,     {}      )\
-    xxx(NbdPort,                     ui32,                            0       )\
+    xxx(NbdPort,                     ui32,                   {}               )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \
@@ -150,17 +149,6 @@ TVector<TCertificate> ConvertValue(
     TVector<TCertificate> v;
     for (const auto& x: value) {
         v.push_back({x.GetCertFile(), x.GetCertPrivateKeyFile()});
-    }
-    return v;
-}
-
-template <>
-THashMap<TString, NProto::TShardInfo> ConvertValue(
-    const google::protobuf::RepeatedPtrField<NProto::TShardInfo>& value)
-{
-    THashMap<TString, NProto::TShardInfo> v;
-    for (const auto& item: value) {
-        v.emplace(item.GetShardId(), item);
     }
     return v;
 }
@@ -207,15 +195,6 @@ void DumpImpl(const TVector<TCertificate>& value, IOutputStream& os)
 }
 
 template <>
-void DumpImpl(
-    const THashMap<TString, NProto::TShardInfo>& value,
-    IOutputStream& os)
-{
-    Y_UNUSED(value);
-    Y_UNUSED(os);
-}
-
-template <>
 void DumpImpl(const TAffinity& value, IOutputStream& os)
 {
     const auto& cores = value.GetCores();
@@ -245,29 +224,6 @@ void DumpImpl(
             break;
         default:
             os << "(Unknown EEndpointStorageType value "
-                << static_cast<int>(value)
-                << ")";
-            break;
-    }
-}
-
-template <>
-void DumpImpl(
-    const NProto::EShardDataTransport& value,
-    IOutputStream& os)
-{
-    switch (value) {
-        case NProto::GRPC:
-            os << "GRPC";
-            break;
-        case NProto::NBD:
-            os << "NBD";
-            break;
-        case NProto::RDMA:
-            os << "RDMA";
-            break;
-        default:
-            os << "(Unknown ESuDataTransport value "
                 << static_cast<int>(value)
                 << ")";
             break;

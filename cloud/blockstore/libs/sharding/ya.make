@@ -1,8 +1,10 @@
 LIBRARY()
 
 SRCS(
+    config.cpp
+    describe.cpp
     remote_storage_provider.cpp
-    service_su.cpp
+    remote_storage.cpp
 )
 
 PEERDIR(
