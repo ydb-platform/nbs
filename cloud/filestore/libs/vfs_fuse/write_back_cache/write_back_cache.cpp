@@ -98,11 +98,7 @@ public:
                     serializedRequest.data(),
                     serializedRequest.size()));
 
-            AddWriteDataEntry(
-                parsedRequest.GetHandle(),
-                parsedRequest.GetOffset(),
-                parsedRequest.GetBuffer().length(),
-                serializedRequest);
+            AddWriteDataEntry(parsedRequest, serializedRequest);
         });
 
         if (AutomaticFlushPeriod) {
@@ -127,17 +123,17 @@ public:
     }
 
     void AddWriteDataEntry(
-        ui64 handle,
-        ui64 offset,
-        ui64 bufferLength,
+        const NProto::TWriteDataRequest& request,
         TStringBuf serializedRequest)
     {
         auto entry = std::make_unique<TWriteDataEntry>(
-            handle,
-            offset,
-            bufferLength,
-            serializedRequest);
-        WriteDataEntriesByHandle[handle].emplace_back(entry.get());
+            request.GetHandle(),
+            request.GetOffset(),
+            request.GetBuffer().length(),
+            serializedRequest,
+            request.GetHeaders());
+        WriteDataEntriesByHandle[request.GetHandle()].emplace_back(
+            entry.get());
         WriteDataEntries.PushBack(entry.release());
     }
 
@@ -284,11 +280,7 @@ public:
 
         with_lock (Lock) {
             if (WriteDataRequestsQueue.Push(result)) {
-                AddWriteDataEntry(
-                    request->GetHandle(),
-                    request->GetOffset(),
-                    request->GetBuffer().length(),
-                    WriteDataRequestsQueue.Back());
+                AddWriteDataEntry(*request, WriteDataRequestsQueue.Back());
                 promise.SetValue({});
             } else {
                 auto pending = std::make_unique<TPendingWriteDataRequest>(
@@ -409,6 +401,7 @@ public:
                 }
 
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
+                *request->MutableHeaders() = parts[partIndex].Source->RequestHeaders;
                 request->SetHandle(handle);
                 request->SetOffset(parts[partIndex].Offset);
                 request->SetBuffer(std::move(buffer));
@@ -581,9 +574,7 @@ public:
                     }
 
                     self->AddWriteDataEntry(
-                        request->GetHandle(),
-                        request->GetOffset(),
-                        request->GetBuffer().length(),
+                        *request,
                         self->WriteDataRequestsQueue.Back());
 
                     pending->Promise.SetValue({});

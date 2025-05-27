@@ -68,16 +68,19 @@ private:
         ui64 Length;
         // serialized TWriteDataRequest
         TStringBuf SerializedRequest;
+        NProto::THeaders RequestHeaders;
 
         TWriteDataEntry(
                 ui64 handle,
                 ui64 offset,
                 ui64 length,
-                TStringBuf serializedRequest)
+                TStringBuf serializedRequest,
+                NProto::THeaders requestHeaders)
             : Handle(handle)
             , Offset(offset)
             , Length(length)
             , SerializedRequest(serializedRequest)
+            , RequestHeaders(std::move(requestHeaders))
         {}
 
         ui64 End() const
