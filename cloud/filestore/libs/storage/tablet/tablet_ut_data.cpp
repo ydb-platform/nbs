@@ -2620,7 +2620,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         };
 
-        auto checkFlushBackpressureValues = [&](ui64 value, ui64 threshold)
+        auto checkFlushBackpressureValues = [&](i64 value, i64 threshold)
         {
             TTestRegistryVisitor visitor;
             tablet.SendRequest(tablet.CreateUpdateCounters());
@@ -2636,7 +2636,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         };
 
-        auto checkCompactionBackpressureValues = [&](ui64 value, ui64 threshold)
+        auto checkCompactionBackpressureValues = [&](i64 value, i64 threshold)
         {
             TTestRegistryVisitor visitor;
             tablet.SendRequest(tablet.CreateUpdateCounters());
@@ -2652,7 +2652,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         };
 
-        auto checkCleanupBackpressureValues = [&](ui64 value, ui64 threshold)
+        auto checkCleanupBackpressureValues = [&](i64 value, i64 threshold)
         {
             TTestRegistryVisitor visitor;
             tablet.SendRequest(tablet.CreateUpdateCounters());
@@ -2668,7 +2668,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         };
 
-        auto checkFlushBytesBackpressureValues = [&](ui64 value, ui64 threshold)
+        auto checkFlushBytesBackpressureValues = [&](i64 value, i64 threshold)
         {
             TTestRegistryVisitor visitor;
             tablet.SendRequest(tablet.CreateUpdateCounters());
