@@ -6537,11 +6537,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response.ReplicationResponses[0].GetCode(),
-            FormatError(response.GetError()));
+            FormatError(response.ReplicationResponses[0]));
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response.ReplicationResponses[1].GetCode(),
-            FormatError(response.GetError()));
+            FormatError(response.ReplicationResponses[1]));
     }
 }
 

@@ -9,8 +9,8 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
+#include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/multi_agent_write.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
@@ -136,6 +136,9 @@ class TRequestHandler final
     , public std::enable_shared_from_this<TRequestHandler>
 {
 private:
+    using TMultiAgentWriteDeviceBlocksResponse =
+        TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
+
     const THashMap<TString, TDeviceData> Devices;
     const ITaskQueuePtr TaskQueue;
 
@@ -892,15 +895,15 @@ private:
     {
         HandleMultiAgentWriteBlocksResponse(
             continuationData.RequestDetails,
-            MakeFuture<TMultiAgentWriteResponsePrivate>(
+            MakeFuture<TMultiAgentWriteDeviceBlocksResponse>(
                 TErrorResponse(resultCode, overlapDetails)));
     }
 
     void HandleMultiAgentWriteBlocksResponse(
         const TRequestDetails& requestDetails,
-        NThreading::TFuture<TMultiAgentWriteResponsePrivate> future) const
+        NThreading::TFuture<TMultiAgentWriteDeviceBlocksResponse> future) const
     {
-        const TMultiAgentWriteResponsePrivate& response = future.GetValue();
+        const TMultiAgentWriteDeviceBlocksResponse& response = future.GetValue();
         const NProto::TError& error = response.GetError();
 
         if (HasError(error)) {

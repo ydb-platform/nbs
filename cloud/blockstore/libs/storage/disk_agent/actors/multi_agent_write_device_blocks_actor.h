@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/multi_agent_write.h>
+#include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -20,8 +20,10 @@ class TMultiAgentWriteDeviceBlocksActor final
     : public NActors::TActorBootstrapped<TMultiAgentWriteDeviceBlocksActor>
 {
 public:
+    using TMultiAgentWriteDeviceBlocksResponse =
+        TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
     using TResponsePromise =
-        NThreading::TPromise<TMultiAgentWriteResponsePrivate>;
+        NThreading::TPromise<TMultiAgentWriteDeviceBlocksResponse>;
 
 private:
     const NActors::TActorId Parent;

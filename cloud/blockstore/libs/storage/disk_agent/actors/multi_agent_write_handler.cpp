@@ -8,6 +8,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TMultiAgentWriteHandler final: public IMultiAgentWriteHandler
 {
+public:
+    using TMultiAgentWriteDeviceBlocksResponse =
+        TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
+
 private:
     NActors::TActorSystem* const ActorSystem;
     const NActors::TActorId DiskAgentId;
@@ -17,19 +21,22 @@ public:
         NActors::TActorSystem* actorSystem,
         NActors::TActorId diskAgentId);
 
-    NThreading::TFuture<TMultiAgentWriteResponsePrivate> PerformMultiAgentWrite(
+    NThreading::TFuture<TMultiAgentWriteDeviceBlocksResponse>
+    PerformMultiAgentWrite(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) override;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 TMultiAgentWriteHandler::TMultiAgentWriteHandler(
-    NActors::TActorSystem* actorSystem,
-    NActors::TActorId diskAgentId)
+        NActors::TActorSystem* actorSystem,
+        NActors::TActorId diskAgentId)
     : ActorSystem(actorSystem)
     , DiskAgentId(diskAgentId)
 {}
 
-NThreading::TFuture<TMultiAgentWriteResponsePrivate>
+NThreading::TFuture<TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse>
 TMultiAgentWriteHandler::PerformMultiAgentWrite(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request)
@@ -38,7 +45,7 @@ TMultiAgentWriteHandler::PerformMultiAgentWrite(
         TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest>();
     req->Record.Swap(request.get());
     req->ResponsePromise =
-        NThreading::NewPromise<TMultiAgentWriteResponsePrivate>();
+        NThreading::NewPromise<TMultiAgentWriteDeviceBlocksResponse>();
     req->CallContext = std::move(callContext);
 
     auto future = req->ResponsePromise.GetFuture();

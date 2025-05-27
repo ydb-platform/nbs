@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/rdma_test/memory_test_storage.h>
 #include <cloud/blockstore/libs/rdma_test/server_test_async.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/multi_agent_write.h>
+#include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
 #include <cloud/blockstore/libs/storage/disk_agent/rdma_target.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -18,16 +18,20 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TTestMultiAgentWriteHandler: public IMultiAgentWriteHandler
 {
+public:
+    using TMultiAgentWriteDeviceBlocksResponse =
+        TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
+
 private:
     TDeque<NProto::TWriteDeviceBlocksRequest> Requests;
-    TDeque<TMultiAgentWriteResponsePrivate> Responses;
+    TDeque<TMultiAgentWriteDeviceBlocksResponse> Responses;
 
 public:
-    void PushMockResponse(TMultiAgentWriteResponsePrivate response);
+    void PushMockResponse(TMultiAgentWriteDeviceBlocksResponse response);
     std::optional<NProto::TWriteDeviceBlocksRequest> PopInterceptedRequest();
 
     // Implements IMultiAgentWriteHandler
-    NThreading::TFuture<TMultiAgentWriteResponsePrivate> PerformMultiAgentWrite(
+    NThreading::TFuture<TMultiAgentWriteDeviceBlocksResponse> PerformMultiAgentWrite(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) override;
 };

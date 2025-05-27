@@ -12,7 +12,7 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 void TTestMultiAgentWriteHandler::PushMockResponse(
-    TMultiAgentWriteResponsePrivate response)
+    TMultiAgentWriteDeviceBlocksResponse response)
 {
     Responses.push_back(std::move(response));
 }
@@ -28,7 +28,7 @@ TTestMultiAgentWriteHandler::PopInterceptedRequest()
     return result;
 }
 
-NThreading::TFuture<TMultiAgentWriteResponsePrivate>
+NThreading::TFuture<TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse>
 TTestMultiAgentWriteHandler::PerformMultiAgentWrite(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request)
@@ -37,11 +37,11 @@ TTestMultiAgentWriteHandler::PerformMultiAgentWrite(
 
     Requests.push_back(std::move(*request));
     if (Responses.empty()) {
-        return NThreading::MakeFuture<TMultiAgentWriteResponsePrivate>(
+        return NThreading::MakeFuture<TMultiAgentWriteDeviceBlocksResponse>(
             TErrorResponse(E_FAIL, "Response not mocked"));
     }
 
-    auto result = NThreading::MakeFuture<TMultiAgentWriteResponsePrivate>(
+    auto result = NThreading::MakeFuture<TMultiAgentWriteDeviceBlocksResponse>(
         Responses.front());
 
     Responses.pop_front();

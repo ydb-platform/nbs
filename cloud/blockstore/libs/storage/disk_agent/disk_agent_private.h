@@ -2,15 +2,12 @@
 
 #include "public.h"
 
-#include "storage_with_stats.h"
-
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/multi_agent_write.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <util/generic/string.h>
@@ -169,6 +166,32 @@ struct TEvDiskAgentPrivate
         ui64 StorageSize = 0;
     };
 
+    // The response for TWriteDeviceBlocksRequest that should be executed on
+    // multiple DiskAgents (contains replication targets). The
+    // TMultiAgentWriteDeviceBlocksResponse is not transmitted through the actor
+    // system.
+    struct TMultiAgentWriteDeviceBlocksResponse
+    {
+        NProto::TError Error;
+        TVector<NProto::TError> ReplicationResponses;
+
+        TMultiAgentWriteDeviceBlocksResponse() = default;
+
+        TMultiAgentWriteDeviceBlocksResponse(TErrorResponse&& error)
+            : Error(std::move(error))
+        {}
+
+        static bool HasError()
+        {
+            return true;
+        }
+
+        const NProto::TError& GetError() const
+        {
+            return Error;
+        }
+    };
+
     //
     // MultiAgentWriteDeviceBlocksRequest
     //
@@ -176,7 +199,9 @@ struct TEvDiskAgentPrivate
     struct TMultiAgentWriteDeviceBlocksRequest
     {
         NProto::TWriteDeviceBlocksRequest Record;
-        NThreading::TPromise<TMultiAgentWriteResponsePrivate> ResponsePromise;
+
+        NThreading::TPromise<TMultiAgentWriteDeviceBlocksResponse>
+            ResponsePromise;
     };
 
     //
@@ -241,5 +266,21 @@ struct TEvDiskAgentPrivate
 
     BLOCKSTORE_DECLARE_EVENTS(UpdateSessionCache)
 };
+
+// IMultiAgentWriteHandler interface defines a method to perform write blocks
+// using multiple agents, returning a future with the response.
+class IMultiAgentWriteHandler
+{
+public:
+    virtual ~IMultiAgentWriteHandler() = default;
+
+    virtual NThreading::TFuture<
+        TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse>
+    PerformMultiAgentWrite(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) = 0;
+};
+
+using IMultiAgentWriteHandlerPtr = std::shared_ptr<IMultiAgentWriteHandler>;
 
 }   // namespace NCloud::NBlockStore::NStorage

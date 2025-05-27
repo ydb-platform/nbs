@@ -395,10 +395,13 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
 
     Y_UNIT_TEST(ShouldForwardMultiAgentWriteRequest)
     {
+        using TMultiAgentWriteDeviceBlocksResponse =
+            TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
+
         TRdmaTestEnvironment env;
 
         {   // Mock response from actor system.
-            TMultiAgentWriteResponsePrivate mockResponse;
+            TMultiAgentWriteDeviceBlocksResponse mockResponse;
             mockResponse.Error = MakeError(S_OK);
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
@@ -432,12 +435,15 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
 
     Y_UNIT_TEST(ShouldDelayOverlappedMultiAgentWriteRequestAndReject)
     {
+        using TMultiAgentWriteDeviceBlocksResponse =
+            TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
+
         const auto blockRange = TBlockRange64::WithLength(0, 100);
 
         TRdmaTestEnvironment env(4_MB, 2);
 
         {   // Mock response from actor system.
-            TMultiAgentWriteResponsePrivate mockResponse;
+            TMultiAgentWriteDeviceBlocksResponse mockResponse;
             mockResponse.Error = MakeError(S_OK);
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
             mockResponse.ReplicationResponses.push_back(MakeError(S_OK));

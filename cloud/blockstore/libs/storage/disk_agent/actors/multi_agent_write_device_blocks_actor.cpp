@@ -119,7 +119,8 @@ void TMultiAgentWriteDeviceBlocksActor::ReplyAndDie(
     }
 
     if (ResponsePromise.Initialized()) {
-        TMultiAgentWriteResponsePrivate localResponse(response->GetError());
+        TMultiAgentWriteDeviceBlocksResponse localResponse(
+            response->GetError());
         localResponse.ReplicationResponses.assign(
             response->Record.GetReplicationResponses().begin(),
             response->Record.GetReplicationResponses().end());
