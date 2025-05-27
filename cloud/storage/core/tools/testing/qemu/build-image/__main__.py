@@ -82,11 +82,16 @@ def write_user_data(filename, args):
             ],
         },
         'packages': [
+            'btop',
+            'dstat',
             'fio',
+            'iotop',
+            'mc',
             'mysql-server',
             'nfs-common',
             'postgresql',
             'sysbench',
+            'tmux',
         ],
         'power_state': {
             'delay': 'now',
@@ -168,6 +173,7 @@ def mk_cidata_iso(args, tmpdir):
 def qemu_bin(args):
     deb_arch_map = {
         'amd64': 'x86_64',
+        'arm64': 'aarch64',
     }
 
     return "qemu-system-{}".format(deb_arch_map[args.arch])
@@ -181,13 +187,10 @@ def customize(args, cidata_iso):
     cmd = [
         qemu_bin(args),
         "-nodefaults",
-        "-accel", "kvm",
         "-smp", str(nproc),
         "-m", mem,
-        "-cpu", "host",
         "-netdev", "user,id=netdev0",
         "-device", "virtio-net-pci,netdev=netdev0,id=net0",
-        "-smbios", "type=1,serial=ds=nocloud",
         "-nographic",
         "-drive", "format=qcow2,file={},id=hdd0,if=none,aio=native,cache=none".format(args.out),
         "-device", "virtio-blk-pci,id=vblk0,drive=hdd0,num-queues={},bootindex=1".format(nproc),
@@ -196,7 +199,22 @@ def customize(args, cidata_iso):
         "-serial", "stdio",
     ]
 
-    subprocess.check_call(cmd, timeout=5 * 60)
+    if args.arch == 'amd64':
+        cmd += [
+            "-accel", "kvm",
+            "-cpu", "host",
+            "-smbios", "type=1,serial=ds=nocloud",
+        ]
+
+    if args.arch == 'arm64':
+        cmd += [
+            "-machine", "virt",
+            "-accel", "kvm",
+            "-bios", "/usr/share/qemu-efi/QEMU_EFI.fd",
+            "-cpu", "cortex-a72",
+        ]
+
+    subprocess.check_call(cmd, timeout=25 * 60)
 
 
 def main(args):
@@ -214,7 +232,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", help="output file path", default="rootfs.img")
     parser.add_argument("--release", help="Ubuntu release name",
-                        default="focal")
+                        default="noble")
     parser.add_argument("--arch", help="Ubuntu architecture", default="amd64")
     parser.add_argument("--image", help="image file path to use instead of downloading", default=None)
     parser.add_argument("--cloud-images-mirror",
