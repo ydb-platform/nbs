@@ -14,6 +14,8 @@ namespace NCloud::NStorage {
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 ui32 DefaultNodeId = 123U;
 NActors::TScopeId DefaultScopeId{4UL, 5UL};
 

@@ -6,6 +6,8 @@ namespace NCloud {
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTimeControl: public ITimeControl
 {
     void Sleep(TDuration duration) override
