@@ -1,33 +1,38 @@
 #include "node.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/time_control_test.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <chrono>
 
 using ::testing::_;
 using ::testing::Return;
 
 namespace NCloud::NStorage {
 
+using namespace std::chrono_literals;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 DefaultNodeId = 123U;
-NActors::TScopeId DefaultScopeId{4UL, 5UL};
+using TRegistrationResult = INodeRegistrant::TRegistrationResult;
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TMockRegistrant: public INodeRegistrant
 {
     MOCK_METHOD(
         TResultOrError<TRegistrationResult>,
-        TryRegister,
+        RegisterNode,
         (const TString&));
     MOCK_METHOD(
         TResultOrError<NKikimrConfig::TAppConfig>,
-        TryConfigure,
+        GetConfigs,
         (const TString&, ui32));
 };
 
@@ -41,30 +46,31 @@ TRegisterDynamicNodeOptions CreateRegisterOptions(bool loadConfigs)
         .Settings =
             {
                 .MaxAttempts = 3,
-                .ErrorTimeout = TDuration::Seconds(1),
-                .LoadConfigsFromCmsRetryMinDelay = TDuration::Seconds(1),
-                .LoadConfigsFromCmsRetryMaxDelay = TDuration::Seconds(8),
-                .LoadConfigsFromCmsTotalTimeout = TDuration::Seconds(14),
+                .ErrorTimeout = 1s,
+                .LoadConfigsFromCmsRetryMinDelay = 1s,
+                .LoadConfigsFromCmsRetryMaxDelay = 8s,
+                .LoadConfigsFromCmsTotalTimeout = 14s,
             },
     };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestEnvironment
+struct TFixture: public NUnitTest::TBaseFixture
 {
-    std::shared_ptr<TTestTimeControl> TimeControl;
-    TLog Logger;
-    NKikimrConfig::TAppConfigPtr AppConfig;
-};
+    const ui32 DefaultNodeId = 123U;
+    const NActors::TScopeId DefaultScopeId{4UL, 5UL};
 
-TTestEnvironment CreateTestEnvironment()
-{
-    auto timeControl = std::make_shared<TTestTimeControl>();
-    auto log = TLog{};
-    auto appConfig = std::make_shared<NKikimrConfig::TAppConfig>();
-    return {.TimeControl = timeControl, .Logger = log, .AppConfig = appConfig};
-}
+    std::shared_ptr<TTestTimer> Timer;
+    TLog Log;
+    NKikimrConfig::TAppConfigPtr AppConfig;
+
+    void SetUp(NUnitTest::TTestContext& /*testContext*/) override
+    {
+        Timer = std::make_shared<TTestTimer>();
+        AppConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+    }
+};
 
 }   // namespace
 
@@ -72,123 +78,121 @@ TTestEnvironment CreateTestEnvironment()
 
 Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
 {
-    Y_UNIT_TEST(ShouldSucceedOnFirstAttempt)
+    Y_UNIT_TEST_F(ShouldSucceedOnFirstAttempt, TFixture)
     {
         auto registrant = std::make_unique<TMockRegistrant>();
         auto& registrantRef = *registrant;
 
-        EXPECT_CALL(registrantRef, TryRegister(_))
+        EXPECT_CALL(registrantRef, RegisterNode(_))
             .WillOnce(
                 Return(TRegistrationResult{DefaultNodeId, DefaultScopeId}));
 
-        EXPECT_CALL(registrantRef, TryConfigure(_, DefaultNodeId))
+        EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId))
             .WillOnce(Return(NKikimrConfig::TAppConfig{}));
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);
 
-        auto [timeControl, log, appConfig] = CreateTestEnvironment();
-
         auto [nodeId, scopeId, maybeConfig] = RegisterDynamicNode(
-            appConfig,
+            AppConfig,
             options,
             std::move(registrant),
-            log,
-            timeControl);
+            Log,
+            Timer);
 
         ASSERT_EQ(nodeId, DefaultNodeId);
         ASSERT_EQ(scopeId, DefaultScopeId);
         ASSERT_TRUE(maybeConfig);
     }
 
-    Y_UNIT_TEST(ShouldRetryRegistrationAndSucceedConfiguration)
+    Y_UNIT_TEST_F(ShouldRetryRegistrationAndSucceedConfiguration, TFixture)
     {
         auto registrant = std::make_unique<TMockRegistrant>();
         auto& registrantRef = *registrant;
 
-        EXPECT_CALL(registrantRef, TryRegister(_))
+        EXPECT_CALL(registrantRef, RegisterNode(_))
             .WillOnce(Return(MakeError(E_FAIL, "Registration failed")))
             .WillOnce(Return(MakeError(E_FAIL, "Registration failed")))
             .WillOnce(
                 Return(TRegistrationResult{DefaultNodeId, DefaultScopeId}));
 
-        EXPECT_CALL(registrantRef, TryConfigure(_, DefaultNodeId))
+        EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId))
             .WillOnce(Return(NKikimrConfig::TAppConfig{}));
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);
 
-        auto [timeControl, log, appConfig] = CreateTestEnvironment();
-
         auto [nodeId, scopeId, maybeConfig] = RegisterDynamicNode(
-            appConfig,
+            AppConfig,
             options,
             std::move(registrant),
-            log,
-            timeControl);
+            Log,
+            Timer);
 
-        ASSERT_EQ(timeControl->SleepDurations.size(), 2UL);
-        EXPECT_EQ(timeControl->SleepDurations[0], TDuration::Seconds(1));
-        EXPECT_EQ(timeControl->SleepDurations[1], TDuration::Seconds(1));
+        const auto& sleepDurations = Timer->GetSleepDurations();
+
+        ASSERT_EQ(sleepDurations.size(), 2UL);
+        EXPECT_EQ(sleepDurations[0], 1s);
+        EXPECT_EQ(sleepDurations[1], 1s);
 
         ASSERT_EQ(nodeId, DefaultNodeId);
-        ASSERT_EQ(scopeId, (NActors::TScopeId{4UL, 5UL}));
+        ASSERT_EQ(scopeId, DefaultScopeId);
         ASSERT_TRUE(maybeConfig);
     }
 
-    Y_UNIT_TEST(ShouldRetryRegistrationUntilMaxAttempts)
+    Y_UNIT_TEST_F(ShouldRetryRegistrationUntilMaxAttempts, TFixture)
     {
         auto registrant = std::make_unique<TMockRegistrant>();
         auto& registrantRef = *registrant;
-        EXPECT_CALL(registrantRef, TryRegister(_))
+        EXPECT_CALL(registrantRef, RegisterNode(_))
             .Times(3)
             .WillRepeatedly(Return(MakeError(E_FAIL, "Registration failed")));
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(false);
 
-        auto [timeControl, log, appConfig] = CreateTestEnvironment();
-
         EXPECT_THROW(
             RegisterDynamicNode(
-                appConfig,
+                AppConfig,
                 options,
                 std::move(registrant),
-                log,
-                timeControl),
+                Log,
+                Timer),
             TServiceError);
 
-        ASSERT_EQ(timeControl->SleepDurations.size(), 2UL);
-        EXPECT_EQ(timeControl->SleepDurations[0], TDuration::Seconds(1));
-        EXPECT_EQ(timeControl->SleepDurations[1], TDuration::Seconds(1));
+        const auto& sleepDurations = Timer->GetSleepDurations();
+
+        ASSERT_EQ(sleepDurations.size(), 2UL);
+        EXPECT_EQ(sleepDurations[0], 1s);
+        EXPECT_EQ(sleepDurations[1], 1s);
     }
 
-    Y_UNIT_TEST(ShouldRetryConfigurationWithExponentialBackoff)
+    Y_UNIT_TEST_F(ShouldRetryConfigurationWithExponentialBackoff, TFixture)
     {
         auto registrant = std::make_unique<TMockRegistrant>();
         auto& registrantRef = *registrant;
-        EXPECT_CALL(registrantRef, TryRegister(_))
+        EXPECT_CALL(registrantRef, RegisterNode(_))
             .WillOnce(
                 Return(TRegistrationResult{DefaultNodeId, DefaultScopeId}));
 
-        EXPECT_CALL(*registrant, TryConfigure(_, DefaultNodeId))
+        EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId))
             .WillRepeatedly(Return(MakeError(E_FAIL, "Configure failed")));
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);
 
-        auto [timeControl, log, appConfig] = CreateTestEnvironment();
-
         EXPECT_THROW(
             RegisterDynamicNode(
-                appConfig,
+                AppConfig,
                 options,
                 std::move(registrant),
-                log,
-                timeControl),
+                Log,
+                Timer),
             TServiceError);
 
-        ASSERT_EQ(timeControl->SleepDurations.size(), 4UL);
-        EXPECT_EQ(timeControl->SleepDurations[0], TDuration::Seconds(1));
-        EXPECT_EQ(timeControl->SleepDurations[1], TDuration::Seconds(2));
-        EXPECT_EQ(timeControl->SleepDurations[2], TDuration::Seconds(4));
-        EXPECT_EQ(timeControl->SleepDurations[3], TDuration::Seconds(8));
+        const auto& sleepDurations = Timer->GetSleepDurations();
+
+        ASSERT_EQ(sleepDurations.size(), 4UL);
+        EXPECT_EQ(sleepDurations[0], 1s);
+        EXPECT_EQ(sleepDurations[1], 2s);
+        EXPECT_EQ(sleepDurations[2], 4s);
+        EXPECT_EQ(sleepDurations[3], 8s);
     }
 }
 

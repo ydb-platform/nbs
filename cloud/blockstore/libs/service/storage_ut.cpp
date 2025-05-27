@@ -40,6 +40,9 @@ public:
         return CurrentTime;
     }
 
+    void Sleep(TDuration) override
+    {}
+
     void AddOnTickCallback(TCallback callback)
     {
         CallbackList.push_back(std::move(callback));

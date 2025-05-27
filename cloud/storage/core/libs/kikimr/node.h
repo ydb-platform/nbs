@@ -5,7 +5,7 @@
 #include "node_registration_settings.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/time_control.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <contrib/ydb/core/protos/config.pb.h>
@@ -19,18 +19,16 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TRegistrationResult = std::tuple<ui32, NActors::TScopeId>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct INodeRegistrant
 {
+    using TRegistrationResult = std::tuple<ui32, NActors::TScopeId>;
+
     virtual ~INodeRegistrant() = default;
 
-    virtual TResultOrError<TRegistrationResult> TryRegister(
+    virtual TResultOrError<TRegistrationResult> RegisterNode(
         const TString& nodeBrokerAddress) = 0;
 
-    virtual TResultOrError<NKikimrConfig::TAppConfig> TryConfigure(
+    virtual TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
         const TString& nodeBrokerAddress,
         ui32 nodeId) = 0;
 };
@@ -75,6 +73,6 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     const TRegisterDynamicNodeOptions& options,
     INodeRegistrantPtr registrant,
     TLog& Log,
-    ITimeControlPtr timeControl = CreateDefaultSleeper());
+    ITimerPtr timer = CreateWallClockTimer());
 
 }   // namespace NCloud::NStorage

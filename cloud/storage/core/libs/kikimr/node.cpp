@@ -212,7 +212,7 @@ struct TLegacyNodeRegistrant: public INodeRegistrant
         Location = TNodeLocation(proto);
     }
 
-    TResultOrError<TRegistrationResult> TryRegister(
+    TResultOrError<TRegistrationResult> RegisterNode(
         const TString& nodeBrokerAddress) override
     {
         NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
@@ -250,7 +250,7 @@ struct TLegacyNodeRegistrant: public INodeRegistrant
         return TRegistrationResult{result.GetNodeId(), result.GetScopeId()};
     }
 
-    TResultOrError<NKikimrConfig::TAppConfig> TryConfigure(
+    TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
         const TString& nodeBrokerAddress,
         ui32 nodeId) override
     {
@@ -305,7 +305,7 @@ struct TDiscoveryNodeRegistrant: public INodeRegistrant
         Settings.Path(Options.SchemeShardDir);
     }
 
-    TResultOrError<TRegistrationResult> TryRegister(
+    TResultOrError<TRegistrationResult> RegisterNode(
         const TString& nodeBrokerAddress) override
     {
         auto result = TryToRegisterDynamicNodeViaDiscoveryService(
@@ -337,7 +337,7 @@ struct TDiscoveryNodeRegistrant: public INodeRegistrant
                 result.GetScopePathId()}};
     }
 
-    TResultOrError<NKikimrConfig::TAppConfig> TryConfigure(
+    TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
         const TString& nodeBrokerAddress,
         ui32 nodeId) override
     {
@@ -414,7 +414,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     const TRegisterDynamicNodeOptions& options,
     INodeRegistrantPtr registrant,
     TLog& Log,
-    ITimeControlPtr timeControl)
+    ITimerPtr timer)
 {
     auto& nsConfig = *appConfig->MutableNameserviceConfig();
 
@@ -443,17 +443,17 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     }
 
     ui32 nodeId = 0;
-    NActors::TScopeId scopeId;
+    TScopeId scopeId;
     TString registeredNodeBrokerAddress;
 
     ui32 attempts = 0;
     for (;;) {
         const auto& nodeBrokerAddress = addrs[attempts++ % addrs.size()];
 
-        auto result = registrant->TryRegister(nodeBrokerAddress);
+        auto [result, error] = registrant->RegisterNode(nodeBrokerAddress);
 
-        if (FAILED(result.GetError().GetCode())) {
-            const auto& msg = result.GetError().GetMessage();
+        if (FAILED(error.GetCode())) {
+            const auto& msg = error.GetMessage();
             if (attempts == options.Settings.MaxAttempts) {
                 ythrow TServiceError(E_FAIL)
                     << "Cannot register dynamic node: " << msg;
@@ -463,7 +463,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
                 "Failed to register dynamic node at "
                 << nodeBrokerAddress.Quote() << ": " << msg
                 << ". Will retry after " << options.Settings.ErrorTimeout);
-            timeControl->Sleep(options.Settings.ErrorTimeout);
+            timer->Sleep(options.Settings.ErrorTimeout);
             continue;
         }
 
@@ -471,31 +471,31 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
             "Registered dynamic node at "
             << nodeBrokerAddress.Quote() << " with address "
             << hostAddress.Quote() << " with node id "
-            << std::get<0>(result.GetResult()));
+            << std::get<0>(result));
 
         registeredNodeBrokerAddress = nodeBrokerAddress;
-        std::tie(nodeId, scopeId) = result.ExtractResult();
+        std::tie(nodeId, scopeId) = result;
         break;
     }
 
     TMaybe<NKikimrConfig::TAppConfig> configurationResult;
 
+    if (!options.LoadCmsConfigs) {
+        return {nodeId, scopeId, {}};
+    }
+
     TBackoffDelayProvider retryDelayProvider(
         options.Settings.LoadConfigsFromCmsRetryMinDelay,
         options.Settings.LoadConfigsFromCmsRetryMaxDelay);
     const auto deadline =
-        timeControl->Now() + options.Settings.LoadConfigsFromCmsTotalTimeout;
+        timer->Now() + options.Settings.LoadConfigsFromCmsTotalTimeout;
     for (;;) {
-        if (!options.LoadCmsConfigs) {
-            break;
-        }
+        auto [config, error] =
+            registrant->GetConfigs(registeredNodeBrokerAddress, nodeId);
 
-        auto result =
-            registrant->TryConfigure(registeredNodeBrokerAddress, nodeId);
-
-        if (FAILED(result.GetError().GetCode())) {
-            const auto& msg = result.GetError().GetMessage();
-            if (deadline < timeControl->Now()) {
+        if (FAILED(error.GetCode())) {
+            const auto& msg = error.GetMessage();
+            if (deadline < timer->Now()) {
                 ythrow TServiceError(E_FAIL)
                     << "Cannot configure dynamic node: " << msg;
             }
@@ -505,12 +505,12 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
                 "Failed to configure dynamic node at "
                 << registeredNodeBrokerAddress.Quote() << ": " << msg
                 << ". Will retry after " << delay);
-            timeControl->Sleep(delay);
+            timer->Sleep(delay);
             continue;
         }
 
         STORAGE_INFO("Got configs from CMS");
-        configurationResult = result.ExtractResult();
+        configurationResult = std::move(config);
         break;
     }
 
