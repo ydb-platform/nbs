@@ -1,5 +1,4 @@
 #include "node.h"
-
 #include "node_registration_helpers.h"
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -10,18 +9,19 @@
 #include <contrib/ydb/core/base/location.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
 
 #include <util/generic/vector.h>
 #include <util/network/address.h>
 #include <util/network/socket.h>
 #include <util/random/shuffle.h>
-#include <util/stream/file.h>
 #include <util/string/join.h>
+#include <util/stream/file.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NStorage {
@@ -183,7 +183,8 @@ NDiscovery::TNodeRegistrationResult TryToRegisterDynamicNodeViaDiscoveryService(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TLegacyNodeRegistrant: public INodeRegistrant
+struct TLegacyNodeRegistrant
+    : public INodeRegistrant
 {
     const TString HostName;
     const TString HostAddress;
@@ -194,11 +195,11 @@ struct TLegacyNodeRegistrant: public INodeRegistrant
     TNodeLocation Location;
 
     TLegacyNodeRegistrant(
-        TString hostName,
-        TString hostAddress,
-        const TRegisterDynamicNodeOptions& options,
-        NKikimrConfig::TStaticNameserviceConfig& nsConfig,
-        NKikimrConfig::TDynamicNodeConfig& dnConfig)
+            TString hostName,
+            TString hostAddress,
+            const TRegisterDynamicNodeOptions& options,
+            NKikimrConfig::TStaticNameserviceConfig& nsConfig,
+            NKikimrConfig::TDynamicNodeConfig& dnConfig)
         : HostName(std::move(hostName))
         , HostAddress(std::move(hostAddress))
         , Options(options)
@@ -230,11 +231,13 @@ struct TLegacyNodeRegistrant: public INodeRegistrant
             HostAddress,
             HostName,
             Location,
-            false,   // fixedNodeId
+            false, // fixedNodeId
             path);
 
         if (!result.IsSuccess()) {
-            return MakeError(E_FAIL, result.GetErrorMessage());
+            return MakeError(
+                E_FAIL,
+                result.GetErrorMessage());
         }
 
         NsConfig.ClearNode();
@@ -268,7 +271,8 @@ struct TLegacyNodeRegistrant: public INodeRegistrant
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDiscoveryNodeRegistrant: public INodeRegistrant
+struct TDiscoveryNodeRegistrant
+    : public INodeRegistrant
 {
     const TString HostName;
     const TString HostAddress;
@@ -280,11 +284,11 @@ struct TDiscoveryNodeRegistrant: public INodeRegistrant
     NDiscovery::TNodeRegistrationSettings Settings;
 
     TDiscoveryNodeRegistrant(
-        TString hostName,
-        TString hostAddress,
-        const TRegisterDynamicNodeOptions& options,
-        NKikimrConfig::TStaticNameserviceConfig& nsConfig,
-        NKikimrConfig::TDynamicNodeConfig& dnConfig)
+            TString hostName,
+            TString hostAddress,
+            const TRegisterDynamicNodeOptions& options,
+            NKikimrConfig::TStaticNameserviceConfig& nsConfig,
+            NKikimrConfig::TDynamicNodeConfig& dnConfig)
         : HostName(std::move(hostName))
         , HostAddress(std::move(hostAddress))
         , Options(options)
@@ -314,7 +318,9 @@ struct TDiscoveryNodeRegistrant: public INodeRegistrant
             Settings);
 
         if (!result.IsSuccess()) {
-            return MakeError(E_FAIL, ExtractYdbError(result));
+            return MakeError(
+                E_FAIL,
+                ExtractYdbError(result));
         }
 
         NsConfig.ClearNode();
@@ -323,8 +329,9 @@ struct TDiscoveryNodeRegistrant: public INodeRegistrant
                 // update node information based on registration response
                 *DnConfig.MutableNodeInfo() = CreateNodeInfo(
                     node,
-                    result.HasNodeName() ? result.GetNodeName()
-                                         : std::optional<TString>{});
+                    result.HasNodeName()
+                        ? result.GetNodeName()
+                        : std::optional<TString>{});
             } else {
                 *NsConfig.AddNode() = CreateStaticNodeInfo(node);
             }
@@ -426,8 +433,8 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         addrs.push_back(options.NodeBrokerAddress);
     } else {
         auto port = options.UseNodeBrokerSsl && options.NodeBrokerSecurePort
-                        ? options.NodeBrokerSecurePort
-                        : options.NodeBrokerPort;
+            ? options.NodeBrokerSecurePort
+            : options.NodeBrokerPort;
         if (port) {
             for (const auto& node: nsConfig.GetNode()) {
                 addrs.emplace_back(Join(":", node.GetHost(), port));

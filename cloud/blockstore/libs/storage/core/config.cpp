@@ -600,6 +600,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )\
     xxx(DoNotStopVolumeTabletOnLockLost,                   bool,   false      )\
+                                                                               \
     xxx(LoadConfigsFromCmsRetryMinDelay,      TDuration,   Seconds(2)         )\
     xxx(LoadConfigsFromCmsRetryMaxDelay,      TDuration,   Seconds(512)       )\
     xxx(LoadConfigsFromCmsTotalTimeout,       TDuration,   Hours(1)           )
