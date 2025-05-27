@@ -164,7 +164,7 @@ type service struct {
 
 func (s *service) prepareZoneId(
 	ctx context.Context,
-	disk *disk_manager.DiskId,
+	req *disk_manager.CreateDiskRequest,
 ) (string, error) {
 
 	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, disk.DiskId)
@@ -193,7 +193,7 @@ func (s *service) prepareCreateDiskParams(
 		)
 	}
 
-	zoneID, err := s.prepareZoneId(ctx, req.DiskId)
+	zoneID, err := s.prepareZoneId(ctx, req)
 	if err != nil {
 		return nil, err
 	}

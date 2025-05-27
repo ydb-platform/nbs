@@ -115,7 +115,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-1"
+        key: "zone-d"
         value: <
             Endpoints: [
                 "localhost:{nbs4_port}",
@@ -135,6 +135,20 @@ NbsConfig: <
     RootCertsFile: "{root_certs_file}"
     GrpcKeepAlive: <>
     UseGZIPCompression: true
+<<<<<<< HEAD
+=======
+>
+ShardsConfig: <
+    Shards: <
+        key: "zone-d"
+        value: <
+            Shards: [
+                "zone-d-2",
+                "zone-d"
+            ]
+        >
+    >
+>>>>>>> add shards service
 >
 DisksConfig: <
     DeletedDiskExpirationTimeout: "1s"
@@ -300,7 +314,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-1"
+        key: "zone-d"
         value: <
             Endpoints: [
                 "localhost:{nbs4_port}",
@@ -314,15 +328,6 @@ NbsConfig: <
             Endpoints: [
                 "localhost:{nbs5_port}",
                 "localhost:{nbs5_port}"
-            ]
-        >
-    >
-    Shards: <
-        key: "zone-d"
-        value: <
-            Shards: [
-                "zone-d-1",
-                "zone-d-2"
             ]
         >
     >
