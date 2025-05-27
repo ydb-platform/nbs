@@ -89,7 +89,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
 
             UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), agentInfo.GetAgentId());
             UNIT_ASSERT_EQUAL(
-                NProto::TAgentInfo::AGENT_STATE_ONLINE,
+                NProto::AGENT_STATE_ONLINE,
                 agentInfo.GetState());
             UNIT_ASSERT_VALUES_EQUAL("", agentInfo.GetStateMessage());
             UNIT_ASSERT_VALUES_EQUAL(0, agentInfo.GetStateTs());
@@ -121,7 +121,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
 
             UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), agentInfo.GetAgentId());
             UNIT_ASSERT_EQUAL(
-                NProto::TAgentInfo::AGENT_STATE_WARNING,
+                NProto::AGENT_STATE_WARNING,
                 agentInfo.GetState());
             UNIT_ASSERT_VALUES_EQUAL(
                 agentStateMessage,
