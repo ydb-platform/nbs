@@ -5,6 +5,8 @@
 #include "node_registration_settings.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/common/sleeper.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <contrib/ydb/core/protos/config.pb.h>
@@ -34,7 +36,7 @@ struct INodeRegistrant
         ui32 nodeId) = 0;
 };
 
-using TNodeRegistrantPtr = std::unique_ptr<INodeRegistrant>;
+using INodeRegistrantPtr = std::unique_ptr<INodeRegistrant>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -64,7 +66,7 @@ struct TRegisterDynamicNodeOptions
 using TRegisterDynamicNodeResult =
     std::tuple<ui32, NActors::TScopeId, TMaybe<NKikimrConfig::TAppConfig>>;
 
-TNodeRegistrantPtr CreateNodeRegistrant(
+INodeRegistrantPtr CreateNodeRegistrant(
     NKikimrConfig::TAppConfigPtr appConfig,
     const TRegisterDynamicNodeOptions& options,
     TLog& Log);
@@ -72,7 +74,9 @@ TNodeRegistrantPtr CreateNodeRegistrant(
 TRegisterDynamicNodeResult RegisterDynamicNode(
     NKikimrConfig::TAppConfigPtr appConfig,
     const TRegisterDynamicNodeOptions& options,
-    TNodeRegistrantPtr registrant,
-    TLog& Log);
+    INodeRegistrantPtr registrant,
+    TLog& Log,
+    ITimerPtr timer = CreateWallClockTimer(),
+    ISleeperPtr sleeper = CreateDefaultSleeper());
 
 }   // namespace NCloud::NStorage

@@ -359,7 +359,7 @@ struct TDiscoveryNodeRegistrant
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNodeRegistrantPtr CreateNodeRegistrant(
+INodeRegistrantPtr CreateNodeRegistrant(
     NKikimrConfig::TAppConfigPtr appConfig,
     const TRegisterDynamicNodeOptions& options,
     TLog& Log)
@@ -399,8 +399,11 @@ TNodeRegistrantPtr CreateNodeRegistrant(
 TRegisterDynamicNodeResult RegisterDynamicNode(
     NKikimrConfig::TAppConfigPtr appConfig,
     const TRegisterDynamicNodeOptions& options,
-    TNodeRegistrantPtr registrant,
-    TLog& Log)
+    INodeRegistrantPtr registrant,
+    TLog& Log,
+    ITimerPtr timer,
+    ISleeperPtr sleeper
+)
 {
     auto& nsConfig = *appConfig->MutableNameserviceConfig();
 
@@ -440,7 +443,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
 
         if (FAILED(result.GetError().GetCode())) {
             const auto& msg = result.GetError().GetMessage();
-            if (++attempts == options.Settings.MaxAttempts) {
+            if (attempts == options.Settings.MaxAttempts) {
                 ythrow TServiceError(E_FAIL)
                     << "Cannot register dynamic node: " << msg;
             }
@@ -449,7 +452,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
                 "Failed to register dynamic node at "
                 << nodeBrokerAddress.Quote() << ": " << msg
                 << ". Will retry after " << options.Settings.ErrorTimeout);
-            Sleep(options.Settings.ErrorTimeout);
+            sleeper->Sleep(options.Settings.ErrorTimeout);
             continue;
         }
 
@@ -466,7 +469,6 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
 
     TMaybe<NKikimrConfig::TAppConfig> configurationResult;
 
-    const auto timer = CreateWallClockTimer();
     TBackoffDelayProvider retryDelayProvider(
         options.Settings.LoadConfigsFromCmsRetryMinDelay,
         options.Settings.LoadConfigsFromCmsRetryMaxDelay);
@@ -482,7 +484,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
 
         if (FAILED(result.GetError().GetCode())) {
             const auto& msg = result.GetError().GetMessage();
-            if (deadline > timer->Now()) {
+            if (deadline < timer->Now()) {
                 ythrow TServiceError(E_FAIL)
                     << "Cannot configure dynamic node: " << msg;
             }
@@ -492,7 +494,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
                 "Failed to configure dynamic node at "
                 << registeredNodeBrokerAddress.Quote() << ": " << msg
                 << ". Will retry after " << delay);
-            Sleep(retryDelayProvider.GetDelayAndIncrease());
+            sleeper->Sleep(delay);
             continue;
         }
 
