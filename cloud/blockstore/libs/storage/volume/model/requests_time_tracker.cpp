@@ -190,7 +190,7 @@ void TRequestsTimeTracker::OnRequestStarted(
             .RequestType = requestType});
 }
 
-TString TRequestsTimeTracker::CalcRequestFirstTime(
+TString TRequestsTimeTracker::MakeRequestFirstTimeSucceedMessage(
     const TRequestInflight& request,
     bool success,
     ui64 finishTime)
@@ -251,7 +251,7 @@ TString TRequestsTimeTracker::OnRequestFinished(
     Histograms[key].Increment(duration.MicroSeconds());
     Histograms[key].BlockCount += request.BlockRange.Size();
 
-    return CalcRequestFirstTime(request, success, finishTime);
+    return MakeRequestFirstTimeSucceedMessage(request, success, finishTime);
 }
 
 NJson::TJsonValue TRequestsTimeTracker::BuildPercentilesJson() const

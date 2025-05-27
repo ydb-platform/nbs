@@ -96,7 +96,7 @@ private:
 
     [[nodiscard]] NJson::TJsonValue BuildPercentilesJson() const;
 
-    [[nodiscard]] TString CalcRequestFirstTime(
+    [[nodiscard]] TString MakeRequestFirstTimeSucceedMessage(
         const TRequestInflight& request,
         bool success,
         ui64 finishTime);
@@ -114,6 +114,8 @@ public:
         TBlockRange64 blockRange,
         ui64 startTime);
 
+    // Marks that the request is completed and returns a logging message when
+    // the request succeeds for the first time.
     [[nodiscard]] TString
     OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
