@@ -47,14 +47,21 @@ struct TDescribeResponseHandler
     const std::shared_ptr<TMultiShardDescribeHandler> Owner;
     const TString ShardId;
     const TString LogTag;
+    const TFuture<NProto::TDescribeVolumeResponse> Future;
     TShard& Shard;
 
     TDescribeResponseHandler(
             std::shared_ptr<TMultiShardDescribeHandler> owner,
             TString shardId,
-            TString logTag);
+            TString logTag,
+            TFuture<NProto::TDescribeVolumeResponse> future);
 
     void operator ()(const auto& future);
+
+    void Start()
+    {
+        Future.Subscribe(*this);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -103,27 +110,36 @@ struct TMultiShardDescribeHandler
         for (auto& shard: Shards) {
             for (auto& host: shard.second.Hosts) {
 
-                TDescribeResponseHandler handler(
-                    self,
-                    shard.first,
-                    host.LogTag);
-
                 if (!shard.first.empty()) {
-                    STORAGE_INFO(
+                    STORAGE_ERROR(
                         TStringBuilder()
                             << "Send remote Describe Request to " << host.LogTag
                             << " for volume " << Request.GetDiskId());
                 } else {
-                    STORAGE_INFO(
+                    STORAGE_ERROR(
                         TStringBuilder()
                             << "Send local Describe Request for volume "
                             << Request.GetDiskId());
                 }
 
-                Describe(
+                auto future = Describe(
                     host.Client,
                     Request,
-                    shard.first.empty()).Subscribe(handler);
+                    shard.first.empty());
+
+                TDescribeResponseHandler handler(
+                    self,
+                    shard.first,
+                    host.LogTag,
+                    std::move(future));
+
+                Handlers.push_back(std::move(handler));
+            }
+        }
+
+        with_lock(Lock) {
+            for (auto& handler: Handlers) {
+                handler.Start();
             }
         }
     }
@@ -134,6 +150,7 @@ struct TMultiShardDescribeHandler
 
     TAdaptiveLock Lock;
     TPromise<NProto::TDescribeVolumeResponse> Promise;
+    TVector<TDescribeResponseHandler> Handlers;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -141,10 +158,12 @@ struct TMultiShardDescribeHandler
 TDescribeResponseHandler::TDescribeResponseHandler(
         std::shared_ptr<TMultiShardDescribeHandler> owner,
         TString shardId,
-        TString logTag)
+        TString logTag,
+        TFuture<NProto::TDescribeVolumeResponse> future)
     : Owner(std::move(owner))
     , ShardId(std::move(shardId))
     , LogTag(std::move(logTag))
+    , Future(std::move(future))
     , Shard(Owner->Shards[ShardId])
 {}
 
@@ -209,7 +228,7 @@ std::pair<TDescribeFuture, bool> DescribeRemoteVolume(
     const TString& diskId,
     const NProto::THeaders& headers,
     const IBlockStorePtr& localService,
-    const IRemoteStorageProviderPtr& suProvider,
+    const IRemoteStorageProviderPtr& remoteStorageProvider,
     const ILoggingServicePtr& logging,
     const NProto::TClientConfig& clientConfig)
 {
@@ -219,10 +238,19 @@ std::pair<TDescribeFuture, bool> DescribeRemoteVolume(
     config.SetClientId(FQDNHostName());
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(clientAppConfig);
 
-    auto shardedClients = suProvider->GetShardsClients(std::move(appConfig));
-
-    if (shardedClients.empty()) {
+    auto numConfigured = remoteStorageProvider->GetConfiguredShardCount();
+    if (numConfigured == 0) {
         return {MakeFuture<NProto::TDescribeVolumeResponse>(), false};
+    }
+
+    auto shardedClients = remoteStorageProvider->GetShardsClients(std::move(appConfig));
+
+    if (shardedClients.size() < numConfigured) {
+        NProto::TDescribeVolumeResponse response;
+        *response.MutableError() = MakeError(E_REJECTED, "Shards are not yet up");
+        return {
+            MakeFuture<NProto::TDescribeVolumeResponse>(std::move(response)),
+            true};
     }
 
     NProto::TDescribeVolumeRequest request;

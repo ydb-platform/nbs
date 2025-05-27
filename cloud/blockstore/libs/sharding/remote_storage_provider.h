@@ -25,6 +25,7 @@ private:
         const TString& fqdn);
 
 public:
+    TShardClient() = default;
     TShardClient(
             const NClient::TClientAppConfigPtr& clientConfig,
             const TString& fqdn,
@@ -58,6 +59,12 @@ using TShardClients = THashMap<TString, TVector<TShardClient>>;
 struct IRemoteStorageProvider
     : public IStartable
 {
+    TShardingConfigPtr Config;
+
+    explicit IRemoteStorageProvider(TShardingConfigPtr config)
+        : Config(std::move(config))
+    {}
+
     virtual ~IRemoteStorageProvider() = default;
 
     [[nodiscard]] virtual TShardClient GetShardClient(
@@ -66,6 +73,8 @@ struct IRemoteStorageProvider
 
     [[nodiscard]] virtual TShardClients GetShardsClients(
         NClient::TClientAppConfigPtr clientConfig)  = 0;
+
+    [[nodiscard]] ui32 GetConfiguredShardCount() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
