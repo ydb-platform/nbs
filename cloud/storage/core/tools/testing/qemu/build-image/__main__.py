@@ -209,8 +209,7 @@ def customize(args, cidata_iso):
     if args.arch == 'arm64':
         cmd += [
             "-machine", "virt",
-            "-accel", "kvm",
-            "-bios", "/usr/share/qemu-efi/QEMU_EFI.fd",
+            "-bios", "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
             "-cpu", "cortex-a72",
         ]
 

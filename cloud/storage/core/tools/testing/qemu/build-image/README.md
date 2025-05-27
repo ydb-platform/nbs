@@ -6,7 +6,7 @@ This script allows to build qcow2 image for local and cloud tests based on vanil
 ### Preparing tools
 
 ```
-sudo apt install -y genisoimage qemu-system qemu-utils qemu-efi
+sudo apt install -y genisoimage qemu-system qemu-utils qemu-efi-aarch64
 ```
 
 ### Building for cloud tests
@@ -52,9 +52,9 @@ ya upload --ttl=inf -T NBS_QEMU_DISK_IMAGE -d 'Customized Ubuntu Cloud Image in 
 
 - Update [resource](https://github.com/ydb-platform/nbs/blob/main/cloud/storage/core/tools/testing/qemu/image/ya.make) in ya.make
 
-### Arm image
+### Building for arm tests
 
-Use ports repo
+Use ports repo http://ports.ubuntu.com or mirror
 ```
-./build-image --repo-mirror https://mirror.yandex.ru/ubuntu-ports
+./build-image --arch arm64 --repo-mirror https://mirror.yandex.ru/ubuntu-ports
 ```
