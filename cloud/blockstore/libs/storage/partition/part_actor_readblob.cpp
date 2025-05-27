@@ -124,7 +124,6 @@ void TPartitionActor::HandleReadBlobCompleted(
                 PartitionConfig.GetDiskId().c_str(),
                 FormatError(msg->GetError()).data());
         }
-        return;
     }
 
     const ui32 channel = msg->BlobId.Channel();
@@ -142,7 +141,7 @@ void TPartitionActor::HandleReadBlobCompleted(
             groupId,
             msg->BytesCount,
             isOverlayDisk);
-        State->RegisterSuccess(ctx.Now(), groupId);
+        State->RegisterCompletion(ctx.Now(), groupId);
     }
 
     if (isOverlayDisk) {

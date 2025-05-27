@@ -1202,7 +1202,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         const ui32 group2 = 22222;
 
         auto now = TInstant::Seconds(10);
-        state.RegisterSuccess(now, group1);
+        state.RegisterCompletion(now, group1);
         now += TDuration::Seconds(1);
         state.RegisterDowntime(now, group2);
         UNIT_ASSERT_VALUES_EQUAL(1, dts.size());
@@ -1217,7 +1217,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             static_cast<int>(recent[0].second));
 
         now += TDuration::Minutes(1);
-        state.RegisterSuccess(now, group2);
+        state.RegisterCompletion(now, group2);
         g2dts = dts.FindPtr(group2);
         UNIT_ASSERT(g2dts);
         UNIT_ASSERT(g2dts->HasRecentState(now, EDowntimeStateChange::DOWN));
@@ -1251,7 +1251,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             static_cast<int>(EDowntimeStateChange::UP),
             static_cast<int>(recent[0].second));
 
-        state.RegisterSuccess(now, group2);
+        state.RegisterCompletion(now, group2);
         UNIT_ASSERT_VALUES_EQUAL(0, dts.size());
     }
 

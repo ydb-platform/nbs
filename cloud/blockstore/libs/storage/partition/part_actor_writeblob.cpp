@@ -458,7 +458,7 @@ void TPartitionActor::HandleWriteBlobCompleted(
             channel,
             groupId,
             msg->BlobId.BlobSize());
-        State->RegisterSuccess(ctx.Now(), groupId);
+        State->RegisterCompletion(ctx.Now(), groupId);
     }
     UpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize());
 
