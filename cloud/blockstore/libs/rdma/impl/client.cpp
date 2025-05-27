@@ -1964,11 +1964,19 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
     if (endpoint->Reconnect.Hanging()) {
         // if this is our first connection, fail over to IC
         if (endpoint->StartResult.Initialized()) {
-            RDMA_ERROR(endpoint->Log, "connection timeout");
+            RDMA_ERROR(
+                endpoint->Log,
+                TStringBuilder()
+                    << "connection timeout for endpoint "
+                    << endpoint->Host);
 
             auto startResult = std::move(endpoint->StartResult);
             startResult.SetException(std::make_exception_ptr(TServiceError(
-                MakeError(endpoint->Status, "connection timeout"))));
+                MakeError(
+                    endpoint->Status,
+                    TStringBuilder()
+                        << "connection timeout for endpoint "
+                        << endpoint->Host))));
 
             StopEndpoint(endpoint);
             return;

@@ -20,7 +20,7 @@ std::pair<TDescribeFuture, bool> DescribeRemoteVolume(
     const TString& diskId,
     const NProto::THeaders& headers,
     const IBlockStorePtr& localService,
-    const IRemoteStorageProviderPtr& suProvider,
+    const IRemoteStorageProviderPtr& remoteStorageProvider,
     const ILoggingServicePtr& logging,
     const NProto::TClientConfig& clientConfig);
 

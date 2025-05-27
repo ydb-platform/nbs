@@ -41,7 +41,6 @@ using IShardPtr = std::shared_ptr<IShard>;
 
 struct TShardArguments
 {
-    TShardingConfigPtr Config;
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
@@ -65,6 +64,7 @@ struct TShardEndpointManagerBase
     TAdaptiveLock Lock;
 
     THashMap<TString, TEndpoint> Active;
+    THashMap<TString, NThreading::TFuture<TEndpoint>> Activating;
     TVector<TString> Unused;
 
     TShardEndpointManagerBase(
@@ -80,9 +80,9 @@ struct TShardEndpointManagerBase
 
     TShardClient PickHost(NClient::TClientAppConfigPtr clientConfig)
     {
-        with_lock (Lock) {
-            ResizeIfNeeded();
+        ResizeIfNeeded();
 
+        with_lock (Lock) {
             if (auto host = ShardConfig.GetFixedHost(); !host.Empty()) {
                 if (Active.count(host)) {
                     auto p = static_cast<T*>(this);
@@ -90,6 +90,9 @@ struct TShardEndpointManagerBase
                         Active[host],
                         std::move(clientConfig));
                 }
+            }
+            if (Active.empty()) {
+                return {};
             }
 
             auto index = RandomNumber<ui32>(Active.size());
@@ -105,9 +108,9 @@ struct TShardEndpointManagerBase
         ui32 count,
         NClient::TClientAppConfigPtr clientConfig)
     {
-        with_lock (Lock) {
-            ResizeIfNeeded();
+        ResizeIfNeeded();
 
+        with_lock (Lock) {
             TShardClients res;
             auto p = static_cast<T*>(this);
             auto it = Active.begin();
@@ -123,20 +126,33 @@ struct TShardEndpointManagerBase
 
     void ResizeIfNeeded()
     {
-        auto weak_ptr = this->weak_from_this();
-        while (Active.size() < ShardConfig.GetMinShardConnections()) {
-            if (Unused.empty()) {
-                break;
+        TVector<std::pair<TString, NThreading::TFuture<TEndpoint>>> tmp;
+        with_lock(Lock) {
+            if (Active.size() >= ShardConfig.GetMinShardConnections()) {
+                return;
             }
-            auto host = Unused.back();
-            Unused.pop_back();
 
-            static_cast<T*>(this)->SetupHostEndpoint(host).Subscribe(
+            auto delta = ShardConfig.GetMinShardConnections() - Active.size();
+            while (delta-- && !Unused.empty()) {
+                auto host = Unused.back();
+                Unused.pop_back();
+                auto future = static_cast<T*>(this)->SetupHostEndpoint(host);
+                Activating[host] = future;
+                tmp.push_back({host, future});
+            }
+        }
+
+        auto weakPtr = this->weak_from_this();
+        for (const auto& [host,f]: tmp) {
+            f.Subscribe(
                 [=] (const auto& future) {
-                    if (auto pThis = weak_ptr.lock(); pThis) {
-                        pThis->Active.emplace(
-                            host,
-                            future.GetValue());
+                    if (auto pThis = weakPtr.lock(); pThis) {
+                        with_lock(pThis->Lock) {
+                            pThis->Active.emplace(
+                                host,
+                                future.GetValue());
+                            pThis->Activating.erase(host);
+                        }
                     }
             });
         }
@@ -216,8 +232,8 @@ struct TShardEndpointManagerRdma
     {
         auto& endp = endpoint.Endpoint;
         auto service = endp->CreateClientEndpoint(
-                clientConfig->GetClientId(),
-                clientConfig->GetInstanceId());
+            clientConfig->GetClientId(),
+            clientConfig->GetInstanceId());
 
         return {
             clientConfig,
@@ -288,10 +304,13 @@ struct TRemoteStorageProvider
 
     THashMap<TString, IShardPtr> Shards;
 
-    TRemoteStorageProvider(TShardArguments args)
-        : Args(std::move(args))
+    explicit TRemoteStorageProvider(
+            TShardingConfigPtr config,
+            TShardArguments args)
+        : IRemoteStorageProvider(std::move(config))
+        , Args(std::move(args))
     {
-        for (const auto& shard: Args.Config->GetShards()) {
+        for (const auto& shard: Config->GetShards()) {
             IShardPtr ptr;
             if (shard.second.GetTransport() == NProto::GRPC) {
                 ptr = CreateGrpcEndpointManager(Args, shard.second);
@@ -329,6 +348,9 @@ struct TRemoteStorageProvider
         TShardClients res;
         for (auto& shard: Shards) {
             auto clientList = shard.second->GetShardClients(clientConfig);
+            if (clientList.empty()) {
+                continue;
+            }
             res.emplace(shard.first, std::move(clientList));
         }
         return res;
@@ -351,6 +373,13 @@ TString TShardClient::BuildLogTag(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui32 IRemoteStorageProvider::GetConfiguredShardCount() const
+{
+    return Config->GetShards().size();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 IRemoteStorageProviderPtr CreateRemoteStorageProvider(
     TShardingConfigPtr config,
     ITimerPtr timer,
@@ -361,7 +390,6 @@ IRemoteStorageProviderPtr CreateRemoteStorageProvider(
     NRdma::IClientPtr rdmaClient)
 {
     TShardArguments args {
-        .Config = std::move(config),
         .Timer = std::move(timer),
         .Scheduler = std::move(scheduler),
         .Logging = std::move(logging),
@@ -370,7 +398,7 @@ IRemoteStorageProviderPtr CreateRemoteStorageProvider(
         .RdmaClient = std::move(rdmaClient)
     };
 
-    return std::make_shared<TRemoteStorageProvider>(args);
+    return std::make_shared<TRemoteStorageProvider>(std::move(config), args);
 }
 
 }   // namespace NCloud::NBlockStore::NSharding
