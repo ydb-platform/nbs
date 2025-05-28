@@ -54,6 +54,13 @@ const TVolumeActor::TStateInfo TVolumeActor::States[STATE_MAX] = {
     { "Zombie", (IActor::TReceiveFunc)&TVolumeActor::StateZombie },
 };
 
+const TString VolumeTransactions[] = {
+#define TRANSACTION_NAME(name, ...) #name,
+    BLOCKSTORE_VOLUME_TRANSACTIONS(TRANSACTION_NAME)
+#undef TRANSACTION_NAME
+        "Total",
+};
+
 TVolumeActor::TVolumeActor(
         const TActorId& owner,
         TTabletStorageInfoPtr storage,
@@ -66,7 +73,7 @@ TVolumeActor::TVolumeActor(
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage), nullptr)
+    , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , GlobalStorageConfig(config)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -77,13 +84,14 @@ TVolumeActor::TVolumeActor(
     , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
     , ThrottlerLogger(
-        TabletID(),
-        [this](ui32 opType, TDuration time) {
-            UpdateDelayCounter(
-                static_cast<TVolumeThrottlingPolicy::EOpType>(opType),
-                time);
-        }
-    )
+          TabletID(),
+          [this](ui32 opType, TDuration time)
+          {
+              UpdateDelayCounter(
+                  static_cast<TVolumeThrottlingPolicy::EOpType>(opType),
+                  time);
+          })
+    , TransactionTimeTracker(VolumeTransactions)
 {}
 
 TVolumeActor::~TVolumeActor()
