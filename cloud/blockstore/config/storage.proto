@@ -1244,4 +1244,9 @@ message TStorageServiceConfig
 
     // Maximum number of rows to be written to YDB in a single request.
     optional uint32 StatsUploadMaxRowsPerTx = 431;
+
+    // Retry policy when unable to get configs from CMS, in ms
+    optional uint32 LoadConfigsFromCmsRetryMinDelay = 432;
+    optional uint32 LoadConfigsFromCmsRetryMaxDelay = 433;
+    optional uint32 LoadConfigsFromCmsTotalTimeout = 434;
 }
