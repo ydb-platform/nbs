@@ -191,7 +191,7 @@ void TRequestsTimeTracker::OnRequestStarted(
 }
 
 std::optional<TRequestsTimeTracker::TFirstSuccessStat>
-TRequestsTimeTracker::MakeRequestFirstTimeSucceedMessage(
+TRequestsTimeTracker::StatFirstSuccess(
     const TRequestInflight& request,
     bool success,
     ui64 finishTime)
@@ -250,7 +250,7 @@ TRequestsTimeTracker::OnRequestFinished(
     Histograms[key].Increment(duration.MicroSeconds());
     Histograms[key].BlockCount += request.BlockRange.Size();
 
-    return MakeRequestFirstTimeSucceedMessage(request, success, finishTime);
+    return StatFirstSuccess(request, success, finishTime);
 }
 
 NJson::TJsonValue TRequestsTimeTracker::BuildPercentilesJson() const

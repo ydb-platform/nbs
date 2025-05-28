@@ -106,7 +106,7 @@ private:
     [[nodiscard]] NJson::TJsonValue BuildPercentilesJson() const;
 
     [[nodiscard]] std::optional<TRequestsTimeTracker::TFirstSuccessStat>
-    MakeRequestFirstTimeSucceedMessage(
+    StatFirstSuccess(
         const TRequestInflight& request,
         bool success,
         ui64 finishTime);
