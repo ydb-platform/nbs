@@ -435,6 +435,34 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         UNIT_ASSERT_VALUES_EQUAL(100, group->Settings.GetMaxDisksInGroup());
     }
 
+    Y_UNIT_TEST(ShouldForwardMarkReplacementDeviceToDiskRegistry)
+    {
+        auto drState = MakeIntrusive<TDiskRegistryState>();
+        TTestEnv env(1, 1, 4, 1, {drState});
+
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString deviceUUID = "device1";
+
+        UNIT_ASSERT(!drState->DeviceReplacementUUIDs.contains(deviceUUID));
+
+        NProto::TMarkReplacementDeviceRequest request;
+        request.SetDeviceId(deviceUUID);
+        request.SetIsReplacement(true);
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        auto executeResponse =
+            service.ExecuteAction("markreplacementdevice", buf);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, executeResponse->GetStatus());
+
+        UNIT_ASSERT(drState->DeviceReplacementUUIDs.contains(deviceUUID));
+    }
+
     Y_UNIT_TEST(ShouldRebindLocalVolumes)
     {
         TTestEnv env;
