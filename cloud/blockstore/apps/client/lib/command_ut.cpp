@@ -17,6 +17,8 @@
 #include <util/system/file.h>
 #include <util/system/fs.h>
 #include <util/system/progname.h>
+#include <array>
+#include <span>
 
 namespace NCloud::NBlockStore::NClient {
 
@@ -845,6 +847,52 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             TStringBuilder() << "--blocks-count=" << blocksPerRequest);
         UNIT_ASSERT(ExecuteRequest("checkrange", argv, client));
         UNIT_ASSERT_VALUES_EQUAL(2, requestCount);
+    }
+
+    Y_UNIT_TEST(ShouldHandleCancelEndpointInFlightRequests)
+    {
+        auto client = std::make_shared<TTestService>();
+        const TString unixSocketPath = CreateGuidAsString();
+
+        NProto::TError error = MakeError(E_NOT_IMPLEMENTED, "test");
+        client->CancelEndpointInFlightRequestsHandler =
+            [&](std::shared_ptr<NProto::TCancelEndpointInFlightRequestsRequest>
+                    request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                unixSocketPath,
+                request->GetUnixSocketPath());
+
+            NProto::TCancelEndpointInFlightRequestsResponse response;
+            *response.MutableError() = error;
+            return MakeFuture(response);
+        };
+
+        {
+            TVector<TString> argv;
+            argv.reserve(2);
+            argv.emplace_back(GetProgramName());
+            argv.emplace_back(
+                TStringBuilder() << "--socket=" << unixSocketPath);
+
+            UNIT_ASSERT(!ExecuteRequest(
+                "cancelendpointinflightrequests",
+                argv,
+                client));
+        }
+
+        error = MakeError(S_OK);
+
+        {
+            TVector<TString> argv;
+            argv.reserve(2);
+            argv.emplace_back(GetProgramName());
+            argv.emplace_back(
+                TStringBuilder() << "--socket=" << unixSocketPath);
+
+            UNIT_ASSERT(
+                ExecuteRequest("cancelendpointinflightrequests", argv, client));
+        }
     }
 }
 

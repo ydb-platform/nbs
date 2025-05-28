@@ -49,6 +49,9 @@ struct IServer
     virtual NProto::TError UpdateEndpoint(
         const TString& socketPath,
         ui64 blocksCount) = 0;
+
+    virtual NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

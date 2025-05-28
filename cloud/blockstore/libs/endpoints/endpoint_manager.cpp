@@ -1189,6 +1189,40 @@ NProto::TRefreshEndpointResponse TEndpointManager::DoRefreshEndpoint(
     return response;
 }
 
+NProto::TCancelEndpointInFlightRequestsResponse
+TEndpointManager::DoCancelEndpointInFlightRequests(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TCancelEndpointInFlightRequestsRequest> request)
+{
+    Y_UNUSED(ctx);
+
+    auto socketPath = request->GetUnixSocketPath();
+    if (IsEndpointRestoring(socketPath)) {
+        return TErrorResponse(E_REJECTED, "endpoint is restoring now");
+    }
+
+    const auto* endpoint = Endpoints.FindPtr(socketPath);
+    if (!endpoint) {
+        return TErrorResponse(
+            S_FALSE,
+            TStringBuilder() << "endpoint " << socketPath.Quote()
+                             << " hasn't been started yet");
+    }
+
+    const auto ipcType = endpoint->Request->GetIpcType();
+    auto* listener = EndpointListeners.FindPtr(ipcType);
+    STORAGE_VERIFY(
+        listener != nullptr && listener->get() != nullptr,
+        TWellKnownEntityTypes::ENDPOINT,
+        socketPath);
+
+    NProto::TCancelEndpointInFlightRequestsResponse response;
+    auto error = listener->get()->CancelEndpointInFlightRequests(socketPath);
+    *response.MutableError() = std::move(error);
+
+    return response;
+}
+
 NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TRefreshEndpointRequest> request)

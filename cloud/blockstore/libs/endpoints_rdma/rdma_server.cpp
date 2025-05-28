@@ -418,6 +418,15 @@ public:
         return MakeFuture(MakeError(E_NOT_IMPLEMENTED));
     }
 
+    NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) override
+    {
+        Y_UNUSED(socketPath);
+        return MakeError(
+            E_NOT_IMPLEMENTED,
+            "Can't cancel in-flight requests for RDMA endpoint");
+    }
+
 
 private:
     NProto::TError DoStartEndpoint(

@@ -247,6 +247,11 @@ struct TClientStorage: NStorage::NServer::IClientStorage
     {
         Y_UNUSED(clientSocket);
     }
+
+    void CancelInFlightRequests() override
+    {
+        Y_DEBUG_ABORT_UNLESS(false);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

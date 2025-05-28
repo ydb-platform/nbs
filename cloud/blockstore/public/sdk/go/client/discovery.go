@@ -737,6 +737,14 @@ func (client *discoveryClient) RefreshEndpoint(
 	panic("not implemented")
 }
 
+func (client *discoveryClient) CancelEndpointInFlightRequests(
+	ctx context.Context,
+	req *protos.TCancelEndpointInFlightRequestsRequest,
+) (*protos.TCancelEndpointInFlightRequestsResponse, error) {
+
+	panic("not implemented")
+}
+
 func (client *discoveryClient) CreateCheckpoint(
 	ctx context.Context,
 	req *protos.TCreateCheckpointRequest,

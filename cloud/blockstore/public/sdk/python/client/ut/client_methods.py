@@ -23,4 +23,5 @@ client_methods = [
     ("stop_endpoint", "StopEndpoint"),
     ("refresh_endpoint", "RefreshEndpoint"),
     ("list_endpoints", "ListEndpoints"),
+    ("cancel_endpoint_in_flight_requests", "CancelEndpointInFlightRequests"),
 ]

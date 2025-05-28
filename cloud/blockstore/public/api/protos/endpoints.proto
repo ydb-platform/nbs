@@ -234,6 +234,24 @@ message TRefreshEndpointResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Cancel endpoint in-flight requests
+
+message TCancelEndpointInFlightRequestsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Unix-socket path.
+    string UnixSocketPath = 2;
+}
+
+message TCancelEndpointInFlightRequestsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Proxy endpoint
 
 message TStartProxyEndpointRequest

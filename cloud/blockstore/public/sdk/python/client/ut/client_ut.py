@@ -135,6 +135,9 @@ def _test_every_method_impl(sync):
         "refresh_endpoint": {
             "unix_socket_path": "DefaultUnixSocketPath",
         },
+        "cancel_endpoint_in_flight_requests": {
+            "unix_socket_path": "DefaultUnixSocketPath",
+        },
         "list_endpoints": {},
         "kick_endpoint": {
             "keyring_id": 42,

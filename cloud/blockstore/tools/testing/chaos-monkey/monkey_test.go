@@ -272,6 +272,14 @@ func (n nbsService) RefreshEndpoint(
 	panic("implement me")
 }
 
+func (n nbsService) CancelEndpointInFlightRequests(
+	ctx context.Context,
+	request *protos.TCancelEndpointInFlightRequestsRequest,
+) (*protos.TCancelEndpointInFlightRequestsResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (n nbsService) UpdateDiskRegistryConfig(
 	ctx context.Context,
 	request *protos.TUpdateDiskRegistryConfigRequest,

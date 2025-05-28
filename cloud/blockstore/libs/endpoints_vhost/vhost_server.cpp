@@ -96,6 +96,12 @@ public:
         Y_UNUSED(session);
         return MakeFuture<NProto::TError>();
     }
+
+    NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) override
+    {
+        return Server->CancelEndpointInFlightRequests(socketPath);
+    }
 };
 
 }   // namespace

@@ -559,6 +559,24 @@ func (client *grpcClient) RefreshEndpoint(
 	return resp.(*protos.TRefreshEndpointResponse), err
 }
 
+func (client *grpcClient) CancelEndpointInFlightRequests(
+	ctx context.Context,
+	req *protos.TCancelEndpointInFlightRequestsRequest,
+) (*protos.TCancelEndpointInFlightRequestsResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.CancelEndpointInFlightRequests(ctx, req)
+		})
+
+	return resp.(*protos.TCancelEndpointInFlightRequestsResponse), err
+}
+
 func (client *grpcClient) CreateCheckpoint(
 	ctx context.Context,
 	req *protos.TCreateCheckpointRequest,

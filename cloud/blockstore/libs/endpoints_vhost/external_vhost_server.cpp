@@ -886,6 +886,26 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
+    NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) override
+    {
+        auto it = Endpoints.find(socketPath);
+        if (it == Endpoints.end()) {
+            return MakeError(
+                S_FALSE,
+                TStringBuilder()
+                    << "endpoint " << socketPath.Quote() << "is not found");
+        }
+
+        if (!it->second) {
+            return FallbackListener->CancelEndpointInFlightRequests(socketPath);
+        }
+
+        return MakeError(
+            E_NOT_IMPLEMENTED,
+            "Can't cancel in-flight requests for external vhost endpoint");
+    }
+
 private:
     NThreading::TFuture<NProto::TError> TrySwitchEndpoint(
         const NProto::TStartEndpointRequest& request,

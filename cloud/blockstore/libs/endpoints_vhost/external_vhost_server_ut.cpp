@@ -134,6 +134,13 @@ struct TTestEndpointListener
         Y_UNUSED(session);
         return MakeFuture<NProto::TError>();
     }
+
+    NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) override
+    {
+        Y_UNUSED(socketPath);
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

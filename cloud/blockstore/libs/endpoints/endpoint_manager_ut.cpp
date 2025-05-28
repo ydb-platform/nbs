@@ -268,6 +268,9 @@ public:
         const NProto::TStartEndpointRequest& request,
         NClient::ISessionPtr session)>;
 
+    using TCancelEndpointInFlightRequestsHandler =
+        std::function<NProto::TError(const TString& socketPath)>;
+
 public:
     TTestEndpointListener(
             TFuture<NProto::TError> result = MakeFuture<NProto::TError>())
@@ -342,6 +345,20 @@ public:
 
         return MakeFuture<NProto::TError>();
     }
+
+    TCancelEndpointInFlightRequestsHandler
+        CancelEndpointInFlightRequestsHandler = [&](const TString& socketPath)
+    {
+        Y_UNUSED(socketPath);
+        return NProto::TError{};
+    };
+
+    NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) override
+    {
+        return CancelEndpointInFlightRequestsHandler(socketPath);
+    }
+
 
     TMap<TString, TTestEndpoint> GetEndpoints() const
     {
@@ -591,6 +608,20 @@ TFuture<NProto::TListEndpointsResponse> ListEndpoints(
     return endpointManager.ListEndpoints(
         MakeIntrusive<TCallContext>(),
         std::make_shared<NProto::TListEndpointsRequest>());
+}
+
+TFuture<NProto::TCancelEndpointInFlightRequestsResponse>
+CancelEndpointInFlightRequests(
+    IEndpointManager& endpointManager,
+    const TString& unixSocketPath)
+{
+    auto request =
+        std::make_shared<NProto::TCancelEndpointInFlightRequestsRequest>();
+    *request->MutableUnixSocketPath() = unixSocketPath;
+
+    return endpointManager.CancelEndpointInFlightRequests(
+        MakeIntrusive<TCallContext>(),
+        std::move(request));
 }
 
 }   // namespace
@@ -2009,6 +2040,94 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto future = StopEndpoint(*manager, socketPath.GetPath());
             auto response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCancelEndpointInFlightRequests)
+    {
+        TTempDir dir;
+        TString unixVhostSocket = (dir.Path() / "testSocket1").GetPath();
+        TString unixGrpcSocket = (dir.Path() / "testSocket2").GetPath();
+        TString diskId = "testDiskId";
+
+        TBootstrap bootstrap;
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+
+        auto grpcListener = std::make_shared<TTestEndpointListener>();
+        auto vhostListener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {
+            { NProto::IPC_GRPC, grpcListener },
+            { NProto::IPC_VHOST, vhostListener },
+        };
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+        manager->RestoreEndpoints().Wait(5s);
+
+        {
+            NProto::TStartEndpointRequest request;
+            SetDefaultHeaders(request);
+            request.SetUnixSocketPath(unixVhostSocket);
+            request.SetDiskId(diskId);
+            request.SetClientId(TestClientId);
+            request.SetIpcType(NProto::IPC_VHOST);
+
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+
+            UNIT_ASSERT(mountedVolumes.contains(diskId));
+
+            UNIT_ASSERT(vhostListener->GetEndpoints().contains(unixVhostSocket));
+        }
+
+        {
+            NProto::TStartEndpointRequest request;
+            SetDefaultHeaders(request);
+            request.SetUnixSocketPath(unixGrpcSocket);
+            request.SetDiskId(diskId);
+            request.SetClientId(TestClientId);
+            request.SetIpcType(NProto::IPC_GRPC);
+            request.SetVolumeAccessMode(NProto::VOLUME_ACCESS_READ_ONLY);
+
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+
+            UNIT_ASSERT(mountedVolumes.contains(diskId));
+
+            UNIT_ASSERT(grpcListener->GetEndpoints().contains(unixGrpcSocket));
+        }
+
+        {
+            ui32 vhostCancelCount = 0;
+            ui32 grpcCancelCount = 0;
+            vhostListener->CancelEndpointInFlightRequestsHandler =
+                [&](const TString& socketPath)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(unixVhostSocket, socketPath);
+                vhostCancelCount++;
+                return NProto::TError{};
+            };
+            grpcListener->CancelEndpointInFlightRequestsHandler =
+                [&](const TString& socketPath)
+            {
+                Y_UNUSED(socketPath);
+                grpcCancelCount++;
+                return MakeError(E_NOT_IMPLEMENTED);
+            };
+            auto future =
+                CancelEndpointInFlightRequests(*manager, unixVhostSocket);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(1, vhostCancelCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, grpcCancelCount);
+            UNIT_ASSERT_C(
+                !HasError(response.GetError()),
+                FormatError(response.GetError()));
         }
     }
 }
