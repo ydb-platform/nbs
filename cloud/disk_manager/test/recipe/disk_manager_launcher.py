@@ -115,7 +115,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d"
+        key: "zone-d-sharded"
         value: <
             Endpoints: [
                 "localhost:{nbs4_port}",
@@ -124,7 +124,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-2"
+        key: "zone-d-sharded-2"
         value: <
             Endpoints: [
                 "localhost:{nbs5_port}",
@@ -135,21 +135,6 @@ NbsConfig: <
     RootCertsFile: "{root_certs_file}"
     GrpcKeepAlive: <>
     UseGZIPCompression: true
-<<<<<<< HEAD
-=======
->
-ShardsConfig: <
-    Shards: <
-        key: "zone-d"
-        value: <
-            Shards: [
-                "zone-d-2",
-                "zone-d"
-            ]
-        >
-    >
->>>>>>> add shards service
->
 DisksConfig: <
     DeletedDiskExpirationTimeout: "1s"
     ClearDeletedDisksTaskScheduleInterval: "2s"
@@ -191,6 +176,9 @@ ShardsConfig: <
             ]
         >
     >
+    ExcludedFolders: <
+        Folders: ["excluded-folder"]
+    >
 >
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"
@@ -209,11 +197,11 @@ ImagesConfig: <
             Capacity: 0
         >,
         <
-            ZoneId: "zone-d-1"
+            ZoneId: "zone-d-sharded"
             Capacity: 0
         >,
         <
-            ZoneId: "zone-d-2"
+            ZoneId: "zone-d-sharded-2"
             Capacity: 0
         >
     ]
@@ -265,7 +253,7 @@ S3Config: <
 
 DATAPLANE_CONFIG_TEMPLATE = """
 TasksConfig: <
-    ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d-1", "zone-d-2"]
+    ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d-sharded", "zone-d-sharded-2"]
     TaskPingPeriod: "1s"
     PollForTaskUpdatesPeriod: "1s"
     PollForTasksPeriodMin: "1s"
@@ -314,7 +302,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d"
+        key: "zone-d-sharded"
         value: <
             Endpoints: [
                 "localhost:{nbs4_port}",
@@ -323,7 +311,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-2"
+        key: "zone-d-sharded-2"
         value: <
             Endpoints: [
                 "localhost:{nbs5_port}",

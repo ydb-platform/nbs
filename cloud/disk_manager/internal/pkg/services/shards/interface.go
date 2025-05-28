@@ -12,5 +12,6 @@ type Service interface {
 	PickShard(
 		ctx context.Context,
 		disk *disk_manager.DiskId,
-	) string
+		folderID string,
+	) (string, error)
 }
