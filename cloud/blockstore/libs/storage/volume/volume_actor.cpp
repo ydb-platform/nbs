@@ -673,7 +673,7 @@ void TVolumeActor::HandleServerConnected(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Pipe client %s (server %s) connected to volume %s",
         TabletID(),
         ToString(msg->ClientId).data(),
@@ -688,7 +688,7 @@ void TVolumeActor::HandleServerDisconnected(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Pipe client %s (server %s) disconnected from volume %s at %s",
         TabletID(),
         ToString(msg->ClientId).data(),
@@ -706,7 +706,7 @@ void TVolumeActor::HandleServerDestroyed(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Pipe client %s's server %s got destroyed for volume %s at %s",
         TabletID(),
         ToString(msg->ClientId).data(),
