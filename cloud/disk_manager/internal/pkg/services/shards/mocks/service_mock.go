@@ -7,9 +7,17 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 type ServiceMock struct {
 	mock.Mock
 }
+
+func NewServiceMock() *ServiceMock {
+	return &ServiceMock{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 func (s *ServiceMock) SelectShard(
 	ctx context.Context,
@@ -18,10 +26,4 @@ func (s *ServiceMock) SelectShard(
 
 	args := s.Called(ctx, disk, folderID)
 	return args.String(0), args.Error(1)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func NewServiceMock() *ServiceMock {
-	return &ServiceMock{}
 }

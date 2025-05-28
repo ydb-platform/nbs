@@ -15,6 +15,17 @@ type service struct {
 	config *shards_config.ShardsConfig
 }
 
+func NewService(
+	config *shards_config.ShardsConfig,
+) Service {
+
+	return &service{
+		config: config,
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func (s *service) SelectShard(
 	ctx context.Context,
 	disk *disk_manager.DiskId,
@@ -31,6 +42,8 @@ func (s *service) SelectShard(
 	return shards[0], nil
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 func (s *service) getShards(zoneID string) []string {
 	shards, ok := s.config.Shards[zoneID]
 	if !ok {
@@ -38,15 +51,4 @@ func (s *service) getShards(zoneID string) []string {
 	}
 
 	return shards.Shards
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func NewService(
-	config *shards_config.ShardsConfig,
-) Service {
-
-	return &service{
-		config: config,
-	}
 }
