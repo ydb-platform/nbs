@@ -22,7 +22,7 @@ public:
     void Sleep(TDuration duration) override;
 
     void AdvanceTime(TDuration delay);
-    const TVector<TDuration>& GetSleepDurations();
+    [[nodiscard]] const TVector<TDuration>& GetSleepDurations() const;
 };
 
 }   // namespace NCloud
