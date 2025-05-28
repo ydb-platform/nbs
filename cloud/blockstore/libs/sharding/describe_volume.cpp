@@ -137,9 +137,9 @@ struct TMultiShardDescribeHandler
                             << "Send remote Describe Request to " << host.LogTag
                             << " for volume " << Request.GetDiskId());
                 } else {
-                    STORAGE_DEBUG(
+                  STORAGE_DEBUG(
                         TStringBuilder()
-                            << "Send local Describe Request for volume "
+                            << "Send locak Describe Request for volume "
                             << Request.GetDiskId());
                 }
 
