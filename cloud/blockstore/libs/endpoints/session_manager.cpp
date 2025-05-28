@@ -15,7 +15,7 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/sharding/describe.h>
+#include <cloud/blockstore/libs/sharding/describe_volume.h>
 #include <cloud/blockstore/libs/sharding/remote_storage_provider.h>
 #include <cloud/blockstore/libs/validation/validation.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -489,7 +489,7 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers)
 {
-    auto [multiShardFuture, handling] = DescribeRemoteVolume(
+    auto multiShardFuture = DescribeRemoteVolume(
         diskId,
         headers,
         Service,
@@ -497,8 +497,8 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
         Logging,
         Options.DefaultClientConfig);
 
-    if (handling) {
-        return Executor->WaitFor(multiShardFuture);
+    if (multiShardFuture.has_value()) {
+        return Executor->WaitFor(multiShardFuture.value());
     }
 
     auto describeRequest = std::make_shared<NProto::TDescribeVolumeRequest>();

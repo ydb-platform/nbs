@@ -16,7 +16,7 @@ namespace NCloud::NBlockStore::NSharding {
 
 using TDescribeFuture = NThreading::TFuture<NProto::TDescribeVolumeResponse>;
 
-std::pair<TDescribeFuture, bool> DescribeRemoteVolume(
+std::optional<TDescribeFuture> DescribeRemoteVolume(
     const TString& diskId,
     const NProto::THeaders& headers,
     const IBlockStorePtr& localService,
