@@ -1,6 +1,8 @@
 #include "test_env.h"
 
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
+#include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -64,11 +66,18 @@ void TFakeHiveProxy::HandleGetStorageInfo(
     const auto* msg = ev->Get();
 
     TTabletStorageInfoPtr storageInfo;
-    if (msg->TabletId == TestTabletId) {
-        storageInfo = CreateTestTabletInfo(
-            msg->TabletId,
-            TTabletTypes::BlockStoreVolume);
-    } else if (msg->TabletId == TestTabletId2) {
+
+    const bool isVolumeTablet = AnyOf(
+        TestVolumeTablets,
+        [&](ui64 tabletId) { return msg->TabletId == tabletId; });
+    const bool isPartitionTablet = AnyOf(
+        TestPartitionTablets,
+        [&](ui64 tabletId) { return msg->TabletId == tabletId; });
+
+    if (isVolumeTablet) {
+        storageInfo =
+            CreateTestTabletInfo(msg->TabletId, TTabletTypes::BlockStoreVolume);
+    } else if (isPartitionTablet) {
         storageInfo = CreateTestTabletInfo(
             msg->TabletId,
             TTabletTypes::BlockStorePartition);
@@ -92,7 +101,10 @@ void TFakeHiveProxy::HandleBootExternal(
 
     ui32 generation = 0;
     TTabletStorageInfoPtr storageInfo;
-    if (msg->TabletId != TestTabletId) {
+    const bool isVolumeTablet = AnyOf(
+        TestVolumeTablets,
+        [&](ui64 tabletId) { return msg->TabletId == tabletId; });
+    if (!isVolumeTablet) {
         generation = ++PartitionGeneration;
         storageInfo = CreateTestTabletInfo(
             msg->TabletId,
@@ -120,7 +132,7 @@ TActorId TVolumeClient::GetSender() const
 void TVolumeClient::ReconnectPipe()
 {
     PipeClient = Runtime.ConnectToPipe(
-        TestTabletId,
+        VolumeTabletId,
         Sender,
         NodeIdx,
         NKikimr::GetPipeConfigWithRetries());
@@ -128,13 +140,13 @@ void TVolumeClient::ReconnectPipe()
 
 void TVolumeClient::RebootTablet()
 {
-    TVector<ui64> tablets = { TestTabletId };
+    TVector<ui64> tablets = { VolumeTabletId };
     auto guard = CreateTabletScheduledEventsGuard(
         tablets,
         Runtime,
         Sender);
 
-    NKikimr::RebootTablet(Runtime, TestTabletId, Sender);
+    NKikimr::RebootTablet(Runtime, VolumeTabletId, Sender);
 
     // sooner or later after reset pipe will reconnect
     // but we do not want to wait
@@ -143,13 +155,13 @@ void TVolumeClient::RebootTablet()
 
 void TVolumeClient::RebootSysTablet()
 {
-    TVector<ui64> tablets = { TestTabletId };
+    TVector<ui64> tablets = {VolumeTabletId };
     auto guard = CreateTabletScheduledEventsGuard(
         tablets,
         Runtime,
         Sender);
 
-    NKikimr::RebootTablet(Runtime, TestTabletId, Sender, 0, true);
+    NKikimr::RebootTablet(Runtime, VolumeTabletId, Sender, 0, true);
 
     // sooner or later after reset pipe will reconnect
     // but we do not want to wait
@@ -704,6 +716,10 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         )
     );
 
+    runtime->AddLocalService(
+        MakeSSProxyServiceId(),
+        TActorSetupCmd(new TSSProxyMock(), TMailboxType::Simple, 0));
+
     if (!diskRegistryState) {
         diskRegistryState = MakeIntrusive<TDiskRegistryState>();
     }
@@ -812,11 +828,11 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         return tablet.release();
     };
 
-    TTabletStorageInfoPtr info = CreateTestTabletInfo(
-        TestTabletId,
-        TTabletTypes::BlockStoreVolume);
-
-    CreateTestBootstrapper(*runtime, info.Get(), createFunc);
+    for (ui64 volumeTablet: TestVolumeTablets) {
+        TTabletStorageInfoPtr info =
+            CreateTestTabletInfo(volumeTablet, TTabletTypes::BlockStoreVolume);
+        CreateTestBootstrapper(*runtime, info.Get(), createFunc);
+    }
 
     return runtime;
 }
