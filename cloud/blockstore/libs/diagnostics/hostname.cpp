@@ -5,12 +5,21 @@
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 #include <util/system/hostname.h>
+#include <array>
+#include <span>
 
 namespace NCloud::NBlockStore {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+constexpr std::array<const char*, 2> DefaultHandleClasses(
+    {"GetFast", "PutUserData"});
+constexpr std::array<const char*, 3> LogHandleClasses(
+    {"GetFast", "PutUserData", "PutTabletLog"});
+constexpr std::array<const char*, 4> MergedAndMixedHandleClasses(
+    {"GetFast", "PutUserData", "GetAsync", "PutAsyncBlob"});
 
 ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
 {
@@ -21,6 +30,20 @@ ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
         default:
             Y_ABORT("Wrong EHostService: %d", serviceType);
     }
+}
+
+[[nodiscard]] std::span<const char* const> GetHandleClasses(
+    const TString& dataKind)
+{
+    if (dataKind == "Log") {
+        return LogHandleClasses;
+    }
+
+    if (dataKind == "Merged" || dataKind == "Mixed") {
+        return MergedAndMixedHandleClasses;
+    }
+
+    return DefaultHandleClasses;
 }
 
 }    // namespace
@@ -122,66 +145,23 @@ GetQueries(ui32 groupId, const TString& storagePool, const TString& dataKind)
         R"(q.%u.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
         R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="%s"})&q.%u.name=%s)";
 
-    constexpr std::array<TStringBuf, 2> DefaultHandleclasses(
-        {"GetFast", "PutUserData"});
-    constexpr std::array<TStringBuf, 3> LogHandleclasses(
-        {"GetFast", "PutUserData", "PutTabletLog"});
-    constexpr std::array<TStringBuf, 4> MergedAndMixedHandleclasses(
-        {"GetFast", "PutUserData", "GetAsync", "PutAsyncBlob"});
-
-    constexpr std::array<TStringBuf, 4> QueryNames({"A", "B", "C", "D"});
+    auto handleClasses = GetHandleClasses(dataKind);
 
     TStringBuilder queries;
 
-    if (dataKind == "Log") {
-        for (ui32 queryIdx = 0; queryIdx < LogHandleclasses.size(); ++queryIdx)
-        {
-            queries << Sprintf(
-                           QueryPattern.data(),
-                           queryIdx,
-                           storagePool.c_str(),
-                           groupId,
-                           LogHandleclasses.at(queryIdx).Data(),
-                           queryIdx,
-                           QueryNames.at(queryIdx).Data())
-                           .c_str()
-                    << "&";
-        }
-
-        return queries.c_str();
-    }
-
-    if (dataKind == "Merged" || dataKind == "Mixed") {
-        for (ui32 queryIdx = 0; queryIdx < MergedAndMixedHandleclasses.size();
-             ++queryIdx)
-        {
-            queries << Sprintf(
-                           QueryPattern.data(),
-                           queryIdx,
-                           storagePool.c_str(),
-                           groupId,
-                           MergedAndMixedHandleclasses.at(queryIdx).Data(),
-                           queryIdx,
-                           QueryNames.at(queryIdx).Data())
-                           .c_str()
-                    << "&";
-        }
-
-        return queries.c_str();
-    }
-
-    for (ui32 queryIdx = 0; queryIdx < DefaultHandleclasses.size(); ++queryIdx)
-    {
+    char queryName = 'A';
+    for (ui32 queryIdx = 0; queryIdx < handleClasses.size(); ++queryIdx) {
         queries << Sprintf(
                        QueryPattern.data(),
                        queryIdx,
                        storagePool.c_str(),
                        groupId,
-                       DefaultHandleclasses.at(queryIdx).Data(),
+                       handleClasses[queryIdx],
                        queryIdx,
-                       QueryNames.at(queryIdx).Data())
+                       TString(1, queryName).data())
                        .c_str()
                 << "&";
+        ++queryName;
     }
 
     return queries.c_str();
