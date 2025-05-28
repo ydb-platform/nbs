@@ -8,11 +8,13 @@ namespace NCloud::NBlockStore::NStorage {
 
 static void TransactionTimeTracker(benchmark::State& state)
 {
-    TTransactionTimeTracker tracker;
+    TVector<TString> transactionTypes;
+    for (size_t i = 0; i < 30; ++i) {
+        transactionTypes.push_back(TStringBuilder() << "Transaction_" << i);
+    }
     constexpr size_t IoDepth = 1000;
 
-    const auto transactionTypes =
-        TTransactionTimeTracker::GetTransactionBuckets();
+    TTransactionTimeTracker tracker(transactionTypes);
 
     TVector<ui64> running;
     ui64 idGenerator = 0;
@@ -24,7 +26,7 @@ static void TransactionTimeTracker(benchmark::State& state)
 
         tracker.OnStarted(
             id,
-            transactionTypes[transactionType].Key,
+            transactionTypes[transactionType],
             GetCycleCount());
         if (running.size() < IoDepth) {
             running.push_back(id);
