@@ -779,8 +779,8 @@ struct TTxVolume
         const TFollowerDiskInfo FollowerInfo;
 
         TUpdateFollower(
-            TRequestInfoPtr requestInfo,
-            TFollowerDiskInfo followerInfo)
+                TRequestInfoPtr requestInfo,
+                TFollowerDiskInfo followerInfo)
             : RequestInfo(std::move(requestInfo))
             , FollowerInfo(std::move(followerInfo))
         {}

@@ -153,14 +153,14 @@ public:
     //
     void WriteFollower(const TFollowerDiskInfo& follower);
     void DeleteFollower(const TLeaderFollowerLink& link);
-    bool ReadFollowers(const TString& leaderDiskId, TFollowerDisks& followers);
+    bool ReadFollowers(TFollowerDisks& followers);
 
     //
     // Leader disks
     //
     void WriteLeader(const TLeaderDiskInfo& leader);
     void DeleteLeader(const TLeaderFollowerLink& link);
-    bool ReadLeaders(const TString& followerDiskId, TLeaderDisks& leaders);
+    bool ReadLeaders(TLeaderDisks& leaders);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -28,8 +28,8 @@ void TVolumeActor::ExecuteUpdateLeader(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Persist leader %s %s -> %s",
-        TabletID(),
+        "%s Persist leader %s %s -> %s",
+        LogTitle.GetWithTime().c_str(),
         State->GetDiskId().c_str(),
         args.Leader.Link.Describe().c_str(),
         current ? current->Describe().c_str() : "{}",
@@ -74,8 +74,8 @@ void TVolumeActor::ExecuteRemoveLeader(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Remove leader %s",
-        TabletID(),
+        "%s Remove leader %s",
+        LogTitle.GetWithTime().c_str(),
         args.Link.Describe().c_str());
 
     TVolumeDatabase db(tx.DB);
@@ -116,7 +116,7 @@ void TVolumeActor::CreateLeaderLink(
     auto leaderInfo = TLeaderDiskInfo{
         .Link = std::move(link),
         .CreatedAt = TInstant::Now(),
-        .State = TLeaderDiskInfo::EState::Follower};
+        .State = TLeaderDiskInfo::EState::Following};
 
     ExecuteTx<TUpdateLeader>(ctx, std::move(requestInfo), std::move(leaderInfo));
 }
@@ -149,14 +149,14 @@ void TVolumeActor::HandleNotifyFollowerVolume(
         .LinkUUID = msg->Record.GetLinkUUID(),
         .LeaderDiskId = msg->Record.GetLeaderDiskId(),
         .LeaderScaleUnitId = msg->Record.GetLeaderScaleUnitId(),
-        .FollowerDiskId = State->GetDiskId(),
-        .FollowerScaleUnitId = {}};
+        .FollowerDiskId = msg->Record.GetDiskId(),
+        .FollowerScaleUnitId = msg->Record.GetFollowerScaleUnitId()};
 
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Update link %s on follower %s",
-        TabletID(),
+        "%s Update link %s on follower %s",
+        LogTitle.GetWithTime().c_str(),
         link.Describe().c_str(),
         NProto::EFollowerNotificationReason_Name(msg->Record.GetReason())
             .c_str());

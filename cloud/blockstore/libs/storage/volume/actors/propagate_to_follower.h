@@ -25,7 +25,7 @@ public:
     };
 
 private:
-    const ui64 TabletID;
+    const TString LogPrefix;
     const TRequestInfoPtr RequestInfo;
     const TLeaderFollowerLink Link;
     const EReason Reason;
@@ -37,7 +37,7 @@ private:
 
 public:
     TPropagateLinkToFollowerActor(
-        ui64 tabletID,
+        TString logPrefix,
         TRequestInfoPtr requestInfo,
         TLeaderFollowerLink link,
         EReason reason);
@@ -50,7 +50,8 @@ private:
     void HandlePersistedOnFollower(
         const TEvVolume::TEvNotifyFollowerVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
-    void HandleRetryPersistOnFollower(
+
+    void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 

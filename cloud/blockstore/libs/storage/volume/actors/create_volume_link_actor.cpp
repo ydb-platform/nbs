@@ -23,10 +23,10 @@ enum EDescribeKind : ui64
 }   // namespace
 
 TCreateVolumeLinkActor::TCreateVolumeLinkActor(
-        ui64 tabletID,
+        TString logPrefix,
         NActors::TActorId volumeActorId,
         TLeaderFollowerLink link)
-    : TabletID(tabletID)
+    : LogPrefix(std::move(logPrefix))
     , VolumeActorId(volumeActorId)
     , Follower{
           .Link = std::move(link),
@@ -83,11 +83,11 @@ void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
 
 void TCreateVolumeLinkActor::PersistOnLeader(const NActors::TActorContext& ctx)
 {
-    LOG_DEBUG(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Persist %s on leader %s",
-        TabletID,
+        "%s Persist %s on leader %s",
+        LogPrefix.c_str(),
         Follower.Link.Describe().c_str(),
         Follower.Describe().c_str());
 
@@ -103,7 +103,7 @@ void TCreateVolumeLinkActor::PersistOnFollower(
 {
     NCloud::Register<TPropagateLinkToFollowerActor>(
         ctx,
-        TabletID,
+        LogPrefix,
         CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
         Follower.Link,
         TPropagateLinkToFollowerActor::EReason::Creation);
@@ -125,8 +125,9 @@ void TCreateVolumeLinkActor::HandleDescribeVolumeResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Describing volume %s failed: %s",
-            TabletID,
+            "%s %s Describe volume %s failed: %s",
+            LogPrefix.c_str(),
+            Follower.Link.Describe().c_str(),
             diskId.Quote().c_str(),
             FormatError(error).c_str());
         ReplyAndDie(ctx, error);

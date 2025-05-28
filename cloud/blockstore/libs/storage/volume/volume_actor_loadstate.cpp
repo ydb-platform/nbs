@@ -49,12 +49,8 @@ bool TVolumeActor::PrepareLoadState(
             args.OutdatedCheckpointRequestIds),
         db.ReadThrottlerState(args.ThrottlerStateInfo),
         db.ReadStorageConfig(args.StorageConfig),
-        db.ReadFollowers(
-            args.Meta ? args.Meta->GetVolumeConfig().GetDiskId() : "",
-            args.FollowerDisks),
-        db.ReadLeaders(
-            args.Meta ? args.Meta->GetVolumeConfig().GetDiskId() : "",
-            args.LeaderDisks),
+        db.ReadFollowers(args.FollowerDisks),
+        db.ReadLeaders(args.LeaderDisks),
     };
 
     if (args.Meta) {
