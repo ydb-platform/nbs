@@ -807,7 +807,7 @@ func NewService(
 		config:          config,
 		nbsFactory:      nbsFactory,
 		poolService:     poolService,
-		shardsService:     shardsService,
+		shardsService:   shardsService,
 		resourceStorage: resourceStorage,
 	}
 }

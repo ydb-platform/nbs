@@ -132,15 +132,6 @@ NbsConfig: <
             ]
         >
     >
-    Shards: <
-        key: "zone-d"
-        value: <
-            Shards: [
-                "zone-d-1",
-                "zone-d-2"
-            ]
-        >
-    >
     RootCertsFile: "{root_certs_file}"
     GrpcKeepAlive: <>
     UseGZIPCompression: true
@@ -175,6 +166,17 @@ PoolsConfig: <
     OptimizeBaseDisksTaskScheduleInterval: "10s"
     MinOptimizedPoolAge: "1s"
     BaseDiskIdPrefix: "{base_disk_id_prefix}"
+>
+ShardsConfig: <
+    Shards: <
+        key: "zone-d"
+        value: <
+            Shards: [
+                "zone-d-1",
+                "zone-d-2"
+            ]
+        >
+    >
 >
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"
