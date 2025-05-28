@@ -411,7 +411,10 @@ func isTryAgainError(e error) bool {
 	return false
 }
 
-func isLocalDiskAllocationTryAgainError(e error, mediaKind core_protos.EStorageMediaKind) bool {
+func isLocalDiskAllocationTryAgainError(
+	e error,
+	mediaKind core_protos.EStorageMediaKind,
+) bool {
 	return isTryAgainError(e) &&
 		isLocalDiskMediaKind(mediaKind) &&
 		strings.Contains(
