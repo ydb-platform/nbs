@@ -118,6 +118,15 @@ func getDiskKind(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
+	mediaKind, err := getStorageMediaKind(kind)
+	if err != nil {
+		return false
+	}
+
+	return isDiskRegistryBasedDisk(mediaKind)
+}
+
 func isDiskRegistryBasedDisk(mediaKind core_protos.EStorageMediaKind) bool {
 	switch mediaKind {
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -138,15 +147,6 @@ func isLocalDiskMediaKind(mediaKind core_protos.EStorageMediaKind) bool {
 	}
 
 	return false
-}
-
-func isLocalDisk(kind types.DiskKind) bool {
-	mediaKind, err := getStorageMediaKind(kind)
-	if err != nil {
-		return false
-	}
-
-	return isLocalDiskMediaKind(mediaKind)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -411,24 +411,15 @@ func isTryAgainError(e error) bool {
 	return false
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-func CreateTryAgainError(msg string) *nbs_client.ClientError {
-	return &nbs_client.ClientError{
-		Code:    nbs_client.E_TRY_AGAIN,
-		Message: msg}
+func isLocalDiskAllocationTryAgainError(e error, mediaKind core_protos.EStorageMediaKind) bool {
+	return isTryAgainError(e) &&
+		isLocalDiskMediaKind(mediaKind) &&
+		strings.Contains(
+			e.Error(),
+			"Unable to allocate local disk: secure erase has not finished yet")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
-	mediaKind, err := getStorageMediaKind(kind)
-	if err != nil {
-		return false
-	}
-
-	return isDiskRegistryBasedDisk(mediaKind)
-}
 
 func IsDiskNotFoundError(e error) bool {
 	return nbs_client.IsDiskNotFoundError(e)
@@ -465,14 +456,6 @@ func IsAlterPlacementGroupMembershipPublicError(e error) bool {
 	}
 
 	return false
-}
-
-func IsLocalDiskAllocationTryAgainError(e error, kind types.DiskKind) bool {
-	return isTryAgainError(e) &&
-		isLocalDisk(kind) &&
-		strings.Contains(
-			e.Error(),
-			"Unable to allocate local disk: secure erase has not finished yet")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1755,6 +1738,11 @@ func (c *client) createVolume(
 	defer tracing.SetError(span, &err)
 
 	err = c.nbs.CreateVolume(ctx, diskID, blocksCount, opts)
+
+	if isLocalDiskAllocationTryAgainError(err, opts.StorageMediaKind) {
+		return errors.NewInterruptExecutionError()
+	}
+
 	return wrapError(err)
 }
 

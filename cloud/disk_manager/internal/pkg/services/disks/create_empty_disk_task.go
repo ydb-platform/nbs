@@ -91,10 +91,6 @@ func (t *createEmptyDiskTask) Run(
 		EncryptionDesc:          t.params.EncryptionDesc,
 	})
 	if err != nil {
-		if nbs.IsLocalDiskAllocationTryAgainError(err, t.params.Kind) {
-			return errors.NewInterruptExecutionError()
-		}
-
 		return err
 	}
 

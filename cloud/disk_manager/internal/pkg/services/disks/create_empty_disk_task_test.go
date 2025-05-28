@@ -13,7 +13,6 @@ import (
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 func TestCreateEmptyDiskTask(t *testing.T) {
@@ -190,57 +189,4 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
 	require.Equal(t, err, assert.AnError)
-}
-
-func TestCreateLocalDiskTaskTryAgainErrorShouldBeConvertedToInterruptExecutionError(
-	t *testing.T,
-) {
-	ctx := context.Background()
-	storage := storage_mocks.NewStorageMock()
-	nbsFactory := nbs_mocks.NewFactoryMock()
-	nbsClient := nbs_mocks.NewClientMock()
-	execCtx := newExecutionContextMock()
-
-	params := &protos.CreateDiskParams{
-		BlocksCount: 123,
-		Disk: &types.Disk{
-			ZoneId: "zone",
-			DiskId: "disk",
-		},
-		BlockSize: 456,
-		Kind:      types.DiskKind_DISK_KIND_SSD_LOCAL,
-		CloudId:   "cloud",
-		FolderId:  "folder",
-	}
-	task := &createEmptyDiskTask{
-		storage:    storage,
-		nbsFactory: nbsFactory,
-		params:     params,
-		state:      &protos.CreateEmptyDiskTaskState{},
-	}
-
-	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
-		ID: "disk",
-	}, nil)
-
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
-	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
-		ID:          "disk",
-		BlocksCount: 123,
-		BlockSize:   456,
-		Kind:        types.DiskKind_DISK_KIND_SSD_LOCAL,
-		CloudID:     "cloud",
-		FolderID:    "folder",
-	}).Return(
-		nbs.CreateTryAgainError(
-			"Unable to allocate local disk: secure erase has not finished yet.",
-		),
-	)
-
-	err := task.Run(ctx, execCtx)
-
-	interruptExecutionError := errors.NewInterruptExecutionError()
-	require.True(t, errors.As(err, &interruptExecutionError))
-
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
 }
