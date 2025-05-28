@@ -480,6 +480,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MixedIndexCacheV1SizeSSD,                  ui32,      32 * 1024       )\
                                                                                \
     xxx(MaxReadBlobErrorsBeforeSuicide,            ui32,      5               )\
+    xxx(MaxWriteBlobErrorsBeforeSuicide,           ui32,      5               )\
     xxx(RejectMountOnAddClientTimeout,             bool,      false           )\
     xxx(NonReplicatedVolumeNotificationTimeout,    TDuration, Seconds(30)     )\
     xxx(NonReplicatedSecureEraseTimeout,           TDuration, Minutes(10)     )\

@@ -1347,6 +1347,19 @@ public:
 
     void BlobsConfirmed(ui64 commitId, TVector<TBlobToConfirm> blobs);
 
+   //
+   // WriteBlob
+   //
+
+private:
+    ui32 WriteBlobErrorCount = 0;
+
+public:
+    ui32 IncrementWriteBlobErrorCount()
+    {
+        return ++WriteBlobErrorCount;
+    }
+
     //
     // AddConfirmedBlobs
     //
