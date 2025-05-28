@@ -6,5 +6,6 @@ RECURSE(
     images
     placementgroup
     pools
+    shards
     snapshots
 )
