@@ -20,7 +20,7 @@ void TTestTimer::AdvanceTime(TDuration delay)
     AtomicAdd(Timestamp, delay.MilliSeconds());
 }
 
-[[nodiscard]] const TVector<TDuration>& TTestTimer::GetSleepDurations() const
+const TVector<TDuration>& TTestTimer::GetSleepDurations() const
 {
     return SleepDurations;
 }

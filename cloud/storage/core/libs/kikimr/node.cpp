@@ -459,7 +459,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
 
         auto [result, error] = registrant->RegisterNode(nodeBrokerAddress);
 
-        if (FAILED(error.GetCode())) {
+        if (HasError(error)) {
             const auto& msg = error.GetMessage();
             if (attempts == options.Settings.MaxAttempts) {
                 ythrow TServiceError(E_FAIL)
@@ -500,7 +500,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         auto [config, error] =
             registrant->GetConfigs(registeredNodeBrokerAddress, nodeId);
 
-        if (FAILED(error.GetCode())) {
+        if (HasError(error)) {
             const auto& msg = error.GetMessage();
             if (deadline < timer->Now()) {
                 ythrow TServiceError(E_FAIL)

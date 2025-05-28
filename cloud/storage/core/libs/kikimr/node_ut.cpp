@@ -99,8 +99,8 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
             Log,
             Timer);
 
-        ASSERT_EQ(nodeId, DefaultNodeId);
-        ASSERT_EQ(scopeId, DefaultScopeId);
+        ASSERT_EQ(DefaultNodeId, nodeId);
+        ASSERT_EQ(DefaultScopeId, scopeId);
         ASSERT_TRUE(maybeConfig);
     }
 
@@ -129,12 +129,12 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
 
         const auto& sleepDurations = Timer->GetSleepDurations();
 
-        ASSERT_EQ(sleepDurations.size(), 2UL);
-        EXPECT_EQ(sleepDurations[0], 1s);
-        EXPECT_EQ(sleepDurations[1], 1s);
+        ASSERT_EQ(2UL, sleepDurations.size());
+        EXPECT_EQ(1s, sleepDurations[0]);
+        EXPECT_EQ(1s, sleepDurations[1]);
 
-        ASSERT_EQ(nodeId, DefaultNodeId);
-        ASSERT_EQ(scopeId, DefaultScopeId);
+        ASSERT_EQ(DefaultNodeId, nodeId);
+        ASSERT_EQ(DefaultScopeId, scopeId);
         ASSERT_TRUE(maybeConfig);
     }
 
@@ -159,9 +159,9 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
 
         const auto& sleepDurations = Timer->GetSleepDurations();
 
-        ASSERT_EQ(sleepDurations.size(), 2UL);
-        EXPECT_EQ(sleepDurations[0], 1s);
-        EXPECT_EQ(sleepDurations[1], 1s);
+        ASSERT_EQ(2UL, sleepDurations.size());
+        EXPECT_EQ(1s, sleepDurations[0]);
+        EXPECT_EQ(1s, sleepDurations[1]);
     }
 
     Y_UNIT_TEST_F(ShouldRetryConfigurationWithExponentialBackoff, TFixture)
@@ -188,11 +188,11 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
 
         const auto& sleepDurations = Timer->GetSleepDurations();
 
-        ASSERT_EQ(sleepDurations.size(), 4UL);
-        EXPECT_EQ(sleepDurations[0], 1s);
-        EXPECT_EQ(sleepDurations[1], 2s);
-        EXPECT_EQ(sleepDurations[2], 4s);
-        EXPECT_EQ(sleepDurations[3], 8s);
+        ASSERT_EQ(4UL, sleepDurations.size());
+        EXPECT_EQ(1s, sleepDurations[0]);
+        EXPECT_EQ(2s, sleepDurations[1]);
+        EXPECT_EQ(4s, sleepDurations[2]);
+        EXPECT_EQ(8s, sleepDurations[3]);
     }
 }
 
