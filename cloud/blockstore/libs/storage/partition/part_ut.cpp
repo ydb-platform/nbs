@@ -12472,7 +12472,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldProcessIOQueue)
+    Y_UNIT_TEST(ShouldNotHangWhenConsecutiveReadBlobErrorsHappen)
     {
         auto config = DefaultConfig();
         config.SetMaxIORequestsInFlight(10);
