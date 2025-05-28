@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/shards"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -157,6 +158,7 @@ type service struct {
 	config          *disks_config.DisksConfig
 	nbsFactory      nbs.Factory
 	poolService     pools.Service
+	shardsService   shards.Service
 	resourceStorage resources.Storage
 }
 
@@ -165,24 +167,16 @@ func (s *service) prepareZoneId(
 	disk *disk_manager.DiskId,
 ) (string, error) {
 
-	shards := s.nbsFactory.GetShards(disk.ZoneId)
-
-	if len(shards) == 0 {
-		// We end up here if an unsharded zone or a shard of a zone is
-		// provided as ZoneId.
-		return disk.ZoneId, nil
-	}
-
 	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, disk.DiskId)
 	if err != nil {
 		return "", err
 	}
 
-	if diskMeta == nil {
-		return shards[0], nil
+	if diskMeta != nil {
+		return diskMeta.ZoneID, nil
 	}
 
-	return diskMeta.ZoneID, nil
+	return s.shardsService.SelectShard(ctx, disk), nil
 }
 
 func (s *service) prepareCreateDiskParams(
@@ -803,6 +797,7 @@ func NewService(
 	config *disks_config.DisksConfig,
 	nbsFactory nbs.Factory,
 	poolService pools.Service,
+	shardsService shards.Service,
 	resourceStorage resources.Storage,
 ) Service {
 
@@ -812,6 +807,7 @@ func NewService(
 		config:          config,
 		nbsFactory:      nbsFactory,
 		poolService:     poolService,
+		shardsService:     shardsService,
 		resourceStorage: resourceStorage,
 	}
 }

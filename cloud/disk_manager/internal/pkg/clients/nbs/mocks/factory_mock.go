@@ -18,11 +18,6 @@ func (f *FactoryMock) GetZones() []string {
 	return args.Get(0).([]string)
 }
 
-func (f *FactoryMock) GetShards(zoneID string) []string {
-	args := f.Called(zoneID)
-	return args.Get(0).([]string)
-}
-
 func (f *FactoryMock) HasClient(zoneID string) bool {
 	args := f.Called(zoneID)
 	return args.Bool(0)

@@ -2,11 +2,9 @@ package shards
 
 import (
 	"context"
-	"slices"
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	shards_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/shards/config"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,10 +34,10 @@ func (s *service) SelectShard(
 	if len(shards) == 0 {
 		// We end up here if an unsharded zone or a shard of a zone is
 		// provided as ZoneId.
-		return disk.ZoneId, nil
+		return disk.ZoneId
 	}
 
-	return shards[0], nil
+	return shards[0]
 }
 
 ////////////////////////////////////////////////////////////////////////////////
