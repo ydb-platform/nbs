@@ -1070,7 +1070,7 @@ private:
     TLog Log;
     TActorId RdmaActorId;
 
-    TEndpointId NextEndpointId = 0;
+    std::atomic<TEndpointId> NextEndpointId = 0;
 
 public:
     explicit TFakeRdmaClient(IActorSystemPtr actorSystem);
