@@ -135,7 +135,7 @@ void TPartitionActor::HandleReadBlobCompleted(
             // TODO(svartmetal): verify that |blobTabletId| corresponds to base
             // disk partition tablet.
 
-            LOG_DEBUG(
+            LOG_WARN(
                 ctx,
                 TBlockStoreComponents::PARTITION,
                 "[%lu][d:%s] Failed to read blob from base disk, blob tablet: %lu error: %s",
@@ -143,7 +143,6 @@ void TPartitionActor::HandleReadBlobCompleted(
                 PartitionConfig.GetDiskId().c_str(),
                 blobTabletId,
                 FormatError(msg->GetError()).data());
-            return;
         }
 
         if (msg->DeadlineSeen) {
