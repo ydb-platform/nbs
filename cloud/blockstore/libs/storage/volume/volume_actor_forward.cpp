@@ -570,7 +570,7 @@ void TVolumeActor::ForwardRequest(
         auto response = std::make_unique<typename TMethod::TResponse>(MakeError(
             E_REJECTED,
             TStringBuilder()
-                << "Volume  " << State->GetDiskId().Quote() << "not ready. "
+                << "Volume  " << State->GetDiskId().Quote() << " not ready. "
                 << TMethod::Name << " is undelivered to partition"));
 
         if (ReplyToOriginalRequest<TMethod>(
