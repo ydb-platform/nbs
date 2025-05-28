@@ -150,6 +150,10 @@ private:
                 TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
                 HandleGetDrTabletInfo);
 
+            HFunc(
+                TEvDiskRegistry::TEvMarkReplacementDeviceRequest,
+                HandleMarkReplacementDevice);
+
 
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
@@ -362,6 +366,24 @@ private:
 
         NCloud::Reply(ctx, *ev,
             std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupResponse>());
+    }
+
+    void HandleMarkReplacementDevice(
+        const TEvDiskRegistry::TEvMarkReplacementDeviceRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        const auto* msg = ev->Get();
+        if (msg->Record.GetIsReplacement()) {
+            State->DeviceReplacementUUIDs.insert(msg->Record.GetDeviceId());
+        } else {
+            State->DeviceReplacementUUIDs.erase(msg->Record.GetDeviceId());
+        }
+
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvDiskRegistry::TEvMarkReplacementDeviceResponse>());
     }
 
     void HandleFinishMigration(
