@@ -2,7 +2,7 @@ LIBRARY()
 
 SRCS(
     config.cpp
-    describe.cpp
+    describe_volume.cpp
     remote_storage_provider.cpp
     remote_storage.cpp
 )

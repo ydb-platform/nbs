@@ -1,4 +1,4 @@
-#include "describe.h"
+#include "describe_volume.h"
 
 #include "remote_storage_provider.h"
 
@@ -93,10 +93,12 @@ struct TMultiShardDescribeHandler
     TMultiShardDescribeHandler(
             TLog log,
             TShards shards,
-            NProto::TDescribeVolumeRequest request)
+            NProto::TDescribeVolumeRequest request,
+            bool incompleteShards)
         : Log(std::move(log))
         , Shards(std::move(shards))
         , Request(std::move(request))
+        , IncompleteShards(incompleteShards)
         , Promise(NewPromise<NProto::TDescribeVolumeResponse>())
     {
         for (const auto& shard: Shards) {
@@ -147,6 +149,7 @@ struct TMultiShardDescribeHandler
     std::atomic<ui64> Counter{0};
     TShards Shards;
     NProto::TDescribeVolumeRequest Request;
+    bool IncompleteShards;
 
     TAdaptiveLock Lock;
     TPromise<NProto::TDescribeVolumeResponse> Promise;
@@ -200,8 +203,8 @@ void TDescribeResponseHandler::operator ()(const auto& future)
         }
     }
 
-    auto old = Owner->Counter.fetch_sub(1, std::memory_order_relaxed);
-    if (old == 1) {
+    auto now = Owner->Counter.fetch_sub(1, std::memory_order_acq_rel) - 1;
+    if (now == 0) {
         TString retryShard;
         // all the shards has replied with errors.
         // try to find shard replied with retriable errors only,
@@ -216,6 +219,12 @@ void TDescribeResponseHandler::operator ()(const auto& future)
                 return;
             }
         }
+        if (Owner->IncompleteShards) {
+            *response.MutableError() =
+                    std::move(MakeError(E_REJECTED, "Not all shards available"));
+            Owner->Promise.SetValue(response);
+            return;
+        }
         Owner->Promise.SetValue(response);
     }
 }
@@ -224,7 +233,7 @@ void TDescribeResponseHandler::operator ()(const auto& future)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::pair<TDescribeFuture, bool> DescribeRemoteVolume(
+std::optional<TDescribeFuture> DescribeRemoteVolume(
     const TString& diskId,
     const NProto::THeaders& headers,
     const IBlockStorePtr& localService,
@@ -240,18 +249,12 @@ std::pair<TDescribeFuture, bool> DescribeRemoteVolume(
 
     auto numConfigured = remoteStorageProvider->GetConfiguredShardCount();
     if (numConfigured == 0) {
-        return {MakeFuture<NProto::TDescribeVolumeResponse>(), false};
+        return {};
     }
 
     auto shardedClients = remoteStorageProvider->GetShardsClients(std::move(appConfig));
 
-    if (shardedClients.size() < numConfigured) {
-        NProto::TDescribeVolumeResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "Shards are not yet up");
-        return {
-            MakeFuture<NProto::TDescribeVolumeResponse>(std::move(response)),
-            true};
-    }
+    bool incompleteShards = shardedClients.size() < numConfigured;
 
     NProto::TDescribeVolumeRequest request;
     request.MutableHeaders()->CopyFrom(headers);
@@ -276,10 +279,11 @@ std::pair<TDescribeFuture, bool> DescribeRemoteVolume(
     auto describeResult = std::make_shared<TMultiShardDescribeHandler>(
         logging->CreateLog("BLOCKSTORE_REMOTE_DESCRIBE"),
         std::move(shards),
-        std::move(request));
+        std::move(request),
+        incompleteShards);
     describeResult->DoDescribe();
 
-    return {describeResult->Promise.GetFuture(), true};
+    return describeResult->Promise.GetFuture();
 }
 
 }   // namespace NCloud::NBlockStore::NSharding
