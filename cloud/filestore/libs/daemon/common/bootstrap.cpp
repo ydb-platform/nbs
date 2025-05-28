@@ -65,17 +65,10 @@ TBootstrapCommon::TBootstrapCommon(
         TString metricsComponent,
         std::shared_ptr<NUserStats::IUserCounterSupplier> userCounters)
     : MetricsComponent(std::move(metricsComponent))
+    , LogComponent(std::move(logComponent))
     , ModuleFactories(std::move(moduleFactories))
     , UserCounters(std::move(userCounters))
 {
-    TLogSettings logSettings;
-    logSettings.BackendFileName = Configs->GetLogBackendFileName();
-
-    BootstrapLogging = CreateLoggingService("console", logSettings);
-    BootstrapLogging->Start();
-
-    Log = BootstrapLogging->CreateLog(logComponent);
-    SetCriticalEventsLog(Log);
 }
 
 TBootstrapCommon::~TBootstrapCommon()
@@ -153,6 +146,7 @@ void TBootstrapCommon::ParseOptions(int argc, char** argv)
 void TBootstrapCommon::Init()
 {
     InitCommonConfigs();
+    InitLogs();
 
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
@@ -309,6 +303,18 @@ void TBootstrapCommon::InitActorSystem()
 
     monitoring->Init(ActorSystem);
     Monitoring = monitoring;
+}
+
+void TBootstrapCommon::InitLogs()
+{
+    TLogSettings logSettings;
+    logSettings.BackendFileName = Configs->GetLogBackendFileName();
+
+    BootstrapLogging = CreateLoggingService("console", logSettings);
+    BootstrapLogging->Start();
+
+    Log = BootstrapLogging->CreateLog(LogComponent);
+    SetCriticalEventsLog(Log);
 }
 
 void TBootstrapCommon::RegisterServer(IServerPtr server)
