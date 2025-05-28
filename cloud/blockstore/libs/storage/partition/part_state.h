@@ -1383,7 +1383,7 @@ public:
     }
 
     void RegisterDowntime(TInstant now, ui32 groupId);
-    void RegisterCompletion(TInstant now, ui32 groupId);
+    void RegisterSuccess(TInstant now, ui32 groupId);
 
     const NProto::TPartitionStats& GetStats() const
     {

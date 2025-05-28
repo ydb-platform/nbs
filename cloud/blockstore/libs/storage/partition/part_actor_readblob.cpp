@@ -98,7 +98,6 @@ void TPartitionActor::HandleReadBlobCompleted(
             groupId,
             msg->BytesCount,
             isOverlayDisk);
-        State->RegisterCompletion(ctx.Now(), groupId);
     }
 
     if (isOverlayDisk) {
@@ -164,6 +163,8 @@ void TPartitionActor::HandleReadBlobCompleted(
             Suicide(ctx);
             return;
         }
+    } else {
+        State->RegisterSuccess(ctx.Now(), groupId);
     }
 
     ProcessIOQueue(ctx, channel);
