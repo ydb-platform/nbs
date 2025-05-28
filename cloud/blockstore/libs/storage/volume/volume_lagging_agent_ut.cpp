@@ -247,7 +247,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
         std::optional<TEvNonreplPartitionPrivate::TAddLaggingAgentRequest>
             addLaggingAgentRequest;
-        std::optional<NProto::TAddLaggingDevicesRequest>
+        std::optional<NProto::TAddOutdatedLaggingDevicesRequest>
             addLaggingDevicesRequest;
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
@@ -260,9 +260,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                         addLaggingAgentRequest = *msg;
                         return true;
                     }
-                    case TEvDiskRegistry::EvAddLaggingDevicesRequest: {
+                    case TEvDiskRegistry::EvAddOutdatedLaggingDevicesRequest: {
                         auto* msg = event->Get<
-                            TEvDiskRegistry::TEvAddLaggingDevicesRequest>();
+                            TEvDiskRegistry::
+                                TEvAddOutdatedLaggingDevicesRequest>();
                         addLaggingDevicesRequest = msg->Record;
                         break;
                     }
@@ -382,7 +383,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         const auto& devices = stat->Record.GetVolume().GetDevices();
         UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
 
-        std::optional<NProto::TAddLaggingDevicesRequest>
+        std::optional<NProto::TAddOutdatedLaggingDevicesRequest>
             addLaggingDevicesRequest;
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
@@ -391,9 +392,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                     case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest: {
                         return true;
                     }
-                    case TEvDiskRegistry::EvAddLaggingDevicesRequest: {
+                    case TEvDiskRegistry::EvAddOutdatedLaggingDevicesRequest: {
                         auto* msg = event->Get<
-                            TEvDiskRegistry::TEvAddLaggingDevicesRequest>();
+                            TEvDiskRegistry::
+                                TEvAddOutdatedLaggingDevicesRequest>();
                         addLaggingDevicesRequest = msg->Record;
                         break;
                     }
@@ -554,7 +556,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
         std::optional<TEvNonreplPartitionPrivate::TAddLaggingAgentRequest>
             addLaggingAgentRequest;
-        std::optional<NProto::TAddLaggingDevicesRequest>
+        std::optional<NProto::TAddOutdatedLaggingDevicesRequest>
             addLaggingDevicesRequest;
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
@@ -567,9 +569,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                         addLaggingAgentRequest = *msg;
                         return true;
                     }
-                    case TEvDiskRegistry::EvAddLaggingDevicesRequest: {
+                    case TEvDiskRegistry::EvAddOutdatedLaggingDevicesRequest: {
                         auto* msg = event->Get<
-                            TEvDiskRegistry::TEvAddLaggingDevicesRequest>();
+                            TEvDiskRegistry::
+                                TEvAddOutdatedLaggingDevicesRequest>();
                         addLaggingDevicesRequest = msg->Record;
                         break;
                     }
