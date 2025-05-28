@@ -806,7 +806,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 }
 
                 if (AnyOf(
-                        info.LaggingDevices,
+                        info.OutdatedLaggingDevices,
                         [&uuid = device.GetDeviceUUID()](
                             const TLaggingDevice& laggingDevice)
                         {

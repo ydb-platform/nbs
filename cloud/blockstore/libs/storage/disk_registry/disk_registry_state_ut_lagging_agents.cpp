@@ -116,7 +116,7 @@ void DeleteDisksToNotify(TTestExecutor& executor, TDiskRegistryState& state)
 
 Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
 {
-    Y_UNIT_TEST(ShouldAddLaggingDevices)
+    Y_UNIT_TEST(ShouldAddOutdatedLaggingDevices)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -133,7 +133,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 laggingDevice.SetDeviceUUID("uuid-4");
                 laggingDevice.SetRowIndex(0);
                 laggingDevices.push_back(laggingDevice);
-                auto error = state.AddLaggingDevices(
+                auto error = state.AddOutdatedLaggingDevices(
                     Now(),
                     db,
                     "wrong-disk",
@@ -152,7 +152,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 laggingDevice.SetDeviceUUID("wrong-device");
                 laggingDevice.SetRowIndex(0);
                 laggingDevices.push_back(laggingDevice);
-                auto error = state.AddLaggingDevices(
+                auto error = state.AddOutdatedLaggingDevices(
                     Now(),
                     db,
                     "disk-1",
@@ -179,10 +179,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             UNIT_ASSERT_VALUES_EQUAL("uuid-7", replicas[1][0].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-8", replicas[1][1].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.DeviceReplacementIds.size());
-            UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.LaggingDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.OutdatedLaggingDevices.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "wrong-device",
-                diskInfo.LaggingDevices[0].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[0].Device.GetDeviceUUID());
         }
         // After the reallocation all lagging devices are removed.
         DeleteDisksToNotify(executor, state);
@@ -191,7 +191,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             TDiskInfo diskInfo;
             auto error = state.GetDiskInfo("disk-1", diskInfo);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.LaggingDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.OutdatedLaggingDevices.size());
         }
 
         // Add devices from the zeroth replica to lagging list. They should
@@ -207,7 +207,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 laggingDevice.SetDeviceUUID("uuid-5");
                 laggingDevice.SetRowIndex(1);
                 laggingDevices.push_back(laggingDevice);
-                auto error = state.AddLaggingDevices(
+                auto error = state.AddOutdatedLaggingDevices(
                     Now(),
                     db,
                     "disk-1",
@@ -240,13 +240,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             ASSERT_VECTORS_EQUAL(
                 (TVector<TString>{"uuid-4", "uuid-5"}),
                 diskInfo.DeviceReplacementIds);
-            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.LaggingDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.OutdatedLaggingDevices.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-4",
-                diskInfo.LaggingDevices[0].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[0].Device.GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-5",
-                diskInfo.LaggingDevices[1].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[1].Device.GetDeviceUUID());
         }
 
         // After the reallocation all lagging devices are removed.
@@ -256,7 +256,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             TDiskInfo diskInfo;
             auto error = state.GetDiskInfo("disk-1", diskInfo);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.LaggingDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.OutdatedLaggingDevices.size());
         }
 
         // Adding the fresh devices doesn't do anything to the disk itself. We
@@ -273,7 +273,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 laggingDevice.SetDeviceUUID("uuid-5");
                 laggingDevice.SetRowIndex(1);
                 laggingDevices.push_back(laggingDevice);
-                auto error = state.AddLaggingDevices(
+                auto error = state.AddOutdatedLaggingDevices(
                     Now(),
                     db,
                     "disk-1",
@@ -298,13 +298,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             ASSERT_VECTORS_EQUAL(
                 (TVector<TString>{"uuid-4", "uuid-5"}),
                 diskInfo.DeviceReplacementIds);
-            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.LaggingDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.OutdatedLaggingDevices.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-4",
-                diskInfo.LaggingDevices[0].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[0].Device.GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-5",
-                diskInfo.LaggingDevices[1].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[1].Device.GetDeviceUUID());
         }
 
         // After the reallocation all lagging devices are removed.
@@ -314,11 +314,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             TDiskInfo diskInfo;
             auto error = state.GetDiskInfo("disk-1", diskInfo);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.LaggingDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.OutdatedLaggingDevices.size());
         }
     }
 
-    Y_UNIT_TEST(ShouldAddLaggingDevices_MigrationSource)
+    Y_UNIT_TEST(ShouldAddOutdatedLaggingDevices_MigrationSource)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -414,7 +414,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 laggingDevice.SetDeviceUUID("uuid-2");
                 laggingDevice.SetRowIndex(1);
                 laggingDevices.push_back(laggingDevice);
-                auto error = state.AddLaggingDevices(
+                auto error = state.AddOutdatedLaggingDevices(
                     Now(),
                     db,
                     "disk-1",
@@ -450,13 +450,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 (TVector<TString>{"uuid-10", "uuid-11"}),
                 diskInfo.DeviceReplacementIds);
             UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
-            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.LaggingDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.OutdatedLaggingDevices.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-1",
-                diskInfo.LaggingDevices[0].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[0].Device.GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-2",
-                diskInfo.LaggingDevices[1].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[1].Device.GetDeviceUUID());
 
             TDiskInfo replicaInfo;
             error = state.GetDiskInfo("disk-1/0", replicaInfo);
@@ -465,7 +465,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldAddLaggingDevices_MigrationSourceButHasNotStarted)
+    Y_UNIT_TEST(ShouldAddOutdatedLaggingDevices_MigrationSourceButHasNotStarted)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -536,7 +536,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 laggingDevice.SetDeviceUUID("uuid-2");
                 laggingDevice.SetRowIndex(1);
                 laggingDevices.push_back(laggingDevice);
-                auto error = state.AddLaggingDevices(
+                auto error = state.AddOutdatedLaggingDevices(
                     Now(),
                     db,
                     "disk-1",
@@ -572,13 +572,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 (TVector<TString>{"uuid-10", "uuid-11"}),
                 diskInfo.DeviceReplacementIds);
             UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
-            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.LaggingDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.OutdatedLaggingDevices.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-1",
-                diskInfo.LaggingDevices[0].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[0].Device.GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-2",
-                diskInfo.LaggingDevices[1].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[1].Device.GetDeviceUUID());
 
             TDiskInfo replicaInfo;
             error = state.GetDiskInfo("disk-1/0", replicaInfo);
@@ -587,7 +587,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldAddLaggingDevices_MigrationTarget)
+    Y_UNIT_TEST(ShouldAddOutdatedLaggingDevices_MigrationTarget)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -683,7 +683,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 laggingDevice.SetDeviceUUID("uuid-11");
                 laggingDevice.SetRowIndex(1);
                 laggingDevices.push_back(laggingDevice);
-                auto error = state.AddLaggingDevices(
+                auto error = state.AddOutdatedLaggingDevices(
                     Now(),
                     db,
                     "disk-1",
@@ -720,13 +720,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             UNIT_ASSERT_VALUES_EQUAL("uuid-8", replicas[1][1].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.DeviceReplacementIds.size());
             UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
-            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.LaggingDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.OutdatedLaggingDevices.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-10",
-                diskInfo.LaggingDevices[0].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[0].Device.GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-11",
-                diskInfo.LaggingDevices[1].Device.GetDeviceUUID());
+                diskInfo.OutdatedLaggingDevices[1].Device.GetDeviceUUID());
 
             TDiskInfo replicaInfo;
             error = state.GetDiskInfo("disk-1/2", replicaInfo);
@@ -761,7 +761,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             });
     }
 
-    Y_UNIT_TEST(ShouldAddLaggingDevices_ComplicatedDisk)
+    Y_UNIT_TEST(ShouldAddOutdatedLaggingDevices_ComplicatedDisk)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -778,8 +778,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 }));
         }
         auto statePtr = TDiskRegistryStateBuilder()
-                         .WithKnownAgents(std::move(agents))
-                         .Build();
+                            .WithKnownAgents(std::move(agents))
+                            .Build();
         TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx(
@@ -974,7 +974,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 laggingDevice.SetDeviceUUID("uuid-13");
                 laggingDevice.SetRowIndex(1);
                 laggingDevices.push_back(laggingDevice);
-                auto error = state.AddLaggingDevices(
+                auto error = state.AddOutdatedLaggingDevices(
                     Now(),
                     db,
                     "disk-1",
