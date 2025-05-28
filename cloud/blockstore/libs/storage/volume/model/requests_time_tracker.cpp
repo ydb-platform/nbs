@@ -190,7 +190,8 @@ void TRequestsTimeTracker::OnRequestStarted(
             .RequestType = requestType});
 }
 
-TString TRequestsTimeTracker::MakeRequestFirstTimeSucceedMessage(
+std::optional<TRequestsTimeTracker::TFirstSuccessStat>
+TRequestsTimeTracker::MakeRequestFirstTimeSucceedMessage(
     const TRequestInflight& request,
     bool success,
     ui64 finishTime)
@@ -198,31 +199,29 @@ TString TRequestsTimeTracker::MakeRequestFirstTimeSucceedMessage(
     const auto requestTypeIndex = static_cast<size_t>(request.RequestType);
     auto& firstRequest = FirstRequests[requestTypeIndex];
     if (firstRequest.FinishTime != 0) {
-        return {};
+        return std::nullopt;
     }
 
     if (!success) {
         ++firstRequest.FailCount;
-        return {};
+        return std::nullopt;
     }
 
     firstRequest.FinishTime = finishTime;
 
-    auto formatDuration = [&](ui64 finish)
-    {
-        return FormatDuration(CyclesToDurationSafe(finish - ConstructionTime));
-    };
-
-    return TStringBuilder()
-           << "The first successful " << ToString(request.RequestType)
-           << " request was started at " << formatDuration(request.StartTime)
-           << " finished at " << formatDuration(finishTime) << "."
-           << " The very first request was started at "
-           << formatDuration(firstRequest.StartTime)
-           << ", Failed requests: " << firstRequest.FailCount;
+    return TFirstSuccessStat{
+        .RequestType = request.RequestType,
+        .FirstRequestStartTime =
+            CyclesToDurationSafe(firstRequest.StartTime - ConstructionTime),
+        .SuccessfulRequestStartTime =
+            CyclesToDurationSafe(request.StartTime - ConstructionTime),
+        .SuccessfulRequestFinishTime =
+            CyclesToDurationSafe(firstRequest.FinishTime - ConstructionTime),
+        .FailCount = firstRequest.FailCount};
 }
 
-TString TRequestsTimeTracker::OnRequestFinished(
+std::optional<TRequestsTimeTracker::TFirstSuccessStat>
+TRequestsTimeTracker::OnRequestFinished(
     ui64 requestId,
     bool success,
     ui64 finishTime)

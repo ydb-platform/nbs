@@ -100,25 +100,38 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
             TBlockRange64::MakeOneBlock(0),
             3000 * GetCyclesPerMillisecond());
 
-        auto log = requestsTimeTracker.OnRequestFinished(
+        auto stat = requestsTimeTracker.OnRequestFinished(
             2,
             true,
             4000 * GetCyclesPerMillisecond());
         UNIT_ASSERT_VALUES_EQUAL(
-            "The first successful Write request was started at 2.000s finished "
-            "at 4.000s. The very first request was started at 999.999ms, Failed "
-            "requests: 0",
-            log);
-        log = requestsTimeTracker.OnRequestFinished(
+            TRequestsTimeTracker::ERequestType::Write,
+            stat->RequestType);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(2000).SecondsFloat(),
+            stat->SuccessfulRequestStartTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(4000).SecondsFloat(),
+            stat->SuccessfulRequestFinishTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(1000).SecondsFloat(),
+            stat->FirstRequestStartTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_VALUES_EQUAL(0, stat->FailCount);
+
+        stat = requestsTimeTracker.OnRequestFinished(
             1,
             true,
             4000 * GetCyclesPerMillisecond());
-        UNIT_ASSERT_VALUES_EQUAL("", log);
-        log = requestsTimeTracker.OnRequestFinished(
+        UNIT_ASSERT_EQUAL(std::nullopt, stat);
+
+        stat = requestsTimeTracker.OnRequestFinished(
             3,
             true,
             4000 * GetCyclesPerMillisecond());
-        UNIT_ASSERT_VALUES_EQUAL("", log);
+        UNIT_ASSERT_EQUAL(std::nullopt, stat);
 
         auto json = requestsTimeTracker.GetStatJson(
             6000 * GetCyclesPerMillisecond(),
@@ -180,21 +193,23 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
             TBlockRange64::WithLength(0, 2000),
             3000 * GetCyclesPerMillisecond());
 
-        auto log = requestsTimeTracker.OnRequestFinished(
+        auto stat = requestsTimeTracker.OnRequestFinished(
             1,
             false,
             4000 * GetCyclesPerMillisecond());
-        UNIT_ASSERT_VALUES_EQUAL("", log);
-        log = requestsTimeTracker.OnRequestFinished(
+        UNIT_ASSERT_EQUAL(std::nullopt, stat);
+
+        stat = requestsTimeTracker.OnRequestFinished(
             2,
             false,
             4000 * GetCyclesPerMillisecond());
-        UNIT_ASSERT_VALUES_EQUAL("", log);
-        log = requestsTimeTracker.OnRequestFinished(
+        UNIT_ASSERT_EQUAL(std::nullopt, stat);
+
+        stat = requestsTimeTracker.OnRequestFinished(
             3,
             false,
             4000 * GetCyclesPerMillisecond());
-        UNIT_ASSERT_VALUES_EQUAL("", log);
+        UNIT_ASSERT_EQUAL(std::nullopt, stat);
 
         auto json = requestsTimeTracker.GetStatJson(
             6000 * GetCyclesPerMillisecond(),
@@ -238,15 +253,26 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
             TBlockRange64::WithLength(0, 600),
             7000 * GetCyclesPerMillisecond());
 
-        log = requestsTimeTracker.OnRequestFinished(
+        stat = requestsTimeTracker.OnRequestFinished(
             4,
             true,
             10000 * GetCyclesPerMillisecond());
         UNIT_ASSERT_VALUES_EQUAL(
-            "The first successful Zero request was started at 7.000s finished "
-            "at 10.000s. The very first request was started at 999.999ms, "
-            "Failed requests: 3",
-            log);
+            TRequestsTimeTracker::ERequestType::Zero,
+            stat->RequestType);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(7000).SecondsFloat(),
+            stat->SuccessfulRequestStartTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(10000).SecondsFloat(),
+            stat->SuccessfulRequestFinishTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(1000).SecondsFloat(),
+            stat->FirstRequestStartTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_VALUES_EQUAL(3, stat->FailCount);
     }
 }
 

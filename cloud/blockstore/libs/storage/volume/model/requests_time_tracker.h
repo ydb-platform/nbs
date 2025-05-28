@@ -27,6 +27,13 @@ public:
         Last = Describe,
     };
 
+    enum class ERequestStatus
+    {
+        Inflight,
+        Success,
+        Fail,
+    };
+
     struct TBucketInfo
     {
         TString Key;
@@ -34,11 +41,13 @@ public:
         TString Tooltip;
     };
 
-    enum class ERequestStatus
+    struct TFirstSuccessStat
     {
-        Inflight,
-        Success,
-        Fail,
+        ERequestType RequestType = ERequestType::Read;
+        TDuration FirstRequestStartTime;
+        TDuration SuccessfulRequestStartTime;
+        TDuration SuccessfulRequestFinishTime;
+        size_t FailCount = 0;
     };
 
 private:
@@ -96,7 +105,8 @@ private:
 
     [[nodiscard]] NJson::TJsonValue BuildPercentilesJson() const;
 
-    [[nodiscard]] TString MakeRequestFirstTimeSucceedMessage(
+    [[nodiscard]] std::optional<TRequestsTimeTracker::TFirstSuccessStat>
+    MakeRequestFirstTimeSucceedMessage(
         const TRequestInflight& request,
         bool success,
         ui64 finishTime);
@@ -114,9 +124,9 @@ public:
         TBlockRange64 blockRange,
         ui64 startTime);
 
-    // Marks that the request is completed and returns a logging message when
-    // the request succeeds for the first time.
-    [[nodiscard]] TString
+    // Marks that the request is completed and returns stat when the request
+    // succeeds for the first time.
+    [[nodiscard]] std::optional<TFirstSuccessStat>
     OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize) const;
