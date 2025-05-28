@@ -101,6 +101,7 @@ private:
     const ui32 SiblingCount;
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
+    const ui64 VolumeTabletId;
 
     std::unique_ptr<TPartitionState> State;
 
@@ -147,7 +148,8 @@ public:
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
         ui32 siblingCount,
-        const NActors::TActorId& VolumeActorId);
+        const NActors::TActorId& VolumeActorId,
+        ui64 volumeTabletId);
     ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;
