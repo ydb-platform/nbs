@@ -2,7 +2,6 @@
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
-
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -17,7 +16,6 @@
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -30,21 +28,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 {
     Y_UNIT_TEST(ShouldReturnCapacity)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB)
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
 
-        auto runtime = TTestRuntimeBuilder()
-        .WithAgents({ agent })
-        .Build();
+        auto runtime = TTestRuntimeBuilder().WithAgents({agent}).Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
-        diskRegistry.UpdateConfig(
-            CreateRegistryConfig(0, {agent}));
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent}));
 
         RegisterAgents(*runtime, 1);
         WaitForAgents(*runtime, 1);
@@ -55,13 +50,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto& msg = response->Record;
 
             UNIT_ASSERT_VALUES_EQUAL(4, msg.CapacitySize());
-            for (auto& capacity: msg.GetCapacity()) {
-                if (capacity.GetKind() == NProto::STORAGE_MEDIA_HDD_NONREPLICATED) {
-                    UNIT_ASSERT_VALUES_EQUAL(0, capacity.GetFree());
-                    UNIT_ASSERT_VALUES_EQUAL(0, capacity.GetTotal());
-                } else {
-                    UNIT_ASSERT_VALUES_EQUAL(20_GB, capacity.GetFree());
-                    UNIT_ASSERT_VALUES_EQUAL(20_GB, capacity.GetTotal());
+            for (auto& cap: msg.GetCapacity()) {
+                switch (cap.GetKind()) {
+                    case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetFree());
+                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetTotal());
+                        break;
+                    case NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB, cap.GetFree());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB, cap.GetTotal());
+                        break;
+                    case NProto::STORAGE_MEDIA_SSD_MIRROR2:
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 2, cap.GetFree());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 2, cap.GetTotal());
+                        break;
+                    case NProto::STORAGE_MEDIA_SSD_MIRROR3:
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 3, cap.GetFree());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 3, cap.GetTotal());
+                        break;
+                    default:
+                        UNIT_ASSERT(false);   // Unhandled kind.
                 }
             }
         }
@@ -73,13 +81,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto& msg = response->Record;
 
             UNIT_ASSERT_VALUES_EQUAL(4, msg.CapacitySize());
-            for (auto& capacity: msg.GetCapacity()) {
-                if (capacity.GetKind() == NProto::STORAGE_MEDIA_HDD_NONREPLICATED) {
-                    UNIT_ASSERT_VALUES_EQUAL(0, capacity.GetFree());
-                    UNIT_ASSERT_VALUES_EQUAL(0, capacity.GetTotal());
-                } else {
-                    UNIT_ASSERT_VALUES_EQUAL(10_GB, capacity.GetFree());
-                    UNIT_ASSERT_VALUES_EQUAL(20_GB, capacity.GetTotal());
+            for (auto& cap: msg.GetCapacity()) {
+                switch (cap.GetKind()) {
+                    case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetFree());
+                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetTotal());
+                        break;
+                    case NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+                        UNIT_ASSERT_VALUES_EQUAL(10_GB, cap.GetFree());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB, cap.GetTotal());
+                        break;
+                    case NProto::STORAGE_MEDIA_SSD_MIRROR2:
+                        UNIT_ASSERT_VALUES_EQUAL(10_GB / 2, cap.GetFree());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 2, cap.GetTotal());
+                        break;
+                    case NProto::STORAGE_MEDIA_SSD_MIRROR3:
+                        UNIT_ASSERT_VALUES_EQUAL(10_GB / 3, cap.GetFree());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 3, cap.GetTotal());
+                        break;
+                    default:
+                        UNIT_ASSERT(false);   // Unhandled kind.
                 }
             }
         }
