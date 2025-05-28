@@ -109,12 +109,14 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
 
     auto link = TLeaderFollowerLink{
         .LinkUUID = {},
-        .LeaderDiskId = State->GetDiskId(),
-        .LeaderScaleUnitId = {},
+        .LeaderDiskId = msg->Record.GetDiskId(),
+        .LeaderScaleUnitId = msg->Record.GetLeaderScaleUnitId(),
         .FollowerDiskId = msg->Record.GetFollowerDiskId(),
-        .FollowerScaleUnitId = {}};
+        .FollowerScaleUnitId =  msg->Record.GetFollowerScaleUnitId()};
 
     if (auto follower = State->FindFollower(link)) {
+        link = follower->Link;
+
         switch (follower->State) {
             case TFollowerDiskInfo::EState::None:
             case TFollowerDiskInfo::EState::Created: {
@@ -129,25 +131,27 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
                 LOG_INFO(
                     ctx,
                     TBlockStoreComponents::VOLUME,
-                    "[%lu] Link %s (repeated)",
+                    "[%lu] Link %s already exists",
                     TabletID(),
                     follower->Link.Describe().c_str());
                 auto response = std::make_unique<
                     TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>(
                     MakeError(S_ALREADY));
+                response->Record.SetLinkUUID(follower->Link.LinkUUID);
                 NCloud::Reply(ctx, *requestInfo, std::move(response));
                 return;
             }
         }
     }
 
+    // Save create link request.
     auto& createFollowerRequest = State->AccessCreateFollowerRequestInfo(link);
     createFollowerRequest.Requests.push_back(requestInfo);
     if (createFollowerRequest.Link.LinkUUID) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Link %s (repeated)",
+            "[%lu] Link %s creation already in progress",
             TabletID(),
             createFollowerRequest.Link.Describe().c_str());
         return;
@@ -159,7 +163,7 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Link %s started",
+        "[%lu] Link %s creation started",
         TabletID(),
         createFollowerRequest.Link.Describe().c_str());
 
@@ -180,10 +184,10 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
 
     auto link = TLeaderFollowerLink{
         .LinkUUID = "",
-        .LeaderDiskId = State->GetDiskId(),
-        .LeaderScaleUnitId = "",
+        .LeaderDiskId = msg->Record.GetDiskId(),
+        .LeaderScaleUnitId = msg->Record.GetLeaderScaleUnitId(),
         .FollowerDiskId = msg->Record.GetFollowerDiskId(),
-        .FollowerScaleUnitId = ""};
+        .FollowerScaleUnitId = msg->Record.GetFollowerScaleUnitId()};
 
     auto follower = State->FindFollower(link);
     if (follower) {
@@ -244,6 +248,8 @@ void TVolumeActor::HandleUpdateFollowerState(
     };
 
     if (auto currentFollower = State->FindFollower(msg->Follower.Link)) {
+        msg->Follower.Link = currentFollower->Link;
+
         if (currentFollower->State == EState::Error) {
             replyError(
                 MakeError(E_INVALID_STATE, "Can't change \"Error\" state"),
@@ -257,6 +263,15 @@ void TVolumeActor::HandleUpdateFollowerState(
                 std::move(*currentFollower));
             return;
         }
+    }
+
+    if (!msg->Follower.Link.LinkUUID) {
+        replyError(
+            MakeError(
+                E_ARGUMENT,
+                "Can't change follower state without LinkUUID"),
+            std::move(msg->Follower));
+        return;
     }
 
     ExecuteTx<TUpdateFollower>(
@@ -287,6 +302,7 @@ void TVolumeActor::HandleCreateLinkFinished(
         auto response =
             std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>(
                 msg->Error);
+        response->Record.SetLinkUUID(msg->Link.LinkUUID);
         NCloud::Reply(ctx, *requestInfo, std::move(response));
     }
 

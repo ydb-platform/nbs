@@ -46,6 +46,7 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
         std::make_unique<TEvVolume::TEvNotifyFollowerVolumeRequest>();
     request->Record.SetLinkUUID(Link.LinkUUID);
     request->Record.SetDiskId(Link.FollowerDiskId);
+    request->Record.SetFollowerScaleUnitId(Link.FollowerScaleUnitId);
     request->Record.SetLeaderDiskId(Link.LeaderDiskId);
     request->Record.SetLeaderScaleUnitId(Link.LeaderScaleUnitId);
 

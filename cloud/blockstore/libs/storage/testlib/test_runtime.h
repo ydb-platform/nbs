@@ -23,6 +23,16 @@ const ui64 HiveId = NKikimr::MakeDefaultHiveID(0);
 const ui64 TestTabletId  = NKikimr::MakeTabletID(0, HiveId, 1);
 const ui64 TestTabletId2 = NKikimr::MakeTabletID(0, HiveId, 2);
 
+const ui64 TestVolumeTablets[] = {
+    TestTabletId,
+    NKikimr::MakeTabletID(0, HiveId, 100),
+};
+
+const ui64 TestPartitionTablets[] = {
+    TestTabletId2,
+    NKikimr::MakeTabletID(0, HiveId, 200),
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 inline NActors::TActorId Register(

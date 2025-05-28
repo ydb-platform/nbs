@@ -69,6 +69,15 @@ TString TLeaderDiskInfo::Describe() const
     return builder;
 }
 
+bool TLeaderDiskInfo::operator==(const TLeaderDiskInfo& rhs) const
+{
+    auto doTie = [](const TLeaderDiskInfo& o)
+    {
+        return std::tie(o.CreatedAt, o.State, o.ErrorMessage);
+    };
+    return Link.Match(rhs.Link) && doTie(*this) == doTie(rhs);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TString TFollowerDiskInfo::Describe() const
@@ -92,5 +101,21 @@ TString TFollowerDiskInfo::Describe() const
     builder << " }";
     return builder;
 }
+
+bool TFollowerDiskInfo::operator==(const TFollowerDiskInfo& rhs) const
+{
+    auto doTie = [](const TFollowerDiskInfo& o)
+    {
+        return std::tie(
+            o.CreatedAt,
+            o.State,
+            o.MediaKind,
+            o.MigratedBytes,
+            o.ErrorMessage);
+    };
+    return Link.Match(rhs.Link) && doTie(*this) == doTie(rhs);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NStorage

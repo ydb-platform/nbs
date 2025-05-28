@@ -149,8 +149,8 @@ void TVolumeActor::HandleNotifyFollowerVolume(
         .LinkUUID = msg->Record.GetLinkUUID(),
         .LeaderDiskId = msg->Record.GetLeaderDiskId(),
         .LeaderScaleUnitId = msg->Record.GetLeaderScaleUnitId(),
-        .FollowerDiskId = State->GetDiskId(),
-        .FollowerScaleUnitId = {}};
+        .FollowerDiskId = msg->Record.GetDiskId(),
+        .FollowerScaleUnitId = msg->Record.GetFollowerScaleUnitId()};
 
     LOG_INFO(
         ctx,

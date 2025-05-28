@@ -50,6 +50,8 @@ struct TLeaderDiskInfo
     TString ErrorMessage;
 
     TString Describe() const;
+
+    bool operator==(const TLeaderDiskInfo& rhs) const;
 };
 using TLeaderDisks = TVector<TLeaderDiskInfo>;
 
@@ -79,6 +81,7 @@ struct TFollowerDiskInfo
     TString ErrorMessage;
 
     TString Describe() const;
+    bool operator==(const TFollowerDiskInfo& rhs) const;
 };
 
 using TFollowerDisks = TVector<TFollowerDiskInfo>;
