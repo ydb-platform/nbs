@@ -4,11 +4,13 @@
 
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/blockstore/libs/service/service.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/datetime/base.h>
@@ -84,11 +86,14 @@ public:
     TReadBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
+            bool isDataAligned,
             size_t blockSize)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , BlockSize(blockSize)
-    {}
+    {
+        Y_UNUSED(isDataAligned);
+    }
 
     size_t GetRequestSize() const
     {
@@ -174,6 +179,7 @@ public:
 private:
     const TCallContextPtr CallContext;
     const std::shared_ptr<TRequest> Request;
+    const bool IsDataAligned;
     const size_t BlockSize;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
@@ -183,9 +189,11 @@ public:
     TWriteBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
-            size_t blockSize)
+            size_t blockSize,
+            bool isDataAligned)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
+        , IsDataAligned(isDataAligned)
         , BlockSize(blockSize)
     {}
 
@@ -214,10 +222,15 @@ public:
         const auto& sglist = guard.Get();
         Request->SetBlockSize(BlockSize);
 
+        ui32 flags = 0;
+        if (IsDataAligned) {
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        }
+
         return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
             TBlockStoreProtocol::WriteBlocksRequest,
-            0, // flags
+            flags,
             *Request,
             sglist);
     }
@@ -264,10 +277,12 @@ public:
     TZeroBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
+            bool isDataAligned,
             size_t blockSize)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
     {
+        Y_UNUSED(isDataAligned);
         Y_UNUSED(blockSize);
     }
 
@@ -326,6 +341,7 @@ class TRdmaEndpoint final
 {
 private:
     const IBlockStorePtr VolumeClient;
+    const bool IsDataAligned;
 
     NRdma::IClientEndpointPtr Endpoint;
     TLog Log;
@@ -341,10 +357,14 @@ public:
 
     static std::shared_ptr<TRdmaEndpoint> Create(
         ILoggingServicePtr logging,
-        IBlockStorePtr volumeClient)
+        IBlockStorePtr volumeClient,
+        bool isDataAligned)
     {
         return std::shared_ptr<TRdmaEndpoint>{
-            new TRdmaEndpoint(std::move(logging), std::move(volumeClient))};
+            new TRdmaEndpoint(
+                std::move(logging),
+                std::move(volumeClient),
+                isDataAligned)};
     }
 
     void Init(NRdma::IClientEndpointPtr endpoint)
@@ -393,8 +413,12 @@ public:
     }
 
 private:
-    TRdmaEndpoint(ILoggingServicePtr logging, IBlockStorePtr volumeClient)
+    TRdmaEndpoint(
+            ILoggingServicePtr logging,
+            IBlockStorePtr volumeClient,
+            bool isDataAligned)
         : VolumeClient(std::move(volumeClient))
+        , IsDataAligned(isDataAligned)
     {
         Log = logging->CreateLog("BLOCKSTORE_RDMA");
     }
@@ -456,6 +480,7 @@ TFuture<typename T::TResponse> TRdmaEndpoint::HandleRequest(
     auto handler = std::make_unique<T>(
         callContext,
         std::move(request),
+        IsDataAligned,
         BlockSize);
 
     auto [req, err] = Endpoint->AllocateRequest(
@@ -508,7 +533,10 @@ IBlockStorePtr CreateRdmaEndpointClient(
     const TRdmaEndpointConfig& config)
 {
     auto endpoint =
-        TRdmaEndpoint::Create(std::move(logging), std::move(volumeClient));
+        TRdmaEndpoint::Create(
+            std::move(logging),
+            std::move(volumeClient),
+            client->IsAlignedDataEnabled());
 
     auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
 
@@ -523,7 +551,10 @@ NThreading::TFuture<IBlockStorePtr> CreateRdmaEndpointClientAsync(
     const TRdmaEndpointConfig& config)
 {
     auto endpoint =
-        TRdmaEndpoint::Create(std::move(logging), std::move(volumeClient));
+        TRdmaEndpoint::Create(
+            std::move(logging),
+            std::move(volumeClient),
+            client->IsAlignedDataEnabled());
 
     auto promise = NewPromise<IBlockStorePtr>();
 
