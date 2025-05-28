@@ -55,9 +55,14 @@ func NewS3Client(
 	callTimeout time.Duration,
 	registry metrics.Registry,
 	maxRetriableErrorCount uint64,
+	availabilityMonitoring *AvailabilityMonitoring,
 ) (*S3Client, error) {
 
-	s3Metrics := newS3Metrics(registry, callTimeout)
+	s3Metrics := newS3Metrics(
+		callTimeout,
+		registry,
+		availabilityMonitoring,
+	)
 
 	sessionConfig := &aws.Config{
 		Credentials: aws_credentials.NewStaticCredentials(
@@ -91,6 +96,7 @@ func NewS3Client(
 func NewS3ClientFromConfig(
 	config *persistence_config.S3Config,
 	registry metrics.Registry,
+	availabilityMonitoring *AvailabilityMonitoring,
 ) (*S3Client, error) {
 
 	credentials, err := NewS3CredentialsFromFile(config.GetCredentialsFilePath())
@@ -113,6 +119,7 @@ func NewS3ClientFromConfig(
 		callTimeout,
 		registry,
 		config.GetMaxRetriableErrorCount(),
+		availabilityMonitoring,
 	)
 }
 
