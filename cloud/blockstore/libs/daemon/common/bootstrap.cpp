@@ -202,13 +202,7 @@ void TBootstrapBase::ParseOptions(int argc, char** argv)
 
 void TBootstrapBase::Init()
 {
-    TLogSettings logSettings;
-    logSettings.BackendFileName = Configs->GetLogBackendFileName();
-
-    BootstrapLogging = CreateLoggingService("console", logSettings);
-    Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
-    SetCriticalEventsLog(Log);
-    Configs->Log = Log;
+    InitLogs();
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 
     Timer = CreateWallClockTimer();
@@ -701,6 +695,17 @@ void TBootstrapBase::InitProfileLog()
     } else {
         ProfileLog = CreateProfileLogStub();
     }
+}
+
+void TBootstrapBase::InitLogs()
+{
+    TLogSettings logSettings;
+    logSettings.BackendFileName = Configs->GetLogBackendFileName();
+
+    BootstrapLogging = CreateLoggingService("console", logSettings);
+    Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
+    SetCriticalEventsLog(Log);
+    Configs->Log = Log;
 }
 
 void TBootstrapBase::InitDbgConfigs()
