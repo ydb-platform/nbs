@@ -200,9 +200,7 @@ def start_disk_agent_daemon(ydb, disk_agent_configurator):
 def setup_env(nbs, vol0_id, vol1_id, disk_agent, data_path):
 
     client = CreateClient(f"localhost:{nbs.port}")
-    client.execute_action(
-        action="DiskRegistrySetWritableState",
-        input_bytes=str.encode('{"State": true}'))
+    client.execute_DiskRegistrySetWritableState(State=True)
 
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 

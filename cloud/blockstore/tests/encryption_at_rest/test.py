@@ -69,13 +69,11 @@ def start_nbs_daemon(ydb):
     nbs = daemon.start_nbs(cfg)
 
     client = CreateTestClient(f"localhost:{nbs.port}")
-    client.execute_action(
-        action="DiskRegistrySetWritableState",
-        input_bytes=str.encode('{"State": true}'))
+    client.execute_DiskRegistrySetWritableState(State=True)
     client.update_disk_registry_config({
         "KnownDevicePools":
             [{"Kind": "DEVICE_POOL_KIND_DEFAULT", "AllocationUnit": DEVICE_SIZE}]
-        })
+    })
 
     yield nbs
 
@@ -182,14 +180,12 @@ def test_create_volume_with_default_ecnryption(nbs, disk_agent, method):
 
     # check that the volume doesn't tack used blocks
 
-    response = json.loads(client.execute_action(
-        action="UpdateUsedBlocks",
-        input_bytes=json.dumps({
-            "DiskId": disk_id,
-            "StartIndices": [0],
-            "BlockCounts": [1],
-            "Used": True
-        }).encode()))
+    response = json.loads(client.execute_UpdateUsedBlocks(
+        DiskId=disk_id,
+        StartIndices=[0],
+        BlockCounts=[1],
+        Used=True
+    ))
 
     error = response.get("Error", {})
 

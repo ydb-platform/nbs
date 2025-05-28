@@ -153,9 +153,7 @@ def test_add_host_with_legacy_local_ssd(
     nbs = start_nbs(nbs_config)
 
     client = CreateTestClient(f"localhost:{nbs.port}")
-    client.execute_action(
-        action="DiskRegistrySetWritableState",
-        input_bytes=str.encode('{"State": true}'))
+    client.execute_DiskRegistrySetWritableState(State=True)
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 
     disk_agent = start_disk_agent(disk_agent_config, name='disk-agent.1')
@@ -373,9 +371,7 @@ def test_add_host(
     nbs = start_nbs(nbs_config)
 
     client = CreateTestClient(f"localhost:{nbs.port}")
-    client.execute_action(
-        action="DiskRegistrySetWritableState",
-        input_bytes=str.encode('{"State": true}'))
+    client.execute_DiskRegistrySetWritableState(State=True)
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 
     disk_agent = start_disk_agent(disk_agent_config, name='disk-agent.1')

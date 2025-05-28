@@ -16,14 +16,23 @@ class TestClient:
     def __init__(self, client):
         self.__impl = client
 
+    def _execute_action(self, action, **kwargs):
+        input_bytes = json.dumps(kwargs)
+
+        return self.__impl.execute_action(
+            action=action,
+            input_bytes=str.encode(input_bytes))
+
     def __getattr__(self, name):
+        parts = name.split('_')
+        if len(parts) == 2 and parts[0] == 'execute':
+            return lambda **kwargs: self._execute_action(parts[1], **kwargs)
+
         return getattr(self.__impl, name)
 
     @_handle_errors
     def backup_disk_registry_state(self):
-        response = self.execute_action(
-            action="BackupDiskRegistryState",
-            input_bytes=str.encode('{"BackupLocalDB": true}'))
+        response = self.execute_BackupDiskRegistryState(BackupLocalDB=True)
 
         return json.loads(response)["Backup"]
 
@@ -43,25 +52,6 @@ class TestClient:
             if len(bkp.get("DirtyDevices", [])) == expected_dirty_count:
                 break
             time.sleep(poll_interval)
-
-    @_handle_errors
-    def kill_tablet(self, tabletId):
-        self.execute_action(
-            action='killtablet',
-            input_bytes=str.encode('{"TabletId": %s}' % tabletId))
-
-    @_handle_errors
-    def get_volume_tablet_id(self, disk_id):
-        response = self.execute_action(
-            action="describevolume",
-            input_bytes=str.encode('{"DiskId": "%s"}' % (disk_id)))
-
-        return json.loads(response)["VolumeTabletId"]
-
-    @_handle_errors
-    def restart_volume(self, disk_id):
-        tablet_id = self.get_volume_tablet_id(disk_id)
-        self.kill_tablet(tablet_id)
 
     @_handle_errors
     def wait_agent_state(self, agent_id, desired_state, poll_interval=1):

@@ -57,9 +57,7 @@ def start_nbs_daemon(ydb):
     daemon = start_nbs(cfg)
 
     client = CreateTestClient(f"localhost:{daemon.port}")
-    client.execute_action(
-        action="DiskRegistrySetWritableState",
-        input_bytes=str.encode('{"State": true}'))
+    client.execute_DiskRegistrySetWritableState(State=True)
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 
     yield daemon

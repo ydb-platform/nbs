@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import pytest
@@ -53,9 +54,7 @@ def start_nbs_daemon_with_dr(request, ydb):
     daemon = start_nbs(cfg)
 
     client = CreateTestClient(f"localhost:{daemon.port}")
-    client.execute_action(
-        action="DiskRegistrySetWritableState",
-        input_bytes=str.encode('{"State": true}'))
+    client.execute_DiskRegistrySetWritableState(State=True)
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 
     yield daemon
@@ -162,6 +161,21 @@ def create_disk_agent_configurators(ydb, agent_ids, data_path):
     return configurators
 
 
+def restart_tablet(client, tabletId):
+    client.execute_KillTablet(TabletId=tabletId)
+
+
+def get_volume_tablet_id(client, disk_id):
+    response = client.execute_DescribeVolume(DiskId=disk_id)
+
+    return json.loads(response)["VolumeTabletId"]
+
+
+def restart_volume(client, disk_id):
+    tablet_id = get_volume_tablet_id(client, disk_id)
+    restart_tablet(client, tablet_id)
+
+
 @pytest.mark.parametrize("nbs_with_dr", [(60000)], indirect=["nbs_with_dr"])
 def test_should_mount_volume_with_unknown_devices(
         nbs_with_dr,
@@ -235,7 +249,7 @@ def test_should_mount_volume_with_unknown_devices(
     time.sleep(1)
 
     nbs_with_dr.kill()
-    client.restart_volume("vol1")
+    restart_volume(client, "vol1")
 
     session.mount_volume()
     except_count = 0
@@ -297,7 +311,7 @@ def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_
     session.unmount_volume()
 
     nbs_with_dr.kill()
-    client.restart_volume("vol1")
+    restart_volume(client, "vol1")
 
     session.mount_volume()
 
@@ -364,7 +378,7 @@ def test_should_mount_volume_with_unavailable_agents(
     client.wait_agent_state(agent_ids[0], "AGENT_STATE_UNAVAILABLE")
 
     nbs_with_dr.kill()
-    client.restart_volume("vol1")
+    restart_volume(client, "vol1")
 
     unavailable_agent = bkp['Agents'][0]
     unavailable_devices = [x["DeviceUUID"]
