@@ -570,7 +570,8 @@ void TVolumeActor::ForwardRequest(
         auto response = std::make_unique<typename TMethod::TResponse>(MakeError(
             E_REJECTED,
             TStringBuilder()
-                << "Volume not ready: " << State->GetDiskId().Quote()));
+                << "Volume  " << State->GetDiskId().Quote() << " not ready. "
+                << TMethod::Name << " is undelivered to partition"));
 
         if (ReplyToOriginalRequest<TMethod>(
                 ctx,
@@ -651,8 +652,10 @@ void TVolumeActor::ForwardRequest(
 
         if (!State->Ready()) {
             if constexpr (RejectRequestIfNotReady<TMethod>) {
-                replyError(MakeError(E_REJECTED, TStringBuilder()
-                    << "Volume not ready: " << State->GetDiskId().Quote()));
+                replyError(MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "Volume " << State->GetDiskId().Quote()
+                                     << " not ready by partition state"));
             } else {
                 LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
                     "[%lu] %s request delayed until volume and partitions are ready",
