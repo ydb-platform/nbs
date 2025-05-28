@@ -118,9 +118,7 @@ struct TFixture
     std::optional<TTestBasicRuntime> Runtime;
     IActorSystemPtr ActorSystem;
     NRdma::IClientPtr RdmaClient;
-
-    std::function<bool(const TEvDiskRegistry::TEvGetAgentNodeIdRequest::TPtr&)>
-        HandleGetAgentNodeId;
+    THashMap<TString, ui32> NodeMap;
 
     std::function<bool(const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr&)>
         HandleWriteDeviceBlocks;
@@ -137,6 +135,8 @@ struct TFixture
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
+        NodeMap["node-0001.nbs-dev.net"] = 100500;
+
         Runtime.emplace();
 
         Runtime->AppendToLogSettings(
@@ -180,7 +180,12 @@ struct TFixture
             return Handle##name(*ptr);                                         \
         }
                 switch (ev->GetTypeRewrite()) {
-                    INVOKE_HANDLER_FUNC(TEvDiskRegistry, GetAgentNodeId)
+                    case TEvDiskRegistry::EvGetAgentNodeIdRequest:
+                        HandleGetAgentNodeId(
+                            *reinterpret_cast<
+                                TEvDiskRegistry::TEvGetAgentNodeIdRequest::
+                                    TPtr*>(&ev));
+                        return true;
                     INVOKE_HANDLER_FUNC(TEvDiskAgent, WriteDeviceBlocks)
                     INVOKE_HANDLER_FUNC(TEvDiskAgent, ReadDeviceBlocks)
                     INVOKE_HANDLER_FUNC(TEvDiskAgent, ZeroDeviceBlocks)
@@ -200,6 +205,28 @@ struct TFixture
 
         ActorSystem->Stop();
         ActorSystem.Reset();
+    }
+
+    void HandleGetAgentNodeId(
+        const TEvDiskRegistry::TEvGetAgentNodeIdRequest::TPtr& ev)
+    {
+        auto* msg = ev->Get();
+        auto* nodeId = NodeMap.FindPtr(msg->Record.GetAgentId());
+
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvGetAgentNodeIdResponse>();
+        if (nodeId) {
+            response->Record.SetNodeId(*nodeId);
+        } else {
+            response->Record.MutableError()->SetCode(E_NOT_FOUND);
+        }
+
+        Runtime->SendAsync(new IEventHandle{
+            ev->Sender,
+            TActorId{},
+            response.release(),
+            0,   // flags
+            ev->Cookie});
     }
 };
 
@@ -248,22 +275,6 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         const TString requestBuffer{DefaultBlockSize, 'X'};
         TSgList sglist{
             TBlockDataRef{requestBuffer.data(), requestBuffer.size()}};
-
-        HandleGetAgentNodeId = [&](const auto& ev)
-        {
-            auto response =
-                std::make_unique<TEvDiskRegistry::TEvGetAgentNodeIdResponse>();
-            response->Record.SetNodeId(100500);
-
-            Runtime->SendAsync(new IEventHandle{
-                ev->Sender,
-                TActorId{},
-                response.release(),
-                0,   // flags
-                ev->Cookie});
-
-            return true;
-        };
 
         HandleWriteDeviceBlocks = [&](const auto& ev)
         {
@@ -366,22 +377,6 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
 
         const ui64 requestByteCount =
             deviceRequest.GetBlockSize() * deviceRequest.GetBlocksCount();
-
-        HandleGetAgentNodeId = [&](const auto& ev)
-        {
-            auto response =
-                std::make_unique<TEvDiskRegistry::TEvGetAgentNodeIdResponse>();
-            response->Record.SetNodeId(100500);
-
-            Runtime->SendAsync(new IEventHandle{
-                ev->Sender,
-                TActorId{},
-                response.release(),
-                0,   // flags
-                ev->Cookie});
-
-            return true;
-        };
 
         HandleReadDeviceBlocks = [&](const auto& ev)
         {
@@ -510,22 +505,6 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
         const TString requestBuffer{DefaultBlockSize, 'X'};
         TSgList sglist{
             TBlockDataRef{requestBuffer.data(), requestBuffer.size()}};
-
-        HandleGetAgentNodeId = [&](const auto& ev)
-        {
-            auto response =
-                std::make_unique<TEvDiskRegistry::TEvGetAgentNodeIdResponse>();
-            response->Record.SetNodeId(100500);
-
-            Runtime->SendAsync(new IEventHandle{
-                ev->Sender,
-                TActorId{},
-                response.release(),
-                0,   // flags
-                ev->Cookie});
-
-            return true;
-        };
 
         auto writeSentPromise = NewPromise<void>();
         auto writeSent = writeSentPromise.GetFuture();
