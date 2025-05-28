@@ -8,16 +8,18 @@
 
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
 
 TPropagateLinkToFollowerActor::TPropagateLinkToFollowerActor(
-        ui64 tabletID,
+        TString logPrefix,
         TRequestInfoPtr requestInfo,
         TLeaderFollowerLink link,
         EReason reason)
-    : TabletID(tabletID)
+    : LogPrefix(std::move(logPrefix))
     , RequestInfo(std::move(requestInfo))
     , Link(std::move(link))
     , Reason(reason)
@@ -36,8 +38,8 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Propagate link %s %s to follower (try %lu)",
-        TabletID,
+        "%s Propagate link %s %s to follower (try %lu)",
+        LogPrefix.c_str(),
         ToString(Reason).c_str(),
         Link.Describe().c_str(),
         ++TryCount);
@@ -46,6 +48,7 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
         std::make_unique<TEvVolume::TEvNotifyFollowerVolumeRequest>();
     request->Record.SetLinkUUID(Link.LinkUUID);
     request->Record.SetDiskId(Link.FollowerDiskId);
+    request->Record.SetFollowerScaleUnitId(Link.FollowerScaleUnitId);
     request->Record.SetLeaderDiskId(Link.LeaderDiskId);
     request->Record.SetLeaderScaleUnitId(Link.LeaderScaleUnitId);
 
@@ -64,6 +67,10 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
     }
 
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
+
+    ctx.Schedule(
+        DelayProvider.GetDelayAndIncrease(),
+        new NActors::TEvents::TEvWakeup());
 }
 
 void TPropagateLinkToFollowerActor::HandlePersistedOnFollower(
@@ -78,8 +85,8 @@ void TPropagateLinkToFollowerActor::HandlePersistedOnFollower(
         ctx,
         hasError ? NActors::NLog::PRI_ERROR : NActors::NLog::PRI_INFO,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Propagated link %s %s to follower: %s",
-        TabletID,
+        "%s Propagated link %s %s to follower: %s",
+        LogPrefix.c_str(),
         ToString(Reason).c_str(),
         Link.Describe().c_str(),
         FormatError(error).c_str());
@@ -94,7 +101,7 @@ void TPropagateLinkToFollowerActor::HandlePersistedOnFollower(
     ReplyAndDie(ctx, message->GetError());
 }
 
-void TPropagateLinkToFollowerActor::HandleRetryPersistOnFollower(
+void TPropagateLinkToFollowerActor::HandleWakeup(
     const NActors::TEvents::TEvWakeup::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -139,7 +146,7 @@ STFUNC(TPropagateLinkToFollowerActor::StateWork)
             TEvVolume::TEvNotifyFollowerVolumeResponse,
             HandlePersistedOnFollower);
 
-        HFunc(NActors::TEvents::TEvWakeup, HandleRetryPersistOnFollower);
+        HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
 
         default:
             HandleUnexpectedEvent(

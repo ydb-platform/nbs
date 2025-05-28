@@ -53,7 +53,7 @@ class TCreateVolumeLinkActor final
     : public NActors::TActorBootstrapped<TCreateVolumeLinkActor>
 {
 private:
-    const ui64 TabletID;
+    const TString LogPrefix;
     const NActors::TActorId VolumeActorId;
 
     TFollowerDiskInfo Follower;
@@ -62,7 +62,7 @@ private:
 
 public:
     TCreateVolumeLinkActor(
-        ui64 tabletID,
+        TString logPrefix,
         NActors::TActorId volumeActorId,
         TLeaderFollowerLink link);
 

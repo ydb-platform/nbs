@@ -963,8 +963,10 @@ std::optional<TFollowerDiskInfo> TVolumeState::FindFollower(
 
 void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
 {
+    Y_DEBUG_ABORT_UNLESS(follower.Link.LinkUUID);
+
     for (auto& followerInfo: FollowerDisks) {
-        if (followerInfo.Link.LinkUUID == follower.Link.LinkUUID) {
+        if (followerInfo.Link.Match(follower.Link)) {
             followerInfo = std::move(follower);
             return;
         }

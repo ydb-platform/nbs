@@ -735,6 +735,12 @@ message TLinkLeaderVolumeToFollowerRequest
 
     // Follower volume.
     string FollowerDiskId = 3;
+
+    // Leader volume scale unit Id.
+    string LeaderScaleUnitId = 4;
+
+    // Follower volume scale unit Id.
+    string FollowerScaleUnitId = 5;
 }
 
 message TLinkLeaderVolumeToFollowerResponse
@@ -760,6 +766,7 @@ message TNotifyFollowerVolumeRequest
     // Uuid of link.
     string LinkUUID = 3;
 
+    // Reason of notification.
     EFollowerNotificationReason Reason = 4;
 
     // Leader volume.
@@ -767,6 +774,9 @@ message TNotifyFollowerVolumeRequest
 
     // Leader volume scale unit.
     string LeaderScaleUnitId = 6;
+
+    // Follower volume scale unit.
+    string FollowerScaleUnitId = 7;
 }
 
 message TNotifyFollowerVolumeResponse
@@ -792,6 +802,12 @@ message TUnlinkLeaderVolumeFromFollowerRequest
 
     // Follower volume.
     string FollowerDiskId = 3;
+
+    // Leader volume scale unit Id.
+    string LeaderScaleUnitId = 4;
+
+    // Follower volume scale unit Id.
+    string FollowerScaleUnitId = 5;
 }
 
 message TUnlinkLeaderVolumeFromFollowerResponse

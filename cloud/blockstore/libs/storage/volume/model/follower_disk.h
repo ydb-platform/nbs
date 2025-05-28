@@ -36,12 +36,12 @@ struct TLeaderDiskInfo
     enum class EState
     {
         None = 0,
-        Follower = 10,   // The link has been created.
-                         // and the disk is a follower.
-                         // Disk accepts writes only from the leader.
+        Following = 10,   // The link has been created.
+                          // and the disk is a follower.
+                          // Disk accepts writes only from the leader.
 
-        Leader = 20,     // The link is broken, the disk has become the new leader.
-                         // All writes from old leader rejected.
+        Leader = 20,   // The link is broken, the disk has become the new
+                       // leader. All writes from old leader rejected.
     };
 
     TLeaderFollowerLink Link;
@@ -50,6 +50,8 @@ struct TLeaderDiskInfo
     TString ErrorMessage;
 
     TString Describe() const;
+
+    bool operator==(const TLeaderDiskInfo& rhs) const;
 };
 using TLeaderDisks = TVector<TLeaderDiskInfo>;
 
@@ -79,6 +81,7 @@ struct TFollowerDiskInfo
     TString ErrorMessage;
 
     TString Describe() const;
+    bool operator==(const TFollowerDiskInfo& rhs) const;
 };
 
 using TFollowerDisks = TVector<TFollowerDiskInfo>;
