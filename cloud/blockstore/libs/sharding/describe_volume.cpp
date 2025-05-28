@@ -90,6 +90,16 @@ TFuture<NProto::TDescribeVolumeResponse> Describe(
 struct TMultiShardDescribeHandler
     : public std::enable_shared_from_this<TMultiShardDescribeHandler>
 {
+    TLog Log;
+    std::atomic<ui64> Counter{0};
+    TShards Shards;
+    NProto::TDescribeVolumeRequest Request;
+    bool IncompleteShards;
+
+    TAdaptiveLock Lock;
+    TPromise<NProto::TDescribeVolumeResponse> Promise;
+    TVector<TDescribeResponseHandler> Handlers;
+
     TMultiShardDescribeHandler(
             TLog log,
             TShards shards,
@@ -118,9 +128,9 @@ struct TMultiShardDescribeHandler
                             << "Send remote Describe Request to " << host.LogTag
                             << " for volume " << Request.GetDiskId());
                 } else {
-                    STORAGE_DEBUG(
+                  STORAGE_DEBUG(
                         TStringBuilder()
-                            << "Send local Describe Request for volume "
+                            << "Send locak Describe Request for volume "
                             << Request.GetDiskId());
                 }
 
@@ -140,15 +150,6 @@ struct TMultiShardDescribeHandler
             }
         }
     }
-    TLog Log;
-    std::atomic<ui64> Counter{0};
-    TShards Shards;
-    NProto::TDescribeVolumeRequest Request;
-    bool IncompleteShards;
-
-    TAdaptiveLock Lock;
-    TPromise<NProto::TDescribeVolumeResponse> Promise;
-    TVector<TDescribeResponseHandler> Handlers;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
