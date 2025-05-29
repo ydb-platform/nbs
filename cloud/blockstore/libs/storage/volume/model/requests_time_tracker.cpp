@@ -7,6 +7,7 @@
 
 #include <util/datetime/cputimer.h>
 #include <util/string/builder.h>
+
 #include <span>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -152,7 +153,8 @@ bool TRequestsTimeTracker::TEqual::operator()(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRequestsTimeTracker::TRequestsTimeTracker()
+TRequestsTimeTracker::TRequestsTimeTracker(const ui64 constructionTime)
+    : ConstructionTime(constructionTime)
 {
     for (size_t sizeBucket = 0; sizeBucket <= TotalSizeBucket; ++sizeBucket) {
         for (size_t requestType = 0;
@@ -174,6 +176,12 @@ void TRequestsTimeTracker::OnRequestStarted(
     TBlockRange64 blockRange,
     ui64 startTime)
 {
+    const auto requestTypeIndex = static_cast<size_t>(requestType);
+    auto& firstRequest = FirstRequests[requestTypeIndex];
+    if (firstRequest.StartTime == 0) {
+        firstRequest.StartTime = startTime;
+    }
+
     InflightRequests.emplace(
         requestId,
         TRequestInflight{
@@ -182,7 +190,38 @@ void TRequestsTimeTracker::OnRequestStarted(
             .RequestType = requestType});
 }
 
-void TRequestsTimeTracker::OnRequestFinished(
+std::optional<TRequestsTimeTracker::TFirstSuccessStat>
+TRequestsTimeTracker::StatFirstSuccess(
+    const TRequestInflight& request,
+    bool success,
+    ui64 finishTime)
+{
+    const auto requestTypeIndex = static_cast<size_t>(request.RequestType);
+    auto& firstRequest = FirstRequests[requestTypeIndex];
+    if (firstRequest.FinishTime != 0) {
+        return std::nullopt;
+    }
+
+    if (!success) {
+        ++firstRequest.FailCount;
+        return std::nullopt;
+    }
+
+    firstRequest.FinishTime = finishTime;
+
+    return TFirstSuccessStat{
+        .RequestType = request.RequestType,
+        .FirstRequestStartTime =
+            CyclesToDurationSafe(firstRequest.StartTime - ConstructionTime),
+        .SuccessfulRequestStartTime =
+            CyclesToDurationSafe(request.StartTime - ConstructionTime),
+        .SuccessfulRequestFinishTime =
+            CyclesToDurationSafe(firstRequest.FinishTime - ConstructionTime),
+        .FailCount = firstRequest.FailCount};
+}
+
+std::optional<TRequestsTimeTracker::TFirstSuccessStat>
+TRequestsTimeTracker::OnRequestFinished(
     ui64 requestId,
     bool success,
     ui64 finishTime)
@@ -191,7 +230,7 @@ void TRequestsTimeTracker::OnRequestFinished(
     {
         auto it = InflightRequests.find(requestId);
         if (it == InflightRequests.end()) {
-            return;
+            return {};
         }
         request = it->second;
         InflightRequests.erase(requestId);
@@ -210,6 +249,8 @@ void TRequestsTimeTracker::OnRequestFinished(
     key.SizeBucket = TotalSizeBucket;
     Histograms[key].Increment(duration.MicroSeconds());
     Histograms[key].BlockCount += request.BlockRange.Size();
+
+    return StatFirstSuccess(request, success, finishTime);
 }
 
 NJson::TJsonValue TRequestsTimeTracker::BuildPercentilesJson() const
