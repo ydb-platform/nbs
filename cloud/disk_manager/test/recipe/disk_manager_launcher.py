@@ -135,6 +135,7 @@ NbsConfig: <
     RootCertsFile: "{root_certs_file}"
     GrpcKeepAlive: <>
     UseGZIPCompression: true
+>
 DisksConfig: <
     DeletedDiskExpirationTimeout: "1s"
     ClearDeletedDisksTaskScheduleInterval: "2s"
