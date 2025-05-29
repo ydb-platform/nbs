@@ -920,12 +920,11 @@ void TPartitionActor::HandleReadBlocksRequest(
         "ReadBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason,
-        ui32 flags = 0)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason,
+                          ui32 flags = 0)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(errorCode, std::move(errorReason), flags));
@@ -948,19 +947,14 @@ void TPartitionActor::HandleReadBlocksRequest(
     );
 
     if (!ok) {
-        auto response = std::make_unique<typename TMethod::TResponse>(MakeError(
+        replyError(
+            ctx,
+            *requestInfo,
             E_ARGUMENT,
-            TStringBuilder() << "invalid block range [" << "index: "
-                             << msg->Record.GetStartIndex() << ", count: "
-                             << msg->Record.GetBlocksCount() << "]"));
-
-        LWTRACK(
-            ResponseSent_Partition,
-            requestInfo->CallContext->LWOrbit,
-            "ReadBlocks",
-            requestInfo->CallContext->RequestId);
-
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
+            TStringBuilder()
+                << "invalid block range ["
+                << "index: " << msg->Record.GetStartIndex()
+                << ", count: " << msg->Record.GetBlocksCount() << "]");
         return;
     }
 
