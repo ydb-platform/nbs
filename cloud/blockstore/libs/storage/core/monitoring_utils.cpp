@@ -4,7 +4,6 @@
 #include "probes.h"
 
 #include <cloud/blockstore/libs/diagnostics/hostname.h>
-#include <cloud/blockstore/libs/storage/partition/model/transaction_time_tracker.h>
 
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
@@ -55,18 +54,36 @@ TStringBuf AlertClassFromLevel(EAlertLevel alertLevel)
     }
 }
 
-void RenderLatencyCell(
+void RenderCellWithTooltip(
     IOutputStream& out,
-    const TString& trKey,
+    const TString& text,
+    const TString& tooltip)
+{
+    HTML (out) {
+        TABLED () {
+            DIV_CLASS ("tooltip-latency") {
+                out << text;
+                if (tooltip) {
+                    SPAN_CLASS ("tooltiptext-latency") {
+                        out << tooltip;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void RenderTxLatencyCell(
+    IOutputStream& out,
+    const TString& txKey,
     const TString& timeKey)
 {
     HTML (out) {
         TABLED () {
-            DIV_CLASS("latency-item")
-            {
-                DIV_CLASS_ID(" ", trKey + "_finished_" + timeKey)
+            DIV_CLASS ("latency-item") {
+                DIV_CLASS_ID(" ", txKey + "_finished_" + timeKey)
                 {}
-                DIV_CLASS_ID(" ", trKey + "_inflight_" + timeKey)
+                DIV_CLASS_ID(" ", txKey + "_inflight_" + timeKey)
                 {}
             }
         }
@@ -75,6 +92,7 @@ void RenderLatencyCell(
 
 void DumpLatencyForTransactions(
     IOutputStream& out,
+    const TTransactionTimeTracker& transactionTimeTracker,
     const std::span<const TTransactionTimeTracker::TBucketInfo> transactions)
 {
     HTML (out) {
@@ -83,54 +101,47 @@ void DumpLatencyForTransactions(
                 TABLEH () {
                     out << "Latency";
                 }
-                for (const auto& trInfo: transactions) {
+                for (const auto& txInfo: transactions) {
                     TABLEH () {
-                        out << trInfo.Description;
+                        out << txInfo.Description;
                     }
                 }
             }
         }
 
-        for (const auto& [tr, timeKey, timeDescr, timeTooltip]:
-             TTransactionTimeTracker::GetTimeBuckets())
+        for (const auto& [_, timeKey, timeDescr, timeTooltip]:
+             transactionTimeTracker.GetTimeBuckets())
         {
             TABLER () {
-                TABLED () {
-                    DIV_CLASS("tooltip-latency")
-                    {
-                        out << timeDescr;
+                RenderCellWithTooltip(out, timeDescr, timeTooltip);
 
-                        if (timeTooltip) {
-                            SPAN_CLASS("tooltiptext-latency")
-                            {
-                                out << timeTooltip;
-                            }
-                        }
-                    }
-                }
-
-                for (const auto& trInfo: transactions) {
-                    RenderLatencyCell(out, trInfo.Key, timeKey);
+                for (const auto& txInfo: transactions) {
+                    RenderTxLatencyCell(out, txInfo.Key, timeKey);
                 }
             }
         }
     }
 }
 
-void DumpLatencyForTransactions(IOutputStream& out, size_t columnCount)
+void DumpLatencyForTransactions(
+    IOutputStream& out,
+    size_t columnCount,
+    const TTransactionTimeTracker& transactionTimeTracker)
 {
-    const auto trBuckets = TTransactionTimeTracker::GetTransactionBuckets();
+    const auto buckets = transactionTimeTracker.GetTransactionBuckets();
 
     HTML (out) {
-        TABLE_CLASS("table-latency")
-        {
-            for (size_t i = 0; i < trBuckets.size(); i += columnCount) {
+        TABLE_CLASS ("table-latency") {
+            for (size_t i = 0; i < buckets.size(); i += columnCount) {
                 const std::size_t chunkSize =
-                    Min(columnCount, trBuckets.size() - i);
+                    Min(columnCount, buckets.size() - i);
                 const std::span<const TTransactionTimeTracker::TBucketInfo>
-                    transactionChunk{&trBuckets[i], chunkSize};
+                    transactionChunk{&buckets[i], chunkSize};
 
-                DumpLatencyForTransactions(out, transactionChunk);
+                DumpLatencyForTransactions(
+                    out,
+                    transactionTimeTracker,
+                    transactionChunk);
             }
         }
     }
@@ -308,6 +319,7 @@ void BuildVolumeTabs(IOutputStream& out)
         << "<li><a href='#Checkpoints' data-toggle='tab'>Checkpoints</a></li>"
         << "<li><a href='#Links' data-toggle='tab'>Links</a></li>"
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a></li>"
+        << "<li><a href='#Transactions' data-toggle='tab'>Transactions</a></li>"
         << "<li><a href='#Traces' data-toggle='tab'>Traces</a></li>"
         << "<li><a href='#StorageConfig' data-toggle='tab'>StorageConfig</a></li></ul>";
 }
@@ -1135,37 +1147,8 @@ void DumpTabletNotReady(IOutputStream& out)
     }
 }
 
-void DumpLatency(IOutputStream& out, ui64 tabletId)
+void AddLatencyCSS(IOutputStream& out)
 {
-    const TString script = R"(
-        <script>
-            function renderLatency(stat) {
-                for (let key in stat) {
-                    const element = document.getElementById(key);
-                    if (element) {
-                        element.textContent = stat[key];
-                    }
-                }
-            }
-            function loadLatency() {
-                var url = '?action=getLatency';
-                url += '&TabletID=)" +
-                           ToString(tabletId) + R"(';
-                $.ajax({
-                    url: url,
-                    success: function(result) {
-                        renderLatency(result.stat);
-                    },
-                    error: function(jqXHR, status) {
-                        console.log('error');
-                    }
-                });
-            }
-            setInterval(function() { loadLatency(); }, 1000);
-            loadLatency();
-        </script>
-        )";
-
     const TString style = R"(
         <style>
             .table-latency {
@@ -1220,15 +1203,52 @@ void DumpLatency(IOutputStream& out, ui64 tabletId)
             }
         </style>
         )";
+    HTML (out) {
+        out << style;
+    }
+}
+
+void DumpLatency(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TTransactionTimeTracker& transactionTimeTracker)
+{
+    const TString script = R"(
+        <script>
+            function renderTransactionsLatency(stat) {
+                for (let key in stat) {
+                    const element = document.getElementById(key);
+                    if (element) {
+                        element.textContent = stat[key];
+                    }
+                }
+            }
+            function loadTransactionsLatency() {
+                var url = '?action=getTransactionsLatency';
+                url += '&TabletID=)" +
+                           ToString(tabletId) + R"(';
+                $.ajax({
+                    url: url,
+                    success: function(result) {
+                        renderTransactionsLatency(result.stat);
+                    },
+                    error: function(jqXHR, status) {
+                        console.log('error');
+                    }
+                });
+            }
+            setInterval(function() { loadTransactionsLatency(); }, 1000);
+            loadTransactionsLatency();
+        </script>
+        )";
 
     HTML (out) {
         out << script;
-        out << style;
 
         TAG (TH3) {
             out << "Transactions";
         }
-        DumpLatencyForTransactions(out, 9);
+        DumpLatencyForTransactions(out, 9, transactionTimeTracker);
 
         TAG (TH3) {
             out << "Groups";

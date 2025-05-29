@@ -69,6 +69,18 @@ struct TSetupTableResult
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TYDBTableNames
+{
+    TString Stats;
+    TString History;
+    TString Archive;
+    TString Metrics;
+    TString Groups;
+    TString Partitions;
+
+    TYDBTableNames() = default;
+};
+
 struct TSetupTablesResult
 {
     const NProto::TError Error;
@@ -948,6 +960,37 @@ public:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TYDBTableSchemes::TYDBTableSchemes(
+        TStatsTableSchemePtr stats,
+        TStatsTableSchemePtr history,
+        TStatsTableSchemePtr archive,
+        TStatsTableSchemePtr metrics,
+        TStatsTableSchemePtr groups,
+        TStatsTableSchemePtr partitions)
+    : Stats(std::move(stats))
+    , History(std::move(history))
+    , Archive(std::move(archive))
+    , Metrics(std::move(metrics))
+    , Groups(std::move(groups))
+    , Partitions(std::move(partitions))
+{}
+
+TYDBTableSchemes::TYDBTableSchemes(TDuration statsTtl, TDuration archiveTtl)
+    : Stats(CreateStatsTableScheme(statsTtl))
+    , History(CreateHistoryTableScheme())
+    , Archive(CreateArchiveStatsTableScheme(archiveTtl))
+    , Metrics(CreateBlobLoadMetricsTableScheme())
+    , Groups(CreateGroupsTableScheme())
+    , Partitions(CreatePartitionsTableScheme())
+{}
+
+TYDBTableSchemes::~TYDBTableSchemes() = default;
+
+IStartable* AsStartable(IYdbStoragePtr storagePtr)
+{
+    return storagePtr.get();
+}
 
 IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
     TYdbStatsConfigPtr config,

@@ -54,6 +54,13 @@ const TVolumeActor::TStateInfo TVolumeActor::States[STATE_MAX] = {
     { "Zombie", (IActor::TReceiveFunc)&TVolumeActor::StateZombie },
 };
 
+const TString VolumeTransactions[] = {
+#define TRANSACTION_NAME(name, ...) #name,
+    BLOCKSTORE_VOLUME_TRANSACTIONS(TRANSACTION_NAME)
+#undef TRANSACTION_NAME
+        "Total",
+};
+
 TVolumeActor::TVolumeActor(
         const TActorId& owner,
         TTabletStorageInfoPtr storage,
@@ -66,7 +73,7 @@ TVolumeActor::TVolumeActor(
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage), nullptr)
+    , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , GlobalStorageConfig(config)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -77,13 +84,14 @@ TVolumeActor::TVolumeActor(
     , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
     , ThrottlerLogger(
-        TabletID(),
-        [this](ui32 opType, TDuration time) {
-            UpdateDelayCounter(
-                static_cast<TVolumeThrottlingPolicy::EOpType>(opType),
-                time);
-        }
-    )
+          TabletID(),
+          [this](ui32 opType, TDuration time)
+          {
+              UpdateDelayCounter(
+                  static_cast<TVolumeThrottlingPolicy::EOpType>(opType),
+                  time);
+          })
+    , TransactionTimeTracker(VolumeTransactions)
 {}
 
 TVolumeActor::~TVolumeActor()
@@ -673,7 +681,7 @@ void TVolumeActor::HandleServerConnected(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Pipe client %s (server %s) connected to volume %s",
         TabletID(),
         ToString(msg->ClientId).data(),
@@ -688,7 +696,7 @@ void TVolumeActor::HandleServerDisconnected(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Pipe client %s (server %s) disconnected from volume %s at %s",
         TabletID(),
         ToString(msg->ClientId).data(),
@@ -706,7 +714,7 @@ void TVolumeActor::HandleServerDestroyed(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Pipe client %s's server %s got destroyed for volume %s at %s",
         TabletID(),
         ToString(msg->ClientId).data(),

@@ -1,6 +1,7 @@
 #include "service_ut.h"
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
+#include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 
 #include <chrono>
 
@@ -280,6 +281,98 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 "volume not found",
                 response->GetErrorReason());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDestroyNonreplVolumeAfterSSError)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(1);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        env.GetRuntime().SetLogPriority(
+            TBlockStoreComponents::VOLUME,
+            NLog::PRI_DEBUG);
+
+        env.GetRuntime().SetLogPriority(
+            TBlockStoreComponents::SERVICE,
+            NLog::PRI_DEBUG);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            1_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "", // folderId
+            "", // cloudId
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED
+        );
+
+        {
+            auto response = service.StatVolume(DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetError());
+
+            UNIT_ASSERT_EQUAL(
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                response->Record.GetVolume().GetStorageMediaKind());
+        }
+
+        auto prevEventFilterFunc = env.GetRuntime().SetEventFilter(
+            [nodeIdx](auto& runtime, auto& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvModifyVolumeRequest: {
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvModifyVolumeResponse>(
+                            MakeError(E_REJECTED));
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        {
+            service.SendDestroyVolumeRequest(
+                DefaultDiskId,
+                false,   // destroyIfBroken
+                false    // sync
+            );
+
+            auto response = service.RecvDestroyVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetError());
+        }
+
+        env.GetRuntime().SetEventFilter(prevEventFilterFunc);
+
+        {
+            service.SendDestroyVolumeRequest(
+                DefaultDiskId,
+                false,   // destroyIfBroken
+                false     // sync
+            );
+
+            auto response = service.RecvDestroyVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetError());
         }
     }
 }

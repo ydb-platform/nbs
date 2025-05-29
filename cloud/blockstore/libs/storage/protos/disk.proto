@@ -15,15 +15,6 @@ import "cloud/storage/core/protos/media.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum EAgentState
-{
-    AGENT_STATE_ONLINE = 0;
-    AGENT_STATE_WARNING = 1;
-    AGENT_STATE_UNAVAILABLE = 2;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 enum EDeviceState
 {
     DEVICE_STATE_ONLINE = 0;

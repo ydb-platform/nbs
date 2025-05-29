@@ -253,9 +253,13 @@ void TBootstrapCommon::InitActorSystem()
         || Configs->StorageConfig->GetNodeRegistrationUseSsl();
     registerOpts.Settings = Configs->GetNodeRegistrationSettings();
 
+    auto registrant =
+        CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);
+
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,
         registerOpts,
+        std::move(registrant),
         Log);
 
     if (cmsConfig) {

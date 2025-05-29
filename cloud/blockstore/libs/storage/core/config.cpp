@@ -463,6 +463,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(EnableConversionIntoMixedIndexV2,          bool,      false           )\
                                                                                \
     xxx(StatsUploadDiskCount,                      ui32,      1000            )\
+    xxx(StatsUploadMaxRowsPerTx,                   ui32,      10000           )\
     xxx(StatsUploadRetryTimeout,                   TDuration, Seconds(5)      )\
                                                                                \
     xxx(RemoteMountOnly,                           bool,      false           )\
@@ -598,7 +599,11 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(DisableZeroBlocksThrottlingForYDBBasedDisks,       bool,   false      )\
                                                                                \
     xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )\
-    xxx(DoNotStopVolumeTabletOnLockLost,                   bool,   false      )
+    xxx(DoNotStopVolumeTabletOnLockLost,                   bool,   false      )\
+                                                                               \
+    xxx(LoadConfigsFromCmsRetryMinDelay,      TDuration,   Seconds(2)         )\
+    xxx(LoadConfigsFromCmsRetryMaxDelay,      TDuration,   Seconds(512)       )\
+    xxx(LoadConfigsFromCmsTotalTimeout,       TDuration,   Hours(1)           )
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

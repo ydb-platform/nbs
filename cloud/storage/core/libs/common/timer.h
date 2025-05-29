@@ -13,6 +13,8 @@ struct ITimer
     virtual ~ITimer() = default;
 
     virtual TInstant Now() = 0;
+
+    virtual void Sleep(TDuration duration) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

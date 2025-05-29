@@ -89,9 +89,4 @@ struct IYdbStorage
     virtual NThreading::TFuture<TGetTablesResponse> GetHistoryTables() = 0;
 };
 
-IYdbStoragePtr CreateYdbStorage(
-    TYdbStatsConfigPtr config,
-    ILoggingServicePtr logging,
-    NIamClient::IIamTokenClientPtr tokenProvider);
-
 }   // namespace NCloud::NBlockStore::NYdbStats

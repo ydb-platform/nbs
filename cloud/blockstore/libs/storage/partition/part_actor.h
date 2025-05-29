@@ -21,7 +21,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
-#include <cloud/blockstore/libs/storage/partition/model/transaction_time_tracker.h>
+#include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
@@ -524,7 +524,7 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
-    void HandleHttpInfo_RenderLatency(
+    void HandleHttpInfo_GetTransactionsLatency(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
