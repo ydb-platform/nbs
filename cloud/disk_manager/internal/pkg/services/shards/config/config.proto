@@ -12,7 +12,7 @@ message ZoneShards {
     repeated string Shards = 1;
 }
 
-message FolderRule {
+message Folders {
     repeated string Folders = 1;
 }
 
@@ -20,7 +20,7 @@ message ShardsConfig {
     map<string, ZoneShards> Shards = 1;
     oneof FolderRules
     {
-        FolderRule IncludedFolders = 2;
-        FolderRule ExcludedFolders = 3;
+        Folders IncludedFolders = 2;
+        Folders ExcludedFolders = 3;
     }
 }

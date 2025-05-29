@@ -44,6 +44,7 @@ func (s *service) PickShard(
 	if err != nil {
 		return "", err
 	}
+
 	if !isShardingAllowed {
 		return disk.ZoneId, nil
 	}
@@ -64,10 +65,10 @@ func (s *service) getShards(zoneID string) []string {
 
 func (s *service) isShardingAllowedForFolder(folderID string) (bool, error) {
 	switch rule := s.config.FolderRules.(type) {
-	case *shards_config.ShardsConfig_IncludedFolders:
-		return slices.Contains(rule.IncludedFolders.GetFolders(), folderID), nil
 	case *shards_config.ShardsConfig_ExcludedFolders:
 		return !slices.Contains(rule.ExcludedFolders.GetFolders(), folderID), nil
+	case *shards_config.ShardsConfig_IncludedFolders:
+		return slices.Contains(rule.IncludedFolders.GetFolders(), folderID), nil
 	case nil:
 		return true, nil
 	default:

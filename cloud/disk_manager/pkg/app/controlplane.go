@@ -377,8 +377,6 @@ func initControlplane(
 	poolService := pools.NewService(taskScheduler, poolStorage)
 	shardsService := shards.NewService(config.GetShardsConfig())
 
-	shardsService := shards.NewService(config.GetShardsConfig())
-
 	var filesystemService filesystem.Service
 	if config.GetFilesystemConfig() != nil {
 		filesystemService = filesystem.NewService(
