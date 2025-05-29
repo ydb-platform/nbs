@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cloud/blockstore/public/api/protos/volume.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -13,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -25,6 +24,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/volume/volume.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
@@ -221,15 +221,22 @@ class TVolumeClient
 {
 private:
     TTestActorRuntime& Runtime;
-    ui32 NodeIdx;
+    const ui32 NodeIdx;
+    const ui64 VolumeTabletId;
 
     const TActorId Sender;
     TActorId PipeClient;
 
+    bool VolumeCreated = false;
+
 public:
-    TVolumeClient(TTestActorRuntime& runtime, ui32 nodeIdx = 0)
+    TVolumeClient(
+            TTestActorRuntime& runtime,
+            ui32 nodeIdx = 0,
+            ui64 volumeTabletId = TestVolumeTablets[0])
         : Runtime(runtime)
         , NodeIdx(nodeIdx)
+        , VolumeTabletId(volumeTabletId)
         , Sender(runtime.AllocateEdgeActor(nodeIdx))
     {
         ReconnectPipe();
@@ -254,6 +261,16 @@ public:
             request.release(),
             NodeIdx,
             cookie);
+    }
+
+    void ForwardToPipe(TAutoPtr<IEventHandle>& event)
+    {
+        Runtime.SendToPipe(
+            PipeClient,
+            event->Sender,
+            event->ReleaseBase().Release(),
+            NodeIdx,
+            event->Cookie);
     }
 
     template <typename TResponse>
@@ -310,7 +327,20 @@ public:
     template <typename... Args>
     void SendUpdateVolumeConfigRequest(Args&&... args)
     {
-        auto request = CreateUpdateVolumeConfigRequest(std::forward<Args>(args)...);
+        auto request =
+            CreateUpdateVolumeConfigRequest(std::forward<Args>(args)...);
+
+        // Send CreateVolumeRequest to SchemeShard.
+        if (!VolumeCreated) {
+            Send(
+                Runtime,
+                MakeSSProxyServiceId(),
+                NActors::TActorId(),
+                std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
+                    request->Record.GetVolumeConfig()));
+            VolumeCreated = true;
+        }
+
         SendToPipe(std::move(request));
     }
 
