@@ -388,10 +388,11 @@ void TVolumeActor::ExecuteAddClient(
     TString prevWriter = State->GetReadWriteAccessClientId();
     args.WriterLastActivityTimestamp = State->GetLastActivityTimestamp(prevWriter);
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Volume %s received add client %s:%s request; pipe server %s, sender %s",
-        TabletID(),
-        args.DiskId.Quote().c_str(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Received add client %s:%s request; pipe server %s, sender %s",
+        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str(),
         args.Info.GetClientId().Quote().c_str(),
         args.Info.GetInstanceId().Quote().c_str(),
         ToString(args.PipeServerActorId).c_str(),

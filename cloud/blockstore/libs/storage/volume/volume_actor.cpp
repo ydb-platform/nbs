@@ -8,10 +8,8 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/service/service_events_private.h>   // TODO: invalid reference
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
-
-// TODO: invalid reference
-#include <cloud/blockstore/libs/storage/service/service_events_private.h>
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
@@ -24,8 +22,8 @@
 #include <library/cpp/lwtrace/protos/lwtrace.pb.h>
 #include <library/cpp/lwtrace/signature.h>
 
-#include <util/string/builder.h>
 #include <util/stream/str.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -71,7 +69,8 @@ TVolumeActor::TVolumeActor(
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        EVolumeStartMode startMode)
+        EVolumeStartMode startMode,
+        TString diskId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , GlobalStorageConfig(config)
@@ -83,6 +82,7 @@ TVolumeActor::TVolumeActor(
     , RdmaClient(std::move(rdmaClient))
     , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
+    , LogTitle(TabletID(), std::move(diskId), StartTime)
     , ThrottlerLogger(
           TabletID(),
           [this](ui32 opType, TDuration time)
@@ -135,12 +135,16 @@ void TVolumeActor::BecomeAux(const TActorContext& ctx, EState state)
     }
 
     Become(States[state].Func);
+    const auto prevState = CurrentState;
     CurrentState = state;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Switched to state %s (system: %s, user: %s, executor: %s)",
-        TabletID(),
-        States[state].Name.data(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Switched state %s -> %s (system: %s, user: %s, executor: %s)",
+        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str(),
+        GetStateName(prevState).Quote().c_str(),
+        GetStateName(state).Quote().c_str(),
         ToString(Tablet()).data(),
         ToString(SelfId()).data(),
         ToString(ExecutorID()).data());
@@ -263,9 +267,13 @@ void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
 {
     ExecutorActivationTimestamp = ctx.Now();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Activated executor",
-        TabletID());
+    LogTitle.SetGeneration(Executor()->Generation());
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Activated executor",
+        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
 
     ScheduleRegularUpdates(ctx);
 
