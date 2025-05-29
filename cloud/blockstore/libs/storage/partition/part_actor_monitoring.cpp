@@ -77,7 +77,7 @@ void DumpDownGroups(
                             for (const TTabletChannelInfo& channelInfo:
                                  matchedInfos)
                             {
-                                TString dataKind = TStringBuilder()
+                                TString channelKind = TStringBuilder()
                                                    << state.GetChannelDataKind(
                                                           channelInfo.Channel);
                                 out << groupId << "&nbsp;<a href='"
@@ -85,7 +85,7 @@ void DumpDownGroups(
                                            config,
                                            groupId,
                                            channelInfo.StoragePool,
-                                           dataKind)
+                                           channelKind)
                                     << "'>Graphs&nbsp;"
                                     << "(Channel=" << channelInfo.Channel
                                     << ")</a><br/>";
@@ -121,11 +121,11 @@ void DumpChannels(
     const auto& cps = state.GetConfig().GetExplicitChannelProfiles();
     for (int c = 0; c < cps.size(); ++c) {
         const auto& cp = cps[c];
-        const auto dataKind =
+        const auto channelKind =
             static_cast<EChannelDataKind>(cps[c].GetDataKind());
         channelInfos.push_back({
             cp.GetPoolKind(),
-            TStringBuilder() << dataKind,
+            TStringBuilder() << channelKind,
             state.CheckPermissions(c, EChannelPermission::UserWritesAllowed),
             state.CheckPermissions(c, EChannelPermission::SystemWritesAllowed),
             state.GetFreeSpaceShare(c),
@@ -135,12 +135,15 @@ void DumpChannels(
         out,
         channelInfos,
         storage,
-        [&] (ui32 groupId, const TString& storagePool, const TString& dataKind) {
+        [&](ui32 groupId,
+            const TString& storagePool,
+            const TString& channelKind)
+        {
             return GetMonitoringYDBGroupUrl(
                 config,
                 groupId,
                 storagePool,
-                dataKind);
+                channelKind);
         },
         [&](ui32 groupId)
         { return GetMonitoringDashboardYDBGroupUrl(config, groupId); },

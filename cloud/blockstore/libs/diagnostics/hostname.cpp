@@ -5,6 +5,7 @@
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 #include <util/system/hostname.h>
+
 #include <array>
 #include <span>
 
@@ -14,11 +15,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr std::array<const char*, 2> DefaultHandleClasses(
+constexpr std::array<TStringBuf, 2> DefaultHandleClasses(
     {"GetFast", "PutUserData"});
-constexpr std::array<const char*, 3> LogHandleClasses(
+constexpr std::array<TStringBuf, 3> LogHandleClasses(
     {"GetFast", "PutUserData", "PutTabletLog"});
-constexpr std::array<const char*, 4> MergedAndMixedHandleClasses(
+constexpr std::array<TStringBuf, 4> MergedAndMixedHandleClasses(
     {"GetFast", "PutUserData", "GetAsync", "PutAsyncBlob"});
 
 ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
@@ -32,14 +33,14 @@ ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
     }
 }
 
-[[nodiscard]] std::span<const char* const> GetHandleClasses(
-    const TString& dataKind)
+[[nodiscard]] std::span<const TStringBuf> GetHandleClasses(
+    const TString& channelKind)
 {
-    if (dataKind == "Log") {
+    if (channelKind == "Log") {
         return LogHandleClasses;
     }
 
-    if (dataKind == "Merged" || dataKind == "Mixed") {
+    if (channelKind == "Merged" || channelKind == "Mixed") {
         return MergedAndMixedHandleClasses;
     }
 
@@ -139,13 +140,13 @@ TString GetMonitoringNBSOverviewToTVUrl(const TDiagnosticsConfig& config)
 }
 
 TString
-GetQueries(ui32 groupId, const TString& storagePool, const TString& dataKind)
+GetQueries(ui32 groupId, const TString& storagePool, const TString& channelKind)
 {
     constexpr TStringBuf QueryPattern =
         R"(q.%u.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
         R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="%s"})&q.%u.name=%s)";
 
-    auto handleClasses = GetHandleClasses(dataKind);
+    auto handleClasses = GetHandleClasses(channelKind);
 
     TStringBuilder queries;
 
@@ -156,7 +157,7 @@ GetQueries(ui32 groupId, const TString& storagePool, const TString& dataKind)
                        queryIdx,
                        storagePool.c_str(),
                        groupId,
-                       handleClasses[queryIdx],
+                       handleClasses[queryIdx].Data(),
                        queryIdx,
                        TString(1, queryName).data())
                        .c_str()
@@ -164,20 +165,20 @@ GetQueries(ui32 groupId, const TString& storagePool, const TString& dataKind)
         ++queryName;
     }
 
-    return queries.c_str();
+    return queries;
 }
 
 TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
     const TString& storagePool,
-    const TString& dataKind)
+    const TString&  channelKind)
 {
     constexpr TStringBuf Url =
         "%s/projects/%s/explorer/"
         "queries?%sfrom=now-1d&to=now&refresh=60000";
 
-    auto queries = GetQueries(groupId, storagePool, dataKind);
+    auto queries = GetQueries(groupId, storagePool, channelKind);
 
     return Sprintf(
         Url.data(),
