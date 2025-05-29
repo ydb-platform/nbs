@@ -4455,7 +4455,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }),
                     TVector<ui32>({
                         env.GetGroupIds()[1],
-                    })
+                    }),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
@@ -4479,7 +4480,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     TVector<ui32>({
                         env.GetGroupIds()[0],
                         env.GetGroupIds()[1],
-                    })
+                    }),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
@@ -4496,6 +4498,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto request =
                 std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
+                    TVector<ui32>(),
                     TVector<ui32>(),
                     TVector<ui32>()
                 );
@@ -5345,8 +5348,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        runtime->SetObserverFunc(
-            StorageStateChanger(NKikimrBlobStorage::StatusDiskSpaceLightYellowMove));
+        runtime->SetObserverFunc(StorageStateChanger(
+            NKikimrBlobStorage::StatusDiskSpaceLightYellowMove |
+            NKikimrBlobStorage::StatusDiskSpaceYellowStop));
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
 
         {
@@ -5354,15 +5358,23 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
         }
 
+        ui32 flags = NKikimrBlobStorage::StatusDiskSpaceLightYellowMove |
+            NKikimrBlobStorage::StatusDiskSpaceYellowStop;
+
         const auto badFlags = {
+            NKikimrBlobStorage::StatusDiskSpaceLightOrange,
+            NKikimrBlobStorage::StatusDiskSpacePreOrange,
             NKikimrBlobStorage::StatusDiskSpaceOrange,
             NKikimrBlobStorage::StatusDiskSpaceRed,
+            NKikimrBlobStorage::StatusDiskSpaceBlack
         };
 
         for (const auto flag: badFlags) {
+            flags |= flag;
+
             partition.RebootTablet();
 
-            runtime->SetObserverFunc(StorageStateChanger(flag));
+            runtime->SetObserverFunc(StorageStateChanger(flags));
             partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
 
             auto request = partition.CreateCompactionRequest();
@@ -5466,7 +5478,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto request =
                 std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
                     TVector<ui32>({env.GetGroupIds()[0], env.GetGroupIds()[1]}),
-                    TVector<ui32>({env.GetGroupIds()[0], env.GetGroupIds()[1]})
+                    TVector<ui32>({env.GetGroupIds()[0], env.GetGroupIds()[1]}),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
@@ -5529,7 +5542,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto request =
                 std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
                     TVector<ui32>({env.GetGroupIds()[0]}),
-                    TVector<ui32>({env.GetGroupIds()[0]})
+                    TVector<ui32>({env.GetGroupIds()[0]}),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
