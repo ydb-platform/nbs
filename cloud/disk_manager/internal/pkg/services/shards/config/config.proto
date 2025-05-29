@@ -8,18 +8,15 @@ option go_package =
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message ZoneShards
-{
+message ZoneShards {
     repeated string Shards = 1;
 }
 
-message FolderRule
-{
+message FolderRule {
     repeated string Folders = 1;
 }
 
-message ShardsConfig
-{
+message ShardsConfig {
     map<string, ZoneShards> Shards = 1;
     oneof FolderRules
     {
