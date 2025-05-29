@@ -1,7 +1,5 @@
 #include "service_actor.h"
 
-#include "contrib/ydb/core/tx/scheme_cache/scheme_cache.h"
-
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
@@ -42,11 +40,14 @@ public:
 
 private:
     void DescribeVolume(const TActorContext& ctx);
-    void DescribeVolumeCashe(const TActorContext& ctx);
     void DescribeDiskRegistryVolume(const TActorContext& ctx);
 
     void HandleDescribeVolumeResponse(
         const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleDescribeVolumeFromSchemeCacheResponse(
+        const TEvService::TEvDescribeVolumeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleDescribeDiskResponse(
@@ -57,19 +58,16 @@ private:
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvDescribeVolumeResponse> response);
 
-    void HandleDescribeVolumeFromSchemeCacheResponse(
-        const TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev,
-        const TActorContext& ctx);
-
-        private: STFUNC(StateDescribeVolume);
+private:
+    STFUNC(StateDescribeVolume);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeActor::TDescribeVolumeActor(
-    TRequestInfoPtr requestInfo,
-    TStorageConfigPtr config,
-    TString diskId)
+        TRequestInfoPtr requestInfo,
+        TStorageConfigPtr config,
+        TString diskId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
@@ -77,7 +75,7 @@ TDescribeVolumeActor::TDescribeVolumeActor(
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
 {
-    DescribeVolumeCashe(ctx);
+    DescribeVolume(ctx);
 }
 
 void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
@@ -91,28 +89,6 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
         ctx,
         MakeSSProxyServiceId(),
         std::move(request),
-        RequestInfo->Cookie);
-}
-
-void TDescribeVolumeActor::DescribeVolumeCashe(const TActorContext& ctx)
-{
-    Become(&TThis::StateDescribeVolume);
-    Cerr<<"Started !!!!"<<Endl;
-
-    auto request = TAutoPtr<NSchemeCache::TSchemeCacheNavigate>(
-        new NSchemeCache::TSchemeCacheNavigate());
-    auto& entry = request->ResultSet.emplace_back();
-
-    entry.Operation = NSchemeCache::TSchemeCacheNavigate::OpPath;
-    entry.SyncVersion = true;
-    entry.RequestType = NSchemeCache::TSchemeCacheNavigate::TEntry::ERequestType::ByPath;
-    entry.Path = {DiskId};
-
-    auto event = std::make_unique<TEvTxProxySchemeCache::TEvNavigateKeySet>(std::move(request));
-    NCloud::Send(
-        ctx,
-        MakeSchemeCacheID(),
-        std::move(event),
         RequestInfo->Cookie);
 }
 
@@ -168,6 +144,40 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
     ReplyAndDie(ctx, std::move(response));
 }
 
+void TDescribeVolumeActor::HandleDescribeVolumeFromSchemeCacheResponse(
+    const TEvService::TEvDescribeVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    const auto& error = msg->GetError();
+    if (FAILED(error.GetCode())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Volume %s: describe failed: %s",
+            DiskId.Quote().data(),
+            FormatError(error).data());
+
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvService::TEvDescribeVolumeResponse>(error));
+        return;
+    }
+
+    Volume = msg->Record.GetVolume();
+
+    if (IsDiskRegistryMediaKind(Volume.GetStorageMediaKind())) {
+        DescribeDiskRegistryVolume(ctx);
+        return;
+    }
+
+    auto response = std::make_unique<TEvService::TEvDescribeVolumeResponse>();
+    *response->Record.MutableVolume() = std::move(Volume);
+
+    ReplyAndDie(ctx, std::move(response));
+}
+
 void TDescribeVolumeActor::HandleDescribeDiskResponse(
     const TEvDiskRegistry::TEvDescribeDiskResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -200,82 +210,6 @@ void TDescribeVolumeActor::HandleDescribeDiskResponse(
     ReplyAndDie(ctx, std::move(response));
 }
 
-void TDescribeVolumeActor::HandleDescribeVolumeFromSchemeCacheResponse(
-    const TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    const auto& resultSet = msg->Request->ResultSet;
-    Cerr<<"handling !!!!"<<Endl;
-
-    if (resultSet.empty()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: scheme cache returned empty result set",
-            DiskId.Quote().data());
-
-        ReplyAndDie(ctx, std::make_unique<TEvService::TEvDescribeVolumeResponse>(
-            MakeError(E_FAIL, "Empty result set from scheme cache")));
-        return;
-    }
-    Cerr<<"Not empty !!!!"<<Endl;
-
-    const auto& entry = resultSet.front();
-
-    if (entry.Status != NSchemeCache::TSchemeCacheNavigate::EStatus::Ok) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: scheme cache resolution failed: status=%s",
-            DiskId.Quote().data(),
-            entry.Status);
-
-        ReplyAndDie(ctx, std::make_unique<TEvService::TEvDescribeVolumeResponse>(
-            MakeError(E_FAIL, TStringBuilder() << "Resolution failed: "
-                                               << entry.Status)));
-        return;
-    }
-    Cerr<<"NSchemeCache::TSchemeCacheNavigate::EStatus::Ok !!!!"<<Endl;
-    entry
-
-    const auto it = entry.Attributes.find("BlockStoreVolumeDescription");
-    if (it == entry.Attributes.end()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: BlockStoreVolumeDescription attribute not found",
-            DiskId.Quote().data());
-
-        ReplyAndDie(ctx, std::make_unique<TEvService::TEvDescribeVolumeResponse>(
-            MakeError(E_FAIL, "Missing BlockStoreVolumeDescription attribute")));
-        return;
-    }
-    Cerr<<"NO BlockStoreVolumeDescription !!!!"<<Endl;
-
-    NKikimrSchemeOp::TBlockStoreVolumeDescription volumeDescription;
-    if (!volumeDescription.ParseFromString(it->second)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: failed to parse BlockStoreVolumeDescription",
-            DiskId.Quote().data());
-
-        ReplyAndDie(ctx, std::make_unique<TEvService::TEvDescribeVolumeResponse>(
-            MakeError(E_FAIL, "Failed to parse volume description")));
-        return;
-    }
-    Cerr<<"NO it->second !!!!"<<Endl;
-
-    const auto& volumeConfig = volumeDescription.GetVolumeConfig();
-
-    VolumeConfigToVolume(volumeConfig, Volume);
-    Volume.SetTokenVersion(volumeDescription.GetTokenVersion());
-
-    if (IsDiskRegistryMediaKind(Volume.GetStorageMediaKind())) {
-        DescribeDiskRegistryVolume(ctx);
-        return;
-    }
-
-    auto response = std::make_unique<TEvService::TEvDescribeVolumeResponse>();
-    *response->Record.MutableVolume() = std::move(Volume);
-    Cerr<<"ALl FINE!!!!"<<Endl;
-
-    ReplyAndDie(ctx, std::move(response));
-}
-
 void TDescribeVolumeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvDescribeVolumeResponse> response)
@@ -293,11 +227,12 @@ STFUNC(TDescribeVolumeActor::StateDescribeVolume)
             TEvSSProxy::TEvDescribeVolumeResponse,
             HandleDescribeVolumeResponse);
         HFunc(
+            TEvService::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeFromSchemeCacheResponse);
+        HFunc(
             TEvDiskRegistry::TEvDescribeDiskResponse,
             HandleDescribeDiskResponse);
-        HFunc(
-            TEvTxProxySchemeCache::TEvNavigateKeySetResult,
-            HandleDescribeVolumeFromSchemeCacheResponse);
+
         default:
             HandleUnexpectedEvent(
                 ev,

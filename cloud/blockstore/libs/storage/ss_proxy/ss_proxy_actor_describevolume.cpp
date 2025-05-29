@@ -1,13 +1,14 @@
 #include "ss_proxy_actor.h"
 
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_label.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy_events_private.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -33,6 +34,7 @@ private:
 
     const TStorageConfigPtr Config;
     const TString DiskId;
+    const bool UseSchemeCache;
 
     bool FallbackRequest = false;
 
@@ -40,7 +42,10 @@ public:
     TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        TString diskId);
+        TString diskId,
+        bool useSchemeShard);
+
+    void DescribeVolumeFromCache(const TActorContext& ctx);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -51,11 +56,19 @@ private:
         const TActorContext& ctx,
         std::unique_ptr<TEvSSProxy::TEvDescribeVolumeResponse> response);
 
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        std::unique_ptr<TEvService::TEvDescribeVolumeResponse> response);
+
     bool CheckVolume(
         const TActorContext& ctx,
         const NKikimrBlockStore::TVolumeConfig& volumeConfig) const;
 
     TString GetFullPath() const;
+
+    void HandleDescribeVolumeFromSchemeCacheResponse(
+        const TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev,
+        const TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
@@ -74,16 +87,22 @@ private:
 TDescribeVolumeActor::TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        TString diskId)
+        TString diskId,
+        bool useSchemeCache)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
+    , UseSchemeCache(useSchemeCache)
 {}
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
 {
     ctx.Schedule(Timeout, new TEvents::TEvWakeup());
-    DescribeVolume(ctx);
+    if (UseSchemeCache){
+        DescribeVolumeFromCache(ctx);
+    } else {
+        DescribeVolume(ctx);
+    }
     Become(&TThis::StateWork);
 }
 
@@ -128,9 +147,39 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
+void TDescribeVolumeActor::DescribeVolumeFromCache(const TActorContext& ctx)
+{
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Volume %s: describe request from schemeCashe",
+        DiskId.Quote().data());
+
+    auto request = TAutoPtr<NSchemeCache::TSchemeCacheNavigate>(
+        new NSchemeCache::TSchemeCacheNavigate());
+    auto& entry = request->ResultSet.emplace_back();
+    entry.Operation = NSchemeCache::TSchemeCacheNavigate::OpPath;
+    entry.SyncVersion = true;
+    entry.RequestType =
+        NSchemeCache::TSchemeCacheNavigate::TEntry::ERequestType::ByPath;
+    entry.Path = {GetFullPath()};
+    auto event = std::make_unique<TEvTxProxySchemeCache::TEvNavigateKeySet>(
+        std::move(request));
+
+    NCloud::Send(ctx, MakeSchemeCacheID(), std::move(event));
+}
+
 void TDescribeVolumeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvSSProxy::TEvDescribeVolumeResponse> response)
+{
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Die(ctx);
+}
+
+void TDescribeVolumeActor::ReplyAndDie(
+    const TActorContext& ctx,
+    std::unique_ptr<TEvService::TEvDescribeVolumeResponse> response)
 {
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -234,6 +283,114 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
     ReplyAndDie(ctx, std::move(response));
 }
 
+void TDescribeVolumeActor::HandleDescribeVolumeFromSchemeCacheResponse(
+    const TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev,
+    const TActorContext& ctx)
+{
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Volume %s: describe response from schemeCashe catched",
+        DiskId.Quote().data());
+
+    const auto* msg = ev->Get();
+    const auto& resultSet = msg->Request->ResultSet;
+    Cerr<<"pre"<<Endl;
+    if (resultSet.empty()) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Volume %s: scheme cache returned empty result set",
+            DiskId.Quote().data());
+
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                MakeError(E_FAIL, "Empty result set from scheme cache")));
+        return;
+    }
+    auto& item = msg->Request->ResultSet.front();
+    Cerr<<"auto& item = msg->Request->ResultSet.front()"<<Endl;
+    Cerr<<"status& "<< item.Status << Endl;
+
+    if (item.Status != NSchemeCache::TSchemeCacheNavigate::EStatus::Ok) {
+        Cerr<<"status2 "<< item.Status << Endl;
+        TStringBuilder status;
+        status << item.Status;
+
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            TStringBuilder()
+                << "Volume " << DiskId.Quote().data()
+                << " : scheme cache resolution failed: status= " << status);
+
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(MakeError(
+                E_FAIL,
+                TStringBuilder() << "Resolution failed: " << item.Status)));
+        Cerr<<"ReplyAndDie "<< item.Status << Endl;
+
+        return;
+    }
+    Cerr<<"uto blockStoreVolumeDescription = item.BFACILITY_SCHEMESHARDlockStoreVolumeInfo->Description;"<<Endl;
+
+    auto blockStoreVolumeDescription = item.BlockStoreVolumeInfo->Description;
+    // Emptiness of VolumeTabletId or any of partition tablet ids means that
+    // blockstore volume is not configured by Hive yet.
+
+    if (!blockStoreVolumeDescription.GetVolumeTabletId()) {
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Blockstore volume " << GetFullPath().Quote()
+                        << " has zero VolumeTabletId"),
+                GetFullPath()));
+        return;
+    }
+    Cerr<<"if (!blockStoreVolumeDescription.GetVolumeTabletId()) {;"<<Endl;
+
+    for (const auto& part: blockStoreVolumeDescription.GetPartitions()) {
+        if (!part.GetTabletId()) {
+            auto error = MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Blockstore volume " << GetFullPath().Quote()
+                    << " has zero TabletId for partition: "
+                    << part.GetPartitionId());
+            ReplyAndDie(
+                ctx,
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                    std::move(error),
+                    GetFullPath()));
+            return;
+        }
+    }
+    Cerr<<"    for (const auto& part: blockStoreVolumeDescription.GetPartitions()) {;"<<Endl;
+
+    const auto& volumeConfig = blockStoreVolumeDescription.GetVolumeConfig();
+    Cerr<<"CheckVolume"<<Endl;
+    if (!CheckVolume(ctx, volumeConfig)) {
+        // Trieng to use DescribeVolume request via schemeshard
+        DescribeVolume(ctx);
+        return;
+    }
+
+    NProto::TVolume volume;
+
+    VolumeConfigToVolume(volumeConfig, volume);
+    volume.SetTokenVersion(blockStoreVolumeDescription.GetTokenVersion());
+
+    auto response = std::make_unique<TEvService::TEvDescribeVolumeResponse>();
+    *response->Record.MutableVolume() = std::move(volume);
+
+    ReplyAndDie(ctx, std::move(response));
+}
+
 void TDescribeVolumeActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
@@ -260,6 +417,9 @@ STFUNC(TDescribeVolumeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
+        HFunc(
+            NKikimr::TEvTxProxySchemeCache::TEvNavigateKeySetResult,
+            HandleDescribeVolumeFromSchemeCacheResponse);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
@@ -291,7 +451,8 @@ void TSSProxyActor::HandleDescribeVolume(
         ctx,
         std::move(requestInfo),
         Config,
-        msg->DiskId);
+        msg->DiskId,
+        Config->GetUseSchemeCacheForDescribeVolume());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

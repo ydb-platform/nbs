@@ -1233,5 +1233,5 @@ message TStorageServiceConfig
     // replica becomes online
     optional uint32 LaggingDeviceMaxMigrationIoDepth = 429;
 
-    optional bool UsingSchemeShardForDescribeVolume = 430;
+    optional bool UseSchemeCacheForDescribeVolume = 430;
 }
