@@ -100,7 +100,7 @@ void TGetCapacityActor::ReplyAndDie(
     LWTRACK(
         ResponseSent_Service,
         RequestInfo->CallContext->LWOrbit,
-        "ExecuteAction_GetNameserviceConfig",
+        "ExecuteAction_GetClusterCapacity",
         RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -172,6 +172,7 @@ void TGetCapacityActor::HandleGetYDBCapacity(
 
     if (msg->Record.GetEntries().empty()) {
         HandleEmptyList(ctx, "BSController");
+        return;
     }
 
     ui64 totalBytesSSD = 0;
@@ -215,7 +216,7 @@ void TGetCapacityActor::HandleGetYDBCapacity(
 
     TString output;
     google::protobuf::util::MessageToJsonString(result, &output);
-    HandleSuccess(ctx, output);
+    HandleSuccess(ctx, std::move(output));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

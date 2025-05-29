@@ -1097,7 +1097,8 @@ public:
     }
 
     auto CreateGetClusterCapacityRequest() {
-        auto request = std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityRequest>();
 
         return request;
     }
