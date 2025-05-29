@@ -19,7 +19,7 @@ func NewServiceMock() *ServiceMock {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *ServiceMock) SelectShard(
+func (s *ServiceMock) PickShard(
 	ctx context.Context,
 	disk *disk_manager.DiskId,
 ) string {

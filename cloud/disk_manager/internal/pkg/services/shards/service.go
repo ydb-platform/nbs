@@ -24,7 +24,7 @@ func NewService(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *service) SelectShard(
+func (s *service) PickShard(
 	ctx context.Context,
 	disk *disk_manager.DiskId,
 ) string {
