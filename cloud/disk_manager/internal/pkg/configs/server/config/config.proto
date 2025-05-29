@@ -16,6 +16,7 @@ import "cloud/disk_manager/internal/pkg/services/filesystem/config/config.proto"
 import "cloud/disk_manager/internal/pkg/services/images/config/config.proto";
 import "cloud/disk_manager/internal/pkg/services/placementgroup/config/config.proto";
 import "cloud/disk_manager/internal/pkg/services/pools/config/config.proto";
+import "cloud/disk_manager/internal/pkg/services/shards/config/config.proto";
 import "cloud/disk_manager/internal/pkg/services/snapshots/config/config.proto";
 import "cloud/tasks/config/config.proto";
 import "cloud/tasks/tracing/config/config.proto";
@@ -70,4 +71,5 @@ message ServerConfig {
     optional performance.PerformanceConfig PerformanceConfig = 16;
     optional bool LockProcessMemory = 17 [default = true];
     optional tracing.TracingConfig TracingConfig = 18;
+    optional shards.ShardsConfig ShardsConfig = 19;
 }

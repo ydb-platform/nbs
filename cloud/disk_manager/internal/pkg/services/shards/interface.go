@@ -9,7 +9,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type Service interface {
-	SelectShard(
+	PickShard(
 		ctx context.Context,
 		disk *disk_manager.DiskId,
 	) string

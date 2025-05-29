@@ -22,6 +22,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	pools_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/shards"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -374,6 +375,7 @@ func initControlplane(
 	)
 
 	poolService := pools.NewService(taskScheduler, poolStorage)
+	shardsService := shards.NewService(config.GetShardsConfig())
 
 	var filesystemService filesystem.Service
 	if config.GetFilesystemConfig() != nil {
@@ -447,6 +449,7 @@ func initControlplane(
 			config.GetDisksConfig(),
 			nbsFactory,
 			poolService,
+			shardsService,
 			resourceStorage,
 		),
 	)

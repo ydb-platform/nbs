@@ -334,8 +334,6 @@ type MultiZoneClient interface {
 type Factory interface {
 	GetZones() []string
 
-	GetShards(zoneID string) []string
-
 	HasClient(zoneID string) bool
 
 	GetClient(ctx context.Context, zoneID string) (Client, error)
