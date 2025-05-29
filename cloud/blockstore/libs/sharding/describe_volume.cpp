@@ -113,12 +113,12 @@ struct TMultiShardDescribeHandler
             for (auto& host: shard.second.Hosts) {
 
                 if (!shard.first.empty()) {
-                    STORAGE_ERROR(
+                    STORAGE_DEBUG(
                         TStringBuilder()
                             << "Send remote Describe Request to " << host.LogTag
                             << " for volume " << Request.GetDiskId());
                 } else {
-                    STORAGE_ERROR(
+                    STORAGE_DEBUG(
                         TStringBuilder()
                             << "Send local Describe Request for volume "
                             << Request.GetDiskId());
@@ -135,13 +135,8 @@ struct TMultiShardDescribeHandler
                     host.LogTag,
                     std::move(future));
 
-                Handlers.push_back(std::move(handler));
-            }
-        }
-
-        with_lock(Lock) {
-            for (auto& handler: Handlers) {
                 handler.Start();
+                Handlers.push_back(std::move(handler));
             }
         }
     }
@@ -277,7 +272,7 @@ std::optional<TDescribeFuture> DescribeRemoteVolume(
     shards.emplace("", std::move(localShard));
 
     auto describeResult = std::make_shared<TMultiShardDescribeHandler>(
-        logging->CreateLog("BLOCKSTORE_REMOTE_DESCRIBE"),
+        logging->CreateLog("BLOCKSTORE_SHARDING"),
         std::move(shards),
         std::move(request),
         incompleteShards);

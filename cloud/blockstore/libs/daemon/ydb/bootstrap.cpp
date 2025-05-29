@@ -360,16 +360,6 @@ void TBootstrapYdb::InitRdmaClient()
                 Monitoring,
                 CreateRdmaClientConfig(Configs->RdmaConfig));
 
-            if (!RdmaClient) {
-                auto rdmaConfig = CreateRdmaClientConfig(Configs->RdmaConfig);
-
-                RdmaClient = NRdma::CreateClient(
-                    NRdma::NVerbs::CreateVerbs(),
-                    Logging,
-                    Monitoring,
-                    std::move(rdmaConfig));
-            }
-
             STORAGE_INFO("RDMA client initialized");
         }
     } catch (...) {
@@ -390,14 +380,6 @@ void TBootstrapYdb::InitRdmaServer()
         Logging,
         Monitoring,
         std::move(rdmaConfig));
-
-    if (!RdmaServer) {
-        RdmaServer = NRdma::CreateServer(
-            NRdma::NVerbs::CreateVerbs(),
-            Logging,
-            Monitoring,
-            std::move(rdmaConfig));
-    }
 }
 
 void TBootstrapYdb::InitKikimrService()
@@ -857,7 +839,8 @@ void TBootstrapYdb::WarmupBSGroupConnections()
 void TBootstrapYdb::InitRdmaRequestServer()
 {
     // TODO: read config
-    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>();
+    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>(
+        Configs->RdmaConfig->GetServer());
 
     RdmaRequestServer = ServerModuleFactories->RdmaServerFactory(
         Logging,
