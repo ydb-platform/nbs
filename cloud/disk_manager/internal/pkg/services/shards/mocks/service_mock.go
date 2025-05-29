@@ -26,11 +26,5 @@ func (s *ServiceMock) PickShard(
 ) string {
 
 	args := s.Called(ctx, disk, folderID)
-	return args.String(0), args.Error(1)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func NewServiceMock() *ServiceMock {
-	return &ServiceMock{}
+	return args.String(0)
 }

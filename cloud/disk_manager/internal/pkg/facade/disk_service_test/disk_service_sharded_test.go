@@ -14,7 +14,7 @@ import (
 
 const (
 	excludedFolderId = "excluded-folder"
-	includedFolderId = "included-folder"
+	otherFolderId    = "folder"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -295,7 +295,7 @@ func TestDiskServiceInShardsCreateDiskInCorrectShard(t *testing.T) {
 			ZoneId: shardedZoneId,
 			DiskId: diskID2,
 		},
-		FolderId: includedFolderId,
+		FolderId: otherFolderId,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)

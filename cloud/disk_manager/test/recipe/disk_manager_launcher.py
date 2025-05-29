@@ -176,9 +176,7 @@ ShardsConfig: <
             ]
         >
     >
-    ExcludedFolders: <
-        Folders: ["excluded-folder"]
-    >
+    ExcludedFolders: ["excluded-folder"]
 >
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"
