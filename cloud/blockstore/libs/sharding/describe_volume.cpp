@@ -90,6 +90,16 @@ TFuture<NProto::TDescribeVolumeResponse> Describe(
 struct TMultiShardDescribeHandler
     : public std::enable_shared_from_this<TMultiShardDescribeHandler>
 {
+    TLog Log;
+    std::atomic<ui64> Counter{0};
+    TShards Shards;
+    NProto::TDescribeVolumeRequest Request;
+    bool IncompleteShards;
+
+    TAdaptiveLock Lock;
+    TPromise<NProto::TDescribeVolumeResponse> Promise;
+    TVector<TDescribeResponseHandler> Handlers;
+
     TMultiShardDescribeHandler(
             TLog log,
             TShards shards,
@@ -140,15 +150,6 @@ struct TMultiShardDescribeHandler
             }
         }
     }
-    TLog Log;
-    std::atomic<ui64> Counter{0};
-    TShards Shards;
-    NProto::TDescribeVolumeRequest Request;
-    bool IncompleteShards;
-
-    TAdaptiveLock Lock;
-    TPromise<NProto::TDescribeVolumeResponse> Promise;
-    TVector<TDescribeResponseHandler> Handlers;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

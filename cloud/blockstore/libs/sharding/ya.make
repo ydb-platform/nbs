@@ -5,6 +5,9 @@ SRCS(
     describe_volume.cpp
     remote_storage_provider.cpp
     remote_storage.cpp
+    shard_client.cpp
+    shard_endpoints_manager.cpp
+    sharding_common.cpp
 )
 
 PEERDIR(
