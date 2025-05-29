@@ -153,6 +153,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         config.SetTabletRebootCoolDownIncrement(INCREMENT_TIME.MilliSeconds());
         config.SetTabletRebootCoolDownMax(MAX_TIME.MilliSeconds());
         config.SetThrottlingEnabled(false);
+        config.SetMaxWriteBlobErrorsBeforeSuicide(1);
         auto runtime = PrepareTestActorRuntime(config);
 
         TVolumeClient volume(*runtime);

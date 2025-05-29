@@ -1249,4 +1249,7 @@ message TStorageServiceConfig
     optional uint32 LoadConfigsFromCmsRetryMinDelay = 432;
     optional uint32 LoadConfigsFromCmsRetryMaxDelay = 433;
     optional uint32 LoadConfigsFromCmsTotalTimeout = 434;
+
+    // Maximum number of errors on WriteBlob without tablet restart.
+    optional uint32 MaxWriteBlobErrorsBeforeSuicide = 435;
 }

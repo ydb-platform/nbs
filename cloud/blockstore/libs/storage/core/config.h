@@ -506,6 +506,7 @@ public:
     ui32 GetMixedIndexCacheV1SizeSSD() const;
 
     ui32 GetMaxReadBlobErrorsBeforeSuicide() const;
+    ui32 GetMaxWriteBlobErrorsBeforeSuicide() const;
 
     bool GetRejectMountOnAddClientTimeout() const;
 

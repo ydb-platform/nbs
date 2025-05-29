@@ -396,6 +396,26 @@ void TPartitionActor::HandleWriteBlobCompleted(
 
     ui32 channel = msg->BlobId.Channel();
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
+    UpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize());
+    if (groupId == Max<ui32>()) {
+        Y_DEBUG_ABORT_UNLESS(
+            0,
+            "HandleWriteBlobCompleted: invalid blob id received");
+    } else {
+        UpdateWriteThroughput(
+            ctx.Now(),
+            channel,
+            groupId,
+            msg->BlobId.BlobSize());
+    }
+
+    PartCounters->RequestCounters.WriteBlob.AddRequest(
+        msg->RequestTime.MicroSeconds(),
+        msg->BlobId.BlobSize(),
+        1,
+        State->GetChannelDataKind(channel));
+
+    State->CompleteIORequest(channel);
 
     const auto isValidFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
     const auto yellowMoveFlag =
@@ -436,39 +456,29 @@ void TPartitionActor::HandleWriteBlobCompleted(
 
     if (FAILED(msg->GetStatus())) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Stop tablet because of WriteBlob error (actor %s, group %u): %s",
+            "[%lu][d:%s] WriteBlob error happened: %s",
             TabletID(),
             PartitionConfig.GetDiskId().c_str(),
-            ev->Sender.ToString().c_str(),
-            groupId,
             FormatError(msg->GetError()).data());
 
-        ReportTabletBSFailure();
-        Suicide(ctx);
-        return;
-    }
+        if (State->IncrementWriteBlobErrorCount()
+                >= Config->GetMaxWriteBlobErrorsBeforeSuicide())
+        {
+            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+                "[%lu][d:%s] Stop tablet because of too many WritedBlob errors (actor %s, group %u): %s",
+                TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
+                ev->Sender.ToString().c_str(),
+                groupId,
+                FormatError(msg->GetError()).data());
 
-    if (groupId == Max<ui32>()) {
-        Y_DEBUG_ABORT_UNLESS(
-            0,
-            "HandleWriteBlobCompleted: invalid blob id received");
+            ReportTabletBSFailure();
+            Suicide(ctx);
+            return;
+        }
     } else {
-        UpdateWriteThroughput(
-            ctx.Now(),
-            channel,
-            groupId,
-            msg->BlobId.BlobSize());
         State->RegisterSuccess(ctx.Now(), groupId);
     }
-    UpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize());
-
-    PartCounters->RequestCounters.WriteBlob.AddRequest(
-        msg->RequestTime.MicroSeconds(),
-        msg->BlobId.BlobSize(),
-        1,
-        State->GetChannelDataKind(channel));
-
-    State->CompleteIORequest(channel);
 
     ProcessIOQueue(ctx, channel);
 }
