@@ -3694,7 +3694,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             1,
             response->Record.FailInfo.FailedRanges.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            DescribeRange(range).c_str(),
+            DescribeRange(range),
             response->Record.FailInfo.FailedRanges[0]);
     }
 }

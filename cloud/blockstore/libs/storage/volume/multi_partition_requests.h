@@ -285,9 +285,10 @@ private:
         NProto::TCheckRangeResponse& dst)
     {
         Y_UNUSED(requestNo);
-        auto getExtendedInfo = [](const auto& response) -> TString
+        auto getExtendedInfo = [](const auto& response)
         {
-            return TString(TStringBuf{response.GetStatus().GetMessage()}.SplitOff('\n'));
+            return TString(
+                TStringBuf{response.GetStatus().GetMessage()}.SplitOff('\n'));
         };
 
         MergeCommonFields(src, dst);

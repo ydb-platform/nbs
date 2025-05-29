@@ -927,7 +927,7 @@ void TPartitionActor::HandleReadBlocksRequest(
         TString errorReason,
         ui32 flags = 0)
     {
-        auto response = std::make_unique<TEvService::TEvReadBlocksResponse>(
+        auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(errorCode, std::move(errorReason), flags));
 
         LWTRACK(
