@@ -189,8 +189,8 @@ public:
     TWriteBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
-            size_t blockSize,
-            bool isDataAligned)
+            bool isDataAligned,
+            size_t blockSize)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , IsDataAligned(isDataAligned)
