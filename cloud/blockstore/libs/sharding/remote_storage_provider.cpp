@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
 
+#include <util/generic/hash_set.h>
 #include <util/random/random.h>
 
 namespace NCloud::NBlockStore::NSharding {
@@ -64,7 +65,7 @@ struct TShardEndpointManagerBase
     TAdaptiveLock Lock;
 
     THashMap<TString, TEndpoint> Active;
-    THashMap<TString, NThreading::TFuture<TEndpoint>> Activating;
+    THashSet<TString> Activating;
     TVector<TString> Unused;
 
     TShardEndpointManagerBase(
@@ -126,7 +127,7 @@ struct TShardEndpointManagerBase
 
     void ResizeIfNeeded()
     {
-        TVector<std::pair<TString, NThreading::TFuture<TEndpoint>>> tmp;
+        TVector<TString> tmp;
         with_lock(Lock) {
             if (Active.size() >= ShardConfig.GetMinShardConnections()) {
                 return;
@@ -136,15 +137,15 @@ struct TShardEndpointManagerBase
             while (delta-- && !Unused.empty()) {
                 auto host = Unused.back();
                 Unused.pop_back();
-                auto future = static_cast<T*>(this)->SetupHostEndpoint(host);
-                Activating[host] = future;
-                tmp.push_back({host, future});
+                Activating.emplace(host);
+                tmp.push_back(host);
             }
         }
 
         auto weakPtr = this->weak_from_this();
-        for (const auto& [host,f]: tmp) {
-            f.Subscribe(
+        for (const auto& host: tmp) {
+            auto future = static_cast<T*>(this)->SetupHostEndpoint(host);
+            future.Subscribe(
                 [=] (const auto& future) {
                     if (auto pThis = weakPtr.lock(); pThis) {
                         with_lock(pThis->Lock) {

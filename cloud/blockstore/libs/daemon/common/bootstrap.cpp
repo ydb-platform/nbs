@@ -386,7 +386,7 @@ void TBootstrapBase::Init()
             Scheduler,
             Logging,
             Monitoring,
-            CreateServerStatsStub()).GetResult(),
+            ServerStats).GetResult(),
         RdmaClient
     );
 

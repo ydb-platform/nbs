@@ -56,6 +56,7 @@ namespace NCloud::NBlockStore {
     xxx(EXTERNAL_ENDPOINT)                                                     \
     BLOCKSTORE_ACTORS(xxx)                                                     \
     xxx(USER_STATS)                                                            \
+    xxx(SHARDING)                                                              \
 // BLOCKSTORE_COMPONENTS
 
 ////////////////////////////////////////////////////////////////////////////////

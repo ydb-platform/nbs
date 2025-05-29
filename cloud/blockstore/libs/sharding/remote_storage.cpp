@@ -25,7 +25,6 @@ struct TRemoteStorage
     explicit TRemoteStorage(IBlockStorePtr endpoint)
         : Endpoint(std::move(endpoint))
     {
-
     }
 
     NThreading::TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
