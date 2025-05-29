@@ -301,7 +301,7 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 					),
 				},
 			},
-			"zone-d-sharded": {
+			"zone-d": {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
@@ -309,7 +309,7 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 					),
 				},
 			},
-			"zone-d-sharded-2": {
+			"zone-d-shard-1": {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",

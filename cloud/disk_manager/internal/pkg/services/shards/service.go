@@ -58,7 +58,7 @@ func (s *service) getShards(zoneID string) []string {
 }
 
 func (s *service) isShardingAllowedForFolder(folderID string) bool {
-	return (len(rule.IncludedFolders.GetFolders()) == 0 ||
-		slices.Contains(rule.IncludedFolders.GetFolders(), folderID)) &&
-		!slices.Contains(rule.ExcludedFolders.GetFolders(), folderID)
+	return (len(s.config.GetIncludedFolders()) == 0 ||
+		slices.Contains(s.config.GetIncludedFolders(), folderID)) &&
+		!slices.Contains(s.config.GetExcludedFolders(), folderID)
 }

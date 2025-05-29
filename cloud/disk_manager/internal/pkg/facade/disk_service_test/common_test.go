@@ -17,9 +17,9 @@ import (
 
 const (
 	defaultZoneId = "zone-a"
-	shardedZoneId = "zone-d-sharded"
-	shardId1      = "zone-d-sharded"
-	shardId2      = "zone-d-sharded-2"
+	shardedZoneId = "zone-d"
+	shardId1      = "zone-d"
+	shardId2      = "zone-d-shard1"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
