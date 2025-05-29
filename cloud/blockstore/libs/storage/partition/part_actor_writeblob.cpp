@@ -454,8 +454,7 @@ void TPartitionActor::HandleWriteBlobCompleted(
         }
     }
 
-    if (FAILED(msg->GetStatus()))
-    {
+    if (FAILED(msg->GetStatus())) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
             "[%lu][d:%s] WriteBlob error happened: %s",
             TabletID(),
