@@ -13,5 +13,5 @@ type Service interface {
 		ctx context.Context,
 		disk *disk_manager.DiskId,
 		folderID string,
-	) (string, error)
+	) string
 }

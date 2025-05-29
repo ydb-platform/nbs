@@ -23,7 +23,7 @@ func (s *ServiceMock) PickShard(
 	ctx context.Context,
 	disk *disk_manager.DiskId,
 	folderID string,
-) (string, error) {
+) string {
 
 	args := s.Called(ctx, disk, folderID)
 	return args.String(0), args.Error(1)

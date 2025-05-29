@@ -12,15 +12,10 @@ message ZoneShards {
     repeated string Shards = 1;
 }
 
-message Folders {
-    repeated string Folders = 1;
-}
-
 message ShardsConfig {
     map<string, ZoneShards> Shards = 1;
-    oneof FolderRules
-    {
-        Folders IncludedFolders = 2;
-        Folders ExcludedFolders = 3;
-    }
+    repeated string ExcludedFolders = 2;
+
+    // If empty, every folder is accepted.
+    repeated string IncludedFolders = 3;
 }

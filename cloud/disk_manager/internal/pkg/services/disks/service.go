@@ -176,7 +176,7 @@ func (s *service) prepareZoneId(
 		return diskMeta.ZoneID, nil
 	}
 
-	return s.shardsService.PickShard(ctx, req.DiskId, req.FolderId)
+	return s.shardsService.PickShard(ctx, req.DiskId, req.FolderId), nil
 }
 
 func (s *service) prepareCreateDiskParams(
