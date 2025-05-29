@@ -177,7 +177,7 @@ struct TEvDiskAgentPrivate
 
         TMultiAgentWriteDeviceBlocksResponse() = default;
 
-        TMultiAgentWriteDeviceBlocksResponse(TErrorResponse&& error)
+        TMultiAgentWriteDeviceBlocksResponse(NProto::TError  error)
             : Error(std::move(error))
         {}
 

@@ -38,7 +38,7 @@ TTestMultiAgentWriteHandler::PerformMultiAgentWrite(
     Requests.push_back(std::move(*request));
     if (Responses.empty()) {
         return NThreading::MakeFuture<TMultiAgentWriteDeviceBlocksResponse>(
-            TErrorResponse(E_FAIL, "Response not mocked"));
+            MakeError(E_FAIL, "Response not mocked"));
     }
 
     auto result = NThreading::MakeFuture<TMultiAgentWriteDeviceBlocksResponse>(

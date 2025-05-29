@@ -897,7 +897,7 @@ private:
         HandleMultiAgentWriteBlocksResponse(
             continuationData.RequestDetails,
             MakeFuture<TMultiAgentWriteDeviceBlocksResponse>(
-                TErrorResponse(resultCode, overlapDetails)));
+                MakeError(resultCode, overlapDetails)));
     }
 
     void HandleMultiAgentWriteBlocksResponse(

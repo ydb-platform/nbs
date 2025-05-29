@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/rdma_test/memory_test_storage.h>
 #include <cloud/blockstore/libs/rdma_test/server_test_async.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
 #include <cloud/blockstore/libs/storage/disk_agent/rdma_target.h>
 
