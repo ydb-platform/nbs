@@ -4,6 +4,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NActors;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TMultiAgentWriteHandler final: public IMultiAgentWriteHandler
@@ -13,13 +15,11 @@ public:
         TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
 
 private:
-    NActors::TActorSystem* const ActorSystem;
-    const NActors::TActorId DiskAgentId;
+    TActorSystem* const ActorSystem;
+    const TActorId DiskAgentId;
 
 public:
-    TMultiAgentWriteHandler(
-        NActors::TActorSystem* actorSystem,
-        NActors::TActorId diskAgentId);
+    TMultiAgentWriteHandler(TActorSystem* actorSystem, TActorId diskAgentId);
 
     NThreading::TFuture<TMultiAgentWriteDeviceBlocksResponse>
     PerformMultiAgentWrite(
@@ -30,8 +30,8 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TMultiAgentWriteHandler::TMultiAgentWriteHandler(
-        NActors::TActorSystem* actorSystem,
-        NActors::TActorId diskAgentId)
+        TActorSystem* actorSystem,
+        TActorId diskAgentId)
     : ActorSystem(actorSystem)
     , DiskAgentId(diskAgentId)
 {}
@@ -50,10 +50,8 @@ TMultiAgentWriteHandler::PerformMultiAgentWrite(
 
     auto future = req->ResponsePromise.GetFuture();
 
-    auto newEv = std::make_unique<NActors::IEventHandle>(
-        DiskAgentId,
-        NActors::TActorId(),
-        req.release());
+    auto newEv =
+        std::make_unique<IEventHandle>(DiskAgentId, TActorId(), req.release());
 
     ActorSystem->Send(newEv.release());
 
@@ -63,8 +61,8 @@ TMultiAgentWriteHandler::PerformMultiAgentWrite(
 ////////////////////////////////////////////////////////////////////////////////
 
 IMultiAgentWriteHandlerPtr CreateMultiAgentWriteHandler(
-    NActors::TActorSystem* actorSystem,
-    NActors::TActorId diskAgentId)
+    TActorSystem* actorSystem,
+    TActorId diskAgentId)
 {
     return std::make_shared<TMultiAgentWriteHandler>(actorSystem, diskAgentId);
 }

@@ -64,7 +64,6 @@ struct IRdmaTarget: IStartable
 
 using TStorageAdapterPtr = std::shared_ptr<TStorageAdapter>;
 using IRdmaTargetPtr = std::shared_ptr<IRdmaTarget>;
-using IMultiAgentWriteHandlerPtr = std::shared_ptr<IMultiAgentWriteHandler>;
 
 IRdmaTargetPtr CreateRdmaTarget(
     TRdmaTargetConfigPtr rdmaTargetConfig,

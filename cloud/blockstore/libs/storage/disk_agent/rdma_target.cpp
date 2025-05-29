@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
