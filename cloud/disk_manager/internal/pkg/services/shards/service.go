@@ -74,14 +74,3 @@ func (s *service) isShardingAllowedForFolder(folderID string) (bool, error) {
 		return false, errors.NewNonRetriableErrorf("unknown rule %s", rule)
 	}
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-func NewService(
-	config *shards_config.ShardsConfig,
-) Service {
-
-	return &service{
-		config: config,
-	}
-}
