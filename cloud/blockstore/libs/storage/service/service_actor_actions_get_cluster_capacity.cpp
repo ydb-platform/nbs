@@ -140,7 +140,7 @@ void TGetCapacityActor::HandleDiskRegistyCapacity(
         LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Getting Disk Registry capacity failed: " << error.GetMessage());
+            "Getting Disk Registry capacity failed: " << FormatError(error));
     }
 
     if (msg->Record.GetCapacity().empty()) {
