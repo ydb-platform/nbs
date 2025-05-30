@@ -888,7 +888,8 @@ private:
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
 
         auto reportZeroBlocksMetrics =
-            DiagnosticsConfig->GetReportZeroBlocksMetricsForYDBBasedDisks() ||
+            !DiagnosticsConfig
+                 ->GetSkipReporingZeroBlocksMetricsForYDBBasedDisks() ||
             IsDiskRegistryMediaKind(volumeConfig.GetStorageMediaKind());
         NUserCounter::RegisterServerVolumeInstance(
             *UserCounters,
