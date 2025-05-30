@@ -823,7 +823,8 @@ public:
 
     bool CheckIfDeviceReplacementIsAllowed(
         TInstant now,
-        const TDiskId& masterDiskId,
+        const TString& diskId,
+        const TDiskState& disk,
         const TDeviceId& deviceId);
 
     NProto::TError CreateDiskFromDevices(

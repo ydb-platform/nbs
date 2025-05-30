@@ -315,6 +315,21 @@ struct TDiskRegistrySchema
         using TColumns = TableColumns<SeqNo, Notification>;
     };
 
+    struct DisksWithRecentlyReplacedDevices
+        : public TTableSchema<19>
+    {
+        struct MasterDiskId
+            : public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {};
+
+        struct ReplicaId
+            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        {};
+
+        using TKey = TableKey<MasterDiskId>;
+        using TColumns = TableColumns<MasterDiskId, ReplicaId>;
+    };
+
     using TTables = SchemaTables<
         Disks,
         DiskRegistryConfig,
@@ -330,7 +345,8 @@ struct TDiskRegistrySchema
         SuspendedDevices,
         AutomaticallyReplacedDevices,
         DiskRegistryAgentListParams,
-        UserNotifications
+        UserNotifications,
+        DisksWithRecentlyReplacedDevices
     >;
 };
 
