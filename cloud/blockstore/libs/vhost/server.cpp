@@ -20,6 +20,7 @@
 #include <util/system/thread.h>
 
 #include <atomic>
+#include <tuple>
 
 namespace NCloud::NBlockStore::NVhost {
 
@@ -183,6 +184,31 @@ public:
         return NProto::TError();
     }
 
+    void CancelRequests()
+    {
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_SILENT);
+        auto [_, error] = MakeResultAndError(
+            E_CANCELLED,
+            "Request is cancelled by API",
+            flags);
+
+        with_lock (RequestsLock) {
+            TLog& Log = AppCtx.Log;
+            STORAGE_INFO(
+                "Cancel requests for endpoint "
+                << SocketPath.Quote() << " with " << RequestsInFlight.Size()
+                << " inflight requests");
+
+            RequestsInFlight.ForEach(
+                [&](TRequest* request)
+                {
+                    CompleteRequest(*request, error, TVhostRequest::CANCELLED);
+                    request->Unlink();
+                });
+        }
+    }
+
     TFuture<NProto::TError> Stop(bool deleteSocket)
     {
         if (Stopped.test_and_set()) {
@@ -191,16 +217,21 @@ public:
 
         auto future = VhostDevice->Stop();
 
-        auto cancelError = MakeError(E_CANCELLED, "Vhost endpoint is stopping");
+        auto [vhostResult, error] =
+            MakeResultAndError(E_CANCELLED, "Vhost endpoint is stopping");
         with_lock (RequestsLock) {
             TLog& Log = AppCtx.Log;
-            STORAGE_INFO("Stop endpoint " << SocketPath.Quote()
-                << " with " << RequestsInFlight.Size() << " inflight requests");
+            STORAGE_INFO(
+                "Stop endpoint " << SocketPath.Quote() << " with "
+                                 << RequestsInFlight.Size()
+                                 << " inflight requests");
 
-            RequestsInFlight.ForEach([&] (TRequest* request) {
-                CompleteRequest(*request, cancelError);
-                request->Unlink();
-            });
+            RequestsInFlight.ForEach(
+                [&](TRequest* request)
+                {
+                    CompleteRequest(*request, error, vhostResult);
+                    request->Unlink();
+                });
         }
 
         if (deleteSocket) {
@@ -283,14 +314,18 @@ private:
             *request->VhostRequest);
 
         auto weakPtr = weak_from_this();
-        future.Apply([weakPtr, req = std::move(request)] (const auto& f) {
-            const auto& response = f.GetValue();
-            if (auto p = weakPtr.lock()) {
-                p->CompleteRequest(*req, response.GetError());
-                p->UnregisterRequest(*req);
-            }
-            return f.GetValue();
-        });
+        future.Apply(
+            [weakPtr, req = std::move(request)](const auto& f)
+            {
+                const auto& response = f.GetValue();
+                if (auto p = weakPtr.lock()) {
+                    auto [vhostResult, error] =
+                        p->MakeResultAndError(response.GetError());
+                    p->CompleteRequest(*req, error, vhostResult);
+                    p->UnregisterRequest(*req);
+                }
+                return f.GetValue();
+            });
     }
 
     TRequestPtr RegisterRequest(TVhostRequestPtr vhostRequest)
@@ -330,25 +365,26 @@ private:
             }
         }
 
-        auto error = MakeError(E_CANCELLED, "Vhost endpoint was stopped");
-        CompleteRequest(*request, error);
+        auto [vhostResult, error] =
+            MakeResultAndError(E_CANCELLED, "Vhost endpoint was stopped");
+        CompleteRequest(*request, error, vhostResult);
         return nullptr;
     }
 
-    void CompleteRequest(TRequest& request, const NProto::TError& error)
+    void CompleteRequest(
+        TRequest& request,
+        const NProto::TError& error,
+        TVhostRequest::EResult vhostResult)
     {
         if (request.Completed.test_and_set()) {
             return;
         }
 
-        auto statsError = error;
-        auto vhostResult = GetResult(statsError);
-
         AppCtx.ServerStats->RequestCompleted(
             AppCtx.Log,
             request.MetricRequest,
             *request.CallContext,
-            statsError);
+            error);
 
         request.VhostRequest->Complete(vhostResult);
     }
@@ -360,30 +396,38 @@ private:
         }
     }
 
-    TVhostRequest::EResult GetResult(NProto::TError& error)
+    std::tuple<TVhostRequest::EResult, NProto::TError> MakeResultAndError(
+        const NProto::TError error)
     {
+        return MakeResultAndError(
+            error.GetCode(),
+            error.GetMessage(),
+            error.GetFlags());
+    }
+
+    std::tuple<TVhostRequest::EResult, NProto::TError>
+    MakeResultAndError(ui32 code, TString message = {}, ui32 flags = 0)
+    {
+        NProto::TError error = MakeError(code, std::move(message), flags);
         if (!HasError(error)) {
-            return TVhostRequest::SUCCESS;
+            return std::make_tuple(TVhostRequest::SUCCESS, std::move(error));
         }
 
         // Keep the logic synchronized with
         // TAlignedDeviceHandler::ReportCriticalError().
-        bool cancelError =
-            error.GetCode() == E_CANCELLED ||
-            GetErrorKind(error) == EErrorKind::ErrorRetriable;
+        bool cancelError = error.GetCode() == E_CANCELLED ||
+                           GetErrorKind(error) == EErrorKind::ErrorRetriable;
 
-        bool stopEndpoint =
-            AppCtx.ShouldStop.test() ||
-            Stopped.test();
+        bool stopEndpoint = AppCtx.ShouldStop.test() || Stopped.test();
 
         if (stopEndpoint && cancelError) {
             auto flags = error.GetFlags();
             SetProtoFlag(flags, NProto::EF_SILENT);
             error.SetFlags(flags);
-            return TVhostRequest::CANCELLED;
+            return std::make_tuple(TVhostRequest::CANCELLED, std::move(error));
         }
 
-        return TVhostRequest::IOERR;
+        return std::make_tuple(TVhostRequest::IOERR, std::move(error));
     }
 };
 
@@ -598,6 +642,9 @@ public:
         const TString& socketPath,
         ui64 blocksCount) override;
 
+    NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) override;
+
 private:
     void InitExecutors();
 
@@ -796,6 +843,37 @@ NProto::TError TServer::UpdateEndpoint(
         endpoint->Update(blocksCount);
     }
     return NProto::TError{};
+}
+
+NProto::TError TServer::CancelEndpointInFlightRequests(
+    const TString& socketPath)
+{
+    if (ShouldStop.test()) {
+        NProto::TError error;
+        error.SetCode(E_FAIL);
+        error.SetMessage("Vhost server is stopped");
+        return MakeError(E_FAIL, "Vhost server is stopped");
+    }
+
+    TEndpointPtr endpoint;
+
+    with_lock (Lock) {
+        auto it = EndpointMap.find(socketPath);
+        if (it == EndpointMap.end()) {
+            return MakeError(
+                S_FALSE,
+                TStringBuilder()
+                    << "endpoint " << socketPath.Quote() << " is not started");
+        }
+
+        auto* executor = it->second;
+        endpoint = executor->GetEndpoint(socketPath);
+    }
+
+    if (endpoint) {
+        endpoint->CancelRequests();
+    }
+    return {};
 }
 
 void TServer::StopAllEndpoints()

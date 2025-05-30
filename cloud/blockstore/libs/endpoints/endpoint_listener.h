@@ -41,6 +41,9 @@ struct IEndpointListener
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume,
         NClient::ISessionPtr session) = 0;
+
+    virtual NProto::TError CancelEndpointInFlightRequests(
+        const TString& socketPath) = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NServer

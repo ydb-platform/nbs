@@ -545,6 +545,44 @@ class Client(_SafeClient):
             request_timeout)
 
     @_handle_errors
+    def cancel_endpoint_in_flight_requests_async(
+            self,
+            unix_socket_path: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
+
+        request = protos.TCancelEndpointInFlightRequestsRequest(
+            UnixSocketPath=unix_socket_path,
+        )
+        return self._impl.cancel_endpoint_in_flight_requests_async(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
+    def cancel_endpoint_in_flight_requests(
+            self,
+            unix_socket_path: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
+
+        request = protos.TCancelEndpointInFlightRequestsRequest(
+            UnixSocketPath=unix_socket_path,
+        )
+        self._impl.cancel_endpoint_in_flight_requests(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
     def list_endpoints_async(
             self,
             idempotence_id: str | None = None,

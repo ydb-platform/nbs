@@ -238,6 +238,18 @@ func (client *Client) RefreshEndpoint(
 	return err
 }
 
+func (client *Client) CancelEndpointInFlightRequests(
+	ctx context.Context,
+	unixSocketPath string,
+) error {
+	req := &protos.TCancelEndpointInFlightRequestsRequest{
+		UnixSocketPath: unixSocketPath,
+	}
+
+	_, err := client.Impl.CancelEndpointInFlightRequests(ctx, req)
+	return err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func IsDiskNotFoundError(e error) bool {

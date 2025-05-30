@@ -26,6 +26,7 @@ type kickEndpointHandlerFunc func(ctx context.Context, req *protos.TKickEndpoint
 type listKeyringsHandlerFunc func(ctx context.Context, req *protos.TListKeyringsRequest) (*protos.TListKeyringsResponse, error)
 type describeEndpointHandlerFunc func(ctx context.Context, req *protos.TDescribeEndpointRequest) (*protos.TDescribeEndpointResponse, error)
 type refreshEndpointHandlerFunc func(ctx context.Context, req *protos.TRefreshEndpointRequest) (*protos.TRefreshEndpointResponse, error)
+type cancelEndpointInFlightRequestsHandlerFunc func(ctx context.Context, req *protos.TCancelEndpointInFlightRequestsRequest) (*protos.TCancelEndpointInFlightRequestsResponse, error)
 type createCheckpointHandlerFunc func(ctx context.Context, req *protos.TCreateCheckpointRequest) (*protos.TCreateCheckpointResponse, error)
 type getCheckpointStatusHandlerFunc func(ctx context.Context, req *protos.TGetCheckpointStatusRequest) (*protos.TGetCheckpointStatusResponse, error)
 type deleteCheckpointHandlerFunc func(ctx context.Context, req *protos.TDeleteCheckpointRequest) (*protos.TDeleteCheckpointResponse, error)
@@ -50,45 +51,46 @@ type closeHandlerFunc func() error
 ////////////////////////////////////////////////////////////////////////////////
 
 type testClient struct {
-	PingHandler                          pingHandlerFunc
-	CreateVolumeHandler                  createVolumeHandlerFunc
-	DestroyVolumeHandler                 destroyVolumeHandlerFunc
-	ResizeVolumeHandler                  resizeVolumeHandlerFunc
-	AlterVolumeHandler                   alterVolumeHandlerFunc
-	AssignVolumeHandler                  assignVolumeHandlerFunc
-	StatVolumeHandler                    statVolumeHandlerFunc
-	MountVolumeHandler                   mountVolumeHandlerFunc
-	UnmountVolumeHandler                 unmountVolumeHandlerFunc
-	ReadBlocksHandler                    readBlocksHandlerFunc
-	WriteBlocksHandler                   writeBlocksHandlerFunc
-	ZeroBlocksHandler                    zeroBlocksHandlerFunc
-	StartEndpointHandler                 startEndpointHandlerFunc
-	StopEndpointHandler                  stopEndpointHandlerFunc
-	ListEndpointsHandler                 listEndpointsHandlerFunc
-	KickEndpointHandler                  kickEndpointHandlerFunc
-	ListKeyringsHandler                  listKeyringsHandlerFunc
-	DescribeEndpointHandler              describeEndpointHandlerFunc
-	RefreshEndpointHandler               refreshEndpointHandlerFunc
-	CreateCheckpointHandler              createCheckpointHandlerFunc
-	GetCheckpointStatusHandler           getCheckpointStatusHandlerFunc
-	DeleteCheckpointHandler              deleteCheckpointHandlerFunc
-	GetChangedBlocksHandler              getChangedBlocksHandlerFunc
-	DescribeVolumeHandler                describeVolumeHandlerFunc
-	DescribeVolumeModelHandler           describeVolumeModelHandlerFunc
-	ListVolumesHandler                   listVolumesHandlerFunc
-	DiscoverInstancesHandler             discoverInstancesHandlerFunc
-	QueryAvailableStorageHandler         queryAvailableStorageHandler
-	ResumeDeviceHandler                  resumeDeviceHandler
-	CreateVolumeFromDeviceHandler        createVolumeFromDeviceHandler
-	ExecuteActionHandler                 executeActionFunc
-	CreatePlacementGroupHandler          createPlacementGroupHandlerFunc
-	DestroyPlacementGroupHandler         destroyPlacementGroupHandlerFunc
-	DescribePlacementGroupHandler        describePlacementGroupHandlerFunc
-	AlterPlacementGroupMembershipHandler alterPlacementGroupMembershipHandlerFunc
-	ListPlacementGroupsHandler           listPlacementGroupsHandlerFunc
-	CmsActionHandler                     cmsActionHandlerFunc
-	QueryAgentsInfoHandler               queryAgentsInfoHandler
-	CloseHandlerFunc                     closeHandlerFunc
+	PingHandler                           pingHandlerFunc
+	CreateVolumeHandler                   createVolumeHandlerFunc
+	DestroyVolumeHandler                  destroyVolumeHandlerFunc
+	ResizeVolumeHandler                   resizeVolumeHandlerFunc
+	AlterVolumeHandler                    alterVolumeHandlerFunc
+	AssignVolumeHandler                   assignVolumeHandlerFunc
+	StatVolumeHandler                     statVolumeHandlerFunc
+	MountVolumeHandler                    mountVolumeHandlerFunc
+	UnmountVolumeHandler                  unmountVolumeHandlerFunc
+	ReadBlocksHandler                     readBlocksHandlerFunc
+	WriteBlocksHandler                    writeBlocksHandlerFunc
+	ZeroBlocksHandler                     zeroBlocksHandlerFunc
+	StartEndpointHandler                  startEndpointHandlerFunc
+	StopEndpointHandler                   stopEndpointHandlerFunc
+	ListEndpointsHandler                  listEndpointsHandlerFunc
+	KickEndpointHandler                   kickEndpointHandlerFunc
+	ListKeyringsHandler                   listKeyringsHandlerFunc
+	DescribeEndpointHandler               describeEndpointHandlerFunc
+	RefreshEndpointHandler                refreshEndpointHandlerFunc
+	CancelEndpointInFlightRequestsHandler cancelEndpointInFlightRequestsHandlerFunc
+	CreateCheckpointHandler               createCheckpointHandlerFunc
+	GetCheckpointStatusHandler            getCheckpointStatusHandlerFunc
+	DeleteCheckpointHandler               deleteCheckpointHandlerFunc
+	GetChangedBlocksHandler               getChangedBlocksHandlerFunc
+	DescribeVolumeHandler                 describeVolumeHandlerFunc
+	DescribeVolumeModelHandler            describeVolumeModelHandlerFunc
+	ListVolumesHandler                    listVolumesHandlerFunc
+	DiscoverInstancesHandler              discoverInstancesHandlerFunc
+	QueryAvailableStorageHandler          queryAvailableStorageHandler
+	ResumeDeviceHandler                   resumeDeviceHandler
+	CreateVolumeFromDeviceHandler         createVolumeFromDeviceHandler
+	ExecuteActionHandler                  executeActionFunc
+	CreatePlacementGroupHandler           createPlacementGroupHandlerFunc
+	DestroyPlacementGroupHandler          destroyPlacementGroupHandlerFunc
+	DescribePlacementGroupHandler         describePlacementGroupHandlerFunc
+	AlterPlacementGroupMembershipHandler  alterPlacementGroupMembershipHandlerFunc
+	ListPlacementGroupsHandler            listPlacementGroupsHandlerFunc
+	CmsActionHandler                      cmsActionHandlerFunc
+	QueryAgentsInfoHandler                queryAgentsInfoHandler
+	CloseHandlerFunc                      closeHandlerFunc
 }
 
 func (client *testClient) Close() error {
@@ -361,6 +363,18 @@ func (client *testClient) RefreshEndpoint(
 	}
 
 	return &protos.TRefreshEndpointResponse{}, nil
+}
+
+func (client *testClient) CancelEndpointInFlightRequests(
+	ctx context.Context,
+	req *protos.TCancelEndpointInFlightRequestsRequest,
+) (*protos.TCancelEndpointInFlightRequestsResponse, error) {
+
+	if client.CancelEndpointInFlightRequestsHandler != nil {
+		return client.CancelEndpointInFlightRequestsHandler(ctx, req)
+	}
+
+	return &protos.TCancelEndpointInFlightRequestsResponse{}, nil
 }
 
 func (client *testClient) CreateCheckpoint(

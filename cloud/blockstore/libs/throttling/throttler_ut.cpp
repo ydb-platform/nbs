@@ -61,6 +61,7 @@ constexpr auto SHORT_TIMEOUT = UPDATE_THROTTLER_USED_QUOTA_INTERVAL / 10;
     xxx(ListKeyrings,                       __VA_ARGS__)                       \
     xxx(DescribeEndpoint,                   __VA_ARGS__)                       \
     xxx(RefreshEndpoint,                    __VA_ARGS__)                       \
+    xxx(CancelEndpointInFlightRequests,     __VA_ARGS__)                       \
 // BLOCKSTORE_NODISK_SERVICE
 
 #define BLOCKSTORE_NOBLOCKS_SERVICE(xxx, ...)                                  \

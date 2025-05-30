@@ -448,6 +448,22 @@ func (client *durableClient) RefreshEndpoint(
 	return resp.(*protos.TRefreshEndpointResponse), err
 }
 
+func (client *durableClient) CancelEndpointInFlightRequests(
+	ctx context.Context,
+	req *protos.TCancelEndpointInFlightRequestsRequest,
+) (*protos.TCancelEndpointInFlightRequestsResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.CancelEndpointInFlightRequests(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TCancelEndpointInFlightRequestsResponse), err
+}
+
 func (client *durableClient) CreateCheckpoint(
 	ctx context.Context,
 	req *protos.TCreateCheckpointRequest,

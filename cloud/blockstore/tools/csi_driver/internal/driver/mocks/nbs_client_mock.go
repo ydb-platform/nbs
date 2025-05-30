@@ -217,6 +217,15 @@ func (c *NbsClientMock) RefreshEndpoint(
 	return args.Get(0).(*protos.TRefreshEndpointResponse), args.Error(1)
 }
 
+func (c *NbsClientMock) CancelEndpointInFlightRequests(
+	ctx context.Context,
+	req *protos.TCancelEndpointInFlightRequestsRequest,
+) (*protos.TCancelEndpointInFlightRequestsResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TCancelEndpointInFlightRequestsResponse), args.Error(1)
+}
+
 func (c *NbsClientMock) CreateCheckpoint(
 	ctx context.Context,
 	req *protos.TCreateCheckpointRequest,

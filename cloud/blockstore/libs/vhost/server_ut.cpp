@@ -57,7 +57,7 @@ private:
     TLockFreeQueue<TTestRequest> RequestQueue;
 
     std::atomic_flag ServiceFrozen = false;
-    TLockFreeQueue<TPromise<void>> FrozenPromises;
+    TLockFreeQueue<TPromise<NProto::TError>> FrozenPromises;
 
 public:
     TTestEnvironment(ui32 blockSize)
@@ -75,6 +75,11 @@ public:
     {
         VhostServer->Stop();
         VhostServer.reset();
+    }
+
+    IServerPtr GetVhostServer()
+    {
+        return VhostServer;
     }
 
     std::shared_ptr<ITestVhostDevice> GetVhostDevice()
@@ -101,11 +106,21 @@ public:
         }
 
         if (!freeze) {
-            TPromise<void> promise;
+            TPromise<NProto::TError> promise;
             while (FrozenPromises.Dequeue(&promise)) {
-                promise.SetValue();
+                promise.SetValue({});
             }
         }
+    }
+
+    TLockFreeQueue<TPromise<NProto::TError>>& GetFrozenPromises()
+    {
+        return FrozenPromises;
+    }
+
+    TFsPath GetSocketPath()
+    {
+        return SocketPath;
     }
 
 private:
@@ -128,12 +143,13 @@ private:
                     std::move(sglist)});
 
                 if (ServiceFrozen.test()) {
-                    auto promise = NewPromise<void>();
+                    auto promise = NewPromise<NProto::TError>();
                     auto future = promise.GetFuture();
                     FrozenPromises.Enqueue(std::move(promise));
-                    return future.Apply([=] (const auto& future) {
-                        Y_UNUSED(future);
-                        return NProto::TWriteBlocksLocalResponse();
+                    return future.Apply([=] (const TFuture<NProto::TError>& future) {
+                        auto response = NProto::TWriteBlocksLocalResponse{};
+                        *response.MutableError() = future.GetValue();
+                        return response;
                     });
                 }
 
@@ -155,7 +171,7 @@ private:
                     std::move(sglist)});
 
                 if (ServiceFrozen.test()) {
-                    auto promise = NewPromise<void>();
+                    auto promise = NewPromise<NProto::TError>();
                     auto future = promise.GetFuture();
                     FrozenPromises.Enqueue(std::move(promise));
                     return future.Apply([=] (const auto& future) {
@@ -180,7 +196,7 @@ private:
                  {}});
 
             if (ServiceFrozen.test()) {
-                auto promise = NewPromise<void>();
+                auto promise = NewPromise<NProto::TError>();
                 auto future = promise.GetFuture();
                 FrozenPromises.Enqueue(std::move(promise));
                 return future.Apply(
@@ -1077,6 +1093,63 @@ Y_UNIT_TEST_SUITE(TServerTest)
             UNIT_ASSERT(
                 request.BlocksCount * blockSize == totalSectors * sectorSize);
             UNIT_ASSERT(!environment.DequeueRequest(request));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleCancelEndpointInFlightRequests)
+    {
+        const ui32 blockSize = 4096;
+        const ui64 firstSector = 8;
+        const ui64 totalSectors = 32;
+        const ui64 sectorSize = 512;
+
+        UNIT_ASSERT(totalSectors * sectorSize % blockSize == 0);
+
+        auto environment = TTestEnvironment(blockSize);
+        auto device = environment.GetVhostDevice();
+
+        environment.FreezeService(true);
+
+        TVector<TString> blocks;
+        auto sgList = ResizeBlocks(
+            blocks,
+            totalSectors * sectorSize / blockSize,
+            TString(blockSize, 'a'));
+
+        {
+            auto future = device->SendTestRequest(
+                EBlockStoreRequest::WriteBlocks,
+                firstSector * sectorSize,
+                totalSectors * sectorSize,
+                sgList);
+
+            try {
+                const auto& response = future.GetValue(TDuration::Seconds(5));
+                Y_UNUSED(response);
+                UNIT_ASSERT(false);
+            } catch (TFutureException) {
+                // The request should timeout.
+            }
+
+            environment.GetVhostServer()->CancelEndpointInFlightRequests(
+                environment.GetSocketPath().GetPath());
+
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_EQUAL_C(
+                response,
+                TVhostRequest::CANCELLED,
+                static_cast<int>(response));
+
+            {
+                TPromise<NProto::TError> responsePromise;
+                environment.GetFrozenPromises().Dequeue(&responsePromise);
+                responsePromise.SetValue({});
+            }
+            {
+                TTestRequest request;
+                bool res = environment.DequeueRequest(request);
+                UNIT_ASSERT(res);
+            }
         }
     }
 }
