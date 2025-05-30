@@ -1,0 +1,161 @@
+version: "2"
+run:
+  issues-exit-code: 1
+  tests: true
+  build-tags:
+   - arcadia
+  modules-download-mode: vendor
+  allow-parallel-runners: false
+  go: ""
+issues:
+  max-issues-per-linter: 10000
+linters:
+  # Default set of linters.
+  # The value can be: `standard`, `all`, `none`, or `fast`.
+  # Default: standard
+  # Compile protos beforehand
+  # TODO CGO_CFLAGS=-I<FULL PATH TO REPO>nbs/contrib/libs/zstd/include ~/go/bin/golangci-lint run cloud/...
+  default: all
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - dogsled
+    - dupword
+    - durationcheck
+    - err113
+    - errcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exptostd
+    - fatcontext
+    - forbidigo
+    - forcetypeassert
+    - funcorder
+    - funlen
+    - gocheckcompilerdirectives
+    - gochecknoglobals
+    - gochecknoinits
+    - gochecksumtype
+    - goconst
+    - gocritic
+    - godot
+    - goheader
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - gosmopolitan
+    - govet
+    - grouper
+    - inamedparam
+    - ineffassign
+    - interfacebloat
+    - intrange
+    - ireturn
+    - lll
+    - loggercheck
+    - maintidx
+    - makezero
+    - mirror
+    - misspell
+    - mnd
+    - musttag
+    - nakedret
+    - nbs-go-lint
+    - nestif
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - nonamedreturns
+    - nosprintfhostport
+    - perfsprint
+    - prealloc
+    - predeclared
+    - protogetter
+    - reassign
+    - recvcheck
+    - revive
+    - rowserrcheck
+    - sloglint
+    - spancheck
+    - sqlclosecheck
+    - staticcheck
+    - tagalign
+    - tagliatelle
+    - testableexamples
+    - testifylint
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+  disable:
+    - contextcheck
+    - copyloopvar
+    - cyclop
+    - decorder
+    - depguard
+    - dupl
+    - exhaustive
+    - exhaustruct
+    - ginkgolinter
+    - gocognit
+    - gocyclo
+    - godox
+    - gomodguard
+    - grouper
+    - iface
+    - importas
+    - nlreturn
+    - nolintlint
+    - paralleltest
+    - promlinter
+    - testpackage
+    - varnamelen
+    - whitespace
+    - wrapcheck
+    - wsl
+    - zerologlint
+  settings:
+    lll:
+      line-length: 80
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+    testifylint:
+      enable-all: true
+    staticcheck:
+      checks: ["all"]
+      initialisms: ["ID"]
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: "exported"
+          disabled: true
+    custom:
+      nbs-go-lint:
+        type: "module"
+        description: "NBS CI lint module"
+        original-url: "github.com/jkuradobery/nbs-go-lint"
+        version: "v0.1.2.fix"
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+output:
+  formats:
+    html:
+      path: "golangci-lint-report.html"
+
