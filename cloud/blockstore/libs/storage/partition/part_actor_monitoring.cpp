@@ -655,7 +655,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                 }
 
                 DIV_CLASS_ID("tab-pane", "Latency") {
-                    DumpLatency(out, Info()->TabletID, TransactionTimeTracker);
+                    DumpLatency(out, Info()->TabletID, TransactionTimeTracker, 9);
                 }
 
                 DIV_CLASS_ID("tab-pane", "Index") {

@@ -127,6 +127,8 @@ private:
 
     ILoggingServicePtr Logging;
 
+    TTransactionTimeTracker TransactionTimeTracker;
+
 public:
     TDiskRegistryActor(
         const NActors::TActorId& owner,
@@ -277,6 +279,7 @@ private:
     void RenderSuspendedDeviceList(IOutputStream& out) const;
     void RenderSuspendedDeviceListDetailed(IOutputStream& out) const;
     void RenderAutomaticallyReplacedDeviceList(IOutputStream& out) const;
+    void RenderTransactionsLatency(IOutputStream& out) const;
     template <typename TDevices>
     void RenderDevicesWithDetails(
         IOutputStream& out,
@@ -304,6 +307,11 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInfo& requestInfo,
         TString message);
+
+    void HandleHttpInfo_GetTransactionsLatency(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
 
     void ScheduleDiskRegistryAgentListExpiredParamsCleanup(
         const NActors::TActorContext& ctx);
@@ -391,6 +399,11 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_RenderTransactionsLatency(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_RenderConfig(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
@@ -410,6 +423,8 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
+
+
 
     void HandleCleanupDisksResponse(
         const TEvDiskRegistryPrivate::TEvCleanupDisksResponse::TPtr& ev,
