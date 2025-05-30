@@ -244,6 +244,8 @@ TIndexTabletActor::TMetrics::TMetrics(IMetricsRegistryPtr metricsRegistry)
 
 void TIndexTabletActor::TMetrics::Register(
     const TString& fsId,
+    const TString& cloudId,
+    const TString& folderId,
     const TString& mediaKind)
 {
     if (Initialized) {
@@ -255,7 +257,11 @@ void TIndexTabletActor::TMetrics::Register(
         StorageRegistry);
 
     FsRegistry = CreateScopedMetricsRegistry(
-        {CreateLabel("filesystem", fsId)},
+        {
+            CreateLabel("filesystem", fsId),
+            CreateLabel("cloud", cloudId),
+            CreateLabel("folder", folderId),
+        },
         StorageFsRegistry);
     AggregatableFsRegistry = CreateScopedMetricsRegistry(
         {},
@@ -755,7 +761,7 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         BuildBackpressureThresholds(),
         GetBackpressureValues());
 
-    Metrics.Register(fsId, storageMediaKind);
+    Metrics.Register(fsId, fs.GetCloudId(), fs.GetFolderId(), storageMediaKind);
 }
 
 void TIndexTabletActor::ScheduleUpdateCounters(const TActorContext& ctx)

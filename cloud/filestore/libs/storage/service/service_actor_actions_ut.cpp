@@ -443,6 +443,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         UNIT_ASSERT(subgroup);
         subgroup = subgroup->FindSubgroup("filesystem", fsId);
         UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("cloud", "test_cloud");
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("folder", "test_folder");
+        UNIT_ASSERT(subgroup);
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             subgroup->GetCounter("UsedBytesCount")->GetAtomic());
@@ -577,6 +581,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         subgroup = subgroup->FindSubgroup("host", "cluster");
         UNIT_ASSERT(subgroup);
         subgroup = subgroup->FindSubgroup("filesystem", "test");
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("cloud", "test_cloud");
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("folder", "test_folder");
         UNIT_ASSERT(subgroup);
         UNIT_ASSERT_VALUES_EQUAL(
             4,

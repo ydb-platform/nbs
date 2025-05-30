@@ -69,8 +69,8 @@ struct TPerformanceProfile
 struct TFileSystemConfig
 {
     TString FileSystemId = "test";
-    TString CloudId = "test";
-    TString FolderId = "test";
+    TString CloudId = "test_cloud";
+    TString FolderId = "test_folder";
     ui32 BlockSize = DefaultBlockSize;
     ui64 BlockCount = DefaultBlockCount;
     ui64 NodeCount = MaxNodes;

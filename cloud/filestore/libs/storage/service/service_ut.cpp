@@ -96,8 +96,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
         UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
-        UNIT_ASSERT_VALUES_EQUAL("test", response.GetCloudId());
-        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL("test_cloud", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("test_folder", response.GetFolderId());
         UNIT_ASSERT_VALUES_EQUAL(1'000, response.GetBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetConfigVersion());
@@ -187,8 +187,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
         UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
-        UNIT_ASSERT_VALUES_EQUAL("test", response.GetCloudId());
-        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL("test_cloud", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("test_folder", response.GetFolderId());
         UNIT_ASSERT_VALUES_EQUAL(100'000'000, response.GetBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
         UNIT_ASSERT_VALUES_EQUAL(2, response.GetConfigVersion());
@@ -249,8 +249,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto response = service.GetFileStoreInfo("test")->Record.GetFileStore();
         UNIT_ASSERT_VALUES_EQUAL("test", response.GetFileSystemId());
-        UNIT_ASSERT_VALUES_EQUAL("test", response.GetCloudId());
-        UNIT_ASSERT_VALUES_EQUAL("test", response.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL("test_cloud", response.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL("test_folder", response.GetFolderId());
         UNIT_ASSERT_VALUES_EQUAL(100'000'00, response.GetBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
         UNIT_ASSERT_VALUES_EQUAL(2, response.GetConfigVersion());

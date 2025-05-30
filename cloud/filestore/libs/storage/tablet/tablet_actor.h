@@ -336,7 +336,11 @@ private:
 
         explicit TMetrics(NMetrics::IMetricsRegistryPtr metricsRegistry);
 
-        void Register(const TString& fsId, const TString& mediaKind);
+        void Register(
+            const TString& fsId,
+            const TString& cloudId,
+            const TString& folderId,
+            const TString& mediaKind);
         void Update(
             TInstant now,
             const TDiagnosticsConfig& diagConfig,
