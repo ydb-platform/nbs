@@ -58,7 +58,7 @@ namespace {
     xxx(ReportHistogramAsSingleCounter,      bool,            false                                     )\
     xxx(StatsFetcherType, NCloud::NProto::EStatsFetcherType, NCloud::NProto::EStatsFetcherType::CGROUP  )\
                                                                                                          \
-    xxx(SkipReportingZeroBlocksMetricsForYDBBasedDisks, bool, true                                      )\
+    xxx(SkipReportingZeroBlocksMetricsForYDBBasedDisks, bool, false                                     )\
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 
 #define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \
