@@ -1211,7 +1211,8 @@ void AddLatencyCSS(IOutputStream& out)
 void DumpLatency(
     IOutputStream& out,
     ui64 tabletId,
-    const TTransactionTimeTracker& transactionTimeTracker)
+    const TTransactionTimeTracker& transactionTimeTracker,
+    size_t columnCount)
 {
     const TString script = R"(
         <script>
@@ -1248,7 +1249,7 @@ void DumpLatency(
         TAG (TH3) {
             out << "Transactions";
         }
-        DumpLatencyForTransactions(out, 9, transactionTimeTracker);
+        DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
 
         TAG (TH3) {
             out << "Groups";
