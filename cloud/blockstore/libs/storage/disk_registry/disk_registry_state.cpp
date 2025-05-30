@@ -7613,13 +7613,16 @@ void TDiskRegistryState::DeleteAutomaticallyReplacedDevice(
 
 bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
     TInstant now,
-    const TDiskId& masterDiskId,
+    const TString& diskId,
+    const TDiskState& disk,
     const TDeviceId& deviceId)
 {
+    Y_DEBUG_ABORT_UNLESS(disk.MasterDiskId.empty());
+    Y_DEBUG_ABORT_UNLESS(!IsMasterDisk(diskId));
+    const auto& masterDiskId = disk.MasterDiskId;
+
     while (AutomaticReplacementTimestamps) {
-        if (AutomaticReplacementTimestamps[0]
-                > now - TDuration::Hours(1))
-        {
+        if (AutomaticReplacementTimestamps[0] > now - TDuration::Hours(1)) {
             break;
         }
 
