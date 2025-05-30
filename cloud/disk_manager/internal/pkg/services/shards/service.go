@@ -2,6 +2,7 @@ package shards
 
 import (
 	"context"
+	"slices"
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	shards_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/shards/config"
@@ -27,7 +28,12 @@ func NewService(
 func (s *service) PickShard(
 	ctx context.Context,
 	disk *disk_manager.DiskId,
+	folderID string,
 ) string {
+
+	if !s.isShardingAllowedForFolder(folderID) {
+		return disk.ZoneId
+	}
 
 	shards := s.getShards(disk.ZoneId)
 
@@ -49,4 +55,10 @@ func (s *service) getShards(zoneID string) []string {
 	}
 
 	return shards.Shards
+}
+
+func (s *service) isShardingAllowedForFolder(folderID string) bool {
+	return (len(s.config.GetIncludedFolders()) == 0 ||
+		slices.Contains(s.config.GetIncludedFolders(), folderID)) &&
+		!slices.Contains(s.config.GetExcludedFolders(), folderID)
 }

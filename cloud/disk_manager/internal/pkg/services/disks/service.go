@@ -164,10 +164,10 @@ type service struct {
 
 func (s *service) prepareZoneId(
 	ctx context.Context,
-	disk *disk_manager.DiskId,
+	req *disk_manager.CreateDiskRequest,
 ) (string, error) {
 
-	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, disk.DiskId)
+	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, req.DiskId.DiskId)
 	if err != nil {
 		return "", err
 	}
@@ -176,7 +176,7 @@ func (s *service) prepareZoneId(
 		return diskMeta.ZoneID, nil
 	}
 
-	return s.shardsService.PickShard(ctx, disk), nil
+	return s.shardsService.PickShard(ctx, req.DiskId, req.FolderId), nil
 }
 
 func (s *service) prepareCreateDiskParams(
@@ -193,7 +193,7 @@ func (s *service) prepareCreateDiskParams(
 		)
 	}
 
-	zoneID, err := s.prepareZoneId(ctx, req.DiskId)
+	zoneID, err := s.prepareZoneId(ctx, req)
 	if err != nil {
 		return nil, err
 	}

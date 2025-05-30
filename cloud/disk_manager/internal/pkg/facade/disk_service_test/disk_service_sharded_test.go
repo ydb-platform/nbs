@@ -3,7 +3,18 @@ package disk_service_test
 import (
 	"testing"
 
+	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+const (
+	excludedFolderId = "excluded-folder"
+	otherFolderId    = "folder"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -237,4 +248,60 @@ func TestDiskServiceInShardsCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 			)
 		})
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestDiskServiceInShardsCreateDiskInCorrectShard(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID1 := t.Name() + "1"
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: 32 * 1024 * 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: shardedZoneId,
+			DiskId: diskID1,
+		},
+		FolderId: excludedFolderId,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID1)
+	require.NoError(t, err)
+	require.Equal(t, shardId1, diskMeta.ZoneID)
+
+	diskID2 := t.Name() + "2"
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: 32 * 1024 * 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: shardedZoneId,
+			DiskId: diskID2,
+		},
+		FolderId: otherFolderId,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+	diskMeta, err = testcommon.GetDiskMeta(ctx, diskID2)
+	require.NoError(t, err)
+	require.Equal(t, shardId2, diskMeta.ZoneID)
 }
