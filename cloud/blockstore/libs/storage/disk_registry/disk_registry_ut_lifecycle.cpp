@@ -293,7 +293,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         laggingDevice.SetDeviceUUID("uuid-3");
         laggingDevice.SetRowIndex(0);
         laggingDevices.push_back(std::move(laggingDevice));
-        auto response = diskRegistry.AddLaggingDevices(
+        auto response = diskRegistry.AddOutdatedLaggingDevices(
             "mirrored-vol",
             std::move(laggingDevices));
         UNIT_ASSERT_SUCCESS(response->GetError());

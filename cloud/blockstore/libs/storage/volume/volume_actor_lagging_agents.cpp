@@ -47,27 +47,28 @@ bool TVolumeActor::LaggingDevicesAreAllowed() const
 }
 
 void TVolumeActor::HandleReportLaggingDevicesToDR(
-    const TEvVolumePrivate::TEvReportLaggingDevicesToDR::TPtr& ev,
+    const TEvVolumePrivate::TEvReportOutdatedLaggingDevicesToDR::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReportLaggingDevicesToDR(ctx);
+    ReportOutdatedLaggingDevicesToDR(ctx);
 }
 
-void TVolumeActor::ReportLaggingDevicesToDR(const NActors::TActorContext& ctx)
+void TVolumeActor::ReportOutdatedLaggingDevicesToDR(
+    const NActors::TActorContext& ctx)
 {
     if (!State || State->GetMeta().GetLaggingAgentsInfo().GetAgents().empty()) {
         return;
     }
 
-    auto request =
-        std::make_unique<TEvDiskRegistry::TEvAddLaggingDevicesRequest>();
+    auto request = std::make_unique<
+        TEvDiskRegistry::TEvAddOutdatedLaggingDevicesRequest>();
     *request->Record.MutableDiskId() = State->GetDiskId();
     for (const auto& laggingAgent:
          State->GetMeta().GetLaggingAgentsInfo().GetAgents())
     {
         for (const auto& laggingDevice: laggingAgent.GetDevices()) {
-            *request->Record.AddLaggingDevices() = laggingDevice;
+            *request->Record.AddOutdatedLaggingDevices() = laggingDevice;
         }
     }
     NCloud::Send(
@@ -78,8 +79,8 @@ void TVolumeActor::ReportLaggingDevicesToDR(const NActors::TActorContext& ctx)
     );
 }
 
-void TVolumeActor::HandleAddLaggingDevicesResponse(
-    const TEvDiskRegistry::TEvAddLaggingDevicesResponse::TPtr& ev,
+void TVolumeActor::HandleAddOutdatedLaggingDevicesResponse(
+    const TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Y_DEBUG_ABORT_UNLESS(State);
@@ -98,7 +99,7 @@ void TVolumeActor::HandleAddLaggingDevicesResponse(
 
         ctx.Schedule(
             TDuration::Seconds(1),
-            new TEvVolumePrivate::TEvReportLaggingDevicesToDR());
+            new TEvVolumePrivate::TEvReportOutdatedLaggingDevicesToDR());
         return;
     }
 }
@@ -290,9 +291,8 @@ void TVolumeActor::ExecuteAddLaggingAgent(
 
         // Intersect row indexes of known lagging devices and a new one. We only
         // allow one lagging device per row.
-        const bool intersects = HaveCommonRows(
-            args.Agent.GetDevices(),
-            laggingAgent.GetDevices());
+        const bool intersects =
+            HaveCommonRows(args.Agent.GetDevices(), laggingAgent.GetDevices());
         if (intersects) {
             // TODO(komarevtsev-d): Allow source and target of the migration to
             // lag at the same time. "TLaggingAgentsReplicaProxyActor" does not

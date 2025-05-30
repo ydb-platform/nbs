@@ -512,7 +512,7 @@ private:
     void SetupDiskRegistryBasedPartitions(const NActors::TActorContext& ctx);
 
     bool LaggingDevicesAreAllowed() const;
-    void ReportLaggingDevicesToDR(const NActors::TActorContext& ctx);
+    void ReportOutdatedLaggingDevicesToDR(const NActors::TActorContext& ctx);
 
     void DumpUsageStats(
         const NActors::TActorContext& ctx,
@@ -712,7 +712,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleReportLaggingDevicesToDR(
-        const TEvVolumePrivate::TEvReportLaggingDevicesToDR::TPtr& ev,
+        const TEvVolumePrivate::TEvReportOutdatedLaggingDevicesToDR::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
@@ -843,8 +843,8 @@ private:
         const NActors::TActorContext& ctx,
         NProto::TError error);
 
-    void HandleAddLaggingDevicesResponse(
-        const TEvDiskRegistry::TEvAddLaggingDevicesResponse::TPtr& ev,
+    void HandleAddOutdatedLaggingDevicesResponse(
+        const TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void ScheduleAllocateDiskIfNeeded(const NActors::TActorContext& ctx);

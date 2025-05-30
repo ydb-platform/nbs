@@ -39,7 +39,7 @@ struct TDiskInfo
     TVector<NProto::TDeviceConfig> Devices;
     TVector<NProto::TDeviceMigration> Migrations;
     TVector<TFinishedMigration> FinishedMigrations;
-    TVector<TLaggingDevice> LaggingDevices;
+    TVector<TLaggingDevice> OutdatedLaggingDevices;
     TVector<TVector<NProto::TDeviceConfig>> Replicas;
     TString MasterDiskId;
     ui32 LogicalBlockSize = 0;
@@ -274,7 +274,7 @@ class TDiskRegistryState
 
         TVector<NProto::TDiskHistoryItem> History;
 
-        TVector<TLaggingDevice> LaggingDevices;
+        TVector<TLaggingDevice> OutdatedLaggingDevices;
     };
 
     struct TVolumeDeviceOverrides
@@ -779,11 +779,11 @@ public:
         const TDeviceId& deviceId,
         bool isReplacement);
 
-    [[nodiscard]] NProto::TError AddLaggingDevices(
+    [[nodiscard]] NProto::TError AddOutdatedLaggingDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
-        TVector<NProto::TLaggingDevice> laggingDevices);
+        TVector<NProto::TLaggingDevice> outdatedDevices);
 
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
 
@@ -1119,7 +1119,7 @@ private:
         const TString& diskId,
         ui64 seqNo);
 
-    void RemoveLaggingDevices(
+    void RemoveOutdatedLaggingDevices(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         ui64 seqNo);
