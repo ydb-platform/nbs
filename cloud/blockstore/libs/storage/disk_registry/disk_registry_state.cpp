@@ -7785,11 +7785,14 @@ void TDiskRegistryState::CleanupExpiredAgentListParams(
     }
 }
 
-TVector<TString> TDiskRegistryState::GetPoolNames() const
+TVector<TString> TDiskRegistryState::GetPoolNames(
+    std::optional<NProto::EDevicePoolKind> kind) const
 {
     TVector<TString> poolNames;
-    for (const auto& [poolName, _]: DevicePoolConfigs) {
-        poolNames.push_back(poolName);
+    for (const auto& [poolName, config]: DevicePoolConfigs) {
+        if (!kind.has_value() || GetDevicePoolKind(poolName) == kind) {
+            poolNames.push_back(poolName);
+        }
     }
     Sort(poolNames);
     return poolNames;
