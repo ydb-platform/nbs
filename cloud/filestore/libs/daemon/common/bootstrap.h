@@ -48,6 +48,7 @@ class TBootstrapCommon
 {
 private:
     const TString MetricsComponent;
+    const TString LogComponent;
 
     std::shared_ptr<NKikimr::TModuleFactories> ModuleFactories;
 
@@ -109,6 +110,7 @@ private:
     void InitCommonConfigs();
     void InitActorSystem();
     void InitDiagnostics();
+    void InitLogs();
 };
 
 } // namespace NCloud::NFileStore::NDaemon

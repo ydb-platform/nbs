@@ -292,4 +292,9 @@ ui32 TConfigInitializerYdbBase::GetMonitoringThreads() const
     return GetMonitoringConfig().GetMonitoringThreads();
 }
 
+TString TConfigInitializerYdbBase::GetLogBackendFileName() const
+{
+    return GetLogConfig().GetBackendFileName();
+}
+
 }   // namespace NCloud::NStorage

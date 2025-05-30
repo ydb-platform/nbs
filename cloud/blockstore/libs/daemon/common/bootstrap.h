@@ -124,6 +124,7 @@ protected:
 
     void InitLWTrace();
     void InitProfileLog();
+    void InitLogs();
 
 private:
     void InitLocalService();

@@ -6,6 +6,7 @@
 #include <logbroker/unified_agent/client/cpp/logger/backend.h>
 #include <logbroker/unified_agent/common/util/enum.h>
 
+#include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/prof/tag.h>
 
 #include <util/datetime/base.h>
@@ -362,6 +363,12 @@ ILoggingServicePtr CreateLoggingService(
     const TLogSettings& logSettings)
 {
     auto backend = CreateLogBackend(logName);
+
+    if (backend && logSettings.BackendFileName) {
+        backend = NActors::CreateCompositeLogBackend(
+            {backend, new TFileLogBackend(logSettings.BackendFileName)});
+    }
+
     return std::make_shared<TLoggingService>(
         std::shared_ptr<TLogBackend>(backend.Release()),
         logSettings);
