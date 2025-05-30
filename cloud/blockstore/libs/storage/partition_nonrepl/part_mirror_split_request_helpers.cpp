@@ -106,4 +106,47 @@ auto MergeReadResponses(std::span<NProto::TReadBlocksResponse> responsesToMerge)
     return result;
 }
 
+auto MergeReadResponses(
+    std::span<NProto::TReadBlocksLocalResponse> responsesToMerge)
+    -> NProto::TReadBlocksLocalResponse
+{
+    NProto::TReadBlocksLocalResponse result;
+
+    ui64 throttlerDelaySum = 0;
+    bool allZeros = true;
+    bool allBlocksEmpty = true;
+    for (const auto& response: responsesToMerge) {
+        if (HasError(response)) {
+            return response;
+        }
+        allZeros &= response.GetAllZeroes();
+        allBlocksEmpty &= response.GetBlocks().BuffersSize() == 0;
+        throttlerDelaySum += response.GetThrottlerDelay();
+    }
+
+    result.SetThrottlerDelay(throttlerDelaySum);
+    result.SetAllZeroes(allZeros);
+
+    if (allBlocksEmpty) {
+        return result;
+    }
+
+    auto& dst = *result.MutableBlocks()->MutableBuffers();
+    for (auto& response: responsesToMerge) {
+        auto& src = *response.MutableBlocks()->MutableBuffers();
+        dst.Add(
+            std::make_move_iterator(src.begin()),
+            std::make_move_iterator(src.end()));
+
+        if (!response.ScanDiskResults.empty()) {
+            for (auto value: response.ScanDiskResults) {
+                result.ScanDiskResults.push_back(value);
+            }
+        }
+    }
+
+    // The unencrypted block mask is not used (Check pr #1771), so we don't have
+    // to fill it out.
+    return result;
+}
 }   // namespace NCloud::NBlockStore::NStorage

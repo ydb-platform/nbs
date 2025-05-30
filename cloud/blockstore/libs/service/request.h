@@ -36,7 +36,16 @@ struct TReadBlocksLocalRequest
     ui32 BlockSize = 0;
 };
 
-using TReadBlocksLocalResponse = TReadBlocksResponse;
+struct TReadBlocksLocalResponse: public TReadBlocksResponse
+{
+    TVector<TString> ScanDiskResults;
+
+    TReadBlocksLocalResponse() = default;
+
+    explicit TReadBlocksLocalResponse(const TReadBlocksResponse& base)
+        : TReadBlocksResponse(base)
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
