@@ -60,10 +60,11 @@ bool TPartitionActor::PrepareLoadState(
     TTransactionContext& tx,
     TTxPartition::TLoadState& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Reading state from local db",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Reading state from local db",
+        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
 
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
@@ -99,10 +100,11 @@ void TPartitionActor::ExecuteLoadState(
     TTransactionContext& tx,
     TTxPartition::TLoadState& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] State data loaded",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s State data loaded",
+        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
 
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);

@@ -22,6 +22,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
@@ -100,6 +101,7 @@ class TPartitionActor final
     };
 
 private:
+    const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -110,6 +112,8 @@ private:
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
     const NBlockCodecs::ICodec* BlobCodec;
+
+    TLogTitle LogTitle;
 
     std::unique_ptr<TPartitionState> State;
 
@@ -157,6 +161,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
+        ui32 partitionIndex,
         ui32 siblingCount,
         const NActors::TActorId& volumeActorId);
     ~TPartitionActor() override;

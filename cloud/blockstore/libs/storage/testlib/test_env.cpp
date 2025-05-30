@@ -244,8 +244,10 @@ ui32 TTestEnv::CreateBlockStoreNode(
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             TraceSerializer,
-            nullptr, // RdmaClient
-            NServer::CreateEndpointEventProxy()
+            nullptr,   // RdmaClient
+            NServer::CreateEndpointEventProxy(),
+            EVolumeStartMode::ONLINE,
+            {}   // diskId
         );
         return actor.release();
     };

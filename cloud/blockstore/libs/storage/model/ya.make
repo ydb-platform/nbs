@@ -14,6 +14,7 @@ SRCS(
     channel_data_kind.cpp
     channel_permissions.cpp
     composite_task_waiter.cpp
+    log_title.cpp
     request_bounds_tracker.cpp
     requests_in_progress.cpp
 )

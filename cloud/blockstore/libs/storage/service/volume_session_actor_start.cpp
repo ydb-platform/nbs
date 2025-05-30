@@ -1,11 +1,10 @@
 #include "volume_session_actor.h"
 
-#include "service.h"
-
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/volume/volume.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -13,7 +12,6 @@
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/tablet/tablet_setup.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -79,6 +77,8 @@ private:
 
     // Duration between reboot attempts
     TDuration RebootSleepDuration;
+
+    TLogTitle LogTitle{VolumeTabletId, DiskId, GetCycleCount()};
 
 public:
     TStartVolumeActor(
@@ -453,9 +453,11 @@ void TStartVolumeActor::BootExternal(const TActorContext& ctx)
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Requesting external boot for tablet",
-        VolumeTabletId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Requesting external boot for volume tablet",
+        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
 
     PendingRequest = EPendingRequest::BOOT_EXTERNAL;
 
@@ -494,6 +496,7 @@ void TStartVolumeActor::HandleBootExternalResponse(
 
     if (msg->SuggestedGeneration > VolumeGeneration) {
         VolumeGeneration = msg->SuggestedGeneration;
+        LogTitle.SetGeneration(VolumeGeneration);
     }
     VolumeTabletStorageInfo = msg->StorageInfo;
     Y_ABORT_UNLESS(VolumeTabletStorageInfo->TabletID == VolumeTabletId,
@@ -524,10 +527,11 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Starting tablet (gen: %u)",
-        VolumeTabletId,
-        VolumeGeneration);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Starting volume tablet",
+        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
 
     const auto* appData = AppData(ctx);
 
@@ -539,8 +543,18 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
     auto endpointEventHandler = EndpointEventHandler;
     auto rdmaClient = RdmaClient;
 
-    auto factory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
+    auto factory =
+        [config,
+         diagnosticsConfig,
+         profileLog,
+         blockDigestGenerator,
+         traceSerializer,
+         rdmaClient,
+         endpointEventHandler,
+         diskId = DiskId](const TActorId& owner, TTabletStorageInfo* storage)
+    {
         Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::BlockStoreVolume);
+
         auto actor = CreateVolumeTablet(
             owner,
             storage,
@@ -551,12 +565,13 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
             traceSerializer,
             rdmaClient,
             endpointEventHandler,
-            EVolumeStartMode::MOUNTED);
+            EVolumeStartMode::MOUNTED,
+            diskId);
         return actor.release();
     };
 
     auto setupInfo = MakeIntrusive<TTabletSetupInfo>(
-        factory,
+        std::move(factory),
         TMailboxType::ReadAsFilled,
         appData->UserPoolId,
         TMailboxType::ReadAsFilled,
@@ -608,6 +623,8 @@ void TStartVolumeActor::HandleTabletRestored(
 
     VolumeGeneration = msg->Generation;
     VolumeUserActor = msg->UserTabletActor;
+
+    LogTitle.SetGeneration(VolumeGeneration);
 
     // Reset reboot sleep duration since tablet booted successfully
     RebootSleepDuration = TDuration::Zero();
@@ -848,6 +865,7 @@ void TStartVolumeActor::SendVolumeTabletDeadErrorAndScheduleReboot(
             // Avoid unnecessary delays
             delay = false;
             ++VolumeGeneration;
+            LogTitle.SetGeneration(VolumeGeneration);
             break;
         default:
             break;

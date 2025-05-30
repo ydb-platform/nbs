@@ -20,7 +20,8 @@ IActorPtr CreateVolumeTablet(
     ITraceSerializerPtr traceSerializer,
     NRdma::IClientPtr rdmaClient,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
-    EVolumeStartMode startMode)
+    EVolumeStartMode startMode,
+    TString diskId)
 {
     return std::make_unique<TVolumeActor>(
         owner,
@@ -32,7 +33,8 @@ IActorPtr CreateVolumeTablet(
         std::move(traceSerializer),
         std::move(rdmaClient),
         std::move(endpointEventHandler),
-        startMode);
+        startMode,
+        std::move(diskId));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

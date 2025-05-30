@@ -307,10 +307,12 @@ void TVolumeState::Reset()
     }
 
     if (!IsDiskRegistryMediaKind()) {
+        ui32 partitionIndex = 0;
         for (ui64 tabletId: Meta.GetPartitions()) {
             Partitions.emplace_back(
                 tabletId,
                 Meta.GetConfig(),
+                partitionIndex++,
                 StorageConfig->GetTabletRebootCoolDownIncrement(),
                 StorageConfig->GetTabletRebootCoolDownMax());
             CreatePartitionStatInfo(GetDiskId(), tabletId);

@@ -794,7 +794,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         std::move(featuresConfig));
     auto diagConfig = CreateTestDiagnosticsConfig();
 
-    auto createFunc = [=] (const TActorId& owner, TTabletStorageInfo* info) {
+    auto createFunc = [=](const TActorId& owner, TTabletStorageInfo* info)
+    {
         auto tablet = CreateVolumeTablet(
             owner,
             info,
@@ -807,7 +808,9 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
                 "BLOCKSTORE_TRACE",
                 NLwTraceMonPage::TraceManager(false)),
             rdmaClient,
-            NServer::CreateEndpointEventProxy()
+            NServer::CreateEndpointEventProxy(),
+            EVolumeStartMode::ONLINE,
+            {}   // diskId
         );
         return tablet.release();
     };

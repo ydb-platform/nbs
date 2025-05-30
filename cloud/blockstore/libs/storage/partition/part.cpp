@@ -19,6 +19,7 @@ IActorPtr CreatePartitionTablet(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,
     EStorageAccessMode storageAccessMode,
+    ui32 partitionIndex,
     ui32 siblingCount,
     const NActors::TActorId& volumeActorId)
 {
@@ -31,6 +32,7 @@ IActorPtr CreatePartitionTablet(
         std::move(blockDigestGenerator),
         std::move(partitionConfig),
         storageAccessMode,
+        partitionIndex,
         siblingCount,
         volumeActorId);
 }
