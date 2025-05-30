@@ -43,7 +43,7 @@ public:
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
         TString diskId,
-        bool useSchemeShard);
+        bool useSchemeCache);
 
     void DescribeVolumeFromCache(const TActorContext& ctx);
 
