@@ -133,7 +133,9 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 		operationID string,
 	) {
 
-		opCtx, _ := context.WithTimeout(ctx, timeout)
+		opCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
 		err = internal_client.WaitOperation(opCtx, client, operationID)
 		if shouldTimeout {
 			require.Error(t, err, errorMesssage)
