@@ -9874,11 +9874,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
-            switch (event->GetTypeRewrite()) {
-                case TEvPartitionCommonPrivate::EvReadBlobRequest: {
-                    auto response = std::make_unique<
-                        TEvPartitionCommonPrivate::TEvReadBlobResponse>(
-                        MakeError(E_IO, "Simulated blob read failure"));
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest: {
+                        auto response = std::make_unique<
+                            TEvPartitionCommonPrivate::TEvReadBlobResponse>(
+                            MakeError(E_IO, "Simulated blob read failure"));
 
                         runtime->Send(
                             new IEventHandle(
@@ -9892,7 +9892,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
-                    return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         volume.WriteBlocks(
@@ -9902,14 +9902,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         // ReadBlocksLocal
         {
-            TGuardedBuffer<TString> Buffer = TGuardedBuffer(
-                TString::Uninitialized(1024 * DefaultBlockSize));
+            TGuardedBuffer<TString> Buffer =
+                TGuardedBuffer(TString::Uninitialized(1024 * DefaultBlockSize));
             auto sgList = Buffer.GetGuardedSgList();
             auto sgListOrError =
                 SgListNormalize(sgList.Acquire().Get(), DefaultBlockSize);
 
             UNIT_ASSERT(!HasError(sgListOrError));
-            TGuardedSgList guardedSglist(TSgList(std::move(sgListOrError.ExtractResult())));
+            TGuardedSgList guardedSglist(
+                TSgList(std::move(sgListOrError.ExtractResult())));
 
             auto request = volume.CreateReadBlocksLocalRequest(
                 TBlockRange64::WithLength(2000, 1024),
@@ -9920,8 +9921,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             volume.SendToPipe(std::move(request));
             auto response = volume.RecvReadBlocksLocalResponse();
             UNIT_ASSERT(response);
-            UNIT_ASSERT_VALUES_EQUAL_C(E_IO, response->GetStatus(), response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.FailInfo.FailedRanges.size());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                response->Record.FailInfo.FailedRanges.size());
         }
     }
 }

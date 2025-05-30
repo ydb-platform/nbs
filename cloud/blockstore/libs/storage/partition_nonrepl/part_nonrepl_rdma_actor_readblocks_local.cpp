@@ -167,7 +167,7 @@ public:
             std::make_unique<TEvService::TEvReadBlocksLocalResponse>(Error);
         response->Record.SetAllZeroes(allZeroes);
         if (ShouldReportBlockRangeOnFailure) {
-                DescribeRange(BlockRange);
+            DescribeRange(BlockRange);
         }
         auto event = std::make_unique<IEventHandle>(
             RequestInfo->Sender,
