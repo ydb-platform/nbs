@@ -889,7 +889,7 @@ private:
 
         auto reportZeroBlocksMetrics =
             !DiagnosticsConfig
-                 ->GetSkipReporingZeroBlocksMetricsForYDBBasedDisks() ||
+                 ->GetSkipReportingZeroBlocksMetricsForYDBBasedDisks() ||
             IsDiskRegistryMediaKind(volumeConfig.GetStorageMediaKind());
         NUserCounter::RegisterServerVolumeInstance(
             *UserCounters,
