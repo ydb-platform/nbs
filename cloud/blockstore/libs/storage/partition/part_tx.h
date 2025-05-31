@@ -231,6 +231,7 @@ struct TTxPartition
         const TBlockRange32 ReadRange;
         const IReadBlocksHandlerPtr ReadHandler;
         const bool ReplyLocal;
+        const bool ShouldReportBlobIdsOnFailure;
         bool ChecksumsEnabled = false;
         bool Interrupted = false;
 
@@ -245,12 +246,14 @@ struct TTxPartition
                 ui64 commitId,
                 const TBlockRange32& readRange,
                 IReadBlocksHandlerPtr readHandler,
-                bool replyLocal)
+                bool replyLocal,
+                bool shouldReportBlobIdsOnFailure)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , ReadRange(readRange)
             , ReadHandler(std::move(readHandler))
             , ReplyLocal(replyLocal)
+            , ShouldReportBlobIdsOnFailure(shouldReportBlobIdsOnFailure)
             , BlockMarks(ReadRange.Size())
             , BlockMarkCommitIds(ReadRange.Size(), 0)
         {}

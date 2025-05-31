@@ -41,7 +41,7 @@ void FillReadStats(
     ui32 blobCount = 0;
     ui32 prevCompactionRange = Max<ui32>();
 
-    for (auto& r: requests) {
+    for (const auto& r: requests) {
         const auto compactionRange =
             TCompactionMap::GetRangeStart(r.BlockIndex, compactionRangeSize);
         if (compactionRange != prevCompactionRange) {
@@ -147,10 +147,14 @@ IEventBasePtr CreateReadBlocksResponse(
 
 IEventBasePtr CreateReadBlocksResponse(
     bool replyLocal,
-    const NProto::TError& error)
+    const NProto::TError& error,
+    TVector<TString>&& failedBlobs)
 {
     if (replyLocal) {
-        return std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
+        auto response =
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
+        response->Record.FailInfo.FailedRanges = std::move(failedBlobs);
+        return response;
     } else {
         return std::make_unique<TEvService::TEvReadBlocksResponse>(error);
     }
@@ -252,6 +256,7 @@ private:
     const IReadBlocksHandlerPtr ReadHandler;
     const TBlockRange32 ReadRange;
     const bool ReplyLocal;
+    const bool ReportBlobIdsOnFailure;
 
     TBlockMarks BlockMarks;
 
@@ -266,6 +271,7 @@ private:
     bool DescribeBlocksInProgress = false;
 
     TVector<TCallContextPtr> ForkedCallContexts;
+    TVector<TString> FailedBlobs;
 
 public:
     TReadBlocksActor(
@@ -281,6 +287,7 @@ public:
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
+        bool reportBlobIdsOnFailure,
         TBlockMarks blockMarks,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos);
@@ -297,12 +304,20 @@ private:
         bool baseDisk);
 
     void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
-    bool HandleError(const TActorContext& ctx, const NProto::TError& error);
+
+    bool HandleError(
+        const TActorContext& ctx,
+        const NProto::TError& error,
+        const TBatchRequest& batch);
+
+    bool HandleError(
+        const TActorContext& ctx,
+        const NProto::TError& error);
 
     void ReplyAndDie(
         const TActorContext& ctx,
         IEventBasePtr response,
-        const NProto::TError& error = {});
+        const NProto::TError& error);
 
 private:
     STFUNC(StateWork);
@@ -335,6 +350,7 @@ TReadBlocksActor::TReadBlocksActor(
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
+        bool reportBlobIdsOnFailure,
         TBlockMarks blockMarks,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos)
@@ -350,6 +366,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReadHandler(std::move(readHandler))
     , ReadRange(readRange)
     , ReplyLocal(replyLocal)
+    , ReportBlobIdsOnFailure(reportBlobIdsOnFailure)
     , BlockMarks(std::move(blockMarks))
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
@@ -470,13 +487,12 @@ void TReadBlocksActor::ReadBlocks(
     TReadBlocksRequests requests,
     bool baseDisk)
 {
+    const ui32 batchRequestsOldSize = BatchRequests.size();
     Y_DEBUG_ABORT_UNLESS(IsSorted(
         requests.begin(),
         requests.end(),
         TCompareByBlobIdAndOffset()
     ));
-
-    const ui32 batchRequestsOldSize = BatchRequests.size();
 
     TBatchRequest current;
     for (auto& req: requests) {
@@ -507,7 +523,9 @@ void TReadBlocksActor::ReadBlocks(
             current.GroupId);
     }
 
-    for (ui32 batchIndex = batchRequestsOldSize; batchIndex < BatchRequests.size(); ++batchIndex) {
+    for (ui32 batchIndex = batchRequestsOldSize;
+            batchIndex < BatchRequests.size(); ++batchIndex)
+    {
         auto& batch = BatchRequests[batchIndex];
 
         RequestsScheduled += batch.Requests.size();
@@ -558,10 +576,34 @@ void TReadBlocksActor::NotifyCompleted(
 
 bool TReadBlocksActor::HandleError(
     const TActorContext& ctx,
+    const NProto::TError& error,
+    const TBatchRequest& batch)
+{
+    if (!HasError(error)) {
+        return false;
+    }
+
+    if (ReportBlobIdsOnFailure && ReplyLocal) {
+        FailedBlobs.emplace_back(batch.BlobId.ToString());
+        // check range should try to read all the data and report broken blobs
+        if (RequestsCompleted < RequestsScheduled || DescribeBlocksInProgress) {
+            return false;
+        }
+    }
+
+    auto response =
+        CreateReadBlocksResponse(ReplyLocal, error, std::move(FailedBlobs));
+    ReplyAndDie(ctx, std::move(response), error);
+    return true;
+}
+
+bool TReadBlocksActor::HandleError(
+    const TActorContext& ctx,
     const NProto::TError& error)
 {
     if (FAILED(error.GetCode())) {
-        auto response = CreateReadBlocksResponse(ReplyLocal, error);
+        auto response =
+            CreateReadBlocksResponse(ReplyLocal, error, std::move(FailedBlobs));
         ReplyAndDie(ctx, std::move(response), error);
         return true;
     }
@@ -633,17 +675,18 @@ void TReadBlocksActor::HandleReadBlobResponse(
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
 
-    if (HandleError(ctx, msg->GetError())) {
-        return;
-    }
-
-    ui32 batchIndex = ev->Cookie;
+    const size_t batchIndex = ev->Cookie;
 
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
 
     RequestsCompleted += batch.Requests.size();
     Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
+    const auto& error = msg->GetError();
+    if (HandleError(ctx, error, batch)) {
+        return;
+    }
+
     if (RequestsCompleted < RequestsScheduled) {
         return;
     }
@@ -652,7 +695,7 @@ void TReadBlocksActor::HandleReadBlobResponse(
         return;
     }
 
-    for (auto context: ForkedCallContexts) {
+    for (auto& context: ForkedCallContexts) {
         RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
     }
 
@@ -664,7 +707,7 @@ void TReadBlocksActor::HandleReadBlobResponse(
         BlockInfos,
         *ReadHandler
     );
-    ReplyAndDie(ctx, std::move(response));
+    ReplyAndDie(ctx, std::move(response), {});
 }
 
 void TReadBlocksActor::HandlePoisonPill(
@@ -675,7 +718,8 @@ void TReadBlocksActor::HandlePoisonPill(
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
-    auto response = CreateReadBlocksResponse(ReplyLocal, error);
+    auto response =
+        CreateReadBlocksResponse(ReplyLocal, error, std::move(FailedBlobs));
     ReplyAndDie(ctx, std::move(response), error);
 }
 
@@ -836,21 +880,30 @@ void TPartitionActor::HandleReadBlocks(
     const TEvService::TEvReadBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    HandleReadBlocksRequest<TEvService::TReadBlocksMethod>(ev, ctx, false);
+    HandleReadBlocksRequest<TEvService::TReadBlocksMethod>(
+        ev,
+        ctx,
+        false,    // replyLocal
+        false);   // shouldReportBlobIdsOnFailure
 }
 
 void TPartitionActor::HandleReadBlocksLocal(
     const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    HandleReadBlocksRequest<TEvService::TReadBlocksLocalMethod>(ev, ctx, true);
+    HandleReadBlocksRequest<TEvService::TReadBlocksLocalMethod>(
+        ev,
+        ctx,
+        true,   // replyLocal
+        ev->Get()->Record.ShouldReportFailedRangesOnFailure);
 }
 
 template <typename TMethod>
 void TPartitionActor::HandleReadBlocksRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx,
-    bool replyLocal)
+    bool replyLocal,
+    bool shouldReportBlobIdsOnFailure)
 {
     auto* msg = ev->Get();
 
@@ -867,14 +920,13 @@ void TPartitionActor::HandleReadBlocksRequest(
         "ReadBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason,
-        ui32 flags = 0)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason,
+                          ui32 flags = 0)
     {
-        auto response = std::make_unique<TEvService::TEvReadBlocksResponse>(
+        auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(errorCode, std::move(errorReason), flags));
 
         LWTRACK(
@@ -895,11 +947,14 @@ void TPartitionActor::HandleReadBlocksRequest(
     );
 
     if (!ok) {
-        replyError(ctx, *requestInfo, E_ARGUMENT, TStringBuilder()
-            << "invalid block range ["
-            << "index: " << msg->Record.GetStartIndex()
-            << ", count: " << msg->Record.GetBlocksCount()
-            << "]");
+        replyError(
+            ctx,
+            *requestInfo,
+            E_ARGUMENT,
+            TStringBuilder()
+                << "invalid block range ["
+                << "index: " << msg->Record.GetStartIndex()
+                << ", count: " << msg->Record.GetBlocksCount() << "]");
         return;
     }
 
@@ -931,7 +986,8 @@ void TPartitionActor::HandleReadBlocksRequest(
         commitId,
         ConvertRangeSafe(readRange),
         std::move(readHandler),
-        replyLocal);
+        replyLocal,
+        shouldReportBlobIdsOnFailure);
 }
 
 void TPartitionActor::ReadBlocks(
@@ -940,7 +996,8 @@ void TPartitionActor::ReadBlocks(
     ui64 commitId,
     const TBlockRange32& readRange,
     IReadBlocksHandlerPtr readHandler,
-    bool replyLocal)
+    bool replyLocal,
+    bool shouldReportBlobIdsOnFailure)
 {
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
         "[%lu] Start read blocks @%lu (range: %s)",
@@ -950,13 +1007,15 @@ void TPartitionActor::ReadBlocks(
 
     AddTransaction(*requestInfo, requestInfo->CancelRoutine);
 
-    ExecuteTx<TReadBlocks>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        commitId,
-        readRange,
-        std::move(readHandler),
-        replyLocal);
+        CreateTx<TReadBlocks>(
+            requestInfo,
+            commitId,
+            readRange,
+            std::move(readHandler),
+            replyLocal,
+            shouldReportBlobIdsOnFailure));
 }
 
 void TPartitionActor::HandleReadBlocksCompleted(
@@ -1061,6 +1120,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReadHandler,
             args.ReadRange,
             args.ReplyLocal,
+            args.ShouldReportBlobIdsOnFailure,
             std::move(blocks),
             std::move(requests),
             std::move(args.BlockInfos));

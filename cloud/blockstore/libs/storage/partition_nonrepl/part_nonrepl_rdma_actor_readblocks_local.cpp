@@ -29,10 +29,11 @@ private:
     TActorSystem* ActorSystem;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TRequestInfoPtr RequestInfo;
-    const ui32 RequestBlockCount;
+    const TBlockRange64 BlockRange;
     const NActors::TActorId ParentActorId;
     const ui64 RequestId;
     const bool CheckVoidBlocks;
+    const bool ShouldReportBlockRangeOnFailure;
 
     TAdaptiveLock Lock;
     size_t ResponseCount;
@@ -54,17 +55,19 @@ public:
             TRequestInfoPtr requestInfo,
             size_t requestCount,
             TGuardedSgList sglist,
-            ui32 requestBlockCount,
+            TBlockRange64 blockRange,
             NActors::TActorId parentActorId,
             ui64 requestId,
-            bool checkVoidBlocks)
+            bool checkVoidBlocks,
+            bool shouldReportBlockRangeOnFailure)
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , RequestBlockCount(requestBlockCount)
+        , BlockRange(blockRange)
         , ParentActorId(parentActorId)
         , RequestId(requestId)
         , CheckVoidBlocks(checkVoidBlocks)
+        , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
         , ResponseCount(requestCount)
         , SgList(std::move(sglist))
     {}
@@ -159,10 +162,13 @@ public:
 
         ProcessError(*ActorSystem, *PartConfig, Error);
 
-        const bool allZeroes = VoidBlockCount == RequestBlockCount;
+        const bool allZeroes = VoidBlockCount == BlockRange.Size();
         auto response =
             std::make_unique<TEvService::TEvReadBlocksLocalResponse>(Error);
         response->Record.SetAllZeroes(allZeroes);
+        if (ShouldReportBlockRangeOnFailure) {
+            DescribeRange(BlockRange);
+        }
         auto event = std::make_unique<IEventHandle>(
             RequestInfo->Sender,
             TActorId(),
@@ -181,10 +187,10 @@ public:
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
-        completion->NonVoidBlockCount = allZeroes ? 0 : RequestBlockCount;
-        completion->VoidBlockCount = allZeroes ? RequestBlockCount : 0;
+        completion->NonVoidBlockCount = allZeroes ? 0 : BlockRange.Size();
+        completion->VoidBlockCount = allZeroes ? BlockRange.Size() : 0;
 
-        counters.SetBlocksCount(RequestBlockCount);
+        counters.SetBlocksCount(BlockRange.Size());
         auto completionEvent = std::make_unique<IEventHandle>(
             ParentActorId,
             TActorId(),
@@ -244,10 +250,11 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         requestInfo,
         deviceRequests.size(),
         std::move(msg->Record.Sglist),
-        msg->Record.GetBlocksCount(),
+        blockRange,
         SelfId(),
         requestId,
-        Config->GetOptimizeVoidBuffersTransferForReadsEnabled());
+        Config->GetOptimizeVoidBuffersTransferForReadsEnabled(),
+        msg->Record.ShouldReportFailedRangesOnFailure);
 
     auto [sentRequestCtx, error] = SendReadRequests(
         ctx,
