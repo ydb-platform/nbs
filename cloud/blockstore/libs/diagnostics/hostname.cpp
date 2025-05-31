@@ -6,11 +6,21 @@
 #include <util/string/builder.h>
 #include <util/system/hostname.h>
 
+#include <array>
+#include <span>
+
 namespace NCloud::NBlockStore {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+constexpr std::array<TStringBuf, 2> DefaultHandleClasses(
+    {"GetFast", "PutUserData"});
+constexpr std::array<TStringBuf, 3> LogHandleClasses(
+    {"GetFast", "PutUserData", "PutTabletLog"});
+constexpr std::array<TStringBuf, 4> MergedAndMixedHandleClasses(
+    {"GetFast", "PutUserData", "GetAsync", "PutAsyncBlob"});
 
 ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
 {
@@ -21,6 +31,20 @@ ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
         default:
             Y_ABORT("Wrong EHostService: %d", serviceType);
     }
+}
+
+[[nodiscard]] std::span<const TStringBuf> GetHandleClasses(
+    const TString& channelKind)
+{
+    if (channelKind == "Log") {
+        return LogHandleClasses;
+    }
+
+    if (channelKind == "Merged" || channelKind == "Mixed") {
+        return MergedAndMixedHandleClasses;
+    }
+
+    return DefaultHandleClasses;
 }
 
 }    // namespace
@@ -115,26 +139,52 @@ TString GetMonitoringNBSOverviewToTVUrl(const TDiagnosticsConfig& config)
            << data.MonitoringClusterName << "&p.host=" << GetShortHostName();
 }
 
+TString
+GetQueries(ui32 groupId, const TString& storagePool, const TString& channelKind)
+{
+    constexpr TStringBuf QueryPattern =
+        R"(q.%u.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="%s"})&q.%u.name=%s)";
+
+    auto handleClasses = GetHandleClasses(channelKind);
+
+    TStringBuilder queries;
+
+    char queryName = 'A';
+    for (ui32 queryIdx = 0; queryIdx < handleClasses.size(); ++queryIdx) {
+        queries << Sprintf(
+                       QueryPattern.data(),
+                       queryIdx,
+                       storagePool.c_str(),
+                       groupId,
+                       handleClasses[queryIdx].Data(),
+                       queryIdx,
+                       TString(1, queryName).data())
+                       .c_str()
+                << "&";
+        ++queryName;
+    }
+
+    return queries;
+}
+
 TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
-    const TString& storagePool)
+    const TString& storagePool,
+    const TString&  channelKind)
 {
-    constexpr TStringBuf GetFast =
-        R"(q.0.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
-        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="GetFast"})&q.0.name=A)";
-    constexpr TStringBuf PutUserData =
-        R"(q.1.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
-        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutUserData"})&q.1.name=B)";
     constexpr TStringBuf Url =
         "%s/projects/%s/explorer/"
-        "queries?%s&%s&from=now-1d&to=now&refresh=60000";
+        "queries?%sfrom=now-1d&to=now&refresh=60000";
+
+    auto queries = GetQueries(groupId, storagePool, channelKind);
+
     return Sprintf(
         Url.data(),
         config.GetMonitoringUrlData().MonitoringUrl.c_str(),
         config.GetMonitoringUrlData().MonitoringYDBProject.c_str(),
-        Sprintf(GetFast.data(), storagePool.c_str(), groupId).c_str(),
-        Sprintf(PutUserData.data(), storagePool.c_str(), groupId).c_str());
+        queries.c_str());
 }
 
 TString GetMonitoringDashboardYDBGroupUrl(
