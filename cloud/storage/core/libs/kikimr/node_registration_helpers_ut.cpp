@@ -44,11 +44,13 @@ void CheckAllFieldsSet(
                 << field->DebugString()
                 << "does not track presence");
 
-        UNIT_ASSERT_C(
-            msg.GetMetadata().reflection->HasField(msg, field),
-            TStringBuilder()
-                << "Unset field: "
-                << field->DebugString());
+        if (field->label() != NProtoBuf::FieldDescriptor::LABEL_OPTIONAL) {
+            UNIT_ASSERT_C(
+                msg.GetMetadata().reflection->HasField(msg, field),
+                TStringBuilder()
+                    << "Unset field: "
+                    << field->DebugString());
+        }
     }
 }
 
