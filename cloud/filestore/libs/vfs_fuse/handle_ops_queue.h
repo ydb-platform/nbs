@@ -27,7 +27,7 @@ public:
 
     EResult AddDestroyRequest(ui64 nodeId, ui64 handle);
     std::optional<NProto::TQueueEntry> Front();
-    void Pop();
+    void PopFront();
     ui64 Size() const;
     bool Empty() const;
 };
