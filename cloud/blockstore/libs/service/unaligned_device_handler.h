@@ -85,6 +85,10 @@ private:
         TGuardedSgList sgList,
         TString checkpointId) const;
 
+    NThreading::TFuture<NProto::TZeroBlocksResponse> ExecuteZeroBlocksRequest(
+        TCallContextPtr ctx,
+        const TBlocksInfo& blocksInfo);
+
     void OnRequestFinished(TModifyRequestWeakPtr weakRequest);
 };
 

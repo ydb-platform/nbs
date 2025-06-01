@@ -568,6 +568,51 @@ TFuture<NProto::TZeroBlocksResponse>
 TUnalignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
 {
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
+    if (blocksInfo.IsAligned() || length <= 2 * BlockSize) {
+        return ExecuteZeroBlocksRequest(ctx, blocksInfo);
+    }
+
+    ui64 subRequestLength = 0;
+    if (blocksInfo.BeginOffset != 0) {
+        // handle only first block with unaligned offset
+        subRequestLength = blocksInfo.BlockSize - blocksInfo.BeginOffset;
+        blocksInfo.EndOffset = 0;
+        blocksInfo.Range.End = blocksInfo.Range.Start;
+    } else {
+        // handle whole request without last block with unaligned offset
+        subRequestLength = (blocksInfo.Range.Size() - 1) * BlockSize;
+        blocksInfo.Range.End--;
+        blocksInfo.EndOffset = 0;
+    }
+    from += subRequestLength;
+    length -= subRequestLength;
+
+    auto result = ExecuteZeroBlocksRequest(ctx, blocksInfo);
+    if (length == 0) {
+        return result;
+    }
+
+    return result.Apply(
+        [weakPtr = weak_from_this(), ctx = std::move(ctx), from, length](
+            const TFuture<NProto::TZeroBlocksResponse>& f)
+        {
+            const auto& response = f.GetValue();
+            if (HasError(response)) {
+                return f;
+            }
+
+            if (auto self = weakPtr.lock()) {
+                return self->Zero(std::move(ctx), from, length);
+            }
+            return MakeFuture<NProto::TZeroBlocksResponse>(
+                TErrorResponse(E_CANCELLED));
+        });
+}
+
+NThreading::TFuture<NProto::TZeroBlocksResponse> TUnalignedDeviceHandler::ExecuteZeroBlocksRequest(
+    TCallContextPtr ctx,
+    const TBlocksInfo& blocksInfo)
+{
     auto request = std::make_shared<TZeroRequest>(Backend, ctx, blocksInfo);
     auto weakRequest = request->weak_from_this();
     auto* rawRequest = request.get();
