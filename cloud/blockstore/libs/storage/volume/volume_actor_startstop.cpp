@@ -45,7 +45,7 @@ bool TVolumeActor::SendBootExternalRequest(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Requesting external boot for partition tablet: [%s]",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str(),
+        LogTitle.GetWithTime().c_str(),
         TLogTitle::GetPartitionPrefix(
             partition.TabletId,
             partition.PartitionIndex,
@@ -106,7 +106,7 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
             TBlockStoreComponents::VOLUME,
             "%s Volume started. MountSeqNumber: %lu, load time: %s, start "
             "time: %s",
-            LogTitle.Get(TLogTitle::EDetails::WithTime).c_str(),
+            LogTitle.GetWithTime().c_str(),
             State->GetMountSeqNumber(),
             FormatDuration(GetLoadTime()).c_str(),
             FormatDuration(GetStartTime()).c_str());
@@ -731,7 +731,7 @@ void TVolumeActor::HandleBootExternalResponse(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Starting partition [%s g:%u] with bootstrapper %s",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str(),
+        LogTitle.GetWithTime().c_str(),
         TLogTitle::GetPartitionPrefix(partTabletId, partitionIndex, siblingCount).c_str(),
         bootConfig.SuggestedGeneration,
         ToString(bootstrapper).c_str());

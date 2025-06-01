@@ -132,7 +132,7 @@ void TPartitionActor::Activate(const TActorContext& ctx)
         ctx,
         TBlockStoreComponents::PARTITION,
         "%s State initialization finished",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 }
 
 void TPartitionActor::Suicide(const TActorContext& ctx)
@@ -331,7 +331,7 @@ void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
         ctx,
         TBlockStoreComponents::PARTITION,
         "%s Activated executor",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 
     BecomeAux(ctx, STATE_INIT);
 
@@ -575,7 +575,7 @@ void TPartitionActor::SendGarbageCollectorCompleted(
         ctx,
         TBlockStoreComponents::PARTITION,
         "%s Send garbage collector completed",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
     NCloud::Send(
         ctx,
         LauncherID(),

@@ -142,7 +142,7 @@ void TVolumeActor::BecomeAux(const TActorContext& ctx, EState state)
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Switched state %s -> %s (system: %s, user: %s, executor: %s)",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str(),
+        LogTitle.GetWithTime().c_str(),
         GetStateName(prevState).Quote().c_str(),
         GetStateName(state).Quote().c_str(),
         ToString(Tablet()).data(),
@@ -273,7 +273,7 @@ void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Activated executor",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 
     ScheduleRegularUpdates(ctx);
 

@@ -163,7 +163,7 @@ void TVolumeActor::CompleteLoadState(
             ctx,
             TBlockStoreComponents::VOLUME,
             "%s State initialization finished",
-            LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+            LogTitle.GetWithTime().c_str());
 
         RegisterCounters(ctx);
         RegisterVolume(ctx);
@@ -189,7 +189,7 @@ void TVolumeActor::CompleteLoadState(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s State data loaded, time: %s",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str(),
+        LogTitle.GetWithTime().c_str(),
         FormatDuration(GetLoadTime()).c_str());
 
     ctx.Send(

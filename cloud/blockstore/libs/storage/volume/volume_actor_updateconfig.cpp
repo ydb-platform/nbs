@@ -382,7 +382,7 @@ void TVolumeActor::CompleteUpdateConfig(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s State initialization finished",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);

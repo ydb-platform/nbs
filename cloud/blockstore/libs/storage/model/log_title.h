@@ -4,6 +4,8 @@
 #include <util/system/types.h>
 namespace NCloud::NBlockStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 class TLogTitle
 {
 public:
@@ -31,12 +33,14 @@ private:
     TString CachedPrefix;
 
 public:
-    TLogTitle(ui64 tabletId, TString diskId, ui64 now);
+    // Constructor for Volume
+    TLogTitle(ui64 tabletId, TString diskId, ui64 startTime);
 
+    // Constructor for Partition
     TLogTitle(
         ui64 tabletId,
         TString diskId,
-        ui64 now,
+        ui64 startTime,
         ui32 partitionIndex,
         ui32 partitionCount);
 
@@ -44,6 +48,8 @@ public:
     GetPartitionPrefix(ui64 tabletId, ui32 partitionIndex, ui32 partitionCount);
 
     [[nodiscard]] TString Get(EDetails details) const;
+
+    [[nodiscard]] TString GetWithTime() const;
 
     void SetDiskId(TString diskId);
     void SetGeneration(ui32 generation);

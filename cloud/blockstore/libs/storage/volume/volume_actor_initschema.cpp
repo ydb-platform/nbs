@@ -45,7 +45,7 @@ void TVolumeActor::CompleteInitSchema(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Schema initialized",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 
     ExecuteTx<TLoadState>(
         ctx,

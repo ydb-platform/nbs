@@ -50,7 +50,7 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
         ctx,
         TBlockStoreComponents::PARTITION,
         "%s Loaded fresh blobs",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 
     Actors.Erase(ev->Sender);
 

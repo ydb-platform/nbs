@@ -44,7 +44,7 @@ void TPartitionActor::CompleteInitSchema(
         ctx,
         TBlockStoreComponents::PARTITION,
         "%s Schema initialized",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 
     ExecuteTx(ctx, CreateTx<TLoadState>(args.BlocksCount));
 }

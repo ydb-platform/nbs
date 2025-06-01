@@ -64,7 +64,7 @@ bool TPartitionActor::PrepareLoadState(
         ctx,
         TBlockStoreComponents::PARTITION,
         "%s Reading state from local db",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
@@ -104,7 +104,7 @@ void TPartitionActor::ExecuteLoadState(
         ctx,
         TBlockStoreComponents::PARTITION,
         "%s State data loaded",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);

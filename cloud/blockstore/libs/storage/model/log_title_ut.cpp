@@ -64,7 +64,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             logTitle1.Get(TLogTitle::EDetails::Brief));
 
         UNIT_ASSERT_STRING_CONTAINS(
-            logTitle1.Get(TLogTitle::EDetails::WithTime),
+            logTitle1.GetWithTime(),
             "[v:12345 g:5 d:disk1 t:");
     }
 
@@ -82,7 +82,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             logTitle1.Get(TLogTitle::EDetails::Brief));
 
         UNIT_ASSERT_STRING_CONTAINS(
-            logTitle1.Get(TLogTitle::EDetails::WithTime),
+            logTitle1.GetWithTime(),
             "[p1:12345 g:5 d:disk1 t:");
     }
 }

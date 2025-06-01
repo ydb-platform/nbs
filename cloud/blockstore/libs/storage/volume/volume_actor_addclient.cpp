@@ -392,7 +392,7 @@ void TVolumeActor::ExecuteAddClient(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Received add client %s:%s request; pipe server %s, sender %s",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str(),
+        LogTitle.GetWithTime().c_str(),
         args.Info.GetClientId().Quote().c_str(),
         args.Info.GetInstanceId().Quote().c_str(),
         ToString(args.PipeServerActorId).c_str(),

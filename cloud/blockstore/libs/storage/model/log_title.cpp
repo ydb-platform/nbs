@@ -1,4 +1,3 @@
-
 #include "log_title.h"
 
 #include <cloud/storage/core/libs/common/format.h>
@@ -9,9 +8,11 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-TLogTitle::TLogTitle(ui64 tabletId, TString diskId, ui64 now)
+////////////////////////////////////////////////////////////////////////////////
+
+TLogTitle::TLogTitle(ui64 tabletId, TString diskId, ui64 startTime)
     : Type(EType::Volume)
-    , StartTime(now)
+    , StartTime(startTime)
     , TabletId(tabletId)
     , DiskId(std::move(diskId))
 {
@@ -21,11 +22,11 @@ TLogTitle::TLogTitle(ui64 tabletId, TString diskId, ui64 now)
 TLogTitle::TLogTitle(
         ui64 tabletId,
         TString diskId,
-        ui64 now,
+        ui64 startTime,
         ui32 partitionIndex,
         ui32 partitionCount)
     : Type(EType::Partition)
-    , StartTime(now)
+    , StartTime(startTime)
     , TabletId(tabletId)
     , PartitionIndex(partitionIndex)
     , PartitionCount(partitionCount)
@@ -71,6 +72,11 @@ TString TLogTitle::Get(EDetails details) const
 
     result << "]";
     return result;
+}
+
+TString TLogTitle::GetWithTime() const
+{
+    return Get(EDetails::WithTime);
 }
 
 void TLogTitle::SetDiskId(TString diskId)

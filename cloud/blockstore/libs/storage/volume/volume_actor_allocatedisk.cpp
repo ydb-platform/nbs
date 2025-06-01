@@ -225,7 +225,7 @@ void TVolumeActor::AllocateDisk(const TActorContext& ctx)
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s AllocateDiskRequest: %s",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str(),
+        LogTitle.GetWithTime().c_str(),
         request->Record.Utf8DebugString().Quote().c_str());
 
     NCloud::Send(

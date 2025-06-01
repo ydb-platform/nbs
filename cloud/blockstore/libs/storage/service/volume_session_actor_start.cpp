@@ -457,7 +457,7 @@ void TStartVolumeActor::BootExternal(const TActorContext& ctx)
         ctx,
         TBlockStoreComponents::SERVICE,
         "%s Requesting external boot for volume tablet",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 
     PendingRequest = EPendingRequest::BOOT_EXTERNAL;
 
@@ -531,7 +531,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
         ctx,
         TBlockStoreComponents::SERVICE,
         "%s Starting volume tablet",
-        LogTitle.Get(TLogTitle::EDetails::WithTime).c_str());
+        LogTitle.GetWithTime().c_str());
 
     const auto* appData = AppData(ctx);
 
