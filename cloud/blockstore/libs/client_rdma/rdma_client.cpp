@@ -117,7 +117,6 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        Request->SetBlockSize(Request->BlockSize);
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
@@ -193,10 +192,10 @@ public:
     TWriteBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
-            bool IsAlignedDataEnabled)
+            bool isAlignedDataEnabled)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
-        , IsAlignedDataEnabled(IsAlignedDataEnabled)
+        , IsAlignedDataEnabled(isAlignedDataEnabled)
     {}
 
     size_t GetRequestSize() const
@@ -222,7 +221,6 @@ public:
         Y_ENSURE(guard);
 
         const auto& sglist = guard.Get();
-        Request->SetBlockSize(Request->BlockSize);
 
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
