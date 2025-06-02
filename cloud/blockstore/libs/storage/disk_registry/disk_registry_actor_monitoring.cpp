@@ -2221,7 +2221,12 @@ void TDiskRegistryActor::HandleHttpInfo_RenderTransactionsLatency(
     TStringStream out;
     HTML (out) {
         AddLatencyCSS(out);
-        DumpLatency(out, TabletID(), TransactionTimeTracker, 6);
+        DumpLatency(
+            out,
+            TabletID(),
+            TransactionTimeTracker,
+            6   // columnCount
+        );
     }
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }

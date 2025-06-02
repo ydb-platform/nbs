@@ -1178,7 +1178,12 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
 void TVolumeActor::RenderTransactions(IOutputStream& out) const
 {
     HTML (out) {
-        DumpLatency(out, TabletID(), TransactionTimeTracker, 9);
+        DumpLatency(
+            out,
+            TabletID(),
+            TransactionTimeTracker,
+            8   // columnCount
+        );
     }
 }
 
