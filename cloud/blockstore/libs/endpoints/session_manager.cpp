@@ -305,7 +305,6 @@ private:
         if constexpr (HasProtoBlockSize<TRequest>) {
             request->SetBlockSize(BlockSize);
         }
-
     }
 };
 

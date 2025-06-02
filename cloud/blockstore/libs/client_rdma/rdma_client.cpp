@@ -117,7 +117,6 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        Request->SetBlockSize(Request->BlockSize);
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
@@ -218,11 +217,11 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
+        Request->SetBlockSize(Request->BlockSize);
         auto guard = Request->Sglist.Acquire();
         Y_ENSURE(guard);
 
         const auto& sglist = guard.Get();
-        Request->SetBlockSize(Request->BlockSize);
 
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
