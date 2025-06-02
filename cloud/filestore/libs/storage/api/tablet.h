@@ -27,6 +27,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GenerateBlobIds,            __VA_ARGS__)                               \
     xxx(AddData,                    __VA_ARGS__)                               \
     xxx(ForcedOperation,            __VA_ARGS__)                               \
+    xxx(ListNodeRefs,              __VA_ARGS__)                                \
     xxx(ConfigureShards,            __VA_ARGS__)                               \
     xxx(ConfigureAsShard,           __VA_ARGS__)                               \
     xxx(GetStorageConfig,           __VA_ARGS__)                               \
@@ -124,6 +125,9 @@ struct TEvIndexTablet
 
         EvRenameNodeInDestinationRequest = EvBegin + 47,
         EvRenameNodeInDestinationResponse,
+
+        EvListNodeRefsRequest = EvBegin + 49,
+        EvListNodeRefsResponse,
 
         EvEnd
     };

@@ -994,6 +994,8 @@ struct TEvIndexTabletPrivate
 
     using TEvEnqueueBlobIndexOpIfNeeded =
         TRequestEvent<TEmpty, EvEnqueueBlobIndexOpIfNeeded>;
+    using TEvListNodeRefsRequest =
+        TRequestEvent<NProto::TListNodeRefsRequest, EvListNodeRefsRequest>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

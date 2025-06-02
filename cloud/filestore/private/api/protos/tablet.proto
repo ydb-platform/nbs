@@ -832,3 +832,34 @@ message TUnlinkNodeInShardRequest
     // Original request that caused this unlink.
     NProto.TUnlinkNodeRequest OriginalRequest = 6;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TListNodeRefsRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // Node Id to start from
+    uint64 NodeId = 2;
+    string LastName = 3;
+    uint32 Limit = 4;
+}
+
+
+message TListNodeRefsResponse
+{
+    repeated TNodeRefs NodeRefs = 1;
+    string Cookie = 2;
+    uint64 LastNodeId = 3;
+}
+
+message TNodeRefs
+{
+    uint64 NodeId = 1;
+    uint64 CommitId = 2;
+    string Name = 3;
+    uint64 ChildId = 4;
+    string ShardId = 5;
+    string ShardNodeName = 6;
+}

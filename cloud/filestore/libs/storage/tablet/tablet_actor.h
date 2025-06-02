@@ -800,6 +800,10 @@ private:
         const TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleListNodeRefsRequest(
+        const TEvIndexTabletPrivate::TEvListNodeRefsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
