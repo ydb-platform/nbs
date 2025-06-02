@@ -652,7 +652,7 @@ def test_discard_device():
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
 
-        # discard 2Gib with unaligned offset in the first and last block
+        # discard 2 GiB with unaligned offset in the first and last block
         length = 2 * 1024 * 1024 * 1024
         sector_size = 512
         result = common.execute(
@@ -661,14 +661,14 @@ def test_discard_device():
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
 
-        # discard ~2Gib with unaligned offset in the last block
+        # discard ~2 GiB with unaligned offset in the last block
         result = common.execute(
             ["blkdiscard", "-l", str(length + sector_size), nbd_device],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
 
-        # discard ~2Gib with unaligned offset in the first block
+        # discard ~2 GiB with unaligned offset in the first block
         result = common.execute(
             ["blkdiscard", "-o", str(sector_size), "-l", str(length - sector_size), nbd_device],
             stdout=subprocess.PIPE,

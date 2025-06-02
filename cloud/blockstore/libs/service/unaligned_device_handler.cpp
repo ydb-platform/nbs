@@ -568,13 +568,14 @@ TFuture<NProto::TZeroBlocksResponse>
 TUnalignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
 {
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
-    if (blocksInfo.IsAligned() || length <= 2 * BlockSize) {
+    if (blocksInfo.IsAligned() || blocksInfo.Range.Size() <= 2) {
         return ExecuteZeroBlocksRequest(ctx, blocksInfo);
     }
 
     ui64 subRequestLength = 0;
     if (blocksInfo.BeginOffset != 0) {
         // handle only first block with unaligned offset
+        Y_ABORT_UNLESS(blocksInfo.BlockSize > blocksInfo.BeginOffset);
         subRequestLength = blocksInfo.BlockSize - blocksInfo.BeginOffset;
         blocksInfo.EndOffset = 0;
         blocksInfo.Range.End = blocksInfo.Range.Start;
@@ -609,7 +610,8 @@ TUnalignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
         });
 }
 
-NThreading::TFuture<NProto::TZeroBlocksResponse> TUnalignedDeviceHandler::ExecuteZeroBlocksRequest(
+NThreading::TFuture<NProto::TZeroBlocksResponse>
+TUnalignedDeviceHandler::ExecuteZeroBlocksRequest(
     TCallContextPtr ctx,
     const TBlocksInfo& blocksInfo)
 {

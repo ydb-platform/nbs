@@ -49,7 +49,7 @@ private:
     ui32 WriteRequestCount = 0;
     ui32 ZeroRequestCount = 0;
 
-    ui32 ZeroBlocksCount = 0;
+    ui32 ZeroedBlocksCount = 0;
 
 public:
     TTestEnvironment(
@@ -117,7 +117,7 @@ public:
         testStorage->ZeroBlocksHandler =
             [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TZeroBlocksRequest> request) {
                 ++ZeroRequestCount;
-                ZeroBlocksCount += request->GetBlocksCount();
+                ZeroedBlocksCount += request->GetBlocksCount();
                 ctx->AddTime(EProcessingStage::Postponed, TDuration::Seconds(100));
 
                 auto future = WriteTrigger.GetFuture();
@@ -267,12 +267,12 @@ public:
         ReadRequestCount = 0;
         WriteRequestCount = 0;
         ZeroRequestCount = 0;
-        ZeroBlocksCount = 0;
+        ZeroedBlocksCount = 0;
     }
 
-    ui32 GetZeroBlocksCount() const
+    ui32 GetZeroedBlocksCount() const
     {
-        return ZeroBlocksCount;
+        return ZeroedBlocksCount;
     }
 };
 
@@ -665,21 +665,21 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         UNIT_ASSERT_VALUES_EQUAL(2, env.GetReadRequestCount());
         UNIT_ASSERT_VALUES_EQUAL(2, env.GetWriteRequestCount());
         UNIT_ASSERT_VALUES_EQUAL(6, env.GetZeroRequestCount());
-        UNIT_ASSERT_VALUES_EQUAL(22, env.GetZeroBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(22, env.GetZeroedBlocksCount());
         env.ResetRequestCounters();
 
         env.ZeroSectors(1, 39);
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetReadRequestCount());
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetWriteRequestCount());
         UNIT_ASSERT_VALUES_EQUAL(5, env.GetZeroRequestCount());
-        UNIT_ASSERT_VALUES_EQUAL(19, env.GetZeroBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(19, env.GetZeroedBlocksCount());
         env.ResetRequestCounters();
 
         env.ZeroSectors(8, 37);
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetReadRequestCount());
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetWriteRequestCount());
         UNIT_ASSERT_VALUES_EQUAL(5, env.GetZeroRequestCount());
-        UNIT_ASSERT_VALUES_EQUAL(18, env.GetZeroBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(18, env.GetZeroedBlocksCount());
         env.ResetRequestCounters();
 
         env.WriteSectors(3, 8, 'a');
