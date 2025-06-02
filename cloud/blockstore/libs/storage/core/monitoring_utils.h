@@ -180,7 +180,8 @@ void AddLatencyCSS(IOutputStream& out);
 void DumpLatency(
     IOutputStream& out,
     ui64 tabletId,
-    const TTransactionTimeTracker& transactionTimeTracker);
+    const TTransactionTimeTracker& transactionTimeTracker,
+    size_t columnCount);
 
 TCgiParameters GatherHttpParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
 TCgiParameters GetHttpMethodParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
