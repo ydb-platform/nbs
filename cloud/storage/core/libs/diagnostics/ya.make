@@ -32,6 +32,7 @@ PEERDIR(
 
     library/cpp/lwtrace/mon
 
+    contrib/ydb/library/actors/core
     contrib/ydb/library/actors/prof
     library/cpp/containers/ring_buffer
     library/cpp/deprecated/atomic

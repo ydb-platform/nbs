@@ -14,6 +14,9 @@ using TDeviceClientPtr = std::shared_ptr<TDeviceClient>;
 class TDiskAgentConfig;
 using TDiskAgentConfigPtr = std::shared_ptr<TDiskAgentConfig>;
 
+class IMultiAgentWriteHandler;
+using IMultiAgentWriteHandlerPtr = std::shared_ptr<IMultiAgentWriteHandler>;
+
 constexpr TStringBuf BackgroundOpsClientId = "migration";
 constexpr TStringBuf CheckHealthClientId = "check-health";
 constexpr TStringBuf AnyWriterClientId = "any-writer";

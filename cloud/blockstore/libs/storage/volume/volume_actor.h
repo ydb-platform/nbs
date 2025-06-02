@@ -305,7 +305,8 @@ private:
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
-    TRequestsTimeTracker RequestTimeTracker;
+
+    TRequestsTimeTracker RequestTimeTracker{GetCycleCount()};
     TTransactionTimeTracker TransactionTimeTracker;
 
     // inflight VolumeRequestId -> duplicate request queue

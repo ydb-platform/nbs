@@ -16,6 +16,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class IMultiAgentWriteHandler;
+
 struct TOldRequestCounters
 {
     NMonitoring::TDynamicCounters::TCounterPtr Delayed = {};
@@ -69,6 +71,7 @@ IRdmaTargetPtr CreateRdmaTarget(
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
+    IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
     THashMap<TString, TStorageAdapterPtr> devices);
 
 }   // namespace NCloud::NBlockStore::NStorage

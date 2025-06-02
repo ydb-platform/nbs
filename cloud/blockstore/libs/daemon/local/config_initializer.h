@@ -21,6 +21,7 @@ struct TConfigInitializerLocal final
     ui32 GetMonitoringThreads() const override;
     bool GetUseNonreplicatedRdmaActor() const override;
     TDuration GetInactiveClientsTimeout() const override;
+    TString GetLogBackendFileName() const override;
 };
 
 }   // namespace NCloud::NBlockStore::NServer
