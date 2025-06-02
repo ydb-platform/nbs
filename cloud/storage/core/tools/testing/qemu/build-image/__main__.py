@@ -82,8 +82,8 @@ def write_user_data(filename, args):
             ],
         },
         'packages': [
+            'acl',
             'btop',
-            'dstat',
             'fio',
             'iotop',
             'mc',
