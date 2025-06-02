@@ -248,9 +248,9 @@ STFUNC(TPatchBlobActor::StateWork)
 EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ssf)
 {
     /*
-    YellowStop: Tablets switch to read-only mode. Only system writes is allowed.
+    YellowStop: Tablets switch to read-only mode. Only system writes are allowed.
 
-    LightOrange: Alert: "Tablets have not stopped". Compaction writes is not
+    LightOrange: Alert: "Tablets have not stopped". Compaction writes are not
     allowed if this flag is received.
 
     PreOrange: VDisk switches to read-only mode.
