@@ -12,6 +12,8 @@
 #include <util/stream/output.h>
 #include <util/string/builder.h>
 
+#include <concepts>
+
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,6 +41,14 @@ struct TRequestInfo
 };
 
 IOutputStream& operator<<(IOutputStream& out, const TRequestInfo& info);
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+concept HasBlockSize = requires (T& r)
+{
+    { r.BlockSize } -> std::same_as<ui32>;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
