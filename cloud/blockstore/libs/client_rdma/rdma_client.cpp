@@ -217,6 +217,7 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
+        Request->SetBlockSize(Request->BlockSize);
         auto guard = Request->Sglist.Acquire();
         Y_ENSURE(guard);
 
