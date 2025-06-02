@@ -78,7 +78,6 @@ private:
     const TCallContextPtr CallContext;
     const std::shared_ptr<TRequest> Request;
     const bool IsAlignedDataEnabled;
-    const size_t BlockSize;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
     NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
@@ -87,12 +86,10 @@ public:
     TReadBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
-            bool isAlignedDataEnabled,
-            size_t blockSize)
+            bool isAlignedDataEnabled)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
-        , BlockSize(blockSize)
     {
         Y_UNUSED(isAlignedDataEnabled);
     }
@@ -104,7 +101,8 @@ public:
 
     size_t GetResponseSize() const
     {
-        return MAX_PROTO_SIZE + BlockSize * Request->GetBlocksCount();
+        return MAX_PROTO_SIZE +
+            (static_cast<size_t>(Request->BlockSize) * Request->GetBlocksCount());
     }
 
     TFuture<TResponse> GetResponse() const
@@ -119,7 +117,7 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        Request->SetBlockSize(BlockSize);
+        Request->SetBlockSize(Request->BlockSize);
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
@@ -187,7 +185,6 @@ private:
     const TCallContextPtr CallContext;
     const std::shared_ptr<TRequest> Request;
     const bool IsAlignedDataEnabled;
-    const size_t BlockSize;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
     NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
@@ -196,19 +193,17 @@ public:
     TWriteBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
-            bool IsAlignedDataEnabled,
-            size_t blockSize)
+            bool IsAlignedDataEnabled)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , IsAlignedDataEnabled(IsAlignedDataEnabled)
-        , BlockSize(blockSize)
     {}
 
     size_t GetRequestSize() const
     {
         return NRdma::TProtoMessageSerializer::MessageByteSize(
             *Request,
-            BlockSize * Request->BlocksCount);
+            static_cast<size_t>(Request->BlockSize) * Request->BlocksCount);
     }
 
     size_t GetResponseSize() const
@@ -227,7 +222,7 @@ public:
         Y_ENSURE(guard);
 
         const auto& sglist = guard.Get();
-        Request->SetBlockSize(BlockSize);
+        Request->SetBlockSize(Request->BlockSize);
 
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
@@ -285,13 +280,11 @@ public:
     TZeroBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
-            bool isAlignedDataEnabled,
-            size_t blockSize)
+            bool isAlignedDataEnabled)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
-        Y_UNUSED(blockSize);
     }
 
     size_t GetRequestSize() const
@@ -359,9 +352,6 @@ private:
     NRdma::IClientEndpointPtr Endpoint;
     TLog Log;
 
-    // TODO
-    size_t BlockSize = 4*1024;
-
 public:
     ~TRdmaEndpoint() override
     {
@@ -371,13 +361,13 @@ public:
     static std::shared_ptr<TRdmaEndpoint> Create(
         ILoggingServicePtr logging,
         IBlockStorePtr volumeClient,
-        bool IsAlignedDataEnabled)
+        bool isAlignedDataEnabled)
     {
         return std::shared_ptr<TRdmaEndpoint>{
             new TRdmaEndpoint(
                 std::move(logging),
                 std::move(volumeClient),
-                IsAlignedDataEnabled)};
+                isAlignedDataEnabled)};
     }
 
     void Init(NRdma::IClientEndpointPtr endpoint)
@@ -493,8 +483,7 @@ TFuture<typename T::TResponse> TRdmaEndpoint::HandleRequest(
     auto handler = std::make_unique<T>(
         callContext,
         std::move(request),
-        IsAlignedDataEnabled,
-        BlockSize);
+        IsAlignedDataEnabled);
 
     auto [req, err] = Endpoint->AllocateRequest(
         shared_from_this(),
