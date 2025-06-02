@@ -12501,7 +12501,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT(FAILED(response->GetStatus()));
         }
     }
-  
+
     Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
     {
         constexpr ui32 blobCount = 4;

@@ -2622,9 +2622,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvReadDeviceBlocksRequest: {
-                        auto response = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksResponse>(
-                            MakeError(E_IO, "Simulated read failure")
-                        );
+                        auto response = std::make_unique<
+                            TEvDiskAgent::TEvReadDeviceBlocksResponse>(
+                            MakeError(E_IO, "Simulated read failure"));
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
@@ -2640,19 +2640,15 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-
-
         const size_t dataSize = blockCount * DefaultBlockSize;
         TString buffer(dataSize, 100);
         TSgList sgList{TBlockDataRef{buffer.data(), buffer.size()}};
 
         auto range = TBlockRange64::WithLength(0, blockCount);
-        auto request = client.CreateReadBlocksLocalRequest(
-            range,
-            TGuardedSgList(sgList));
+        auto request =
+            client.CreateReadBlocksLocalRequest(range, TGuardedSgList(sgList));
 
         request->Record.ShouldReportFailedRangesOnFailure = true;
-
 
         client.SendRequest(env.ActorId, std::move(request));
 
