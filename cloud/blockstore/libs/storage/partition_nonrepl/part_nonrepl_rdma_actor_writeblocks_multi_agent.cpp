@@ -32,28 +32,21 @@ struct TDeviceRequestInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaMultiWriteBlocksResponseHandler: public NRdma::IClientHandler
+class TRdmaMultiWriteBlocksResponseHandler
+    : public TRdmaDeviceRequestHandlerBase<TRdmaMultiWriteBlocksResponseHandler>
 {
-private:
-    TActorSystem* ActorSystem;
-    const TNonreplicatedPartitionConfigPtr PartConfig;
-    const TRequestInfoPtr RequestInfo;
-    const ui32 RequestBlockCount;
-    const size_t ReplicationTargetCount = 0;
-    const NActors::TActorId ParentActorId;
-    const ui64 RequestId;
+    using TBase =
+        TRdmaDeviceRequestHandlerBase<TRdmaMultiWriteBlocksResponseHandler>;
 
-    TAdaptiveLock Lock;
-    NProto::TError Error;
+private:
+    const size_t ReplicationTargetCount = 0;
+
     bool InconsistentResponse = false;
 
-    // Indices of devices that participated in the request.
-    TStackVec<ui32, 2> DeviceIndices;
-
-    // Indices of devices where requests have resulted in errors.
-    TStackVec<ui32, 2> ErrorDeviceIndices;
-
 public:
+    using TRequestContext = TDeviceRequestRdmaContext;
+    using TResponseProto = NProto::TWriteDeviceBlocksResponse;
+
     TRdmaMultiWriteBlocksResponseHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
@@ -62,123 +55,68 @@ public:
             size_t replicationTargetCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
-        : ActorSystem(actorSystem)
-        , PartConfig(std::move(partConfig))
-        , RequestInfo(std::move(requestInfo))
-        , RequestBlockCount(requestBlockCount)
+        : TBase(
+              actorSystem,
+              std::move(partConfig),
+              std::move(requestInfo),
+              requestId,
+              parentActorId,
+              requestBlockCount,
+              1)
         , ReplicationTargetCount(replicationTargetCount)
-        , ParentActorId(parentActorId)
-        , RequestId(requestId)
     {}
 
-    void HandleResult(TStringBuf buffer)
+    NProto::TError ProcessSubResponseProto(
+        const TRequestContext& ctx,
+        TResponseProto& proto,
+        TStringBuf data)
     {
-        auto* serializer = TBlockStoreProtocol::Serializer();
-        auto [result, err] = serializer->Parse(buffer);
-
-        if (HasError(err)) {
-            Error = std::move(err);
-            return;
-        }
-
-        const auto& concreteProto =
-            static_cast<NProto::TWriteDeviceBlocksResponse&>(*result.Proto);
-        if (HasError(concreteProto.GetError())) {
-            Error = concreteProto.GetError();
-            return;
-        }
+        Y_UNUSED(ctx, data);
 
         bool subResponsesOk =
-            concreteProto.GetReplicationResponses().size() ==
+            proto.GetReplicationResponses().size() ==
                 static_cast<int>(ReplicationTargetCount) &&
             AllOf(
-                concreteProto.GetReplicationResponses(),
+                proto.GetReplicationResponses(),
                 [](const NProto::TError& subResponseError)
                 { return subResponseError.GetCode() == S_OK; });
         if (!subResponsesOk) {
             TString subResponses = Accumulate(
-                concreteProto.GetReplicationResponses(),
+                proto.GetReplicationResponses(),
                 TString{},
                 [](const TString& acc, const NProto::TError& err)
                 {
                     return acc ? acc + "," + FormatError(err)
                                : FormatError(err);
                 });
-            Error = MakeError(E_REJECTED, "Responses: [" + subResponses + "]");
             InconsistentResponse = true;
+            return MakeError(E_REJECTED, "Responses: [" + subResponses + "]");
         }
+
+        return {};
     }
 
-    void HandleResponse(
-        NRdma::TClientRequestPtr req,
-        ui32 status,
-        size_t responseBytes) override
+    std::unique_ptr<NActors::IEventBase> CreateResponse(
+        NProto::TError error)
     {
-        TRequestScope timer(*RequestInfo);
-
-        auto guard = Guard(Lock);
-
-        const auto buffer = req->ResponseBuffer.Head(responseBytes);
-        const auto* reqCtx =
-            static_cast<TDeviceRequestRdmaContext*>(req->Context.get());
-
-        DeviceIndices.emplace_back(reqCtx->DeviceIdx);
-
-        if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(buffer);
-        } else {
-            Error = NRdma::ParseError(buffer);
-            ConvertRdmaErrorIfNeeded(status, Error);
-            if (NeedToNotifyAboutDeviceRequestError(Error)) {
-                ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
-            }
-        }
-
-        ProcessError(*ActorSystem, *PartConfig, Error);
-
-        {
-            // Send response.
-            auto response = std::make_unique<
-                TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(Error);
-            response->Record.InconsistentResponse = InconsistentResponse;
-            SendEvent(
-                RequestInfo->Sender,
-                std::move(response),
-                RequestInfo->Cookie);
-        }
-
-        {
-            // Send completion event.
-            using TCompletionEvent =
-                TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted;
-            auto completion =
-                std::make_unique<TCompletionEvent>(std::move(Error));
-            auto& counters = *completion->Stats.MutableUserWriteCounters();
-            counters.SetBlocksCount(RequestBlockCount);
-
-            completion->TotalCycles = RequestInfo->GetTotalCycles();
-            completion->DeviceIndices = DeviceIndices;
-            completion->ErrorDeviceIndices = ErrorDeviceIndices;
-
-            timer.Finish();
-            completion->ExecCycles = RequestInfo->GetExecCycles();
-
-            SendEvent(ParentActorId, std::move(completion), RequestId);
-        }
+        auto response = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
+            std::move(error));
+        response->Record.InconsistentResponse = InconsistentResponse;
+        return response;
     }
 
-    void SendEvent(
-        NActors::TActorId recipient,
-        std::unique_ptr<IEventBase> ev,
-        ui64 cookie) const
+    std::unique_ptr<
+        TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted>
+    CreateCompletionEvent(const NProto::TError& error)
     {
-        auto completionEvent = std::make_unique<IEventHandle>(
-            recipient,
-            TActorId(),
-            ev.release(),
-            0,
-            cookie);
-        ActorSystem->Send(completionEvent.release());
+        auto completion = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted>(
+            error);
+        auto& counters = *completion->Stats.MutableUserWriteCounters();
+        counters.SetBlocksCount(GetRequestBlockCount());
+
+        return completion;
     }
 };
 
