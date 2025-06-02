@@ -227,8 +227,6 @@ private:
     const TActorId Sender;
     TActorId PipeClient;
 
-    bool VolumeCreated = false;
-
 public:
     TVolumeClient(
             TTestActorRuntime& runtime,
@@ -330,17 +328,6 @@ public:
         auto request =
             CreateUpdateVolumeConfigRequest(std::forward<Args>(args)...);
 
-        // Send CreateVolumeRequest to SchemeShard.
-        if (!VolumeCreated) {
-            Send(
-                Runtime,
-                MakeSSProxyServiceId(),
-                NActors::TActorId(),
-                std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
-                    request->Record.GetVolumeConfig()));
-            VolumeCreated = true;
-        }
-
         SendToPipe(std::move(request));
     }
 
@@ -358,6 +345,21 @@ public:
             response->Record.GetStatus() == NKikimrBlockStore::OK,
             "Unexpected status: " <<
             NKikimrBlockStore::EStatus_Name(response->Record.GetStatus()));
+    }
+
+    void CreateVolume(
+        std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig> request)
+    {
+        // Send CreateVolumeRequest to SchemeShard.
+        Send(
+            Runtime,
+            MakeSSProxyServiceId(),
+            NActors::TActorId(),
+            std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
+                request->Record.GetVolumeConfig()));
+
+        // Send UpdateVolumeConfig to VolumeActor.
+        SendToPipe(std::move(request));
     }
 
     auto TagUpdater(NProto::EStorageMediaKind mediaKind, ui64 blockCount)
