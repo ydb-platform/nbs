@@ -40,10 +40,11 @@ void TPartitionActor::CompleteInitSchema(
 {
     Y_UNUSED(args);
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Schema initialized",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Schema initialized",
+        LogTitle.GetWithTime().c_str());
 
     ExecuteTx(ctx, CreateTx<TLoadState>(args.BlocksCount));
 }

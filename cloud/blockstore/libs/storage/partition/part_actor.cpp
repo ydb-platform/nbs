@@ -54,6 +54,7 @@ TPartitionActor::TPartitionActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
+        ui32 partitionIndex,
         ui32 siblingCount,
         const TActorId& volumeActorId)
     : TActor(&TThis::StateBoot)
@@ -68,6 +69,12 @@ TPartitionActor::TPartitionActor(
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
+    , LogTitle(
+          TabletID(),
+          PartitionConfig.GetDiskId(),
+          StartTime,
+          partitionIndex,
+          siblingCount)
     , TransactionTimeTracker(PartitionTransactions)
 {}
 
@@ -121,9 +128,11 @@ void TPartitionActor::Activate(const TActorContext& ctx)
 
     State->FinishLoadState();
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] State initialization finished",
-        TabletID());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s State initialization finished",
+        LogTitle.GetWithTime().c_str());
 }
 
 void TPartitionActor::Suicide(const TActorContext& ctx)
@@ -316,9 +325,13 @@ bool TPartitionActor::OnRenderAppHtmlPage(
 
 void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Activated executor",
-        TabletID());
+    LogTitle.SetGeneration(Executor()->Generation());
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Activated executor",
+        LogTitle.GetWithTime().c_str());
 
     BecomeAux(ctx, STATE_INIT);
 
@@ -558,10 +571,11 @@ void TPartitionActor::SendBackpressureReport(const TActorContext& ctx) const
 void TPartitionActor::SendGarbageCollectorCompleted(
     const TActorContext& ctx) const
 {
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Send garbage collector completed",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Send garbage collector completed",
+        LogTitle.GetWithTime().c_str());
     NCloud::Send(
         ctx,
         LauncherID(),

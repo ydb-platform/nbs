@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -377,9 +378,11 @@ void TVolumeActor::CompleteUpdateConfig(
         BecomeAux(ctx, STATE_WORK);
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] State initialization finished",
-        TabletID());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s State initialization finished",
+        LogTitle.GetWithTime().c_str());
 
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);

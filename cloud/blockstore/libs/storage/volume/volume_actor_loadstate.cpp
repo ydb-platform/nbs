@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -50,6 +51,10 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadFollowers(args.FollowerDisks),
     };
+
+    if (args.Meta) {
+        LogTitle.SetDiskId(args.Meta->GetConfig().GetDiskId());
+    }
 
     bool ready = std::accumulate(
         results.begin(),
@@ -154,9 +159,11 @@ void TVolumeActor::CompleteLoadState(
         Y_ABORT_UNLESS(CurrentState == STATE_INIT);
         BecomeAux(ctx, STATE_WORK);
 
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] State initialization finished",
-            TabletID());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s State initialization finished",
+            LogTitle.GetWithTime().c_str());
 
         RegisterCounters(ctx);
         RegisterVolume(ctx);
@@ -178,10 +185,12 @@ void TVolumeActor::CompleteLoadState(
     StateLoadTimestamp = ctx.Now();
     NextVolumeConfigVersion = GetCurrentConfigVersion();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] State data loaded, time: %lu",
-        TabletID(),
-        GetLoadTime().MicroSeconds());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s State data loaded, time: %s",
+        LogTitle.GetWithTime().c_str(),
+        FormatDuration(GetLoadTime()).c_str());
 
     ctx.Send(
         MakeDiskRegistryProxyServiceId(),

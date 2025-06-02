@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration.h>
 #include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/core/base/tablet.h>
@@ -40,9 +41,16 @@ bool TVolumeActor::SendBootExternalRequest(
         return false;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Requesting external boot for tablet",
-        partition.TabletId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Requesting external boot for partition tablet: [%s]",
+        LogTitle.GetWithTime().c_str(),
+        TLogTitle::GetPartitionPrefix(
+            partition.TabletId,
+            partition.PartitionIndex,
+            State->GetMeta().GetPartitions().size())
+            .c_str());
 
     NCloud::Send<TEvHiveProxy::TEvBootExternalRequest>(
         ctx,
@@ -93,14 +101,15 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
     if (!StartCompletionTimestamp) {
         StartCompletionTimestamp = ctx.Now();
 
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Volume %s started. MountSeqNumber: %lu, generation: %lu, "
-            "time: %lu",
-            TabletID(),
-            State->GetDiskId().Quote().c_str(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Volume started. MountSeqNumber: %lu, load time: %s, start "
+            "time: %s",
+            LogTitle.GetWithTime().c_str(),
             State->GetMountSeqNumber(),
-            Executor()->Generation(),
-            GetStartTime().MicroSeconds());
+            FormatDuration(GetLoadTime()).c_str(),
+            FormatDuration(GetStartTime()).c_str());
     }
 
     while (!PendingRequests.empty()) {
@@ -655,6 +664,7 @@ void TVolumeActor::HandleBootExternalResponse(
     auto profileLog = ProfileLog;
     auto blockDigestGenerator = BlockDigestGenerator;
     auto storageAccessMode = State->GetStorageAccessMode();
+    auto partitionIndex = part->PartitionIndex;
     auto siblingCount = State->GetPartitions().size();
     auto selfId = SelfId();
 
@@ -676,6 +686,7 @@ void TVolumeActor::HandleBootExternalResponse(
                        std::move(blockDigestGenerator),
                        std::move(partitionConfig),
                        storageAccessMode,
+                       partitionIndex,
                        siblingCount,
                        selfId)
                 .release();
@@ -716,10 +727,13 @@ void TVolumeActor::HandleBootExternalResponse(
 
     NCloud::Send<TEvBootstrapper::TEvStart>(ctx, bootstrapper);
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Starting partition %lu with bootstrapper %s",
-        TabletID(),
-        partTabletId,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Starting partition [%s g:%u] with bootstrapper %s",
+        LogTitle.GetWithTime().c_str(),
+        TLogTitle::GetPartitionPrefix(partTabletId, partitionIndex, siblingCount).c_str(),
+        bootConfig.SuggestedGeneration,
         ToString(bootstrapper).c_str());
 }
 
