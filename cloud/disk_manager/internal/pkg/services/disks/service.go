@@ -24,28 +24,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func diskKindToString(kind types.DiskKind) string {
-	switch kind {
-	case types.DiskKind_DISK_KIND_SSD:
-		return "ssd"
-	case types.DiskKind_DISK_KIND_HDD:
-		return "hdd"
-	case types.DiskKind_DISK_KIND_SSD_NONREPLICATED:
-		return "ssd-nonreplicated"
-	case types.DiskKind_DISK_KIND_SSD_MIRROR2:
-		return "ssd-mirror2"
-	case types.DiskKind_DISK_KIND_SSD_MIRROR3:
-		return "ssd-mirror3"
-	case types.DiskKind_DISK_KIND_SSD_LOCAL:
-		return "ssd-local"
-	case types.DiskKind_DISK_KIND_HDD_NONREPLICATED:
-		return "hdd-nonreplicated"
-	case types.DiskKind_DISK_KIND_HDD_LOCAL:
-		return "hdd-local"
-	}
-	return "unknown"
-}
-
 func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 	switch kind {
 	case disk_manager.DiskKind_DISK_KIND_UNSPECIFIED:

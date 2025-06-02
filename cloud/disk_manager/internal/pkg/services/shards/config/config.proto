@@ -13,7 +13,7 @@ message ZoneShards {
 message ShardsConfig {
     map<string, ZoneShards> Shards = 1;
     repeated string ExcludedFolders = 2;
-
     // If empty, every folder is accepted.
     repeated string IncludedFolders = 3;
+    optional string StorageFolder = 4 [default = "shards"];
 }

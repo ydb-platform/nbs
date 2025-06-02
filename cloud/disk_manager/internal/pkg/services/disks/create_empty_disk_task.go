@@ -9,6 +9,7 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -56,7 +57,7 @@ func (t *createEmptyDiskTask) Run(
 		ZoneID:      t.params.Disk.ZoneId,
 		BlocksCount: t.params.BlocksCount,
 		BlockSize:   t.params.BlockSize,
-		Kind:        diskKindToString(t.params.Kind),
+		Kind:        common.DiskKindToString(t.params.Kind),
 		CloudID:     t.params.CloudId,
 		FolderID:    t.params.FolderId,
 

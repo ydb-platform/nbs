@@ -13,6 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -66,7 +67,7 @@ func (t *createDiskFromImageTask) Run(
 		SrcImageID:  t.request.SrcImageId,
 		BlocksCount: params.BlocksCount,
 		BlockSize:   params.BlockSize,
-		Kind:        diskKindToString(params.Kind),
+		Kind:        common.DiskKindToString(params.Kind),
 		CloudID:     params.CloudId,
 		FolderID:    params.FolderId,
 

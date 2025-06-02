@@ -9,6 +9,7 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
@@ -64,7 +65,7 @@ func (t *createOverlayDiskTask) Run(
 		SrcImageID:  t.request.SrcImageId,
 		BlocksCount: params.BlocksCount,
 		BlockSize:   params.BlockSize,
-		Kind:        diskKindToString(params.Kind),
+		Kind:        common.DiskKindToString(params.Kind),
 		CloudID:     params.CloudId,
 		FolderID:    params.FolderId,
 
