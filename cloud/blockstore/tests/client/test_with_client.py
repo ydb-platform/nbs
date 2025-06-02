@@ -179,7 +179,7 @@ def send_two_node_nameservice_config(env):
             env.configurator.all_node_ids()[0]).ic_port,
         Host="localhost",
         InterconnectHost="localhost",
-        WalleLocation=TNodeLocation(Body=1, DataCenter="1", Rack="1")
+        Location=TNodeLocation(DataCenter="1", Rack="1")
     )
     pm = PortManager()
     second_node_port = pm.get_port()
@@ -188,7 +188,7 @@ def send_two_node_nameservice_config(env):
         Port=second_node_port,
         Host="localhost",
         InterconnectHost="localhost",
-        WalleLocation=TNodeLocation(Body=2, DataCenter="2", Rack="2")
+        Location=TNodeLocation(DataCenter="2", Rack="2")
     )
     update_cms_config(env.kikimr_cluster.client, nameservice_config)
 
