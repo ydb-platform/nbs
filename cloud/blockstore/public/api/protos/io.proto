@@ -96,7 +96,7 @@ message TWriteBlocksRequest
     string SessionId = 6;
 
     // Size of block in bytes.
-    uint64 BlockSize = 7;
+    uint32 BlockSize = 7;
 }
 
 message TWriteBlocksResponse

@@ -192,10 +192,10 @@ public:
     TWriteBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
-            bool IsAlignedDataEnabled)
+            bool isAlignedDataEnabled)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
-        , IsAlignedDataEnabled(IsAlignedDataEnabled)
+        , IsAlignedDataEnabled(isAlignedDataEnabled)
     {}
 
     size_t GetRequestSize() const
@@ -217,7 +217,6 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
-        Request->SetBlockSize(Request->BlockSize);
         auto guard = Request->Sglist.Acquire();
         Y_ENSURE(guard);
 

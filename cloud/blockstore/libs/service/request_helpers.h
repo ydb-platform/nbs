@@ -47,7 +47,7 @@ IOutputStream& operator<<(IOutputStream& out, const TRequestInfo& info);
 template <typename T>
 concept HasBlockSize = requires (T& r)
 {
-    { r.BlockSize } -> std::same_as<ui32>;
+    { r.BlockSize } -> std::same_as<ui32&>;
     { r.BlockSize = ui32() };
 };
 

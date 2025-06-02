@@ -204,15 +204,15 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        SetupBlockSize(request);                                               \
+        SetupBlockSize(*request);                                              \
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);       \
         return Storage->name(std::move(callContext), std::move(request));      \
     }                                                                          \
 // BLOCKSTORE_IMPLEMENT_METHOD
 
-    BLOCKSTORE_IMPLEMENT_METHOD(ZeroBlocks)
     BLOCKSTORE_IMPLEMENT_METHOD(ReadBlocksLocal)
     BLOCKSTORE_IMPLEMENT_METHOD(WriteBlocksLocal)
+    BLOCKSTORE_IMPLEMENT_METHOD(ZeroBlocks)
 
 #undef BLOCKSTORE_IMPLEMENT_METHOD
 
@@ -297,13 +297,13 @@ private:
     }
 
     template <typename TRequest>
-    void SetupBlockSize(std::shared_ptr<TRequest> request)
+    void SetupBlockSize(TRequest& request)
     {
         if constexpr (HasBlockSize<TRequest>) {
-            request->BlockSize = BlockSize;
+            request.BlockSize = BlockSize;
         }
         if constexpr (HasProtoBlockSize<TRequest>) {
-            request->SetBlockSize(BlockSize);
+            request.SetBlockSize(BlockSize);
         }
     }
 };
