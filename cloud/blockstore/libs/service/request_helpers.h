@@ -48,6 +48,14 @@ template <typename T>
 concept HasBlockSize = requires (T& r)
 {
     { r.BlockSize } -> std::same_as<ui32>;
+    { r.BlockSize = ui32() };
+};
+
+template <typename T>
+concept HasProtoBlockSize = requires (T& r)
+{
+    { r.SetBlockSize(ui32()) };
+    { r.GetBlockSize() } -> std::same_as<ui32>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

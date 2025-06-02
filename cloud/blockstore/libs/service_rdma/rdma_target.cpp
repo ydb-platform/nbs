@@ -175,7 +175,7 @@ private:
         Y_ENSURE_RETURN(request.GetBlockSize() != 0, "empty BlockSize");
 
         TGuardedBuffer buffer(TString::Uninitialized(
-            request.GetBlockSize() * request.GetBlocksCount()));
+            static_cast<size_t>(request.GetBlockSize()) * request.GetBlocksCount()));
 
         auto [sglist, error] = SgListNormalize(
             TBlockDataRef{buffer.Get().data(), buffer.Get().length()},
@@ -186,6 +186,7 @@ private:
 
         auto req = std::make_shared<NProto::TReadBlocksLocalRequest>();
         req->CopyFrom(request);
+        req->BlockSize = request.GetBlockSize();
 
         req->Sglist = guardedSgList;
 
