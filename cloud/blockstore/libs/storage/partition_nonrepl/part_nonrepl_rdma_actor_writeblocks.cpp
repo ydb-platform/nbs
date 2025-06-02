@@ -64,24 +64,25 @@ public:
         , ReplyLocal(replyLocal)
     {}
 
-    std::unique_ptr<IEventBase> CreateCompletionEvent()
+    std::unique_ptr<TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>
+    CreateCompletionEvent(const NProto::TError& error)
     {
-        auto completion = CreateConcreteCompletionEvent<
-            TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>();
+        auto completion = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>(error);
         auto& counters = *completion->Stats.MutableUserWriteCounters();
         counters.SetBlocksCount(GetRequestBlockCount());
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error) const
+    std::unique_ptr<IEventBase> CreateResponse(
+        const NProto::TError& error) const
     {
         if (ReplyLocal) {
             return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
-                std::move(error));
+                error);
         }
 
-        return std::make_unique<TEvService::TEvWriteBlocksResponse>(
-            std::move(error));
+        return std::make_unique<TEvService::TEvWriteBlocksResponse>(error);
     }
 };
 

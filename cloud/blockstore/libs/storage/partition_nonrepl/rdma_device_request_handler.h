@@ -44,7 +44,7 @@ private:
     ui32 ResponseCount;
 
     // Results of requests for each device.
-    TStackVec<TDeviceRequestResult, 2> RequestsResult;
+    TStackVec<TDeviceRequestResult, 2> RequestResults;
 
     TAdaptiveLock Lock;
     NProto::TError Error;
@@ -84,22 +84,6 @@ public:
     TRequestInfo& GetRequestInfo()
     {
         return *RequestInfo;
-    }
-
-protected:
-    template <typename TCompletionEvent>
-    std::unique_ptr<TCompletionEvent> CreateConcreteCompletionEvent()
-    {
-        auto completion = std::make_unique<TCompletionEvent>(Error);
-
-        completion->RequestsResult.assign(
-            std::make_move_iterator(RequestsResult.begin()),
-            std::make_move_iterator(RequestsResult.end()));
-
-        completion->TotalCycles = RequestInfo->GetTotalCycles();
-        completion->ExecCycles = RequestInfo->GetExecCycles();
-
-        return completion;
     }
 
 private:
@@ -174,18 +158,18 @@ bool TRdmaDeviceRequestHandlerBase<TDerived>::HandleSubResponse(
     ui32 status,
     TStringBuf buffer)
 {
-    RequestsResult.emplace_back(reqCtx.DeviceIdx);
+    RequestResults.emplace_back(reqCtx.DeviceIdx);
 
     if (status == NRdma::RDMA_PROTO_OK) {
         auto err = ProcessSubResponse(reqCtx, buffer);
         if (HasError(err)) {
-            RequestsResult.back().Error = err;
+            RequestResults.back().Error = err;
             Error = std::move(err);
         }
     } else {
         Error = NRdma::ParseError(buffer);
         ConvertRdmaErrorIfNeeded(status, Error);
-        RequestsResult.back().Error = Error;
+        RequestResults.back().Error = Error;
     }
 
     --ResponseCount;
@@ -210,8 +194,15 @@ void TRdmaDeviceRequestHandlerBase<TDerived>::HandleResponse(
 
     ProcessError(*ActorSystem, *PartConfig, Error);
 
-    auto response = GetDerived().CreateResponse(std::move(Error));
-    auto completion = GetDerived().CreateCompletionEvent();
+    auto response = GetDerived().CreateResponse(Error);
+    auto completion = GetDerived().CreateCompletionEvent(Error);
+
+    completion->RequestResults.assign(
+        std::make_move_iterator(RequestResults.begin()),
+        std::make_move_iterator(RequestResults.end()));
+
+    completion->TotalCycles = RequestInfo->GetTotalCycles();
+    completion->ExecCycles = RequestInfo->GetExecCycles();
 
     timer.Finish();
 

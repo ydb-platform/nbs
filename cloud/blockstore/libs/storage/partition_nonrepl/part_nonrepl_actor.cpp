@@ -434,7 +434,7 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
     using EStatus = TEvNonreplPartitionPrivate::TOperationCompleted::EStatus;
     switch (operation.Status) {
         case EStatus::Success: {
-            for (const auto& [deviceIndex, _]: operation.RequestsResult) {
+            for (const auto& [deviceIndex, _]: operation.RequestResults) {
                 OnRequestSuccess(deviceIndex, operation.ExecutionTime, now);
             }
             break;
@@ -443,7 +443,7 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
             break;
         }
         case EStatus::Timeout: {
-            for (const auto& [deviceIndex, _]: operation.RequestsResult) {
+            for (const auto& [deviceIndex, _]: operation.RequestResults) {
                 OnRequestTimeout(deviceIndex, operation.ExecutionTime, now);
             }
             break;

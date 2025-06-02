@@ -71,17 +71,18 @@ public:
         return {};
     }
 
-    std::unique_ptr<IEventBase> CreateCompletionEvent()
+    std::unique_ptr<TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>
+    CreateCompletionEvent(const NProto::TError& error)
     {
-        auto completion = CreateConcreteCompletionEvent<
-            TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>();
+        auto completion = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>(error);
 
         auto& counters = *completion->Stats.MutableSysChecksumCounters();
         counters.SetBlocksCount(GetRequestBlockCount());
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(NProto::TError err)
+    std::unique_ptr<IEventBase> CreateResponse(const NProto::TError& error)
     {
         TBlockChecksum checksum;
         for (const auto& [_, partialChecksum]: Checksums) {
@@ -89,8 +90,7 @@ public:
         }
 
         auto response = std::make_unique<
-            TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>(
-            std::move(err));
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>(error);
         response->Record.SetChecksum(checksum.GetValue());
 
         return response;

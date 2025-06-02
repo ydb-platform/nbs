@@ -106,10 +106,13 @@ public:
         return response;
     }
 
-    std::unique_ptr<NActors::IEventBase> CreateCompletionEvent()
+    std::unique_ptr<
+        TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted>
+    CreateCompletionEvent(const NProto::TError& error)
     {
-        auto completion = CreateConcreteCompletionEvent<
-            TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted>();
+        auto completion = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted>(
+            error);
         auto& counters = *completion->Stats.MutableUserWriteCounters();
         counters.SetBlocksCount(GetRequestBlockCount());
 

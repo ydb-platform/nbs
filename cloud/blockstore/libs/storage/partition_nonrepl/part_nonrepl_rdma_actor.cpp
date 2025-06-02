@@ -406,7 +406,7 @@ void TNonreplicatedPartitionRdmaActor::ProcessOperationCompleted(
     const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted)
 {
     const auto& devices = PartConfig->GetDevices();
-    for (const auto& [idx, error]: opCompleted.RequestsResult) {
+    for (const auto& [idx, error]: opCompleted.RequestResults) {
         Y_ABORT_UNLESS(idx < static_cast<ui32>(devices.size()));
 
         const auto& deviceUUID = devices[idx].GetDeviceUUID();

@@ -37,19 +37,19 @@ public:
 
     using TBase::TBase;
 
-    std::unique_ptr<IEventBase> CreateCompletionEvent()
+    std::unique_ptr<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>
+    CreateCompletionEvent(const NProto::TError& error)
     {
-        auto completion = CreateConcreteCompletionEvent<
-            TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
+        auto completion = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>(error);
         auto& counters = *completion->Stats.MutableUserWriteCounters();
         counters.SetBlocksCount(GetRequestBlockCount());
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error)
+    std::unique_ptr<IEventBase> CreateResponse(const NProto::TError& error)
     {
-        return std::make_unique<TEvService::TEvZeroBlocksResponse>(
-            std::move(error));
+        return std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
     }
 };
 

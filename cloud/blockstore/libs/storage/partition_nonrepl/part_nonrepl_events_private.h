@@ -230,7 +230,7 @@ struct TEvNonreplPartitionPrivate
             NProto::TError Error;
         };
 
-        TStackVec<TDeviceRequestResult, 2> RequestsResult;
+        TStackVec<TDeviceRequestResult, 2> RequestResults;
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;

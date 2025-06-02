@@ -101,7 +101,7 @@ void TDiskAgentBaseRequestActor::Done(
                                          : ctx.Now() - StartTime;
 
     for (const auto& dr: DeviceRequests) {
-        completion.Body->RequestsResult.push_back(
+        completion.Body->RequestResults.push_back(
             {.DeviceIndex = dr.DeviceIdx, .Error = {}});
     }
 

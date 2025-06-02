@@ -108,13 +108,14 @@ public:
         return {};
     }
 
-    std::unique_ptr<IEventBase> CreateCompletionEvent()
+    std::unique_ptr<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>
+    CreateCompletionEvent(const NProto::TError& error)
     {
         const auto requestBlockCount = GetRequestBlockCount();
         const bool allZeroes = VoidBlockCount == requestBlockCount;
 
-        auto completion = CreateConcreteCompletionEvent<
-            TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
+        auto completion = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>(error);
         completion->NonVoidBlockCount = allZeroes ? 0 : requestBlockCount;
         completion->VoidBlockCount = allZeroes ? requestBlockCount : 0;
         auto& counters = *completion->Stats.MutableUserReadCounters();
@@ -123,12 +124,11 @@ public:
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error)
+    std::unique_ptr<IEventBase> CreateResponse(const NProto::TError& error)
     {
         const bool allZeroes = VoidBlockCount == GetRequestBlockCount();
         auto response =
-            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
-                std::move(error));
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
         response->Record.SetAllZeroes(allZeroes);
 
         return response;
@@ -168,8 +168,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         ctx,
         *requestInfo,
         blockRange,
-        &deviceRequests
-    );
+        &deviceRequests);
 
     if (!ok) {
         return;

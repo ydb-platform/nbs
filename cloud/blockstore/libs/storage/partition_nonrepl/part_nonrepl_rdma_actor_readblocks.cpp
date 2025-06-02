@@ -105,13 +105,14 @@ public:
         return {};
     }
 
-    std::unique_ptr<IEventBase> CreateCompletionEvent()
+    std::unique_ptr<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>
+    CreateCompletionEvent(const NProto::TError& error)
     {
         const ui32 blockCount = GetRequestBlockCount();
         const bool allZeroes = VoidBlockCount == blockCount;
 
-        auto completion = CreateConcreteCompletionEvent<
-            TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
+        auto completion = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>(error);
 
         completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;
         completion->VoidBlockCount = allZeroes ? blockCount : 0;
@@ -121,12 +122,12 @@ public:
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(NProto::TError error)
+    std::unique_ptr<IEventBase> CreateResponse(const NProto::TError& error)
     {
         const ui32 blockCount = Response.GetBlocks().BuffersSize();
         const bool allZeroes = VoidBlockCount == blockCount;
 
-        *Response.MutableError() = std::move(error);
+        *Response.MutableError() = error;
         auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
         response->Record = std::move(Response);
         response->Record.SetAllZeroes(allZeroes);
