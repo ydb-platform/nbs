@@ -170,6 +170,7 @@ private:
     const IServerStatsPtr ServerStats;
     const TString ClientId;
     const TDuration RequestTimeout;
+    const ui32 BlockSize;
 
 public:
     TStorageDataClient(
@@ -177,12 +178,14 @@ public:
             IBlockStorePtr service,
             IServerStatsPtr serverStats,
             TString clientId,
-            TDuration requestTimeout)
+            TDuration requestTimeout,
+            ui32 blockSize)
         : Storage(std::move(storage))
         , Service(std::move(service))
         , ServerStats(std::move(serverStats))
         , ClientId(std::move(clientId))
         , RequestTimeout(requestTimeout)
+        , BlockSize(blockSize)
     {}
 
     void Start() override
@@ -201,6 +204,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
+        SetupBlockSize(request);                                               \
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);       \
         return Storage->name(std::move(callContext), std::move(request));      \
     }                                                                          \
@@ -289,6 +293,14 @@ private:
 
         if (!headers.GetRequestId()) {
             headers.SetRequestId(callContext.RequestId);
+        }
+    }
+
+    template <typename TRequest>
+    void SetupBlockSize(std::shared_ptr<TRequest> request)
+    {
+        if constexpr (HasBlockSize<TRequest>) {
+            request->BlockSize = BlockSize;
         }
     }
 };
@@ -703,7 +715,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         std::move(service),
         ServerStats,
         clientId,
-        clientConfig->GetRequestTimeout());
+        clientConfig->GetRequestTimeout(),
+        volume.GetBlockSize());
 
     if (Options.TemporaryServer) {
         client = CreateErrorTransformService(
