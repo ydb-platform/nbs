@@ -39,7 +39,6 @@ protected:
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx) override;
-
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -56,7 +55,7 @@ void TNonreplCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 
     auto sgList = Buffer.GetGuardedSgList();
     auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
-    if (HasError(sgListOrError)){
+    if (HasError(sgListOrError)) {
         ReplyAndDie(ctx, sgListOrError.GetError());
         return;
     }
