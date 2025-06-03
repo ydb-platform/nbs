@@ -2,7 +2,6 @@
 
 #include "config.h"
 #include "ydbauth.h"
-#include "ydbstats.h"
 
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/storage/core/libs/common/error.h>

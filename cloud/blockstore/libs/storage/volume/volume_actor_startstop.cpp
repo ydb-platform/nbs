@@ -415,8 +415,6 @@ void TVolumeActor::HandleGracefulShutdown(
     TerminateTransactions(ctx);
     KillActors(ctx);
     CancelRequests(ctx);
-
-    BecomeAux(ctx, STATE_ZOMBIE);
 }
 
 void TVolumeActor::StopPartitions(
@@ -635,6 +633,14 @@ void TVolumeActor::HandleBootExternalResponse(
         "Tablet IDs mismatch: %lu vs %lu",
         msg->StorageInfo->TabletID,
         partTabletId);
+
+    {
+        auto request = std::make_unique<TEvStatsService::TEvPartitionBootExternalCompleted>(
+            State->GetDiskId(),
+            partTabletId,
+            msg->StorageInfo->Channels);
+        NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
+    }
 
     if (msg->SuggestedGeneration > part->SuggestedGeneration) {
         part->SuggestedGeneration = msg->SuggestedGeneration;

@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/merge.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
@@ -480,10 +481,27 @@ bool TVolumeActor::ReplyToOriginalRequest(
     }
 
     VolumeRequests.erase(it);
-    RequestTimeTracker.OnRequestFinished(
+    const auto firstSuccess = RequestTimeTracker.OnRequestFinished(
         volumeRequestId,
         success,
         GetCycleCount());
+
+    if (firstSuccess) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Disk: %s, Generation: %u. The first successful %s "
+            "request was started at %s finished at %s. The very first request "
+            "was started at %s. Failed requests: %lu",
+            TabletID(),
+            State->GetDiskId().Quote().c_str(),
+            Executor()->Generation(),
+            ToString(firstSuccess->RequestType).c_str(),
+            FormatDuration(firstSuccess->SuccessfulRequestStartTime).c_str(),
+            FormatDuration(firstSuccess->SuccessfulRequestFinishTime).c_str(),
+            FormatDuration(firstSuccess->FirstRequestStartTime).c_str(),
+            firstSuccess->FailCount);
+    }
 
     return true;
 }
@@ -570,7 +588,8 @@ void TVolumeActor::ForwardRequest(
         auto response = std::make_unique<typename TMethod::TResponse>(MakeError(
             E_REJECTED,
             TStringBuilder()
-                << "Volume not ready: " << State->GetDiskId().Quote()));
+                << "Volume  " << State->GetDiskId().Quote() << " not ready. "
+                << TMethod::Name << " is undelivered to partition"));
 
         if (ReplyToOriginalRequest<TMethod>(
                 ctx,
@@ -651,8 +670,10 @@ void TVolumeActor::ForwardRequest(
 
         if (!State->Ready()) {
             if constexpr (RejectRequestIfNotReady<TMethod>) {
-                replyError(MakeError(E_REJECTED, TStringBuilder()
-                    << "Volume not ready: " << State->GetDiskId().Quote()));
+                replyError(MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "Volume " << State->GetDiskId().Quote()
+                                     << " not ready by partition state"));
             } else {
                 LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
                     "[%lu] %s request delayed until volume and partitions are ready",

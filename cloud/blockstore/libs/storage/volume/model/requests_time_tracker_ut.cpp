@@ -37,7 +37,7 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
 {
     Y_UNIT_TEST(ShouldCountInflight)
     {
-        TRequestsTimeTracker requestsTimeTracker;
+        TRequestsTimeTracker requestsTimeTracker(0);
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Read,
@@ -80,41 +80,61 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
 
     Y_UNIT_TEST(ShouldCountFinishedSuccess)
     {
-        TRequestsTimeTracker requestsTimeTracker;
+        TRequestsTimeTracker requestsTimeTracker(0);
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Write,
             1,
-            TBlockRange64::MakeOneBlock(0),
-            0);
-
-        requestsTimeTracker.OnRequestStarted(
-            TRequestsTimeTracker::ERequestType::Write,
-            2,
             TBlockRange64::MakeOneBlock(0),
             1000 * GetCyclesPerMillisecond());
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Write,
-            3,
+            2,
             TBlockRange64::MakeOneBlock(0),
             2000 * GetCyclesPerMillisecond());
 
-        requestsTimeTracker.OnRequestFinished(
-            1,
-            true,
-            3000 * GetCyclesPerMillisecond());
-        requestsTimeTracker.OnRequestFinished(
-            2,
-            true,
-            3000 * GetCyclesPerMillisecond());
-        requestsTimeTracker.OnRequestFinished(
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Write,
             3,
-            true,
+            TBlockRange64::MakeOneBlock(0),
             3000 * GetCyclesPerMillisecond());
 
+        auto stat = requestsTimeTracker.OnRequestFinished(
+            2,
+            true,
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TRequestsTimeTracker::ERequestType::Write,
+            stat->RequestType);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(2000).SecondsFloat(),
+            stat->SuccessfulRequestStartTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(4000).SecondsFloat(),
+            stat->SuccessfulRequestFinishTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(1000).SecondsFloat(),
+            stat->FirstRequestStartTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_VALUES_EQUAL(0, stat->FailCount);
+
+        stat = requestsTimeTracker.OnRequestFinished(
+            1,
+            true,
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_EQUAL(std::nullopt, stat);
+
+        stat = requestsTimeTracker.OnRequestFinished(
+            3,
+            true,
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_EQUAL(std::nullopt, stat);
+
         auto json = requestsTimeTracker.GetStatJson(
-            5000 * GetCyclesPerMillisecond(),
+            6000 * GetCyclesPerMillisecond(),
             4096);
         NJson::TJsonValue value;
         NJson::ReadJsonTree(json, &value, true);
@@ -153,41 +173,46 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
 
     Y_UNIT_TEST(ShouldCountFinishedFail)
     {
-        TRequestsTimeTracker requestsTimeTracker;
+        TRequestsTimeTracker requestsTimeTracker(0);
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Zero,
             1,
             TBlockRange64::WithLength(0, 512),
-            0);
+            1000 * GetCyclesPerMillisecond());
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Zero,
             2,
             TBlockRange64::WithLength(0, 600),
-            1000 * GetCyclesPerMillisecond());
+            2000 * GetCyclesPerMillisecond());
 
         requestsTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Zero,
             3,
             TBlockRange64::WithLength(0, 2000),
-            2000 * GetCyclesPerMillisecond());
+            3000 * GetCyclesPerMillisecond());
 
-        requestsTimeTracker.OnRequestFinished(
+        auto stat = requestsTimeTracker.OnRequestFinished(
             1,
             false,
-            3000 * GetCyclesPerMillisecond());
-        requestsTimeTracker.OnRequestFinished(
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_EQUAL(std::nullopt, stat);
+
+        stat = requestsTimeTracker.OnRequestFinished(
             2,
             false,
-            3000 * GetCyclesPerMillisecond());
-        requestsTimeTracker.OnRequestFinished(
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_EQUAL(std::nullopt, stat);
+
+        stat = requestsTimeTracker.OnRequestFinished(
             3,
             false,
-            3000 * GetCyclesPerMillisecond());
+            4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_EQUAL(std::nullopt, stat);
 
         auto json = requestsTimeTracker.GetStatJson(
-            5000 * GetCyclesPerMillisecond(),
+            6000 * GetCyclesPerMillisecond(),
             4096);
         NJson::TJsonValue value;
         NJson::ReadJsonTree(json, &value, true);
@@ -220,6 +245,34 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
         const auto nonEmptyPercentilesCount =
             DumpValues(value["percentiles"].GetMap());
         UNIT_ASSERT_VALUES_EQUAL(0, nonEmptyPercentilesCount);
+
+        // Successful request
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Zero,
+            4,
+            TBlockRange64::WithLength(0, 600),
+            7000 * GetCyclesPerMillisecond());
+
+        stat = requestsTimeTracker.OnRequestFinished(
+            4,
+            true,
+            10000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TRequestsTimeTracker::ERequestType::Zero,
+            stat->RequestType);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(7000).SecondsFloat(),
+            stat->SuccessfulRequestStartTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(10000).SecondsFloat(),
+            stat->SuccessfulRequestFinishTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            TDuration::MilliSeconds(1000).SecondsFloat(),
+            stat->FirstRequestStartTime.SecondsFloat(),
+            1e-5);
+        UNIT_ASSERT_VALUES_EQUAL(3, stat->FailCount);
     }
 }
 

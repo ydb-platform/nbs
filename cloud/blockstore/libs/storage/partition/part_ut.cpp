@@ -12471,6 +12471,38 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
+
+    Y_UNIT_TEST(ShouldNotHangWhenConsecutiveReadBlobErrorsHappen)
+    {
+        auto config = DefaultConfig();
+        config.SetMaxIORequestsInFlight(10);
+        config.SetMaxReadBlobErrorsBeforeSuicide(1000);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvGetResult: {
+                    auto* msg = event->Get<TEvBlobStorage::TEvGetResult>();
+                    msg->Status = NKikimrProto::ERROR;
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 777), 1);
+
+        for (int i = 0; i < 100; i++) {
+            partition.SendReadBlocksRequest(TBlockRange32::WithLength(0, 777));
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -68,6 +68,7 @@ void TServiceActor::HandleExecuteAction(
         {"restorediskregistrystate",          &TServiceActor::CreateRestoreDiskRegistryStateActor          },
         {"scandisk",                          &TServiceActor::CreateScanDiskActionActor                    },
         {"setuserid",                         &TServiceActor::CreateSetUserIdActionActor                   },
+        {"markreplacementdevice",             &TServiceActor::CreateMarkReplacementDeviceActor             },
         {"suspenddevice",                     &TServiceActor::CreateSuspendDeviceActionActor               },
         {"updatediskblocksize",               &TServiceActor::CreateUpdateDiskBlockSizeActionActor         },
         {"updatediskreplicacount",            &TServiceActor::CreateUpdateDiskReplicaCountActionActor      },

@@ -25,6 +25,7 @@
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
+#include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
@@ -304,7 +305,9 @@ private:
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
-    TRequestsTimeTracker RequestTimeTracker;
+
+    TRequestsTimeTracker RequestTimeTracker{GetCycleCount()};
+    TTransactionTimeTracker TransactionTimeTracker;
 
     // inflight VolumeRequestId -> duplicate request queue
     // we respond to duplicate requests as soon as our original request is completed
@@ -456,6 +459,7 @@ private:
     void RenderCheckpoints(IOutputStream& out) const;
     void RenderLinks(IOutputStream& out) const;
     void RenderLatency(IOutputStream& out) const;
+    void RenderTransactions(IOutputStream& out) const;
     void RenderTraces(IOutputStream& out) const;
     void RenderStorageConfig(IOutputStream& out) const;
     void RenderRawVolumeConfig(IOutputStream& out) const;
@@ -645,7 +649,12 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
-    void HandleHttpInfo_RenderLatency(
+    void HandleHttpInfo_GetRequestsLatency(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetTransactionsLatency(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

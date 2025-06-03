@@ -1,23 +1,22 @@
 #pragma once
 
 #include "compaction_map.h"
-#include "request_info.h"
 
-#include <cloud/blockstore/public/api/protos/volume.pb.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
-#include <util/stream/output.h>
 #include <util/generic/vector.h>
+#include <util/stream/output.h>
 
 namespace NCloud::NBlockStore::NStorage::NMonitoringUtils {
 
@@ -175,6 +174,13 @@ void DumpTabletNotReady(IOutputStream& out);
 
 void BuildVolumeTabs(IOutputStream& out);
 void DumpTraceLog(IOutputStream& out, const TVector<ITraceReaderPtr>& Readers);
+
+void AddLatencyCSS(IOutputStream& out);
+
+void DumpLatency(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TTransactionTimeTracker& transactionTimeTracker);
 
 TCgiParameters GatherHttpParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
 TCgiParameters GetHttpMethodParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);

@@ -676,7 +676,7 @@ void TStartVolumeActor::StopTablet(const TActorContext& ctx)
 {
     Y_ABORT_UNLESS(VolumeSysActor);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "[%lu] Sending PoisonPill to %s",
         VolumeTabletId,
         ToString(VolumeSysActor).data());

@@ -19,7 +19,6 @@ SRCS(
     garbage_queue.cpp
     mixed_index_cache.cpp
     operation_status.cpp
-    transaction_time_tracker.cpp
 )
 
 PEERDIR(
@@ -36,6 +35,5 @@ PEERDIR(
 END()
 
 RECURSE_FOR_TESTS(
-    benchmark
     ut
 )
