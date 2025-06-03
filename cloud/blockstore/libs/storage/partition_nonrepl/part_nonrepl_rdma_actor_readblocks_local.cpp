@@ -58,11 +58,11 @@ public:
               std::move(requestInfo),
               requestId,
               parentActorId,
-              requestBlockCount,
+              blockRange.Size(),
               requestCount)
-        , CheckVoidBlocks(checkVoidBlocks)
-        , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
         , BlockRange(blockRange)
+        , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
+        , CheckVoidBlocks(checkVoidBlocks)
         , SgList(std::move(sglist))
     {}
 
@@ -129,7 +129,6 @@ public:
         return completion;
     }
 
-
     std::unique_ptr<IEventBase> CreateResponse(const NProto::TError& error)
     {
         const bool allZeroes = VoidBlockCount == GetRequestBlockCount();
@@ -137,7 +136,8 @@ public:
             std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
         response->Record.SetAllZeroes(allZeroes);
         if (ShouldReportBlockRangeOnFailure) {
-            DescribeRange(BlockRange);
+            response->Record.FailInfo.FailedRanges.push_back(
+                DescribeRange(BlockRange));
         }
 
         return response;
