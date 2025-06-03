@@ -9842,6 +9842,95 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 response->GetStatus());
         }
     }
+
+    Y_UNIT_TEST(ShouldForwardReadBlocksLocalRequestToMultipartitionVolume)
+    {
+        auto runtime = PrepareTestActorRuntime();
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD,
+            2048,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            2,          // partitions count
+            2           // blocksPerStripe
+        );
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        volume.AddClient(clientInfo);
+        volume.WaitReady();
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest: {
+                        auto response = std::make_unique<
+                            TEvPartitionCommonPrivate::TEvReadBlobResponse>(
+                            MakeError(E_IO, "Simulated blob read failure"));
+
+                        runtime->Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 3500),
+            clientInfo.GetClientId(),
+            1);
+
+        // ReadBlocksLocal
+        {
+            TGuardedBuffer<TString> Buffer =
+                TGuardedBuffer(TString::Uninitialized(1024 * DefaultBlockSize));
+            auto sgList = Buffer.GetGuardedSgList();
+            auto sgListOrError =
+                SgListNormalize(sgList.Acquire().Get(), DefaultBlockSize);
+
+            UNIT_ASSERT(!HasError(sgListOrError));
+            TGuardedSgList guardedSglist(
+                TSgList(std::move(sgListOrError.ExtractResult())));
+
+            auto request = volume.CreateReadBlocksLocalRequest(
+                TBlockRange64::WithLength(2000, 1024),
+                guardedSglist,
+                clientInfo.GetClientId());
+            request->Record.ShouldReportFailedRangesOnFailure = true;
+
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvReadBlocksLocalResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                response->Record.FailInfo.FailedRanges.size());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

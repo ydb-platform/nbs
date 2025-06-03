@@ -42,8 +42,7 @@ protected:
         const NActors::TActorContext& ctx,
         std::unique_ptr<TEvVolume::TEvCheckRangeResponse>);
 
-private:
-    void HandleReadBlocksResponse(
+    virtual void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 

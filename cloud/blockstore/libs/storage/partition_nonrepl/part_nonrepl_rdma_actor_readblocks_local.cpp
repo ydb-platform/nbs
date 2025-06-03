@@ -30,6 +30,8 @@ class TRdmaRequestReadBlocksLocalHandler final
         TRdmaDeviceRequestHandlerBase<TRdmaRequestReadBlocksLocalHandler>;
 
 private:
+    const TBlockRange64 BlockRange;
+    const bool ShouldReportBlockRangeOnFailure;
     const bool CheckVoidBlocks;
     TGuardedSgList SgList;
 
@@ -45,18 +47,21 @@ public:
             TRequestInfoPtr requestInfo,
             size_t requestCount,
             TGuardedSgList sglist,
-            ui32 requestBlockCount,
+            TBlockRange64 blockRange,
             NActors::TActorId parentActorId,
             ui64 requestId,
-            bool checkVoidBlocks)
+            bool checkVoidBlocks,
+            bool shouldReportBlockRangeOnFailure)
         : TBase(
               actorSystem,
               std::move(partConfig),
               std::move(requestInfo),
               requestId,
               parentActorId,
-              requestBlockCount,
+              blockRange.Size(),
               requestCount)
+        , BlockRange(blockRange)
+        , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
         , CheckVoidBlocks(checkVoidBlocks)
         , SgList(std::move(sglist))
     {}
@@ -130,6 +135,10 @@ public:
         auto response =
             std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
         response->Record.SetAllZeroes(allZeroes);
+        if (ShouldReportBlockRangeOnFailure) {
+            response->Record.FailInfo.FailedRanges.push_back(
+                DescribeRange(BlockRange));
+        }
 
         return response;
     }
@@ -182,10 +191,11 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         requestInfo,
         deviceRequests.size(),
         std::move(msg->Record.Sglist),
-        msg->Record.GetBlocksCount(),
+        blockRange,
         SelfId(),
         requestId,
-        Config->GetOptimizeVoidBuffersTransferForReadsEnabled());
+        Config->GetOptimizeVoidBuffersTransferForReadsEnabled(),
+        msg->Record.ShouldReportFailedRangesOnFailure);
 
     auto [sentRequestCtx, error] = SendReadRequests(
         ctx,

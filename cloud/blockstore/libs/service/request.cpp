@@ -50,3 +50,17 @@ TStringBuf GetPrivateRequestName(EPrivateRequestType requestType)
 }
 
 }   // namespace NCloud::NBlockStore
+
+template <>
+void Out<NCloud::NBlockStore::NProto::TReadBlocksLocalResponse>(
+    IOutputStream& out,
+    const NCloud::NBlockStore::NProto::TReadBlocksLocalResponse& value)
+{
+    out << value.ShortDebugString();
+
+    out << " FailedInfo->FailedRanges: [";
+    for (const auto& blob: value.FailInfo.FailedRanges) {
+        out << blob << ", ";
+    }
+    out << "]";
+}
