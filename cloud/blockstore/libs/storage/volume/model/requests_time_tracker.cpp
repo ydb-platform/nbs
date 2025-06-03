@@ -8,6 +8,8 @@
 #include <util/datetime/cputimer.h>
 #include <util/string/builder.h>
 
+#include <span>
+
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
@@ -29,6 +31,23 @@ constexpr std::array<size_t, BlockCountBucketsCount> RequestSizeBuckets = {
     512,
     1024,
     std::numeric_limits<size_t>::max()};
+
+const TVector<TPercentileDesc> Percentiles{
+    {0.100, "10"},
+    {0.200, "20"},
+    {0.300, "30"},
+    {0.400, "40"},
+    {0.500, "50"},
+    {0.600, "60"},
+    {0.700, "70"},
+    {0.800, "80"},
+    {0.900, "90"},
+    {0.990, "99"},
+    {0.999, "99.9"},
+    {1.0, "100"},
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 size_t GetSizeBucket(TBlockRange64 range)
 {
@@ -54,6 +73,21 @@ const TString& GetTimeBucketName(TDuration duration)
     return TimeNames[idx];
 }
 
+TVector<double> BuildPercentilesForHistogram(
+    const std::span<const ui64> histogram)
+{
+    Y_DEBUG_ABORT_UNLESS(
+        histogram.size() == TRequestUsTimeBuckets::Buckets.size());
+
+    TVector<TBucketInfo> buckets;
+    buckets.reserve(histogram.size());
+    for (size_t i = 0; i < histogram.size(); ++i) {
+        buckets.emplace_back(TRequestUsTimeBuckets::Buckets[i], histogram[i]);
+    }
+
+    return CalculateWeightedPercentiles(buckets, Percentiles);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -74,6 +108,10 @@ TString TRequestsTimeTracker::TKey::GetHtmlPrefix() const
         }
         case TRequestsTimeTracker::ERequestType::Zero: {
             builder << "Z_";
+            break;
+        }
+        case TRequestsTimeTracker::ERequestType::Describe: {
+            builder << "D_";
             break;
         }
     }
@@ -98,8 +136,8 @@ TString TRequestsTimeTracker::TKey::GetHtmlPrefix() const
 ui64 TRequestsTimeTracker::THash::operator()(const TKey& key) const
 {
     return IntHash(key.SizeBucket) +
-           IntHash(static_cast<size_t>(key.RequestType)) +
-           IntHash(static_cast<size_t>(key.RequestStatus));
+           IntHash(static_cast<size_t>(key.RequestType) << 5) +
+           IntHash(static_cast<size_t>(key.RequestStatus) << 8);
 }
 
 bool TRequestsTimeTracker::TEqual::operator()(
@@ -115,7 +153,8 @@ bool TRequestsTimeTracker::TEqual::operator()(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRequestsTimeTracker::TRequestsTimeTracker()
+TRequestsTimeTracker::TRequestsTimeTracker(const ui64 constructionTime)
+    : ConstructionTime(constructionTime)
 {
     for (size_t sizeBucket = 0; sizeBucket <= TotalSizeBucket; ++sizeBucket) {
         for (size_t requestType = 0;
@@ -137,6 +176,12 @@ void TRequestsTimeTracker::OnRequestStarted(
     TBlockRange64 blockRange,
     ui64 startTime)
 {
+    const auto requestTypeIndex = static_cast<size_t>(requestType);
+    auto& firstRequest = FirstRequests[requestTypeIndex];
+    if (firstRequest.StartTime == 0) {
+        firstRequest.StartTime = startTime;
+    }
+
     InflightRequests.emplace(
         requestId,
         TRequestInflight{
@@ -145,7 +190,38 @@ void TRequestsTimeTracker::OnRequestStarted(
             .RequestType = requestType});
 }
 
-void TRequestsTimeTracker::OnRequestFinished(
+std::optional<TRequestsTimeTracker::TFirstSuccessStat>
+TRequestsTimeTracker::StatFirstSuccess(
+    const TRequestInflight& request,
+    bool success,
+    ui64 finishTime)
+{
+    const auto requestTypeIndex = static_cast<size_t>(request.RequestType);
+    auto& firstRequest = FirstRequests[requestTypeIndex];
+    if (firstRequest.FinishTime != 0) {
+        return std::nullopt;
+    }
+
+    if (!success) {
+        ++firstRequest.FailCount;
+        return std::nullopt;
+    }
+
+    firstRequest.FinishTime = finishTime;
+
+    return TFirstSuccessStat{
+        .RequestType = request.RequestType,
+        .FirstRequestStartTime =
+            CyclesToDurationSafe(firstRequest.StartTime - ConstructionTime),
+        .SuccessfulRequestStartTime =
+            CyclesToDurationSafe(request.StartTime - ConstructionTime),
+        .SuccessfulRequestFinishTime =
+            CyclesToDurationSafe(firstRequest.FinishTime - ConstructionTime),
+        .FailCount = firstRequest.FailCount};
+}
+
+std::optional<TRequestsTimeTracker::TFirstSuccessStat>
+TRequestsTimeTracker::OnRequestFinished(
     ui64 requestId,
     bool success,
     ui64 finishTime)
@@ -154,7 +230,7 @@ void TRequestsTimeTracker::OnRequestFinished(
     {
         auto it = InflightRequests.find(requestId);
         if (it == InflightRequests.end()) {
-            return;
+            return {};
         }
         request = it->second;
         InflightRequests.erase(requestId);
@@ -173,6 +249,43 @@ void TRequestsTimeTracker::OnRequestFinished(
     key.SizeBucket = TotalSizeBucket;
     Histograms[key].Increment(duration.MicroSeconds());
     Histograms[key].BlockCount += request.BlockRange.Size();
+
+    return StatFirstSuccess(request, success, finishTime);
+}
+
+NJson::TJsonValue TRequestsTimeTracker::BuildPercentilesJson() const
+{
+    static const auto PercentileBuckets =
+        TRequestsTimeTracker::GetPercentileBuckets();
+
+    NJson::TJsonValue result(NJson::EJsonValueType::JSON_MAP);
+
+    for (size_t sizeBucket = 0; sizeBucket <= TotalSizeBucket; ++sizeBucket) {
+        for (size_t requestType = 0;
+             requestType <= static_cast<size_t>(ERequestType::Last);
+             ++requestType)
+        {
+            const TKey key{
+                .SizeBucket = sizeBucket,
+                .RequestType = static_cast<ERequestType>(requestType),
+                .RequestStatus = ERequestStatus::Success};
+
+            if (const auto* histogram = Histograms.FindPtr(key)) {
+                const auto timePercentiles =
+                    BuildPercentilesForHistogram(histogram->Buckets);
+                for (size_t percentileIdx = 0;
+                     percentileIdx < timePercentiles.size();
+                     ++percentileIdx)
+                {
+                    const auto htmlKey = key.GetHtmlPrefix() +
+                                         PercentileBuckets[percentileIdx].Key;
+                    result[htmlKey] = FormatDuration(TDuration::MicroSeconds(
+                        timePercentiles[percentileIdx]));
+                }
+            }
+        }
+    }
+    return result;
 }
 
 TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize) const
@@ -190,7 +303,7 @@ TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize) const
                 (histogram.Buckets[i] ? ToString(histogram.Buckets[i]) : "");
             total += histogram.Buckets[i];
         }
-        allStat[htmlPrefix + "Total"] = ToString(total);
+        allStat[htmlPrefix + "Count"] = ToString(total);
         allStat[htmlPrefix + "TotalSize"] =
             FormatByteSize(histogram.BlockCount * blockSize);
     }
@@ -217,9 +330,9 @@ TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize) const
 
         // Time
         ++inflight[getHtmlKey(sizeBucket, requestType, timeBucketName)];
-        ++inflight[getHtmlKey(sizeBucket, requestType, "Total")];
+        ++inflight[getHtmlKey(sizeBucket, requestType, "Count")];
         ++inflight[getHtmlKey(TotalSizeBucket, requestType, timeBucketName)];
-        ++inflight[getHtmlKey(TotalSizeBucket, requestType, "Total")];
+        ++inflight[getHtmlKey(TotalSizeBucket, requestType, "Count")];
 
         // Size
         inflight[getHtmlKey(sizeBucket, requestType, "TotalSize")] +=
@@ -237,12 +350,14 @@ TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize) const
 
     NJson::TJsonValue json;
     json["stat"] = std::move(allStat);
+    json["percentiles"] = BuildPercentilesJson();
 
     TStringStream out;
     NJson::WriteJson(&out, &json);
     return out.Str();
 }
 
+// static
 TVector<TRequestsTimeTracker::TBucketInfo> TRequestsTimeTracker::GetSizeBuckets(
     ui32 blockSize)
 {
@@ -278,6 +393,7 @@ TVector<TRequestsTimeTracker::TBucketInfo> TRequestsTimeTracker::GetSizeBuckets(
     return result;
 }
 
+// static
 TVector<TRequestsTimeTracker::TBucketInfo>
 TRequestsTimeTracker::GetTimeBuckets()
 {
@@ -296,12 +412,28 @@ TRequestsTimeTracker::GetTimeBuckets()
         last = TDuration::MicroSeconds(us.GetOrElse(0));
         result.push_back(std::move(bucket));
     }
-    result.push_back(
-        TBucketInfo{.Key = "Total", .Description = "Total", .Tooltip = ""});
+    result.push_back(TBucketInfo{
+        .Key = "Count",
+        .Description = "Count",
+        .Tooltip = "Total request count"});
     result.push_back(TBucketInfo{
         .Key = "TotalSize",
         .Description = "Total Size",
-        .Tooltip = ""});
+        .Tooltip = "Total requests size"});
+    return result;
+}
+
+// static
+TVector<TRequestsTimeTracker::TBucketInfo>
+TRequestsTimeTracker::GetPercentileBuckets()
+{
+    TVector<TBucketInfo> result;
+    for (const auto& p: Percentiles) {
+        result.push_back(TBucketInfo{
+            .Key = "P" + ToString(p.second),
+            .Description = ToString(p.second),
+            .Tooltip = ""});
+    }
     return result;
 }
 

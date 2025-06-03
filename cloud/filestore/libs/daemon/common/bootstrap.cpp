@@ -65,14 +65,10 @@ TBootstrapCommon::TBootstrapCommon(
         TString metricsComponent,
         std::shared_ptr<NUserStats::IUserCounterSupplier> userCounters)
     : MetricsComponent(std::move(metricsComponent))
+    , LogComponent(std::move(logComponent))
     , ModuleFactories(std::move(moduleFactories))
     , UserCounters(std::move(userCounters))
 {
-    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
-    BootstrapLogging->Start();
-
-    Log = BootstrapLogging->CreateLog(logComponent);
-    SetCriticalEventsLog(Log);
 }
 
 TBootstrapCommon::~TBootstrapCommon()
@@ -150,6 +146,7 @@ void TBootstrapCommon::ParseOptions(int argc, char** argv)
 void TBootstrapCommon::Init()
 {
     InitCommonConfigs();
+    InitLogs();
 
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
@@ -204,6 +201,7 @@ void TBootstrapCommon::InitDiagnostics()
 {
     if (!ActorSystem) {
         TLogSettings logSettings;
+        logSettings.BackendFileName = Configs->GetLogBackendFileName();
 
         if (Configs->Options->VerboseLevel) {
             auto level = GetLogLevel(Configs->Options->VerboseLevel);
@@ -253,9 +251,13 @@ void TBootstrapCommon::InitActorSystem()
         || Configs->StorageConfig->GetNodeRegistrationUseSsl();
     registerOpts.Settings = Configs->GetNodeRegistrationSettings();
 
+    auto registrant =
+        CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);
+
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,
         registerOpts,
+        std::move(registrant),
         Log);
 
     if (cmsConfig) {
@@ -305,6 +307,18 @@ void TBootstrapCommon::InitActorSystem()
 
     monitoring->Init(ActorSystem);
     Monitoring = monitoring;
+}
+
+void TBootstrapCommon::InitLogs()
+{
+    TLogSettings logSettings;
+    logSettings.BackendFileName = Configs->GetLogBackendFileName();
+
+    BootstrapLogging = CreateLoggingService("console", logSettings);
+    BootstrapLogging->Start();
+
+    Log = BootstrapLogging->CreateLog(LogComponent);
+    SetCriticalEventsLog(Log);
 }
 
 void TBootstrapCommon::RegisterServer(IServerPtr server)

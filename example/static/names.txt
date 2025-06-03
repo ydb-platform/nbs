@@ -3,10 +3,9 @@ Node {
   Port: 29501
   Host: "localhost"
   InterconnectHost: "localhost"
-  WalleLocation {
+  Location {
     DataCenter: "1"
     Rack: "1"
-    Body: 1
   }
 }
 ClusterUUID: "local"

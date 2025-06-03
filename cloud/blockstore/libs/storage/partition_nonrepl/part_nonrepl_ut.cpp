@@ -2000,10 +2000,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                         using TEv = TEvVolume::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
                         error = msg->GetStatus();
+                        status = msg->Record.GetStatus().GetCode();
+
                         break;
                     }
-                    case TEvService::EvReadBlocksResponse: {
-                        using TEv = TEvService::TEvReadBlocksResponse;
+                    case TEvService::EvReadBlocksLocalResponse: {
+                        using TEv = TEvService::TEvReadBlocksLocalResponse;
 
                         auto response = std::make_unique<TEv>(
                             MakeError(E_IO, "block is broken"));
@@ -2019,7 +2021,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
                         return TTestActorRuntime::EEventAction::DROP;
 
-                        break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -2037,7 +2038,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
             runtime.DispatchEvents(options, TDuration::Seconds(3));
 
-            UNIT_ASSERT_VALUES_EQUAL(E_IO, response->Record.GetStatus().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
         };
 
@@ -2590,6 +2591,75 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT(
                 response->GetErrorReason().Contains("request timed out"));
         }
+    }
+
+    Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
+    {
+        constexpr ui64 blocksPerDevice = 4_MB / DefaultBlockSize;
+        constexpr ui64 blockCount = blocksPerDevice + 100;
+
+        TTestBasicRuntime runtime;
+
+        TDevices devices;
+        for (ui32 i = 0; i < 2; ++i) {
+            TTestEnv::AddDevice(
+                runtime.GetNodeId(0),
+                blocksPerDevice,
+                Sprintf("vasya%u", i),
+                devices);
+        }
+
+        TTestEnv env(runtime, {.Devices = std::move(devices)});
+
+        TPartitionClient client(runtime, env.ActorId);
+        {
+            const auto blockRange = TBlockRange64::WithLength(0, blockCount);
+            client.WriteBlocks(blockRange, 42);
+        }
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvReadDeviceBlocksRequest: {
+                        auto response = std::make_unique<
+                            TEvDiskAgent::TEvReadDeviceBlocksResponse>(
+                            MakeError(E_IO, "Simulated read failure"));
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const size_t dataSize = blockCount * DefaultBlockSize;
+        TString buffer(dataSize, 100);
+        TSgList sgList{TBlockDataRef{buffer.data(), buffer.size()}};
+
+        auto range = TBlockRange64::WithLength(0, blockCount);
+        auto request =
+            client.CreateReadBlocksLocalRequest(range, TGuardedSgList(sgList));
+
+        request->Record.ShouldReportFailedRangesOnFailure = true;
+
+        client.SendRequest(env.ActorId, std::move(request));
+
+        auto response = client.RecvReadBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_UNEQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            response->Record.FailInfo.FailedRanges.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DescribeRange(range),
+            response->Record.FailInfo.FailedRanges[0]);
     }
 }
 

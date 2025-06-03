@@ -31,7 +31,7 @@ enum class EOverlapStatus
 // E_REJECTED.
 EWellKnownResultCodes OverlapStatusToResult(
     EOverlapStatus overlapStatus,
-    bool isMultideviceRequest);
+    bool rejectCompleteOverlapped);
 
 ///////////////////////////////////////////////////////////////////////////////
 

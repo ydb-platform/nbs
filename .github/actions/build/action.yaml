@@ -118,7 +118,7 @@ runs:
 
           if [ -n "$BAZEL_REMOTE_USERNAME" ]; then
             extra_params+=(--bazel-remote-username "$BAZEL_REMOTE_USERNAME")
-            extra_params+=(--bazel-remote-password-file "$BAZEL_PASSWORD_FILE")
+            extra_params+=(--bazel-remote-password-file "$BAZEL_REMOTE_PASSWORD_FILE")
             extra_params+=(--add-result .o)
           fi
 

@@ -39,7 +39,7 @@ struct TDiskInfo
     TVector<NProto::TDeviceConfig> Devices;
     TVector<NProto::TDeviceMigration> Migrations;
     TVector<TFinishedMigration> FinishedMigrations;
-    TVector<TLaggingDevice> LaggingDevices;
+    TVector<TLaggingDevice> OutdatedLaggingDevices;
     TVector<TVector<NProto::TDeviceConfig>> Replicas;
     TString MasterDiskId;
     ui32 LogicalBlockSize = 0;
@@ -274,7 +274,7 @@ class TDiskRegistryState
 
         TVector<NProto::TDiskHistoryItem> History;
 
-        TVector<TLaggingDevice> LaggingDevices;
+        TVector<TLaggingDevice> OutdatedLaggingDevices;
     };
 
     struct TVolumeDeviceOverrides
@@ -779,11 +779,11 @@ public:
         const TDeviceId& deviceId,
         bool isReplacement);
 
-    [[nodiscard]] NProto::TError AddLaggingDevices(
+    [[nodiscard]] NProto::TError AddOutdatedLaggingDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
-        TVector<NProto::TLaggingDevice> laggingDevices);
+        TVector<NProto::TLaggingDevice> outdatedDevices);
 
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
 
@@ -895,7 +895,8 @@ public:
         const TString& poolName,
         const ui64 totalByteCount) const;
 
-    THashSet<TDeviceId> GetLostDevicesForDisk(const TString& diskId) const;
+    THashSet<TDeviceId> GetUnavailableDevicesForDisk(
+        const TString& diskId) const;
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
@@ -928,8 +929,8 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         TInstant timestamp,
-        TVector<TDiskId>* affectedDisks,
-        TVector<TDiskId>* disksToReallocate);
+        TVector<TDiskId>& affectedDisks,
+        THashSet<TDiskId>& disksToReallocate);
 
     [[nodiscard]] TString GetDiskIdToNotify(const TString& diskId) const;
 
@@ -1118,7 +1119,7 @@ private:
         const TString& diskId,
         ui64 seqNo);
 
-    void RemoveLaggingDevices(
+    void RemoveOutdatedLaggingDevices(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         ui64 seqNo);
@@ -1365,9 +1366,8 @@ private:
         const TString& deviceUUID);
 
     void ReallocateDisksWithLostOrReappearedDevices(
-        TDiskRegistryDatabase& db,
         const TAgentList::TAgentRegistrationResult& r,
-        TVector<TDiskId>& disksToReallocate);
+        THashSet<TDiskId>& disksToReallocate);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

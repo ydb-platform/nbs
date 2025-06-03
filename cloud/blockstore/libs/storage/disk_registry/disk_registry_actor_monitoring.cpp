@@ -806,7 +806,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 }
 
                 if (AnyOf(
-                        info.LaggingDevices,
+                        info.OutdatedLaggingDevices,
                         [&uuid = device.GetDeviceUUID()](
                             const TLaggingDevice& laggingDevice)
                         {
@@ -2211,6 +2211,26 @@ void TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList(
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
+void TDiskRegistryActor::HandleHttpInfo_RenderTransactionsLatency(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    TStringStream out;
+    HTML (out) {
+        AddLatencyCSS(out);
+        DumpLatency(
+            out,
+            TabletID(),
+            TransactionTimeTracker,
+            6   // columnCount
+        );
+    }
+    SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
+}
+
 void TDiskRegistryActor::RenderSuspendedDeviceList(IOutputStream& out) const
 {
     const auto suspendedDevices = State->GetSuspendedDevices();
@@ -2314,6 +2334,16 @@ void TDiskRegistryActor::RenderAutomaticallyReplacedDeviceList(
     }
 }
 
+void TDiskRegistryActor::RenderTransactionsLatency(IOutputStream& out) const
+{
+    DumpActionLink(
+        out,
+        TabletID(),
+        "RenderTransactionsLatency",
+        "Transactions",
+        TransactionTimeTracker.GetTransactionBuckets().size());
+}
+
 void TDiskRegistryActor::RenderHtmlInfo(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
@@ -2341,6 +2371,8 @@ void TDiskRegistryActor::RenderHtmlInfo(IOutputStream& out) const
             RenderSuspendedDeviceList(out);
 
             RenderAutomaticallyReplacedDeviceList(out);
+
+            RenderTransactionsLatency(out);
         } else {
             TAG(TH3) { out << "Initialization in progress..."; }
         }
@@ -2397,10 +2429,12 @@ void TDiskRegistryActor::HandleHttpInfo(
          &TDiskRegistryActor::HandleHttpInfo_ChangeAgentState},
     }};
 
-    static const THttpHandlers getActions {{
-        {"dev",    &TDiskRegistryActor::HandleHttpInfo_RenderDeviceHtmlInfo  },
-        {"agent",  &TDiskRegistryActor::HandleHttpInfo_RenderAgentHtmlInfo   },
-        {"disk",   &TDiskRegistryActor::HandleHttpInfo_RenderDiskHtmlInfo    },
+    static const THttpHandlers getActions{{
+        {"dev", &TDiskRegistryActor::HandleHttpInfo_RenderDeviceHtmlInfo},
+        {"agent", &TDiskRegistryActor::HandleHttpInfo_RenderAgentHtmlInfo},
+        {"disk", &TDiskRegistryActor::HandleHttpInfo_RenderDiskHtmlInfo},
+        {"getTransactionsLatency",
+         &TDiskRegistryActor::HandleHttpInfo_GetTransactionsLatency},
 
         {"RenderDisks", &TDiskRegistryActor::HandleHttpInfo_RenderDisks},
         {"RenderBrokenDeviceList",
@@ -2415,6 +2449,8 @@ void TDiskRegistryActor::HandleHttpInfo(
          &TDiskRegistryActor::HandleHttpInfo_RenderDirtyDeviceList},
         {"RenderSuspendedDeviceList",
          &TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList},
+        {"RenderTransactionsLatency",
+         &TDiskRegistryActor::HandleHttpInfo_RenderTransactionsLatency},
     }};
 
     auto* msg = ev->Get();
@@ -2485,6 +2521,20 @@ void TDiskRegistryActor::SendHttpResponse(
         ctx,
         requestInfo,
         std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(message)));
+}
+
+void TDiskRegistryActor::HandleHttpInfo_GetTransactionsLatency(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            TransactionTimeTracker.GetStatJson(GetCycleCount())));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

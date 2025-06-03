@@ -91,7 +91,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
     xxx(CompactionThresholdForBackpressure, ui32,      200                    )\
     xxx(FlushBytesThresholdForBackpressure, ui64,      128_MB                 )\
-    xxx(BackpressurePercentageForFairBlobIndexOpsPriority,  ui32,   90        )\
+    xxx(BackpressureThresholdPercentageForBackgroundOpsPriority,  ui32,   90  )\
                                                                                \
     xxx(HDDSystemChannelPoolKind,      TString,   "rot"                       )\
     xxx(HDDLogChannelPoolKind,         TString,   "rot"                       )\
@@ -269,8 +269,11 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GuestKeepCacheAllowed,                     bool,      false           )\
     xxx(GuestCachingType,                                                      \
         NProto::EGuestCachingType,                                             \
-        NProto::GCT_SECOND_READ                                               )\
+        NProto::GCT_NONE                                                      )\
     xxx(SessionHandleOffloadedStatsCapacity,       ui64,      0               )\
+    xxx(LoadConfigsFromCmsRetryMinDelay,   TDuration,  TDuration::Seconds(2)  )\
+    xxx(LoadConfigsFromCmsRetryMaxDelay,   TDuration,  TDuration::Seconds(512))\
+    xxx(LoadConfigsFromCmsTotalTimeout,    TDuration,  TDuration::Hours(1)    )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

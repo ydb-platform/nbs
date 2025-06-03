@@ -38,6 +38,13 @@ const TPartitionActor::TStateInfo TPartitionActor::States[STATE_MAX] = {
     { "Zombie", (IActor::TReceiveFunc)&TPartitionActor::StateZombie },
 };
 
+const TString PartitionTransactions[] = {
+#define TRANSACTION_NAME(name, ...) #name,
+    BLOCKSTORE_PARTITION_TRANSACTIONS(TRANSACTION_NAME)
+#undef TRANSACTION_NAME
+        "Total",
+};
+
 TPartitionActor::TPartitionActor(
         const TActorId& owner,
         TTabletStorageInfoPtr storage,
@@ -47,10 +54,11 @@ TPartitionActor::TPartitionActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
+        ui32 partitionIndex,
         ui32 siblingCount,
         const TActorId& volumeActorId)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
+    , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -61,6 +69,13 @@ TPartitionActor::TPartitionActor(
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
+    , LogTitle(
+          TabletID(),
+          PartitionConfig.GetDiskId(),
+          StartTime,
+          partitionIndex,
+          siblingCount)
+    , TransactionTimeTracker(PartitionTransactions)
 {}
 
 TPartitionActor::~TPartitionActor()
@@ -113,9 +128,11 @@ void TPartitionActor::Activate(const TActorContext& ctx)
 
     State->FinishLoadState();
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] State initialization finished",
-        TabletID());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s State initialization finished",
+        LogTitle.GetWithTime().c_str());
 }
 
 void TPartitionActor::Suicide(const TActorContext& ctx)
@@ -308,9 +325,13 @@ bool TPartitionActor::OnRenderAppHtmlPage(
 
 void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Activated executor",
-        TabletID());
+    LogTitle.SetGeneration(Executor()->Generation());
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Activated executor",
+        LogTitle.GetWithTime().c_str());
 
     BecomeAux(ctx, STATE_INIT);
 
@@ -320,7 +341,7 @@ void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 
     if (!Executor()->GetStats().IsFollower) {
-        ExecuteTx<TInitSchema>(ctx, PartitionConfig.GetBlocksCount());
+        ExecuteTx(ctx, CreateTx<TInitSchema>(PartitionConfig.GetBlocksCount()));
     }
 }
 
@@ -359,19 +380,19 @@ void TPartitionActor::KillActors(const TActorContext& ctx)
 }
 
 void TPartitionActor::AddTransaction(
-    TRequestInfo& transaction,
+    TRequestInfo& requestInfo,
     TRequestInfo::TCancelRoutine cancelRoutine)
 {
-    transaction.CancelRoutine = cancelRoutine;
+    requestInfo.CancelRoutine = cancelRoutine;
 
-    transaction.Ref();
+    requestInfo.Ref();
 
     STORAGE_VERIFY(
-        transaction.Empty(),
+        requestInfo.Empty(),
         TWellKnownEntityTypes::TABLET,
         TabletID());
 
-    ActiveTransactions.PushBack(&transaction);
+    ActiveTransactions.PushBack(&requestInfo);
 }
 
 void TPartitionActor::RemoveTransaction(TRequestInfo& requestInfo)
@@ -550,10 +571,11 @@ void TPartitionActor::SendBackpressureReport(const TActorContext& ctx) const
 void TPartitionActor::SendGarbageCollectorCompleted(
     const TActorContext& ctx) const
 {
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Send garbage collector completed",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Send garbage collector completed",
+        LogTitle.GetWithTime().c_str());
     NCloud::Send(
         ctx,
         LauncherID(),

@@ -41,9 +41,11 @@ void TVolumeActor::CompleteInitSchema(
 {
     Y_UNUSED(args);
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Schema initialized",
-        TabletID());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Schema initialized",
+        LogTitle.GetWithTime().c_str());
 
     ExecuteTx<TLoadState>(
         ctx,

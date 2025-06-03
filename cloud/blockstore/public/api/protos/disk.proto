@@ -8,6 +8,16 @@ package NCloud.NBlockStore.NProto;
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
+// Disk Agent state
+
+enum EAgentState
+{
+    AGENT_STATE_ONLINE = 0;
+    AGENT_STATE_WARNING = 1;
+    AGENT_STATE_UNAVAILABLE = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Disk state
 
 enum EDiskState
@@ -202,8 +212,16 @@ message TAgentInfo {
 
     // List of device info
     repeated TDeviceInfo Devices = 2;
-}
 
+    // Current state of the Disk Agent
+    EAgentState State = 3;
+
+    // Reason for agent state.
+    string StateMessage = 4;
+
+    // Timestamp when state has been changed (in microseconds)
+    uint64 StateTs = 5;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Query agents info

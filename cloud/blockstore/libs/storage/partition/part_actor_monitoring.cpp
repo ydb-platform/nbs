@@ -388,10 +388,12 @@ void TPartitionActor::HandleHttpInfo(
         {"scanDisk",         &TPartitionActor::HandleHttpInfo_ScanDisk        }
     }};
 
-    static const THttpHandlers getActions {{
-        {"check",             &TPartitionActor::HandleHttpInfo_Check          },
-        {"describe",          &TPartitionActor::HandleHttpInfo_Describe       },
-        {"view",              &TPartitionActor::HandleHttpInfo_View           }
+    static const THttpHandlers getActions{{
+        {"check", &TPartitionActor::HandleHttpInfo_Check},
+        {"describe", &TPartitionActor::HandleHttpInfo_Describe},
+        {"view", &TPartitionActor::HandleHttpInfo_View},
+        {"getTransactionsLatency",
+         &TPartitionActor::HandleHttpInfo_GetTransactionsLatency},
     }};
 
     const auto* msg = ev->Get();
@@ -461,6 +463,8 @@ void TPartitionActor::HandleHttpInfo_Default(
 
     TStringStream out;
     HTML(out) {
+        AddLatencyCSS(out);
+
         DIV_CLASS_ID("container-fluid", "tabs") {
             BuildPartitionTabs(out);
 
@@ -648,6 +652,15 @@ void TPartitionActor::HandleHttpInfo_Default(
                         *Info(),
                         *DiagnosticsConfig,
                         GetHiveTabletId(Config, ctx));
+                }
+
+                DIV_CLASS_ID("tab-pane", "Latency") {
+                    DumpLatency(
+                        out,
+                        Info()->TabletID,
+                        TransactionTimeTracker,
+                        8   // columnCount
+                    );
                 }
 
                 DIV_CLASS_ID("tab-pane", "Index") {

@@ -58,7 +58,6 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryResumeDeviceFailed)                                        \
     xxx(DiskRegistryAgentDevicePoolConfigMismatch)                             \
     xxx(DiskRegistryPurgeHostError)                                            \
-    xxx(DiskRegistryCleanupAgentConfigError)                                   \
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
     xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
@@ -97,7 +96,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryDeviceNotFound)                                            \
     xxx(DiskRegistryNoScheduledNotification)                                   \
     xxx(DiskRegistryDeviceDoesNotBelongToDisk)                                 \
-    xxx(DiskRegistryCouldNotAddLaggingDevice)                                  \
+    xxx(DiskRegistryCouldNotAddOutdatedLaggingDevice)                          \
     xxx(ResyncUnexpectedWriteOrZeroCounter)                                    \
     xxx(MonitoringSvgTemplatesNotFound)                                        \
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
@@ -110,6 +109,7 @@ namespace NCloud::NBlockStore {
     xxx(EmptyRequestSgList)                                                    \
     xxx(LaggingAgentsProxyWrongRecipientActor)                                 \
     xxx(UnexpectedCookie)                                                      \
+    xxx(MultiAgentRequestAffectsTwoDevices)                                    \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

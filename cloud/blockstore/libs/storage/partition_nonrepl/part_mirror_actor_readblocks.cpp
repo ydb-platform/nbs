@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 
@@ -69,6 +70,7 @@ private:
     const TString DiskId;
     const NActors::TActorId ParentActorId;
     const ui64 RequestIdentityKey;
+    const bool ShouldReportBlockRangeOnFailure;
 
     using TResponseProto = typename TMethod::TResponse::ProtoRecordType;
     using TBase = TActorBootstrapped<TRequestActor<TMethod>>;
@@ -86,7 +88,8 @@ public:
         const TBlockRange64 range,
         TString diskId,
         TActorId parentActorId,
-        ui64 requestIdentityKey);
+        ui64 requestIdentityKey,
+        bool shouldReportBlockRangeOnFailure);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -130,7 +133,8 @@ TRequestActor<TMethod>::TRequestActor(
         const TBlockRange64 range,
         TString diskId,
         TActorId parentActorId,
-        ui64 requestIdentityKey)
+        ui64 requestIdentityKey,
+        bool shouldReportBlockRangeOnFailure)
     : RequestInfo(std::move(requestInfo))
     , Partitions(partitions)
     , Request(std::move(request))
@@ -138,6 +142,7 @@ TRequestActor<TMethod>::TRequestActor(
     , DiskId(std::move(diskId))
     , ParentActorId(parentActorId)
     , RequestIdentityKey(requestIdentityKey)
+    , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
     , ResponseChecksums(Partitions.size(), 0)
 {}
 
@@ -244,6 +249,13 @@ void TRequestActor<TMethod>::Done(const TActorContext& ctx)
 {
     auto response = std::make_unique<typename TMethod::TResponse>();
     response->Record = std::move(Response);
+
+    if constexpr (IsLocalMethod<TMethod>) {
+        if (ShouldReportBlockRangeOnFailure) {
+            response->Record.FailInfo.FailedRanges.push_back(
+                DescribeRange(Range));
+        }
+    }
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -502,7 +514,8 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
 template <typename TMethod>
 void TMirrorPartitionActor::ReadBlocks(
     const typename TMethod::TRequest::TPtr& ev,
-    const TActorContext& ctx)
+    const TActorContext& ctx,
+    const bool shouldReportBlockRangeOnFailure)
 {
     using TResponse = TMethod::TResponse;
 
@@ -593,7 +606,8 @@ void TMirrorPartitionActor::ReadBlocks(
         blockRange,
         State.GetReplicaInfos()[0].Config->GetName(),
         SelfId(),
-        requestIdentityKey);
+        requestIdentityKey,
+        shouldReportBlockRangeOnFailure);
 }
 
 template <typename TMethod>
@@ -663,14 +677,20 @@ void TMirrorPartitionActor::HandleReadBlocks(
     const TEvService::TEvReadBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ReadBlocks<TEvService::TReadBlocksMethod>(ev, ctx);
+    ReadBlocks<TEvService::TReadBlocksMethod>(
+        ev,
+        ctx,
+        false);   // shouldReportBlockRangeOnFailure
 }
 
 void TMirrorPartitionActor::HandleReadBlocksLocal(
     const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ReadBlocks<TEvService::TReadBlocksLocalMethod>(ev, ctx);
+    ReadBlocks<TEvService::TReadBlocksLocalMethod>(
+        ev,
+        ctx,
+        ev->Get()->Record.ShouldReportFailedRangesOnFailure);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

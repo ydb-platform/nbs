@@ -60,10 +60,11 @@ bool TPartitionActor::PrepareLoadState(
     TTransactionContext& tx,
     TTxPartition::TLoadState& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Reading state from local db",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Reading state from local db",
+        LogTitle.GetWithTime().c_str());
 
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
@@ -99,10 +100,11 @@ void TPartitionActor::ExecuteLoadState(
     TTransactionContext& tx,
     TTxPartition::TLoadState& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] State data loaded",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s State data loaded",
+        LogTitle.GetWithTime().c_str());
 
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
@@ -313,7 +315,7 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
         State->GetLogicalUsedBlocks().Count()
     );
 
-    ExecuteTx<TUpdateLogicalUsedBlocks>(ctx, 0);
+    ExecuteTx(ctx, CreateTx<TUpdateLogicalUsedBlocks>(0));
 }
 
 bool TPartitionActor::PrepareUpdateLogicalUsedBlocks(
@@ -360,7 +362,7 @@ void TPartitionActor::CompleteUpdateLogicalUsedBlocks(
     if (args.UpdatedToIdx == State->GetLogicalUsedBlocks().Capacity()) {
         FinalizeLoadState(ctx);
     } else {
-        ExecuteTx<TUpdateLogicalUsedBlocks>(ctx, args.UpdatedToIdx);
+        ExecuteTx(ctx, CreateTx<TUpdateLogicalUsedBlocks>(args.UpdatedToIdx));
     }
 }
 

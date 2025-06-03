@@ -351,6 +351,7 @@ void TDiskAgentActor::HandleWriteDeviceBlocks(
             SelfId(),
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
             std::move(msg->Record),
+            TMultiAgentWriteDeviceBlocksActor::TResponsePromise(),
             GetMaxRequestTimeout());
         return;
     }
@@ -377,6 +378,7 @@ void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
             SelfId(),
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
             std::move(msg->Record),
+            TMultiAgentWriteDeviceBlocksActor::TResponsePromise(),
             GetMaxRequestTimeout());
         return;
     }
@@ -421,6 +423,23 @@ void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
                 request.GetBlockSize(),
                 buffer);
         });
+}
+
+void TDiskAgentActor::HandleMultiAgentWriteDeviceBlocks(
+    const TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_DEBUG_ABORT_UNLESS(ev->Sender == NActors::TActorId());
+
+    auto* msg = ev->Get();
+
+    NCloud::Register<TMultiAgentWriteDeviceBlocksActor>(
+        ctx,
+        SelfId(),
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        std::move(msg->Record),
+        std::move(msg->ResponsePromise),
+        GetMaxRequestTimeout());
 }
 
 void TDiskAgentActor::HandleZeroDeviceBlocks(

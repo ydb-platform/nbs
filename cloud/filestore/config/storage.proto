@@ -437,9 +437,9 @@ message TStorageConfig
     // Throttle DescribeData and GenerateBlobIds requests
     optional bool MultipleStageRequestThrottlingEnabled = 389;
 
-    // After reaching this percentage of Compaction/Cleanup backpressure
-    // thresholds BlobIndexOps scheduling falls back to BIOP_FAIR.
-    optional uint32 BackpressurePercentageForFairBlobIndexOpsPriority = 390;
+    // Prioritize background operations whose optimization targets are close
+    // to their backpressure thresholds.
+    optional uint32 BackpressureThresholdPercentageForBackgroundOpsPriority = 390;
 
     // If enabled, GarbageCompactionThresholdAverage will be compared to the
     // difference between MixedBlocks and UsedBlocks instead of the difference
@@ -601,4 +601,9 @@ message TStorageConfig
 
     // Enable triggering FlushBytes by reaching FlushBytesItemCountThreshold
     optional bool FlushBytesByItemCountEnabled = 430;
+
+    // Retry policy when unable to get configs from CMS, in ms
+    optional uint32 LoadConfigsFromCmsRetryMinDelay = 431;
+    optional uint32 LoadConfigsFromCmsRetryMaxDelay = 432;
+    optional uint32 LoadConfigsFromCmsTotalTimeout = 433;
 }

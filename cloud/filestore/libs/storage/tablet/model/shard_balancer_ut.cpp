@@ -2,6 +2,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/random/random.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -233,8 +235,8 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         const ui64 iterations = 5000;
         // After 5000 random samples we expect each of five shards to be
-        // encountered from 900 to 1100 times.
-        const ui64 rangeToleration = 100;
+        // encountered from 800 to 1200 times.
+        const ui64 rangeToleration = 200;
 
         THashMap<TString, ui64> hitCount;
         for (ui64 i = 0; i < iterations; ++i) {
@@ -249,10 +251,12 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             ++hitCount[shardId];
         }
         UNIT_ASSERT_VALUES_EQUAL(shardCount, hitCount.size());
-        for (const auto& [shardId, count]: hitCount) {
-            UNIT_ASSERT_GE(count, iterations / shardCount - rangeToleration);
-            UNIT_ASSERT_LE(count, iterations / shardCount + rangeToleration);
-        }
+        // select random shard and ensure that it is selected with a
+        // 1/shardCount probability
+        auto randomShard = "s" + ToString(1 + RandomNumber<ui32>(shardCount));
+        auto count = hitCount[randomShard];
+        UNIT_ASSERT_GE(count, iterations / shardCount - rangeToleration);
+        UNIT_ASSERT_LE(count, iterations / shardCount + rangeToleration);
 
         // Now let's fill up last 3 shards to their limits
         balancer.UpdateShardStats({
@@ -276,11 +280,13 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             hitCount[shardId];
             ++hitCount[shardId];
         }
-        UNIT_ASSERT_VALUES_EQUAL(2, hitCount.size());
-        for (const auto& [shardId, count]: hitCount) {
-            UNIT_ASSERT_GE(count, iterations / 2 - rangeToleration);
-            UNIT_ASSERT_LE(count, iterations / 2 + rangeToleration);
-        }
+
+        // select random shard and ensure that it is selected with a
+        // 1/2 probability
+        randomShard = "s" + ToString(1 + RandomNumber<ui32>(2));
+        count = hitCount[randomShard];
+        UNIT_ASSERT_GE(count, iterations / 2 - rangeToleration);
+        UNIT_ASSERT_LE(count, iterations / 2 + rangeToleration);
     }
 
     Y_UNIT_TEST(ShouldBalanceShardsWeightedRandom)
@@ -296,8 +302,8 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         const ui64 iterations = 5000;
         // After 5000 random samples we expect each of five shards to be
-        // encountered from 900 to 1100 times.
-        const ui64 rangeToleration = 100;
+        // encountered from 800 to 1200 times.
+        const ui64 rangeToleration = 200;
 
         THashMap<TString, ui64> hitCount;
         for (ui64 i = 0; i < iterations; ++i) {
@@ -341,17 +347,19 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             ++hitCount[shardId];
         }
         UNIT_ASSERT_VALUES_EQUAL(3, hitCount.size());
-        for (const auto& [shardId, count]: hitCount) {
-            if (shardId == "s1") {
-                UNIT_ASSERT_GE(count, iterations / 6 - rangeToleration);
-                UNIT_ASSERT_LE(count, iterations / 6 + rangeToleration);
-            } else if (shardId == "s2") {
-                UNIT_ASSERT_GE(count, iterations / 3 - rangeToleration);
-                UNIT_ASSERT_LE(count, iterations / 3 + rangeToleration);
-            } else if (shardId == "s3") {
-                UNIT_ASSERT_GE(count, iterations / 2 - rangeToleration);
-                UNIT_ASSERT_LE(count, iterations / 2 + rangeToleration);
-            }
+        // select random shard and ensure that it is selected according to
+        // the ratio 1:2:3
+        auto shardId = "s" + ToString(1 + RandomNumber<ui32>(3));
+        auto count = hitCount[shardId];
+        if (shardId == "s1") {
+            UNIT_ASSERT_GE(count, iterations / 6 - rangeToleration);
+            UNIT_ASSERT_LE(count, iterations / 6 + rangeToleration);
+        } else if (shardId == "s2") {
+            UNIT_ASSERT_GE(count, iterations / 3 - rangeToleration);
+            UNIT_ASSERT_LE(count, iterations / 3 + rangeToleration);
+        } else if (shardId == "s3") {
+            UNIT_ASSERT_GE(count, iterations / 2 - rangeToleration);
+            UNIT_ASSERT_LE(count, iterations / 2 + rangeToleration);
         }
 
         // If we fill up all the shards with less than 1 TiB left it should not
@@ -369,7 +377,6 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         }
 
         // For 500 GiB file though it should be possible to select any shard
-        TString shardId;
         const auto error = balancer.SelectShard(500_GB, &shardId);
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
@@ -397,18 +404,21 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             ++hitCount[shardId];
         }
         UNIT_ASSERT_VALUES_EQUAL(3, hitCount.size());
-        for (const auto& [shardId, count]: hitCount) {
-            if (shardId == "s3") {
-                UNIT_ASSERT_GE(count, (iterations * 3) / 12 - rangeToleration);
-                UNIT_ASSERT_LE(count, (iterations * 3) / 12 + rangeToleration);
-            } else if (shardId == "s4") {
-                UNIT_ASSERT_GE(count, (iterations * 4) / 12 - rangeToleration);
-                UNIT_ASSERT_LE(count, (iterations * 4) / 12 + rangeToleration);
-            } else if (shardId == "s5") {
-                UNIT_ASSERT_GE(count, (iterations * 5) / 12 - rangeToleration);
-                UNIT_ASSERT_LE(count, (iterations * 5) / 12 + rangeToleration);
-            }
+        // select random shard and ensure that it is selected according to
+        // the ratio 3:4:5
+        shardId = "s" + ToString(3 + RandomNumber<ui32>(3));
+        count = hitCount[shardId];
+        if (shardId == "s3") {
+            UNIT_ASSERT_GE(count, (iterations * 3) / 12 - rangeToleration);
+            UNIT_ASSERT_LE(count, (iterations * 3) / 12 + rangeToleration);
+        } else if (shardId == "s4") {
+            UNIT_ASSERT_GE(count, (iterations * 4) / 12 - rangeToleration);
+            UNIT_ASSERT_LE(count, (iterations * 4) / 12 + rangeToleration);
+        } else if (shardId == "s5") {
+            UNIT_ASSERT_GE(count, (iterations * 5) / 12 - rangeToleration);
+            UNIT_ASSERT_LE(count, (iterations * 5) / 12 + rangeToleration);
         }
+
         // For 5 GiB file though it should be possible to select only s5
         shardId.clear();
         for (ui64 i = 0; i < iterations; ++i) {

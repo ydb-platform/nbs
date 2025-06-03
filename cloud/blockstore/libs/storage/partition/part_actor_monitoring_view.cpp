@@ -316,4 +316,18 @@ void TPartitionActor::HandleHttpInfo_View(
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
+void TPartitionActor::HandleHttpInfo_GetTransactionsLatency(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            TransactionTimeTracker.GetStatJson(GetCycleCount())));
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -4,10 +4,9 @@ Node {
   Port: 19001
   Host: "dca1-ct5-13.cloud.net"
   InterconnectHost: "dca1-ct5-13.cloud.net"
-  WalleLocation {
+  Location {
     DataCenter: "dca"
     Rack: "dca-1:1"
-    Body: 103058410
   }
 }
 Node {
@@ -16,10 +15,9 @@ Node {
   Port: 19001
   Host: "dca1-ct5-14.cloud.net"
   InterconnectHost: "dca1-ct5-14.cloud.net"
-  WalleLocation {
+  Location {
     DataCenter: "dca"
     Rack: "dca-2:1"
-    Body: 103058412
   }
 }
 Node {
@@ -28,10 +26,9 @@ Node {
   Port: 19001
   Host: "dca1-ct5-15.cloud.net"
   InterconnectHost: "dca1-ct5-15.cloud.net"
-  WalleLocation {
+  Location {
     DataCenter: "dca"
     Rack: "dca-3:1"
-    Body: 103058411
   }
 }
 Node {
@@ -40,10 +37,9 @@ Node {
   Port: 19001
   Host: "dca1-ct5-16.cloud.net"
   InterconnectHost: "dca1-ct5-16.cloud.net"
-  WalleLocation {
+  Location {
     DataCenter: "dca"
     Rack: "dca-4:1"
-    Body: 103058413
   }
 }
 Node {
@@ -52,10 +48,9 @@ Node {
   Port: 19001
   Host: "dca1-ct5-17.cloud.net"
   InterconnectHost: "dca1-ct5-17.cloud.net"
-  WalleLocation {
+  Location {
     DataCenter: "dca"
     Rack: "dca-5:1"
-    Body: 103058409
   }
 }
 Node {
@@ -64,10 +59,9 @@ Node {
   Port: 19001
   Host: "dca1-ct5-18.cloud.net"
   InterconnectHost: "dca1-ct5-18.cloud.net"
-  WalleLocation {
+  Location {
     DataCenter: "dca"
     Rack: "dca-6:1"
-    Body: 103058405
   }
 }
 Node {
@@ -76,10 +70,9 @@ Node {
   Port: 19001
   Host: "dca1-ct5-24.cloud.net"
   InterconnectHost: "dca1-ct5-24.cloud.net"
-  WalleLocation {
+  Location {
     DataCenter: "dca"
     Rack: "dca-7:1"
-    Body: 103057958
   }
 }
 Node {
@@ -88,10 +81,9 @@ Node {
   Port: 19001
   Host: "dca1-ct5-25.cloud.net"
   InterconnectHost: "dca1-ct5-25.cloud.net"
-  WalleLocation {
+  Location {
     DataCenter: "dca"
     Rack: "dca-8:1"
-    Body: 103058207
   }
 }
 ClusterUUID: "2452520"

@@ -488,33 +488,27 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
             service.SendWriteBlocksRequest(
                 DefaultDiskId,
                 TBlockRange64::WithLength(0, 1024),
-                sessionId
-            );
+                sessionId);
             auto response = service.RecvWriteBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_REJECTED);
-            UNIT_ASSERT(response->GetErrorReason().Contains("not ready"));
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("has not started yet"));
         }
 
         {
-            service.SendReadBlocksRequest(
-                DefaultDiskId,
-                0,
-                sessionId
-            );
+            service.SendReadBlocksRequest(DefaultDiskId, 0, sessionId);
             auto response = service.RecvReadBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_REJECTED);
-            UNIT_ASSERT(response->GetErrorReason().Contains("not ready"));
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("has not started yet"));
         }
 
         {
-            service.SendZeroBlocksRequest(
-                DefaultDiskId,
-                0,
-                sessionId
-            );
+            service.SendZeroBlocksRequest(DefaultDiskId, 0, sessionId);
             auto response = service.RecvZeroBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_REJECTED);
-            UNIT_ASSERT(response->GetErrorReason().Contains("not ready"));
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("has not started yet"));
         }
     }
 }

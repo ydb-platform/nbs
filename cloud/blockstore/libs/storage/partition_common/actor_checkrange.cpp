@@ -1,12 +1,14 @@
 #include "actor_checkrange.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/generic/string.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -17,10 +19,12 @@ using namespace NActors;
 TCheckRangeActor::TCheckRangeActor(
     const TActorId& partition,
     NProto::TCheckRangeRequest&& request,
-    TRequestInfoPtr&& requestInfo)
+    TRequestInfoPtr requestInfo,
+    ui64 blockSize)
     : Partition(partition)
     , Request(std::move(request))
     , RequestInfo(std::move(requestInfo))
+    , BlockSize(blockSize)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -31,10 +35,26 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
+    TBlockRange64 range = TBlockRange64::WithLength(
+        Request.GetStartIndex(),
+        Request.GetBlocksCount());
+
+    Buffer = TGuardedBuffer(TString::Uninitialized(range.Size() * BlockSize));
+
+    auto sgList = Buffer.GetGuardedSgList();
+    auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
+    if (HasError(sgListOrError)) {
+        ReplyAndDie(ctx, sgListOrError.GetError());
+        return;
+    }
+    SgList.SetSgList(sgListOrError.ExtractResult());
+
+    auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
 
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
+    request->Record.Sglist = SgList;
+    request->Record.ShouldReportFailedRangesOnFailure = true;
 
     auto* headers = request->Record.MutableHeaders();
 
@@ -46,8 +66,7 @@ void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(error));
+    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -69,7 +88,7 @@ STFUNC(TCheckRangeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
+        HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksResponse);
         default:
             HandleUnexpectedEvent(
                 ev,
@@ -91,7 +110,7 @@ void TCheckRangeActor::HandlePoisonPill(
 }
 
 void TCheckRangeActor::HandleReadBlocksResponse(
-    const TEvService::TEvReadBlocksResponse::TPtr& ev,
+    const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -104,13 +123,29 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             ctx,
             TBlockStoreComponents::PARTITION,
             "reading error has occurred: " << FormatError(error));
-        response->Record.MutableStatus()->CopyFrom(error);
+
+        auto* status = response->Record.MutableStatus();
+        status->CopyFrom(error);
+
+        if (!msg->Record.FailInfo.FailedRanges.empty()) {
+            TStringBuilder builder;
+            builder << ", Broken blobs:\n ["
+                    << JoinRange(
+                           ", ",
+                           msg->Record.FailInfo.FailedRanges.begin(),
+                           msg->Record.FailInfo.FailedRanges.end())
+                    << "]";
+
+            status->MutableMessage()->append(builder);
+        }
     } else {
         if (Request.GetCalculateChecksums()) {
             TBlockChecksum blockChecksum;
-            for (const auto& buffer: msg->Record.GetBlocks().GetBuffers()) {
-                const auto checksum =
-                    blockChecksum.Extend(buffer.data(), buffer.size());
+            for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
+                 offset += BlockSize, ++i)
+            {
+                auto* data = Buffer.Get().data() + offset;
+                const auto checksum = blockChecksum.Extend(data, BlockSize);
                 response->Record.MutableChecksums()->Add(checksum);
             }
         }

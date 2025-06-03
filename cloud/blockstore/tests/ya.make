@@ -14,6 +14,7 @@ RECURSE(
     encryption_at_rest
     external_endpoint
     e2e-tests
+    e2e-tests-vhost
     fio
     functional
     fuzzing

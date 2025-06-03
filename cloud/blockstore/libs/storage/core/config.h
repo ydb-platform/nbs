@@ -476,6 +476,7 @@ public:
     bool GetEnableConversionIntoMixedIndexV2() const;
 
     ui32 GetStatsUploadDiskCount() const;
+    ui32 GetStatsUploadMaxRowsPerTx() const;
     TDuration GetStatsUploadRetryTimeout() const;
 
     bool GetRemoteMountOnly() const;
@@ -505,6 +506,7 @@ public:
     ui32 GetMixedIndexCacheV1SizeSSD() const;
 
     ui32 GetMaxReadBlobErrorsBeforeSuicide() const;
+    ui32 GetMaxWriteBlobErrorsBeforeSuicide() const;
 
     bool GetRejectMountOnAddClientTimeout() const;
 
@@ -683,6 +685,10 @@ public:
 
     [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
     GetLinkedDiskFillBandwidth() const;
+
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMinDelay() const;
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMaxDelay() const;
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsTotalTimeout() const;
 };
 
 ui64 GetAllocationUnit(

@@ -29,6 +29,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/config"
+	"github.com/ydb-platform/nbs/cloud/tasks"
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_headers "github.com/ydb-platform/nbs/cloud/tasks/headers"
@@ -592,6 +593,37 @@ func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
 	)
 }
 
+func newScheduler(ctx context.Context) (tasks.Scheduler, error) {
+	taskRegistry := tasks.NewRegistry()
+	taskStorage, err := NewTaskStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return tasks.NewScheduler(
+		ctx,
+		taskRegistry,
+		taskStorage,
+		&tasks_config.TasksConfig{},
+		metrics.NewEmptyRegistry(),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func WaitOperationEnded(
+	t *testing.T,
+	ctx context.Context,
+	operationID string,
+) {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	err = scheduler.WaitTaskEnded(ctx, operationID)
+	require.NoError(t, err)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func CheckBaseSnapshot(
@@ -601,10 +633,7 @@ func CheckBaseSnapshot(
 	expectedBaseSnapshotID string,
 ) {
 
-	storage, err := newSnapshotStorage(ctx)
-	require.NoError(t, err)
-
-	snapshotMeta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+	snapshotMeta, err := GetSnapshotMeta(ctx, snapshotID)
 	require.NoError(t, err)
 	require.EqualValues(t, expectedBaseSnapshotID, snapshotMeta.BaseSnapshotID)
 }
@@ -696,6 +725,19 @@ func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) 
 	default:
 		return nil, errors.NewNonRetriableErrorf("unknown key %s", key)
 	}
+}
+
+func GetSnapshotMeta(
+	ctx context.Context,
+	snapshotID string,
+) (*snapshot_storage.SnapshotMeta, error) {
+
+	storage, err := newSnapshotStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return storage.GetSnapshotMeta(ctx, snapshotID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

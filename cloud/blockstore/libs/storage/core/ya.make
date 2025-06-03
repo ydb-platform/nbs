@@ -31,6 +31,7 @@ SRCS(
     volume_label.cpp
     volume_model.cpp
     write_buffer_request.cpp
+    transaction_time_tracker.cpp
 )
 
 PEERDIR(

@@ -321,7 +321,7 @@ private:
 NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
     const NProto::TStartEndpointRequest& request)
 {
-    STORAGE_TRACE("StartEndpoint " << DumpMessage(request));
+    STORAGE_INFO("StartEndpoint " << DumpMessage(request));
 
     auto g = Guard(EndpointsLock);
     if (DrainingStarted) {

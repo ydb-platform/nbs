@@ -22,6 +22,10 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
 {
     switch (err.GetCode()) {
@@ -33,19 +37,7 @@ bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
     return false;
 }
 
-void ConvertRdmaErrorIfNeeded(ui32 rdmaStatus, NProto::TError& err)
-{
-    if (rdmaStatus == NRdma::RDMA_PROTO_FAIL && err.GetCode() == E_CANCELLED) {
-        ui32 flags = 0;
-        SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
-        err = MakeError(
-            E_REJECTED,
-            std::move(*err.MutableMessage()) + ", converted to E_REJECTED",
-            flags);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
+}   // namespace
 
 TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
@@ -93,6 +85,15 @@ bool TNonreplicatedPartitionRdmaActor::CheckReadWriteBlockRange(
     return range.End >= range.Start && PartConfig->GetBlockCount() > range.End;
 }
 
+ui32 TNonreplicatedPartitionRdmaActor::GetFlags() const
+{
+    ui32 flags = 0;
+    if (RdmaClient->IsAlignedDataEnabled()) {
+        SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+    }
+    return flags;
+}
+
 void TNonreplicatedPartitionRdmaActor::ScheduleCountersUpdate(
     const TActorContext& ctx)
 {
@@ -113,18 +114,40 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests)
 {
-    auto reply = [] (
+    return InitRequests<
+        typename TMethod::TRequest,
+        typename TMethod::TResponse>(
+        TMethod::Name,
+        IsWriteMethod<TMethod>,
+        msg,
+        ctx,
+        requestInfo,
+        blockRange,
+        deviceRequests);
+}
+
+template <typename TRequest, typename TResponse>
+bool TNonreplicatedPartitionRdmaActor::InitRequests(
+    const char* methodName,
+    const bool isWriteMethod,
+    const TRequest& msg,
+    const NActors::TActorContext& ctx,
+    TRequestInfo& requestInfo,
+    const TBlockRange64& blockRange,
+    TVector<TDeviceRequest>* deviceRequests)
+{
+    auto reply = [methodName] (
         const TActorContext& ctx,
         TRequestInfo& requestInfo,
         NProto::TError error)
     {
-        auto response = std::make_unique<typename TMethod::TResponse>(
+        auto response = std::make_unique<TResponse>(
             std::move(error));
 
         LWTRACK(
             ResponseSent_Partition,
             requestInfo.CallContext->LWOrbit,
-            TMethod::Name,
+            methodName,
             requestInfo.CallContext->RequestId);
 
         NCloud::Reply(ctx, requestInfo, std::move(response));
@@ -141,7 +164,7 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
     }
 
     if (!msg.Record.GetHeaders().GetIsBackgroundRequest() &&
-        RequiresReadWriteAccess<TMethod> && PartConfig->IsReadOnly())
+        isWriteMethod && PartConfig->IsReadOnly())
     {
         reply(ctx, requestInfo, PartConfig->MakeIOError("disk in error state"));
         return false;
@@ -246,6 +269,17 @@ template bool TNonreplicatedPartitionRdmaActor::InitRequests<TEvService::TReadBl
 template bool TNonreplicatedPartitionRdmaActor::InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
     const TEvNonreplPartitionPrivate::TChecksumBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
+    TRequestInfo& requestInfo,
+    const TBlockRange64& blockRange,
+    TVector<TDeviceRequest>* deviceRequests);
+
+template bool TNonreplicatedPartitionRdmaActor::InitRequests<
+    TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+    TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
+    const char* methodName,
+    const bool isWriteMethod,
+    const TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest& msg,
+    const NActors::TActorContext& ctx,
     TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests);
@@ -372,16 +406,17 @@ void TNonreplicatedPartitionRdmaActor::ProcessOperationCompleted(
     const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted)
 {
     const auto& devices = PartConfig->GetDevices();
-    for (auto idx: opCompleted.DeviceIndices) {
+    for (const auto& [idx, error]: opCompleted.RequestResults) {
         Y_ABORT_UNLESS(idx < static_cast<ui32>(devices.size()));
-        const auto* errDevice = FindPtr(opCompleted.ErrorDeviceIndices, idx);
+
         const auto& deviceUUID = devices[idx].GetDeviceUUID();
-        if (errDevice) {
-            NotifyDeviceTimedOutIfNeeded(ctx, deviceUUID);
+
+        if (!NeedToNotifyAboutDeviceRequestError(error)) {
+            TimedOutDeviceCtxByDeviceUUID.erase(deviceUUID);
             continue;
         }
 
-        TimedOutDeviceCtxByDeviceUUID.erase(deviceUUID);
+        NotifyDeviceTimedOutIfNeeded(ctx, deviceUUID);
     }
 }
 
@@ -464,6 +499,44 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksCompleted(
     PartCounters->RequestCounters.WriteBlocks.AddRequest(time, requestBytes);
     PartCounters->Rdma.WriteBytes.Increment(requestBytes);
     PartCounters->Rdma.WriteCount.Increment(1);
+    NetworkBytes += requestBytes;
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
+
+    const auto requestId = ev->Cookie;
+    RequestsInProgress.RemoveRequest(requestId);
+    DrainActorCompanion.ProcessDrainRequests(ctx);
+
+    if (RequestsInProgress.Empty() && Poisoner) {
+        ReplyAndDie(ctx);
+    }
+}
+
+void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWriteBlocksCompleted(
+    const TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted::TPtr&
+        ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Complete multi-agent write blocks",
+        SelfId().ToString().c_str());
+
+    UpdateStats(msg->Stats);
+
+    ProcessOperationCompleted(ctx, *msg);
+
+    const auto requestBytes =
+        msg->Stats.GetUserWriteCounters().GetBlocksCount() *
+        PartConfig->GetBlockSize();
+    const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
+
+    PartCounters->RequestCounters.WriteBlocksMultiAgent.AddRequest(time, requestBytes);
+    PartCounters->Rdma.WriteBytesMultiAgent.Increment(requestBytes);
+    PartCounters->Rdma.WriteCountMultiAgent.Increment(1);
+
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
@@ -621,6 +694,11 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
         return;
     }
 
+    TSet<ui32> laggingRows;
+    for (const auto& laggingDevice: msg->LaggingAgent.GetDevices()) {
+        laggingRows.insert(laggingDevice.GetRowIndex());
+    }
+
     const auto& devices = PartConfig->GetDevices();
     for (const auto& [_, requestInfo]: RequestsInProgress.AllRequests()) {
         const auto& requestCtx = requestInfo.Value;
@@ -628,11 +706,7 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
             requestCtx,
             [&](const auto& ctx)
             {
-                Y_ABORT_UNLESS(
-                    ctx.DeviceIndex < static_cast<ui64>(devices.size()));
-
-                return devices[ctx.DeviceIndex].GetAgentId() ==
-                       msg->LaggingAgent.GetAgentId();
+                return laggingRows.contains(ctx.DeviceIndex);
             });
 
         if (!needToCancel) {
@@ -742,6 +816,9 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.HandleGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+            HandleMultiAgentWrite);
 
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
@@ -756,6 +833,9 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted,
             HandleWriteBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted,
+            HandleMultiAgentWriteBlocksCompleted);
         HFunc(
             TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted,
             HandleZeroBlocksCompleted);
@@ -815,11 +895,17 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateZombie)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.RejectGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+            RejectMultiAgentWrite);
 
         HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, RejectChecksumBlocks);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted,
+            HandleMultiAgentWriteBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
         HFunc(
             TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted,

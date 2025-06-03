@@ -420,7 +420,9 @@ public:
                 blockDigestGenerator,
                 traceSerializer,
                 rdmaClient,
-                endpointEventHandler
+                endpointEventHandler,
+                EVolumeStartMode::ONLINE,
+                {}   // diskId
             );
             return actor.release();
         };

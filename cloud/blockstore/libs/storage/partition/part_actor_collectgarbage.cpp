@@ -633,7 +633,7 @@ void TPartitionActor::HandleCollectGarbage(
 
         AddTransaction<TEvPartitionPrivate::TCollectGarbageMethod>(*requestInfo);
 
-        ExecuteTx<TCollectGarbage>(ctx, requestInfo, commitId);
+        ExecuteTx(ctx, CreateTx<TCollectGarbage>(requestInfo, commitId));
         return;
     }
 

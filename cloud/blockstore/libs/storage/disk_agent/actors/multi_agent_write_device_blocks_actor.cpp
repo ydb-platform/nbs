@@ -41,11 +41,13 @@ TMultiAgentWriteDeviceBlocksActor::TMultiAgentWriteDeviceBlocksActor(
         const TActorId& parent,
         TRequestInfoPtr requestInfo,
         NProto::TWriteDeviceBlocksRequest request,
+        TResponsePromise responsePromise,
         TDuration maxRequestTimeout)
     : Parent(parent)
     , RequestInfo(std::move(requestInfo))
     , MaxRequestTimeout(maxRequestTimeout)
     , Request(std::move(request))
+    , ResponsePromise(std::move(responsePromise))
 {}
 
 void TMultiAgentWriteDeviceBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -116,7 +118,16 @@ void TMultiAgentWriteDeviceBlocksActor::ReplyAndDie(
                                             // received, save E_CANCELLED.
     }
 
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    if (ResponsePromise.Initialized()) {
+        TMultiAgentWriteDeviceBlocksResponse localResponse(
+            response->GetError());
+        localResponse.ReplicationResponses.assign(
+            response->Record.GetReplicationResponses().begin(),
+            response->Record.GetReplicationResponses().end());
+        ResponsePromise.SetValue(std::move(localResponse));
+    } else {
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    }
 
     Die(ctx);
 }

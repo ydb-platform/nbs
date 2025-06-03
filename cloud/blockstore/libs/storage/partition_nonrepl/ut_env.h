@@ -485,6 +485,10 @@ public:
     {
         NProto::TLaggingAgent laggingAgent;
         laggingAgent.SetAgentId(std::move(agentId));
+        laggingAgent.SetReplicaIndex(0);
+        auto* device = laggingAgent.MutableDevices()->Add();
+        device->SetDeviceUUID("vasya");
+        device->SetRowIndex(0);
         auto msg =
             std::make_unique<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
                 std::move(laggingAgent));

@@ -202,7 +202,14 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
     response.MutableNodes()->Reserve(entries.size());
 
     for (auto& entry: entries) {
-        if (!session->LookupNode(entry.second.INode)) {
+        // If we can open node by handle there is no need to cache nodes when
+        // listing. Instead we will resolve the node during the actual usage
+        // getattr/read/write. This optimization will help us to avoid
+        // populating cache when iterating large directories with > 1M files
+        const auto ignoreCache =
+            Config->GetDontPopulateNodeCacheWhenListingNodes() &&
+            Config->GetOpenNodeByHandleEnabled();
+        if (!ignoreCache && !session->LookupNode(entry.second.INode)) {
             auto node = TryCreateChildNode(*parent, entry.first);
             if (node && node->GetNodeId() == entry.second.INode) {
                 if (!session->TryInsertNode(

@@ -248,7 +248,8 @@ TDiskAgentState::TDiskAgentState(
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
-        TOldRequestCounters oldRequestCounters)
+        TOldRequestCounters oldRequestCounters,
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler)
     : StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
     , Spdk(std::move(spdk))
@@ -256,6 +257,7 @@ TDiskAgentState::TDiskAgentState(
     , StorageProvider(std::move(storageProvider))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , MultiAgentWriteHandler(std::move(multiAgentWriteHandler))
     , Logging(std::move(logging))
     , Log(Logging->CreateLog("BLOCKSTORE_DISK_AGENT"))
     , RdmaServer(std::move(rdmaServer))
@@ -476,6 +478,7 @@ void TDiskAgentState::InitRdmaTarget()
             Logging,
             RdmaServer,
             DeviceClient,
+            MultiAgentWriteHandler,
             std::move(devices));
 
         RdmaTarget->Start();

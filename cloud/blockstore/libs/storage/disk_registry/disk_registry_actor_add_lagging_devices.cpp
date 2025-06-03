@@ -12,11 +12,11 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryActor::HandleAddLaggingDevices(
-    const TEvDiskRegistry::TEvAddLaggingDevicesRequest::TPtr& ev,
+void TDiskRegistryActor::HandleAddOutdatedLaggingDevices(
+    const TEvDiskRegistry::TEvAddOutdatedLaggingDevicesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(AddLaggingDevices);
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(AddOutdatedLaggingDevices);
 
     auto* msg = ev->Get();
     auto requestInfo =
@@ -25,39 +25,41 @@ void TDiskRegistryActor::HandleAddLaggingDevices(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received AddLaggingDevices request: DiskId=%s, "
+        "[%lu] Received AddOutdatedLaggingDevices request: DiskId=%s, "
         "LaggingDevices=[%s]",
         TabletID(),
         msg->Record.GetDiskId().c_str(),
-        [&laggingDevices = msg->Record.GetLaggingDevices()]()
+        [&outdatedDevices = msg->Record.GetOutdatedLaggingDevices()]()
         {
             TStringBuilder str;
-            for (const auto& laggingDevice: laggingDevices) {
+            for (const auto& outdatedDevice: outdatedDevices) {
                 if (!str.empty()) {
                     str << ", ";
                 }
-                str << laggingDevice.GetDeviceUUID();
+                str << outdatedDevice.GetDeviceUUID();
             }
             return str;
         }()
             .c_str());
 
-    TVector<NProto::TLaggingDevice> laggingDevices(
-        std::make_move_iterator(msg->Record.MutableLaggingDevices()->begin()),
-        std::make_move_iterator(msg->Record.MutableLaggingDevices()->end()));
-    ExecuteTx<TAddLaggingDevices>(
+    TVector<NProto::TLaggingDevice> outdatedDevices(
+        std::make_move_iterator(
+            msg->Record.MutableOutdatedLaggingDevices()->begin()),
+        std::make_move_iterator(
+            msg->Record.MutableOutdatedLaggingDevices()->end()));
+    ExecuteTx<TAddOutdatedLaggingDevices>(
         ctx,
         std::move(requestInfo),
         msg->Record.GetDiskId(),
-        std::move(laggingDevices));
+        std::move(outdatedDevices));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TDiskRegistryActor::PrepareAddLaggingDevices(
+bool TDiskRegistryActor::PrepareAddOutdatedLaggingDevices(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TAddLaggingDevices& args)
+    TTxDiskRegistry::TAddOutdatedLaggingDevices& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -66,33 +68,33 @@ bool TDiskRegistryActor::PrepareAddLaggingDevices(
     return true;
 }
 
-void TDiskRegistryActor::ExecuteAddLaggingDevices(
+void TDiskRegistryActor::ExecuteAddOutdatedLaggingDevices(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TAddLaggingDevices& args)
+    TTxDiskRegistry::TAddOutdatedLaggingDevices& args)
 {
     TDiskRegistryDatabase db(tx.DB);
-    args.Error = State->AddLaggingDevices(
+    args.Error = State->AddOutdatedLaggingDevices(
         ctx.Now(),
         db,
         args.DiskId,
-        std::move(args.VolumeLaggingDevices));
+        std::move(args.VolumeOutdatedDevices));
 }
 
-void TDiskRegistryActor::CompleteAddLaggingDevices(
+void TDiskRegistryActor::CompleteAddOutdatedLaggingDevices(
     const TActorContext& ctx,
-    TTxDiskRegistry::TAddLaggingDevices& args)
+    TTxDiskRegistry::TAddOutdatedLaggingDevices& args)
 {
     LOG_LOG(
         ctx,
         HasError(args.Error) ? NLog::PRI_ERROR : NLog::PRI_INFO,
         TBlockStoreComponents::DISK_REGISTRY,
-        "AddLaggingDevices result: DiskId=%s Error=%s",
+        "AddOutdatedLaggingDevices result: DiskId=%s Error=%s",
         args.DiskId.c_str(),
         FormatError(args.Error).c_str());
 
     auto response = std::make_unique<
-        TEvDiskRegistry::TEvAddLaggingDevicesResponse>(args.Error);
+        TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     ReallocateDisks(ctx);

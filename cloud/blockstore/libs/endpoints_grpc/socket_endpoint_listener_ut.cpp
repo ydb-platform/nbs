@@ -438,67 +438,23 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
 
     Y_UNIT_TEST(ShouldNotAcceptClientAfterServerStopped)
     {
-        TString clientId = "testClientId";
-        TString diskId = "testDiskId";
-        ui32 unixSocketBacklog = 16;
-        auto blocksCount = 42;
-        TFsPath unixSocket(CreateGuidAsString() + ".sock");
+        TOptions options;
+        auto bootstrap = CreateBootstrap(options);
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
-        TPortManager portManager;
-        ui16 dataPort = portManager.GetPort(9001);
-
-        TTestFactory testFactory;
-
-        auto server = testFactory.CreateServerBuilder()
-            .SetDataPort(dataPort)
-            .BuildServer(std::make_shared<TTestService>());
-
-        auto endpointListener = CreateSocketEndpointListener(
-            testFactory.Logging,
-            unixSocketBacklog,
-            MODE0660);
-        endpointListener->SetClientStorageFactory(
-            server->GetClientStorageFactory());
-
-        endpointListener->Start();
-        server->Start();
-
-        NProto::TStartEndpointRequest request;
-        request.SetUnixSocketPath(unixSocket.GetPath());
-        request.SetDiskId(diskId);
-
-        NProto::TVolume volume;
-        volume.SetDiskId(diskId);
-        volume.SetBlockSize(DefaultBlockSize);
-        volume.SetBlocksCount(blocksCount);
-
-        {
-            auto future = endpointListener->StartEndpoint(
-                request,
-                volume,
-                std::make_shared<TTestSession>());
-            const auto& error = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(error), error);
-        }
-
-        auto client = testFactory.CreateClientBuilder()
-            .SetDataPort(dataPort)
-            .SetClientId(clientId)
-            .BuildClient();
-        client->Start();
-
-        server->Stop();
+        bootstrap.GetServer()->Stop();
 
         TVector<IBlockStorePtr> clientEndpoints;
+        // The test will time out if the server keeps handling new clients.
         for (size_t i = 0; i < 100; ++i) {
-            auto clientEndpoint = client->CreateDataEndpoint(unixSocket.GetPath());
+            auto clientEndpoint = bootstrap.GetClient()->CreateDataEndpoint(
+                options.UnixSocketPath);
             clientEndpoint->Start();
             clientEndpoints.push_back(std::move(clientEndpoint));
         }
-
-        client->Stop();
-
-        endpointListener->Stop();
     }
 
     Y_UNIT_TEST(ShouldEmulateMountUnmountResponseForSocketEndpoints)

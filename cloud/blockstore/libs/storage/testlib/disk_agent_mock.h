@@ -186,6 +186,7 @@ private:
                 SelfId(),
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                 std::move(msg->Record),
+                TMultiAgentWriteDeviceBlocksActor::TResponsePromise(),
                 TDuration::Seconds(30));
             return;
         }

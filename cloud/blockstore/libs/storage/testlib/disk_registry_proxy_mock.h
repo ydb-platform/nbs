@@ -139,8 +139,8 @@ private:
                 HandleDeallocateCheckpoint);
 
             HFunc(
-                TEvDiskRegistry::TEvAddLaggingDevicesRequest,
-                HandleAddLaggingDevices);
+                TEvDiskRegistry::TEvAddOutdatedLaggingDevicesRequest,
+                HandleAddOutdatedLaggingDevices);
 
             HFunc(
                 TEvService::TEvCmsActionRequest,
@@ -149,6 +149,10 @@ private:
             HFunc(
                 TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
                 HandleGetDrTabletInfo);
+
+            HFunc(
+                TEvDiskRegistry::TEvMarkReplacementDeviceRequest,
+                HandleMarkReplacementDevice);
 
 
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
@@ -304,10 +308,10 @@ private:
             *response->Record.AddDeviceReplacementUUIDs() = deviceId;
         }
 
-        for (const auto& laggingDevice: disk.LaggingDevices) {
+        for (const auto& laggingDevice: disk.OutdatedLaggingDevices) {
             *response->Record.AddRemovedLaggingDevices() = laggingDevice;
         }
-        disk.LaggingDevices.clear();
+        disk.OutdatedLaggingDevices.clear();
 
         if (bytes) {
             response->Record.MutableError()->CopyFrom(
@@ -325,18 +329,21 @@ private:
             response->Record.SetMuteIOErrors(disk.MuteIOErrors);
         }
 
-        for (const auto& lostDevice: State->LostDeviceUUIDs) {
+        for (const auto& unavailableDeviceUUID: State->UnavailableDeviceUUIDs) {
             bool belongsToDisk = AnyOf(
                 disk.Devices,
                 [&](const auto& diskDevice)
-                { return diskDevice.GetDeviceUUID() == lostDevice; });
+                {
+                    return diskDevice.GetDeviceUUID() == unavailableDeviceUUID;
+                });
 
             if (belongsToDisk) {
-                response->Record.AddLostDeviceUUIDs(lostDevice);
+                response->Record.AddUnavailableDeviceUUIDs(
+                    unavailableDeviceUUID);
             }
         }
 
-       return response;
+        return response;
     }
 
     void HandleDeallocateDisk(
@@ -359,6 +366,24 @@ private:
 
         NCloud::Reply(ctx, *ev,
             std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupResponse>());
+    }
+
+    void HandleMarkReplacementDevice(
+        const TEvDiskRegistry::TEvMarkReplacementDeviceRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        const auto* msg = ev->Get();
+        if (msg->Record.GetIsReplacement()) {
+            State->DeviceReplacementUUIDs.insert(msg->Record.GetDeviceId());
+        } else {
+            State->DeviceReplacementUUIDs.erase(msg->Record.GetDeviceId());
+        }
+
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvDiskRegistry::TEvMarkReplacementDeviceResponse>());
     }
 
     void HandleFinishMigration(
@@ -1003,8 +1028,8 @@ private:
                 TEvDiskRegistry::TEvDeallocateCheckpointResponse>());
     }
 
-    void HandleAddLaggingDevices(
-        const TEvDiskRegistry::TEvAddLaggingDevicesRequest::TPtr& ev,
+    void HandleAddOutdatedLaggingDevices(
+        const TEvDiskRegistry::TEvAddOutdatedLaggingDevicesRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
         const auto* msg = ev->Get();
@@ -1014,19 +1039,20 @@ private:
             NCloud::Reply(
                 ctx,
                 *ev,
-                std::make_unique<TEvDiskRegistry::TEvAddLaggingDevicesResponse>(
+                std::make_unique<TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>(
                     MakeError(E_NOT_FOUND, "Disk not found")));
             return;
         }
 
-        for (const auto& laggingDevice: msg->Record.GetLaggingDevices()) {
-            diskState->LaggingDevices.push_back(laggingDevice);
+        for (const auto& laggingDevice: msg->Record.GetOutdatedLaggingDevices())
+        {
+            diskState->OutdatedLaggingDevices.push_back(laggingDevice);
         }
 
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskRegistry::TEvAddLaggingDevicesResponse>());
+            std::make_unique<TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>());
     }
 
     void HandleCmsAction(

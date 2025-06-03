@@ -202,10 +202,7 @@ void TBootstrapBase::ParseOptions(int argc, char** argv)
 
 void TBootstrapBase::Init()
 {
-    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
-    Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
-    SetCriticalEventsLog(Log);
-    Configs->Log = Log;
+    InitLogs();
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 
     Timer = CreateWallClockTimer();
@@ -417,8 +414,8 @@ void TBootstrapBase::Init()
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
             Configs->ServerConfig->GetChecksumFlags(),
-            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
-            Configs->ServerConfig->GetVhostDiscardEnabled());
+            Configs->ServerConfig->GetVhostDiscardEnabled(),
+            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize());
 
         if (Configs->ServerConfig->GetVhostServerPath()
                 && !Configs->Options->TemporaryServer)
@@ -700,6 +697,17 @@ void TBootstrapBase::InitProfileLog()
     }
 }
 
+void TBootstrapBase::InitLogs()
+{
+    TLogSettings logSettings;
+    logSettings.BackendFileName = Configs->GetLogBackendFileName();
+
+    BootstrapLogging = CreateLoggingService("console", logSettings);
+    Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
+    SetCriticalEventsLog(Log);
+    Configs->Log = Log;
+}
+
 void TBootstrapBase::InitDbgConfigs()
 {
     Configs->InitServerConfig();
@@ -717,6 +725,7 @@ void TBootstrapBase::InitDbgConfigs()
     TLogSettings logSettings;
     logSettings.FiltrationLevel =
         static_cast<ELogPriority>(Configs->GetLogDefaultLevel());
+    logSettings.BackendFileName = Configs->GetLogBackendFileName();
 
     Logging = CreateLoggingService("console", logSettings);
 

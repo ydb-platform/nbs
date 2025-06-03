@@ -45,7 +45,7 @@ void LogError(const TString& message)
 
 EWellKnownResultCodes OverlapStatusToResult(
     EOverlapStatus overlapStatus,
-    bool isMultideviceRequest)
+    bool rejectCompleteOverlapped)
 {
     switch (overlapStatus) {
         case EOverlapStatus::NotOverlapped:
@@ -53,7 +53,7 @@ EWellKnownResultCodes OverlapStatusToResult(
         case EOverlapStatus::Partial:
             return E_REJECTED;
         case EOverlapStatus::Complete:
-            return isMultideviceRequest ? E_REJECTED : S_ALREADY;
+            return rejectCompleteOverlapped ? E_REJECTED : S_ALREADY;
         case EOverlapStatus::Unknown:
             return E_REJECTED;
             break;

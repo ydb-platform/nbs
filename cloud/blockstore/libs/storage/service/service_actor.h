@@ -295,6 +295,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateMarkReplacementDeviceActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateUpdateDiskBlockSizeActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

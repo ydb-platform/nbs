@@ -8,6 +8,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/rdma/iface
     cloud/blockstore/libs/service_local
     cloud/blockstore/libs/storage/protos

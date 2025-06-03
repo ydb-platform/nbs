@@ -155,7 +155,7 @@ struct TTxVolume
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
         TVector<TString> RemovedLaggingDeviceIds;
-        TVector<TString> LostDeviceIds;
+        TVector<TString> UnavailableDeviceIds;
         NProto::EVolumeIOMode IOMode;
         TInstant IOModeTs;
         bool MuteIOErrors;
@@ -169,7 +169,7 @@ struct TTxVolume
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
                 TVector<TString> removedLaggingDeviceIds,
-                TVector<TString> lostDeviceIds,
+                TVector<TString> unavailableDeviceIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
@@ -180,7 +180,7 @@ struct TTxVolume
                   std::move(replicas),
                   std::move(freshDeviceIds),
                   std::move(removedLaggingDeviceIds),
-                  std::move(lostDeviceIds),
+                  std::move(unavailableDeviceIds),
                   ioMode,
                   ioModeTs,
                   muteIOErrors)
@@ -193,7 +193,7 @@ struct TTxVolume
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
                 TVector<TString> removedLaggingDeviceIds,
-                TVector<TString> lostDeviceIds,
+                TVector<TString> unavailableDeviceIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
@@ -203,7 +203,7 @@ struct TTxVolume
             , Replicas(std::move(replicas))
             , FreshDeviceIds(std::move(freshDeviceIds))
             , RemovedLaggingDeviceIds(std::move(removedLaggingDeviceIds))
-            , LostDeviceIds(std::move(lostDeviceIds))
+            , UnavailableDeviceIds(std::move(unavailableDeviceIds))
             , IOMode(ioMode)
             , IOModeTs(ioModeTs)
             , MuteIOErrors(muteIOErrors)

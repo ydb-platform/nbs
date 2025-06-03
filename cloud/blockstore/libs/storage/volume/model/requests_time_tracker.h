@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/histogram.h>
 
+#include <library/cpp/json/writer/json_value.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/maybe.h>
@@ -18,10 +20,18 @@ class TRequestsTimeTracker
 public:
     enum class ERequestType
     {
-        Read = 0,
-        Write = 1,
-        Zero = 2,
-        Last = Zero,
+        Read,
+        Write,
+        Zero,
+        Describe,
+        Last = Describe,
+    };
+
+    enum class ERequestStatus
+    {
+        Inflight,
+        Success,
+        Fail,
     };
 
     struct TBucketInfo
@@ -31,13 +41,18 @@ public:
         TString Tooltip;
     };
 
-private:
-    enum class ERequestStatus
+    struct TFirstSuccessStat
     {
-        Inflight,
-        Success,
-        Fail,
+        ERequestType RequestType = ERequestType::Read;
+        TDuration FirstRequestStartTime;
+        TDuration SuccessfulRequestStartTime;
+        TDuration SuccessfulRequestFinishTime;
+        size_t FailCount = 0;
     };
+
+private:
+    constexpr static size_t RequestTypeCount =
+        static_cast<size_t>(ERequestType::Last) + 1;
 
     struct TTimeHistogram: public THistogram<TRequestUsTimeBuckets>
     {
@@ -75,14 +90,33 @@ private:
         ERequestType RequestType = ERequestType::Read;
     };
 
+    struct TFirstRequest
+    {
+        ui64 StartTime = 0;
+        ui64 FinishTime = 0;
+        size_t FailCount = 0;
+    };
+
+    const ui64 ConstructionTime;
+
+    std::array<TFirstRequest, RequestTypeCount> FirstRequests;
     THashMap<ui64, TRequestInflight> InflightRequests;
     THashMap<TKey, TTimeHistogram, THash, TEqual> Histograms;
 
+    [[nodiscard]] NJson::TJsonValue BuildPercentilesJson() const;
+
+    [[nodiscard]] std::optional<TRequestsTimeTracker::TFirstSuccessStat>
+    StatFirstSuccess(
+        const TRequestInflight& request,
+        bool success,
+        ui64 finishTime);
+
 public:
-    explicit TRequestsTimeTracker();
+    explicit TRequestsTimeTracker(const ui64 constructionTime);
 
     static TVector<TBucketInfo> GetSizeBuckets(ui32 blockSize);
     static TVector<TBucketInfo> GetTimeBuckets();
+    static TVector<TBucketInfo> GetPercentileBuckets();
 
     void OnRequestStarted(
         ERequestType requestType,
@@ -90,7 +124,10 @@ public:
         TBlockRange64 blockRange,
         ui64 startTime);
 
-    void OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
+    // Marks that the request is completed and returns stat when the request
+    // succeeds for the first time.
+    [[nodiscard]] std::optional<TFirstSuccessStat>
+    OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize) const;
 };

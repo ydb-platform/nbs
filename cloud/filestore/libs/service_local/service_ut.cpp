@@ -1620,7 +1620,12 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         bootstrap.Headers.SessionId = id;
 
         auto handle2 = bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR).GetHandle();
-        bootstrap.AssertTestLockFailed(handle2, 0, 128);
+        {
+            auto response = bootstrap.AssertTestLockFailed(handle2, 0, 128);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_WOULDBLOCK,
+                response.GetError().GetCode());
+        }
         bootstrap.AssertTestLockFailed(handle2, 32, 64);
         bootstrap.AssertTestLockFailed(handle2, 64, 128);
 
@@ -1628,7 +1633,12 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         // over the file range?
         bootstrap.TestLock(handle2, 128, 1024);
 
-        bootstrap.AssertAcquireLockFailed(handle2, 0, 128);
+        {
+            auto response = bootstrap.AssertAcquireLockFailed(handle2, 0, 128);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_WOULDBLOCK,
+                response.GetError().GetCode());
+        }
         bootstrap.AssertAcquireLockFailed(handle2, 32, 64);
         bootstrap.AssertAcquireLockFailed(handle2, 64,128);
 

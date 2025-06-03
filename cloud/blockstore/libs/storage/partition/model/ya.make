@@ -9,9 +9,9 @@ SRCS(
     barrier.cpp
     blob_index.cpp
     blob_to_confirm.cpp
-    block.cpp
     block_index.cpp
     block_mask.cpp
+    block.cpp
     checkpoint.cpp
     cleanup_queue.cpp
     commit_queue.cpp
@@ -34,4 +34,6 @@ PEERDIR(
 
 END()
 
-RECURSE_FOR_TESTS(ut)
+RECURSE_FOR_TESTS(
+    ut
+)

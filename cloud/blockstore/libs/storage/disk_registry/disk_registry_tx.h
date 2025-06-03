@@ -62,7 +62,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
     xxx(PurgeHostCms,                       __VA_ARGS__)                       \
     xxx(RemoveOrphanDevices,                __VA_ARGS__)                       \
-    xxx(AddLaggingDevices,                  __VA_ARGS__)                       \
+    xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1453,24 +1453,24 @@ struct TTxDiskRegistry
     };
 
     //
-    // AddLaggingDevices
+    // AddOutdatedLaggingDevices
     //
 
-    struct TAddLaggingDevices
+    struct TAddOutdatedLaggingDevices
     {
         const TRequestInfoPtr RequestInfo;
         const TString DiskId;
-        TVector<NProto::TLaggingDevice> VolumeLaggingDevices;
+        TVector<NProto::TLaggingDevice> VolumeOutdatedDevices;
 
         NProto::TError Error;
 
-        TAddLaggingDevices(
+        TAddOutdatedLaggingDevices(
                 TRequestInfoPtr requestInfo,
                 TString diskId,
                 TVector<NProto::TLaggingDevice> volumeLaggingDevices)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
-            , VolumeLaggingDevices(std::move(volumeLaggingDevices))
+            , VolumeOutdatedDevices(std::move(volumeLaggingDevices))
         {}
 
         void Clear()

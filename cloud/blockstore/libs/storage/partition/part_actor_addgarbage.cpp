@@ -38,10 +38,7 @@ void TPartitionActor::HandleAddGarbage(
 
     AddTransaction<TEvPartitionPrivate::TAddGarbageMethod>(*requestInfo);
 
-    ExecuteTx<TAddGarbage>(
-        ctx,
-        requestInfo,
-        std::move(msg->BlobIds));
+    ExecuteTx(ctx, CreateTx<TAddGarbage>(requestInfo, std::move(msg->BlobIds)));
 }
 
 bool TPartitionActor::PrepareAddGarbage(

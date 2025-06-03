@@ -57,8 +57,8 @@ public:
     {
         Y_DEBUG_ABORT_UNLESS(!RequestsInProgress.contains(key));
 
-        RequestsInProgress.emplace(key, std::move(request));
         WriteRequestCount += !!request.IsWrite;
+        RequestsInProgress.emplace(key, std::move(request));
     }
 
     TKey AddRequest(TRequest request)
