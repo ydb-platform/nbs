@@ -222,7 +222,8 @@ private:
     template <typename TMethod>
     void ReadBlocks(
         const typename TMethod::TRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
+        const NActors::TActorContext& ctx,
+        const bool shouldReportBlockRangeOnFailure);
 
     template <typename TMethod>
     NProto::TError SplitReadBlocks(

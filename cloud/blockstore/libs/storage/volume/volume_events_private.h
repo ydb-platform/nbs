@@ -319,7 +319,7 @@ struct TEvVolumePrivate
     // ReportLaggingDevicesToDR
     //
 
-    struct TReportLaggingDevicesToDR
+    struct TReportOutdatedLaggingDevicesToDR
     {
     };
 
@@ -470,7 +470,7 @@ struct TEvVolumePrivate
         EvExternalDrainDone,
         EvDevicesAcquireFinished,
         EvDevicesReleaseFinished,
-        EvReportLaggingDevicesToDR,
+        EvReportOutdatedLaggingDevicesToDR,
         EvUpdateLaggingAgentMigrationState,
         EvLaggingAgentMigrationFinished,
 
@@ -531,9 +531,9 @@ struct TEvVolumePrivate
         EvLaggingAgentMigrationFinished
     >;
 
-    using TEvReportLaggingDevicesToDR = TRequestEvent<
-        TReportLaggingDevicesToDR,
-        EvReportLaggingDevicesToDR
+    using TEvReportOutdatedLaggingDevicesToDR = TRequestEvent<
+        TReportOutdatedLaggingDevicesToDR,
+        EvReportOutdatedLaggingDevicesToDR
     >;
 
     using TEvRemoveExpiredVolumeParams = TRequestEvent<

@@ -1924,6 +1924,7 @@ func (s *storageYDB) forceFinishTask(
 	state.GenerationID++
 	state.ModifiedAt = now
 	state.ChangedStateAt = now
+	state.EndedAt = now
 
 	transitions := []stateTransition{
 		stateTransition{

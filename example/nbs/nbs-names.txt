@@ -3,8 +3,7 @@ Node {
   Port: 29501
   Host: "localhost"
   InterconnectHost: "localhost"
-  WalleLocation {
-    Body: 1
+  Location {
     DataCenter: "1"
     Rack: "1"
   }

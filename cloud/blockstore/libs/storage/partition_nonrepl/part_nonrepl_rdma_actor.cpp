@@ -22,6 +22,10 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
 {
     switch (err.GetCode()) {
@@ -33,19 +37,7 @@ bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
     return false;
 }
 
-void ConvertRdmaErrorIfNeeded(ui32 rdmaStatus, NProto::TError& err)
-{
-    if (rdmaStatus == NRdma::RDMA_PROTO_FAIL && err.GetCode() == E_CANCELLED) {
-        ui32 flags = 0;
-        SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
-        err = MakeError(
-            E_REJECTED,
-            std::move(*err.MutableMessage()) + ", converted to E_REJECTED",
-            flags);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
+}   // namespace
 
 TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
@@ -414,16 +406,17 @@ void TNonreplicatedPartitionRdmaActor::ProcessOperationCompleted(
     const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted)
 {
     const auto& devices = PartConfig->GetDevices();
-    for (auto idx: opCompleted.DeviceIndices) {
+    for (const auto& [idx, error]: opCompleted.RequestResults) {
         Y_ABORT_UNLESS(idx < static_cast<ui32>(devices.size()));
-        const auto* errDevice = FindPtr(opCompleted.ErrorDeviceIndices, idx);
+
         const auto& deviceUUID = devices[idx].GetDeviceUUID();
-        if (errDevice) {
-            NotifyDeviceTimedOutIfNeeded(ctx, deviceUUID);
+
+        if (!NeedToNotifyAboutDeviceRequestError(error)) {
+            TimedOutDeviceCtxByDeviceUUID.erase(deviceUUID);
             continue;
         }
 
-        TimedOutDeviceCtxByDeviceUUID.erase(deviceUUID);
+        NotifyDeviceTimedOutIfNeeded(ctx, deviceUUID);
     }
 }
 

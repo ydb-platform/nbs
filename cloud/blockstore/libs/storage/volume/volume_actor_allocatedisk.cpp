@@ -221,9 +221,11 @@ void TVolumeActor::AllocateDisk(const TActorContext& ctx)
     auto request = std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
     request->Record = MakeAllocateDiskRequest();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] AllocateDiskRequest: %s",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s AllocateDiskRequest: %s",
+        LogTitle.GetWithTime().c_str(),
         request->Record.Utf8DebugString().Quote().c_str());
 
     NCloud::Send(

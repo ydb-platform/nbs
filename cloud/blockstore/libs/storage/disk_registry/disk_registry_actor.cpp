@@ -32,6 +32,13 @@ const TDiskRegistryActor::TStateInfo TDiskRegistryActor::States[STATE_MAX] = {
     { "Zombie",   (IActor::TReceiveFunc)&TDiskRegistryActor::StateZombie   },
 };
 
+const TString DiskRegistryTransactions[] = {
+#define TRANSACTION_NAME(name, ...) #name,
+    BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS(TRANSACTION_NAME)
+#undef TRANSACTION_NAME
+        "Total",
+};
+
 TDiskRegistryActor::TDiskRegistryActor(
         const TActorId& owner,
         TTabletStorageInfoPtr storage,
@@ -41,12 +48,13 @@ TDiskRegistryActor::TDiskRegistryActor(
         NNotify::IServicePtr notifyService,
         ILoggingServicePtr logging)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage), nullptr)
+    , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , LogbrokerService(std::move(logbrokerService))
     , NotifyService(std::move(notifyService))
     , Logging(std::move(logging))
+    , TransactionTimeTracker(DiskRegistryTransactions)
 {}
 
 TDiskRegistryActor::~TDiskRegistryActor()

@@ -6,7 +6,6 @@
 #include "storage_with_stats.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
-
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
@@ -49,6 +48,7 @@ private:
     const IStorageProviderPtr StorageProvider;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const IMultiAgentWriteHandlerPtr MultiAgentWriteHandler;
 
     ILoggingServicePtr Logging;
     TLog Log;
@@ -79,7 +79,8 @@ public:
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
-        TOldRequestCounters oldRequestCounters);
+        TOldRequestCounters oldRequestCounters,
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler);
 
     struct TInitializeResult
     {

@@ -88,7 +88,7 @@ public:
     TStorageBuffer AllocateBuffer(size_t bytesCount) override;
 
     // Performs a read. It can only be called for aligned data.
-    NThreading::TFuture<NProto::TReadBlocksResponse> ExecuteReadRequest(
+    NThreading::TFuture<NProto::TReadBlocksLocalResponse> ExecuteReadRequest(
         TCallContextPtr ctx,
         TBlocksInfo blocksInfo,
         TGuardedSgList sgList,

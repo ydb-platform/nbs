@@ -2,8 +2,6 @@
 
 #include "public.h"
 
-#include "storage_with_stats.h"
-
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
@@ -168,6 +166,44 @@ struct TEvDiskAgentPrivate
         ui64 StorageSize = 0;
     };
 
+    // The response for TWriteDeviceBlocksRequest that should be executed on
+    // multiple DiskAgents (contains replication targets). The
+    // TMultiAgentWriteDeviceBlocksResponse is not transmitted through the actor
+    // system.
+    struct TMultiAgentWriteDeviceBlocksResponse
+    {
+        NProto::TError Error;
+        TVector<NProto::TError> ReplicationResponses;
+
+        TMultiAgentWriteDeviceBlocksResponse() = default;
+
+        TMultiAgentWriteDeviceBlocksResponse(NProto::TError  error)
+            : Error(std::move(error))
+        {}
+
+        static bool HasError()
+        {
+            return true;
+        }
+
+        const NProto::TError& GetError() const
+        {
+            return Error;
+        }
+    };
+
+    //
+    // MultiAgentWriteDeviceBlocksRequest
+    //
+
+    struct TMultiAgentWriteDeviceBlocksRequest
+    {
+        NProto::TWriteDeviceBlocksRequest Record;
+
+        NThreading::TPromise<TMultiAgentWriteDeviceBlocksResponse>
+            ResponsePromise;
+    };
+
     //
     // Events declaration
     //
@@ -187,6 +223,8 @@ struct TEvDiskAgentPrivate
         EvParsedReadDeviceBlocksRequest,
         EvParsedWriteDeviceBlocksRequest,
         EvParsedZeroDeviceBlocksRequest,
+
+        EvMultiAgentWriteDeviceBlocksRequest,
 
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
@@ -221,6 +259,10 @@ struct TEvDiskAgentPrivate
     using TEvParsedWriteDeviceBlocksRequest = TRequestEvent<
         TParsedWriteDeviceBlocksRequest,
         EvParsedWriteDeviceBlocksRequest>;
+
+    using TEvMultiAgentWriteDeviceBlocksRequest = TRequestEvent<
+        TMultiAgentWriteDeviceBlocksRequest,
+        EvMultiAgentWriteDeviceBlocksRequest>;
 
     BLOCKSTORE_DECLARE_EVENTS(UpdateSessionCache)
 };
