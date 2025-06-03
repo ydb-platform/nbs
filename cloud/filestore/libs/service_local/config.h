@@ -49,6 +49,8 @@ public:
     bool GetServerWriteBackCacheEnabled() const;
 
     bool GetDontPopulateNodeCacheWhenListingNodes() const;
+
+    bool GetGuestOnlyPermissionsCheckEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore
