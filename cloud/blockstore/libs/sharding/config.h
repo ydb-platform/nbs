@@ -47,7 +47,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TShards = THashMap<TString, TShardConfig>;
+using TConfiguredShards = THashMap<TString, TShardConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -66,7 +66,8 @@ public:
     }
 
     [[nodiscard]] TString GetShardId() const;
-    [[nodiscard]] TShards GetShards() const;
+    [[nodiscard]] TConfiguredShards GetShards() const;
+    [[nodiscard]] TDuration GetDescribeTimeout() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

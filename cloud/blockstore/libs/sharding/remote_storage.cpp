@@ -18,7 +18,6 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 struct TRemoteStorage
     : public IStorage
-    , std::enable_shared_from_this<TRemoteStorage>
 {
     const IBlockStorePtr Endpoint;
 
@@ -27,28 +26,28 @@ struct TRemoteStorage
     {
     }
 
-    NThreading::TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
+    TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override
     {
         return Endpoint->ZeroBlocks(std::move(callContext), std::move(request));
     }
 
-    NThreading::TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
+    TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
         return Endpoint->ReadBlocksLocal(std::move(callContext), std::move(request));
     }
 
-    NThreading::TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
+    TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
         return Endpoint->WriteBlocksLocal(std::move(callContext), std::move(request));
     }
 
-    NThreading::TFuture<NProto::TError> EraseDevice(
+    TFuture<NProto::TError> EraseDevice(
         NProto::EDeviceEraseMethod method) override
     {
         Y_UNUSED(method);

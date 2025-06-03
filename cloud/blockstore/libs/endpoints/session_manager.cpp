@@ -510,7 +510,9 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
         Service,
         RemoteStorageProvider,
         Logging,
-        Options.DefaultClientConfig);
+        Scheduler,
+        Options.DefaultClientConfig,
+        RemoteStorageProvider->GetShardingConfig());
 
     if (multiShardFuture.has_value()) {
         return Executor->WaitFor(multiShardFuture.value());

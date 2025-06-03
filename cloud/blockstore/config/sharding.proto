@@ -55,8 +55,11 @@ message TShardInfo
 message TShardingConfig
 {
     // Mapping from ShardId to fqdn hosts.
-    repeated TShardInfo Shards = 121;
+    repeated TShardInfo Shards = 1;
 
     // Shard Id, nbs belongs to.
-    optional string ShardId = 122;
+    optional string ShardId = 2;
+
+    // Describe timeout.
+    optional uint32 DescribeTimeout = 3;
 }
