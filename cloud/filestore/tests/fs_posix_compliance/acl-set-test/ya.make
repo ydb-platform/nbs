@@ -7,13 +7,8 @@ TEST_SRCS(
     test.py
 )
 
-DEPENDS(
-    cloud/filestore/tools/analytics/profile_tool
-)
-
 PEERDIR(
     cloud/filestore/tests/python/lib
-    cloud/filestore/tools/testing/profile_log
     cloud/storage/core/tools/testing/qemu/lib
 )
 

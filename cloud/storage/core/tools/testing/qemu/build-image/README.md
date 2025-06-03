@@ -36,7 +36,7 @@ curl -o /dev/null -# https://$BUCKET.storage.cloudil.com/$FILE -T $FILE -H "X-Ya
 - Create image
 
 ```
-./build-image --user qemu --plain-pwd --ssh-key nbs-key --out rootfs.img
+./build-image --with-rdma --plain-pwd --ssh-key ../keys/id_rsa --out rootfs.amd64.img
 ```
 
 - Optionally compress image
