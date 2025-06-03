@@ -32,6 +32,7 @@ NActors::IActorPtr CreateVolumeTablet(
     ITraceSerializerPtr traceSerializer,
     NRdma::IClientPtr rdmaClient,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
-    EVolumeStartMode startMode = EVolumeStartMode::ONLINE);
+    EVolumeStartMode startMode,
+    TString diskId);
 
 }   // namespace NCloud::NBlockStore::NStorage

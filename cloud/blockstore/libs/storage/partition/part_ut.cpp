@@ -208,6 +208,7 @@ void InitTestActorRuntime(
                 CreateBlockDigestGeneratorStub(),
                 partConfig,
                 storageAccessMode,
+                0,  // partitionIndex
                 1,  // siblingCount
                 VolumeActorId
             );

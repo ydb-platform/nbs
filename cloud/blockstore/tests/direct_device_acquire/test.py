@@ -1,12 +1,13 @@
+import json
 import logging
 import os
 import pytest
-import json
 import time
 
-import cloud.blockstore.public.sdk.python.protos as protos
 
-from cloud.blockstore.public.sdk.python.client import CreateClient, Session
+from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
+
+from cloud.blockstore.public.sdk.python.client import Session
 from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
@@ -52,10 +53,8 @@ def start_nbs_daemon_with_dr(request, ydb):
 
     daemon = start_nbs(cfg)
 
-    client = CreateClient(f"localhost:{daemon.port}")
-    client.execute_action(
-        action="DiskRegistrySetWritableState",
-        input_bytes=str.encode('{"State": true}'))
+    client = CreateTestClient(f"localhost:{daemon.port}")
+    client.execute_DiskRegistrySetWritableState(State=True)
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 
     yield daemon
@@ -162,59 +161,19 @@ def create_disk_agent_configurators(ydb, agent_ids, data_path):
     return configurators
 
 
-def backup_disk_registry_state(client):
-    response = client.execute_action(
-        action="BackupDiskRegistryState",
-        input_bytes=str.encode('{"BackupLocalDB": true}'))
-
-    return json.loads(response)["Backup"]
-
-
-def add_host(client, agent_id):
-    request = protos.TCmsActionRequest()
-    action = request.Actions.add()
-    action.Type = protos.TAction.ADD_HOST
-    action.Host = agent_id
-
-    return client.cms_action(request)
-
-
-def wait_for_devices_to_be_cleared(client, expected_dirty_count=0):
-    while True:
-        bkp = backup_disk_registry_state(client)
-        if len(bkp.get("DirtyDevices", [])) == expected_dirty_count:
-            break
-        time.sleep(1)
-
-
-def wait_agent_state(client, agent_id, desired_state):
-    while True:
-        bkp = backup_disk_registry_state(client)
-        agent = [x for x in bkp["Agents"] if x['AgentId'] == agent_id]
-        assert len(agent) == 1
-
-        if agent[0].get("State") == desired_state:
-            break
-        time.sleep(1)
-
-
-def kill_tablet(client, tabletId):
-    client.execute_action(
-        action='killtablet',
-        input_bytes=str.encode('{"TabletId": %s}' % tabletId))
+def restart_tablet(client, tabletId):
+    client.execute_KillTablet(TabletId=tabletId)
 
 
 def get_volume_tablet_id(client, disk_id):
-    response = client.execute_action(
-        action="describevolume",
-        input_bytes=str.encode('{"DiskId": "%s"}' % (disk_id)))
+    response = client.execute_DescribeVolume(DiskId=disk_id)
 
     return json.loads(response)["VolumeTabletId"]
 
 
 def restart_volume(client, disk_id):
     tablet_id = get_volume_tablet_id(client, disk_id)
-    kill_tablet(client, tablet_id)
+    restart_tablet(client, tablet_id)
 
 
 @pytest.mark.parametrize("nbs_with_dr", [(60000)], indirect=["nbs_with_dr"])
@@ -228,7 +187,7 @@ def test_should_mount_volume_with_unknown_devices(
     logger = logging.getLogger("client")
     logger.setLevel(logging.DEBUG)
 
-    client = CreateClient(f"localhost:{nbs.port}", log=logger)
+    client = CreateTestClient(f"localhost:{nbs.port}", log=logger)
     agent_id = agent_ids[0]
     configurator = disk_agent_configurators[0]
 
@@ -241,11 +200,11 @@ def test_should_mount_volume_with_unknown_devices(
     agent = start_disk_agent(configurator, name=agent_id)
 
     agent.wait_for_registration()
-    r = add_host(client, agent_id)
+    r = client.add_host(agent_id)
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
-    wait_for_devices_to_be_cleared(client)
+    client.wait_for_devices_to_be_cleared()
 
     # create a volume
     client.create_volume(
@@ -255,7 +214,7 @@ def test_should_mount_volume_with_unknown_devices(
         storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
         cloud_id="test")
 
-    bkp = backup_disk_registry_state(client)
+    bkp = client.backup_disk_registry_state()
     assert len(bkp['Disks']) == 1
     assert len(bkp['Disks'][0]['DeviceUUIDs']) == 12
     assert len(bkp['Agents']) == 1
@@ -283,7 +242,7 @@ def test_should_mount_volume_with_unknown_devices(
     agent = start_disk_agent(configurator, name=agent_id)
     agent.wait_for_registration()
 
-    r = add_host(client, agent_id)
+    r = client.add_host(agent_id)
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
@@ -310,7 +269,7 @@ def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_
     logger = logging.getLogger("client")
     logger.setLevel(logging.DEBUG)
 
-    client = CreateClient(f"localhost:{nbs.port}", log=logger)
+    client = CreateTestClient(f"localhost:{nbs.port}", log=logger)
 
     agents = []
 
@@ -320,13 +279,13 @@ def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_
         configurator = disk_agent_configurators[i]
         agent = start_disk_agent(configurator, name=agent_id)
         agent.wait_for_registration()
-        r = add_host(client, agent_id)
+        r = client.add_host(agent_id)
         assert len(r.ActionResults) == 1
         assert r.ActionResults[0].Result.Code == 0
 
         agents.append(agent)
 
-    wait_for_devices_to_be_cleared(client)
+    client.wait_for_devices_to_be_cleared()
 
     # create a volume
     client.create_volume(
@@ -336,7 +295,7 @@ def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_
         storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
         cloud_id="test")
 
-    bkp = backup_disk_registry_state(client)
+    bkp = client.backup_disk_registry_state()
     assert len(bkp['Disks']) == 1
     assert len(bkp['Disks'][0]['DeviceUUIDs']) == 12
     assert len(bkp['Agents']) == 2
@@ -372,7 +331,7 @@ def test_should_mount_volume_with_unavailable_agents(
     logger = logging.getLogger("client")
     logger.setLevel(logging.DEBUG)
 
-    client = CreateClient(f"localhost:{nbs.port}", log=logger)
+    client = CreateTestClient(f"localhost:{nbs.port}", log=logger)
 
     agents = []
 
@@ -382,13 +341,13 @@ def test_should_mount_volume_with_unavailable_agents(
         configurator = disk_agent_configurators[i]
         agent = start_disk_agent(configurator, name=agent_id)
         agent.wait_for_registration()
-        r = add_host(client, agent_id)
+        r = client.add_host(agent_id)
         assert len(r.ActionResults) == 1
         assert r.ActionResults[0].Result.Code == 0
 
         agents.append(agent)
 
-    wait_for_devices_to_be_cleared(client)
+    client.wait_for_devices_to_be_cleared()
 
     # create a volume
     client.create_volume(
@@ -398,7 +357,7 @@ def test_should_mount_volume_with_unavailable_agents(
         storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
         cloud_id="test")
 
-    bkp = backup_disk_registry_state(client)
+    bkp = client.backup_disk_registry_state()
     assert len(bkp['Disks']) == 1
     assert len(bkp['Disks'][0]['DeviceUUIDs']) == 12
     assert len(bkp['Agents']) == 2
@@ -416,7 +375,7 @@ def test_should_mount_volume_with_unavailable_agents(
     # stop the agent
     agents[0].kill()
 
-    wait_agent_state(client, agent_ids[0], "AGENT_STATE_UNAVAILABLE")
+    client.wait_agent_state(agent_ids[0], "AGENT_STATE_UNAVAILABLE")
 
     nbs_with_dr.kill()
     restart_volume(client, "vol1")
