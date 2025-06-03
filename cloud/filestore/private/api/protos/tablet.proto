@@ -842,16 +842,17 @@ message TListNodeRefsRequest
 
     // Node Id to start from
     uint64 NodeId = 2;
-    string LastName = 3;
+    string Cookie = 3;
     uint32 Limit = 4;
 }
 
 
 message TListNodeRefsResponse
 {
-    repeated TNodeRefs NodeRefs = 1;
-    string Cookie = 2;
-    uint64 LastNodeId = 3;
+    NCloud.NProto.TError Error = 1;
+    repeated TNodeRefs NodeRefs = 2;
+    uint64 NextNodeId = 3;
+    string NextCookie = 4;
 }
 
 message TNodeRefs

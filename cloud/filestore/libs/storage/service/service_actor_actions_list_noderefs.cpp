@@ -80,8 +80,7 @@ void TListNodeRefsActionActor::Bootstrap(const TActorContext& ctx)
         "Start to change storage config of %s",
         request.GetFileSystemId().Quote().c_str());
 
-    auto requestToTablet = std::make_unique<TEvIndexTablet::EvListNodeRefsRequest>();
-    auto& record = requestToTablet->Record;
+    auto requestToTablet = std::make_unique<TEvIndexTablet::TEvListNodeRefsRequest>();
 
     NCloud::Send(
         ctx,
@@ -140,7 +139,7 @@ STFUNC(TListNodeRefsActionActor::StateWork)
     }
 }
 
-}   // namespace
+}
 
 NActors::IActorPtr TStorageServiceActor::CreateListNodeRefsActionActor(
     TRequestInfoPtr requestInfo,

@@ -2368,46 +2368,37 @@ struct TTxIndexTablet
     // LoadNodes
     //
 
-    struct TListNodeRefs
-    : TSessionAware
-    , TIndexStateNodeUpdates
-    {
+   struct TListNodeRefs
+   : TIndexStateNodeUpdates
+   {
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TListNodeRefsRequest Request;
         const ui64 NodeId;
         const TString Cookie;
-        const ui32 Limit;
-
-        ui64 CommitId = InvalidCommitId;
+        const ui64 Limit;
         TVector<IIndexTabletDatabase::TNodeRef> Refs;
-        TString Next;
+        ui64 NextNodeId = 0;
+        TString NextCookie;
 
-        TListNodes(
+        TListNodeRefs(
                 TRequestInfoPtr requestInfo,
-                const NProto::TListNodeRefsRequest& request,
-                ui32 maxBytes)
-            : TSessionAware(request)
-            , RequestInfo(std::move(requestInfo))
+                const NProtoPrivate::TListNodeRefsRequest& request)
+            : RequestInfo(std::move(requestInfo))
             , Request(request)
             , NodeId(request.GetNodeId())
             , Cookie(request.GetCookie())
             , Limit(request.GetLimit())
+            , Refs(Limit)
         {}
 
         void Clear()
         {
             TIndexStateNodeUpdates::Clear();
-            CommitId = InvalidCommitId;
-            Node.Clear();
-            ChildRefs.clear();
-            ChildNodes.clear();
-            Next.clear();
-
-            BytesToPrecharge =
-                ClampVal(2 * BytesToPrecharge, MaxBytes, 10 * MaxBytes);
+            Refs.clear();
+            NextNodeId = 0;
+            NextCookie.clear();
         }
-    };
-
+   };
 
 };
 

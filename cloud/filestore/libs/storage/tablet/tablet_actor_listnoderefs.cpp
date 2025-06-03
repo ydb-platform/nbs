@@ -67,7 +67,7 @@ void TIndexTabletActor::CompleteTx_ListNodeRefs(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleListNodeRefsRequest(
+void TIndexTabletActor::HandleListNodeRefs(
     const TEvIndexTablet::TEvListNodeRefsRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
