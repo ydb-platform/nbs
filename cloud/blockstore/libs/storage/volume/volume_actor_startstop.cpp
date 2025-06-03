@@ -280,7 +280,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     State->SetDiskRegistryBasedPartitionActor(
         WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
         nonreplicatedConfig);
-    ReportLaggingDevicesToDR(ctx);
+    ReportOutdatedLaggingDevicesToDR(ctx);
 }
 
 TActorsStack TVolumeActor::WrapNonreplActorIfNeeded(

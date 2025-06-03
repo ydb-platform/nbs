@@ -247,7 +247,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
         std::optional<TEvNonreplPartitionPrivate::TAddLaggingAgentRequest>
             addLaggingAgentRequest;
-        std::optional<NProto::TAddLaggingDevicesRequest>
+        std::optional<NProto::TAddOutdatedLaggingDevicesRequest>
             addLaggingDevicesRequest;
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
@@ -260,9 +260,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                         addLaggingAgentRequest = *msg;
                         return true;
                     }
-                    case TEvDiskRegistry::EvAddLaggingDevicesRequest: {
+                    case TEvDiskRegistry::EvAddOutdatedLaggingDevicesRequest: {
                         auto* msg = event->Get<
-                            TEvDiskRegistry::TEvAddLaggingDevicesRequest>();
+                            TEvDiskRegistry::
+                                TEvAddOutdatedLaggingDevicesRequest>();
                         addLaggingDevicesRequest = msg->Record;
                         break;
                     }
@@ -320,16 +321,19 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL("vol0", addLaggingDevicesRequest->GetDiskId());
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            addLaggingDevicesRequest->GetLaggingDevices().size());
+            addLaggingDevicesRequest->GetOutdatedLaggingDevices().size());
         UNIT_ASSERT_VALUES_EQUAL(
             "DeviceUUID: \"uuid-1.0\"\n",
-            addLaggingDevicesRequest->GetLaggingDevices(0).DebugString());
+            addLaggingDevicesRequest->GetOutdatedLaggingDevices(0)
+                .DebugString());
         UNIT_ASSERT_VALUES_EQUAL(
             "DeviceUUID: \"uuid-1.1\"\nRowIndex: 1\n",
-            addLaggingDevicesRequest->GetLaggingDevices(1).DebugString());
+            addLaggingDevicesRequest->GetOutdatedLaggingDevices(1)
+                .DebugString());
         UNIT_ASSERT_VALUES_EQUAL(
             "DeviceUUID: \"uuid-6.0\"\nRowIndex: 2\n",
-            addLaggingDevicesRequest->GetLaggingDevices(2).DebugString());
+            addLaggingDevicesRequest->GetOutdatedLaggingDevices(2)
+                .DebugString());
 
         // Disk Registry will remove lagging devices on reallocation.
         volume.ReallocateDisk();
@@ -382,7 +386,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         const auto& devices = stat->Record.GetVolume().GetDevices();
         UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
 
-        std::optional<NProto::TAddLaggingDevicesRequest>
+        std::optional<NProto::TAddOutdatedLaggingDevicesRequest>
             addLaggingDevicesRequest;
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
@@ -391,9 +395,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                     case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest: {
                         return true;
                     }
-                    case TEvDiskRegistry::EvAddLaggingDevicesRequest: {
+                    case TEvDiskRegistry::EvAddOutdatedLaggingDevicesRequest: {
                         auto* msg = event->Get<
-                            TEvDiskRegistry::TEvAddLaggingDevicesRequest>();
+                            TEvDiskRegistry::
+                                TEvAddOutdatedLaggingDevicesRequest>();
                         addLaggingDevicesRequest = msg->Record;
                         break;
                     }
@@ -554,7 +559,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
         std::optional<TEvNonreplPartitionPrivate::TAddLaggingAgentRequest>
             addLaggingAgentRequest;
-        std::optional<NProto::TAddLaggingDevicesRequest>
+        std::optional<NProto::TAddOutdatedLaggingDevicesRequest>
             addLaggingDevicesRequest;
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
@@ -567,9 +572,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                         addLaggingAgentRequest = *msg;
                         return true;
                     }
-                    case TEvDiskRegistry::EvAddLaggingDevicesRequest: {
+                    case TEvDiskRegistry::EvAddOutdatedLaggingDevicesRequest: {
                         auto* msg = event->Get<
-                            TEvDiskRegistry::TEvAddLaggingDevicesRequest>();
+                            TEvDiskRegistry::
+                                TEvAddOutdatedLaggingDevicesRequest>();
                         addLaggingDevicesRequest = msg->Record;
                         break;
                     }
@@ -620,13 +626,15 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL("vol0", addLaggingDevicesRequest->GetDiskId());
         UNIT_ASSERT_VALUES_EQUAL(
             2,
-            addLaggingDevicesRequest->GetLaggingDevices().size());
+            addLaggingDevicesRequest->GetOutdatedLaggingDevices().size());
         UNIT_ASSERT_VALUES_EQUAL(
             "DeviceUUID: \"uuid-migration-1\"\n",
-            addLaggingDevicesRequest->GetLaggingDevices(0).DebugString());
+            addLaggingDevicesRequest->GetOutdatedLaggingDevices(0)
+                .DebugString());
         UNIT_ASSERT_VALUES_EQUAL(
             "DeviceUUID: \"uuid-migration-2\"\nRowIndex: 2\n",
-            addLaggingDevicesRequest->GetLaggingDevices(1).DebugString());
+            addLaggingDevicesRequest->GetOutdatedLaggingDevices(1)
+                .DebugString());
 
         // Disk Registry will remove lagging devices on reallocation.
         volume.ReallocateDisk();
