@@ -85,6 +85,9 @@ private:
         TGuardedSgList sgList,
         TString checkpointId) const;
 
+    NThreading::TFuture<NProto::TZeroBlocksResponse> Zero(
+        TCallContextPtr ctx,
+        const TBlocksInfo& blocksInfo);
     NThreading::TFuture<NProto::TZeroBlocksResponse> ExecuteZeroBlocksRequest(
         TCallContextPtr ctx,
         const TBlocksInfo& blocksInfo);
