@@ -9,6 +9,10 @@ DEPENDS(
     cloud/filestore/tests/profile_log/replay/data
 )
 
+PEERDIR(
+    cloud/filestore/tools/testing/loadtest/protos
+)
+
 TEST_SRCS(
     test.py
 )

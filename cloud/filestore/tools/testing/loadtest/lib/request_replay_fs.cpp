@@ -14,6 +14,7 @@ read/write with multiranges (now only first processed)
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/tools/testing/loadtest/protos/loadtest.pb.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/aio/aio.h>
@@ -341,7 +342,7 @@ private:
             logRequest.GetNodeInfo().GetNodeId());
 
         try {
-            ui64 wantSize = 0;
+            ui64 targetSize = 0;
             ui64 requestLastByte = 0;
 
             if (Spec.GetCreateOnRead() == NProto::TReplaySpec_ECreateOnRead::
@@ -369,12 +370,12 @@ private:
                     }
 
                     if (actualSize < requestLastByte) {
-                        wantSize = requestLastByte;
+                        targetSize = requestLastByte;
                     }
                 }
             }
 
-            if (wantSize ||
+            if (targetSize ||
                 Spec.GetCreateOnRead() ==
                     NProto::TReplaySpec_ECreateOnRead::
                         TReplaySpec_ECreateOnRead_FullSize ||
@@ -385,10 +386,10 @@ private:
                      GreedyMinimumAlwaysCreateBytes))
             {
                 TFile fileResize(fullName, WrOnly | OpenAlways);
-                if (!wantSize) {
-                    wantSize = logRequest.GetNodeInfo().GetSize();
+                if (!targetSize) {
+                    targetSize = logRequest.GetNodeInfo().GetSize();
                 }
-                fileResize.Resize(wantSize);
+                fileResize.Resize(targetSize);
             }
 
             EOpenMode modeInit{};
@@ -424,7 +425,7 @@ private:
 
             OpenHandles[fh] = {
                 .File = file,
-                .Size = wantSize,
+                .Size = targetSize,
                 .Path = fullName,
                 .Mode = mode};
 
@@ -859,7 +860,6 @@ private:
         const auto unlinkres = NFs::Remove(fullName);
         STORAGE_DEBUG("Unlink %s : %d ", fullName.c_str(), unlinkres);
         FilenameToSize.erase(fullName.c_str());
-        
         // TODO(proller):
         // NodesLogToActual.erase(...)
         // NodePath.erase(...)
@@ -941,8 +941,7 @@ private:
                 logRequest.GetNodeInfo().GetParentNodeId();
         }
 
-        // TODO(proller): can create and truncate to known size missing file by
-        // flag
+        // TODO(proller): Create missing file and truncate to known size
 
         TFsPath fullname;
         if (logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId) {

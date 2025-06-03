@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/eventlog/eventlog.h>
@@ -30,8 +31,9 @@ IReplayRequestGenerator::IReplayRequestGenerator(
     NEventLog::TOptions options;
     options.FileName = Spec.GetFileName();
     options.ForceStrongOrdering = true;
-    if (const auto sleep = Spec.GetMaxSleepMcs()) {
-        MaxSleepMcs = sleep;
+
+    if (const auto sleep = Spec.GetMaxSleepUs()) {
+        MaxSleepUs = sleep;
     }
 
     if (Spec.GetReplayTimeFrom()) {
@@ -55,6 +57,7 @@ IReplayRequestGenerator::IReplayRequestGenerator(
     }
 
     CurrentEvent = CreateIterator(options);
+    NextStatusAt = TInstant::Now() + StatusEverySeconds;
 }
 
 bool IReplayRequestGenerator::HasNextRequest()
@@ -191,15 +194,14 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 i64 timediff = (static_cast<i64>(request.GetTimestampMcs()) -
                                 TimestampMicroSeconds) *
                                Spec.GetTimeScale();
-                TimestampMicroSeconds =
-                    static_cast<i64>(request.GetTimestampMcs());
+                TimestampMicroSeconds = request.GetTimestampMcs();
                 const auto timestampSeconds =
                     TimestampMicroSeconds / OneMillion;
-                if (timediff > MaxSleepMcs) {
+                if (timediff > MaxSleepUs) {
                     STORAGE_DEBUG(
-                        "Ignore too long timediff=%lu MaxSleepMcs=%lu ",
+                        "Ignore too long timediff=%lu MaxSleepUs=%lu ",
                         timediff,
-                        MaxSleepMcs);
+                        MaxSleepUs);
 
                     timediff = 0;
                 }
@@ -209,7 +211,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 if (NextStatusAt <= currentInstant) {
                     NextStatusAt = currentInstant + StatusEverySeconds;
                     STORAGE_INFO(
-                        "Current event=%zu Skipped=%zu Msg=%zd TotalMsg=%zu "
+                        "Current event=%zu Skipped=%zu Msg=%d TotalMsg=%zu "
                         "Skipped=%zu "
                         "Sleeps=%f "
                         "Time=%s",
@@ -218,26 +220,31 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         EventMessageNumber,
                         MessagesProcessed,
                         MessagesSkipped,
-                        Sleeps,
+                        TimeInSleepBetweenEventsSeconds,
                         TInstant::MicroSeconds(TimestampMicroSeconds)
                             .ToString()
                             .c_str())
                 }
 
-                if (ReplayTimeFrom && timestampSeconds <
-                    static_cast<i64>(ReplayTimeFrom->Seconds()))
+                if (ReplayTimeFrom &&
+                    timestampSeconds <
+                        static_cast<i64>(ReplayTimeFrom->Seconds()))
                 {
                     continue;
                 }
 
-                if (ReplayTimeTill && timestampSeconds >
-                    static_cast<i64>(ReplayTimeTill->Seconds()))
+                if (ReplayTimeTill &&
+                    timestampSeconds >
+                        static_cast<i64>(ReplayTimeTill->Seconds()))
                 {
                     return {};
                 }
+
                 constexpr auto RealtimeToleratePastSeconds = 10;
                 constexpr auto RealtimeTolerateFutureSeconds = 10;
+
                 if (const i64 realTimeAlignseconds = Spec.GetRealTime()) {
+                    constexpr auto OneMillion = 1000000LL;
                     const i64 alignMicroSeconds =
                         realTimeAlignseconds * OneMillion;
                     const i64 currentMicroSeconds =
@@ -272,7 +279,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         }
 
                         auto sleep = TDuration::MicroSeconds(sleepMcs);
-                        Sleeps += sleep.SecondsFloat();
+                        TimeInSleepBetweenEventsSeconds += sleep.SecondsFloat();
                         Sleep(sleep);
                     }
                 }
@@ -292,14 +299,14 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         diff.MicroSeconds());
 
                     Sleep(sleep);
-                    Sleeps += sleep.SecondsFloat();
+                    TimeInSleepBetweenEventsSeconds += sleep.SecondsFloat();
                 }
 
                 Started = currentInstant;
             }
 
             STORAGE_DEBUG(
-                "Event=%zu Msg=%zd Mcs=%lu T=%s: Processing typename=%s "
+                "Event=%zu Msg=%d Mcs=%lu T=%s: Processing typename=%s "
                 "type=%d name=%s "
                 "data=%s",
                 EventsProcessed,
@@ -325,7 +332,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
     }
 
     STORAGE_INFO(
-        "Profile log finished n=%zd hasPtr=%d",
+        "Profile log finished n=%d hasPtr=%d",
         EventMessageNumber,
         !!EventPtr);
 

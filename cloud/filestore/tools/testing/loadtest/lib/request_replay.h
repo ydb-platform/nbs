@@ -23,12 +23,12 @@ protected:
     TString FileSystemIdFilter;
     const ::NCloud::NFileStore::NProto::THeaders Headers;
     NClient::ISessionPtr Session;
-    ssize_t EventMessageNumber = 0;
+    int EventMessageNumber = 0;
     i64 TimestampMicroSeconds = 0;
     TInstant Started;
 
     // Do not sleep too much if timestamps in log are broken
-    i64 MaxSleepMcs = 1000000;
+    i64 MaxSleepUs = 1000000;
 
     std::optional<TInstant> ReplayTimeFrom;
     std::optional<TInstant> ReplayTimeTill;
@@ -39,11 +39,11 @@ private:
     const NProto::TProfileLogRecord* MessagePtr{};
     size_t EventsProcessed = 0;
     size_t EventsSkipped = 0;
-    double Sleeps = 0;
+    double TimeInSleepBetweenEventsSeconds = 0;
     size_t MessagesProcessed = 0;
     size_t MessagesSkipped = 0;
     static constexpr TDuration StatusEverySeconds = TDuration::Seconds(10);
-    TInstant NextStatusAt = TInstant::Now() + StatusEverySeconds;
+    TInstant NextStatusAt;
 
     TFuture<TCompletedRequest> ProcessRequest(
         const NProto::TProfileLogRequestInfo& request);
