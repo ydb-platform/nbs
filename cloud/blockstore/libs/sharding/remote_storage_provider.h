@@ -23,7 +23,7 @@ struct IRemoteStorageProvider
         : Config(std::move(config))
     {}
 
-    virtual ~IRemoteStorageProvider() = default;
+    ~IRemoteStorageProvider() override = default;
 
     [[nodiscard]] virtual TShardClient GetShardClient(
         const TString& shardId,
@@ -33,6 +33,11 @@ struct IRemoteStorageProvider
         NClient::TClientAppConfigPtr clientConfig)  = 0;
 
     [[nodiscard]] ui32 GetConfiguredShardCount() const;
+
+    [[nodiscard]] TShardingConfigPtr GetShardingConfig() const
+    {
+        return Config;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

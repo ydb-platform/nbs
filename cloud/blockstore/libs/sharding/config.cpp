@@ -37,8 +37,9 @@ BLOCKSTORE_SHARD_CONFIG(BLOCKSTORE_SHARD_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_SHARDING_CONFIG(xxx)                                        \
-    xxx(Shards,                      TShards,                {}               )\
-    xxx(ShardId,                     TString,                {}               )\
+    xxx(Shards,                      TConfiguredShards, {}                    )\
+    xxx(ShardId,                     TString,           {}                    )\
+    xxx(DescribeTimeout,             TDuration,         TDuration::Seconds(30))\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SHARDING_DECLARE_CONFIG(name, type, value)                  \
@@ -58,6 +59,12 @@ TTarget ConvertValue(const TSource& value)
 }
 
 template <>
+TDuration ConvertValue<TDuration, ui32>(const ui32& value)
+{
+    return TDuration::MilliSeconds(value);
+}
+
+template <>
 TVector<TString> ConvertValue(
     const google::protobuf::RepeatedPtrField<TString>& value)
 {
@@ -69,10 +76,10 @@ TVector<TString> ConvertValue(
 }
 
 template <>
-TShards ConvertValue(
+TConfiguredShards ConvertValue(
     const google::protobuf::RepeatedPtrField<NProto::TShardInfo>& value)
 {
-    TShards v;
+    TConfiguredShards v;
     for (const auto& item: value) {
         v.emplace(item.GetShardId(), TShardConfig(item));
     }
@@ -87,7 +94,7 @@ void DumpImpl(const T& t, IOutputStream& os)
 
 template <>
 void DumpImpl(
-    const TShards& value,
+    const TConfiguredShards& value,
     IOutputStream& os)
 {
     Y_UNUSED(value);

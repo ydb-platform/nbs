@@ -59,7 +59,7 @@ struct TClientEndpoint
         , InstanceId(std::move(instanceId))
     {}
 
-    ~TClientEndpoint();
+    ~TClientEndpoint() override;
 
     template <typename TRequest>
     void PrepareRequest(TRequest& request)

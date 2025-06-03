@@ -1,5 +1,6 @@
 #include "describe_volume.h"
 
+#include "config.h"
 #include "remote_storage_provider.h"
 
 #include <cloud/blockstore/libs/client/config.h>
@@ -11,6 +12,7 @@
 #include <cloud/blockstore/libs/service/service.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/datetime/base.h>
@@ -44,17 +46,18 @@ struct TMultiShardDescribeHandler;
 
 struct TDescribeResponseHandler
 {
-    const std::shared_ptr<TMultiShardDescribeHandler> Owner;
+    const std::weak_ptr<TMultiShardDescribeHandler> Owner;
     const TString ShardId;
     const TString LogTag;
     const TFuture<NProto::TDescribeVolumeResponse> Future;
     TShard& Shard;
 
     TDescribeResponseHandler(
-            std::shared_ptr<TMultiShardDescribeHandler> owner,
+            std::weak_ptr<TMultiShardDescribeHandler> owner,
             TString shardId,
             TString logTag,
-            TFuture<NProto::TDescribeVolumeResponse> future);
+            TFuture<NProto::TDescribeVolumeResponse> future,
+            TShard& shard);
 
     void operator ()(const auto& future);
 
@@ -90,6 +93,7 @@ TFuture<NProto::TDescribeVolumeResponse> Describe(
 struct TMultiShardDescribeHandler
     : public std::enable_shared_from_this<TMultiShardDescribeHandler>
 {
+    const ISchedulerPtr Scheduler;
     TLog Log;
     std::atomic<ui64> Counter{0};
     TShards Shards;
@@ -97,15 +101,18 @@ struct TMultiShardDescribeHandler
     bool IncompleteShards;
 
     TAdaptiveLock Lock;
+    bool HasValue = false;
     TPromise<NProto::TDescribeVolumeResponse> Promise;
     TVector<TDescribeResponseHandler> Handlers;
 
     TMultiShardDescribeHandler(
+            ISchedulerPtr scheduler,
             TLog log,
             TShards shards,
             NProto::TDescribeVolumeRequest request,
             bool incompleteShards)
-        : Log(std::move(log))
+        : Scheduler(std::move(scheduler))
+        , Log(std::move(log))
         , Shards(std::move(shards))
         , Request(std::move(request))
         , IncompleteShards(incompleteShards)
@@ -116,9 +123,9 @@ struct TMultiShardDescribeHandler
         }
     }
 
-    void DoDescribe()
+    void DoDescribe(TDuration describeTimeout)
     {
-        auto self = shared_from_this();
+        auto weak = weak_from_this();
         for (auto& shard: Shards) {
             for (auto& host: shard.second.Hosts) {
 
@@ -140,47 +147,76 @@ struct TMultiShardDescribeHandler
                     shard.first.empty());
 
                 TDescribeResponseHandler handler(
-                    self,
+                    weak,
                     shard.first,
                     host.LogTag,
-                    std::move(future));
+                    std::move(future),
+                    shard.second);
 
                 handler.Start();
                 Handlers.push_back(std::move(handler));
             }
         }
+
+        auto self = shared_from_this();
+        Scheduler->Schedule(
+            TInstant::Now() + describeTimeout,
+            [self=std::move(self)]() {
+                self->HandleTimeout();
+            });
+    }
+
+    void SetResponse(NProto::TDescribeVolumeResponse response)
+    {
+        with_lock(Lock) {
+            if (HasValue) {
+                return;
+            }
+            HasValue = true;
+        }
+        Promise.SetValue(std::move(response));
+    }
+
+    void HandleTimeout()
+    {
+        NProto::TDescribeVolumeResponse response;
+            *response.MutableError() =
+                std::move(MakeError(E_REJECTED, "Describe timeout"));
+        SetResponse(std::move(response));
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeResponseHandler::TDescribeResponseHandler(
-        std::shared_ptr<TMultiShardDescribeHandler> owner,
+        std::weak_ptr<TMultiShardDescribeHandler> owner,
         TString shardId,
         TString logTag,
-        TFuture<NProto::TDescribeVolumeResponse> future)
+        TFuture<NProto::TDescribeVolumeResponse> future,
+        TShard& shard)
     : Owner(std::move(owner))
     , ShardId(std::move(shardId))
     , LogTag(std::move(logTag))
     , Future(std::move(future))
-    , Shard(Owner->Shards[ShardId])
+    , Shard(shard)
 {}
 
 void TDescribeResponseHandler::operator ()(const auto& future)
 {
-    auto& Log = Owner->Log;
+    auto owner = Owner.lock();
+    if (!owner) {
+        return;
+    }
 
-    if (Owner->Promise.HasValue()) {
+    auto& Log = owner->Log;
+
+    if (owner->Promise.HasValue()) {
         return;
     }
     auto response = future.GetValue();
     if (!HasError(response)) {
         response.SetShardId(ShardId);
-        with_lock(Owner->Lock) {
-            if (!Owner->Promise.HasValue()) {
-                Owner->Promise.SetValue(response);
-            }
-        }
+        owner->SetResponse(std::move(response));
         return;
     }
 
@@ -199,29 +235,29 @@ void TDescribeResponseHandler::operator ()(const auto& future)
         }
     }
 
-    auto now = Owner->Counter.fetch_sub(1, std::memory_order_acq_rel) - 1;
+    auto now = owner->Counter.fetch_sub(1, std::memory_order_acq_rel) - 1;
     if (now == 0) {
         TString retryShard;
         // all the shards has replied with errors.
         // try to find shard replied with retriable errors only,
         // if such shard exists the compute should retry kick
         // endpoint, otherwise volume does not exist.
-        for (const auto& shard: Owner->Shards) {
+        for (const auto& shard: owner->Shards) {
             const auto& s = shard.second;
             if (!HasError(s.FatalError)) {
                 *response.MutableError() =
                     std::move(s.RetriableError);
-                Owner->Promise.SetValue(response);
+                owner->Promise.SetValue(response);
                 return;
             }
         }
-        if (Owner->IncompleteShards) {
+        if (owner->IncompleteShards) {
             *response.MutableError() =
                     std::move(MakeError(E_REJECTED, "Not all shards available"));
-            Owner->Promise.SetValue(response);
+            owner->SetResponse(std::move(response));
             return;
         }
-        Owner->Promise.SetValue(response);
+        owner->SetResponse(std::move(response));
     }
 }
 
@@ -235,7 +271,9 @@ std::optional<TDescribeFuture> DescribeRemoteVolume(
     const IBlockStorePtr& localService,
     const IRemoteStorageProviderPtr& remoteStorageProvider,
     const ILoggingServicePtr& logging,
-    const NProto::TClientConfig& clientConfig)
+    const ISchedulerPtr& scheduler,
+    const NProto::TClientConfig& clientConfig,
+    const TShardingConfigPtr& shardingConfig)
 {
     NProto::TClientAppConfig clientAppConfig;
     auto& config = *clientAppConfig.MutableClientConfig();
@@ -273,11 +311,12 @@ std::optional<TDescribeFuture> DescribeRemoteVolume(
     shards.emplace("", std::move(localShard));
 
     auto describeResult = std::make_shared<TMultiShardDescribeHandler>(
+        scheduler,
         logging->CreateLog("BLOCKSTORE_SHARDING"),
         std::move(shards),
         std::move(request),
         incompleteShards);
-    describeResult->DoDescribe();
+    describeResult->DoDescribe(shardingConfig->GetDescribeTimeout());
 
     return describeResult->Promise.GetFuture();
 }
