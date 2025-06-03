@@ -83,9 +83,8 @@ def check_configs(mon_port, kikimr_configurator, kikimr_cluster):
         Port=65535,
         Host='somewhere',
     )
-    node.WalleLocation.DataCenter = 'xyz'
-    node.WalleLocation.Rack = 'somewhere'
-    node.WalleLocation.Body = 1
+    node.Location.DataCenter = 'xyz'
+    node.Location.Rack = 'somewhere'
     app_config.NameserviceConfig.MergeFrom(naming_config)
     kikimr_cluster.client.add_config_item(app_config)
 
