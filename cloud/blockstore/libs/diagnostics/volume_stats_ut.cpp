@@ -17,7 +17,6 @@
 #include <util/generic/size_literals.h>
 
 #include <tuple>
-#include <unordered_map>
 
 namespace NCloud::NBlockStore {
 
@@ -34,7 +33,7 @@ class TLabelKeeper: public NMonitoring::IMetricConsumer
 {
 private:
     std::vector<std::pair<TString, TString>> Labels;
-    std::unordered_map<TString, TString> ValueMap;
+    THashMap<TString, TString> ValueMap;
     TString CurrentLabel;
 
 public:
