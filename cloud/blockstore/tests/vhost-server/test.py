@@ -93,7 +93,7 @@ def test_vhost_server():
         for _ in range(3):
             server.send_signal(signal.SIGUSR1)
             s = __read_json(out_r)
-            assert s['elapsed_ms'] != 0
+            assert s['failed'] == 0 and s['completed'] == 0
 
         server.send_signal(signal.SIGUSR1)
         server.send_signal(signal.SIGINT)
