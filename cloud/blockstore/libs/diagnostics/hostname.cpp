@@ -20,7 +20,7 @@ constexpr std::array<TStringBuf, 2> DefaultHandleClasses(
 constexpr std::array<TStringBuf, 3> LogHandleClasses(
     {"GetFast", "PutUserData", "PutTabletLog"});
 constexpr std::array<TStringBuf, 4> MergedAndMixedHandleClasses(
-    {"GetFast", "PutUserData", "GetAsync", "PutAsyncBlob"});
+    {"GetFast", "GetAsync", "PutUserData", "PutAsyncBlob"});
 
 ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
 {
