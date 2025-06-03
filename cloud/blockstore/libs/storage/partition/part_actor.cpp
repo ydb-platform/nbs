@@ -46,18 +46,18 @@ const TString PartitionTransactions[] = {
 };
 
 TPartitionActor::TPartitionActor(
-    const TActorId& owner,
-    TTabletStorageInfoPtr storage,
-    TStorageConfigPtr config,
-    TDiagnosticsConfigPtr diagnosticsConfig,
-    IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
-    NProto::TPartitionConfig partitionConfig,
-    EStorageAccessMode storageAccessMode,
-    ui32 partitionIndex,
-    ui32 siblingCount,
-    const TActorId& volumeActorId,
-    ui64 volumeTabletId)
+        const TActorId& owner,
+        TTabletStorageInfoPtr storage,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        IProfileLogPtr profileLog,
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        NProto::TPartitionConfig partitionConfig,
+        EStorageAccessMode storageAccessMode,
+        ui32 partitionIndex,
+        ui32 siblingCount,
+        const TActorId& volumeActorId,
+        ui64 volumeTabletId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))

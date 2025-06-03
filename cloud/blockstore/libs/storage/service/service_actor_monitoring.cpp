@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/diag_down_graph.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
-#include <cloud/blockstore//libs//diagnostics/hostname.h>
+#include <cloud/blockstore/libs//diagnostics/hostname.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -156,18 +156,8 @@ void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
             out << "Volumes ";
             out << "<a href='"
                 << GetMonitoringVolumeUrlWithoutDiskId(*DiagnosticsConfig);
-            for (auto it = State.GetVolumes().begin();
-                 it != State.GetVolumes().end();
-                 ++it)
-            {
-                out << it->second->DiskId;
-
-                auto next = it;
-                ++next;
-
-                if (next != State.GetVolumes().end()) {
-                    out << "|";
-                }
+            for (const auto& [diskId, _]: State.GetVolumes()) {
+                out << diskId << "|";
             }
             out << "'>[dashboard]</a>";
         }

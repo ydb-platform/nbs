@@ -211,7 +211,7 @@ void InitTestActorRuntime(
                 0,  // partitionIndex
                 1,  // siblingCount
                 VolumeActorId,
-                0
+                0  // volumeTabletId
             );
             return tablet.release();
         };

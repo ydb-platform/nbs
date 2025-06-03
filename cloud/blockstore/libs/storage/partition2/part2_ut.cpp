@@ -195,7 +195,7 @@ void InitTestActorRuntime(
                 storageAccessMode,
                 1,  // siblingCount
                 VolumeActorId,
-                0
+                0  // volumeTabletId
             );
             return tablet.release();
         };

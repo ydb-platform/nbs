@@ -343,7 +343,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                     DumpMonitoringPartitionLink(
                         out,
                         *DiagnosticsConfig,
-                        PartitionConfig.GetDiskId().c_str());
+                        PartitionConfig.GetDiskId());
 
                     TAG (TH3) {
                         out << "<a href='../tablets?TabletID=" << VolumeTabletId
