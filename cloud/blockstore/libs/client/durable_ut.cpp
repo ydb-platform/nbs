@@ -1291,10 +1291,15 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                const auto requestTimeoutMsec = request->GetHeaders().GetRequestTimeout();
+                const auto& headers = request->GetHeaders();
+                const auto requestTimeoutMsec = headers.GetRequestTimeout();
                 UNIT_ASSERT_EQUAL(
                     requestTimeoutMsec,
                     expectedTimeoutsSec[requestsCount] * 1000);
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    (requestsCount > 0),
+                    headers.GetIsRetry());
 
                 NProto::TPingResponse response;
 

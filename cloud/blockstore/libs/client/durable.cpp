@@ -225,6 +225,13 @@ private:
     }
 
     template <typename T>
+    void SetIsRetryFlag(T& request)
+    {
+        auto& headers = *request.MutableHeaders();
+        headers.SetIsRetry(true);
+    }
+
+    template <typename T>
     void HandleResponse(
         TRequestStatePtr<T> state,
         TFuture<typename T::TResponse> future)
@@ -276,6 +283,8 @@ private:
                     default:
                         break;
                 }
+
+                SetIsRetryFlag(*state->Request);
                 if (error.GetCode() == E_TIMEOUT) {
                     IncrementRequestTimeout(*state->Request);
                 }
