@@ -247,10 +247,27 @@ STFUNC(TPatchBlobActor::StateWork)
 
 EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ssf)
 {
+    /*
+    YellowStop: Tablets switch to read-only mode. Only system writes are allowed.
+
+    LightOrange: Alert: "Tablets have not stopped". Compaction writes are not
+    allowed if this flag is received.
+
+    PreOrange: VDisk switches to read-only mode.
+
+    Orange: All VDisks in the group switch to read-only mode.
+
+    Red: PDisk stops issuing chunks.
+
+    Black: Reserved for recovery.
+    */
+
     const auto outOfSpaceMask = static_cast<NKikimrBlobStorage::EStatusFlags>(
-        NKikimrBlobStorage::StatusDiskSpaceRed
+        NKikimrBlobStorage::StatusDiskSpaceBlack
+        | NKikimrBlobStorage::StatusDiskSpaceRed
         | NKikimrBlobStorage::StatusDiskSpaceOrange
-        // no need to check StatusDiskSpaceBlack since BS won't accept any write requests in black state anyway
+        | NKikimrBlobStorage::StatusDiskSpacePreOrange
+        | NKikimrBlobStorage::StatusDiskSpaceLightOrange
     );
     if (ssf.Check(outOfSpaceMask)) {
         return {};

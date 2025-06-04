@@ -3106,7 +3106,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                     }),
                     TVector<ui32>({
                         env.GetGroupIds()[1],
-                    })
+                    }),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
@@ -3131,7 +3132,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                     TVector<ui32>({
                         env.GetGroupIds()[0],
                         env.GetGroupIds()[1],
-                    })
+                    }),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
@@ -3149,6 +3151,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         {
             auto request =
                 std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
+                    TVector<ui32>(),
                     TVector<ui32>(),
                     TVector<ui32>()
                 );
@@ -3298,7 +3301,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             auto request =
                 std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
                     TVector<ui32>({env.GetGroupIds()[0], env.GetGroupIds()[1]}),
-                    TVector<ui32>({env.GetGroupIds()[0], env.GetGroupIds()[1]})
+                    TVector<ui32>({env.GetGroupIds()[0], env.GetGroupIds()[1]}),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
@@ -3361,7 +3365,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             auto request =
                 std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
                     TVector<ui32>({env.GetGroupIds()[0]}),
-                    TVector<ui32>({env.GetGroupIds()[0]})
+                    TVector<ui32>({env.GetGroupIds()[0]}),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
