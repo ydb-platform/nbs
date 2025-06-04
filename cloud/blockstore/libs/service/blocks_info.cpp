@@ -51,15 +51,15 @@ std::pair<TBlocksInfo, std::optional<TBlocksInfo>> TBlocksInfo::Split() const
 
     TBlocksInfo firstBlocksInfo = *this, secondBlocksInfo = *this;
     if (BeginOffset != 0) {
-        // first blocksInfo contains one block with unaligned BeginOffset
-        // second blocksInfo is aligned
+        // The first blocksInfo contains one block with an unaligned
+        // BeginOffset. The second blocksInfo is aligned.
         firstBlocksInfo.EndOffset = 0;
         firstBlocksInfo.Range.End = firstBlocksInfo.Range.Start;
         secondBlocksInfo.BeginOffset = 0;
         ++secondBlocksInfo.Range.Start;
     } else {
-        // first blocksInfo is aligned
-        // second blocksInfo contains one block with unaligned EndOffset
+        // The first blocksInfo is aligned.
+        // The second blocksInfo contains one block with an unaligned EndOffset.
         --firstBlocksInfo.Range.End;
         firstBlocksInfo.EndOffset = 0;
         secondBlocksInfo.Range.Start = secondBlocksInfo.Range.End;

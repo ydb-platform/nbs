@@ -22,9 +22,10 @@ struct TBlocksInfo
     // Creates an aligned TBlocksInfo.
     [[nodiscard]] TBlocksInfo MakeAligned() const;
 
-    // Split unaligned TBlocksInfo into two TBlocksInfo
-    // If TBlocksInfo is aligned then result contains the same TBlocksInfo as a
-    // first value and std::nullopt as a second value
+    // Split the unaligned TBlocksInfo into two TBlocksInfo objects.
+    // If TBlocksInfo is aligned or contains no more than 2 blocks, then the
+    // result contains the same TBlocksInfo as the first value and std::nullopt
+    // as the second value.
     [[nodiscard]] std::pair<TBlocksInfo, std::optional<TBlocksInfo>>
     Split() const;
 
