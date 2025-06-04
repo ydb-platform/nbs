@@ -172,7 +172,7 @@ TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
     const TString& storagePool,
-    const TString&  channelKind)
+    const TString& channelKind)
 {
     constexpr TStringBuf Url =
         "%s/projects/%s/explorer/"
