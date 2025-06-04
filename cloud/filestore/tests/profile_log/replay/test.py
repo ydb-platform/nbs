@@ -1,5 +1,5 @@
 import pytest
-
+import pathlib
 import yatest.common as common
 
 from cloud.filestore.tools.testing.loadtest.protos.loadtest_pb2 import TTestGraph
@@ -9,20 +9,18 @@ from google.protobuf.text_format import MessageToString
 tests = ["sqlite", "jpeg", "fstest"]
 
 
-def _get_bindir():
-    return common.build_path(
-        "cloud/filestore/tests/profile_log/replay/data")
+bindir = pathlib.Path(common.build_path("cloud/filestore/tests/profile_log/replay/data"))
 
 
 def run_replay(name):
-    dir_out_path = common.output_path() + "/replay"
-    tool_conf_path = common.output_path() + "/config.txt"
+    dir_out_path = str(pathlib.Path(common.output_path()) / "replay")
+    tool_conf_path = str(pathlib.Path(common.output_path()) / "config.txt")
 
     config = TTestGraph()
     config.Tests.add()
     config.Tests[0].LoadTest.Name = "test"
     config.Tests[0].LoadTest.KeepFileStore = True
-    config.Tests[0].LoadTest.ReplayFsSpec.FileName = _get_bindir() + "/" + name + ".log"
+    config.Tests[0].LoadTest.ReplayFsSpec.FileName = str(bindir / (name + ".log"))
     config.Tests[0].LoadTest.ReplayFsSpec.ReplayRoot = dir_out_path
     config.Tests[0].LoadTest.IODepth = 64
 
