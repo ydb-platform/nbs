@@ -35,6 +35,8 @@ IReplayRequestGenerator::IReplayRequestGenerator(
         MaxSleepUs = sleep;
     }
 
+
+    
     CurrentEvent = CreateIterator(options);
     NextStatusAt = TInstant::Now() + StatusEverySeconds;
 }
@@ -162,7 +164,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 MessagePtr->GetRequests()[--EventMessageNumber];
             {
                 ++MessagesProcessed;
-                ui64 timediff =
+                i64 timediff =
                     (request.GetTimestampMcs() - TimestampMicroSeconds) *
                     Spec.GetTimeScale();
                 TimestampMicroSeconds = request.GetTimestampMcs();
@@ -229,7 +231,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         if (sleepMcs / OneMillion >
                             RealtimeTolerateFutureSeconds)
                         {
-                            return {};
+                            continue;
                         }
 
                         auto sleep = TDuration::MicroSeconds(sleepMcs);
@@ -239,7 +241,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 }
 
                 const auto diff = currentInstant - Started;
-                if (timediff > diff.MicroSeconds()) {
+                if (timediff > static_cast<i64>(diff.MicroSeconds())) {
                     auto sleep =
                         TDuration::MicroSeconds(timediff - diff.MicroSeconds());
                     STORAGE_DEBUG(

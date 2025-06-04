@@ -27,7 +27,7 @@ protected:
     TInstant Started;
 
     // Do not sleep too much if timestamps in log are broken
-    ui64 MaxSleepUs = 1000000;
+    i64 MaxSleepUs = 1000000;
 
 private:
     THolder<NEventLog::IIterator> CurrentEvent;
