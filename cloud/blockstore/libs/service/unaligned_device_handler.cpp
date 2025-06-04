@@ -34,27 +34,6 @@ TErrorResponse CreateUnalignedTooBigResponse(ui32 blockCount)
                          << blockCount};
 }
 
-std::pair<TBlocksInfo, TBlocksInfo> SplitBlocksInfo(
-    const TBlocksInfo& blocksInfo)
-{
-    auto firstBlocksInfo = blocksInfo, secondBlocksInfo = blocksInfo;
-    Y_ABORT_UNLESS(blocksInfo.Range.Size() >= 2);
-    if (blocksInfo.BeginOffset != 0) {
-        // first blocksInfo contains one block with unaligned BeginOffset
-        firstBlocksInfo.EndOffset = 0;
-        firstBlocksInfo.Range.End = firstBlocksInfo.Range.Start;
-        secondBlocksInfo.BeginOffset = 0;
-        ++secondBlocksInfo.Range.Start;
-    } else {
-        // second blocksInfo contains one block with unaligned EndOffset
-        --firstBlocksInfo.Range.End;
-        firstBlocksInfo.EndOffset = 0;
-        secondBlocksInfo.Range.Start = secondBlocksInfo.Range.End;
-    }
-
-    return {firstBlocksInfo, secondBlocksInfo};
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -595,11 +574,7 @@ NThreading::TFuture<NProto::TZeroBlocksResponse> TUnalignedDeviceHandler::Zero(
     TCallContextPtr ctx,
     const TBlocksInfo& blocksInfo)
 {
-    if (blocksInfo.IsAligned() || blocksInfo.Range.Size() <= 2) {
-        return ExecuteZeroBlocksRequest(ctx, blocksInfo);
-    }
-
-    auto [currentBlocksInfo, nextBlocksInfo] = SplitBlocksInfo(blocksInfo);
+    auto [currentBlocksInfo, nextBlocksInfo] = blocksInfo.Split();
     auto result = ExecuteZeroBlocksRequest(ctx, currentBlocksInfo);
     return result.Apply(
         [weakPtr = weak_from_this(),
@@ -608,12 +583,12 @@ NThreading::TFuture<NProto::TZeroBlocksResponse> TUnalignedDeviceHandler::Zero(
             const TFuture<NProto::TZeroBlocksResponse>& f)
         {
             const auto& response = f.GetValue();
-            if (HasError(response)) {
+            if (HasError(response) || !nextBlocksInfo) {
                 return f;
             }
 
             if (auto self = weakPtr.lock()) {
-                return self->Zero(std::move(ctx), nextBlocksInfo);
+                return self->Zero(std::move(ctx), *nextBlocksInfo);
             }
             return MakeFuture<NProto::TZeroBlocksResponse>(
                 TErrorResponse(E_CANCELLED));

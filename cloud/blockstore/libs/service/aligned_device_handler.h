@@ -1,39 +1,9 @@
 #pragma once
 
-#include "cloud/blockstore/libs/common/block_range.h"
-
+#include <cloud/blockstore/libs/service/blocks_info.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 
 namespace NCloud::NBlockStore {
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TBlocksInfo
-{
-    TBlocksInfo() = default;
-    TBlocksInfo(ui64 from, ui64 length, ui32 blockSize);
-    TBlocksInfo(const TBlocksInfo&) = default;
-
-    [[nodiscard]] size_t BufferSize() const;
-
-    // The data may be misaligned for two reasons: if the start or end of the
-    // block do not correspond to the block boundaries, or if the client buffers
-    // are not a multiple of the block size.
-    [[nodiscard]] bool IsAligned() const;
-
-    // Creates an aligned TBlocksInfo.
-    [[nodiscard]] TBlocksInfo MakeAligned() const;
-
-    TBlockRange64 Range;
-    // Offset relative to the beginning of the range.
-    ui64 BeginOffset = 0;
-    // Offset relative to the ending of the range.
-    ui64 EndOffset = 0;
-    const ui32 BlockSize = 0;
-    // The request also unaligned if the sglist buffer sizes are not multiples
-    // of the block size
-    bool SgListAligned = true;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
