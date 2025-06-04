@@ -144,8 +144,8 @@ public:
     {
         auto request = std::make_unique<TEvService::TEvCreateFileStoreRequest>();
         request->Record.SetFileSystemId(fileSystemId);
-        request->Record.SetCloudId("test");
-        request->Record.SetFolderId("test");
+        request->Record.SetCloudId("test_cloud");
+        request->Record.SetFolderId("test_folder");
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(blocksCount);
         request->Record.SetStorageMediaKind(mediaKind);
