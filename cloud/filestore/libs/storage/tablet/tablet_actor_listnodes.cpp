@@ -225,6 +225,11 @@ void TIndexTabletActor::CompleteTx_ListNodes(
             ctx.Now() - args.RequestInfo->StartedTs);
     }
 
+    CompleteResponse<TEvService::TListNodesMethod>(
+        response->Record,
+        args.RequestInfo->CallContext,
+        ctx);
+
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
