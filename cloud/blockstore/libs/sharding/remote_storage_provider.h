@@ -32,8 +32,6 @@ struct IRemoteStorageProvider
     [[nodiscard]] virtual TShardClients GetShardsClients(
         NClient::TClientAppConfigPtr clientConfig)  = 0;
 
-    [[nodiscard]] ui32 GetConfiguredShardCount() const;
-
     [[nodiscard]] TShardingConfigPtr GetShardingConfig() const
     {
         return Config;

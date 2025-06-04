@@ -156,13 +156,6 @@ void TRemoteStorageProvider::OutputHtml(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 IRemoteStorageProvider::GetConfiguredShardCount() const
-{
-    return Config->GetShards().size();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 IRemoteStorageProviderPtr CreateRemoteStorageProvider(
     TShardingConfigPtr config,
     ITimerPtr timer,
