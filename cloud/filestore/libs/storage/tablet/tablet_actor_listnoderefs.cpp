@@ -26,8 +26,6 @@ bool TIndexTabletActor::PrepareTx_ListNodeRefs(
     IIndexTabletDatabase& db,
     TTxIndexTablet::TListNodeRefs& args)
 {
-    TVector<TIndexTabletDatabase::TNodeRef> nodeRefs;
-
     bool ready = db.ReadNodeRefs(
         args.NodeId,
         args.Cookie,
@@ -45,7 +43,7 @@ bool TIndexTabletActor::PrepareTx_ListNodeRefs(
         args.NodeId,
         args.Cookie.c_str(),
         args.Limit,
-        nodeRefs.size(),
+        args.Refs.size(),
         ready ? "finished" : "restarted");
 
     return ready;
@@ -55,6 +53,7 @@ void TIndexTabletActor::CompleteTx_ListNodeRefs(
     const TActorContext& ctx,
     TTxIndexTablet::TListNodeRefs& args)
 {
+    RemoveTransaction(*args.RequestInfo);
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
@@ -63,6 +62,19 @@ void TIndexTabletActor::CompleteTx_ListNodeRefs(
         LogTag.c_str(),
         args.NextNodeId,
         args.NextCookie.c_str());
+    auto response = std::make_unique<TEvIndexTablet::TEvListNodeRefsResponse>();
+    response->Record.SetNextNodeId(args.NextNodeId);
+    response->Record.SetNextCookie(args.NextCookie);
+    for (const auto& ref : args.Refs) {
+        auto* nodeRef = response->Record.AddNodeRefs();
+        nodeRef->SetNodeId(ref.NodeId);
+        nodeRef->SetName(ref.Name);
+        nodeRef->SetChildId(ref.ChildNodeId);
+        nodeRef->SetShardId(ref.ShardId);
+        nodeRef->SetShardNodeName(ref.ShardNodeName);
+    }
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
