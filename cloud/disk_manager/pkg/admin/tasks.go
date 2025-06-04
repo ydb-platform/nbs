@@ -727,7 +727,7 @@ func (c *scheduleBlankTask) run() error {
 
 	fmt.Printf("Operation: %v\n", resp.Id)
 
-	return internal_client.WaitOperation(ctx, client, resp.Id)
+	return nil
 }
 
 func newScheduleBlankTaskCmd(config *client_config.ClientConfig) *cobra.Command {
@@ -736,8 +736,8 @@ func newScheduleBlankTaskCmd(config *client_config.ClientConfig) *cobra.Command 
 	}
 
 	cmd := &cobra.Command{
-		Use:   "schedule",
-		Short: "Schedule task",
+		Use:   "schedule-blank",
+		Short: "Schedule blank task",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
