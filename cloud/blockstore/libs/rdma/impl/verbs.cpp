@@ -3,6 +3,8 @@
 #include "utils.h"
 #include "work_queue.h"
 
+#include <cloud/blockstore/libs/rdma/iface/config.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/scope.h>
@@ -37,9 +39,18 @@ namespace NCloud::NBlockStore::NRdma::NVerbs {
 
 static const int MAX_COMPLETIONS_PER_POLL = 128;
 
-struct TVerbs
-    : IVerbs
+class TVerbs: public IVerbs
 {
+private:
+    const bool UseCompletionIterator;
+
+public:
+    explicit TVerbs(const TRdmaConfig& config)
+        : UseCompletionIterator(config.GetUseCompletionIterator())
+    {}
+
+    ~TVerbs() override = default;
+
     TDeviceListPtr GetDeviceList() override
     {
         auto** list = ibv_get_device_list(nullptr);
@@ -92,17 +103,14 @@ struct TVerbs
 
     TCompletionQueuePtr CreateCompletionQueue(
         ibv_context* context,
-        int cqe,
-        void *cq_context,
-        ibv_comp_channel *channel,
-        int comp_vector) override
+        ibv_cq_init_attr_ex* attr) override
     {
-        auto* cq = ibv_create_cq(context, cqe, cq_context, channel, comp_vector);
-        if (!cq) {
-            RDMA_THROW_ERROR("ibv_create_cq");
+        auto* cq_ex = ibv_create_cq_ex(context, attr);
+        if (!cq_ex) {
+            RDMA_THROW_ERROR("ibv_create_cq_ex");
         }
 
-        return WrapPtr(cq);
+        return WrapPtr(ibv_cq_ex_to_cq(cq_ex));
     }
 
     void RequestCompletionEvent(ibv_cq* cq, int solicitedOnly) override
@@ -134,6 +142,12 @@ struct TVerbs
 
     bool PollCompletionQueue(ibv_cq* cq, ICompletionHandler* handler) override
     {
+        if (UseCompletionIterator) {
+            return PollCompletionQueueWithCompletionIterator(
+                reinterpret_cast<ibv_cq_ex*>(cq),
+                handler);
+        }
+
         ibv_wc wc[MAX_COMPLETIONS_PER_POLL];
         bool gotWorkCompletions = false;
 
@@ -149,7 +163,12 @@ struct TVerbs
             }
 
             for (int i = 0; i < res; i++) {
-                handler->HandleCompletionEvent(&wc[i]);
+                TCompletion completion = {
+                    .wr_id = wc[i].wr_id,
+                    .status = wc[i].status,
+                    .opcode = wc[i].opcode};
+
+                handler->HandleCompletionEvent(completion);
             }
 
             gotWorkCompletions = true;
@@ -350,13 +369,65 @@ struct TVerbs
             RDMA_THROW_ERROR("rdma_modify_qp");
         }
     }
+
+    [[nodiscard]] bool UsesCompletionIterator() const override {
+        return UseCompletionIterator;
+    }
+
+private:
+    bool PollCompletionQueueWithCompletionIterator(
+        ibv_cq_ex* cq,
+        ICompletionHandler* handler)
+    {
+        ibv_poll_cq_attr attr = {};
+        int res = ibv_start_poll(cq, &attr);
+
+        if (res == ENOENT) {
+            return false;   // didn't handle any requests
+        }
+
+        if (res < 0) {
+            errno = res;
+            RDMA_THROW_ERROR("ibv_start_poll");
+        }
+
+        Y_DEFER
+        {
+            ibv_end_poll(cq);
+        };
+
+        do {
+            TCompletion completion = {
+                .wr_id = cq->wr_id,
+                .status = cq->status,
+                .opcode = ibv_wc_read_opcode(cq),
+                .read_completion_wallclock_ns =
+                    ibv_wc_read_completion_wallclock_ns(cq),
+                .ts = ibv_wc_read_completion_ts(cq)};
+
+            handler->HandleCompletionEvent(completion);
+
+            res = ibv_next_poll(cq);
+        } while (res == 0);
+
+        if (res == ENOENT) {
+            return true;   // handled at least one request
+        }
+
+        if (res < 0) {
+            errno = res;
+            RDMA_THROW_ERROR("ibv_next_poll");
+        }
+
+        return false;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IVerbsPtr CreateVerbs()
+IVerbsPtr CreateVerbs(const TRdmaConfig& config)
 {
-    return std::make_shared<TVerbs>();
+    return std::make_shared<TVerbs>(config);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -489,6 +560,17 @@ TString PrintCompletion(ibv_wc* wc)
         << " opcode=" << GetOpcodeName(wc->opcode)
         << " status=" << GetStatusString(wc->status)
         << "]";
+}
+
+TString PrintCompletion(const NVerbs::TCompletion& wc)
+{
+    return TStringBuilder()
+           << "[wr_id=" << TWorkRequestId(wc.wr_id)
+           << " opcode=" << GetOpcodeName(wc.opcode)
+           << " status=" << GetStatusString(wc.status)
+           << " read_completion_wallclock="
+           << TDuration::MicroSeconds(wc.read_completion_wallclock_ns / 1000)
+           << " ts=" << wc.ts << "]";
 }
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

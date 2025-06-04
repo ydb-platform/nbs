@@ -45,10 +45,20 @@ constexpr TNullPtr NullPtr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCompletion
+{
+    ui64 wr_id;
+    ibv_wc_status status;
+    ibv_wc_opcode opcode;
+    // Only present if UseCompletionIterator is true.
+    ui64 read_completion_wallclock_ns = 0;
+    ui64 ts = 0;
+};
+
 struct ICompletionHandler
 {
     virtual ~ICompletionHandler() = default;
-    virtual void HandleCompletionEvent(ibv_wc* wc) = 0;
+    virtual void HandleCompletionEvent(const TCompletion& wc) = 0;
 };
 
 struct IVerbs
@@ -69,11 +79,8 @@ struct IVerbs
     virtual TCompletionChannelPtr CreateCompletionChannel(
         ibv_context* context) = 0;
     virtual TCompletionQueuePtr CreateCompletionQueue(
-            ibv_context* context,
-            int cqe,
-            void *cq_context,
-            ibv_comp_channel *channel,
-            int comp_vector) = 0;
+        ibv_context* context,
+        ibv_cq_init_attr_ex* attr) = 0;
 
     virtual void RequestCompletionEvent(ibv_cq* cq, int solicitedOnly) = 0;
     virtual void* GetCompletionEvent(ibv_cq* cq) = 0;
@@ -123,11 +130,13 @@ struct IVerbs
     virtual void DestroyQP(rdma_cm_id* id) = 0;
 
     virtual void ModifyQP(ibv_qp *qp, ibv_qp_attr* attr, int mask) = 0;
+
+    [[nodiscard]] virtual bool UsesCompletionIterator() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IVerbsPtr CreateVerbs();
+IVerbsPtr CreateVerbs(const TRdmaConfig& config);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -138,5 +147,6 @@ const char* GetEventName(rdma_cm_event_type event);
 TString PrintAddress(const sockaddr* addr);
 TString PrintConnectionParams(const rdma_conn_param* param);
 TString PrintCompletion(ibv_wc* wc);
+TString PrintCompletion(const TCompletion& wc);
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

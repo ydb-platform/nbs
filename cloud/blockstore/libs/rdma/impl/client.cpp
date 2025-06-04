@@ -555,7 +555,7 @@ public:
     TFuture<void> Stop() noexcept override;
 
     // called from CQ thread
-    void HandleCompletionEvent(ibv_wc* wc) override;
+    void HandleCompletionEvent(const NVerbs::TCompletion& wc) override;
     bool HandleInputRequests();
     bool HandleCancelRequests();
     bool HandleCompletionEvents();
@@ -672,12 +672,18 @@ void TClientEndpoint::CreateQP()
         ResetConfig = false;
     }
 
-    CompletionQueue = Verbs->CreateCompletionQueue(
-        Connection->verbs,
-        2 * Config.QueueSize,     // send + recv
-        this,
-        CompletionChannel.get(),
-        0);                       // comp_vector
+    ibv_cq_init_attr_ex cq_attrs = {
+        .cqe = 2 * Config.QueueSize,   // send + recv
+        .cq_context = this,
+        .channel = CompletionChannel.get(),
+        .comp_vector = 0,
+        .wc_flags = IBV_WC_EX_WITH_COMPLETION_TIMESTAMP_WALLCLOCK | IBV_WC_EX_WITH_COMPLETION_TIMESTAMP,
+        .comp_mask = IBV_CQ_INIT_ATTR_MASK_FLAGS,
+        .flags = IBV_CREATE_CQ_ATTR_SINGLE_THREADED,
+    };
+
+    CompletionQueue =
+        Verbs->CreateCompletionQueue(Connection->verbs, &cq_attrs);
 
     ibv_qp_init_attr qp_attrs = {
         .qp_context = nullptr,
@@ -1054,12 +1060,14 @@ void TClientEndpoint::HandleFlush(const TWorkRequestId& id) noexcept
 }
 
 // implements NVerbs::ICompletionHandler
-void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
+void TClientEndpoint::HandleCompletionEvent(const NVerbs::TCompletion& wc)
 {
-    auto id = TWorkRequestId(wc->wr_id);
+    auto id = TWorkRequestId(wc.wr_id);
 
-    RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id
-        << " completed with " << NVerbs::GetStatusString(wc->status));
+    RDMA_TRACE(NVerbs::GetOpcodeName(wc.opcode) << " " << id
+        << " completed with " << NVerbs::GetStatusString(wc.status));
+
+    RDMA_DEBUG("client HandleCompletionEvent: " << NVerbs::PrintCompletion(wc));
 
     if (!IsWorkRequestValid(id)) {
         RDMA_ERROR(LogThrottler.Unexpected, Log,
@@ -1069,18 +1077,18 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
         return;
     }
 
-    if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+    if (wc.status == IBV_WC_WR_FLUSH_ERR) {
         HandleFlush(id);
         return;
     }
 
-    switch (wc->opcode) {
+    switch (wc.opcode) {
         case IBV_WC_SEND:
-            SendRequestCompleted(&SendWrs[id.Index], wc->status);
+            SendRequestCompleted(&SendWrs[id.Index], wc.status);
             break;
 
         case IBV_WC_RECV:
-            RecvResponseCompleted(&RecvWrs[id.Index], wc->status);
+            RecvResponseCompleted(&RecvWrs[id.Index], wc.status);
             break;
 
         default:

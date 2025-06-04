@@ -30,7 +30,7 @@ struct TTestContext: TAtomicRefCount<TTestContext>
 
     std::function<void(ibv_qp* qp, ibv_recv_wr* wr)> PostRecv;
     std::function<void(rdma_cm_id* id, int backlog)> Listen;
-    std::function<void(ibv_wc* wc)> HandleCompletionEvent;
+    std::function<void(NVerbs::TCompletion& wc)> HandleCompletionEvent;
 };
 
 using TTestContextPtr = TIntrusivePtr<TTestContext>;

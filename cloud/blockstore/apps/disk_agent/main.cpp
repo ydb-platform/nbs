@@ -1,6 +1,5 @@
 #include <cloud/blockstore/libs/disk_agent/bootstrap.h>
 #include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 
 #include <cloud/storage/core/libs/daemon/app.h>
@@ -32,12 +31,13 @@ int main(int argc, char** argv)
     };
 
     serverModuleFactories->RdmaServerFactory = [] (
+        NRdma::NVerbs::IVerbsPtr verbs,
         NCloud::ILoggingServicePtr logging,
         NCloud::IMonitoringServicePtr monitoring,
         NRdma::TServerConfigPtr config)
     {
         return NRdma::CreateServer(
-            NRdma::NVerbs::CreateVerbs(),
+            std::move(verbs),
             std::move(logging),
             std::move(monitoring),
             std::move(config));

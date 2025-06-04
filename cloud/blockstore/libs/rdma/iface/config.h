@@ -45,6 +45,11 @@ public:
     {
         return Config.GetDiskAgentTarget();
     }
+
+    bool GetUseCompletionIterator() const
+    {
+        return Config.GetUseCompletionIterator();
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NRdma

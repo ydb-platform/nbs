@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/nbd/client.h>
 #include <cloud/blockstore/libs/nbd/client_handler.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/rdma_test/client_test.h>
@@ -364,7 +365,7 @@ NRdma::IClientPtr TBootstrap::CreateAndStartRdmaClient(TString clientId)
     // TODO
 
     auto client = NRdma::CreateClient(
-        NRdma::NVerbs::CreateVerbs(),
+        NRdma::NVerbs::CreateVerbs(NRdma::TRdmaConfig{}),
         Logging,
         Monitoring,
         std::move(rdmaConfig));

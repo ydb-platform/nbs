@@ -7,7 +7,6 @@
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/blockstore/libs/root_kms/impl/client.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -107,24 +106,26 @@ int main(int argc, char** argv)
     };
 
     serverModuleFactories->RdmaClientFactory = [] (
+        NRdma::NVerbs::IVerbsPtr verbs,
         NCloud::ILoggingServicePtr logging,
         NCloud::IMonitoringServicePtr monitoring,
         NRdma::TClientConfigPtr config)
     {
         return NRdma::CreateClient(
-            NRdma::NVerbs::CreateVerbs(),
+            std::move(verbs),
             std::move(logging),
             std::move(monitoring),
             std::move(config));
     };
 
     serverModuleFactories->RdmaServerFactory = [] (
+        NRdma::NVerbs::IVerbsPtr verbs,
         NCloud::ILoggingServicePtr logging,
         NCloud::IMonitoringServicePtr monitoring,
         NRdma::TServerConfigPtr config)
     {
         return NRdma::CreateServer(
-            NRdma::NVerbs::CreateVerbs(),
+            std::move(verbs),
             std::move(logging),
             std::move(monitoring),
             std::move(config));

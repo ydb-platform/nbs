@@ -170,16 +170,10 @@ struct TTestVerbs
 
     TCompletionQueuePtr CreateCompletionQueue(
         ibv_context* context,
-        int cqe,
-        void *cq_context,
-        ibv_comp_channel *channel,
-        int comp_vector) override
+        ibv_cq_init_attr_ex* attr) override
     {
         Y_UNUSED(context);
-        Y_UNUSED(cqe);
-        Y_UNUSED(cq_context);
-        Y_UNUSED(channel);
-        Y_UNUSED(comp_vector);
+        Y_UNUSED(attr);
 
         return NullPtr;
     }
@@ -228,17 +222,17 @@ struct TTestVerbs
         }
 
         auto handleEvent = [&] (ui64 wrId, ibv_wc_opcode opcode) {
-            ibv_wc wc = {
+            NVerbs::TCompletion wc = {
                 .wr_id = wrId,
                 .status = IBV_WC_SUCCESS,
                 .opcode = opcode,
             };
             with_lock (TestContext->CompletionLock) {
                 if (TestContext->HandleCompletionEvent) {
-                    TestContext->HandleCompletionEvent(&wc);
+                    TestContext->HandleCompletionEvent(wc);
                 }
             }
-            handler->HandleCompletionEvent(&wc);
+            handler->HandleCompletionEvent(wc);
         };
 
         for (const auto& x: sends) {
@@ -517,6 +511,10 @@ struct TTestVerbs
         Y_UNUSED(attr);
         Y_UNUSED(mask);
     }
+
+    bool UsesCompletionIterator() const override {
+        return false;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -534,9 +532,9 @@ void Disconnect(TTestContextPtr context)
         static_cast<rdma_cm_id*>(context->Connection));
 
     with_lock (context->CompletionLock) {
-        context->HandleCompletionEvent = [] (ibv_wc* wc) {
-            wc->status = IBV_WC_WR_FLUSH_ERR;
-            wc->opcode = static_cast<ibv_wc_opcode>(0);
+        context->HandleCompletionEvent = [] (NVerbs::TCompletion& wc) {
+            wc.status = IBV_WC_WR_FLUSH_ERR;
+            wc.opcode = static_cast<ibv_wc_opcode>(0);
         };
 
         std::move(

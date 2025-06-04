@@ -18,6 +18,7 @@
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
@@ -332,6 +333,7 @@ void TBootstrap::InitRdmaServer(NRdma::TRdmaConfig& config)
     try {
         if (config.GetServerEnabled()) {
             RdmaServer = ServerModuleFactories->RdmaServerFactory(
+                NRdma::NVerbs::CreateVerbs(config),
                 Logging,
                 Monitoring,
                 CreateRdmaServerConfig(config));

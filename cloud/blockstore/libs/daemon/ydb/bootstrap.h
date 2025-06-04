@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
+#include <cloud/blockstore/libs/rdma/impl/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
@@ -57,11 +58,13 @@ struct TServerModuleFactories
     std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
 
     std::function<NRdma::IServerPtr(
+        NRdma::NVerbs::IVerbsPtr verbs,
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         NRdma::TServerConfigPtr config)> RdmaServerFactory;
 
     std::function<NRdma::IClientPtr(
+        NRdma::NVerbs::IVerbsPtr verbs,
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         NRdma::TClientConfigPtr config)> RdmaClientFactory;

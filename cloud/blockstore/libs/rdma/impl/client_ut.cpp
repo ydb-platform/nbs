@@ -587,7 +587,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         auto errorsOld = errors->Val();
 
         ibv_recv_wr* wr = context->RecvEvents.back();
-        auto completion = TVector<ibv_wc>();
+        auto completion = TVector<NVerbs::TCompletion>();
 
         with_lock(context->CompletionLock) {
             // emulate IBV_QPS_ERR
@@ -617,9 +617,9 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 .wr_id = wr->wr_id,
                 .opcode = IBV_WC_RECV_RDMA_WITH_IMM,
             });
-            context->HandleCompletionEvent = [&](ibv_wc* wc) {
+            context->HandleCompletionEvent = [&](NVerbs::TCompletion& wc) {
                 static int i = 0;
-                *wc = completion[i++];
+                wc = completion[i++];
             };
             // HandleCompletionEvent will override completions, but we still
             // need to pass a valid request pointer here

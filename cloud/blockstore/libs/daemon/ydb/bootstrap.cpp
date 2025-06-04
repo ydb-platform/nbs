@@ -30,6 +30,7 @@
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/blockstore/libs/root_kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -352,6 +353,7 @@ void TBootstrapYdb::InitRdmaClient()
     try {
         if (Configs->RdmaConfig->GetClientEnabled()) {
             RdmaClient = ServerModuleFactories->RdmaClientFactory(
+                NRdma::NVerbs::CreateVerbs(*Configs->RdmaConfig),
                 Logging,
                 Monitoring,
                 CreateRdmaClientConfig(Configs->RdmaConfig));
@@ -369,13 +371,12 @@ void TBootstrapYdb::InitRdmaClient()
 
 void TBootstrapYdb::InitRdmaServer()
 {
-    // TODO: read config
-    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>();
-
     RdmaServer = ServerModuleFactories->RdmaServerFactory(
+        NRdma::NVerbs::CreateVerbs(*Configs->RdmaConfig),
         Logging,
         Monitoring,
-        std::move(rdmaConfig));
+        std::make_shared<NRdma::TServerConfig>(
+            Configs->RdmaConfig->GetServer()));
 }
 
 void TBootstrapYdb::InitKikimrService()

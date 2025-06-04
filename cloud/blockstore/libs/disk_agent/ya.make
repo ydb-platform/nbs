@@ -11,6 +11,7 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/rdma/iface
+    cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/server
     cloud/blockstore/libs/service
     cloud/blockstore/libs/spdk/iface

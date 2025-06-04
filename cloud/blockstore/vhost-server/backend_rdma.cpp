@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -16,13 +17,15 @@
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_rdma.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
-#include <cloud/contrib/vhost/include/vhost/server.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+
+#include <cloud/contrib/vhost/include/vhost/server.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -190,7 +193,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
     RdmaClient = NRdma::CreateClient(
-        NRdma::NVerbs::CreateVerbs(),
+        NRdma::NVerbs::CreateVerbs(NRdma::TRdmaConfig{}),
         Logging,
         NCloud::CreateMonitoringServiceStub(),
         std::move(rdmaClientConfig));

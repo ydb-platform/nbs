@@ -6,6 +6,7 @@
 #include "storage.h"
 #include "target.h"
 
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/server.h>
@@ -17,8 +18,8 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
-#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
@@ -67,7 +68,7 @@ void TBootstrap::Init()
         config->PollerThreads = Options->PollerThreads;
         config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
 
-        Verbs = NRdma::NVerbs::CreateVerbs();
+        Verbs = NRdma::NVerbs::CreateVerbs(NRdma::TRdmaConfig{});
 
         Server = NRdma::CreateServer(
             Verbs,
@@ -80,7 +81,7 @@ void TBootstrap::Init()
         config->PollerThreads = Options->PollerThreads;
         config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
 
-        Verbs = NRdma::NVerbs::CreateVerbs();
+        Verbs = NRdma::NVerbs::CreateVerbs(NRdma::TRdmaConfig{});
 
         Client = NRdma::CreateClient(
             Verbs,

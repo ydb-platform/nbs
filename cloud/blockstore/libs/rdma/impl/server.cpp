@@ -328,7 +328,7 @@ public:
     void EnqueueRequest(TRequestPtr req) noexcept;
 
     // called from CQ thread
-    void HandleCompletionEvent(ibv_wc* wc) override;
+    void HandleCompletionEvent(const NVerbs::TCompletion& wc) override;
     bool HandleInputRequests();
     bool HandleCompletionEvents();
     bool IsFlushed();
@@ -384,12 +384,20 @@ TServerSession::TServerSession(
     CompletionChannel = Verbs->CreateCompletionChannel(Connection->verbs);
     SetNonBlock(CompletionChannel->fd, true);
 
+    ibv_cq_init_attr_ex cq_attrs = {
+        .cqe = 2 * Config->QueueSize,   // send + recv
+        .cq_context = this,
+        .channel = CompletionChannel.get(),
+        .comp_vector = 0,
+        .wc_flags = IBV_WC_EX_WITH_COMPLETION_TIMESTAMP_WALLCLOCK |
+                    IBV_WC_EX_WITH_COMPLETION_TIMESTAMP,
+        .comp_mask = IBV_CQ_INIT_ATTR_MASK_FLAGS,
+        .flags = IBV_CREATE_CQ_ATTR_SINGLE_THREADED,
+    };
+
     CompletionQueue = Verbs->CreateCompletionQueue(
         Connection->verbs,
-        2 * Config->QueueSize,   // send + recv
-        this,
-        CompletionChannel.get(),
-        0);                      // comp_vector
+        &cq_attrs);
 
     ibv_qp_init_attr qp_attrs = {
         .qp_context = nullptr,
@@ -620,12 +628,31 @@ bool TServerSession::IsWorkRequestValid(const TWorkRequestId& id) const
 }
 
 // implements NVerbs::ICompletionHandler
-void TServerSession::HandleCompletionEvent(ibv_wc* wc)
+void TServerSession::HandleCompletionEvent(const NVerbs::TCompletion& wc)
 {
-    auto id = TWorkRequestId(wc->wr_id);
+    RDMA_DEBUG("server HandleCompletionEvent: " << NVerbs::PrintCompletion(wc));
 
-    RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id
-        << " completed with " << NVerbs::GetStatusString(wc->status));
+    struct ibv_values_ex values;
+    memset(&values, 0, sizeof(values));
+    values.comp_mask = IBV_VALUES_MASK_RAW_CLOCK;
+    auto result = ibv_query_rt_values_ex(Connection->verbs, &values);
+    if (result != 0) {
+        RDMA_ERROR("ibv_query_rt_values_ex failed: " << result);
+    } else {
+        auto rawClock = TDuration::MicroSeconds((values.raw_clock.tv_nsec + static_cast<ui64>(values.raw_clock.tv_sec) * 1000000000) / 1000);
+
+        struct timespec startTime;
+        clock_gettime(CLOCK_REALTIME, &startTime);
+        const auto gettime = TDuration::MicroSeconds((startTime.tv_nsec + static_cast<ui64>(startTime.tv_sec) * 1000000000) / 1000);
+        const auto completion_wallclock = TDuration::MicroSeconds(wc.read_completion_wallclock_ns / 1000);
+
+        RDMA_DEBUG("clock_gettime: " << gettime << "; raw_clock: " << rawClock << "; completion_wallclock: " << completion_wallclock);
+    }
+
+    auto id = TWorkRequestId(wc.wr_id);
+
+    RDMA_TRACE(NVerbs::GetOpcodeName(wc.opcode) << " " << id
+        << " completed with " << NVerbs::GetStatusString(wc.status));
 
     if (!IsWorkRequestValid(id)) {
         RDMA_ERROR(LogThrottler.Unexpected, Log, "unexpected completion "
@@ -636,26 +663,26 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc)
     }
 
     // session is closing
-    if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+    if (wc.status == IBV_WC_WR_FLUSH_ERR) {
         HandleFlush(id);
         return;
     }
 
-    switch (wc->opcode) {
+    switch (wc.opcode) {
         case IBV_WC_RECV:
-            RecvRequestCompleted(&RecvWrs[id.Index], wc->status);
+            RecvRequestCompleted(&RecvWrs[id.Index], wc.status);
             break;
 
         case IBV_WC_RDMA_READ:
-            ReadRequestDataCompleted(&SendWrs[id.Index], wc->status);
+            ReadRequestDataCompleted(&SendWrs[id.Index], wc.status);
             break;
 
         case IBV_WC_RDMA_WRITE:
-            WriteResponseDataCompleted(&SendWrs[id.Index], wc->status);
+            WriteResponseDataCompleted(&SendWrs[id.Index], wc.status);
             break;
 
         case IBV_WC_SEND:
-            SendResponseCompleted(&SendWrs[id.Index], wc->status);
+            SendResponseCompleted(&SendWrs[id.Index], wc.status);
             break;
 
         default:
