@@ -220,7 +220,7 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 
         if (Config
                 ->GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() &&
-            // a temporary buffer is already used for an encrypted volumes
+            // a temporary buffer is already used for encrypted volumes
             !State.IsEncrypted())
         {
             AddTagForBufferCopying(ctx);
