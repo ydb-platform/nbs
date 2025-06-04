@@ -285,7 +285,6 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 if (timediff > static_cast<i64>(diff.MicroSeconds())) {
                     auto sleep =
                         TDuration::MicroSeconds(timediff - diff.MicroSeconds());
-
                     if (sleep.Seconds() > RealtimeTolerateFutureSeconds) {
                         return {};
                     }
