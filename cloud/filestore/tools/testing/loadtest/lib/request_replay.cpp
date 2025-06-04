@@ -191,9 +191,9 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 MessagePtr->GetRequests()[--EventMessageNumber];
             {
                 ++MessagesProcessed;
-                i64 timediff = (static_cast<i64>(request.GetTimestampMcs()) -
-                                TimestampMicroSeconds) *
-                               Spec.GetTimeScale();
+                i64 timediff =
+                    (request.GetTimestampMcs() - TimestampMicroSeconds) *
+                    Spec.GetTimeScale();
                 TimestampMicroSeconds = request.GetTimestampMcs();
                 const auto timestampSeconds =
                     TimestampMicroSeconds / OneMillion;
@@ -226,25 +226,20 @@ IReplayRequestGenerator::ExecuteNextRequest()
                             .c_str())
                 }
 
-                if (ReplayTimeFrom &&
-                    timestampSeconds <
-                        static_cast<i64>(ReplayTimeFrom->Seconds()))
+                if (ReplayTimeFrom && timestampSeconds <
+                    static_cast<i64>(ReplayTimeFrom->Seconds()))
                 {
                     continue;
                 }
 
-                if (ReplayTimeTill &&
-                    timestampSeconds >
-                        static_cast<i64>(ReplayTimeTill->Seconds()))
+                if (ReplayTimeTill && timestampSeconds >
+                    static_cast<i64>(ReplayTimeTill->Seconds()))
                 {
                     return {};
                 }
-
                 constexpr auto RealtimeToleratePastSeconds = 10;
                 constexpr auto RealtimeTolerateFutureSeconds = 10;
-
                 if (const i64 realTimeAlignseconds = Spec.GetRealTime()) {
-                    constexpr auto OneMillion = 1000000LL;
                     const i64 alignMicroSeconds =
                         realTimeAlignseconds * OneMillion;
                     const i64 currentMicroSeconds =
