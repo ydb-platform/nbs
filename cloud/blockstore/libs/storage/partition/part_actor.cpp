@@ -667,12 +667,17 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
     for (const auto& channel: Info()->Channels) {
         bool diskSpaceYellowMove = false;
         bool diskSpaceYellowStop = false;
+        bool diskSpaceLightOrange = false;
         if (auto latestEntry = channel.LatestEntry()) {
             diskSpaceYellowMove = IsIn(msg->LightYellowMoveGroups, latestEntry->GroupID);
             diskSpaceYellowStop = IsIn(msg->YellowStopGroups, latestEntry->GroupID);
+            diskSpaceLightOrange = IsIn(msg->LightOrangeGroups, latestEntry->GroupID);
         }
 
-        EChannelPermissions permissions = EChannelPermission::SystemWritesAllowed;
+        EChannelPermissions permissions = {};
+        if (!diskSpaceLightOrange) {
+            permissions |= EChannelPermission::SystemWritesAllowed;
+        }
         if (!diskSpaceYellowStop) {
             permissions |= EChannelPermission::UserWritesAllowed;
         }
