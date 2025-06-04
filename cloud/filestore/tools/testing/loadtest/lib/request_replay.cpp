@@ -218,14 +218,16 @@ IReplayRequestGenerator::ExecuteNextRequest()
                             .c_str())
                 }
 
-                if (ReplayTimeFrom && timestampSeconds <
-                    static_cast<i64>(ReplayTimeFrom->Seconds()))
+                if (ReplayTimeFrom &&
+                    timestampSeconds <
+                        static_cast<i64>(ReplayTimeFrom->Seconds()))
                 {
                     continue;
                 }
 
-                if (ReplayTimeTill && timestampSeconds >
-                    static_cast<i64>(ReplayTimeTill->Seconds()))
+                if (ReplayTimeTill &&
+                    timestampSeconds >
+                        static_cast<i64>(ReplayTimeTill->Seconds()))
                 {
                     return {};
                 }
