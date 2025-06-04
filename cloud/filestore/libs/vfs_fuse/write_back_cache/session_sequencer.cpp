@@ -24,30 +24,26 @@ TFuture<NProto::TReadDataResponse> TSessionSequencer::ReadData(
 
     using TResponse = NProto::TReadDataResponse;
 
-    struct TState
-    {
-        TPromise<TResponse> Promise = NewPromise<TResponse>();
-    };
-    auto state = std::make_shared<TState>();
+    auto promise = NewPromise<TResponse>();
+    auto future = promise.GetFuture();
 
     auto execute = [
         session = Session,
         callContext = std::move(callContext),
         protoRequest = std::move(protoRequest),
-        state] ()
+        promise = std::move(promise)] ()
     {
         session->ReadData(
             std::move(callContext),
             std::move(protoRequest))
-                .Apply([state] (auto future)
+                .Apply([promise = std::move(promise)] (auto future) mutable
                     {
-                        state->Promise.SetValue(future.ExtractValue());
+                        promise.SetValue(future.ExtractValue());
                     });
     };
 
     const auto id = ++NextRequestId;
 
-    auto future = state->Promise.GetFuture();
     future.Subscribe([ptr = weak_from_this(), id] (auto) {
         if (auto self = ptr.lock()) {
             self->OnRequestFinished(id);
@@ -77,30 +73,26 @@ TFuture<NProto::TWriteDataResponse> TSessionSequencer::WriteData(
 
     using TResponse = NProto::TWriteDataResponse;
 
-    struct TState
-    {
-        TPromise<TResponse> Promise = NewPromise<TResponse>();
-    };
-    auto state = std::make_shared<TState>();
+    auto promise = NewPromise<TResponse>();
+    auto future = promise.GetFuture();
 
     auto execute = [
         session = Session,
         callContext = std::move(callContext),
         protoRequest = std::move(protoRequest),
-        state] ()
+        promise = std::move(promise)] ()
     {
         session->WriteData(
             std::move(callContext),
             std::move(protoRequest))
-                .Apply([state] (auto future)
+                .Apply([promise = std::move(promise)] (auto future) mutable
                     {
-                        state->Promise.SetValue(future.ExtractValue());
+                        promise.SetValue(future.ExtractValue());
                     });
     };
 
     const auto id = ++NextRequestId;
 
-    auto future = state->Promise.GetFuture();
     future.Subscribe([ptr = weak_from_this(), id] (auto) {
         if (auto self = ptr.lock()) {
             self->OnRequestFinished(id);
