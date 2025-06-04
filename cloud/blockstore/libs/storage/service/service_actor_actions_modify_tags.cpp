@@ -253,12 +253,30 @@ void TModifyTagsActionActor::HandleDescribeVolumeResponse(
         }
     }
 
+    bool changed = false;
+
     for (const auto& tag: Request.GetTagsToRemove()) {
-        tags.erase(tag);
+        if (tags.erase(tag) > 0) {
+            changed = true;
+        }
     }
 
     for (const auto& tag: Request.GetTagsToAdd()) {
-        tags.insert(tag);
+        auto [_, inserted] = tags.insert(tag);
+        if (inserted) {
+            changed = true;
+        }
+    }
+
+    if (!changed) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Skipping tag modification; tags are already as desired for volume "
+            "%s",
+            Request.GetDiskId().Quote().c_str());
+        ReplyAndDie(ctx, error);
+        return;
     }
 
     *VolumeConfig.MutableTagsStr() = JoinSeq(",", tags);
