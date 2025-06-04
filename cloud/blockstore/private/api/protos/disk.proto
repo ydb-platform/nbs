@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package NCloud.NBlockStore.NPrivateProto;
 
+import "cloud/storage/core/protos/media.proto";
+
 // XXX this import is prohibited by ya.make
 // that's why instead of EDeviceState and EAgentState we use integers here
 // import "cloud/blockstore/libs/storage/protos/disk.proto";
@@ -80,4 +82,23 @@ message TDiskRegistrySetWritableStateRequest
 
 message TDiskRegistrySetWritableStateResponse
 {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetZoneCapacity request/response.
+
+message TClusterCapacityInfo
+{
+    NCloud.NProto.EStorageMediaKind Kind = 1;
+    uint64 Free = 2;
+    uint64 Total = 3;
+}
+
+message TGetClusterCapacityRequest
+{
+}
+
+message TGetClusterCapacityResponse
+{
+    repeated TClusterCapacityInfo Capacity = 1;
 }
