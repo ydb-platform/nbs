@@ -272,8 +272,7 @@ std::optional<TDescribeFuture> DescribeRemoteVolume(
     const IRemoteStorageProviderPtr& remoteStorageProvider,
     const ILoggingServicePtr& logging,
     const ISchedulerPtr& scheduler,
-    const NProto::TClientConfig& clientConfig,
-    const TShardingConfigPtr& shardingConfig)
+    const NProto::TClientConfig& clientConfig)
 {
     NProto::TClientAppConfig clientAppConfig;
     auto& config = *clientAppConfig.MutableClientConfig();
@@ -281,7 +280,9 @@ std::optional<TDescribeFuture> DescribeRemoteVolume(
     config.SetClientId(FQDNHostName());
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(clientAppConfig);
 
-    auto numConfigured = remoteStorageProvider->GetConfiguredShardCount();
+    auto shardingConfig = remoteStorageProvider->GetShardingConfig();
+
+    auto numConfigured = shardingConfig->GetShards().size();
     if (numConfigured == 0) {
         return {};
     }

@@ -23,7 +23,6 @@ std::optional<TDescribeFuture> DescribeRemoteVolume(
     const IRemoteStorageProviderPtr& remoteStorageProvider,
     const ILoggingServicePtr& logging,
     const ISchedulerPtr& scheduler,
-    const NProto::TClientConfig& clientConfig,
-    const TShardingConfigPtr& shardingConfig);
+    const NProto::TClientConfig& clientConfig);
 
 }   // namespace NCloud::NBlockStore::NSharding

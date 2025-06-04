@@ -156,8 +156,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             storageProvider,
             CreateLoggingService("console"),
             CreateScheduler(),
-            NProto::TClientConfig(),
-            shardingConfig);
+            NProto::TClientConfig());
 
         UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -222,8 +221,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             storageProvider,
             CreateLoggingService("console"),
             CreateScheduler(),
-            NProto::TClientConfig(),
-            shardingConfig);
+            NProto::TClientConfig());
 
         UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -288,8 +286,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             storageProvider,
             CreateLoggingService("console"),
             CreateScheduler(),
-            NProto::TClientConfig(),
-            shardingConfig);
+            NProto::TClientConfig());
 
         UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -372,8 +369,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             storageProvider,
             CreateLoggingService("console"),
             CreateScheduler(),
-            NProto::TClientConfig(),
-            shardingConfig);
+            NProto::TClientConfig());
 
         UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -457,8 +453,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             storageProvider,
             CreateLoggingService("console"),
             CreateScheduler(),
-            NProto::TClientConfig(),
-            shardingConfig);
+            NProto::TClientConfig());
 
         UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -509,8 +504,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             storageProvider,
             CreateLoggingService("console"),
             CreateScheduler(),
-            NProto::TClientConfig(),
-            shardingConfig);
+            NProto::TClientConfig());
 
         UNIT_ASSERT_C(!response.has_value(), "No future should be returned");
     }
