@@ -784,9 +784,15 @@ void TVolumeActor::HandleTakeVolumeRequestId(
             std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
                 MakeError(
                     E_REJECTED,
-                    "can't advance request id, restarting tablet"));
+                    "volume request id overflow, restarting tablet"));
         NCloud::Reply(ctx, *ev, std::move(resp));
+
         NCloud::Send(ctx, SelfId(), std::make_unique<TEvents::TEvPoisonPill>());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Sent PoisonPill to volume because of volume request id overflow",
+            LogTitle.GetWithTime().c_str());
         return;
     }
 
