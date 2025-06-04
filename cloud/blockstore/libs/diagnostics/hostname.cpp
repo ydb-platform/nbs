@@ -157,7 +157,7 @@ GetQueries(ui32 groupId, const TString& storagePool, const TString& channelKind)
                        queryIdx,
                        storagePool.c_str(),
                        groupId,
-                       handleClasses[queryIdx].Data(),
+                       handleClasses[queryIdx].data(),
                        queryIdx,
                        TString(1, queryName).data())
                        .c_str()
@@ -172,7 +172,7 @@ TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
     const TString& storagePool,
-    const TString&  channelKind)
+    const TString& channelKind)
 {
     constexpr TStringBuf Url =
         "%s/projects/%s/explorer/"
