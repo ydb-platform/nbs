@@ -206,9 +206,10 @@ struct TTestEnv
             params{
                 ToLogicalBlocks(devices, DefaultBlockSize),
                 TNonreplicatedPartitionConfig::TVolumeInfo{
-                    Now(),
+                    .CreationTs = Now(),
                     // only SSD/HDD distinction matters
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                    .EncryptionMode = NProto::NO_ENCRYPTION},
                 "test",
                 DefaultBlockSize,
                 VolumeActorId};

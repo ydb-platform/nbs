@@ -193,9 +193,10 @@ struct TTestEnv
             params{
                 Devices,
                 TNonreplicatedPartitionConfig::TVolumeInfo{
-                    Now(),
+                    .CreationTs = Now(),
                     // only SSD/HDD distinction matters
-                    NProto::STORAGE_MEDIA_SSD_MIRROR3},
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR3,
+                    .EncryptionMode = NProto::NO_ENCRYPTION},
                 "vol0",
                 DefaultBlockSize,
                 VolumeActorId};

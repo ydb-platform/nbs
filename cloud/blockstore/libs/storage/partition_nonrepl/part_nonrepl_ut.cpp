@@ -141,8 +141,9 @@ struct TTestEnv
             partConfigInitParams{
                 ToLogicalBlocks(params.Devices, DefaultBlockSize),
                 TNonreplicatedPartitionConfig::TVolumeInfo{
-                    Now(),
-                    params.MediaKind},
+                    .CreationTs = Now(),
+                    .MediaKind = params.MediaKind,
+                    .EncryptionMode = NProto::NO_ENCRYPTION},
                 "test",
                 DefaultBlockSize,
                 VolumeActorId};

@@ -133,6 +133,8 @@ public:
 
     TVector<TBlockRange64> SplitRangeByDeviceBorders(
         const TBlockRange64 readRange) const;
+
+    [[nodiscard]] bool IsEncrypted() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

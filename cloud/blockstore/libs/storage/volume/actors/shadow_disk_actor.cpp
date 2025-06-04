@@ -799,8 +799,10 @@ void TShadowDiskActor::CreateShadowDiskConfig()
     STORAGE_CHECK_PRECONDITION(!ShadowDiskDevices.empty());
 
     TNonreplicatedPartitionConfig::TVolumeInfo volumeInfo{
-        TInstant(),
-        GetCheckpointShadowDiskType(SrcConfig->GetVolumeInfo().MediaKind)};
+        .CreationTs = TInstant(),
+        .MediaKind =
+            GetCheckpointShadowDiskType(SrcConfig->GetVolumeInfo().MediaKind),
+        .EncryptionMode = SrcConfig->GetVolumeInfo().EncryptionMode};
 
     TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
         params{
