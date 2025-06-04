@@ -295,4 +295,9 @@ ui64 TMirrorPartitionState::GetBlockCount() const
     return PartConfig->GetBlockCount();
 }
 
+bool TMirrorPartitionState::IsEncrypted() const
+{
+    return PartConfig->GetVolumeInfo().EncryptionMode != NProto::NO_ENCRYPTION;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

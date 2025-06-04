@@ -124,7 +124,8 @@ struct TTestEnv
     explicit TTestEnv(
             TTestActorRuntime& runtime,
             NProto::TStorageServiceConfig configBase = {},
-            bool useRdma = false)
+            bool useRdma = false,
+            NProto::EEncryptionMode encryptionMode = NProto::NO_ENCRYPTION)
         : TTestEnv(
             runtime,
             DefaultDevices(runtime.GetNodeId(0)),
@@ -135,10 +136,9 @@ struct TTestEnv
             {}, // migrations
             {}, // freshDeviceIds
             std::move(configBase),
-            useRdma
-        )
-    {
-    }
+            useRdma,
+            encryptionMode)
+    {}
 
     TTestEnv(
             TTestActorRuntime& runtime,
@@ -147,7 +147,8 @@ struct TTestEnv
             TMigrations migrations = {},
             THashSet<TString> freshDeviceIds = {},
             NProto::TStorageServiceConfig configBase = {},
-            bool useRdma = false)
+            bool useRdma = false,
+            NProto::EEncryptionMode encryptionMode = NProto::NO_ENCRYPTION)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -210,9 +211,10 @@ struct TTestEnv
             params{
                 ToLogicalBlocks(devices, DefaultBlockSize),
                 TNonreplicatedPartitionConfig::TVolumeInfo{
-                    Now(),
+                    .CreationTs = Now(),
                     // only SSD/HDD distinction matters
-                    NProto::STORAGE_MEDIA_SSD_MIRROR3},
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR3,
+                    .EncryptionMode = encryptionMode},
                 "test",
                 DefaultBlockSize,
                 VolumeActorId};
@@ -1585,6 +1587,38 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             "AppCriticalEvents/MirroredDiskAddTagFailed",
             true);
         UNIT_ASSERT_VALUES_EQUAL(1, addTagFailed->Val());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreAddTagForEncryptedVolume)
+    {
+        using namespace NMonitoring;
+
+        TTestRuntime runtime;
+
+        NProto::TStorageServiceConfig config;
+        config.SetAutomaticallyEnableBufferCopyingAfterChecksumMismatch(true);
+        TTestEnv env(runtime, config, false, NProto::ENCRYPTION_AT_REST);
+
+        bool addTagRequest = false;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvService::EvAddTagsRequest) {
+                    addTagRequest = true;
+                }
+
+                return false;
+            });
+
+        const auto range1 = TBlockRange64::WithLength(0, 2);
+        env.WriteMirror(range1, 'A');
+        env.WriteReplica(1, range1, 'B');
+        env.WriteReplica(2, range1, 'B');
+
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+
+        UNIT_ASSERT(!addTagRequest);
     }
 
     Y_UNIT_TEST(ShouldPostponeScrubbingIfIntersectingWritePending)

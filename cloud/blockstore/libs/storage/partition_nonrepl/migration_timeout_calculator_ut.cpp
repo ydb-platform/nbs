@@ -173,9 +173,10 @@ TNonreplicatedPartitionConfigPtr MakePartitionConfig(
         params{
             std::move(devices),
             TNonreplicatedPartitionConfig::TVolumeInfo{
-                Now(),
+                .CreationTs = Now(),
                 // only SSD/HDD distinction matters
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+                .MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                .EncryptionMode = NProto::NO_ENCRYPTION},
             "vol0",
             DefaultBlockSize,
             NActors::TActorId()};

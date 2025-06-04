@@ -181,8 +181,10 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         params{
             State->GetMeta().GetDevices(),
             TNonreplicatedPartitionConfig::TVolumeInfo{
-                State->GetCreationTs(),
-                mediaKind},
+                .CreationTs = State->GetCreationTs(),
+                .MediaKind = mediaKind,
+                .EncryptionMode = static_cast<NProto::EEncryptionMode>(
+                    volumeConfig.GetEncryptionDesc().GetMode())},
             State->GetDiskId(),
             State->GetMeta().GetConfig().GetBlockSize(),
             SelfId(),
