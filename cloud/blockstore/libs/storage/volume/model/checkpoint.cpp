@@ -209,7 +209,9 @@ bool TCheckpointStore::NeedShadowActor(const TString& checkpointId) const
     // Do not need to create the shadow disk actor if the shadow disk is being
     // deleted.
     if (const TCheckpointRequest* checkpointRequest =
-            CheckpointRequests.FindPtr(CheckpointRequestInProgress))
+            CheckpointRequests.FindPtr(CheckpointRequestInProgress);
+        checkpointRequest != nullptr &&
+        checkpointRequest->CheckpointId == checkpointId)
     {
         if (checkpointRequest->ReqType == ECheckpointRequestType::Delete ||
             checkpointRequest->ReqType == ECheckpointRequestType::DeleteData)

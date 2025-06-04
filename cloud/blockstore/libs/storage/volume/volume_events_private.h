@@ -385,7 +385,11 @@ struct TEvVolumePrivate
 
     struct TExternalDrainDone
     {
-        TExternalDrainDone() = default;
+        TString ShadowDiskId;
+
+        explicit TExternalDrainDone(const TString& shadowDiskId)
+            : ShadowDiskId(shadowDiskId)
+        {}
     };
 
     //
