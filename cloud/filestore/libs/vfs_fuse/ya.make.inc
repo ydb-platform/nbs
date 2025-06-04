@@ -12,7 +12,6 @@ SRCS(
     log.cpp
     loop.cpp
     node_cache.cpp
-    write_back_cache.cpp
 )
 
 PEERDIR(
@@ -23,6 +22,7 @@ PEERDIR(
     cloud/filestore/libs/vfs
     cloud/filestore/libs/vfs/protos
     cloud/filestore/libs/vfs_fuse/protos
+    cloud/filestore/libs/vfs_fuse/write_back_cache
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
