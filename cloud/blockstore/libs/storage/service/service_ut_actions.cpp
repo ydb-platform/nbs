@@ -276,6 +276,52 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         service.DestroyVolume();
     }
 
+    Y_UNIT_TEST(ShouldNotAlterVolumeIfTagsNotChanged)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume();
+
+        {
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            *request.AddTagsToAdd() = "a";
+            *request.AddTagsToAdd() = "b";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("ModifyTags", buf);
+        }
+
+        {
+            bool alterVolume = false;
+            env.GetRuntime().SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvSSProxy::EvModifySchemeRequest: {
+                            alterVolume = true;
+                        }
+                    }
+
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            *request.AddTagsToAdd() = "b";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("ModifyTags", buf);
+
+            UNIT_ASSERT_VALUES_EQUAL(false, alterVolume);
+        }
+    }
+
     Y_UNIT_TEST(ShouldAllowToChangeBaseDiskId)
     {
         TTestEnv env;
