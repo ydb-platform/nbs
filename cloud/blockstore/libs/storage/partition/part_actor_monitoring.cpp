@@ -471,7 +471,15 @@ void TPartitionActor::HandleHttpInfo_Default(
             DIV_CLASS("tab-content") {
                 DIV_CLASS_ID("tab-pane active", "Overview") {
                     DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
-                    DumpMonitoringPartitionLink(out, *DiagnosticsConfig);
+                    DumpMonitoringPartitionLink(
+                        out,
+                        *DiagnosticsConfig,
+                        PartitionConfig.GetDiskId());
+
+                    TAG (TH3) {
+                        out << "<a href='../tablets?TabletID=" << VolumeTabletId
+                            << "'>Volume tablet</a>";
+                    }
 
                     TAG(TH3) { out << "State"; }
                     State->DumpHtml(out);

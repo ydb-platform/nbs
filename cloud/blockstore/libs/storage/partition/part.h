@@ -23,6 +23,7 @@ NActors::IActorPtr CreatePartitionTablet(
     EStorageAccessMode storageAccessMode,
     ui32 partitionIndex,
     ui32 siblingCount,
-    const NActors::TActorId& volumeActorId);
+    const NActors::TActorId& volumeActorId,
+    ui64 volumeTabletId);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

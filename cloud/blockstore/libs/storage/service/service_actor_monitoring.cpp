@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/diag_down_graph.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs//diagnostics/hostname.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -151,7 +152,16 @@ void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
         TAG(TH3) { out << "Search Volume"; }
         BuildSearchButton(out);
 
-        TAG(TH3) { out << "Volumes"; }
+        TAG (TH3) {
+            out << "Volumes ";
+            out << "<a href='"
+                << GetMonitoringVolumeUrlWithoutDiskId(*DiagnosticsConfig);
+            for (const auto& [diskId, _]: State.GetVolumes()) {
+                out << diskId << "|";
+            }
+            out << "'>[dashboard]</a>";
+        }
+
         RenderDownDisks(out);
         RenderVolumeList(out);
 
