@@ -2,7 +2,10 @@
 
 #include "public.h"
 #include "config.h"
+<<<<<<< HEAD
 #include "endpoints_setup.h"
+=======
+>>>>>>> update
 #include "host_endpoint.h"
 #include "sharding_common.h"
 
