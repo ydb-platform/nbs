@@ -47,7 +47,13 @@ func (m *AvailabilityMonitoring) reportSuccessRate(ctx context.Context) {
 
 	successRate := float64(m.successQueriesCount) / float64(m.queriesCount)
 	m.registry.Gauge("successRate").Set(successRate)
-	err := m.storage.UpdateSuccessRate(ctx, m.component, m.host, successRate, time.Now())
+	err := m.storage.UpdateSuccessRate(
+		ctx,
+		m.component,
+		m.host,
+		successRate,
+		time.Now(),
+	)
 	if err != nil {
 		logging.Error(ctx, "got error %v on success rate updating", err)
 	}

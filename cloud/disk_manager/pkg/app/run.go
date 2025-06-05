@@ -214,7 +214,7 @@ func run(
 				db,
 			)
 			successRateReportingInterval, err := time.ParseDuration(
-				config.TasksConfig.GetAvailabilityMonitoringSuccessRateReportingInterval(),
+				config.TasksConfig.GetAvailabilityMonitoringSuccessRateReportingPeriod(),
 			)
 			if err != nil {
 				return err
