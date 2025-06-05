@@ -257,6 +257,12 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
             STORAGE_INFO("Device %s was released by client %s for writing.",
                     uuid.Quote().c_str(), clientId.c_str());
             deviceState->WriterSession = {};
+        } else if (clientId == AnyReaderClientId) {
+            STORAGE_INFO(
+                "Device %s was released by client %s for reading.",
+                uuid.Quote().c_str(),
+                clientId.c_str());
+            deviceState->ReaderSessions = {};
         }
     }
 

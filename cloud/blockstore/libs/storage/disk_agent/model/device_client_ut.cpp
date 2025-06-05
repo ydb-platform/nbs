@@ -817,6 +817,40 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             E_REJECTED,
             client.GetDeviceIOErrorCode("uuid2").value());
     }
+
+    Y_UNIT_TEST_F(TestReleaseDevicesForAnyReader, TFixture)
+    {
+        auto client = CreateClient({.Devices = {"uuid1", "uuid2"}});
+
+        // acquire devices for reading
+        auto error = AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid1", "uuid2"})
+                .SetClientId("reader")
+                .SetAccessMode(NProto::VOLUME_ACCESS_READ_ONLY)
+                .SetDiskId("vol0")
+                .SetVolumeGeneration(1));
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        // check that reading sessions exist
+        UNIT_ASSERT_UNEQUAL(client.GetReaderSessions("uuid1").size(), 0);
+        UNIT_ASSERT_UNEQUAL(client.GetReaderSessions("uuid2").size(), 0);
+
+        // release should success
+        error = ReleaseDevices(
+            client,
+            TReleaseParamsBuilder()
+                .SetUuids({"uuid1", "uuid2"})
+                .SetClientId(TString(AnyReaderClientId))
+                .SetDiskId("vol0")
+                .SetVolumeGeneration(1));
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        // check that all reading sessions was realesed
+        UNIT_ASSERT_EQUAL(client.GetReaderSessions("uuid1").size(), 0);
+        UNIT_ASSERT_EQUAL(client.GetReaderSessions("uuid2").size(), 0);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
