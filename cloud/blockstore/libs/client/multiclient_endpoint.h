@@ -21,8 +21,6 @@ struct IMultiClientEndpoint
     virtual IBlockStorePtr CreateClientEndpoint(
         const TString& clientId,
         const TString& instanceId) = 0;
-
-    virtual ~IMultiClientEndpoint() = default;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
