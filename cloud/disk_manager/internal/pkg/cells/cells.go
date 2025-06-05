@@ -4,10 +4,16 @@ import (
 	"context"
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+<<<<<<< HEAD
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+=======
+)
+
+// //////////////////////////////////////////////////////////////////////////////
+>>>>>>> add cells component
 
 type cellSelector struct {
 	config *cells_config.CellsConfig
