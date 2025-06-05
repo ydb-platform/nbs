@@ -77,11 +77,12 @@ void TListNodeRefsActionActor::Bootstrap(const TActorContext& ctx)
     }
 
     LOG_INFO(ctx, TFileStoreComponents::SERVICE,
-        "Start to change storage config of %s",
+        "Start listing node refs of of %s",
         request.GetFileSystemId().Quote().c_str());
 
     auto requestToTablet = std::make_unique<TEvIndexTablet::TEvListNodeRefsRequest>();
 
+    requestToTablet->Record = std::move(request);
     NCloud::Send(
         ctx,
         MakeIndexTabletProxyServiceId(),
@@ -97,9 +98,7 @@ void TListNodeRefsActionActor::ReplyAndDie(
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
         response.GetError());
 
-    google::protobuf::util::MessageToJsonString(
-        response,
-        msg->Record.MutableOutput());
+    msg->Record.SetOutput(response.SerializeAsString());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(msg));
     Die(ctx);
