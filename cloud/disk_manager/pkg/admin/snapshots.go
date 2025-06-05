@@ -61,7 +61,7 @@ func (t *commandWithScheduler) init() error {
 }
 
 func (t *commandWithScheduler) close() {
-	t.db.Close(t.ctx)
+	_ = t.db.Close(t.ctx)
 }
 
 func newCommandWithScheduler(

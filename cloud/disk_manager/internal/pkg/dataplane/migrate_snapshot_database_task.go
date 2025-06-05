@@ -130,8 +130,6 @@ func (m *migrateSnapshotDatabaseTask) Run(
 			return err
 		}
 	}
-
-	return nil
 }
 
 func (m *migrateSnapshotDatabaseTask) Cancel(
