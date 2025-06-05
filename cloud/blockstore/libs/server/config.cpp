@@ -1,7 +1,5 @@
 #include "config.h"
 
-#include <cloud/blockstore/config/sharding.pb.h>
-
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -15,8 +13,6 @@ namespace NCloud::NBlockStore::NServer {
 namespace {
 
 using TStrings = TVector<TString>;
-
-using TShardMap = THashMap<TString, NProto::TShardInfo>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

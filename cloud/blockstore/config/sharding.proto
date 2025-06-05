@@ -8,14 +8,25 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
 enum EShardDataTransport
 {
-    GRPC = 0;
-    NBD = 1;
-    RDMA = 2;
+    UNSET = 0;
+    GRPC = 1;
+    NBD = 2;
+    RDMA = 3;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TShardInfo
+message TShardHostConfig
+{
+    optional string Fqdn = 1;
+
+    // overrides Transport in TShardInfo.
+    optional EShardDataTransport Transport = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TShardConfig
 {
     // Id of the shard.
     optional string ShardId = 1;
@@ -36,7 +47,7 @@ message TShardInfo
     optional EShardDataTransport Transport = 7;
 
     // List of host belonging to this shard.
-    repeated string Hosts = 8;
+    repeated TShardHostConfig Hosts = 8;
 
     // Number of host in a shard to send Describe requests during volume
     // lookup.
@@ -55,7 +66,7 @@ message TShardInfo
 message TShardingConfig
 {
     // Mapping from ShardId to fqdn hosts.
-    repeated TShardInfo Shards = 1;
+    repeated TShardConfig Shards = 1;
 
     // Shard Id, nbs belongs to.
     optional string ShardId = 2;

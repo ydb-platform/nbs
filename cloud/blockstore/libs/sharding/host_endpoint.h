@@ -11,7 +11,7 @@ namespace NCloud::NBlockStore::NSharding {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TShardClient
+class THostEndpoint
 {
 private:
     const TString LogTag;
@@ -23,16 +23,12 @@ private:
         const TString& fqdn);
 
 public:
-    TShardClient() = default;
-    TShardClient(
-            const NClient::TClientAppConfigPtr& clientConfig,
-            const TString& fqdn,
-            IBlockStorePtr service,
-            IStoragePtr storage)
-        : LogTag(BuildLogTag(clientConfig, fqdn))
-        , Service(std::move(service))
-        , Storage(std::move(storage))
-    {}
+    THostEndpoint() = default;
+    THostEndpoint(
+        const NClient::TClientAppConfigPtr& clientConfig,
+        const TString& fqdn,
+        IBlockStorePtr controlService,
+        IBlockStorePtr storageService);
 
     const TString& GetLogTag() const
     {
@@ -50,6 +46,7 @@ public:
     }
 };
 
-using TShardClients = THashMap<TString, TVector<TShardClient>>;
+using TShardEndpoints = TVector<THostEndpoint>;
+using TShardsEndpoints = THashMap<TString, TShardEndpoints>;
 
 }   // namespace NCloud::NBlockStore::NSharding

@@ -58,7 +58,7 @@ protected:
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
-    NSharding::IRemoteStorageProviderPtr RemoteStorageProvider;
+    NSharding::IShardingManagerPtr RemoteStorageProvider;
     ISocketEndpointListenerPtr GrpcEndpointListener;
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;

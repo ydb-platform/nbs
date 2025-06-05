@@ -3,11 +3,12 @@ LIBRARY()
 SRCS(
     config.cpp
     describe_volume.cpp
-    remote_storage_provider.cpp
+    host_endpoint.cpp
     remote_storage.cpp
-    shard_client.cpp
-    shard_endpoints_manager.cpp
     sharding_common.cpp
+    host_endpoints_manager.cpp
+    shard_manager.cpp
+    sharding_manager.cpp
 )
 
 PEERDIR(

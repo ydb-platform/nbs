@@ -1,8 +1,7 @@
 #include "describe_volume.h"
 
 #include "config.h"
-#include "remote_storage_provider.h"
-#include "remote_storage.h"
+#include "sharding_manager.h"
 
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/config/sharding.pb.h>
@@ -22,45 +21,6 @@ namespace NCloud::NBlockStore::NSharding {
 using namespace NThreading;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TTestRemoteStorageProvider
-    : public IRemoteStorageProvider
-{
-    TTestRemoteStorageProvider(TShardingConfigPtr config)
-        : IRemoteStorageProvider(std::move(config))
-    {}
-
-    [[nodiscard]] TShardClient GetShardClient(
-        const TString& shardId,
-        NClient::TClientAppConfigPtr clientConfig) override
-    {
-        Y_UNUSED(shardId);
-        Y_UNUSED(clientConfig);
-        return {};
-    }
-
-    [[nodiscard]] TShardClients GetShardsClients(
-        NClient::TClientAppConfigPtr clientConfig) override
-    {
-        Y_UNUSED(clientConfig);
-        return Clients;
-    }
-
-    void Start() override
-    {}
-
-    void Stop() override
-    {}
-
-    void SetShardClients(TShardClients clients)
-    {
-        Clients = std::move(clients);
-    }
-
-    TShardClients Clients;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -107,6 +67,21 @@ struct TTestServiceClient
 
 };
 
+std::shared_ptr<TTestServiceClient> CreateShardEndpoint(
+    const TString& shardId,
+    const TString& host,
+    TShardsEndpoints& endpoints)
+{
+    auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
+    auto service = std::make_shared<TTestServiceClient>();
+    endpoints[shardId].emplace_back(
+        clientAppConfig,
+        host,
+        service,
+        service);
+    return service;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -115,48 +90,29 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 {
     Y_UNIT_TEST(ShouldDescribeRemoteVolume)
     {
-        NProto::TShardingConfig cfg;
-        auto* shard1 = cfg.MutableShards()->Add();
-        shard1->SetShardId("shard1");
-        shard1->MutableHosts()->Add("host1");
-        auto* shard2 = cfg.MutableShards()->Add();
-        shard2->SetShardId("shard2");
-        shard2->MutableHosts()->Add("host2");
+        TShardsEndpoints endpoints;
 
-        auto shardingConfig = std::make_shared<TShardingConfig>(std::move(cfg));
+        auto s1h1Client = CreateShardEndpoint("shard1", "s1h1", endpoints);
+        auto s2h1Client = CreateShardEndpoint("shard2", "s2h1", endpoints);
 
-        auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
-
-        TShardClients clients;
-
-        auto createShardClient = [&](const TString& shardId, const TString& host)
-        {
-            auto service = std::make_shared<TTestServiceClient>();
-            clients[shardId].emplace_back(
-                clientAppConfig,
-                host,
-                service,
-                CreateRemoteStorage(service));
-            return service;
-        };
-
-        auto s1h1Client = createShardClient("shard1", "s1h1");
-        auto s2h1Client = createShardClient("shard2", "s2h1");
-
-        auto storageProvider = std::make_shared<TTestRemoteStorageProvider>(
-            shardingConfig);
-        storageProvider->SetShardClients(clients);
+        NProto::TDescribeVolumeRequest request;
+        request.MutableHeaders()->CopyFrom(NProto::THeaders());
+        request.SetDiskId("shard1disk");
 
         auto localService = std::make_shared<TTestServiceClient>();
 
-        auto response = DescribeRemoteVolume(
-            "shard1disk",
-            NProto::THeaders(),
+        TShardingArguments args;
+        args.Logging = CreateLoggingService("console");
+        args.Scheduler = CreateScheduler();
+        args.Scheduler->Start();
+
+        auto response = DescribeVolume(
+            request,
             localService,
-            storageProvider,
-            CreateLoggingService("console"),
-            CreateScheduler(),
-            NProto::TClientConfig());
+            endpoints,
+            false,
+            TDuration::Seconds(Max<ui32>()),
+            args);
 
         UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -180,48 +136,29 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
     Y_UNIT_TEST(ShouldDescribeLocalVolume)
     {
-        NProto::TShardingConfig cfg;
-        auto* shard1 = cfg.MutableShards()->Add();
-        shard1->SetShardId("shard1");
-        shard1->MutableHosts()->Add("host1");
-        auto* shard2 = cfg.MutableShards()->Add();
-        shard2->SetShardId("shard2");
-        shard2->MutableHosts()->Add("host2");
+        TShardsEndpoints endpoints;
 
-        auto shardingConfig = std::make_shared<TShardingConfig>(std::move(cfg));
-
-        auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
-
-        TShardClients clients;
-
-        auto createShardClient = [&](const TString& shardId, const TString& host)
-        {
-            auto service = std::make_shared<TTestServiceClient>();
-            clients[shardId].emplace_back(
-                clientAppConfig,
-                host,
-                service,
-                CreateRemoteStorage(service));
-            return service;
-        };
-
-        auto s1h1Client = createShardClient("shard1", "s1h1");
-        auto s2h1Client = createShardClient("shard2", "s2h1");
-
-        auto storageProvider = std::make_shared<TTestRemoteStorageProvider>(
-            shardingConfig);
-        storageProvider->SetShardClients(clients);
+        auto s1h1Client = CreateShardEndpoint("shard1", "s1h1", endpoints);
+        auto s2h1Client = CreateShardEndpoint("shard2", "s2h1", endpoints);
 
         auto localService = std::make_shared<TTestServiceClient>();
 
-        auto response = DescribeRemoteVolume(
-            "shard1disk",
-            NProto::THeaders(),
+        NProto::TDescribeVolumeRequest request;
+        request.MutableHeaders()->CopyFrom(NProto::THeaders());
+        request.SetDiskId("shard1disk");
+
+        TShardingArguments args;
+        args.Logging = CreateLoggingService("console");
+        args.Scheduler = CreateScheduler();
+        args.Scheduler->Start();
+
+        auto response = DescribeVolume(
+            request,
             localService,
-            storageProvider,
-            CreateLoggingService("console"),
-            CreateScheduler(),
-            NProto::TClientConfig());
+            endpoints,
+            false,
+            TDuration::Seconds(Max<ui32>()),
+            args);
 
         UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -245,48 +182,29 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
     Y_UNIT_TEST(ShouldReturnFatalErrorIfVolumeIsAbsent)
     {
-        NProto::TShardingConfig cfg;
-        auto* shard1 = cfg.MutableShards()->Add();
-        shard1->SetShardId("shard1");
-        shard1->MutableHosts()->Add("host1");
-        auto* shard2 = cfg.MutableShards()->Add();
-        shard2->SetShardId("shard2");
-        shard2->MutableHosts()->Add("host2");
+        TShardsEndpoints endpoints;
 
-        auto shardingConfig = std::make_shared<TShardingConfig>(std::move(cfg));
-
-        auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
-
-        TShardClients clients;
-
-        auto createShardClient = [&](const TString& shardId, const TString& host)
-        {
-            auto service = std::make_shared<TTestServiceClient>();
-            clients[shardId].emplace_back(
-                clientAppConfig,
-                host,
-                service,
-                CreateRemoteStorage(service));
-            return service;
-        };
-
-        auto s1h1Client = createShardClient("shard1", "s1h1");
-        auto s2h1Client = createShardClient("shard2", "s2h1");
-
-        auto storageProvider = std::make_shared<TTestRemoteStorageProvider>(
-            shardingConfig);
-        storageProvider->SetShardClients(clients);
+        auto s1h1Client = CreateShardEndpoint("shard1", "s1h1", endpoints);
+        auto s2h1Client = CreateShardEndpoint("shard2", "s2h1", endpoints);
 
         auto localService = std::make_shared<TTestServiceClient>();
 
-        auto response = DescribeRemoteVolume(
-            "shard1disk",
-            NProto::THeaders(),
+        NProto::TDescribeVolumeRequest request;
+        request.MutableHeaders()->CopyFrom(NProto::THeaders());
+        request.SetDiskId("shard1disk");
+
+        TShardingArguments args;
+        args.Logging = CreateLoggingService("console");
+        args.Scheduler = CreateScheduler();
+        args.Scheduler->Start();
+
+        auto response = DescribeVolume(
+            request,
             localService,
-            storageProvider,
-            CreateLoggingService("console"),
-            CreateScheduler(),
-            NProto::TClientConfig());
+            endpoints,
+            false,
+            TDuration::Seconds(Max<ui32>()),
+            args);
 
         UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -328,48 +246,29 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
     Y_UNIT_TEST(ShouldReturnRetribleErrorIfAtLeastOneShardIsNotReachable)
     {
-        NProto::TShardingConfig cfg;
-        auto* shard1 = cfg.MutableShards()->Add();
-        shard1->SetShardId("shard1");
-        shard1->MutableHosts()->Add("host1");
-        auto* shard2 = cfg.MutableShards()->Add();
-        shard2->SetShardId("shard2");
-        shard2->MutableHosts()->Add("host2");
+        TShardsEndpoints endpoints;
 
-        auto shardingConfig = std::make_shared<TShardingConfig>(std::move(cfg));
-
-        auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
-
-        TShardClients clients;
-
-        auto createShardClient = [&](const TString& shardId, const TString& host)
-        {
-            auto service = std::make_shared<TTestServiceClient>();
-            clients[shardId].emplace_back(
-                clientAppConfig,
-                host,
-                service,
-                CreateRemoteStorage(service));
-            return service;
-        };
-
-        auto s1h1Client = createShardClient("shard1", "s1h1");
-        auto s2h1Client = createShardClient("shard2", "s2h1");
-
-        auto storageProvider = std::make_shared<TTestRemoteStorageProvider>(
-            shardingConfig);
-        storageProvider->SetShardClients(clients);
+        auto s1h1Client = CreateShardEndpoint("shard1", "s1h1", endpoints);
+        auto s2h1Client = CreateShardEndpoint("shard2", "s2h1", endpoints);
 
         auto localService = std::make_shared<TTestServiceClient>();
 
-        auto response = DescribeRemoteVolume(
-            "shard1disk",
-            NProto::THeaders(),
+        NProto::TDescribeVolumeRequest request;
+        request.MutableHeaders()->CopyFrom(NProto::THeaders());
+        request.SetDiskId("shard1disk");
+
+        TShardingArguments args;
+        args.Logging = CreateLoggingService("console");
+        args.Scheduler = CreateScheduler();
+        args.Scheduler->Start();
+
+        auto response = DescribeVolume(
+            request,
             localService,
-            storageProvider,
-            CreateLoggingService("console"),
-            CreateScheduler(),
-            NProto::TClientConfig());
+            endpoints,
+            false,
+            TDuration::Seconds(Max<ui32>()),
+            args);
 
         UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -413,47 +312,28 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
     Y_UNIT_TEST(ShouldReturnRetribleErrorIfAtLeastOneShardUnavailable)
     {
-        NProto::TShardingConfig cfg;
-        auto* shard1 = cfg.MutableShards()->Add();
-        shard1->SetShardId("shard1");
-        shard1->MutableHosts()->Add("host1");
-        auto* shard2 = cfg.MutableShards()->Add();
-        shard2->SetShardId("shard2");
-        shard2->MutableHosts()->Add("host2");
+        TShardsEndpoints endpoints;
 
-        auto shardingConfig = std::make_shared<TShardingConfig>(std::move(cfg));
-
-        auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
-
-        TShardClients clients;
-
-        auto createShardClient = [&](const TString& shardId, const TString& host)
-        {
-            auto service = std::make_shared<TTestServiceClient>();
-            clients[shardId].emplace_back(
-                clientAppConfig,
-                host,
-                service,
-                CreateRemoteStorage(service));
-            return service;
-        };
-
-        auto s1h1Client = createShardClient("shard1", "s1h1");
-
-        auto storageProvider = std::make_shared<TTestRemoteStorageProvider>(
-            shardingConfig);
-        storageProvider->SetShardClients(clients);
+        auto s1h1Client = CreateShardEndpoint("shard1", "s1h1", endpoints);
 
         auto localService = std::make_shared<TTestServiceClient>();
 
-        auto response = DescribeRemoteVolume(
-            "shard1disk",
-            NProto::THeaders(),
+        NProto::TDescribeVolumeRequest request;
+        request.MutableHeaders()->CopyFrom(NProto::THeaders());
+        request.SetDiskId("shard1disk");
+
+        TShardingArguments args;
+        args.Logging = CreateLoggingService("console");
+        args.Scheduler = CreateScheduler();
+        args.Scheduler->Start();
+
+        auto response = DescribeVolume(
+            request,
             localService,
-            storageProvider,
-            CreateLoggingService("console"),
-            CreateScheduler(),
-            NProto::TClientConfig());
+            endpoints,
+            true,
+            TDuration::Seconds(Max<ui32>()),
+            args);
 
         UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -486,27 +366,74 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
     Y_UNIT_TEST(ShouldNotReturnFutureIfShardsAreNotConfigured)
     {
-        NProto::TShardingConfig cfg;
-
-        auto shardingConfig = std::make_shared<TShardingConfig>(std::move(cfg));
-
-        auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
-
-        auto storageProvider = std::make_shared<TTestRemoteStorageProvider>(
-            shardingConfig);
+        TShardsEndpoints endpoints;
 
         auto localService = std::make_shared<TTestServiceClient>();
 
-        auto response = DescribeRemoteVolume(
-            "shard1disk",
-            NProto::THeaders(),
+        NProto::TDescribeVolumeRequest request;
+        request.MutableHeaders()->CopyFrom(NProto::THeaders());
+        request.SetDiskId("shard1disk");
+
+        TShardingArguments args;
+        args.Logging = CreateLoggingService("console");
+        args.Scheduler = CreateScheduler();
+        args.Scheduler->Start();
+
+        auto response = DescribeVolume(
+            request,
             localService,
-            storageProvider,
-            CreateLoggingService("console"),
-            CreateScheduler(),
-            NProto::TClientConfig());
+            endpoints,
+            true,
+            TDuration::Seconds(Max<ui32>()),
+            args);
 
         UNIT_ASSERT_C(!response.has_value(), "No future should be returned");
+    }
+
+    Y_UNIT_TEST(ShouldReplyRetriableErrorOnTimeout)
+    {
+        TShardsEndpoints endpoints;
+
+        auto s1h1Client = CreateShardEndpoint("shard1", "s1h1", endpoints);
+        auto s2h1Client = CreateShardEndpoint("shard2", "s2h1", endpoints);
+
+        NProto::TDescribeVolumeRequest request;
+        request.MutableHeaders()->CopyFrom(NProto::THeaders());
+        request.SetDiskId("shard1disk");
+
+        auto localService = std::make_shared<TTestServiceClient>();
+
+        TShardingArguments args;
+        args.Logging = CreateLoggingService("console");
+        args.Scheduler = CreateScheduler();
+        args.Scheduler->Start();
+
+        auto response = DescribeVolume(
+            request,
+            localService,
+            endpoints,
+            false,
+            TDuration::Seconds(1),
+            args);
+
+        UNIT_ASSERT_C(response.has_value(), "No future is set");
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            s1h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            s2h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            localService->DescribeVolumeCalled);
+
+        auto describeResponse = response->GetValue(TDuration::Seconds(2));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            describeResponse.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Describe timeout",
+            describeResponse.GetError().GetMessage());
     }
 }
 

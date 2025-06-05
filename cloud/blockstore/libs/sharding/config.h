@@ -16,16 +16,67 @@ namespace NCloud::NBlockStore::NSharding {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TShardConfig;
+struct TShardHostConfig
+{
+    TShardHostConfig(
+        NProto::TShardHostConfig hostConfig,
+        TShardConfig shardConfig);
+
+    ui32 GetGrpcPort() const
+    {
+        return GrpcPort;
+    }
+
+    ui32 GetSecureGrpcPort() const
+    {
+        return SecureGrpcPort;
+    }
+
+    ui32 GetRdmaPort() const
+    {
+        return RdmaPort;
+    }
+
+    ui32 GetNbdPort() const
+    {
+        return NbdPort;
+    }
+
+    TString GetFqdn() const
+    {
+        return Fqdn;
+    }
+
+    NProto::EShardDataTransport GetTransport() const
+    {
+        return Transport;
+    }
+
+private:
+    ui32 GrpcPort = 0;
+    ui32 SecureGrpcPort = 0;
+    ui32 RdmaPort = 0;
+    ui32 NbdPort = 0;
+    TString Fqdn;
+    NProto::EShardDataTransport Transport;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TConfiguredHosts = THashMap<TString, TShardHostConfig>;
+
 class TShardConfig
     : public IDumpable
 {
 private:
-    const NProto::TShardInfo Config;
+    const NProto::TShardConfig Config;
+    TConfiguredHosts ConfiguredHosts;
 
 public:
-    explicit TShardConfig(NProto::TShardInfo Config = {});
+    explicit TShardConfig(NProto::TShardConfig config = {});
 
-    [[nodiscard]] const NProto::TShardInfo& GetInfo() const
+    [[nodiscard]] const NProto::TShardConfig& GetShardConfig() const
     {
         return Config;
     }
@@ -36,7 +87,7 @@ public:
     [[nodiscard]] ui32 GetRdmaPort() const;
     [[nodiscard]] ui32 GetNbdPort() const;
     [[nodiscard]] NProto::EShardDataTransport GetTransport() const;
-    [[nodiscard]] TVector<TString> GetHosts() const;
+    [[nodiscard]] const TConfiguredHosts& GetHosts() const;
     [[nodiscard]] ui32 GetShardDescribeHostCnt() const;
     [[nodiscard]] TString GetFixedHost() const;
     [[nodiscard]] ui32 GetMinShardConnections() const;
@@ -56,6 +107,7 @@ class TShardingConfig
 {
 private:
     const NProto::TShardingConfig Config;
+    TConfiguredShards ConfiguredShards;
 
 public:
     explicit TShardingConfig(NProto::TShardingConfig Config = {});
@@ -66,7 +118,7 @@ public:
     }
 
     [[nodiscard]] TString GetShardId() const;
-    [[nodiscard]] TConfiguredShards GetShards() const;
+    [[nodiscard]] const TConfiguredShards& GetShards() const;
     [[nodiscard]] TDuration GetDescribeTimeout() const;
 
     void Dump(IOutputStream& out) const override;
