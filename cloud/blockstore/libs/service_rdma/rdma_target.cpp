@@ -194,28 +194,39 @@ private:
             std::move(callContext),
             std::move(req));
 
-        future.Subscribe([=, buffer = std::move(buffer), guardedSgList = std::move(guardedSgList), blockSize = request.GetBlockSize(), taskQueue = TaskQueue, endpoint = Endpoint] (auto future) {
-            auto response = ExtractResponse(future);
+        future.Subscribe(
+            [=,
+             buffer = std::move(buffer),
+             guardedSgList = std::move(guardedSgList),
+             blockSize = request.GetBlockSize(),
+             taskQueue = TaskQueue,
+             endpoint = Endpoint](auto future)
+            {
+                auto response = ExtractResponse(future);
 
-            taskQueue->ExecuteSimple([=] () mutable {
+                taskQueue->ExecuteSimple(
+                    [=,
+                     buffer = std::move(buffer),
+                     guardedSgList = std::move(guardedSgList)]() mutable
+                    {
+                        if (SUCCEEDED(response.GetError().GetCode())) {
+                            auto guard = guardedSgList.Acquire();
+                            Y_ENSURE(guard);
 
-                if (SUCCEEDED(response.GetError().GetCode())) {
-                    auto guard = guardedSgList.Acquire();
-                    Y_ENSURE(guard);
-
-                    size_t responseBytes =
-                        NRdma::TProtoMessageSerializer::SerializeWithData(
-                            out,
-                            TBlockStoreServerProtocol::EvReadBlocksResponse,
-                            0,   // flags
-                            response,
-                            guard.Get());
-                    if (auto ep = endpoint.lock()) {
-                        ep->SendResponse(context, responseBytes);
-                    }
-                }
+                            size_t responseBytes = NRdma::
+                                TProtoMessageSerializer::SerializeWithData(
+                                    out,
+                                    TBlockStoreServerProtocol::
+                                        EvReadBlocksResponse,
+                                    0,   // flags
+                                    response,
+                                    guard.Get());
+                            if (auto ep = endpoint.lock()) {
+                                ep->SendResponse(context, responseBytes);
+                            }
+                        }
+                    });
             });
-        });
 
         return {};
     }
