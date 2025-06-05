@@ -4,20 +4,23 @@
 
 namespace NCloud::NBlockStore {
 
-TBlocksInfo::TBlocksInfo(ui64 from, ui64 length, ui32 blockSize)
+TBlocksInfo::TBlocksInfo(
+        const ui64 from,
+        const ui64 length,
+        const ui32 blockSize)
     : BlockSize(blockSize)
 {
-    ui64 startIndex = from / blockSize;
-    ui64 beginOffset = from - startIndex * blockSize;
+    const ui64 startIndex = from / blockSize;
+    const ui64 beginOffset = from - startIndex * blockSize;
 
-    auto realLength = beginOffset + length;
+    const auto realLength = beginOffset + length;
     ui64 blocksCount = realLength / blockSize;
 
     if (blocksCount * blockSize < realLength) {
         ++blocksCount;
     }
 
-    ui64 endOffset = blocksCount * blockSize - realLength;
+    const ui64 endOffset = blocksCount * blockSize - realLength;
 
     Range = TBlockRange64::WithLength(startIndex, blocksCount);
     BeginOffset = beginOffset;
@@ -52,11 +55,12 @@ std::pair<TBlocksInfo, std::optional<TBlocksInfo>> TBlocksInfo::Split() const
     TBlocksInfo firstBlocksInfo = *this, secondBlocksInfo = *this;
     if (BeginOffset != 0) {
         // The first blocksInfo contains one block with an unaligned
-        // BeginOffset. The second blocksInfo is aligned.
+        // BeginOffset. The second blocksInfo can have an unaligned EndOffset.
         firstBlocksInfo.EndOffset = 0;
         firstBlocksInfo.Range.End = firstBlocksInfo.Range.Start;
         secondBlocksInfo.BeginOffset = 0;
-        ++secondBlocksInfo.Range.Start;
+        secondBlocksInfo.BeginOffset = 0;
+        secondBlocksInfo.Range.Start = firstBlocksInfo.Range.End + 1;
     } else {
         // The first blocksInfo is aligned.
         // The second blocksInfo contains one block with an unaligned EndOffset.
@@ -73,7 +77,7 @@ TString TBlocksInfo::Print() const
     return TStringBuilder()
            << "[Range: " << Range << " BeginOffset: " << BeginOffset
            << " EndOffset: " << EndOffset << " BlockSize: " << BlockSize
-           << " SgListAligned: " << SgListAligned << "]";
+           << " SgListAligned: " << (SgListAligned ? "true" : "false") << "]";
 }
 
 IOutputStream& operator<<(IOutputStream& out, const TBlocksInfo& rhs)

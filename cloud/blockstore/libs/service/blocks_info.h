@@ -9,7 +9,7 @@ namespace NCloud::NBlockStore {
 struct TBlocksInfo
 {
     TBlocksInfo() = default;
-    TBlocksInfo(ui64 from, ui64 length, ui32 blockSize);
+    TBlocksInfo(const ui64 from, const ui64 length, const ui32 blockSize);
     TBlocksInfo(const TBlocksInfo&) = default;
 
     [[nodiscard]] size_t BufferSize() const;
@@ -39,13 +39,7 @@ struct TBlocksInfo
     // of the block size
     bool SgListAligned = true;
 
-    friend bool operator==(const TBlocksInfo& lhs, const TBlocksInfo& rhs)
-    {
-        return lhs.Range == rhs.Range && lhs.BeginOffset == rhs.BeginOffset &&
-               lhs.EndOffset == rhs.EndOffset &&
-               lhs.BlockSize == rhs.BlockSize &&
-               lhs.SgListAligned == rhs.SgListAligned;
-    }
+    bool operator==(const TBlocksInfo& rhs) const = default;
 
     [[nodiscard]] TString Print() const;
 };
