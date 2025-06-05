@@ -269,7 +269,7 @@ void TModifyTagsActionActor::HandleDescribeVolumeResponse(
     }
 
     if (!changed) {
-        LOG_DEBUG(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
             "Skipping tag modification; tags are already as desired for volume "
