@@ -1,0 +1,15 @@
+syntax = "proto2";
+
+package cells;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message ZoneCells {
+    repeated string Cells = 1;
+}
+
+message CellsConfig {
+    map<string, ZoneCells> Shards = 1;
+}
