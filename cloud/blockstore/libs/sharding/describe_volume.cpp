@@ -212,15 +212,9 @@ void TDescribeResponseHandler::operator ()(const auto& future)
     if (!owner) {
         return;
     }
-<<<<<<< HEAD
 
     auto& Log = owner->Log;
 
-=======
-
-    auto& Log = owner->Log;
-
->>>>>>> update & ut
     if (owner->Promise.HasValue()) {
         return;
     }
