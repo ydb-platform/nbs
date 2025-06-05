@@ -221,12 +221,14 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
         [self = weak_from_this(),
          taskQueue = TaskQueue,
          guardedSgList = std::move(guardedSgList),
+         buffer = std::move(buffer),
          out,
          context](TFuture<NProto::TReadBlocksLocalResponse> future) mutable
         {
             taskQueue->ExecuteSimple(
                 [self = std::move(self),
                  guardedSgList = std::move(guardedSgList),
+                 buffer = std::move(buffer),
                  out,
                  response = ExtractResponse(future),
                  context]()
