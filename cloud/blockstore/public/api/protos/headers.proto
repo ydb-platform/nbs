@@ -91,6 +91,6 @@ message THeaders
     // order write requests.
     uint64 VolumeRequestId = 13;
 
-    // Indicates that this request has been retried by the durable client.
-    bool IsRetry = 14;
+    // Attempt number of the request.
+    uint32 RetryNumber = 14;
 }

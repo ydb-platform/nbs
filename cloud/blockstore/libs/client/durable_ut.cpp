@@ -1298,8 +1298,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
                     expectedTimeoutsSec[requestsCount] * 1000);
 
                 UNIT_ASSERT_VALUES_EQUAL(
-                    (requestsCount > 0),
-                    headers.GetIsRetry());
+                    requestsCount,
+                    headers.GetRetryNumber());
 
                 NProto::TPingResponse response;
 

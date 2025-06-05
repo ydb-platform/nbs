@@ -109,7 +109,7 @@ void TVolumeActor::UpdateIngestTimeStats(
     }
 
     const auto& headers = ev->Get()->Record.GetHeaders();
-    if (headers.GetIsRetry()) {
+    if (headers.GetRetryNumber() > 0) {
         return;
     }
 

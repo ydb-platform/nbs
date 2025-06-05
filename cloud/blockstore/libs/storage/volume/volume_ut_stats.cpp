@@ -501,13 +501,15 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_GE(zeroIndex, 23);
         UNIT_ASSERT_VALUES_UNEQUAL(zeroIndex, NPOS);
 
-
         // Make sure that retry request is not recorded in ingestion stats.
         {
-            auto readRequest = volume.CreateReadBlocksRequest(TBlockRange64::WithLength(0, 100), clientInfo.GetClientId());
+            auto readRequest = volume.CreateReadBlocksRequest(
+                TBlockRange64::WithLength(0, 100),
+                clientInfo.GetClientId());
             const auto timestamp = time - TDuration::MilliSeconds(100);
-            readRequest->Record.MutableHeaders()->SetTimestamp(timestamp.MicroSeconds());
-            readRequest->Record.MutableHeaders()->SetIsRetry(true);
+            readRequest->Record.MutableHeaders()->SetTimestamp(
+                timestamp.MicroSeconds());
+            readRequest->Record.MutableHeaders()->SetRetryNumber(1);
 
             volume.SendToPipe(std::move(readRequest));
             auto response = volume.RecvReadBlocksResponse();

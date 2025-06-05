@@ -225,10 +225,10 @@ private:
     }
 
     template <typename T>
-    void SetIsRetryFlag(T& request)
+    void IncrementRetryNumber(T& request)
     {
         auto& headers = *request.MutableHeaders();
-        headers.SetIsRetry(true);
+        headers.SetRetryNumber(headers.GetRetryNumber() + 1);
     }
 
     template <typename T>
@@ -284,7 +284,7 @@ private:
                         break;
                 }
 
-                SetIsRetryFlag(*state->Request);
+                IncrementRetryNumber(*state->Request);
                 if (error.GetCode() == E_TIMEOUT) {
                     IncrementRequestTimeout(*state->Request);
                 }
