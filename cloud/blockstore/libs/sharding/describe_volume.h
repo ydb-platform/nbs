@@ -1,6 +1,9 @@
 #pragma once
 
 #include "public.h"
+#include "host_endpoint.h"
+#include "sharding_common.h"
+#include "sharding_manager.h"
 
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/server/public.h>
@@ -14,15 +17,12 @@ namespace NCloud::NBlockStore::NSharding {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TDescribeFuture = NThreading::TFuture<NProto::TDescribeVolumeResponse>;
-
-std::optional<TDescribeFuture> DescribeRemoteVolume(
-    const TString& diskId,
-    const NProto::THeaders& headers,
+std::optional<TDescribeFuture> DescribeVolume(
+    const NProto::TDescribeVolumeRequest& request,
     const IBlockStorePtr& localService,
-    const IRemoteStorageProviderPtr& remoteStorageProvider,
-    const ILoggingServicePtr& logging,
-    const ISchedulerPtr& scheduler,
-    const NProto::TClientConfig& clientConfig);
+    const TShardsEndpoints& endpoints,
+    bool hasUnavailableShards,
+    TDuration timeout,
+    TShardingArguments args);
 
 }   // namespace NCloud::NBlockStore::NSharding

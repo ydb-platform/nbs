@@ -2,10 +2,12 @@
 
 #include "public.h"
 
-#include "shard_client.h"
+#include "host_endpoint.h"
+
 
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/service/public.h>
+#include <cloud/blockstore/libs/service/service.h>
 
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 
@@ -14,33 +16,32 @@
 namespace NCloud::NBlockStore::NSharding {
 
 ////////////////////////////////////////////////////////////////////////////////
-struct IRemoteStorageProvider
+
+using TDescribeFuture = NThreading::TFuture<NProto::TDescribeVolumeResponse>;
+
+struct IShardingManager
     : public IStartable
 {
     TShardingConfigPtr Config;
 
-    explicit IRemoteStorageProvider(TShardingConfigPtr config)
+    explicit IShardingManager(TShardingConfigPtr config)
         : Config(std::move(config))
     {}
 
-    ~IRemoteStorageProvider() override = default;
-
-    [[nodiscard]] virtual TShardClient GetShardClient(
+    [[nodiscard]] virtual TResultOrError<THostEndpoint> GetShardEndpoint(
         const TString& shardId,
-        NClient::TClientAppConfigPtr clientConfig) = 0;
+        const NClient::TClientAppConfigPtr& clientConfig) = 0;
 
-    [[nodiscard]] virtual TShardClients GetShardsClients(
-        NClient::TClientAppConfigPtr clientConfig)  = 0;
-
-    [[nodiscard]] TShardingConfigPtr GetShardingConfig() const
-    {
-        return Config;
-    }
+    [[nodiscard]] virtual std::optional<TDescribeFuture> DescribeVolume(
+        const TString& diskId,
+        const NProto::THeaders& headers,
+        const IBlockStorePtr& localService,
+        const NProto::TClientConfig& clientConfig) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IRemoteStorageProviderPtr CreateRemoteStorageProvider(
+IShardingManagerPtr CreateRemoteStorageProvider(
     TShardingConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,

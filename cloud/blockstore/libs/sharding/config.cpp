@@ -13,31 +13,37 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_SHARD_CONFIG(xxx)                                           \
+#define BLOCKSTORE_SHARD_DEFAULT_CONFIG(xxx)                                   \
     xxx(ShardId,                     TString,                {}               )\
-    xxx(GrpcPort,                    ui32,                   9766             )\
+    xxx(GrpcPort,                    ui32,                   0                )\
     xxx(NbdPort,                     ui32,                   {}               )\
-    xxx(RdmaPort,                    ui32,                   10040            )\
+    xxx(RdmaPort,                    ui32,                   0                )\
     xxx(SecureGrpcPort,              ui32,                   {}               )\
     xxx(ShardDescribeHostCnt,        ui32,                   1                )\
     xxx(MinShardConnections,         ui32,                   1                )\
-    xxx(Hosts,                       TVector<TString>,       {}               )\
-    xxx(Transport,            NProto::EShardDataTransport,   NProto::GRPC     )\
-    xxx(FixedHost,            TString,                       {}               )\
-// BLOCKSTORE_SERVER_CONFIG
+    xxx(Transport,             NProto::EShardDataTransport,  NProto::GRPC     )\
+    xxx(FixedHost,             TString,                      {}               )\
+// BLOCKSTORE_SHARD_DEFAULT_CONFIG
 
 #define BLOCKSTORE_SHARD_DECLARE_CONFIG(name, type, value)                     \
     Y_DECLARE_UNUSED static const type ShardDefault##name = value;             \
 // BLOCKSTORE_SHARD_DECLARE_CONFIG
 
-BLOCKSTORE_SHARD_CONFIG(BLOCKSTORE_SHARD_DECLARE_CONFIG)
+BLOCKSTORE_SHARD_DEFAULT_CONFIG(BLOCKSTORE_SHARD_DECLARE_CONFIG)
 
-#undef BLOCKSTORE_SHARDING_DECLARE_CONFIG
+#undef BLOCKSTORE_SHARD_DECLARE_CONFIG
+
+#define BLOCKSTORE_SHARD_COMPUTED_CONFIG(xxx)                                  \
+    xxx(Hosts,                     TConfiguredHosts                           )\
+// BLOCKSTORE_SHARD_COMPUTED_CONFIG
+
+#define BLOCKSTORE_SHARD_CONFIG(xxx)                                           \
+    BLOCKSTORE_SHARD_DEFAULT_CONFIG(xxx)                                       \
+    BLOCKSTORE_SHARD_COMPUTED_CONFIG(xxx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_SHARDING_CONFIG(xxx)                                        \
-    xxx(Shards,                      TConfiguredShards, {}                    )\
+#define BLOCKSTORE_SHARDING_DEFAULT_CONFIG(xxx)                                \
     xxx(ShardId,                     TString,           {}                    )\
     xxx(DescribeTimeout,             TDuration,         TDuration::Seconds(30))\
 // BLOCKSTORE_SERVER_CONFIG
@@ -46,9 +52,17 @@ BLOCKSTORE_SHARD_CONFIG(BLOCKSTORE_SHARD_DECLARE_CONFIG)
     Y_DECLARE_UNUSED static const type ShardingDefault##name = value;          \
 // BLOCKSTORE_SHARDING_DECLARE_CONFIG
 
-BLOCKSTORE_SHARDING_CONFIG(BLOCKSTORE_SHARDING_DECLARE_CONFIG)
+BLOCKSTORE_SHARDING_DEFAULT_CONFIG(BLOCKSTORE_SHARDING_DECLARE_CONFIG)
 
 #undef BLOCKSTORE_SHARDING_DECLARE_CONFIG
+
+#define BLOCKSTORE_SHARDING_COMPUTED_CONFIG(xxx)                               \
+    xxx(Shards,                     TConfiguredShards                         )\
+// BLOCKSTORE_SHARDING_COMPUTED_CONFIG
+
+#define BLOCKSTORE_SHARDING_CONFIG(xxx)                                        \
+    BLOCKSTORE_SHARDING_DEFAULT_CONFIG(xxx)                                    \
+    BLOCKSTORE_SHARDING_COMPUTED_CONFIG(xxx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -62,28 +76,6 @@ template <>
 TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
-}
-
-template <>
-TVector<TString> ConvertValue(
-    const google::protobuf::RepeatedPtrField<TString>& value)
-{
-    TVector<TString> v;
-    for (const auto& item: value) {
-        v.emplace_back(item);
-    }
-    return v;
-}
-
-template <>
-TConfiguredShards ConvertValue(
-    const google::protobuf::RepeatedPtrField<NProto::TShardInfo>& value)
-{
-    TConfiguredShards v;
-    for (const auto& item: value) {
-        v.emplace(item.GetShardId(), TShardConfig(item));
-    }
-    return v;
 }
 
 template <typename T>
@@ -102,14 +94,12 @@ void DumpImpl(
 }
 
 template <>
-void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+void DumpImpl(
+    const TConfiguredHosts& value,
+    IOutputStream& os)
 {
-    for (size_t i = 0; i < value.size(); ++i) {
-        if (i) {
-            os << ",";
-        }
-        os << value[i];
-    }
+    Y_UNUSED(value);
+    Y_UNUSED(os);
 }
 
 template <>
@@ -118,6 +108,9 @@ void DumpImpl(
     IOutputStream& os)
 {
     switch (value) {
+        case NProto::UNSET:
+            os << "UNSET";
+            break;
         case NProto::GRPC:
             os << "GRPC";
             break;
@@ -139,9 +132,33 @@ void DumpImpl(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TShardConfig::TShardConfig(NProto::TShardInfo config)
+TShardHostConfig::TShardHostConfig(
+        NProto::TShardHostConfig hostConfig,
+        TShardConfig shardConfig)
+    : GrpcPort(shardConfig.GetGrpcPort())
+    , SecureGrpcPort(shardConfig.GetSecureGrpcPort())
+    , RdmaPort(shardConfig.GetRdmaPort())
+    , NbdPort(shardConfig.GetNbdPort())
+    , Fqdn(hostConfig.GetFqdn())
+    , Transport(hostConfig.GetTransport() ?
+        hostConfig.GetTransport():
+        shardConfig.GetTransport())
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TShardConfig::TShardConfig(NProto::TShardConfig config)
     : Config(std::move(config))
 {
+    for (const auto& h: Config.GetHosts()) {
+        ConfiguredHosts.emplace(h.GetFqdn(), TShardHostConfig(h, *this));
+    }
+}
+
+const TConfiguredHosts& TShardConfig::GetHosts() const
+{
+    return ConfiguredHosts;
 }
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
@@ -153,7 +170,7 @@ type TShardConfig::Get##name() const                                           \
 }
 // BLOCKSTORE_CONFIG_GETTER
 
-BLOCKSTORE_SHARD_CONFIG(BLOCKSTORE_CONFIG_GETTER)
+BLOCKSTORE_SHARD_DEFAULT_CONFIG(BLOCKSTORE_CONFIG_GETTER)
 
 #undef BLOCKSTORE_CONFIG_GETTER
 
@@ -195,6 +212,14 @@ void TShardConfig::DumpHtml(IOutputStream& out) const
 TShardingConfig::TShardingConfig(NProto::TShardingConfig config)
     : Config(std::move(config))
 {
+    for (const auto& s: Config.GetShards()) {
+        ConfiguredShards.emplace(s.GetShardId(), s);
+    }
+}
+
+const TConfiguredShards& TShardingConfig::GetShards() const
+{
+    return ConfiguredShards;
 }
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
@@ -206,7 +231,7 @@ type TShardingConfig::Get##name() const                                        \
 }
 // BLOCKSTORE_CONFIG_GETTER
 
-BLOCKSTORE_SHARDING_CONFIG(BLOCKSTORE_CONFIG_GETTER)
+BLOCKSTORE_SHARDING_DEFAULT_CONFIG(BLOCKSTORE_CONFIG_GETTER)
 
 #undef BLOCKSTORE_CONFIG_GETTER
 

@@ -1,7 +1,7 @@
 #include "describe_volume.h"
 
 #include "config.h"
-#include "remote_storage_provider.h"
+#include "sharding_common.h"
 
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
@@ -265,39 +265,21 @@ void TDescribeResponseHandler::operator ()(const auto& future)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::optional<TDescribeFuture> DescribeRemoteVolume(
-    const TString& diskId,
-    const NProto::THeaders& headers,
+std::optional<TDescribeFuture> DescribeVolume(
+    const NProto::TDescribeVolumeRequest& request,
     const IBlockStorePtr& localService,
-    const IRemoteStorageProviderPtr& remoteStorageProvider,
-    const ILoggingServicePtr& logging,
-    const ISchedulerPtr& scheduler,
-    const NProto::TClientConfig& clientConfig)
+    const TShardsEndpoints& endpoints,
+    bool hasUnavailableShards,
+    TDuration timeout,
+    TShardingArguments args)
 {
-    NProto::TClientAppConfig clientAppConfig;
-    auto& config = *clientAppConfig.MutableClientConfig();
-    config = clientConfig;
-    config.SetClientId(FQDNHostName());
-    auto appConfig = std::make_shared<NClient::TClientAppConfig>(clientAppConfig);
-
-    auto shardingConfig = remoteStorageProvider->GetShardingConfig();
-
-    auto numConfigured = shardingConfig->GetShards().size();
-    if (numConfigured == 0) {
+    if (endpoints.empty()) {
         return {};
     }
 
-    auto shardedClients = remoteStorageProvider->GetShardsClients(std::move(appConfig));
-
-    bool incompleteShards = shardedClients.size() < numConfigured;
-
-    NProto::TDescribeVolumeRequest request;
-    request.MutableHeaders()->CopyFrom(headers);
-    request.SetDiskId(diskId);
-
     TShards shards;
 
-    for (const auto& shard: shardedClients) {
+    for (const auto& shard: endpoints) {
         TShard s;
         for (const auto& client: shard.second) {
             s.Hosts.emplace_back(
@@ -312,12 +294,12 @@ std::optional<TDescribeFuture> DescribeRemoteVolume(
     shards.emplace("", std::move(localShard));
 
     auto describeResult = std::make_shared<TMultiShardDescribeHandler>(
-        scheduler,
-        logging->CreateLog("BLOCKSTORE_SHARDING"),
+        args.Scheduler,
+        args.Logging->CreateLog("BLOCKSTORE_SHARDING"),
         std::move(shards),
-        std::move(request),
-        incompleteShards);
-    describeResult->DoDescribe(shardingConfig->GetDescribeTimeout());
+        request,
+        hasUnavailableShards);
+    describeResult->DoDescribe(timeout);
 
     return describeResult->Promise.GetFuture();
 }

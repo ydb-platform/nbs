@@ -120,16 +120,19 @@ struct TMultiClientEndpoint
         const TString& instanceId) override
     {
         with_lock (Lock) {
-            if (auto it = Cache.find(std::make_pair(clientId, instanceId));
+            auto key = std::make_pair(clientId, instanceId);
+            if (auto it = Cache.find(key);
                 it != Cache.end())
             {
                 return it->second;
             }
-            return std::make_shared<TClientEndpoint>(
+            auto client = std::make_shared<TClientEndpoint>(
                 Client,
                 weak_from_this(),
                 clientId,
                 instanceId);
+            Cache.emplace(key, client);
+            return client;
         }
     }
 

@@ -16,7 +16,7 @@
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/sharding/describe_volume.h>
-#include <cloud/blockstore/libs/sharding/remote_storage_provider.h>
+#include <cloud/blockstore/libs/sharding/sharding_manager.h>
 #include <cloud/blockstore/libs/validation/validation.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -323,7 +323,7 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IServerStatsPtr ServerStats;
     const IBlockStorePtr Service;
-    const NSharding::IRemoteStorageProviderPtr RemoteStorageProvider;
+    const NSharding::IShardingManagerPtr ShardingManager;
     const IStorageProviderPtr StorageProvider;
     const NRdma::IClientPtr RdmaClient;
     const IThrottlerProviderPtr ThrottlerProvider;
@@ -349,7 +349,7 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             IBlockStorePtr service,
-            NSharding::IRemoteStorageProviderPtr remoteStorageProvider,
+            NSharding::IShardingManagerPtr shardingManager,
             IStorageProviderPtr storageProvider,
             NRdma::IClientPtr rdmaClient,
             IThrottlerProviderPtr throttlerProvider,
@@ -365,7 +365,7 @@ public:
         , VolumeStats(std::move(volumeStats))
         , ServerStats(std::move(serverStats))
         , Service(std::move(service))
-        , RemoteStorageProvider(std::move(remoteStorageProvider))
+        , ShardingManager(std::move(shardingManager))
         , StorageProvider(std::move(storageProvider))
         , RdmaClient(std::move(rdmaClient))
         , ThrottlerProvider(std::move(throttlerProvider))
@@ -504,13 +504,10 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers)
 {
-    auto multiShardFuture = DescribeRemoteVolume(
+    auto multiShardFuture = ShardingManager->DescribeVolume(
         diskId,
         headers,
         Service,
-        RemoteStorageProvider,
-        Logging,
-        Scheduler,
         Options.DefaultClientConfig);
 
     if (multiShardFuture.has_value()) {
@@ -692,12 +689,15 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto clientConfig = CreateClientConfig(request);
 
     if (!shardId.empty()) {
-        auto shardClient = RemoteStorageProvider->GetShardClient(
+        auto result = ShardingManager->GetShardEndpoint(
             shardId,
             clientConfig);
+        if (HasError(result.GetError())) {
+            return result.GetError();
+        }
 
-        service = shardClient.GetService();
-        storage = shardClient.GetStorage();
+        service = result.GetResult().GetService();
+        storage = result.GetResult().GetStorage();
     } else {
         auto future = StorageProvider->CreateStorage(volume, clientId, accessMode)
             .Apply([] (const auto& f) {
@@ -881,7 +881,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    NSharding::IRemoteStorageProviderPtr remoteStorageProvider,
+    NSharding::IShardingManagerPtr shardingManager,
     IStorageProviderPtr storageProvider,
     NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,
@@ -907,7 +907,7 @@ ISessionManagerPtr CreateSessionManager(
         std::move(volumeStats),
         std::move(serverStats),
         std::move(service),
-        std::move(remoteStorageProvider),
+        std::move(shardingManager),
         std::move(storageProvider),
         std::move(rdmaClient),
         std::move(throttlerProvider),

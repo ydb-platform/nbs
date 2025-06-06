@@ -1,9 +1,10 @@
-#include "remote_storage_provider.h"
+#include "sharding_manager.h"
 
 #include "config.h"
+#include "describe_volume.h"
+#include "host_endpoint.h"
 #include "sharding_common.h"
-#include "shard_endpoints_manager.h"
-#include "remote_storage.h"
+#include "shard_manager.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -23,6 +24,7 @@
 
 #include <util/generic/hash_set.h>
 #include <util/random/random.h>
+#include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NSharding {
 
@@ -32,39 +34,35 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString Capitalize(TString str)
-{
-    if (str.empty()) {
-        return str;
-    }
-
-    str[0] = ::toupper(str[0]);
-    return str;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-struct TRemoteStorageProvider
-    : public IRemoteStorageProvider
+struct TShardingManager
+    : public IShardingManager
 {
     const TShardingArguments Args;
 
-    THashMap<TString, IShardEndpointsManagerPtr> Shards;
+    THashMap<TString, TShardManagerPtr> Shards;
 
-    TRemoteStorageProvider(
+    TShardingManager(
         TShardingConfigPtr config,
         TShardingArguments args);
 
     void Start() override;
     void Stop() override;
 
-    TShardClient GetShardClient(
+    TResultOrError<THostEndpoint> GetShardEndpoint(
         const TString& shardId,
-        NClient::TClientAppConfigPtr clientConfig) override;
+        const NClient::TClientAppConfigPtr& clientConfig) override;
 
-    TShardClients GetShardsClients(
-        NClient::TClientAppConfigPtr clientConfig) override;
+    [[nodiscard]] std::optional<TDescribeFuture> DescribeVolume(
+        const TString& diskId,
+        const NProto::THeaders& headers,
+        const IBlockStorePtr& localService,
+        const NProto::TClientConfig& clientConfig) override;
 
     void OutputHtml(IOutputStream& out, const IMonHttpRequest& request);
+
+private:
+    [[nodiscard]] TShardsEndpoints GetShardsEndpoints(
+        const NClient::TClientAppConfigPtr& clientConfig);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,37 +71,32 @@ class TShardsMonPage final
     : public THtmlMonPage
 {
 private:
-    TRemoteStorageProvider& Provider;
+    TShardingManager& Manager;
 
 public:
-    TShardsMonPage(TRemoteStorageProvider& provider, const TString& componentName)
-        : THtmlMonPage(componentName, Capitalize(componentName), true)
-        , Provider(provider)
+    TShardsMonPage(TShardingManager& manager, const TString& componentName)
+        : THtmlMonPage(componentName, componentName, true)
+        , Manager(manager)
     {}
 
     void OutputContent(IMonHttpRequest& request) override
     {
-        Provider.OutputHtml(request.Output(), request);
+        Manager.OutputHtml(request.Output(), request);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRemoteStorageProvider::TRemoteStorageProvider(
+TShardingManager::TShardingManager(
         TShardingConfigPtr config,
         TShardingArguments args)
-    : IRemoteStorageProvider(std::move(config))
+    : IShardingManager(std::move(config))
     , Args(std::move(args))
 {
     for (const auto& shard: Config->GetShards()) {
-        IShardEndpointsManagerPtr ptr;
-        if (shard.second.GetTransport() == NProto::GRPC) {
-            ptr = CreateGrpcEndpointManager(Args, shard.second);
-        } else {
-            ptr = CreateRdmaEndpointManager(Args, shard.second);
-        }
-
-        Shards.emplace(shard.first, std::move(ptr));
+        Shards.emplace(
+            shard.first,
+            std::make_shared<TShardManager>(Args, shard.second));
     }
 
     auto rootPage = Args.Monitoring->RegisterIndexPage("blockstore", "BlockStore");
@@ -111,29 +104,29 @@ TRemoteStorageProvider::TRemoteStorageProvider(
         new TShardsMonPage(*this, "Sharding"));
 }
 
-void TRemoteStorageProvider::Start()
+void TShardingManager::Start()
 {
     Args.GrpcClient->Start();
 }
 
-void TRemoteStorageProvider::Stop()
+void TShardingManager::Stop()
 {
     Args.GrpcClient->Stop();
 }
 
-TShardClient TRemoteStorageProvider::GetShardClient(
+TResultOrError<THostEndpoint> TShardingManager::GetShardEndpoint(
     const TString& shardId,
-    NClient::TClientAppConfigPtr clientConfig)
+    const NClient::TClientAppConfigPtr& clientConfig)
 {
     auto it = Shards.find(shardId);
     Y_ENSURE(it != Shards.end());
     return it->second->GetShardClient(clientConfig);
 }
 
-TShardClients TRemoteStorageProvider::GetShardsClients(
-    NClient::TClientAppConfigPtr clientConfig)
+TShardsEndpoints TShardingManager::GetShardsEndpoints(
+    const NClient::TClientAppConfigPtr& clientConfig)
 {
-    TShardClients res;
+    TShardsEndpoints res;
     for (auto& shard: Shards) {
         auto clientList = shard.second->GetShardClients(clientConfig);
         if (clientList.empty()) {
@@ -144,7 +137,41 @@ TShardClients TRemoteStorageProvider::GetShardsClients(
     return res;
 }
 
-void TRemoteStorageProvider::OutputHtml(
+[[nodiscard]] std::optional<TDescribeFuture> TShardingManager::DescribeVolume(
+    const TString& diskId,
+    const NProto::THeaders& headers,
+    const IBlockStorePtr& localService,
+    const NProto::TClientConfig& clientConfig)
+{
+    auto numConfigured = Config->GetShards().size();
+    if (numConfigured == 0) {
+        return {};
+    }
+
+    NProto::TClientAppConfig clientAppConfig;
+    auto& config = *clientAppConfig.MutableClientConfig();
+    config = clientConfig;
+    config.SetClientId(FQDNHostName());
+    auto appConfig = std::make_shared<NClient::TClientAppConfig>(clientAppConfig);
+
+    auto shardedEndpoints = GetShardsEndpoints(appConfig);
+
+    bool hasUnavailableShards = shardedEndpoints.size() < numConfigured;
+
+    NProto::TDescribeVolumeRequest request;
+    request.MutableHeaders()->CopyFrom(headers);
+    request.SetDiskId(diskId);
+
+    return NCloud::NBlockStore::NSharding::DescribeVolume(
+        request,
+        localService,
+        shardedEndpoints,
+        hasUnavailableShards,
+        Config->GetDescribeTimeout(),
+        Args);
+}
+
+void TShardingManager::OutputHtml(
     IOutputStream& out,
     const IMonHttpRequest& request)
 {
@@ -156,7 +183,7 @@ void TRemoteStorageProvider::OutputHtml(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IRemoteStorageProviderPtr CreateRemoteStorageProvider(
+IShardingManagerPtr CreateRemoteStorageProvider(
     TShardingConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
@@ -174,7 +201,7 @@ IRemoteStorageProviderPtr CreateRemoteStorageProvider(
         .RdmaClient = std::move(rdmaClient)
     };
 
-    return std::make_shared<TRemoteStorageProvider>(std::move(config), args);
+    return std::make_shared<TShardingManager>(std::move(config), args);
 }
 
 }   // namespace NCloud::NBlockStore::NSharding
