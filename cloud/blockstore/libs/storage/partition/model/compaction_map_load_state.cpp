@@ -1,66 +1,72 @@
-#include "part_compaction_map_load_state.h"
+#include "compaction_map_load_state.h"
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TCompactionMapLoadState::TCompactionMapLoadState(
-    ui32 maxRangesPerTx,
-    ui32 maxOutOfOrderChunksInflight)
-    : MaxRangesPerTx(maxRangesPerTx)
+        ui32 maxRangesPerChunk,
+        ui32 maxOutOfOrderChunksInflight)
+    : MaxRangesPerChunk(maxRangesPerChunk)
     , MaxOutOfOrderChunksInflight(maxOutOfOrderChunksInflight)
 {}
 
-const TBlockRange32& TCompactionMapLoadState::LoadNextChunk()
+TBlockRange32 TCompactionMapLoadState::LoadNextChunk()
 {
     if (!OutOfOrderRanges.empty()) {
         LoadingRange = *OutOfOrderRanges.begin();
         OutOfOrderRanges.erase(OutOfOrderRanges.begin());
         if (LoadingRange.Start == NextRangeIndex) {
-            NextRangeIndex += MaxRangesPerTx;
+            NextRangeIndex += MaxRangesPerChunk;
         }
     } else {
         LoadingRange =
-            TBlockRange32::WithLength(NextRangeIndex, MaxRangesPerTx);
+            TBlockRange32::WithLength(NextRangeIndex, MaxRangesPerChunk);
 
-        NextRangeIndex += MaxRangesPerTx;
-        for (; !LoadedOutOfOrderRanges.empty() &&
-               NextRangeIndex == LoadedOutOfOrderRanges.begin()->Start;
-               NextRangeIndex += MaxRangesPerTx)
+        NextRangeIndex += MaxRangesPerChunk;
+        while (!LoadedOutOfOrderRanges.empty() &&
+               NextRangeIndex == LoadedOutOfOrderRanges.begin()->Start)
         {
+            NextRangeIndex += MaxRangesPerChunk;
             LoadedOutOfOrderRanges.erase(LoadedOutOfOrderRanges.begin());
         }
     }
     return LoadingRange;
 }
 
-bool TCompactionMapLoadState::EnqueueOutOfOrderRanges(
-    const THashSet<ui32>& rangeIndices)
+TBlockRangeSet32 TCompactionMapLoadState::GetNotLoadedRanges(
+    const THashSet<ui32>& rangeIndices) const
 {
-    bool isNotLoaded = false;
-
+    TBlockRangeSet32 ranges;
     for (const ui32 rangeIndex: rangeIndices) {
         const TBlockRange32 range = TBlockRange32::WithLength(
-            (rangeIndex / MaxRangesPerTx) * MaxRangesPerTx,
-            MaxRangesPerTx);
+            (rangeIndex / MaxRangesPerChunk) * MaxRangesPerChunk,
+            MaxRangesPerChunk);
 
         if (!IsRangeLoaded(range)) {
-            isNotLoaded = true;
-            EnqueueOutOfOrderRange(range);
+            ranges.emplace(range);
         }
     }
 
-    return isNotLoaded;
+    return ranges;
 }
 
-void TCompactionMapLoadState::RangeIsLoaded(const TBlockRange32& range)
+void TCompactionMapLoadState::EnqueueOutOfOrderRanges(
+    const TBlockRangeSet32& ranges)
+{
+    for (const auto range: ranges) {
+        EnqueueOutOfOrderRange(range);
+    }
+}
+
+void TCompactionMapLoadState::OnRangeLoaded(TBlockRange32 range)
 {
     if (range.Start > NextRangeIndex) {
         LoadedOutOfOrderRanges.emplace(range);
     }
 }
 
-bool TCompactionMapLoadState::IsRangeLoaded(const TBlockRange32& range) const
+bool TCompactionMapLoadState::IsRangeLoaded(TBlockRange32 range) const
 {
     if (range.Start < NextRangeIndex && range != LoadingRange) {
         return true;
@@ -68,8 +74,7 @@ bool TCompactionMapLoadState::IsRangeLoaded(const TBlockRange32& range) const
     return LoadedOutOfOrderRanges.contains(range);
 }
 
-bool TCompactionMapLoadState::IsRangeInLoadingQueue(
-    const TBlockRange32& range) const
+bool TCompactionMapLoadState::IsRangeLoading(TBlockRange32 range) const
 {
     if (LoadingRange == range) {
         return true;
@@ -78,10 +83,10 @@ bool TCompactionMapLoadState::IsRangeInLoadingQueue(
     return OutOfOrderRanges.contains(range);
 }
 
-void TCompactionMapLoadState::EnqueueOutOfOrderRange(const TBlockRange32& range)
+void TCompactionMapLoadState::EnqueueOutOfOrderRange(TBlockRange32 range)
 {
     if (OutOfOrderRanges.size() < MaxOutOfOrderChunksInflight &&
-        !IsRangeInLoadingQueue(range))
+        !IsRangeLoading(range))
     {
         OutOfOrderRanges.emplace(range);
     }

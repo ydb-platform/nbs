@@ -385,14 +385,12 @@ bool TPartitionActor::PrepareLoadCompactionMapChunk(
     TTransactionContext& tx,
     TTxPartition::TLoadCompactionMapChunk& args)
 {
-    const TBlockRange32& range = args.Range;
-
     TPartitionDatabase db(tx.DB);
-    args.Counters.reserve(args.Counters.size() + range.Size());
+    args.Counters.reserve(args.Counters.size() + args.Range.Size());
     const bool result = db.ReadCompactionMap(
         TBlockRange32::WithLength(
-            range.Start * State->GetCompactionMap().GetRangeSize(),
-            range.Size() * State->GetCompactionMap().GetRangeSize()),
+            args.Range.Start * State->GetCompactionMap().GetRangeSize(),
+            args.Range.Size() * State->GetCompactionMap().GetRangeSize()),
         args.Counters);
 
     LOG_DEBUG(
@@ -401,7 +399,7 @@ bool TPartitionActor::PrepareLoadCompactionMapChunk(
         "[%lu][d:%s] Compaction map chunk %s read, result=%d",
         TabletID(),
         PartitionConfig.GetDiskId().c_str(),
-        range.Print().data(),
+        args.Range.Print().data(),
         result);
 
     return result;
@@ -442,14 +440,14 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
         PartitionConfig.GetDiskId().c_str(),
         args.Range.Print().data());
 
-    CompactionMapLoadState->RangeIsLoaded(args.Range);
+    CompactionMapLoadState->OnRangeLoaded(args.Range);
     LoadNextCompactionMapChunk(ctx);
 }
 
 void TPartitionActor::LoadNextCompactionMapChunk(
     const NActors::TActorContext& ctx)
 {
-    const TBlockRange32& range = CompactionMapLoadState->LoadNextChunk();
+    TBlockRange32 range = CompactionMapLoadState->LoadNextChunk();
     auto request =
         std::make_unique<TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest>(
             range);
@@ -460,16 +458,15 @@ void TPartitionActor::HandleLoadCompactionMapChunk(
     const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const TBlockRange32& range = ev->Get()->Range;
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%lu][d:%s] Loading compaction map chunk %s",
         TabletID(),
         PartitionConfig.GetDiskId().c_str(),
-        range.Print().data());
+        ev->Get()->Range.Print().data());
 
-    ExecuteTx<TLoadCompactionMapChunk>(ctx, range);
+    ExecuteTx<TLoadCompactionMapChunk>(ctx, ev->Get()->Range);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

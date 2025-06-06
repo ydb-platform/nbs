@@ -6,7 +6,6 @@
 #include "part_events_private.h"
 #include "part_state.h"
 #include "part_tx.h"
-#include "part_compaction_map_load_state.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -24,6 +23,7 @@
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
+#include <cloud/blockstore/libs/storage/partition/model/compaction_map_load_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>

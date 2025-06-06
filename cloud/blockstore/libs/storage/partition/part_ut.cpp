@@ -12843,6 +12843,86 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         UNIT_ASSERT_GE(rangesLoaded, rangeCount);
     }
+
+    Y_UNIT_TEST(ShouldRejectWriteIfCompactionMapIsNotLoaded1)
+    {
+        const ui32 rangeSize = 1024;
+
+        auto config = DefaultConfig();
+        config.SetMaxCompactionRangesLoadingPerTx(1);
+
+        auto runtime = PrepareTestActorRuntime(config, 1024 * 1024);
+
+        TPartitionClient partition(*runtime);
+
+        partition.WriteBlocks(TBlockRange32::WithLength(rangeSize * 0, 10), 0);
+        partition.WriteBlocks(TBlockRange32::WithLength(rangeSize * 1, 20), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(rangeSize * 2, 30), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(rangeSize * 3, 40), 3);
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        }
+
+        TAutoPtr<IEventHandle> loadCompactionMapEvent;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvLoadCompactionMapChunkRequest: {
+                        UNIT_ASSERT(!loadCompactionMapEvent);
+                        loadCompactionMapEvent = event.Release();
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        partition.RebootTablet();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        }
+
+        {
+            partition.SendFlushRequest();
+            auto response = partition.RecvFlushResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        UNIT_ASSERT(loadCompactionMapEvent);
+        runtime->Send(loadCompactionMapEvent.Release());
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        }
+
+        {
+            partition.SendFlushRequest();
+            auto response = partition.RecvFlushResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

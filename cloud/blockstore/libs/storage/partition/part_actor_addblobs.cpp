@@ -1,5 +1,4 @@
 #include "part_actor.h"
-#include "part_compaction_map_load_state.h"
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
@@ -647,10 +646,12 @@ void TPartitionActor::HandleAddBlobs(
         const THashSet<ui32> rangeIndices =
             GetRangeIndices(msg->FreshBlobs, msg->MixedBlobs, msg->MergedBlobs);
 
-        const bool isNotLoaded =
-            CompactionMapLoadState->EnqueueOutOfOrderRanges(rangeIndices);
+        const auto ranges =
+            CompactionMapLoadState->GetNotLoadedRanges(rangeIndices);
 
-        if (isNotLoaded) {
+        if (!ranges.empty()) {
+            CompactionMapLoadState->EnqueueOutOfOrderRanges(ranges);
+
             const auto error =
                 MakeError(E_REJECTED, "compaction map not loaded yet");
             auto response =

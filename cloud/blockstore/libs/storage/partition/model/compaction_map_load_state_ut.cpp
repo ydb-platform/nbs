@@ -1,4 +1,4 @@
-#include "part_compaction_map_load_state.h"
+#include "compaction_map_load_state.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -21,15 +21,15 @@ public:
     {
         return NextRangeIndex;
     }
-    const TBlockRange32& GetLoadingRange() const
+    TBlockRange32 GetLoadingRange() const
     {
         return LoadingRange;
     }
-    const TBlockRangeSet32& GetOutOfOrderRanges() const
+    TBlockRangeSet32 GetOutOfOrderRanges() const
     {
         return OutOfOrderRanges;
     }
-    const TBlockRangeSet32& GetLoadedOutOfOrderRanges() const
+    TBlockRangeSet32 GetLoadedOutOfOrderRanges() const
     {
         return LoadedOutOfOrderRanges;
     }
@@ -66,9 +66,9 @@ Y_UNIT_TEST_SUITE(TCompactionMapLoadStateTest)
             maxRangesPerTx,
             maxOutOfOrderRangeCount);
 
-        state.RangeIsLoaded(
+        state.OnRangeLoaded(
             TBlockRange32::WithLength(maxRangesPerTx, maxRangesPerTx));
-        state.RangeIsLoaded(
+        state.OnRangeLoaded(
             TBlockRange32::WithLength(2 * maxRangesPerTx, maxRangesPerTx));
         UNIT_ASSERT_EQUAL(state.GetLoadedOutOfOrderRanges().size(), 2);
 
@@ -97,20 +97,20 @@ Y_UNIT_TEST_SUITE(TCompactionMapLoadStateTest)
             maxOutOfOrderRangeCount);
 
         {
-            const bool isNotLoaded =
-                state.EnqueueOutOfOrderRanges({0, 3, 7, 10, 12, 23});
-            UNIT_ASSERT(isNotLoaded);
+            const auto ranges = state.GetNotLoadedRanges({0, 3, 7, 10, 12, 23});
+            UNIT_ASSERT_EQUAL(ranges.size(), 4);
+            state.EnqueueOutOfOrderRanges(ranges);
             UNIT_ASSERT_EQUAL(state.GetOutOfOrderRanges().size(), 4);
         }
 
-        state.RangeIsLoaded(TBlockRange32::WithLength(5, maxRangesPerTx));
-        state.RangeIsLoaded(TBlockRange32::WithLength(10, maxRangesPerTx));
+        state.OnRangeLoaded(TBlockRange32::WithLength(5, maxRangesPerTx));
+        state.OnRangeLoaded(TBlockRange32::WithLength(10, maxRangesPerTx));
         UNIT_ASSERT_EQUAL(state.GetLoadedOutOfOrderRanges().size(), 2);
 
         {
-            const bool isNotLoaded =
-                state.EnqueueOutOfOrderRanges({0, 3, 7, 10, 12, 23});
-            UNIT_ASSERT(isNotLoaded);
+            const auto ranges = state.GetNotLoadedRanges({0, 3, 7, 10, 12, 23});
+            UNIT_ASSERT_EQUAL(ranges.size(), 2);
+            state.EnqueueOutOfOrderRanges(ranges);
             UNIT_ASSERT_EQUAL(state.GetOutOfOrderRanges().size(), 4);
         }
     }
@@ -124,15 +124,14 @@ Y_UNIT_TEST_SUITE(TCompactionMapLoadStateTest)
             maxRangesPerTx,
             maxOutOfOrderRangeCount);
 
-        state.RangeIsLoaded(TBlockRange32::WithLength(5, maxRangesPerTx));
-        state.RangeIsLoaded(TBlockRange32::WithLength(10, maxRangesPerTx));
-        state.RangeIsLoaded(TBlockRange32::WithLength(20, maxRangesPerTx));
+        state.OnRangeLoaded(TBlockRange32::WithLength(5, maxRangesPerTx));
+        state.OnRangeLoaded(TBlockRange32::WithLength(10, maxRangesPerTx));
+        state.OnRangeLoaded(TBlockRange32::WithLength(20, maxRangesPerTx));
         UNIT_ASSERT_EQUAL(state.GetLoadedOutOfOrderRanges().size(), 3);
 
         {
-            const bool isNotLoaded =
-                state.EnqueueOutOfOrderRanges({7, 10, 12, 23});
-            UNIT_ASSERT(!isNotLoaded);
+            const auto ranges = state.GetNotLoadedRanges({7, 10, 12, 23});
+            UNIT_ASSERT(ranges.empty());
             UNIT_ASSERT(state.GetOutOfOrderRanges().empty());
         }
     }
@@ -146,7 +145,9 @@ Y_UNIT_TEST_SUITE(TCompactionMapLoadStateTest)
             maxRangesPerTx,
             maxOutOfOrderRangeCount);
 
-        state.EnqueueOutOfOrderRanges({7, 23});
+        const auto ranges = state.GetNotLoadedRanges({7, 23});
+        UNIT_ASSERT_EQUAL(ranges.size(), 2);
+        state.EnqueueOutOfOrderRanges(ranges);
         UNIT_ASSERT_EQUAL(state.GetOutOfOrderRanges().size(), 2);
 
         {
