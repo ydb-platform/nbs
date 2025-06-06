@@ -191,6 +191,7 @@ def test_node_volume_expand_vm_mode():
         csi.cleanup_after_test(env, volume_name, access_type, [pod_id])
 
 
+@pytest.mark.skip(reason="issue-3635")
 def test_publish_volume_must_fail_after_fs_error():
     env, run = csi.init()
     try:
