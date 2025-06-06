@@ -4,6 +4,7 @@ import (
 	"context"
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
