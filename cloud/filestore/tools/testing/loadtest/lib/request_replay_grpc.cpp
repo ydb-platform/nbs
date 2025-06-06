@@ -1184,7 +1184,7 @@ private:
         } catch (const TServiceError& e) {
             CompareResponse(info, e.GetCode());
             const auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR(
+            STORAGE_DEBUG(
                 "Access node %lu has failed: %s",
                 info.LogRequest.GetNodeInfo().GetNodeId(),
                 FormatError(error).c_str());
@@ -1299,7 +1299,7 @@ private:
 
     void PrintError(const TRequestInfo& info, const NProto::TError& error)
     {
-        STORAGE_INFO(
+        STORAGE_DEBUG(
             "Msg=%zd: request fail: %s (%d) fail: %d %s [%s]",
             info.EventMessageNumber,
             RequestName(info.LogRequest.GetRequestType()).c_str(),
