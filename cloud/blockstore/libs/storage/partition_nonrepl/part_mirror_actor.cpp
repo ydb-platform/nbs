@@ -218,7 +218,10 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
             DiskId.c_str(),
             DescribeRange(GetScrubbingRange()).c_str());
 
-        if (Config->GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch())
+        if (Config
+                ->GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() &&
+            // a temporary buffer is already used for encrypted volumes
+            !State.IsEncrypted())
         {
             AddTagForBufferCopying(ctx);
         }

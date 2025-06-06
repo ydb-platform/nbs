@@ -32,6 +32,7 @@ void RegisterServerVolumeInstance(
     const TString& folderId,
     const TString& diskId,
     const TString& instanceId,
+    const bool reportZeroBlocksMetrics,
     NMonitoring::TDynamicCounterPtr src);
 
 void UnregisterServerVolumeInstance(

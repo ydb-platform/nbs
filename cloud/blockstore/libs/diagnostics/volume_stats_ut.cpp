@@ -29,40 +29,87 @@ const TString DefaultFolderId = "folder_id";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLabelKeeper
-    : public NMonitoring::IMetricConsumer
+class TLabelKeeper: public NMonitoring::IMetricConsumer
 {
 private:
     std::vector<std::pair<TString, TString>> Labels;
+    THashMap<TString, TString> ValueMap;
+    TString CurrentLabel;
 
 public:
     size_t FindLabel(TStringBuf name, TStringBuf value)
     {
         return CountIf(
-            Labels, [name, value] (const auto& labels) {
-                return labels.first == name.data()
-                    && labels.second == value.data();
+            Labels,
+            [name, value](const auto& labels)
+            {
+                return labels.first == name.data() &&
+                       labels.second == value.data();
             });
     }
 
-    void OnStreamBegin() override {}
-    void OnStreamEnd() override {}
-    void OnCommonTime(TInstant) override {}
-    void OnMetricBegin(NMonitoring::EMetricType) override {}
-    void OnMetricEnd() override {}
-    void OnLabelsBegin() override {}
-    void OnLabelsEnd() override {}
+    TString GetValue(const TString labelName) const
+    {
+        auto it = ValueMap.find(labelName);
+        return it == ValueMap.end() ? TString() : it->second;
+    }
+
+    void OnStreamBegin() override
+    {}
+    void OnStreamEnd() override
+    {}
+    void OnCommonTime(TInstant) override
+    {}
+    void OnMetricBegin(NMonitoring::EMetricType) override
+    {}
+    void OnMetricEnd() override
+    {}
+
+    void OnLabelsBegin() override
+    {
+        CurrentLabel.clear();
+    }
+
+    void OnLabelsEnd() override
+    {}
+
     void OnLabel(TStringBuf name, TStringBuf value) override
     {
         Labels.emplace_back(name.data(), value.data());
+        if (!CurrentLabel.empty()) {
+            CurrentLabel += ".";
+        }
+        CurrentLabel += value;
     }
-    void OnLabel(ui32, ui32) override {}
-    void OnDouble(TInstant, double) override {}
-    void OnInt64(TInstant, i64) override {}
-    void OnUint64(TInstant, ui64) override {}
-    void OnHistogram(TInstant, NMonitoring::IHistogramSnapshotPtr) override {}
-    void OnLogHistogram(TInstant, NMonitoring::TLogHistogramSnapshotPtr) override {}
-    void OnSummaryDouble(TInstant, NMonitoring::ISummaryDoubleSnapshotPtr) override {}
+
+    void OnLabel(ui32, ui32) override
+    {}
+
+    void OnDouble(TInstant, double value) override
+    {
+        ValueMap[CurrentLabel] = ToString(value);
+    }
+
+    void OnInt64(TInstant, i64 value) override
+    {
+        ValueMap[CurrentLabel] = ToString(value);
+    }
+
+    void OnUint64(TInstant, ui64 value) override
+    {
+        ValueMap[CurrentLabel] = ToString(value);
+    }
+
+    void OnHistogram(TInstant, NMonitoring::IHistogramSnapshotPtr) override
+    {}
+    void OnLogHistogram(
+        TInstant,
+        NMonitoring::TLogHistogramSnapshotPtr) override
+    {}
+    void OnSummaryDouble(
+        TInstant,
+        NMonitoring::ISummaryDoubleSnapshotPtr) override
+    {}
 };
 
 void Mount(
@@ -1202,6 +1249,72 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT_EQUAL(client1Info.get(), client2Info.get());
             UNIT_ASSERT(!client1Info);
         }
+    }
+
+    Y_UNIT_TEST(ShouldSkipReportingZeroBlocksMetricsForYDBBasedDisks)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        NProto::TDiagnosticsConfig diagnostics;
+        diagnostics.SetSkipReportingZeroBlocksMetricsForYDBBasedDisks(true);
+
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            std::make_shared<TDiagnosticsConfig>(diagnostics),
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto sendRequest = [](auto volume, auto type)
+        {
+            auto started = volume->RequestStarted(type, 1024 * 1024);
+
+            volume->RequestCompleted(
+                type,
+                started,
+                TDuration::Zero(),
+                1024 * 1024,
+                EDiagnosticsErrorKind::Success,
+                NCloud::NProto::EF_NONE,
+                false,
+                0);
+        };
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        Mount(
+            volumeStats,
+            "test2",
+            "client2",
+            "instance2",
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+
+        auto volume1 = volumeStats->GetVolumeInfo("test1", "client1");
+        auto volume2 = volumeStats->GetVolumeInfo("test2", "client2");
+
+        sendRequest(volume1, EBlockStoreRequest::WriteBlocks);
+        sendRequest(volume1, EBlockStoreRequest::ZeroBlocks);
+        sendRequest(volume2, EBlockStoreRequest::WriteBlocks);
+        sendRequest(volume2, EBlockStoreRequest::ZeroBlocks);
+
+        TLabelKeeper keeper;
+        volumeStats->GetUserCounters()->Append(TInstant::Now(), &keeper);
+
+        UNIT_ASSERT_EQUAL(
+            keeper.GetValue(
+                "compute.cloud_id.folder_id.test1.instance1.disk.write_ops"),
+            "1");
+        UNIT_ASSERT_EQUAL(
+            keeper.GetValue(
+                "compute.cloud_id.folder_id.test2.instance2.disk.write_ops"),
+            "2");
     }
 }
 

@@ -25,6 +25,7 @@ END()
 RECURSE(
     protos
     vhost
+    write_back_cache
 )
 
 RECURSE_FOR_TESTS(

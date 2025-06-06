@@ -89,47 +89,6 @@ NProto::TError TryToNormalize(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlocksInfo::TBlocksInfo(ui64 from, ui64 length, ui32 blockSize)
-    : BlockSize(blockSize)
-{
-    ui64 startIndex = from / blockSize;
-    ui64 beginOffset = from - startIndex * blockSize;
-
-    auto realLength = beginOffset + length;
-    ui64 blocksCount = realLength / blockSize;
-
-    if (blocksCount * blockSize < realLength) {
-        ++blocksCount;
-    }
-
-    ui64 endOffset = blocksCount * blockSize - realLength;
-
-    Range = TBlockRange64::WithLength(startIndex, blocksCount);
-    BeginOffset = beginOffset;
-    EndOffset = endOffset;
-}
-
-size_t TBlocksInfo::BufferSize() const
-{
-    return Range.Size() * BlockSize - BeginOffset - EndOffset;
-}
-
-bool TBlocksInfo::IsAligned() const
-{
-    return SgListAligned && BeginOffset == 0 && EndOffset == 0;
-}
-
-TBlocksInfo TBlocksInfo::MakeAligned() const
-{
-    TBlocksInfo result(*this);
-    result.BeginOffset = 0;
-    result.EndOffset = 0;
-    result.SgListAligned = true;
-    return result;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 TAlignedDeviceHandler::TAlignedDeviceHandler(
         IStoragePtr storage,
         TString diskId,

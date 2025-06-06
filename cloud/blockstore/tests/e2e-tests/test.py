@@ -593,3 +593,103 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
         raise
 
     cleanup_after_test(env)
+
+
+def test_discard_device():
+    stored_endpoints_path = Path(common.output_path()) / "stored_endpoints"
+    env, run = init(
+        True,
+        False,
+        stored_endpoints_path,
+        max_zero_blocks_sub_request_size=512 * 1024 * 1024
+    )
+
+    volume_name = "example-disk"
+    block_size = 4096
+    blocks_count = 1310720
+    volume_size = blocks_count * block_size
+    nbd_device = "/dev/nbd0"
+    socket_path = "/tmp/nbd.sock"
+    try:
+        result = run(
+            "createvolume",
+            "--disk-id",
+            volume_name,
+            "--blocks-count",
+            str(blocks_count),
+            "--block-size",
+            str(block_size),
+        )
+        assert result.returncode == 0
+
+        result = run(
+            "startendpoint",
+            "--disk-id",
+            volume_name,
+            "--socket",
+            socket_path,
+            "--ipc-type",
+            "nbd",
+            "--persistent",
+            "--nbd-device",
+            nbd_device,
+        )
+        assert result.returncode == 0
+
+        result = common.execute(
+            ["blockdev", "--getsize64", nbd_device],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+
+        assert result.returncode == 0
+        disk_size = int(result.stdout)
+        assert volume_size == disk_size
+
+        # discard all bytes
+        result = common.execute(
+            ["blkdiscard", nbd_device],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        assert result.returncode == 0
+
+        # discard 2 GiB with unaligned offset in the first and last block
+        length = 2 * 1024 * 1024 * 1024
+        sector_size = 512
+        result = common.execute(
+            ["blkdiscard", "-o", str(sector_size), "-l", str(length), nbd_device],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        assert result.returncode == 0
+
+        # discard ~2 GiB with unaligned offset in the last block
+        result = common.execute(
+            ["blkdiscard", "-l", str(length + sector_size), nbd_device],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        assert result.returncode == 0
+
+        # discard ~2 GiB with unaligned offset in the first block
+        result = common.execute(
+            ["blkdiscard", "-o", str(sector_size), "-l", str(length - sector_size), nbd_device],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        assert result.returncode == 0
+
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+    finally:
+        run(
+            "stopendpoint",
+            "--socket",
+            socket_path,
+        )
+
+        result = run(
+            "destroyvolume",
+            "--disk-id",
+            volume_name,
+            input=volume_name,
+        )
+
+        cleanup_after_test(env)

@@ -1,4 +1,5 @@
 RECURSE_FOR_TESTS(
+    acl-set-test
     mount-kikimr-test
     mount-local-test
     qemu-kikimr-multishard-test

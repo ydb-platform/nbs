@@ -91,7 +91,10 @@ struct TEnv
     void Init()
     {
         // only SSD/HDD distinction matters
-        Init({Now(), NProto::STORAGE_MEDIA_SSD_MIRROR3});
+        Init(
+            {.CreationTs = Now(),
+             .MediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR3,
+             .EncryptionMode = NProto::NO_ENCRYPTION});
     }
 };
 
