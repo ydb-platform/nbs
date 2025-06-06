@@ -26,7 +26,6 @@ func NewCellSelector(
 func (s *cellSelector) PickCell(
 	ctx context.Context,
 	disk *disk_manager.DiskId,
-	folderID string,
 ) string {
 
 	cells := s.getCells(disk.ZoneId)
