@@ -87,8 +87,34 @@ message TReplaySpec
 
     EWriteFill WriteFill = 8;
 
+    enum ECreateOnRead
+    {
+        // Create not existing file = error
+        None = 0;
+        // Create and resize to known size
+        FullSize = 1;
+        // Create empty and resize only when read offset+size bigger than current file size
+        Greedy = 2;
+    }
+
     // Create missing files in CreateHandle requests
-    bool CreateOnRead = 9;
+    ECreateOnRead CreateOnRead = 9;
+
+    // Ignore too long pauses in log, in microseconds
+    uint64 MaxSleepUs = 10;
+    
+    // Add O_DIRECT flag to open call
+    bool OpenAddDirectFlag = 11;
+
+    // Synchronize replay with real time, value - seconds for align: use 86400 (day)
+    uint64 RealTime = 12;
+    int64 RealTimeOffset = 13;
+
+    // Filter log by time, example:
+    // ReplayTimeFrom: "2025-03-02T11:30:00"
+    // ReplayTimeTill: "2025-03-02T12:30:00"
+    string ReplayTimeFrom = 14;
+    string ReplayTimeTill = 15;
 }
 
 message TMigrationSpec

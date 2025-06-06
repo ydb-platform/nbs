@@ -14,6 +14,7 @@ read/write with multiranges (now only first processed)
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/tools/testing/loadtest/protos/loadtest.pb.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/aio/aio.h>
@@ -24,6 +25,8 @@ read/write with multiranges (now only first processed)
 #include <util/generic/hash_set.h>
 #include <util/string/builder.h>
 #include <util/system/fstat.h>
+
+#include <algorithm>
 
 namespace NCloud::NFileStore::NLoadTest {
 
@@ -65,10 +68,24 @@ private:
     // Map between log and actual local open handle id's
     THashMap<THandleLog, THandleLocal> HandlesLogToActual;
 
-    THashMap<THandleLocal, TFile> OpenHandles;
+    struct THandle
+    {
+        TFile File;
+        // Last known size, for reducing getAttr requests
+        ui64 Size = 0;
+        TFsPath Path;
+        EOpenMode Mode;
+    };
+
+    THashMap<THandleLocal, THandle> OpenHandles;
+
+    THashMap<TString, ui64> FilenameToSize;
 
     const TString LostName = "__lost__";
     const TString UnknownNodeNamePrefix = "_nodeid_";
+
+    constexpr static auto GreedyMinimumAlwaysCreateBytes = 1000000;
+    constexpr static auto GreedyincreaseBy = 1.1;
 
 public:
     TReplayRequestGeneratorFs(
@@ -182,6 +199,7 @@ private:
         if (it == KnownLogNodes.end()) {
             return InvalidNodeId;
         }
+
         auto parent = GetLocalNodeId(it->second.ParentLog);
 
         if (parent == InvalidNodeId && it->second.ParentLog != InvalidNodeId &&
@@ -195,10 +213,15 @@ private:
             if (!parentPath.IsDefined() && parent != InvalidNodeId) {
                 parentPath = PathByNode(parent);
             }
-            if (!parentPath.IsDefined()) {
+            if (!parentPath.IsDefined() &&
+                it->second.ParentLog != InvalidNodeId)
+            {
                 parentPath =
                     PathByNode(RootNodeId) / LostName / UnknownNodeNamePrefix +
                     ToString(it->second.ParentLog);
+            }
+            if (!parentPath.IsDefined()) {
+                parentPath = PathByNode(RootNodeId) / LostName;
             }
             const auto name =
                 parentPath / (it->second.Name.empty()
@@ -212,7 +235,7 @@ private:
         }
     }
 
-    static EOpenModeFlag FileOpenFlags(ui32 flags, EOpenModeFlag init = {})
+    static EOpenModeFlag FileOpenFlags(ui32 flags, EOpenMode init = {})
     {
         auto systemflags = HandleFlagsToSystem(flags);
         ui32 value{init};
@@ -262,6 +285,7 @@ private:
             }
 
             if (parentNode == InvalidNodeId &&
+                logRequest.GetNodeInfo().GetParentNodeId() != InvalidNodeId &&
                 logRequest.GetNodeInfo().GetParentNodeId() !=
                     logRequest.GetNodeInfo().GetNodeId())
             {
@@ -288,25 +312,24 @@ private:
                 nodeName =
                     KnownLogNodes[logRequest.GetNodeInfo().GetNodeId()].Name;
             }
-            const auto parentpath = parentNode == InvalidNodeId
-                                        ? PathByNode(RootNodeId) / LostName
-                                        : PathByNode(parentNode);
-
-            if (nodeName.empty() && parentpath.IsDirectory()) {
+            const auto parentPath = PathByNode(parentNode);
+            if (nodeName.empty() && parentPath.IsDirectory()) {
                 nodeName =
                     KnownLogNodes[logRequest.GetNodeInfo().GetParentNodeId()]
                         .Name;
             }
 
-            if (parentNode == InvalidNodeId && nodeName.empty()) {
-                nodeName =
-                    "nodeid-" + ToString(logRequest.GetNodeInfo().GetNodeId());
+            if (nodeName.empty() &&
+                logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId)
+            {
+                nodeName = UnknownNodeNamePrefix +
+                           ToString(logRequest.GetNodeInfo().GetNodeId());
             }
 
             if (nodeName.empty()) {
-                fullName = parentpath;
+                fullName = parentPath;
             } else {
-                fullName = parentpath / nodeName;
+                fullName = parentPath / nodeName;
             }
         }
         STORAGE_DEBUG(
@@ -319,36 +342,93 @@ private:
             logRequest.GetNodeInfo().GetNodeId());
 
         try {
-            EOpenModeFlag mode{};
-            if (Spec.GetCreateOnRead()) {
-                mode = OpenAlways;
-            } else {
-                mode = OpenExisting;
-            }
-            TFile fileHandle(
-                fullName,
-                FileOpenFlags(logRequest.GetNodeInfo().GetFlags(), mode));
+            ui64 targetSize = 0;
+            ui64 requestLastByte = 0;
 
-            if (!fileHandle.IsOpen()) {
+            if (Spec.GetCreateOnRead() == NProto::TReplaySpec_ECreateOnRead::
+                                              TReplaySpec_ECreateOnRead_Greedy)
+            {
+                if (const auto& action = logRequest.GetRequestType();
+                    static_cast<EFileStoreRequest>(action) ==
+                        EFileStoreRequest::ReadData &&
+                    logRequest.RangesSize() > 0)
+                {
+                    const auto& range = logRequest.GetRanges().cbegin();
+                    const auto& offset = range->GetOffset();
+                    const auto& bytes = range->GetBytes();
+                    requestLastByte = offset + bytes;
+                }
+
+                if (requestLastByte) {
+                    ui64 actualSize = 0;
+                    const auto iter = FilenameToSize.find(fullName.c_str());
+                    if (iter == FilenameToSize.end()) {
+                        actualSize = TFile(fullName, RdOnly).GetLength();
+                        FilenameToSize[fullName.c_str()] = actualSize;
+                    } else {
+                        actualSize = iter->second;
+                    }
+
+                    if (actualSize < requestLastByte) {
+                        targetSize = requestLastByte;
+                    }
+                }
+            }
+
+            if (targetSize ||
+                Spec.GetCreateOnRead() ==
+                    NProto::TReplaySpec_ECreateOnRead::
+                        TReplaySpec_ECreateOnRead_FullSize ||
+                (Spec.GetCreateOnRead() ==
+                     NProto::TReplaySpec_ECreateOnRead::
+                         TReplaySpec_ECreateOnRead_Greedy &&
+                 logRequest.GetNodeInfo().GetSize() <
+                     GreedyMinimumAlwaysCreateBytes))
+            {
+                TFile fileResize(fullName, WrOnly | OpenAlways);
+                if (!targetSize) {
+                    targetSize = logRequest.GetNodeInfo().GetSize();
+                }
+                fileResize.Resize(targetSize);
+            }
+
+            EOpenMode modeInit{};
+            if (Spec.GetCreateOnRead()) {
+                modeInit = OpenAlways;
+            } else {
+                modeInit = OpenExisting;
+            }
+
+            if (Spec.GetOpenAddDirectFlag()) {
+                modeInit |= DirectAligned;
+            }
+
+            const auto mode =
+                FileOpenFlags(logRequest.GetNodeInfo().GetFlags(), modeInit);
+
+            TFile file(fullName, mode);
+
+            if (!file.IsOpen()) {
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_HANDLE,
                     Started,
                     MakeError(E_FAIL, "fail")});
             }
 
-            if (Spec.GetCreateOnRead()) {
-                fileHandle.Resize(logRequest.GetNodeInfo().GetSize());
-            }
-
-            const auto fh = fileHandle.GetHandle();
-            if (!fh) {
+            const auto fh = file.GetHandle();
+            if (fh <= 0) {
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_HANDLE,
                     Started,
                     MakeError(E_FAIL, "no filehandle")});
             }
 
-            OpenHandles[fh] = fileHandle;
+            OpenHandles[fh] = {
+                .File = file,
+                .Size = targetSize,
+                .Path = fullName,
+                .Mode = mode};
+
             HandlesLogToActual[logRequest.GetNodeInfo().GetHandle()] = fh;
             const auto stat = TFileStat{fullName};
             const auto inode = stat.INode;
@@ -402,42 +482,80 @@ private:
         }
 
         TGuard<TMutex> guard(StateLock);
+        const auto& range = logRequest.GetRanges(0);
+        auto handleLocal = GetLocalHandleId(range.GetHandle());
+        if (handleLocal == InvalidHandle || !OpenHandles.contains(handleLocal))
+        {
+            NCloud::NFileStore::NProto::TProfileLogRequestInfo requestCreate =
+                logRequest;
+            requestCreate.MutableNodeInfo()->SetNodeId(range.GetNodeId());
+            requestCreate.MutableNodeInfo()->SetHandle(range.GetHandle());
+            DoCreateHandle(requestCreate);
 
-        const auto handle =
-            GetLocalHandleId(logRequest.GetRanges(0).GetHandle());
-        if (handle == InvalidHandle) {
-            STORAGE_WARN(
-                "Read: no handle %lu ranges size=%d map size=%zu",
-                logRequest.GetRanges(0).GetHandle(),
-                logRequest.GetRanges().size(),
-                HandlesLogToActual.size());
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_READ,
-                Started,
-                MakeError(E_FAIL, "cancelled")});
+            handleLocal = GetLocalHandleId(range.GetHandle());
+            if (handleLocal == InvalidHandle ||
+                !OpenHandles.contains(handleLocal))
+            {
+                STORAGE_DEBUG(
+                    "Read: no handle %lu ranges size=%d map size=%zu",
+                    range.GetHandle(),
+                    logRequest.GetRanges().size(),
+                    HandlesLogToActual.size());
+                return MakeFuture(TCompletedRequest{
+                    NProto::ACTION_READ,
+                    Started,
+                    MakeError(E_FAIL, "cancelled")});
+            }
         }
-        auto& fh = OpenHandles[handle];
+        auto& fh = OpenHandles[handleLocal];
         STORAGE_DEBUG(
-            "Read from %lu fh.len=%ld fh.pos=%ld ",
-            handle,
-            fh.GetLength(),
-            fh.GetPosition());
-        auto buffer = Acalloc(logRequest.GetRanges().cbegin()->GetBytes());
+            "Read from %lu fh.len=%ld fh.pos=%ld per %lu mcs",
+            handleLocal,
+            fh.Size,
+            fh.File.GetPosition(),
+            (TInstant::Now() - Started).MicroSeconds());
 
-        TFileHandle fileHandle{fh.GetHandle()};
+        const auto& offset = logRequest.GetRanges().cbegin()->GetOffset();
+        const auto& bytes = logRequest.GetRanges().cbegin()->GetBytes();
+        const ui64 lastByte = offset + bytes;
 
-        const auto future = AsyncIO.Read(
-            fileHandle,
-            buffer.get(),
-            logRequest.GetRanges().cbegin()->GetBytes(),
-            logRequest.GetRanges().cbegin()->GetOffset());
+        if (Spec.GetCreateOnRead() == NProto::TReplaySpec_ECreateOnRead::
+                                          TReplaySpec_ECreateOnRead_Greedy &&
+            fh.Size < lastByte)
+        {
+            // Resize and close for flush caches
+            {
+                TFile fileResize(fh.Path, WrOnly | OpenAlways);
+                fh.Size = lastByte * GreedyincreaseBy;
+                fileResize.Resize(fh.Size);
+            }
+            // Reopen with original mode
+            fh.File = TFile(fh.Path, fh.Mode);
+            HandlesLogToActual[logRequest.GetNodeInfo().GetHandle()] =
+                fh.File.GetHandle();
+        }
+
+        auto buffer = Acalloc(bytes);
+
+        TFileHandle fileHandle{fh.File.GetHandle()};
+
+        const auto future =
+            AsyncIO.Read(fileHandle, buffer.get(), bytes, offset);
+
         fileHandle.Release();
 
         return future.Apply(
-            [started = Started, buffer = std::move(buffer)](
-                [[maybe_unused]] const auto& future) mutable
+            [this, handleLocal, started = Started, buffer = std::move(buffer)](
+                const auto& future) mutable
             {
-                if (future.GetValue()) {
+                const auto value = future.GetValue();
+                STORAGE_TRACE(
+                    "Read %lu finished with ret %d per %lu mcs",
+                    handleLocal,
+                    value,
+                    (TInstant::Now() - started).MicroSeconds());
+
+                if (value) {
                     return TCompletedRequest(NProto::ACTION_READ, started, {});
                 }
                 return TCompletedRequest(
@@ -458,7 +576,7 @@ private:
         return ret.substr(0, bytes);
     }
 
-    TFuture<TCompletedRequest> DoWrite(
+    TFuture<TCompletedRequest> DoWriteData(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
@@ -472,22 +590,31 @@ private:
                 MakeError(E_PRECONDITION_FAILED, "disabled by SkipWrite")});
         }
         TGuard<TMutex> guard(StateLock);
-
-        const auto handleLog = logRequest.GetRanges(0).GetHandle();
-        const auto handleLocal = GetLocalHandleId(handleLog);
+        const auto& range = logRequest.GetRanges(0);
+        const auto handleLog = range.GetHandle();
+        auto handleLocal = GetLocalHandleId(handleLog);
         if (handleLocal == InvalidHandle) {
-            // TODO(proller): Suggest filename, place in __lost__ if unknown,
-            // create and open file, continue to write
-            return MakeFuture(TCompletedRequest(
-                NProto::ACTION_WRITE,
-                Started,
-                MakeError(
-                    E_CANCELLED,
-                    TStringBuilder()
-                        << "write cancelled: no handle =" << handleLog)));
+            NCloud::NFileStore::NProto::TProfileLogRequestInfo requestCreate =
+                logRequest;
+            requestCreate.MutableNodeInfo()->SetNodeId(range.GetNodeId());
+            requestCreate.MutableNodeInfo()->SetHandle(range.GetHandle());
+
+            DoCreateHandle(requestCreate);
+            handleLocal = GetLocalHandleId(handleLog);
+            if (handleLocal == InvalidHandle) {
+                // TODO(proller): Suggest filename, place in __lost__ if
+                // unknown, create and open file, continue to write
+                return MakeFuture(TCompletedRequest(
+                    NProto::ACTION_WRITE,
+                    Started,
+                    MakeError(
+                        E_CANCELLED,
+                        TStringBuilder()
+                            << "write cancelled: no handle =" << handleLog)));
+            }
         }
-        const auto bytes = logRequest.GetRanges(0).GetBytes();
-        const auto offset = logRequest.GetRanges(0).GetOffset();
+        const auto bytes = range.GetBytes();
+        const auto offset = range.GetOffset();
 
         auto buffer = std::make_shared<TString>();
 
@@ -510,18 +637,31 @@ private:
         STORAGE_DEBUG(
             "Write to %lu fh.length=%ld fh.pos=%ld",
             handleLocal,
-            fh.GetLength(),
-            fh.GetPosition());
+            fh.Size,
+            fh.File.GetPosition());
 
-        TFileHandle FileHandle{fh.GetHandle()};
+        TFileHandle FileHandle{fh.File.GetHandle()};
         const auto writeFuture =
             AsyncIO.Write(FileHandle, buffer->data(), bytes, offset);
         FileHandle.Release();
+
+        const auto currentEnd = bytes + offset;
+        fh.Size = std::max(fh.Size, currentEnd);
+        FilenameToSize[fh.Path.c_str()] =
+            std::max(FilenameToSize[fh.Path.c_str()], currentEnd);
+
         return writeFuture.Apply(
-            [started = Started, buffer = std::move(buffer)](
+            [this, handleLocal, started = Started, buffer = std::move(buffer)](
                 [[maybe_unused]] const auto& future) mutable
             {
-                if (future.GetValue()) {
+                const auto value = future.GetValue();
+                STORAGE_TRACE(
+                    "Write %lu finished with ret %d per %lu mcs",
+                    handleLocal,
+                    value,
+                    (TInstant::Now() - started).MicroSeconds());
+
+                if (value) {
                     return TCompletedRequest(NProto::ACTION_WRITE, started, {});
                 }
                 return TCompletedRequest(
@@ -535,6 +675,9 @@ private:
     {
         if (const auto& it = NodePath.find(nodeid); it != NodePath.end()) {
             return it->second;
+        }
+        if (nodeid == InvalidNodeId) {
+            return PathByNode(RootNodeId) / LostName;
         }
         return {};
     }
@@ -562,8 +705,11 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        const auto parentNode = CreateDirIfMissingByNodeLog(
-            logRequest.GetNodeInfo().GetNewParentNodeId());
+        const auto parentNode =
+            logRequest.GetNodeInfo().GetNewParentNodeId() == InvalidNodeId
+                ? InvalidNodeId
+                : CreateDirIfMissingByNodeLog(
+                      logRequest.GetNodeInfo().GetNewParentNodeId());
 
         auto fullName =
             PathByNode(parentNode) / logRequest.GetNodeInfo().GetNewNodeName();
@@ -581,6 +727,8 @@ private:
 
                 if (logRequest.GetNodeInfo().GetSize()) {
                     fh.Reserve(logRequest.GetNodeInfo().GetSize());
+                    FilenameToSize[fullName.c_str()] =
+                        logRequest.GetNodeInfo().GetSize();
                 }
                 break;
             }
@@ -625,13 +773,13 @@ private:
 
         if (nodeid) {
             NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] = nodeid;
-            NodePath[nodeid] = PathByNode(parentNode) /
-                               logRequest.GetNodeInfo().GetNewNodeName();
+            NodePath[nodeid] = fullName;
         }
 
         return MakeFuture(
             TCompletedRequest(NProto::ACTION_CREATE_NODE, Started, {}));
     }
+
     TFuture<TCompletedRequest> DoRenameNode(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
@@ -711,6 +859,8 @@ private:
             PathByNode(parentNodeId) / logRequest.GetNodeInfo().GetNodeName();
         const auto unlinkres = NFs::Remove(fullName);
         STORAGE_DEBUG("Unlink %s : %d ", fullName.c_str(), unlinkres);
+        FilenameToSize.erase(fullName.c_str());
+
         // TODO(proller):
         // NodesLogToActual.erase(...)
         // NodePath.erase(...)
@@ -743,7 +893,7 @@ private:
                         << " fail: not found in " << OpenHandles.size())));
         }
 
-        auto& fhandle = it->second;
+        auto& fhandle = it->second.File;
         const auto len = fhandle.GetLength();
         const auto pos = fhandle.GetPosition();
         fhandle.Close();
@@ -792,13 +942,31 @@ private:
                 logRequest.GetNodeInfo().GetParentNodeId();
         }
 
-        // TODO(proller): guess path by ParentNodeId + NodeName
-        // TODO(proller): can create and truncate to known size missing file by flag
+        // TODO(proller): Create missing file and truncate to known size
 
-        const auto nodeid =
-            GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
+        TFsPath fullname;
+        if (logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId) {
+            const auto nodeId =
+                GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
 
-        if (nodeid == InvalidNodeId) {
+            if (nodeId != InvalidNodeId) {
+                fullname = PathByNode(nodeId);
+            }
+        }
+
+        if (!fullname.IsDefined() &&
+            logRequest.GetNodeInfo().GetParentNodeId() != InvalidNodeId &&
+            !logRequest.GetNodeInfo().GetNodeName().empty())
+        {
+            if (const auto parentPath =
+                    PathByNode(logRequest.GetNodeInfo().GetParentNodeId());
+                parentPath.IsDefined())
+            {
+                fullname = parentPath / logRequest.GetNodeInfo().GetNodeName();
+            }
+        }
+
+        if (!fullname.IsDefined()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_GET_NODE_ATTR,
                 Started,
@@ -809,7 +977,6 @@ private:
                                      << " in " << NodesLogToLocal.size())});
         }
 
-        auto fullname = PathByNode(nodeid);
         [[maybe_unused]] const auto stat = TFileStat{fullname};
         return MakeFuture(
             TCompletedRequest(NProto::ACTION_GET_NODE_ATTR, Started, {}));
@@ -908,7 +1075,7 @@ private:
         const auto logHandle = logRequest.GetNodeInfo().GetHandle();
         const auto handle = GetLocalHandleId(logHandle);
         if (handle == InvalidHandle) {
-            STORAGE_WARN(
+            STORAGE_DEBUG(
                 "Flush: no handle %lu map size=%zu",
                 logHandle,
                 HandlesLogToActual.size());
@@ -930,7 +1097,7 @@ private:
                                      << logHandle)});
         }
 
-        auto& fh = OpenHandles[handle];
+        auto& fh = OpenHandles[handle].File;
         fh.Flush();
 
         return MakeFuture(TCompletedRequest(NProto::ACTION_FLUSH, Started, {}));
