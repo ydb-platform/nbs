@@ -17,6 +17,7 @@ compare log and actual result ( S_OK E_FS_NOENT ...)
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -1286,7 +1287,7 @@ private:
             return;
         }
 
-        STORAGE_INFO(
+        STORAGE_TRACE(
             "Msg=%zd: result code mismatch: type=%s received=%d log=%d : "
             "%s",
             info.EventMessageNumber,

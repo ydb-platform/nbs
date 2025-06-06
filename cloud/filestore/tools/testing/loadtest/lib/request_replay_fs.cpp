@@ -860,6 +860,7 @@ private:
         const auto unlinkres = NFs::Remove(fullName);
         STORAGE_DEBUG("Unlink %s : %d ", fullName.c_str(), unlinkres);
         FilenameToSize.erase(fullName.c_str());
+
         // TODO(proller):
         // NodesLogToActual.erase(...)
         // NodePath.erase(...)
