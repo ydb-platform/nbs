@@ -19,7 +19,7 @@ func NewCellSelectorMock() *CellSelectorMock {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *CellSelectorMock) PickCell(
+func (s *CellSelectorMock) SelectCell(
 	ctx context.Context,
 	disk *disk_manager.DiskId,
 ) string {

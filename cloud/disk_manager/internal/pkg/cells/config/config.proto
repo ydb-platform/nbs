@@ -11,6 +11,6 @@ message ZoneCells {
 }
 
 message CellsConfig {
-    // Mapping ZoneId into CellId.
+    // Mapping from zone ID to cell ID.
     map<string, ZoneCells> Cells = 1;
 }

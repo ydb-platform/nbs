@@ -24,7 +24,7 @@ func NewCellSelector(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *cellSelector) PickCell(
+func (s *cellSelector) SelectCell(
 	ctx context.Context,
 	disk *disk_manager.DiskId,
 ) string {

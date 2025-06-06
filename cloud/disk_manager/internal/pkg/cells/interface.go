@@ -9,7 +9,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type CellSelector interface {
-	PickCell(
+	SelectCell(
 		ctx context.Context,
 		disk *disk_manager.DiskId,
 	) string
