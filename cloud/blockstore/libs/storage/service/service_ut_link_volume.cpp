@@ -9,7 +9,7 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TServiceLinVolumeTest)
+Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
 {
     Y_UNIT_TEST(ShouldFailOnInvalidArgumentVolume)
     {
@@ -57,7 +57,84 @@ Y_UNIT_TEST_SUITE(TServiceLinVolumeTest)
 
         service.SendCreateVolumeLinkRequest("vol-1", "vol-2");
         auto response = service.RecvCreateVolumeLinkResponse();
-        UNIT_ASSERT_C(E_NOT_IMPLEMENTED, response->GetError().GetCode());
+        UNIT_ASSERT_EQUAL_C(
+            S_OK,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldUnlinkVolume)
+    {
+        TTestEnv env(1, 1, 4);
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+
+        service.CreateVolumeLink("vol-1", "vol-2");
+        {
+            service.SendDestroyVolumeLinkRequest("vol-1", "vol-2");
+            auto response = service.RecvDestroyVolumeLinkResponse();
+            UNIT_ASSERT_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+        {
+            service.SendDestroyVolumeLinkRequest("vol-1", "vol-2");
+            auto response = service.RecvDestroyVolumeLinkResponse();
+            UNIT_ASSERT_EQUAL_C(
+                S_ALREADY,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUnlinkVolumeWhenFollowerDestroyed)
+    {
+        TTestEnv env(1, 1, 4);
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+
+        service.CreateVolumeLink("vol-1", "vol-2");
+        service.DestroyVolume("vol-2");
+
+        service.SendDestroyVolumeLinkRequest("vol-1", "vol-2");
+        auto response = service.RecvDestroyVolumeLinkResponse();
+        UNIT_ASSERT_EQUAL_C(
+            S_OK,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldUnlinkVolumeWhenLeaderDestroyed)
+    {
+        TTestEnv env(1, 1, 4);
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+
+        service.CreateVolumeLink("vol-1", "vol-2");
+        service.DestroyVolume("vol-1");
+
+        service.SendDestroyVolumeLinkRequest("vol-1", "vol-2");
+        auto response = service.RecvDestroyVolumeLinkResponse();
+        UNIT_ASSERT_EQUAL_C(
+            S_OK,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
     }
 }
 

@@ -38,6 +38,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GracefulShutdown,                                          __VA_ARGS__)\
     xxx(LinkLeaderVolumeToFollower,                                __VA_ARGS__)\
     xxx(UnlinkLeaderVolumeFromFollower,                            __VA_ARGS__)\
+    xxx(NotifyFollowerVolume,                                      __VA_ARGS__)\
     xxx(CheckRange,                                                __VA_ARGS__)\
 
 // BLOCKSTORE_VOLUME_REQUESTS
@@ -378,6 +379,9 @@ struct TEvVolume
         EvUnlinkLeaderVolumeFromFollowerResponse = EvBegin + 67,
 
         EvScrubberCounters = EvBegin + 68,
+
+        EvNotifyFollowerVolumeRequest = EvBegin + 69,
+        EvNotifyFollowerVolumeResponse = EvBegin + 70,
 
         EvEnd
     };
