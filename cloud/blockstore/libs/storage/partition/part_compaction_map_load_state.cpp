@@ -11,7 +11,7 @@ TCompactionMapLoadState::TCompactionMapLoadState(
     , MaxOutOfOrderChunksInflight(maxOutOfOrderChunksInflight)
 {}
 
-const TBlockRange32& TCompactionMapLoadState::LoadNextChunk()
+TBlockRange32 TCompactionMapLoadState::LoadNextChunk()
 {
     if (!OutOfOrderRanges.empty()) {
         LoadingRange = *OutOfOrderRanges.begin();
@@ -26,7 +26,7 @@ const TBlockRange32& TCompactionMapLoadState::LoadNextChunk()
         NextRangeIndex += MaxRangesPerTx;
         for (; !LoadedOutOfOrderRanges.empty() &&
                NextRangeIndex == LoadedOutOfOrderRanges.begin()->Start;
-               NextRangeIndex += MaxRangesPerTx)
+             NextRangeIndex += MaxRangesPerTx)
         {
             LoadedOutOfOrderRanges.erase(LoadedOutOfOrderRanges.begin());
         }
@@ -53,14 +53,14 @@ bool TCompactionMapLoadState::EnqueueOutOfOrderRanges(
     return isNotLoaded;
 }
 
-void TCompactionMapLoadState::RangeIsLoaded(const TBlockRange32& range)
+void TCompactionMapLoadState::RangeIsLoaded(TBlockRange32 range)
 {
     if (range.Start > NextRangeIndex) {
         LoadedOutOfOrderRanges.emplace(range);
     }
 }
 
-bool TCompactionMapLoadState::IsRangeLoaded(const TBlockRange32& range) const
+bool TCompactionMapLoadState::IsRangeLoaded(TBlockRange32 range) const
 {
     if (range.Start < NextRangeIndex && range != LoadingRange) {
         return true;
@@ -68,8 +68,7 @@ bool TCompactionMapLoadState::IsRangeLoaded(const TBlockRange32& range) const
     return LoadedOutOfOrderRanges.contains(range);
 }
 
-bool TCompactionMapLoadState::IsRangeInLoadingQueue(
-    const TBlockRange32& range) const
+bool TCompactionMapLoadState::IsRangeInLoadingQueue(TBlockRange32 range) const
 {
     if (LoadingRange == range) {
         return true;
@@ -78,7 +77,7 @@ bool TCompactionMapLoadState::IsRangeInLoadingQueue(
     return OutOfOrderRanges.contains(range);
 }
 
-void TCompactionMapLoadState::EnqueueOutOfOrderRange(const TBlockRange32& range)
+void TCompactionMapLoadState::EnqueueOutOfOrderRange(TBlockRange32 range)
 {
     if (OutOfOrderRanges.size() < MaxOutOfOrderChunksInflight &&
         !IsRangeInLoadingQueue(range))

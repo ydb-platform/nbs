@@ -17,15 +17,15 @@ public:
         ui32 maxRangesPerTx,
         ui32 maxOutOfOrderChunksInflight);
 
-    const TBlockRange32& LoadNextChunk();
+    TBlockRange32 LoadNextChunk();
     // return true if any of rangeIndices are not loaded yet
     bool EnqueueOutOfOrderRanges(const THashSet<ui32>& rangeIndices);
-    void RangeIsLoaded(const TBlockRange32& range);
+    void RangeIsLoaded(TBlockRange32 range);
 
 protected:
-    bool IsRangeLoaded(const TBlockRange32& range) const;
-    bool IsRangeInLoadingQueue(const TBlockRange32& range) const;
-    void EnqueueOutOfOrderRange(const TBlockRange32& range);
+    bool IsRangeLoaded(TBlockRange32 range) const;
+    bool IsRangeInLoadingQueue(TBlockRange32 range) const;
+    void EnqueueOutOfOrderRange(TBlockRange32 range);
 
 protected:
     const ui32 MaxRangesPerTx = 0;

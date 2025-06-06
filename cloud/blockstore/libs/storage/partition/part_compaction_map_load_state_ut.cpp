@@ -21,15 +21,15 @@ public:
     {
         return NextRangeIndex;
     }
-    const TBlockRange32& GetLoadingRange() const
+    TBlockRange32 GetLoadingRange() const
     {
         return LoadingRange;
     }
-    const TBlockRangeSet32& GetOutOfOrderRanges() const
+    TBlockRangeSet32 GetOutOfOrderRanges() const
     {
         return OutOfOrderRanges;
     }
-    const TBlockRangeSet32& GetLoadedOutOfOrderRanges() const
+    TBlockRangeSet32 GetLoadedOutOfOrderRanges() const
     {
         return LoadedOutOfOrderRanges;
     }
