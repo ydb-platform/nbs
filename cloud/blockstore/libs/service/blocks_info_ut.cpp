@@ -4,6 +4,8 @@
 
 namespace NCloud::NBlockStore {
 
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(BlocksInfoTest)
 {
     Y_UNIT_TEST(TestSplit)

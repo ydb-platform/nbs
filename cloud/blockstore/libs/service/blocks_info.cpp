@@ -4,6 +4,8 @@
 
 namespace NCloud::NBlockStore {
 
+////////////////////////////////////////////////////////////////////////////////
+
 TBlocksInfo::TBlocksInfo(
         const ui64 from,
         const ui64 length,
@@ -59,7 +61,6 @@ std::pair<TBlocksInfo, std::optional<TBlocksInfo>> TBlocksInfo::Split() const
         firstBlocksInfo.EndOffset = 0;
         firstBlocksInfo.Range.End = firstBlocksInfo.Range.Start;
         secondBlocksInfo.BeginOffset = 0;
-        secondBlocksInfo.BeginOffset = 0;
         secondBlocksInfo.Range.Start = firstBlocksInfo.Range.End + 1;
     } else {
         // The first blocksInfo is aligned.
@@ -75,9 +76,9 @@ std::pair<TBlocksInfo, std::optional<TBlocksInfo>> TBlocksInfo::Split() const
 TString TBlocksInfo::Print() const
 {
     return TStringBuilder()
-           << "[Range: " << Range << " BeginOffset: " << BeginOffset
+           << "{Range: " << Range << " BeginOffset: " << BeginOffset
            << " EndOffset: " << EndOffset << " BlockSize: " << BlockSize
-           << " SgListAligned: " << (SgListAligned ? "true" : "false") << "]";
+           << " SgListAligned: " << (SgListAligned ? "true" : "false") << "}";
 }
 
 IOutputStream& operator<<(IOutputStream& out, const TBlocksInfo& rhs)
