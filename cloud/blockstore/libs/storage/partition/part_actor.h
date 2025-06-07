@@ -6,6 +6,7 @@
 #include "part_events_private.h"
 #include "part_state.h"
 #include "part_tx.h"
+#include "part_compaction_map_load_state.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -116,6 +117,7 @@ private:
     TLogTitle LogTitle;
 
     std::unique_ptr<TPartitionState> State;
+    std::unique_ptr<TCompactionMapLoadState> CompactionMapLoadState;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -671,6 +673,16 @@ private:
 
     void SetFirstGarbageCollectionCompleted();
     bool IsFirstGarbageCollectionCompleted() const;
+
+    void LoadNextCompactionMapChunk(const NActors::TActorContext& ctx);
+    void HandleLoadCompactionMapChunk(
+        const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    THashSet<ui32> GetRangeIndices(
+        const TVector<TAddFreshBlob>& freshBlobs,
+        const TVector<TAddMixedBlob>& mixedBlobs,
+        const TVector<TAddMergedBlob>& mergedBlobs) const;
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)

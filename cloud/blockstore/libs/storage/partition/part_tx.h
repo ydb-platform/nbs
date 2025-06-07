@@ -62,6 +62,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(ScanDiskBatch,              __VA_ARGS__)                               \
     xxx(AddUnconfirmedBlobs,        __VA_ARGS__)                               \
     xxx(ConfirmBlobs,               __VA_ARGS__)                               \
+    xxx(LoadCompactionMapChunk,     __VA_ARGS__)                               \
 // BLOCKSTORE_PARTITION_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1157,6 +1158,21 @@ struct TTxPartition
         void Clear()
         {
             // Nothing to do.
+        }
+    };
+
+    //
+    // LoadCompactionMapChunk
+    //
+
+    struct TLoadCompactionMapChunk
+    {
+        TBlockRange32 Range;
+        TVector<TCompactionCounter> Counters;
+
+        void Clear()
+        {
+            Counters.clear();
         }
     };
 };

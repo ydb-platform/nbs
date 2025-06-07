@@ -914,6 +914,83 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 visitor.Result);
         });
     }
+
+    Y_UNIT_TEST(ShouldCorrectlyWriteAndReadCompactionMap)
+    {
+        constexpr size_t RangeSize = 1024;
+        constexpr size_t BlockSize = 4096;
+        constexpr ui64 BlockCount = 1_TB / BlockSize;
+        constexpr ui64 RangeCount = BlockCount / RangeSize;
+
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                NProto::TBlobMeta meta;
+
+                for (size_t i = 0; i < RangeCount; ++i) {
+                    db.WriteCompactionMap(
+                        i * RangeSize,
+                        i % 100 + 1,
+                        i % 1023 + 1);
+                }
+            });
+
+        // loading compaction map per one call
+        TVector<TCompactionCounter> compactionMap1;
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                db.ReadCompactionMap(compactionMap1);
+                UNIT_ASSERT_VALUES_EQUAL(RangeCount, compactionMap1.size());
+            });
+
+        for (size_t i = 0; i < RangeCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                i * RangeSize,
+                compactionMap1[i].BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                i % 100 + 1,
+                compactionMap1[i].Stat.BlobCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                i % 1023 + 1,
+                compactionMap1[i].Stat.BlockCount);
+        }
+
+        // loading compaction map lazily
+        TVector<TCompactionCounter> compactionMap2;
+        constexpr size_t RangeCountPerRun = 500;
+        for (ui32 i = 0; i < RangeCount; i += RangeCountPerRun) {
+            const ui32 mapSize = compactionMap2.size();
+            executor.ReadTx(
+                [&](TPartitionDatabase db)
+                {
+                    db.ReadCompactionMap(
+                        TBlockRange32::WithLength(
+                            i * RangeSize,
+                            RangeCountPerRun * RangeSize),
+                        compactionMap2);
+                });
+            UNIT_ASSERT_VALUES_EQUAL(
+                Min(RangeCountPerRun, RangeCount - i),
+                compactionMap2.size() - mapSize);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(compactionMap1.size(), compactionMap2.size());
+        for (ui32 i = 0; i < RangeCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionMap1[i].BlockIndex,
+                compactionMap2[i].BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionMap1[i].Stat.BlockCount,
+                compactionMap2[i].Stat.BlockCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionMap1[i].Stat.BlobCount,
+                compactionMap2[i].Stat.BlobCount);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
