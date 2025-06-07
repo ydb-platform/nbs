@@ -24,6 +24,7 @@ import (
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	pools_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -75,6 +76,12 @@ func newDefaultClientConfig() *client_config.Config {
 		BackoffTimeout:      &timeout,
 		OperationPollPeriod: &timeout,
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func ReplaceUnacceptableSymbolsFromResourceID(t *testing.T) string {
+	return strings.ReplaceAll(t.Name(), "/", "_")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -297,6 +304,22 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 					),
 				},
 			},
+			"zone-d": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS2_PORT"),
+					),
+				},
+			},
+			"zone-d-shard1": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS3_PORT"),
+					),
+				},
+			},
 		},
 		RootCertsFile:              &rootCertsFile,
 		DurableClientTimeout:       &durableClientTimeout,
@@ -443,7 +466,8 @@ func CreateImage(
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskID := t.Name() + "_temporary_disk_for_image_" + imageID
+	diskID := ReplaceUnacceptableSymbolsFromResourceID(t) +
+		"_temporary_disk_for_image_" + imageID
 
 	reqCtx := GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -531,6 +555,30 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 		},
 		metrics.NewEmptyRegistry(),
 	)
+}
+
+func newResourceStorage(ctx context.Context) (resources.Storage, error) {
+	db, err := newYDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	endedMigrationExpirationTimeout, err := time.ParseDuration("30m")
+	if err != nil {
+		return nil, err
+	}
+
+	resourcesStorage, err := resources.NewStorage(
+		"disks",
+		"images",
+		"snapshot",
+		"filesystems",
+		"placement_groups",
+		db,
+		endedMigrationExpirationTimeout,
+	)
+
+	return resourcesStorage, err
 }
 
 func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
@@ -714,6 +762,19 @@ func GetIncremental(
 	}
 
 	return storage.GetIncremental(ctx, disk)
+}
+
+func GetDiskMeta(
+	ctx context.Context,
+	diskID string,
+) (*resources.DiskMeta, error) {
+
+	storage, err := newResourceStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return storage.GetDiskMeta(ctx, diskID)
 }
 
 func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) {

@@ -187,10 +187,11 @@ func (s *service) prepareZoneId(
 		return diskMeta.ZoneID, nil
 	}
 
-	return s.cellSelector.PickCell(ctx, req.DiskId), nil
+	return s.cellSelector.SelectCell(ctx, req.DiskId), nil
 }
 
 func (s *service) prepareCreateDiskParams(
+	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
 ) (*protos.CreateDiskParams, error) {
 
@@ -371,7 +372,7 @@ func (s *service) CreateDisk(
 	req *disk_manager.CreateDiskRequest,
 ) (string, error) {
 
-	params, err := s.prepareCreateDiskParams(req)
+	params, err := s.prepareCreateDiskParams(ctx, req)
 	if err != nil {
 		return "", err
 	}

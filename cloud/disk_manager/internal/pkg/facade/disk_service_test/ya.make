@@ -11,7 +11,9 @@ INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common
 
 GO_XTEST_SRCS(
     disk_relocation_test.go
+    disk_service_cells_test.go
     disk_service_test.go
+    common_test.go
 )
 
 END()
