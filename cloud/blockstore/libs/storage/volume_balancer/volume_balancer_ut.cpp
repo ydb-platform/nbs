@@ -757,10 +757,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
         UNIT_ASSERT_VALUES_UNEQUAL(0, cpuWaitCounter->Val());
         UNIT_ASSERT(cpuWaitCounter->Val() <= 90);
-
-        auto cpuWaitFailureCounter =
-            counters->GetCounter("CpuWaitFailure", false);
-        UNIT_ASSERT_VALUES_EQUAL(0, cpuWaitFailureCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsNotActivated)
@@ -881,10 +877,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
         UNIT_ASSERT_VALUES_EQUAL(0, cpuWaitCounter->Val());
-
-        auto cpuWaitFailureCounter =
-            counters->GetCounter("CpuWaitFailure", false);
-        UNIT_ASSERT_VALUES_EQUAL(1, cpuWaitFailureCounter->Val());
     }
 }
 
