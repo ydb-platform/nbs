@@ -41,14 +41,26 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
 
     NLowLevel::UnixCredentialsGuard credGuard(
         request.GetUid(),
-        request.GetGid());
+        request.GetGid(),
+        Config->GetGuestOnlyPermissionsCheckEnabled());
     TFileHandle handle;
     TFileStat stat;
     ui64 nodeId;
     if (const auto& pathname = request.GetName()) {
-        handle = node->OpenHandle(pathname, flags, mode);
+        bool isCreated = false;
+        if (Config->GetGuestOnlyPermissionsCheckEnabled()) {
+            std::tie(handle, isCreated) =
+                node->OpenOrCreateHandle(pathname, flags, mode);
+        } else {
+            handle = node->OpenHandle(pathname, flags, mode);
+        }
 
         auto newnode = TIndexNode::Create(*node, pathname);
+
+        if (isCreated) {
+            credGuard.ApplyCredentials(newnode->GetNodeFd());
+        }
+
         stat = newnode->Stat();
         nodeId = newnode->GetNodeId();
 
