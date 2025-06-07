@@ -429,7 +429,12 @@ private:
         TCallContextPtr callContext,
         fuse_req_t req,
         fuse_ino_t ino,
-        ui64 fh);
+        ui64 handle);
+    void ReleaseImpl(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        fuse_ino_t ino,
+        ui64 handle);
     void CompleteAsyncDestroyHandle(
         TCallContext& callContext,
         const NProto::TDestroyHandleResponse& response);
