@@ -1,6 +1,7 @@
 RECURSE(
     accounting
     auth
+    cells
     client
     clients
     common
