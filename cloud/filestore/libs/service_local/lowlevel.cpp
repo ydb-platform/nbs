@@ -166,7 +166,7 @@ TOpenOrCreateResult OpenOrCreateAt(
     }
 
     if (flags & O_CREAT) {
-        // try to create file eclusively and if the file already exist, fallback
+        // try to create file exclusively and if the file already exist, fallback
         // to trying to open without O_CREATE
         flags |= O_EXCL;
         int fd = openat(Fd(handle), name.data(), flags, mode);
