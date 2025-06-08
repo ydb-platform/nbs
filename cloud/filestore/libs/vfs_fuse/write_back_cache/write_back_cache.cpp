@@ -240,6 +240,11 @@ public:
 
                     // TODO(svartmetal): handle response error
 
+                    if (response.GetBuffer().empty()) {
+                        *response.MutableBuffer() = std::move(buffer);
+                        return response;
+                    }
+
                     Y_ABORT_UNLESS(
                         length == response.GetBuffer().length());
                     // TODO(svartmetal): support buffer offsetting
