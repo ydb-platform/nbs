@@ -78,9 +78,9 @@ public:
             IFileStorePtr session,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
-            TDuration automaticFlushPeriod,
             const TString& filePath,
-            ui32 capacityBytes)
+            ui32 capacityBytes,
+            TDuration automaticFlushPeriod)
         : Session(CreateSessionSequencer(std::move(session)))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
@@ -616,17 +616,17 @@ TWriteBackCache::TWriteBackCache(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
-        TDuration automaticFlushPeriod,
         const TString& filePath,
-        ui32 capacityBytes)
+        ui32 capacityBytes,
+        TDuration automaticFlushPeriod)
     : Impl(
         new TImpl(
             session,
             scheduler,
             timer,
-            automaticFlushPeriod,
             filePath,
-            capacityBytes))
+            capacityBytes,
+            automaticFlushPeriod))
 {}
 
 TWriteBackCache::~TWriteBackCache() = default;
@@ -661,17 +661,17 @@ TWriteBackCachePtr CreateWriteBackCache(
     IFileStorePtr session,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
-    TDuration automaticFlushPeriod,
     const TString& filePath,
-    ui32 capacityBytes)
+    ui32 capacityBytes,
+    TDuration automaticFlushPeriod)
 {
     return std::make_unique<TWriteBackCache>(
         session,
         scheduler,
         timer,
-        automaticFlushPeriod,
         filePath,
-        capacityBytes);
+        capacityBytes,
+        automaticFlushPeriod);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

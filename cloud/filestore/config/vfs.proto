@@ -50,7 +50,9 @@ message TVFSConfig
     // (and a subdirectory with session id as name) if not present.
     optional string WriteBackCachePath = 15;
 
-    // Max WriteBackCache size in bytes.
-    optional uint32 WriteBackCacheSize = 16;
+    // Max WriteBackCache capacity in bytes.
+    optional uint32 WriteBackCacheCapacity = 16;
 
+    // WriteBackCache automatic flush period (in milliseconds).
+    optional uint32 WriteBackCacheAutomaticFlushPeriod = 17;
 }

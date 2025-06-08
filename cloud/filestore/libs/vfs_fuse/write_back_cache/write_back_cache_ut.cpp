@@ -255,9 +255,9 @@ struct TBootstrap
             Session,
             Scheduler,
             Timer,
-            CacheAutomaticFlushPeriod,
             TempFileHandle.GetName(),
-            CacheCapacityBytes);
+            CacheCapacityBytes,
+            CacheAutomaticFlushPeriod);
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(

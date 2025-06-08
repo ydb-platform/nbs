@@ -855,9 +855,9 @@ private:
                     Session,
                     Scheduler,
                     Timer,
-                    TDuration(), // TODO(svartmetal): pass AutomaticFlushPeriod from config
                     file.GetPath(),
-                    Config->GetWriteBackCacheSize());
+                    Config->GetWriteBackCacheCapacity(),
+                    Config->GetWriteBackCacheAutomaticFlushPeriod());
                 WriteBackCacheInitialized = true;
             }
 

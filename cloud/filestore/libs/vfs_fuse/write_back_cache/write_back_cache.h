@@ -31,9 +31,9 @@ public:
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
-        TDuration automaticFlushPeriod,
         const TString& filePath,
-        ui32 capacityBytes);
+        ui32 capacityBytes,
+        TDuration automaticFlushPeriod);
 
     ~TWriteBackCache();
 
@@ -122,8 +122,8 @@ TWriteBackCachePtr CreateWriteBackCache(
     IFileStorePtr session,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
-    TDuration automaticFlushPeriod,
     const TString& filePath,
-    ui32 capacityBytes);
+    ui32 capacityBytes,
+    TDuration automaticFlushPeriod);
 
 }   // namespace NCloud::NFileStore::NFuse

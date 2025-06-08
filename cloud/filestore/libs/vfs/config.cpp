@@ -28,8 +28,9 @@ namespace {
     xxx(HandleOpsQueuePath,     TString,        ""                            )\
     xxx(HandleOpsQueueSize,     ui32,           1_GB                          )\
                                                                                \
-    xxx(WriteBackCachePath,     TString,        ""                            )\
-    xxx(WriteBackCacheSize,     ui32,           1_GB                          )\
+    xxx(WriteBackCachePath,                 TString,   ""                     )\
+    xxx(WriteBackCacheCapacity,             ui32,      1_GB                   )\
+    xxx(WriteBackCacheAutomaticFlushPeriod, TDuration, TDuration::MilliSeconds(100) )\
 // FILESTORE_VFS_CONFIG
 
 #define FILESTORE_VFS_DECLARE_CONFIG(name, type, value)                        \
@@ -46,6 +47,12 @@ template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
     return static_cast<TTarget>(value);
+}
+
+template <>
+TDuration ConvertValue<TDuration, ui32>(const ui32& value)
+{
+    return TDuration::MilliSeconds(value);
 }
 
 template <typename T>
