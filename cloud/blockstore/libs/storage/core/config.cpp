@@ -604,7 +604,11 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(LoadConfigsFromCmsRetryMinDelay,      TDuration,   Seconds(2)         )\
     xxx(LoadConfigsFromCmsRetryMaxDelay,      TDuration,   Seconds(512)       )\
-    xxx(LoadConfigsFromCmsTotalTimeout,       TDuration,   Hours(1)           )
+    xxx(LoadConfigsFromCmsTotalTimeout,       TDuration,   Hours(1)           )\
+                                                                               \
+    xxx(MaxCompactionRangesLoadingPerTx,                   ui32,   0          )\
+    xxx(MaxOutOfOrderCompactionMapChunksInflight,          ui32,   5          )\
+
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
