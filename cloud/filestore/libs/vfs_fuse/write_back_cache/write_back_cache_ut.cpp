@@ -172,7 +172,6 @@ struct TBootstrap
             NProto::TReadDataResponse response;
 
             if (!FlushedData.contains(request->GetHandle())) {
-                response.SetBuffer(TString(request->GetLength(), 0));
                 return MakeFuture(response);
             }
 
@@ -396,6 +395,26 @@ struct TBootstrap
 
 Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 {
+    Y_UNIT_TEST(ShouldReadEmptyCache)
+    {
+        TBootstrap b;
+
+        auto readPromise = NewPromise<NProto::TReadDataResponse>();
+        b.Session->ReadDataHandler = [&] (auto, auto) {
+            return readPromise.GetFuture();
+        };
+
+        NProto::TReadDataResponse response;
+        // return empty buffer in response
+        readPromise.SetValue(response);
+
+        auto readFuture = b.ReadFromCache(1, 0, 1);
+        UNIT_ASSERT(readFuture.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(1, 0),
+            readFuture.GetValue().GetBuffer());
+    }
+
     Y_UNIT_TEST(ShouldReadAndFlushEmptyCache)
     {
         TBootstrap b;
