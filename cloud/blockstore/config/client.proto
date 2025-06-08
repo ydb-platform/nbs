@@ -194,6 +194,9 @@ message TClientConfig
 
     // Allows to specify clientId later (by upper client).
     optional bool NoClientId = 45;
+
+    // True if this is a server-side client.
+    optional bool IsServerSideClient = 46;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

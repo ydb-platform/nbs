@@ -188,21 +188,34 @@ void TShardingManager::OutputHtml(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IShardingManagerPtr CreateRemoteStorageProvider(
+IShardingManagerPtr CreateShardingManager(
     TShardingConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    NClient::IClientPtr grpcClient,
+    IServerStatsPtr serverStats,
     NRdma::IClientPtr rdmaClient)
 {
+    auto result = NClient::CreateClient(
+        std::make_shared<NClient::TClientAppConfig>(config->GetGrpcClientConfig()),
+        timer,
+        scheduler,
+        logging,
+        monitoring,
+        std::move(serverStats));
+
+    if (HasError(result.GetError())) {
+        ythrow TServiceError(E_FAIL)
+            << "unable to create gRPC client";
+    }
+
     TShardingArguments args {
         .Timer = std::move(timer),
         .Scheduler = std::move(scheduler),
         .Logging = std::move(logging),
         .Monitoring = std::move(monitoring),
-        .GrpcClient = std::move(grpcClient),
+        .GrpcClient = std::move(result.GetResult()),
         .RdmaClient = std::move(rdmaClient),
         .EndpointsSetup = CreateHostEndpointsSetupProvider()
     };

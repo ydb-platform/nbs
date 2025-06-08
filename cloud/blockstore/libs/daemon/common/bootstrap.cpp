@@ -374,19 +374,13 @@ void TBootstrapBase::Init()
     auto& config = *clientAppConfig.MutableClientConfig();
     config.SetNoClientId(true);
 
-    RemoteStorageProvider = CreateRemoteStorageProvider(
+    RemoteStorageProvider = CreateShardingManager(
         Configs->ShardingConfig,
         Timer,
         Scheduler,
         Logging,
         Monitoring,
-        NClient::CreateClient(
-            std::make_shared<NClient::TClientAppConfig>(clientAppConfig),
-            Timer,
-            Scheduler,
-            Logging,
-            Monitoring,
-            ServerStats).GetResult(),
+        ServerStats,
         RdmaClient
     );
 

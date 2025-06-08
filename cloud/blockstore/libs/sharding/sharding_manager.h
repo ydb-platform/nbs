@@ -41,13 +41,13 @@ struct IShardingManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IShardingManagerPtr CreateRemoteStorageProvider(
+IShardingManagerPtr CreateShardingManager(
     TShardingConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
-    NClient::IClientPtr grpcClient,
+    IServerStatsPtr serverStats,
     NRdma::IClientPtr rdmaClient);
 
 }   // namespace NCloud::NBlockStore::NSharding

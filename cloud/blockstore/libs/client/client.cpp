@@ -682,19 +682,21 @@ void TClient::Start()
         Executors.push_back(std::move(executor));
     }
 
-    // init any service for UploadClientMetrics
-    with_lock (EndpointLock) {
-        bool anyEndpoint = InitDataEndpoint();
-        if (!DataEndpoint) {
-            anyEndpoint |= InitControlEndpoint();
+    if (Config->GetIsServerSideClient()) {
+        // init any service for UploadClientMetrics
+        with_lock (EndpointLock) {
+            bool anyEndpoint = InitDataEndpoint();
+            if (!DataEndpoint) {
+                anyEndpoint |= InitControlEndpoint();
+            }
+            STORAGE_VERIFY(
+                anyEndpoint,
+                TWellKnownEntityTypes::CLIENT,
+                Config->GetClientId());
         }
-        STORAGE_VERIFY(
-            anyEndpoint,
-            TWellKnownEntityTypes::CLIENT,
-            Config->GetClientId());
-    }
 
-    ScheduleUploadStats();
+        ScheduleUploadStats();
+    }
 }
 
 void TClient::Stop()

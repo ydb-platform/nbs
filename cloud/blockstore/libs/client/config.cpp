@@ -71,6 +71,7 @@ TDuration MSeconds(ui64 x)
     xxx(LocalNonreplDisableDurableClient,         bool, false                 )\
     xxx(SkipCertVerification,   bool,             false                       )\
     xxx(NoClientId,             bool,             false                       )\
+    xxx(IsServerSideClient,     bool,             false                       )\
 // BLOCKSTORE_CLIENT_CONFIG
 
 #define BLOCKSTORE_CLIENT_DECLARE_CONFIG(name, type, value)                    \
