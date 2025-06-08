@@ -151,7 +151,7 @@ TFileHandle OpenAt(
     return fd;
 }
 
-std::pair<TFileHandle, bool> OpenOrCreateAt(
+TOpenOrCreateResult OpenOrCreateAt(
     const TFileHandle& handle,
     const TString& name,
     int flags,
@@ -175,11 +175,9 @@ std::pair<TFileHandle, bool> OpenOrCreateAt(
         }
 
         auto errorCode = GetSystemErrorCode();
-        if (errorCode != E_FS_EXIST) {
-            ythrow TServiceError(errorCode)
-                << "failed to open " << name.Quote()
-                << ": " << LastSystemErrorText();
-        }
+        Y_ENSURE_EX(errorCode == E_FS_EXIST, TServiceError(errorCode)
+            << "failed to open " << name.Quote()
+            << ": " << LastSystemErrorText());
 
         flags &= ~O_EXCL;
     }
@@ -651,9 +649,9 @@ bool Flock(const TFileHandle& handle, int operation)
 ////////////////////////////////////////////////////////////////////////////////
 
 UnixCredentialsGuard::UnixCredentialsGuard(
-    uid_t UserUid,
-    gid_t UserGid,
-    bool trustUserCredentials)
+        uid_t UserUid,
+        gid_t UserGid,
+        bool trustUserCredentials)
     : UserUid(UserUid)
     , UserGid(UserGid)
     , TrustUserCredentials(trustUserCredentials)
@@ -695,19 +693,17 @@ UnixCredentialsGuard::UnixCredentialsGuard(
     IsRestoreNeeded = true;
 }
 
-void UnixCredentialsGuard::ApplyCredentials(const TFileHandle& handle)
+bool UnixCredentialsGuard::ApplyCredentials(const TFileHandle& handle)
 {
     if (!TrustUserCredentials || OriginalUid != 0) {
         // need to be root to freely apply permissions
-        return;
+        return true;
     }
 
     char path[64] = {0};
     sprintf(path, "/proc/self/fd/%i", Fd(handle));
 
-    // we don't expect chown to fail since we run as root and should be able to
-    // change owner and group freely
-    chown(path, UserUid, UserGid);
+    return chown(path, UserUid, UserGid) == 0;
 }
 
 UnixCredentialsGuard::~UnixCredentialsGuard()

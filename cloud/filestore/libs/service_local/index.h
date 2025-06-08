@@ -84,7 +84,7 @@ public:
 
     TFileHandle OpenHandle(int flags);
     TFileHandle OpenHandle(const TString& name, int flags, int mode);
-    std::pair<TFileHandle, bool>
+    NLowLevel::TOpenOrCreateResult
     OpenOrCreateHandle(const TString& name, int flags, int mode);
 
     //

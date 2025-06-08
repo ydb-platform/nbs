@@ -43,22 +43,24 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         request.GetUid(),
         request.GetGid(),
         Config->GetGuestOnlyPermissionsCheckEnabled());
-    TFileHandle handle;
+    NLowLevel::TOpenOrCreateResult openResult;
     TFileStat stat;
     ui64 nodeId;
     if (const auto& pathname = request.GetName()) {
-        bool isCreated = false;
         if (Config->GetGuestOnlyPermissionsCheckEnabled()) {
-            std::tie(handle, isCreated) =
-                node->OpenOrCreateHandle(pathname, flags, mode);
+            openResult = node->OpenOrCreateHandle(pathname, flags, mode);
         } else {
-            handle = node->OpenHandle(pathname, flags, mode);
+            openResult.Handle = node->OpenHandle(pathname, flags, mode);
         }
 
         auto newnode = TIndexNode::Create(*node, pathname);
 
-        if (isCreated) {
-            credGuard.ApplyCredentials(newnode->GetNodeFd());
+        if (openResult.WasCreated) {
+            if (!credGuard.ApplyCredentials(newnode->GetNodeFd())) {
+                node->Unlink(pathname, false);
+                return TErrorResponse(
+                    ErrorFailedToApplyCredentials(pathname));
+            }
         }
 
         stat = newnode->Stat();
@@ -73,7 +75,7 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
             return TErrorResponse(ErrorNoSpaceLeft());
         }
     } else {
-        handle = node->OpenHandle(flags);
+        openResult.Handle = node->OpenHandle(flags);
         stat = node->Stat();
         nodeId = node->GetNodeId();
     }
@@ -82,7 +84,7 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     flags = flags & ~(O_CREAT | O_EXCL | O_TRUNC);
 
     auto [handleId, error] =
-        session->InsertHandle(std::move(handle), nodeId, flags);
+        session->InsertHandle(std::move(openResult.Handle), nodeId, flags);
     if (HasError(error)) {
         ReportLocalFsMaxSessionFileHandlesInUse();
         return TErrorResponse(error);

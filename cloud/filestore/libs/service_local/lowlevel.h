@@ -24,7 +24,7 @@ private:
 
 public:
     UnixCredentialsGuard(uid_t uid, gid_t gid, bool trustUserCredentials);
-    void ApplyCredentials(const TFileHandle& handle);
+    bool ApplyCredentials(const TFileHandle& handle);
     ~UnixCredentialsGuard();
 };
 
@@ -97,6 +97,14 @@ struct TFileSystemStat
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TOpenOrCreateResult
+{
+    TFileHandle Handle;
+    bool WasCreated = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TFileHandle Open(const TString& path, int flags, int mode);
 TFileHandle Open(const TFileHandle& handle, int flags, int mode);
 TFileHandle OpenAt(
@@ -104,7 +112,7 @@ TFileHandle OpenAt(
     const TString& name,
     int flags,
     int mode);
-std::pair<TFileHandle, bool> OpenOrCreateAt(
+TOpenOrCreateResult OpenOrCreateAt(
     const TFileHandle& handle,
     const TString& name,
     int flags,
