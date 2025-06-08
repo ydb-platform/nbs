@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     config.cpp
     describe_volume.cpp
+    endpoints_setup.cpp
     host_endpoint.cpp
     remote_storage.cpp
     sharding_common.cpp

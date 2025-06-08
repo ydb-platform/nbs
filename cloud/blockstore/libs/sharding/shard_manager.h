@@ -27,7 +27,8 @@ namespace NCloud::NBlockStore::NSharding {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TShardManager
-    : public std::enable_shared_from_this<TShardManager>
+    : public IStartable
+    , public std::enable_shared_from_this<TShardManager>
 {
 private:
     const TShardingArguments Args;
@@ -35,9 +36,9 @@ private:
 
     TAdaptiveLock Lock;
 
-    THashMap<TString, THostEndpointsManagerPtr> Active;
-    THashMap<TString, THostEndpointsManagerPtr> Activating;
-    THashSet<TString, THostEndpointsManagerPtr> Deactivating;
+    THashMap<TString, IHostEndpointsManagerPtr> Active;
+    THashMap<TString, IHostEndpointsManagerPtr> Activating;
+    THashSet<IHostEndpointsManagerPtr> Deactivating;
     TVector<TString> Unused;
 
 public:
@@ -55,6 +56,36 @@ public:
         const NClient::TClientAppConfigPtr& clientConfig)
     {
         return PickHosts(Config.GetShardDescribeHostCnt(), clientConfig);
+    }
+
+    [[nodiscard]]THashMap<TString, IHostEndpointsManagerPtr>  GetActive() const
+    {
+        with_lock(Lock) {
+            return Active;
+        }
+    }
+
+    [[nodiscard]]THashMap<TString, IHostEndpointsManagerPtr>  GetActivating() const
+    {
+        with_lock(Lock) {
+            return Activating;
+        }
+    }
+
+    [[nodiscard]]THashSet<IHostEndpointsManagerPtr>  GetDeactivating() const
+    {
+        with_lock(Lock) {
+            return Deactivating;
+        }
+    }
+
+    void Start() override
+    {
+        ResizeIfNeeded();
+    }
+
+    void Stop() override
+    {
     }
 
 private:

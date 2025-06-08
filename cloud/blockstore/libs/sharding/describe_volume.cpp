@@ -273,10 +273,6 @@ std::optional<TDescribeFuture> DescribeVolume(
     TDuration timeout,
     TShardingArguments args)
 {
-    if (endpoints.empty()) {
-        return {};
-    }
-
     TShards shards;
 
     for (const auto& shard: endpoints) {

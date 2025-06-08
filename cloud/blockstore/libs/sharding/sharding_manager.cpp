@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "describe_volume.h"
+#include "endpoints_setup.h"
 #include "host_endpoint.h"
 #include "sharding_common.h"
 #include "shard_manager.h"
@@ -107,6 +108,10 @@ TShardingManager::TShardingManager(
 void TShardingManager::Start()
 {
     Args.GrpcClient->Start();
+
+    for (auto& shard: Shards) {
+        shard.second->Start();
+    }
 }
 
 void TShardingManager::Stop()
@@ -198,7 +203,8 @@ IShardingManagerPtr CreateRemoteStorageProvider(
         .Logging = std::move(logging),
         .Monitoring = std::move(monitoring),
         .GrpcClient = std::move(grpcClient),
-        .RdmaClient = std::move(rdmaClient)
+        .RdmaClient = std::move(rdmaClient),
+        .EndpointsSetup = CreateHostEndpointsSetupProvider()
     };
 
     return std::make_shared<TShardingManager>(std::move(config), args);
