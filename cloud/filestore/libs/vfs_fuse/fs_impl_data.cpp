@@ -819,7 +819,7 @@ void TFileSystem::FSync(
         }
     }
 
-    if (datasync && Config->GetServerWriteBackCacheEnabled()) {
+    if (Config->GetServerWriteBackCacheEnabled()) {
         TFuture<void> flushFuture;
         if (fi) {
             flushFuture = WriteBackCache->FlushData(fi->fh);
@@ -923,7 +923,7 @@ void TFileSystem::FSyncDir(
         future = FSyncQueue.WaitForRequests(reqId);
     }
 
-    if (datasync && Config->GetServerWriteBackCacheEnabled()) {
+    if (Config->GetServerWriteBackCacheEnabled()) {
         auto flushFuture = WriteBackCache->FlushAllData();
         // NWait::WaitAll expects TFuture<void>
         auto futureWithoutError = future.Apply([] (const auto&) {});

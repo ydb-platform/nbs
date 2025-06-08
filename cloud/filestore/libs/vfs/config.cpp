@@ -30,7 +30,8 @@ namespace {
                                                                                \
     xxx(WriteBackCachePath,                 TString,   ""                     )\
     xxx(WriteBackCacheCapacity,             ui32,      1_GB                   )\
-    xxx(WriteBackCacheAutomaticFlushPeriod, TDuration, TDuration::MilliSeconds(100) )\
+    xxx(WriteBackCacheAutomaticFlushPeriod, TDuration,                         \
+                                            TDuration::MilliSeconds(100)      )\
 // FILESTORE_VFS_CONFIG
 
 #define FILESTORE_VFS_DECLARE_CONFIG(name, type, value)                        \
