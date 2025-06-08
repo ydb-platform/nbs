@@ -1,5 +1,7 @@
 syntax = "proto2";
 
+import "cloud/blockstore/config/client.proto";
+
 package NCloud.NBlockStore.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
@@ -73,4 +75,7 @@ message TShardingConfig
 
     // Describe timeout.
     optional uint32 DescribeTimeout = 3;
+
+    // Settings for Grpc client.
+    optional TClientConfig GrpcClientConfig = 4;
 }

@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/sharding.pb.h>
+#include <cloud/blockstore/libs/client/config.h>
 
 #include <cloud/blockstore/libs/diagnostics/dumpable.h>
 
@@ -108,6 +109,7 @@ class TShardingConfig
 private:
     const NProto::TShardingConfig Config;
     TConfiguredShards ConfiguredShards;
+    NClient::TClientAppConfig GrpcClientConfig;
 
 public:
     explicit TShardingConfig(NProto::TShardingConfig Config = {});
@@ -120,6 +122,7 @@ public:
     [[nodiscard]] TString GetShardId() const;
     [[nodiscard]] const TConfiguredShards& GetShards() const;
     [[nodiscard]] TDuration GetDescribeTimeout() const;
+    [[nodiscard]] const NClient::TClientAppConfig& GetGrpcClientConfig() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

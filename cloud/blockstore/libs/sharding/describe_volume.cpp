@@ -49,6 +49,7 @@ struct TDescribeResponseHandler
     const std::weak_ptr<TMultiShardDescribeHandler> Owner;
     const TString ShardId;
     const TString LogTag;
+    const TString DiskId;
     const TFuture<NProto::TDescribeVolumeResponse> Future;
     TShard& Shard;
 
@@ -56,6 +57,7 @@ struct TDescribeResponseHandler
             std::weak_ptr<TMultiShardDescribeHandler> owner,
             TString shardId,
             TString logTag,
+            TString diskId,
             TFuture<NProto::TDescribeVolumeResponse> future,
             TShard& shard);
 
@@ -150,6 +152,7 @@ struct TMultiShardDescribeHandler
                     weak,
                     shard.first,
                     host.LogTag,
+                    Request.GetDiskId(),
                     std::move(future),
                     shard.second);
 
@@ -192,11 +195,13 @@ TDescribeResponseHandler::TDescribeResponseHandler(
         std::weak_ptr<TMultiShardDescribeHandler> owner,
         TString shardId,
         TString logTag,
+        TString diskId,
         TFuture<NProto::TDescribeVolumeResponse> future,
         TShard& shard)
     : Owner(std::move(owner))
     , ShardId(std::move(shardId))
     , LogTag(std::move(logTag))
+    , DiskId(std::move(diskId))
     , Future(std::move(future))
     , Shard(shard)
 {}
@@ -217,6 +222,10 @@ void TDescribeResponseHandler::operator ()(const auto& future)
     if (!HasError(response)) {
         response.SetShardId(ShardId);
         owner->SetResponse(std::move(response));
+        STORAGE_DEBUG(
+            TStringBuilder()
+                << "Got success for disk " << DiskId
+                << " from " << LogTag);
         return;
     }
 

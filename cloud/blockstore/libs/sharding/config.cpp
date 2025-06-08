@@ -128,6 +128,17 @@ void DumpImpl(
     }
 }
 
+NProto::TClientAppConfig CreateClientAppConfig(
+    const NProto::TClientConfig& config)
+{
+    NProto::TClientAppConfig proto;
+    auto& clientConfig = *proto.MutableClientConfig();
+    clientConfig = config;
+    clientConfig.SetIsServerSideClient(true);
+    clientConfig.SetNoClientId(true);
+    return proto;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -210,11 +221,17 @@ void TShardConfig::DumpHtml(IOutputStream& out) const
 ////////////////////////////////////////////////////////////////////////////////
 
 TShardingConfig::TShardingConfig(NProto::TShardingConfig config)
-    : Config(std::move(config))
+    : Config(config)
+    , GrpcClientConfig(CreateClientAppConfig(config.GetGrpcClientConfig()))
 {
     for (const auto& s: Config.GetShards()) {
         ConfiguredShards.emplace(s.GetShardId(), s);
     }
+}
+
+const NClient::TClientAppConfig& TShardingConfig::GetGrpcClientConfig() const
+{
+    return GrpcClientConfig;
 }
 
 const TConfiguredShards& TShardingConfig::GetShards() const
