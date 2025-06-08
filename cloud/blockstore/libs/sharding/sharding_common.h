@@ -22,6 +22,8 @@ struct TShardingArguments
 
     NClient::IClientPtr GrpcClient;
     NRdma::IClientPtr RdmaClient;
+
+    IHostEndpointsSetupProviderPtr EndpointsSetup;
 };
 
 }   // namespace NCloud::NBlockStore::NSharding

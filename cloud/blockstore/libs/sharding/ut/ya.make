@@ -4,6 +4,8 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     describe_volume_ut.cpp
+    host_endpoints_manager_ut.cpp
+    shard_manager_ut.cpp
 )
 
 PEERDIR(

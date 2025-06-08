@@ -56,14 +56,14 @@ TResultOrError<THostEndpoint> THostEndpointsManager::GetHostEndpoint(
     }
 }
 
-bool THostEndpointsManager::IsReady(NProto::EShardDataTransport transport)
+bool THostEndpointsManager::IsReady(NProto::EShardDataTransport transport) const
 {
     switch (transport) {
         case NProto::GRPC: {
-            return GrpcState == EEndpointState::ACTIVE;
+            return GrpcState == EState::ACTIVE;
         }
         case NProto::RDMA: {
-            return RdmaState == EEndpointState::ACTIVE;
+            return RdmaState == EState::ACTIVE;
         }
         default:
             return false;
@@ -73,86 +73,69 @@ bool THostEndpointsManager::IsReady(NProto::EShardDataTransport transport)
 
 TFuture<void> THostEndpointsManager::Start()
 {
-    auto transport = Config.GetTransport();
-    Y_ENSURE(transport != NProto::UNSET && transport != NProto::NBD);
+    auto target = Config.GetTransport();
+    Y_ENSURE(target != NProto::UNSET && target != NProto::NBD);
 
     auto weak = weak_from_this();
-    TSetupEndpointFuture future;
-    EEndpointState& state = transport == NProto::GRPC ? GrpcState: RdmaState;
+    IHostEndpointsSetupProvider::TSetupGrpcEndpointFuture future;
 
     with_lock(StateLock) {
-        if (transport == NProto::GRPC) {
-            GrpcState = EEndpointState::INITIALIZING;
-            auto future = SetupHostGrpcEndpoint();
-        } else {
-            RdmaState = EEndpointState::INITIALIZING;
-            auto future = SetupHostRdmaEndpoint();
+        if (State == EState::ACTIVATING || State == EState::ACTIVE) {
+            return StartPromise.GetFuture();
         }
+        if (State == EState::DEACTIVATING) {
+            return StopPromise.GetFuture().Apply([=] (const auto& future) {
+                Y_UNUSED(future);
+                if (auto self = weak.lock(); self) {
+                    return self->Start();
+                }
+                return MakeFuture();
+            });
+        }
+        State = EState::ACTIVATING;
+        future = Args.EndpointsSetup->SetupHostGrpcEndpoint(Args, Config);
     }
 
-    future.Subscribe([=, weak = std::move(weak)] (const auto& f) mutable {
+    future.Subscribe([=] (const auto& f) mutable {
         Y_UNUSED(f);
         if (auto self = weak.lock(); self) {
+            decltype(THostEndpointsManager::SetupRdmaIfNeeded()) optFuture;
             with_lock(self->StateLock) {
-                self->SetEndpointState(state,EEndpointState::ACTIVE);
+                self->GrpcState = EState::ACTIVE;
+                self->GrpcHostEndpoint = f.GetValue();
+                optFuture = self->SetupRdmaIfNeeded();
             }
+            if (optFuture.has_value()) {
+                optFuture->Subscribe([=] (const auto& f) {
+                    if (auto self = weak.lock(); self) {
+                        with_lock(self->StateLock) {
+                            self->RdmaState = EState::ACTIVE;
+                            self->RdmaHostEndpoint = f.GetValue();
+                        }
+                    }
+                });
+            }
+            self->StartPromise.SetValue();
         }
     });
-
-    return future;
+    return StartPromise.GetFuture();
 }
 
-void THostEndpointsManager::SetEndpointState(EEndpointState& state, EEndpointState value)
+THostEndpointsManager::TOptionalRdmaFuture THostEndpointsManager::SetupRdmaIfNeeded()
 {
-    with_lock(StateLock) {
-        state = value;
+    if (Config.GetTransport() != NProto::RDMA) {
+        return {};
     }
+    RdmaState = EState::ACTIVATING;
+    return Args.EndpointsSetup->SetupHostRdmaEndpoint(
+        Args,
+        Config,
+        GrpcHostEndpoint);
 }
 
 TFuture<void> THostEndpointsManager::Stop()
 {
     return {};
-}
-
-THostEndpointsManager::TSetupEndpointFuture THostEndpointsManager::SetupHostGrpcEndpoint()
-{
-    auto endpoint = CreateMultiClientEndpoint(
-        Args.GrpcClient,
-        Config.GetFqdn(),
-        Config.GetGrpcPort(),
-        false);
-
-    auto promise = NThreading::NewPromise<void>();
-    promise.SetValue();
-    return promise.GetFuture() ;
-}
-
-THostEndpointsManager::TSetupEndpointFuture THostEndpointsManager::SetupHostRdmaEndpoint()
-{
-    auto endpoint = CreateMultiClientEndpoint(
-        Args.GrpcClient,
-        Config.GetFqdn(),
-        Config.GetGrpcPort(),
-        false);
-
-    NClient::TRdmaEndpointConfig rdmaEndpoint {
-        .Address = Config.GetFqdn(),
-        .Port = Config.GetRdmaPort(),
-    };
-
-    auto future = CreateRdmaEndpointClientAsync(
-        Args.Logging,
-        Args.RdmaClient,
-        endpoint,
-        rdmaEndpoint);
-
-    auto promise = NewPromise<void>();
-    future.Subscribe([=] (const auto& future) mutable {
-        Y_UNUSED(future);
-        promise.SetValue();
-    });
-
-    return promise.GetFuture();
 }
 
 THostEndpoint THostEndpointsManager::CreateGrpcEndpoint(
@@ -185,5 +168,15 @@ THostEndpoint THostEndpointsManager::CreateRdmaEndpoint(
         RdmaHostEndpoint};
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+IHostEndpointsManagerPtr CreateHostEndpointsManager(
+    TShardHostConfig config,
+    TShardingArguments args)
+{
+    return std::make_shared<THostEndpointsManager>(
+        std::move(config),
+        std::move(args));
+}
 
 }   // namespace NCloud::NBlockStore::NSharding

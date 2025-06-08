@@ -2,6 +2,7 @@
 
 #include "public.h"
 #include "config.h"
+#include "endpoints_setup.h"
 #include "host_endpoint.h"
 #include "sharding_common.h"
 
@@ -16,67 +17,104 @@ namespace NCloud::NBlockStore::NSharding {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THostEndpointsManager
-    : public std::enable_shared_from_this<THostEndpointsManager>
+struct IHostEndpointsManager
 {
-private:
-    enum class EEndpointState
+    const TShardHostConfig Config;
+
+    explicit IHostEndpointsManager(TShardHostConfig config)
+        : Config(std::move(config))
+    {}
+
+    const TShardHostConfig& GetConfig() const
+    {
+        return Config;
+    }
+
+    virtual NThreading::TFuture<void> Start() = 0;
+    virtual NThreading::TFuture<void> Stop() = 0;
+
+    [[nodiscard]] virtual TResultOrError<THostEndpoint> GetHostEndpoint(
+        const NClient::TClientAppConfigPtr& clientConfig,
+        std::optional<NProto::EShardDataTransport> transport,
+        bool allowGrpcFallback) = 0;
+
+    virtual ~IHostEndpointsManager() = default;
+};
+
+using IHostEndpointsManagerPtr = std::shared_ptr<IHostEndpointsManager>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct THostEndpointsManager
+    : public IHostEndpointsManager
+    , public std::enable_shared_from_this<THostEndpointsManager>
+{
+    enum class EState
     {
         INACTIVE,
-        INITIALIZING,
+        ACTIVATING,
         ACTIVE,
-        DEINITIALIZING
+        DEACTIVATING
     };
 
-    using TSetupEndpointFuture = NThreading::TFuture<void>;
-    using TShutdownEndpointFuture = NThreading::TFuture<void>;
+    using TSetupHostFuture = NThreading::TFuture<void>;
+    using TShutdownHostFuture = NThreading::TFuture<void>;
 
-    const TShardHostConfig Config;
     const TShardingArguments Args;
 
     NClient::IMultiClientEndpointPtr GrpcHostEndpoint;
     IBlockStorePtr RdmaHostEndpoint;
 
-    EEndpointState GrpcState = EEndpointState::INACTIVE;
-    EEndpointState RdmaState = EEndpointState::INACTIVE;
+    EState GrpcState = EState::INACTIVE;
+    EState RdmaState = EState::INACTIVE;
 
     TAdaptiveLock StateLock;
-public:
-    explicit THostEndpointsManager(
+    EState State;
+
+    NThreading::TPromise<void> StartPromise = NThreading::NewPromise<void>();
+    NThreading::TPromise<void> StopPromise = NThreading::NewPromise<void>();
+
+    THostEndpointsManager(
             TShardHostConfig config,
             TShardingArguments args)
-        : Config(std::move(config))
+        : IHostEndpointsManager(config)
         , Args(std::move(args))
     {}
 
-    NThreading::TFuture<void> Start();
-    NThreading::TFuture<void> Stop();
+    NThreading::TFuture<void> Start() override;
+    NThreading::TFuture<void> Stop() override;
 
     [[nodiscard]] TResultOrError<THostEndpoint> GetHostEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig,
         std::optional<NProto::EShardDataTransport> transport,
-        bool allowGrpcFallback);
+        bool allowGrpcFallback) override;
 
     [[nodiscard]] TShardHostConfig GetConfig() const
     {
         return Config;
     }
+
+    bool IsReady(NProto::EShardDataTransport transport) const;
+
 private:
+    using TOptionalRdmaFuture =
+        std::optional<IHostEndpointsSetupProvider::TSetupRdmaEndpointFuture>;
+
+    TOptionalRdmaFuture SetupRdmaIfNeeded();
 
     [[nodiscard]] THostEndpoint CreateGrpcEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig);
 
     [[nodiscard]] THostEndpoint CreateRdmaEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig);
-
-    TSetupEndpointFuture SetupHostGrpcEndpoint();
-    TSetupEndpointFuture SetupHostRdmaEndpoint();
-
-    bool IsReady(NProto::EShardDataTransport transport);
-
-    void SetEndpointState(EEndpointState& state, EEndpointState value);
 };
 
 using THostEndpointsManagerPtr = std::shared_ptr<THostEndpointsManager>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+IHostEndpointsManagerPtr CreateHostEndpointsManager(
+    TShardHostConfig config,
+    TShardingArguments args);
 
 }   // namespace NCloud::NBlockStore::NSharding

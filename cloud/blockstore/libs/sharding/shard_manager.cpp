@@ -26,7 +26,11 @@ TShardManager::TShardManager(
         TShardConfig config)
     : Args(std::move(args))
     , Config(std::move(config))
-{}
+{
+    for (const auto& host: Config.GetHosts()) {
+        Unused.emplace_back(host.first);
+    }
+}
 
 TResultOrError<THostEndpoint> TShardManager::PickHost(
     const NClient::TClientAppConfigPtr& clientConfig)
@@ -87,7 +91,7 @@ TShardEndpoints TShardManager::PickHosts(
 
 void TShardManager::ResizeIfNeeded()
 {
-    TVector<THostEndpointsManagerPtr> tmp;
+    TVector<IHostEndpointsManagerPtr> tmp;
     with_lock(Lock) {
         if (Active.size() >= Config.GetMinShardConnections()) {
             return;
@@ -97,7 +101,7 @@ void TShardManager::ResizeIfNeeded()
         while (delta-- && !Unused.empty()) {
             auto host = Unused.back();
             Unused.pop_back();
-            auto hostManager = std::make_shared<THostEndpointsManager>(
+            auto hostManager = CreateHostEndpointsManager(
                 Config.GetHosts().find(host)->second,
                 Args);
             Activating.emplace(host, hostManager);
@@ -123,6 +127,5 @@ void TShardManager::ResizeIfNeeded()
         });
     }
 }
-
 
 }   // namespace NCloud::NBlockStore::NSharding

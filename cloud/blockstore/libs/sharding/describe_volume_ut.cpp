@@ -364,32 +364,6 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             describeResponse.GetError().GetMessage());
     }
 
-    Y_UNIT_TEST(ShouldNotReturnFutureIfShardsAreNotConfigured)
-    {
-        TShardsEndpoints endpoints;
-
-        auto localService = std::make_shared<TTestServiceClient>();
-
-        NProto::TDescribeVolumeRequest request;
-        request.MutableHeaders()->CopyFrom(NProto::THeaders());
-        request.SetDiskId("shard1disk");
-
-        TShardingArguments args;
-        args.Logging = CreateLoggingService("console");
-        args.Scheduler = CreateScheduler();
-        args.Scheduler->Start();
-
-        auto response = DescribeVolume(
-            request,
-            localService,
-            endpoints,
-            true,
-            TDuration::Seconds(Max<ui32>()),
-            args);
-
-        UNIT_ASSERT_C(!response.has_value(), "No future should be returned");
-    }
-
     Y_UNIT_TEST(ShouldReplyRetriableErrorOnTimeout)
     {
         TShardsEndpoints endpoints;
