@@ -693,7 +693,7 @@ UnixCredentialsGuard::UnixCredentialsGuard(
     IsRestoreNeeded = true;
 }
 
-bool UnixCredentialsGuard::ApplyCredentials(const TFileHandle& handle)
+bool UnixCredentialsGuard::TryApplyCredentials(const TFileHandle& handle)
 {
     if (!TrustUserCredentials || OriginalUid != 0) {
         // need to be root to freely apply permissions

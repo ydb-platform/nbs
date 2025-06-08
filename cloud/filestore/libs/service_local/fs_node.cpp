@@ -90,7 +90,7 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
     if (!request.HasLink()) {
         // For hard link no need to apply credentials since ownership is shared
         // between the links
-        if (!credGuard.ApplyCredentials(target->GetNodeFd())) {
+        if (!credGuard.TryApplyCredentials(target->GetNodeFd())) {
             parent->Unlink(request.GetName(), request.HasDirectory());
             return TErrorResponse(ErrorFailedToApplyCredentials(request.GetName()));
         }

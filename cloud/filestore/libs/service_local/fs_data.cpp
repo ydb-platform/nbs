@@ -56,7 +56,7 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         auto newnode = TIndexNode::Create(*node, pathname);
 
         if (openResult.WasCreated) {
-            if (!credGuard.ApplyCredentials(newnode->GetNodeFd())) {
+            if (!credGuard.TryApplyCredentials(newnode->GetNodeFd())) {
                 node->Unlink(pathname, false);
                 return TErrorResponse(
                     ErrorFailedToApplyCredentials(pathname));

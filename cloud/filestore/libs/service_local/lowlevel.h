@@ -24,7 +24,7 @@ private:
 
 public:
     UnixCredentialsGuard(uid_t uid, gid_t gid, bool trustUserCredentials);
-    bool ApplyCredentials(const TFileHandle& handle);
+    bool TryApplyCredentials(const TFileHandle& handle);
     ~UnixCredentialsGuard();
 };
 
