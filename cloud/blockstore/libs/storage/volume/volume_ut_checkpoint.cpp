@@ -5294,20 +5294,22 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         volume.CreateCheckpoint("c1");
 
-        constexpr auto ReleaseForAnyWriter = 1;
-        constexpr auto ReleaseForAnyReader = 2;
+        constexpr auto ReleaseForAnyReader = 1;
+        constexpr auto ReleaseForAnyWriter = 2;
 
-        bool seenReleaseShadowDiskForAnyWriter = false;
         bool seenReleaseShadowDiskForAnyReader = false;
+        bool seenReleaseShadowDiskForAnyWriter = false;
+
         auto observerReleaseShadowDiskRequest =
             [&](TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& event)
         {
-            if (event->Cookie == ReleaseForAnyReader) {
-                seenReleaseShadowDiskForAnyReader = true;
-            }
-
-            if (event->Cookie == ReleaseForAnyWriter) {
-                seenReleaseShadowDiskForAnyWriter = true;
+            switch (event->Cookie) {
+                case ReleaseForAnyReader:
+                    seenReleaseShadowDiskForAnyReader = true;
+                    break;
+                case ReleaseForAnyWriter:
+                    seenReleaseShadowDiskForAnyWriter = true;
+                    break;
             }
         };
         auto _ = runtime->AddObserver<TEvDiskRegistry::TEvReleaseDiskRequest>(
@@ -5343,20 +5345,22 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.CreateCheckpoint("c1");
         volume.CreateCheckpoint("c2");
 
-        constexpr auto ReleaseForAnyWriter = 1;
-        constexpr auto ReleaseForAnyReader = 2;
+        constexpr auto ReleaseForAnyReader = 1;
+        constexpr auto ReleaseForAnyWriter = 2;
 
-        bool seenReleaseShadowDiskForAnyWriter = false;
         bool seenReleaseShadowDiskForAnyReader = false;
+        bool seenReleaseShadowDiskForAnyWriter = false;
+
         auto observerReleaseShadowDiskRequest =
             [&](TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& event)
         {
-            if (event->Cookie == ReleaseForAnyReader) {
-                seenReleaseShadowDiskForAnyReader = true;
-            }
-
-            if (event->Cookie == ReleaseForAnyWriter) {
-                seenReleaseShadowDiskForAnyWriter = true;
+            switch (event->Cookie) {
+                case ReleaseForAnyReader:
+                    seenReleaseShadowDiskForAnyReader = true;
+                    break;
+                case ReleaseForAnyWriter:
+                    seenReleaseShadowDiskForAnyWriter = true;
+                    break;
             }
         };
         auto _ = runtime->AddObserver<TEvDiskRegistry::TEvReleaseDiskRequest>(
@@ -5399,44 +5403,57 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             32768);
 
-        constexpr auto ReleaseForAnyWriter = 1;
-        constexpr auto ReleaseForAnyReader = 2;
+        constexpr auto ReleaseForAnyReader = 1;
+        constexpr auto ReleaseForAnyWriter = 2;
 
-        ui32 numberSeenReleaseShadowDiskForAnyWriter = 0;
-        ui32 numberSeenReleaseShadowDiskForAnyReader = 0;
+        bool seenReleaseShadowDiskForAnyReader = false;
+        bool seenReleaseShadowDiskForAnyWriter = false;
+
+        bool seenReleaseShadowDiskRetryForAnyReader = false;
+        bool seenReleaseShadowDiskRetryForAnyWriter = false;
+
+        bool returnErrorForAnyReader = false;
+        bool returnErrorForAnyWriter = false;
+
         auto observerReleaseShadowDiskRequest =
             [&](TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& event)
         {
-            if (event->Cookie == ReleaseForAnyReader) {
-                ++numberSeenReleaseShadowDiskForAnyReader;
-            }
-
-            if (event->Cookie == ReleaseForAnyWriter) {
-                ++numberSeenReleaseShadowDiskForAnyWriter;
+            switch (event->Cookie) {
+                case ReleaseForAnyReader:
+                    if (!returnErrorForAnyReader) {
+                        seenReleaseShadowDiskForAnyReader = true;
+                    } else {
+                        seenReleaseShadowDiskRetryForAnyReader = true;
+                    }
+                    break;
+                case ReleaseForAnyWriter:
+                    if (!returnErrorForAnyWriter) {
+                        seenReleaseShadowDiskForAnyWriter = true;
+                    } else {
+                        seenReleaseShadowDiskRetryForAnyWriter = true;
+                    }
+                    break;
             }
         };
         auto handleObserverReleaseRequest =
             runtime->AddObserver<TEvDiskRegistry::TEvReleaseDiskRequest>(
                 observerReleaseShadowDiskRequest);
 
-        bool returnErrorForAnyWriter = false;
-        bool returnErrorForAnyReader = false;
-
         auto releaseDiskResponseFilter =
             [&](TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& event)
         {
             // Simulate response with error.
-            if (event->Cookie == ReleaseForAnyWriter &&
-                !returnErrorForAnyWriter)
-            {
-                returnErrorForAnyWriter = true;
-                event->Get()->Record.MutableError()->SetCode(E_REJECTED);
-            }
-
             if (event->Cookie == ReleaseForAnyReader &&
                 !returnErrorForAnyReader)
             {
                 returnErrorForAnyReader = true;
+                event->Get()->Record.MutableError()->SetCode(E_REJECTED);
+            }
+
+            if (event->Cookie == ReleaseForAnyWriter &&
+                !returnErrorForAnyWriter)
+            {
+                returnErrorForAnyWriter = true;
                 event->Get()->Record.MutableError()->SetCode(E_REJECTED);
             }
         };
@@ -5456,10 +5473,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT(returnErrorForAnyReader);
         UNIT_ASSERT(returnErrorForAnyWriter);
 
-        // check that we saw two release request(one original and one retry)
-        // for both type client: any-writer and any-reader
-        UNIT_ASSERT_EQUAL(numberSeenReleaseShadowDiskForAnyReader, 2);
-        UNIT_ASSERT_EQUAL(numberSeenReleaseShadowDiskForAnyWriter, 2);
+        // check that we saw original request for any-reader and any-writer
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyReader);
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyWriter);
+
+        // check that we saw retry request for any-reader and any-writer
+        UNIT_ASSERT(seenReleaseShadowDiskRetryForAnyReader);
+        UNIT_ASSERT(seenReleaseShadowDiskRetryForAnyWriter);
     }
 }
 

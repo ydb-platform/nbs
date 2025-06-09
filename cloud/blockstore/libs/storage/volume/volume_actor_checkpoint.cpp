@@ -34,11 +34,11 @@ constexpr auto ExternalDrainTimeout = TDuration::Seconds(30);
 
 constexpr auto ReleaseShadowDiskRetryTimeout = TDuration::Seconds(5);
 
-constexpr auto ReleaseForAnyWriter = 1;
-
-constexpr auto ReleaseForAnyReader = 2;
-
-constexpr auto ExternalDrainTimeoutTag = 3;
+enum class EReleaseSessionKind
+{
+    AnyReader = 1,
+    AnyWriter = 2,
+};
 
 struct TPartitionDescr
 {
@@ -174,7 +174,8 @@ private:
     ui32 Responses = 0;
     NProto::TError Error;
     TString ShadowDiskId;
-    bool OneReleaseShadowDiskRequestFinished = false;
+    bool ReleaseShadowDiskRequestForAnyReaderFinished = false;
+    bool ReleaseShadowDiskRequestForAnyWriterFinished = false;
 
     TVector<TCallContextPtr> ChildCallContexts;
 
@@ -215,7 +216,7 @@ private:
     void ForkTraces(TCallContextPtr callContext);
     void JoinTraces(ui32 cookie);
     std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
-    MakeReleaseDiskRequest(const TString& clientId) const;
+    MakeReleaseDiskRequest(EReleaseSessionKind releaseSessionKind) const;
 
 private:
     STFUNC(StateDrain);
@@ -263,12 +264,8 @@ private:
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleReleaseShadowDisk(
+    void HandleReleaseDiskResponse(
         const TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleReleaseShadowDiskRetry(
-        const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -346,9 +343,7 @@ void TCheckpointActor<TMethod>::ExternalDrain(const TActorContext& ctx)
         "[%lu] Wait for external drain event",
         VolumeTabletId);
 
-    ctx.Schedule(
-        ExternalDrainTimeout,
-        new TEvents::TEvWakeup(ExternalDrainTimeoutTag));
+    ctx.Schedule(ExternalDrainTimeout, new TEvents::TEvWakeup());
 
     TBase::Become(&TThis::StateDrain);
 }
@@ -443,8 +438,20 @@ void TCheckpointActor<TMethod>::JoinTraces(ui32 cookie)
 
 template <typename TMethod>
 std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
-TCheckpointActor<TMethod>::MakeReleaseDiskRequest(const TString& clientId) const
+TCheckpointActor<TMethod>::MakeReleaseDiskRequest(
+    EReleaseSessionKind releaseSessionKind) const
 {
+    TString clientId = "";
+
+    switch (releaseSessionKind) {
+        case EReleaseSessionKind::AnyReader:
+            clientId = AnyReaderClientId;
+            break;
+        case EReleaseSessionKind::AnyWriter:
+            clientId = AnyWriterClientId;
+            break;
+    }
+
     auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
     request->Record.SetDiskId(ShadowDiskId);
     request->Record.MutableHeaders()->SetClientId(clientId);
@@ -521,19 +528,20 @@ void TCheckpointActor<TMethod>::HandleExternalDrainDone(
         VolumeTabletId);
 
     ShadowDiskId = ev->Get()->ShadowDiskId;
-    OneReleaseShadowDiskRequestFinished = false;
+    ReleaseShadowDiskRequestForAnyReaderFinished = false;
+    ReleaseShadowDiskRequestForAnyWriterFinished = false;
 
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
-        MakeReleaseDiskRequest(TString(AnyWriterClientId)),
-        ReleaseForAnyWriter);
+        MakeReleaseDiskRequest(EReleaseSessionKind::AnyReader),
+        static_cast<ui64>(EReleaseSessionKind::AnyReader));
 
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
-        MakeReleaseDiskRequest(TString(AnyReaderClientId)),
-        ReleaseForAnyReader);
+        MakeReleaseDiskRequest(EReleaseSessionKind::AnyWriter),
+        static_cast<ui64>(EReleaseSessionKind::AnyWriter));
 
     TBase::Become(&TThis::StateReleaseShadowDisk);
 }
@@ -543,13 +551,9 @@ void TCheckpointActor<TMethod>::HandleExternalDrainTimeout(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto tag = ev->Get()->Tag;
-
-    if (tag != ExternalDrainTimeoutTag) {
-        return;
-    }
-
     STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::External);
+
+    Y_UNUSED(ev);
 
     LOG_WARN(
         ctx,
@@ -709,31 +713,47 @@ void TCheckpointActor<TMethod>::HandlePoisonPill(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-void TCheckpointActor<TMethod>::HandleReleaseShadowDisk(
+void TCheckpointActor<TMethod>::HandleReleaseDiskResponse(
     const TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto& record = ev->Get()->Record;
+    const auto& record = ev->Get()->Record;
+
+    const auto releaseSessionKind =
+        static_cast<EReleaseSessionKind>(ev->Cookie);
 
     if (record.HasError()) {
         if (GetErrorKind(record.GetError()) == EErrorKind::ErrorRetriable) {
-            ctx.Schedule(
+            ctx.ExecutorThread.Schedule(
                 ReleaseShadowDiskRetryTimeout,
-                new TEvents::TEvWakeup(ev->Cookie));
+                new IEventHandle(
+                    MakeDiskRegistryProxyServiceId(),
+                    TBase::SelfId(),
+                    MakeReleaseDiskRequest(releaseSessionKind).release(),
+                    0,   // flags
+                    ev->Cookie));
 
             return;
         }
 
-        auto errorMsg = record.GetError().GetMessage().data();
         ReportReleaseShadowDiskError(
             TStringBuilder()
-            << "Error: " << errorMsg
-            << " while trying to release shadow disk with id : "
-            << ShadowDiskId);
+            << "Could not release shadow disk " << ShadowDiskId.Quote()
+            << " Error: " << FormatError(record.GetError()));
     }
 
-    if (!OneReleaseShadowDiskRequestFinished) {
-        OneReleaseShadowDiskRequestFinished = true;
+    switch (releaseSessionKind) {
+        case EReleaseSessionKind::AnyReader:
+            ReleaseShadowDiskRequestForAnyReaderFinished = true;
+            break;
+        case EReleaseSessionKind::AnyWriter:
+            ReleaseShadowDiskRequestForAnyWriterFinished = true;
+            break;
+    }
+
+    if (!ReleaseShadowDiskRequestForAnyReaderFinished ||
+        !ReleaseShadowDiskRequestForAnyWriterFinished)
+    {
         return;
     }
 
@@ -744,35 +764,6 @@ void TCheckpointActor<TMethod>::HandleReleaseShadowDisk(
     } else {
         TBase::Become(&TThis::StateDrain);
     }
-}
-
-template <typename TMethod>
-void TCheckpointActor<TMethod>::HandleReleaseShadowDiskRetry(
-    const TEvents::TEvWakeup::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto tag = ev->Get()->Tag;
-
-    if (tag != ReleaseForAnyReader && tag != ReleaseForAnyWriter) {
-        return;
-    }
-
-    TString clientId;
-
-    switch (tag) {
-        case ReleaseForAnyReader:
-            clientId = AnyReaderClientId;
-            break;
-        case ReleaseForAnyWriter:
-            clientId = AnyWriterClientId;
-            break;
-    }
-
-    NCloud::Send(
-        ctx,
-        MakeDiskRegistryProxyServiceId(),
-        MakeReleaseDiskRequest(clientId),
-        tag);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -848,8 +839,7 @@ template <typename TMethod>
 STFUNC(TCheckpointActor<TMethod>::StateReleaseShadowDisk)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskRegistry::TEvReleaseDiskResponse, HandleReleaseShadowDisk);
-        HFunc(TEvents::TEvWakeup, HandleReleaseShadowDiskRetry);
+        HFunc(TEvDiskRegistry::TEvReleaseDiskResponse, HandleReleaseDiskResponse);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:

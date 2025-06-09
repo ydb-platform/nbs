@@ -262,7 +262,7 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
                 "Device %s was released by client %s for reading.",
                 uuid.Quote().c_str(),
                 clientId.c_str());
-            deviceState->ReaderSessions = {};
+            deviceState->ReaderSessions.clear();
         }
     }
 
