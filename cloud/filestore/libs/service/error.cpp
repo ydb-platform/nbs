@@ -161,6 +161,14 @@ NProto::TError ErrorNoSpaceLeft()
             << "no space left");
 }
 
+NProto::TError ErrorFailedToApplyCredentials(const TString& path)
+{
+    return MakeError(
+        E_FS_PERM,
+        TStringBuilder()
+            << "applying credentials failed for path " << path.Quote());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError ErrorInvalidArgument()

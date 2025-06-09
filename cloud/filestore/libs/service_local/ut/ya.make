@@ -11,4 +11,10 @@ SRCS(
     service_ut.cpp
 )
 
+IF (OS_LINUX)
+    SRCS(
+        lowlevel_ut.cpp
+    )
+ENDIF()
+
 END()
