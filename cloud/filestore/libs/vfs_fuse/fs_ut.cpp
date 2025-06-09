@@ -1848,16 +1848,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 handleId = 456;
         const ui64 size = 789;
 
-        bootstrap.Service->CreateHandleHandler = [&] (auto callContext, auto request) {
-            Y_UNUSED(request);
-            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
-
-            NProto::TCreateHandleResponse result;
-            result.SetHandle(handleId);
-            result.MutableNodeAttr()->SetId(nodeId);
-            return MakeFuture(result);
-        };
-
         std::atomic<int> readDataCalled = 0;
 
         bootstrap.Service->ReadDataHandler = [&] (auto callContext, auto request) {
@@ -1902,9 +1892,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(read.Wait(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
         UNIT_ASSERT_VALUES_EQUAL(1, readDataCalled.load());
-
-        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(handleId, handle.GetValue(WaitTimeout));
 
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
             nodeId, handleId, 0, CreateBuffer(4096, 'a'));
@@ -1955,6 +1942,129 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(3, fsyncCalled.load());
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+
+        // same checks for Flush
+        auto flush = bootstrap.Fuse->SendRequest<TFlushRequest>(
+            nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldFsyncDirWithServerWriteBackCacheEnabled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            writeDataCalled++;
+
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        std::atomic<int> fsyncDirCalled = 0;
+
+        bootstrap.Service->FsyncDirHandler = [&] (auto callContext, auto) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            fsyncDirCalled++;
+            return MakeFuture(NProto::TFsyncDirResponse());
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        // should not write (flush) data from cache immediately
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        auto dirHandle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(dirHandle.Wait(WaitTimeout));
+        auto dirHandleId = dirHandle.GetValue();
+
+        auto fsyncDir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
+            nodeId, dirHandleId, false /* datasync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsyncDir.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        // should not write (flush) data from cache immediately
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+
+        // call FsyncDir with |datasync == true| - should work the same way it
+        // did before
+        fsyncDir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
+            nodeId, dirHandleId, true /* datasync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsyncDir.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(2, fsyncDirCalled.load());
+        // cache should be flushed
+        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldFlushWithServerWriteBackCacheEnabled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            writeDataCalled++;
+
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        // should not write (flush) data from cache immediately
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        // same checks for Flush
+        auto flush = bootstrap.Fuse->SendRequest<TFlushRequest>(
+            nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+        // cache should be flushed
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
     }
 }
 
