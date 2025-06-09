@@ -256,7 +256,7 @@ void TDescribeResponseHandler::operator ()(const auto& future)
             if (!HasError(s.FatalError)) {
                 *response.MutableError() =
                     std::move(s.RetriableError);
-                owner->Promise.SetValue(response);
+                owner->SetResponse(std::move(response));
                 return;
             }
         }
