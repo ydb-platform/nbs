@@ -24,10 +24,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
+#include <cloud/blockstore/libs/rdma/iface/client.h>
 
 #include <util/generic/hash.h>
 #include <util/random/random.h>
