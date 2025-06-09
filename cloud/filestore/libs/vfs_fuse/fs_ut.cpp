@@ -1858,7 +1858,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             NProto::TReadDataResponse result;
             result.MutableBuffer()->assign(TString(request->GetLength(), 'a'));
-
             return MakeFuture(result);
         };
 
@@ -1866,9 +1865,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
-
             writeDataCalled++;
-
             NProto::TWriteDataResponse result;
             return MakeFuture(result);
         };
@@ -1972,9 +1969,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
-
             writeDataCalled++;
-
             NProto::TWriteDataResponse result;
             return MakeFuture(result);
         };
@@ -2041,9 +2036,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
-
             writeDataCalled++;
-
             NProto::TWriteDataResponse result;
             return MakeFuture(result);
         };
@@ -2063,6 +2056,63 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto flush = bootstrap.Fuse->SendRequest<TFlushRequest>(
             nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+        // cache should be flushed
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldReleaseWithServerWriteBackCacheEnabled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            writeDataCalled++;
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        std::atomic<int> destroyHandleCalled = 0;
+
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto callContext, auto)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+
+                destroyHandleCalled++;
+
+                auto promise = NewPromise<NProto::TDestroyHandleResponse>();
+                promise.SetValue({});
+                return promise.GetFuture();
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        // should not write (flush) data from cache immediately
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, destroyHandleCalled.load());
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
     }
