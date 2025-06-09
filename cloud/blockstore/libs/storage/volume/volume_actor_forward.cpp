@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/merge.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
@@ -99,6 +100,37 @@ void CopySgListIntoRequestBuffers(T& t)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
+void TVolumeActor::UpdateIngestTimeStats(
+    const typename TMethod::TRequest::TPtr& ev,
+    TInstant now)
+{
+    if constexpr (!IsReadOrWriteMethod<TMethod>) {
+        return;
+    }
+
+    const auto& headers = ev->Get()->Record.GetHeaders();
+    if (headers.GetRetryNumber() > 0) {
+        return;
+    }
+
+    const auto ingestTime =
+        now - TInstant::MicroSeconds(headers.GetTimestamp());
+
+    if constexpr (IsReadMethod<TMethod>) {
+        VolumeSelfCounters->IngestTimeRequestCounters.ReadBlocks.Increment(
+            ingestTime.MicroSeconds());
+    } else if constexpr (IsExactlyWriteMethod<TMethod>) {
+        VolumeSelfCounters->IngestTimeRequestCounters.WriteBlocks.Increment(
+            ingestTime.MicroSeconds());
+    } else if constexpr (IsZeroMethod<TMethod>) {
+        VolumeSelfCounters->IngestTimeRequestCounters.ZeroBlocks.Increment(
+            ingestTime.MicroSeconds());
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
 bool TVolumeActor::HandleMultipartitionVolumeRequest(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
@@ -137,6 +169,7 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
             ctx,
             ev,
             volumeRequestId,
+            blockRange,
             partitionRequests.front().PartitionId,
             traceTs);
 
@@ -157,6 +190,7 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
         ev,
         TActorId{},
         volumeRequestId,
+        blockRange,
         traceTs,
         false,
         IsWriteMethod<TMethod>);
@@ -184,6 +218,7 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
     const typename TMethod::TRequest::TPtr& ev,
     NActors::TActorId newRecipient,
     ui64 volumeRequestId,
+    TBlockRange64 blockRange,
     ui64 traceTime,
     bool forkTraces,
     bool isMultipartitionWriteOrZero)
@@ -235,6 +270,32 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
         ++MultipartitionWriteAndZeroRequestsInProgress;
     }
 
+    if constexpr (IsReadMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Read,
+            volumeRequestId,
+            blockRange,
+            traceTime);
+    } else if constexpr (IsExactlyWriteMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Write,
+            volumeRequestId,
+            blockRange,
+            traceTime);
+    } else if constexpr (IsZeroMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Zero,
+            volumeRequestId,
+            blockRange,
+            traceTime);
+    }  else if constexpr (IsDescribeBlocksMethod<TMethod>) {
+        RequestTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Describe,
+            volumeRequestId,
+            blockRange,
+            traceTime);
+    }
+
     return newEvent;
 }
 
@@ -243,6 +304,7 @@ void TVolumeActor::SendRequestToPartition(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
+    TBlockRange64 blockRange,
     ui32 partitionId,
     ui64 traceTime)
 {
@@ -269,6 +331,7 @@ void TVolumeActor::SendRequestToPartition(
         ev,
         partActorId,
         volumeRequestId,
+        blockRange,
         traceTime,
         true,
         false);
@@ -408,6 +471,7 @@ bool TVolumeActor::ReplyToOriginalRequest(
     ui64 volumeRequestId,
     std::unique_ptr<typename TMethod::TResponse> response)
 {
+    const bool success = !HasError(response->Record.GetError());
     if constexpr (IsWriteMethod<TMethod>) {
         ReplyToDuplicateRequests(
             ctx,
@@ -448,6 +512,27 @@ bool TVolumeActor::ReplyToOriginalRequest(
     }
 
     VolumeRequests.erase(it);
+    const auto firstSuccess = RequestTimeTracker.OnRequestFinished(
+        volumeRequestId,
+        success,
+        GetCycleCount());
+
+    if (firstSuccess) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Disk: %s, Generation: %u. The first successful %s "
+            "request was started at %s finished at %s. The very first request "
+            "was started at %s. Failed requests: %lu",
+            TabletID(),
+            State->GetDiskId().Quote().c_str(),
+            Executor()->Generation(),
+            ToString(firstSuccess->RequestType).c_str(),
+            FormatDuration(firstSuccess->SuccessfulRequestStartTime).c_str(),
+            FormatDuration(firstSuccess->SuccessfulRequestFinishTime).c_str(),
+            FormatDuration(firstSuccess->FirstRequestStartTime).c_str(),
+            firstSuccess->FailCount);
+    }
 
     return true;
 }
@@ -534,7 +619,8 @@ void TVolumeActor::ForwardRequest(
         auto response = std::make_unique<typename TMethod::TResponse>(MakeError(
             E_REJECTED,
             TStringBuilder()
-                << "Volume not ready: " << State->GetDiskId().Quote()));
+                << "Volume  " << State->GetDiskId().Quote() << " not ready. "
+                << TMethod::Name << " is undelivered to partition"));
 
         if (ReplyToOriginalRequest<TMethod>(
                 ctx,
@@ -571,6 +657,8 @@ void TVolumeActor::ForwardRequest(
         msg->CallContext->LWOrbit,
         TMethod::Name,
         msg->CallContext->RequestId);
+
+    UpdateIngestTimeStats<TMethod>(ev, ctx.Now());
 
     auto replyError = [&] (NProto::TError error)
     {
@@ -615,8 +703,10 @@ void TVolumeActor::ForwardRequest(
 
         if (!State->Ready()) {
             if constexpr (RejectRequestIfNotReady<TMethod>) {
-                replyError(MakeError(E_REJECTED, TStringBuilder()
-                    << "Volume not ready: " << State->GetDiskId().Quote()));
+                replyError(MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "Volume " << State->GetDiskId().Quote()
+                                     << " not ready by partition state"));
             } else {
                 LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
                     "[%lu] %s request delayed until volume and partitions are ready",
@@ -749,16 +839,23 @@ void TVolumeActor::ForwardRequest(
         }
     }
 
+    // Fill block range.
+    TBlockRange64 blockRange;
+    if constexpr (
+        IsReadOrWriteMethod<TMethod> || IsDescribeBlocksMethod<TMethod>)
+    {
+        blockRange = BuildRequestBlockRange(*msg, State->GetBlockSize());
+    }
+
     /*
      *  Validation of the request blocks range
      */
     if constexpr (IsReadOrWriteMethod<TMethod>) {
-        const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
-        if (!CheckReadWriteBlockRange(range)) {
+        if (!CheckReadWriteBlockRange(blockRange)) {
             replyError(MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
-                    << "invalid block range " << DescribeRange(range)));
+                    << "invalid block range " << DescribeRange(blockRange)));
             return;
         }
     }
@@ -784,12 +881,9 @@ void TVolumeActor::ForwardRequest(
      *  to the underlying (storage) layer.
      */
     if constexpr (IsWriteMethod<TMethod>) {
-        const auto range = BuildRequestBlockRange(
-            *msg,
-            State->GetBlockSize());
         auto addResult = WriteAndZeroRequestsInFlight.TryAddRequest(
             volumeRequestId,
-            range);
+            blockRange);
 
         if (!addResult.Added) {
             if (addResult.DuplicateRequestId
@@ -798,7 +892,7 @@ void TVolumeActor::ForwardRequest(
                 replyError(MakeError(E_REJECTED, TStringBuilder()
                     << "Request " << TMethod::Name
                     << " intersects with inflight write or zero request"
-                    << " (block range: " << DescribeRange(range) << ")"));
+                    << " (block range: " << DescribeRange(blockRange) << ")"));
                 return;
             }
 
@@ -839,7 +933,13 @@ void TVolumeActor::ForwardRequest(
     if constexpr (IsCheckpointMethod<TMethod>) {
         HandleCheckpointRequest<TMethod>(ctx, ev, isTraced, now);
     } else if (isSinglePartitionVolume) {
-        SendRequestToPartition<TMethod>(ctx, ev, volumeRequestId, 0, now);
+        SendRequestToPartition<TMethod>(
+            ctx,
+            ev,
+            volumeRequestId,
+            blockRange,
+            0,
+            now);
     } else {
         if (!HandleMultipartitionVolumeRequest<TMethod>(
                 ctx,

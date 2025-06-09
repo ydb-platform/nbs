@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "part_counters.h"
-#include "part_database.h"
 #include "part_events_private.h"
 #include "part_state.h"
 #include "part_tx.h"
@@ -22,6 +21,9 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
+#include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
+#include <cloud/blockstore/libs/storage/partition/model/compaction_map_load_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
@@ -100,6 +102,7 @@ class TPartitionActor final
     };
 
 private:
+    const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -111,7 +114,10 @@ private:
     const ui64 ChannelHistorySize;
     const NBlockCodecs::ICodec* BlobCodec;
 
+    TLogTitle LogTitle;
+
     std::unique_ptr<TPartitionState> State;
+    std::unique_ptr<TCompactionMapLoadState> CompactionMapLoadState;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -145,6 +151,8 @@ private:
 
     bool FirstGarbageCollectionCompleted = false;
 
+    TTransactionTimeTracker TransactionTimeTracker;
+
 public:
     TPartitionActor(
         const NActors::TActorId& owner,
@@ -155,6 +163,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
+        ui32 partitionIndex,
         ui32 siblingCount,
         const NActors::TActorId& volumeActorId);
     ~TPartitionActor() override;
@@ -248,7 +257,8 @@ private:
     void HandleReadBlocksRequest(
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
-        bool replyLocal);
+        bool replyLocal,
+        bool shouldReportBlobIdsOnFailure);
 
     TMaybe<ui64> VerifyReadBlocksCheckpoint(
         const NActors::TActorContext& ctx,
@@ -290,7 +300,8 @@ private:
         ui64 commitId,
         const TBlockRange32& readRange,
         IReadBlocksHandlerPtr readHandler,
-        bool replyLocal);
+        bool replyLocal,
+        bool shouldReportBlobIdsOnFailure);
 
     void DescribeBlocks(
         const NActors::TActorContext& ctx,
@@ -318,11 +329,11 @@ private:
 
     void KillActors(const NActors::TActorContext& ctx);
     void AddTransaction(
-        TRequestInfo& transaction,
+        TRequestInfo& requestInfo,
         TRequestInfo::TCancelRoutine cancelRoutine);
 
     template <typename TMethod>
-    void AddTransaction(TRequestInfo& transaction)
+    void AddTransaction(TRequestInfo& requestInfo)
     {
         auto cancelRoutine = [] (
             const NActors::TActorContext& ctx,
@@ -334,9 +345,9 @@ private:
             NCloud::Reply(ctx, requestInfo, std::move(response));
         };
 
-        AddTransaction(transaction, cancelRoutine);
+        AddTransaction(requestInfo, cancelRoutine);
     }
-    void RemoveTransaction(TRequestInfo& transaction);
+    void RemoveTransaction(TRequestInfo& requestInfo);
     void TerminateTransactions(const NActors::TActorContext& ctx);
     void ReleaseTransactions();
 
@@ -441,6 +452,8 @@ private:
         TDuration retryTimeout,
         TBlockBuffer blockBuffer);
 
+    [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -514,6 +527,11 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_ScanDisk(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetTransactionsLatency(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
@@ -655,6 +673,16 @@ private:
 
     void SetFirstGarbageCollectionCompleted();
     bool IsFirstGarbageCollectionCompleted() const;
+
+    void LoadNextCompactionMapChunk(const NActors::TActorContext& ctx);
+    void HandleLoadCompactionMapChunk(
+        const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    THashSet<ui32> GetRangeIndices(
+        const TVector<TAddFreshBlob>& freshBlobs,
+        const TVector<TAddMixedBlob>& mixedBlobs,
+        const TVector<TAddMergedBlob>& mergedBlobs) const;
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)

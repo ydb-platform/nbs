@@ -256,7 +256,10 @@ void TBootstrap::InitHTTPServer()
 
 void TBootstrap::Init()
 {
-    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
+    TLogSettings logSettings;
+    logSettings.BackendFileName = Configs->GetLogConfig().GetBackendFileName();
+
+    BootstrapLogging = CreateLoggingService("console", logSettings);
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 
@@ -362,6 +365,9 @@ bool TBootstrap::InitKikimrService()
             Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
         .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
         .RegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
+        .LoadConfigsFromCmsRetryMinDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
+        .LoadConfigsFromCmsRetryMaxDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
+        .LoadConfigsFromCmsTotalTimeout = Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
         .PathToGrpcCaFile = Configs->StorageConfig->GetNodeRegistrationRootCertsFile(),
         .PathToGrpcCertFile = cert.CertFile,
         .PathToGrpcPrivateKeyFile = cert.CertPrivateKeyFile,
@@ -411,9 +417,13 @@ bool TBootstrap::InitKikimrService()
         }
     }
 
+    auto registrant =
+        CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);
+
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,
         registerOpts,
+        std::move(registrant),
         Log);
 
     if (cmsConfig) {

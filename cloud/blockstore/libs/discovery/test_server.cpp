@@ -226,7 +226,7 @@ struct TFakeBlockStoreServer::TImpl
     {
         PreStart();
 
-        Thread = SystemThreadFactory()->Run([=] () {
+        Thread = SystemThreadFactory()->Run([=, this] () {
             Loop();
         });
     }

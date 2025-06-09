@@ -15,15 +15,6 @@ import "cloud/storage/core/protos/media.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum EAgentState
-{
-    AGENT_STATE_ONLINE = 0;
-    AGENT_STATE_WARNING = 1;
-    AGENT_STATE_UNAVAILABLE = 2;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 enum EDeviceState
 {
     DEVICE_STATE_ONLINE = 0;
@@ -279,8 +270,9 @@ message TDiskConfig
     // A log of important events in the life of this disk.
     repeated TDiskHistoryItem History = 17;
 
-    // A list of devices that are lagging behind on writes.
-    repeated TLaggingDevice LaggingDevices = 18;
+    // A list of devices that were lagging behind on writes and are now in an
+    // unrecoverable state.
+    repeated TLaggingDevice OutdatedLaggingDevices = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -577,6 +569,9 @@ message TReplicationTarget
 
     // Start block index on target device.
     uint64 StartIndex = 3;
+
+    // Operation timeout (in milliseconds)
+    uint32 Timeout = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -691,6 +686,9 @@ message TAllocateDiskResponse
 
     // Devices that had been lagging.
     repeated TLaggingDevice RemovedLaggingDevices = 9;
+
+    // Devices that had been lost by disk agent or devices with unavailable agent.
+    repeated string UnavailableDeviceUUIDs = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1728,9 +1726,10 @@ message TGetAgentNodeIdResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Report that some of the devices were lagging.
+// Report that some of the devices were lagging and are now in an unrecoverable
+// state.
 
-message TAddLaggingDevicesRequest
+message TAddOutdatedLaggingDevicesRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
@@ -1738,11 +1737,11 @@ message TAddLaggingDevicesRequest
     // Disk identifier to perform operations on.
     string DiskId = 2;
 
-    // Devices that has been lagging.
-    repeated TLaggingDevice LaggingDevices = 3;
+    // Devices that has been lagging and can't be restored by volume.
+    repeated TLaggingDevice OutdatedLaggingDevices = 3;
 }
 
-message TAddLaggingDevicesResponse
+message TAddOutdatedLaggingDevicesResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

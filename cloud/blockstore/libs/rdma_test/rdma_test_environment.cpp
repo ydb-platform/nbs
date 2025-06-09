@@ -11,8 +11,48 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TTestMultiAgentWriteHandler::PushMockResponse(
+    TMultiAgentWriteDeviceBlocksResponse response)
+{
+    Responses.push_back(std::move(response));
+}
+
+std::optional<NProto::TWriteDeviceBlocksRequest>
+TTestMultiAgentWriteHandler::PopInterceptedRequest()
+{
+    if (Requests.empty()) {
+        return std::nullopt;
+    }
+    auto result = std::move(Requests.front());
+    Requests.pop_front();
+    return result;
+}
+
+NThreading::TFuture<TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse>
+TTestMultiAgentWriteHandler::PerformMultiAgentWrite(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request)
+{
+    Y_UNUSED(callContext);
+
+    Requests.push_back(std::move(*request));
+    if (Responses.empty()) {
+        return NThreading::MakeFuture<TMultiAgentWriteDeviceBlocksResponse>(
+            MakeError(E_FAIL, "Response not mocked"));
+    }
+
+    auto result = NThreading::MakeFuture<TMultiAgentWriteDeviceBlocksResponse>(
+        Responses.front());
+
+    Responses.pop_front();
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
-    : Storage(std::make_shared<TMemoryTestStorage>(deviceSize))
+    : MultiAgentWriteHandler(std::make_shared<TTestMultiAgentWriteHandler>())
+    , Storage(std::make_shared<TMemoryTestStorage>(deviceSize))
 {
     THashMap<TString, TStorageAdapterPtr> devices;
     devices[Device_1] = std::make_shared<TStorageAdapter>(
@@ -64,6 +104,7 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         Logging,
         Server,
         DeviceClient,
+        MultiAgentWriteHandler,
         std::move(devices));
 
     RdmaTarget->Start();
@@ -122,6 +163,38 @@ NProto::TWriteDeviceBlocksRequest TRdmaTestEnvironment::MakeWriteRequest(
     result.MutableHeaders()->SetClientId(ClientId);
     result.SetVolumeRequestId(volumeRequestId);
     result.SetMultideviceRequest(isMultideviceRequest);
+
+    for (ui32 i = 0; i < blockRange.Size(); ++i) {
+        *result.MutableBlocks()->AddBuffers() = TString(4_KB, fill);
+    }
+    return result;
+}
+
+NProto::TWriteDeviceBlocksRequest
+TRdmaTestEnvironment::MakeMultiAgentWriteRequest(
+    const TBlockRange64& blockRange,
+    char fill,
+    ui64 volumeRequestId) const
+{
+    NProto::TWriteDeviceBlocksRequest result;
+    result.MutableHeaders()->SetClientId(ClientId);
+    result.SetVolumeRequestId(volumeRequestId);
+    result.SetMultideviceRequest(false);
+    result.SetBlockSize(4_KB);
+    {
+        auto* target = result.AddReplicationTargets();
+        target->SetDeviceUUID(Device_1);
+        target->SetStartIndex(blockRange.Start);
+        target->SetNodeId(0);
+        target->SetTimeout(1000);
+    }
+    {
+        auto* target = result.AddReplicationTargets();
+        target->SetDeviceUUID("Device2");
+        target->SetStartIndex(blockRange.Start);
+        target->SetNodeId(1);
+        target->SetTimeout(1000);
+    }
 
     for (ui32 i = 0; i < blockRange.Size(); ++i) {
         *result.MutableBlocks()->AddBuffers() = TString(4_KB, fill);

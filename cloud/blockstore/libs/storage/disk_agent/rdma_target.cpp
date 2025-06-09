@@ -1,6 +1,7 @@
 #include "rdma_target.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
@@ -8,6 +9,8 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
+#include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
@@ -55,8 +58,8 @@ struct TRequestDetails
     TString ClientId;
 
     ui64 VolumeRequestId = 0;
-    TBlockRange64 Range = {};
-    bool IsMultideviceRequest = false;
+    TBlockRange64 Range;
+    bool RejectCompleteOverlapped = false;
 };
 
 template <typename TRequest>
@@ -77,15 +80,17 @@ struct TContinuationData
 
 using TWriteRequestContinuationData =
     TContinuationData<NProto::TWriteBlocksRequest>;
+using TMultiAgentWriteContinuationData =
+    TContinuationData<NProto::TWriteDeviceBlocksRequest>;
 using TZeroRequestContinuationData =
     TContinuationData<NProto::TZeroBlocksRequest>;
-
 
 struct TSynchronizedData
 {
     TRecentBlocksTracker RecentBlocksTracker;
     TOldRequestCounters OldRequestCounters;
     TList<TWriteRequestContinuationData> PostponedWriteRequests = {};
+    TList<TMultiAgentWriteContinuationData> PostponedMultiAgentWrites = {};
     TList<TZeroRequestContinuationData> PostponedZeroRequests = {};
     bool SecureEraseInProgress = false;
 };
@@ -110,12 +115,12 @@ THashMap<TString, TDeviceData> MakeDevices(
     THashMap<TString, TDeviceData> result;
     for (auto& [deviceUUID, storageAdapter]: devices) {
         TSynchronizedData synchronizedData{
-            TRecentBlocksTracker{deviceUUID},
-            oldRequestCounters};
+            .RecentBlocksTracker = TRecentBlocksTracker{deviceUUID},
+            .OldRequestCounters = oldRequestCounters};
 
         TDeviceData device{
-            std::move(storageAdapter),
-            TThreadSafeData{std::move(synchronizedData)}};
+            .Device = std::move(storageAdapter),
+            .ThreadSafeData = TThreadSafeData{std::move(synchronizedData)}};
 
         result.try_emplace(deviceUUID, std::move(device));
     }
@@ -132,6 +137,9 @@ class TRequestHandler final
     , public std::enable_shared_from_this<TRequestHandler>
 {
 private:
+    using TMultiAgentWriteDeviceBlocksResponse =
+        TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
+
     const THashMap<TString, TDeviceData> Devices;
     const ITaskQueuePtr TaskQueue;
 
@@ -139,6 +147,7 @@ private:
     TLog Log;
 
     const TDeviceClientPtr DeviceClient;
+    const IMultiAgentWriteHandlerPtr MultiAgentWriteHandler;
 
     std::weak_ptr<NRdma::IServerEndpoint> Endpoint;
     const NRdma::TProtoMessageSerializer* Serializer =
@@ -151,12 +160,14 @@ public:
             THashMap<TString, TStorageAdapterPtr> devices,
             ITaskQueuePtr taskQueue,
             TDeviceClientPtr deviceClient,
+            IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
             TOldRequestCounters oldRequestCounters,
             bool rejectLateRequests)
         : Devices(
-            MakeDevices(std::move(devices), std::move(oldRequestCounters)))
+              MakeDevices(std::move(devices), std::move(oldRequestCounters)))
         , TaskQueue(std::move(taskQueue))
         , DeviceClient(std::move(deviceClient))
+        , MultiAgentWriteHandler(std::move(multiAgentWriteHandler))
         , RejectLateRequests(rejectLateRequests)
     {}
 
@@ -205,6 +216,7 @@ public:
         auto token = GetAccessToken(deviceUUID);
         if (token->RecentBlocksTracker.HasInflight() ||
             token->PostponedWriteRequests.size() ||
+            token->PostponedMultiAgentWrites.size() ||
             token->PostponedZeroRequests.size())
         {
             ReportDiskAgentSecureEraseDuringIo();
@@ -424,7 +436,7 @@ private:
                 requestDetails.VolumeRequestId,
                 requestDetails.Range,
                 overlapDetails),
-            requestDetails.IsMultideviceRequest);
+            requestDetails.RejectCompleteOverlapped);
         if (result != S_OK) {
             if (result == E_REJECTED) {
                 synchronizedData.OldRequestCounters.Rejected->Inc();
@@ -504,6 +516,7 @@ private:
         bool success) const
     {
         TList<TWriteRequestContinuationData> readyToExecuteWriteRequests;
+        TList<TMultiAgentWriteContinuationData> readyToExecuteMultiAgentWrites;
         TList<TZeroRequestContinuationData> readyToExecuteZeroRequests;
 
         {
@@ -514,11 +527,17 @@ private:
             }
             readyToExecuteWriteRequests =
                 ProcessPostponedRequests(token, &token->PostponedWriteRequests);
+            readyToExecuteMultiAgentWrites = ProcessPostponedRequests(
+                token,
+                &token->PostponedMultiAgentWrites);
             readyToExecuteZeroRequests =
                 ProcessPostponedRequests(token, &token->PostponedZeroRequests);
         }
 
         for (auto& continuationData: readyToExecuteWriteRequests) {
+            ContinueHandleRequest(std::move(continuationData));
+        }
+        for (auto& continuationData: readyToExecuteMultiAgentWrites) {
             ContinueHandleRequest(std::move(continuationData));
         }
         for (auto& continuationData: readyToExecuteZeroRequests) {
@@ -580,11 +599,11 @@ private:
         SubscribeForResponse(
             std::move(future),
             TRequestDetails{
-                context,
-                out,
-                dataBuffer,
-                request.GetDeviceUUID(),
-                request.GetHeaders().GetClientId()},
+                .Context = context,
+                .Out = out,
+                .DataBuffer = dataBuffer,
+                .DeviceUUID = request.GetDeviceUUID(),
+                .ClientId = request.GetHeaders().GetClientId()},
             &TRequestHandler::HandleReadBlocksResponse);
 
         return {};
@@ -655,6 +674,15 @@ private:
             return MakeError(E_ARGUMENT);
         }
 
+        if (!request.GetReplicationTargets().empty()) {
+            return HandleMultiAgentWriteBlocksRequest(
+                context,
+                std::move(callContext),
+                request,
+                requestData,
+                out);
+        }
+
         auto device = GetDevice(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
@@ -675,18 +703,22 @@ private:
         const ui32 blockCount = requestData.length() / request.GetBlockSize();
 
         TWriteRequestContinuationData continuationData{
-            {context,
-             out,
-             dataBuffer,
-             request.GetDeviceUUID(),
-             request.GetHeaders().GetClientId(),
-             request.GetVolumeRequestId(),
-             TBlockRange64::WithLength(request.GetStartIndex(), blockCount),
-             request.GetMultideviceRequest()},
-            {std::move(callContext),
-             request.GetBlockSize(),
-             std::move(req),
-             std::move(device)}};
+            .RequestDetails =
+                {.Context = context,
+                 .Out = out,
+                 .DataBuffer = dataBuffer,
+                 .DeviceUUID = request.GetDeviceUUID(),
+                 .ClientId = request.GetHeaders().GetClientId(),
+                 .VolumeRequestId = request.GetVolumeRequestId(),
+                 .Range = TBlockRange64::WithLength(
+                     request.GetStartIndex(),
+                     blockCount),
+                 .RejectCompleteOverlapped = request.GetMultideviceRequest()},
+            .ExecutionData = {
+                .CallContext = std::move(callContext),
+                .BlockSize = request.GetBlockSize(),
+                .Request = std::move(req),
+                .Device = std::move(device)}};
 
         if (continuationData.RequestDetails.VolumeRequestId) {
             auto token =
@@ -774,6 +806,133 @@ private:
         }
     }
 
+    NProto::TError HandleMultiAgentWriteBlocksRequest(
+        void* context,
+        TCallContextPtr callContext,
+        NProto::TWriteDeviceBlocksRequest& request,
+        TStringBuf requestData,
+        TStringBuf out) const
+    {
+        const ui32 blockCount = requestData.size() / request.GetBlockSize();
+        const auto& thisReplicaRequestInfo = request.GetReplicationTargets(0);
+
+        const TString deviceUUID = thisReplicaRequestInfo.GetDeviceUUID();
+        const auto range = TBlockRange64::WithLength(
+            thisReplicaRequestInfo.GetStartIndex(),
+            blockCount);
+
+        // Prepare request to forward to actor system.
+        auto req = std::make_shared<NProto::TWriteDeviceBlocksRequest>();
+        req->Swap(&request);
+        auto sgList = ResizeIOVector(
+            *req->MutableBlocks(),
+            blockCount,
+            req->GetBlockSize());
+        auto bytesCopied = SgListCopy(
+            TBlockDataRef{requestData.data(), requestData.size()},
+            sgList);
+        Y_DEBUG_ABORT_UNLESS(bytesCopied == requestData.size());
+
+        TMultiAgentWriteContinuationData continuationData{
+            .RequestDetails =
+                {.Context = context,
+                 .Out = out,
+                 .DataBuffer = {},
+                 .DeviceUUID = deviceUUID,
+                 .ClientId = req->GetHeaders().GetClientId(),
+                 .VolumeRequestId = req->GetVolumeRequestId(),
+                 .Range = range,
+                 .RejectCompleteOverlapped = true},
+            .ExecutionData = {
+                .CallContext = std::move(callContext),
+                .BlockSize = req->GetBlockSize(),
+                .Request = req,
+                .Device = {}}};
+
+        if (continuationData.RequestDetails.VolumeRequestId) {
+            auto token =
+                GetAccessToken(continuationData.RequestDetails.DeviceUUID);
+            TString overlapDetails;
+            const ECheckRange checkResult = CheckRangeIntersection(
+                continuationData.RequestDetails,
+                *token,
+                &overlapDetails);
+
+            switch (checkResult) {
+                case ECheckRange::NotOverlapped:
+                    break;
+                case ECheckRange::ResponseAlready:
+                case ECheckRange::ResponseRejected:
+                    return TErrorResponse(E_REJECTED, overlapDetails);
+                case ECheckRange::DelayRequest: {
+                    token->PostponedMultiAgentWrites.push_back(
+                        std::move(continuationData));
+                    return {};
+                }
+            }
+        }
+
+        ContinueHandleRequest(std::move(continuationData));
+        return {};
+    }
+
+    void ContinueHandleRequest(
+        TMultiAgentWriteContinuationData continuationData) const
+    {
+        auto future = MultiAgentWriteHandler->PerformMultiAgentWrite(
+            std::move(continuationData.ExecutionData.CallContext),
+            std::move(continuationData.ExecutionData.Request));
+
+        SubscribeForResponse(
+            std::move(future),
+            std::move(continuationData.RequestDetails),
+            &TRequestHandler::HandleMultiAgentWriteBlocksResponse);
+    }
+
+    void FinishHandleRequest(
+        const TMultiAgentWriteContinuationData& continuationData,
+        EWellKnownResultCodes resultCode,
+        const TString& overlapDetails) const
+    {
+        HandleMultiAgentWriteBlocksResponse(
+            continuationData.RequestDetails,
+            MakeFuture<TMultiAgentWriteDeviceBlocksResponse>(
+                MakeError(resultCode, overlapDetails)));
+    }
+
+    void HandleMultiAgentWriteBlocksResponse(
+        const TRequestDetails& requestDetails,
+        NThreading::TFuture<TMultiAgentWriteDeviceBlocksResponse> future) const
+    {
+        const TMultiAgentWriteDeviceBlocksResponse& response = future.GetValue();
+        const NProto::TError& error = response.GetError();
+
+        if (HasError(error)) {
+            STORAGE_ERROR_T(
+                LogThrottler,
+                "[ MultiAgent " << requestDetails.DeviceUUID << "/"
+                                << requestDetails.ClientId
+                                << "] write error: " << error.GetMessage()
+                                << " (" << error.GetCode() << ")");
+        }
+
+        NProto::TWriteDeviceBlocksResponse proto;
+        *proto.MutableError() = error;
+        proto.MutableReplicationResponses()->Assign(
+            response.ReplicationResponses.begin(),
+            response.ReplicationResponses.end());
+
+        size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
+            requestDetails.Out,
+            TBlockStoreProtocol::WriteDeviceBlocksResponse,
+            0,   // flags
+            proto);
+
+        if (auto ep = Endpoint.lock()) {
+            ep->SendResponse(requestDetails.Context, bytes);
+        }
+    }
+
     NProto::TError HandleZeroBlocksRequest(
         void* context,
         TCallContextPtr callContext,
@@ -795,20 +954,22 @@ private:
         req->SetBlocksCount(request.GetBlocksCount());
 
         TZeroRequestContinuationData continuationData{
-            {context,
-             out,
-             {},   // no data buffer
-             request.GetDeviceUUID(),
-             request.GetHeaders().GetClientId(),
-             request.GetVolumeRequestId(),
-             TBlockRange64::WithLength(
-                 request.GetStartIndex(),
-                 GetBlocksCount(request)),
-             request.GetMultideviceRequest()},
-            {std::move(callContext),
-             request.GetBlockSize(),
-             std::move(req),
-             std::move(device)}};
+            .RequestDetails =
+                {.Context = context,
+                 .Out = out,
+                 .DataBuffer = {},   // no data buffer
+                 .DeviceUUID = request.GetDeviceUUID(),
+                 .ClientId = request.GetHeaders().GetClientId(),
+                 .VolumeRequestId = request.GetVolumeRequestId(),
+                 .Range = TBlockRange64::WithLength(
+                     request.GetStartIndex(),
+                     GetBlocksCount(request)),
+                 .RejectCompleteOverlapped = request.GetMultideviceRequest()},
+            .ExecutionData = {
+                .CallContext = std::move(callContext),
+                .BlockSize = request.GetBlockSize(),
+                .Request = std::move(req),
+                .Device = std::move(device)}};
 
         if (continuationData.RequestDetails.VolumeRequestId) {
             auto token =
@@ -926,11 +1087,11 @@ private:
         SubscribeForResponse(
             std::move(future),
             TRequestDetails{
-                context,
-                out,
-                {},   // no data buffer
-                request.GetDeviceUUID(),
-                request.GetHeaders().GetClientId()},
+                .Context = context,
+                .Out = out,
+                .DataBuffer = {},   // no data buffer
+                .DeviceUUID = request.GetDeviceUUID(),
+                .ClientId = request.GetHeaders().GetClientId()},
             &TRequestHandler::HandleChecksumBlocksResponse);
 
         return {};
@@ -996,6 +1157,7 @@ public:
             ILoggingServicePtr logging,
             NRdma::IServerPtr server,
             TDeviceClientPtr deviceClient,
+            IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
             THashMap<TString, TStorageAdapterPtr> devices,
             ITaskQueuePtr taskQueue)
         : Config(std::move(config))
@@ -1007,6 +1169,7 @@ public:
             std::move(devices),
             std::move(taskQueue),
             std::move(deviceClient),
+            std::move(multiAgentWriteHandler),
             std::move(oldRequestCounters),
             Config->RejectLateRequests);
     }
@@ -1055,6 +1218,7 @@ IRdmaTargetPtr CreateRdmaTarget(
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
+    IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
     THashMap<TString, TStorageAdapterPtr> devices)
 {
     auto threadPool = CreateThreadPool("RDMA", config->WorkerThreads);
@@ -1066,6 +1230,7 @@ IRdmaTargetPtr CreateRdmaTarget(
         std::move(logging),
         std::move(server),
         std::move(deviceClient),
+        std::move(multiAgentWriteHandler),
         std::move(devices),
         std::move(threadPool));
 }

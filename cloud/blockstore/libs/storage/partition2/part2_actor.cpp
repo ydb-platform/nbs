@@ -47,7 +47,7 @@ TPartitionActor::TPartitionActor(
         ui32 siblingCount,
         const TActorId& volumeActorId)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
+    , TTabletBase(owner, std::move(storage), nullptr)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -716,6 +716,13 @@ void TPartitionActor::HandleLockAndDrainRange(
     Y_ABORT("Unimplemented");
 }
 
+TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetBlobStorageAsyncRequestTimeoutSSD()
+               : Config->GetBlobStorageAsyncRequestTimeoutHDD();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
@@ -830,7 +837,10 @@ STFUNC(TPartitionActor::StateInit)
 
         default:
             if (!RejectRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -875,7 +885,10 @@ STFUNC(TPartitionActor::StateWork)
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -919,7 +932,10 @@ STFUNC(TPartitionActor::StateZombie)
 
         default:
             if (!RejectRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

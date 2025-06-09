@@ -34,9 +34,24 @@ struct TReadBlocksLocalRequest
     TGuardedSgList Sglist;
     ui64 CommitId = 0;
     ui32 BlockSize = 0;
+    bool ShouldReportFailedRangesOnFailure = false;
 };
 
-using TReadBlocksLocalResponse = TReadBlocksResponse;
+struct TExtendedFailInfo
+{
+    TVector<TString> FailedRanges;
+};
+
+struct TReadBlocksLocalResponse: public TReadBlocksResponse
+{
+    TExtendedFailInfo FailInfo;
+
+    TReadBlocksLocalResponse() = default;
+
+    explicit TReadBlocksLocalResponse(TReadBlocksResponse&& base)
+        : TReadBlocksResponse(std::move(base))
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -179,3 +194,10 @@ enum class EPrivateRequestType
 TStringBuf GetPrivateRequestName(EPrivateRequestType requestType);
 
 }   // namespace NCloud::NBlockStore
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <>
+void Out<NCloud::NBlockStore::NProto::TReadBlocksLocalResponse>(
+    IOutputStream& out,
+    const NCloud::NBlockStore::NProto::TReadBlocksLocalResponse& value);

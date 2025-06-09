@@ -122,6 +122,9 @@ STFUNC(TStatsServiceActor::StateWork)
         HFunc(TEvStatsService::TEvRegisterVolume, HandleRegisterVolume);
         HFunc(TEvStatsService::TEvUnregisterVolume, HandleUnregisterVolume);
         HFunc(TEvStatsService::TEvVolumeConfigUpdated, HandleVolumeConfigUpdated);
+        HFunc(
+            TEvStatsService::TEvPartitionBootExternalCompleted,
+            HandlePartitionBootExternalCompleted);
         HFunc(TEvStatsService::TEvVolumePartCounters, HandleVolumePartCounters);
         HFunc(TEvStatsService::TEvVolumeSelfCounters, HandleVolumeSelfCounters);
         HFunc(TEvStatsService::TEvGetVolumeStatsRequest, HandleGetVolumeStats);
@@ -139,7 +142,10 @@ STFUNC(TStatsServiceActor::StateWork)
             HandleCleanupBackgroundSources);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::STATS_SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::STATS_SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -863,6 +863,15 @@ struct TEvPartitionPrivate
     };
 
     //
+    // LoadCompactionMapChunkRequest
+    //
+
+    struct TLoadCompactionMapChunkRequest
+    {
+        TBlockRange32 Range;
+    };
+
+    //
     // Events declaration
     //
 
@@ -892,6 +901,7 @@ struct TEvPartitionPrivate
         EvPatchBlobCompleted,
         EvAddConfirmedBlobsCompleted,
         EvConfirmBlobsCompleted,
+        EvLoadCompactionMapChunkRequest,
 
         EvEnd
     };
@@ -905,6 +915,7 @@ struct TEvPartitionPrivate
     using TEvUpdateYellowState = TRequestEvent<TEmpty, EvUpdateYellowState>;
     using TEvSendBackpressureReport = TRequestEvent<TEmpty, EvSendBackpressureReport>;
     using TEvProcessWriteQueue = TRequestEvent<TEmpty, EvProcessWriteQueue>;
+    using TEvLoadCompactionMapChunkRequest = TRequestEvent<TLoadCompactionMapChunkRequest, EvLoadCompactionMapChunkRequest>;
 
     using TEvWriteBlobCompleted = TResponseEvent<TWriteBlobCompleted, EvWriteBlobCompleted>;
     using TEvReadBlocksCompleted = TResponseEvent<TReadBlocksCompleted, EvReadBlocksCompleted>;

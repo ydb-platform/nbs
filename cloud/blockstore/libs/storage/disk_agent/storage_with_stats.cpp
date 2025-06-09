@@ -56,7 +56,7 @@ struct TStorageWithIoStats final
             std::move(callContext),
             std::move(request));
 
-        return result.Subscribe([=] (const auto& future) {
+        return result.Subscribe([=, this] (const auto& future) {
             if (HandleIoError(GetResponseErrorKind(future))) {
                 return;
             }
@@ -79,7 +79,7 @@ struct TStorageWithIoStats final
             std::move(callContext),
             std::move(request));
 
-        return result.Subscribe([=] (const auto& future) {
+        return result.Subscribe([=, this] (const auto& future) {
             if (HandleIoError(GetResponseErrorKind(future))) {
                 return;
             }
@@ -102,7 +102,7 @@ struct TStorageWithIoStats final
             std::move(callContext),
             std::move(request));
 
-        return result.Subscribe([=] (const auto& future) {
+        return result.Subscribe([=, this] (const auto& future) {
             if (HandleIoError(GetResponseErrorKind(future))) {
                 return;
             }

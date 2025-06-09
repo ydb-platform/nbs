@@ -213,18 +213,58 @@ struct TYdbBlobLoadMetricRow
     static TStringBuf GetYdbRowDefinition();
 };
 
+struct TYdbGroupRow
+{
+    static constexpr TStringBuf TabletIdName = "TabletId";
+    static constexpr TStringBuf ChannelName = "Channel";
+    static constexpr TStringBuf GroupIdName = "GroupId";
+    static constexpr TStringBuf GenerationName = "Generation";
+    static constexpr TStringBuf TimestampName = "Timestamp";
+    static constexpr TDuration TtlDuration = TDuration::Days(7);
+
+    ui64 TabletId = 0;
+    ui32 Channel = 0;
+    ui32 GroupId = 0;
+    ui32 Generation = 0;
+    TInstant Timestamp;
+
+    NYdb::TValue GetYdbValues() const;
+};
+
+struct TYdbPartitionRow
+{
+    static constexpr TStringBuf PartitionTabletIdName = "PartitionTabletId";
+    static constexpr TStringBuf VolumeTabletIdName = "VolumeTabletId";
+    static constexpr TStringBuf DiskIdName = "DiskId";
+    static constexpr TStringBuf TimestampName = "Timestamp";
+    static constexpr TDuration TtlDuration = TDuration::Days(7);
+
+    ui64 PartitionTabletId = 0;
+    ui64 VolumeTabletId = 0;
+    TString DiskId;
+    TInstant Timestamp;
+
+    NYdb::TValue GetYdbValues() const;
+};
+
 struct TYdbRowData
 {
     TVector<TYdbStatsRow> Stats;
     TVector<TYdbBlobLoadMetricRow> Metrics;
+    TVector<TYdbGroupRow> Groups;
+    TVector<TYdbPartitionRow> Partitions;
 
     TYdbRowData() = default;
 
     TYdbRowData(
             TVector<TYdbStatsRow> stats,
-            TVector<TYdbBlobLoadMetricRow> metrics)
+            TVector<TYdbBlobLoadMetricRow> metrics,
+            TVector<TYdbGroupRow> groups,
+            TVector<TYdbPartitionRow> partitions)
         : Stats(std::move(stats))
         , Metrics(std::move(metrics))
+        , Groups(std::move(groups))
+        , Partitions(std::move(partitions))
     {}
 };
 

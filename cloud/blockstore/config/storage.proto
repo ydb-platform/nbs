@@ -1091,8 +1091,13 @@ message TStorageServiceConfig
     // "DiskRegistryCleanupConfigOnRemoveHost"
     optional bool DiskRegistryAlwaysAllocatesLocalDisks = 388;
 
-    optional uint32 BlobStorageAsyncGetTimeoutHDD = 389;
-    optional uint32 BlobStorageAsyncGetTimeoutSSD = 390;
+    // Timeout for asynchronous TEvPut, TEvPatch, TEvGet requests to blob storage
+    // for HDD disks (in milliseconds)
+    optional uint32 BlobStorageAsyncRequestTimeoutHDD = 389;
+
+    // Timeout for asynchronous TEvPut, TEvPatch, TEvGet requests to blob storage
+    // for SSD disks (in milliseconds)
+    optional uint32 BlobStorageAsyncRequestTimeoutSSD = 390;
 
     // Specifies the minimum number of replicas to read from in a mirrored disk
     // for every read request.
@@ -1224,4 +1229,32 @@ message TStorageServiceConfig
     // to the mixed channel.
     // It'll be ignored if 0 or more than (equal to) WriteBlobThreshold.
     optional uint32 WriteMixedBlobThresholdHDD = 427;
+
+    // Max bandwidth (in MiB/s) used during the lagging migration after the
+    // replica becomes online.
+    optional uint32 LaggingDeviceMaxMigrationBandwidth = 428;
+
+    // Max migration io depth used during the lagging migration after the
+    // replica becomes online
+    optional uint32 LaggingDeviceMaxMigrationIoDepth = 429;
+
+    // Additional time to receive a response from the DiskAgent through which
+    // the MultiAgentWrite request was executed.
+    optional uint32 NetworkForwardingTimeout = 430;
+
+    // Maximum number of rows to be written to YDB in a single request.
+    optional uint32 StatsUploadMaxRowsPerTx = 431;
+
+    // Retry policy when unable to get configs from CMS, in ms
+    optional uint32 LoadConfigsFromCmsRetryMinDelay = 432;
+    optional uint32 LoadConfigsFromCmsRetryMaxDelay = 433;
+    optional uint32 LoadConfigsFromCmsTotalTimeout = 434;
+
+    // Maximum number of errors on WriteBlob without tablet restart.
+    optional uint32 MaxWriteBlobErrorsBeforeSuicide = 435;
+
+    // Maximum range count to load per 1 iteration (transaction).
+    optional uint32 MaxCompactionRangesLoadingPerTx = 436;
+    // Max inflight for out of order compaction map load requests.
+    optional uint32 MaxOutOfOrderCompactionMapChunksInflight = 437;
 }

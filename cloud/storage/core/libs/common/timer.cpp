@@ -16,6 +16,11 @@ public:
     {
         return TInstant::Now();
     }
+
+    void Sleep(TDuration duration) override
+    {
+        ::Sleep(duration);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,6 +34,11 @@ class TCpuCycleTimer final
     TInstant Now() override
     {
         return InitTime + CyclesToDurationSafe(GetCycleCount() - InitCycleCount);
+    }
+
+    void Sleep(TDuration duration) override
+    {
+        ::Sleep(duration);
     }
 };
 

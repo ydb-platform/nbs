@@ -21,7 +21,7 @@ THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
         return THandleOpsQueue::EResult::SerializationError;
     }
 
-    if (!RequestsToProcess.Push(result)) {
+    if (!RequestsToProcess.PushBack(result)) {
         return THandleOpsQueue::EResult::QueueOverflow;
     }
 
@@ -45,9 +45,9 @@ bool THandleOpsQueue::Empty() const
     return RequestsToProcess.Empty();
 }
 
-void THandleOpsQueue::Pop()
+void THandleOpsQueue::PopFront()
 {
-    RequestsToProcess.Pop();
+    RequestsToProcess.PopFront();
 }
 
 ui64 THandleOpsQueue::Size() const

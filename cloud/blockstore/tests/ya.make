@@ -9,10 +9,12 @@ RECURSE(
     client
     config_dispatcher
     csi_driver
+    direct_device_acquire
     disk_agent_config
     encryption_at_rest
     external_endpoint
     e2e-tests
+    e2e-tests-vhost
     fio
     functional
     fuzzing
@@ -20,7 +22,6 @@ RECURSE(
     loadtest
     loadtest/remote
     local_ssd
-    mirror_disks
     monitoring
     mount
     notify

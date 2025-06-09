@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -128,10 +129,14 @@ void TVolumeActor::HandleUpdateVolumeConfig(
 {
     const auto* msg = ev->Get();
 
+    LogTitle.SetDiskId(msg->Record.GetVolumeConfig().GetDiskId());
+
     ui32 configVersion = msg->Record.GetVolumeConfig().GetVersion();
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Received volume config with version %u",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Received volume config with version %u",
+        LogTitle.GetWithTime().c_str(),
         configVersion);
 
     if (!StateLoadFinished || ProcessUpdateVolumeConfigScheduled) {
@@ -183,8 +188,11 @@ bool TVolumeActor::UpdateVolumeConfig(
     UnfinishedUpdateVolumeConfig.RequestInfo = std::move(requestInfo);
 
     if (IsDiskRegistryMediaKind(mediaKind)) {
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Allocating disk", TabletID());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Allocating disk",
+            LogTitle.GetWithTime().c_str());
         AllocateDisk(ctx);
     } else {
         FinishUpdateVolumeConfig(ctx);
@@ -234,15 +242,25 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     *newMeta.MutableDevices() = std::move(UnfinishedUpdateVolumeConfig.Devices);
     *newMeta.MutableMigrations() =
         std::move(UnfinishedUpdateVolumeConfig.Migrations);
+
     newMeta.ClearReplicas();
     for (auto& devices: UnfinishedUpdateVolumeConfig.Replicas) {
         auto* replica = newMeta.AddReplicas();
         *replica->MutableDevices() = std::move(devices);
     }
+
     newMeta.ClearFreshDeviceIds();
     for (auto& freshDeviceId: UnfinishedUpdateVolumeConfig.FreshDeviceIds) {
         *newMeta.AddFreshDeviceIds() = std::move(freshDeviceId);
     }
+
+    newMeta.ClearUnavailableDeviceIds();
+    for (auto& unavailableDeviceId:
+         UnfinishedUpdateVolumeConfig.UnavailableDeviceIds)
+    {
+        newMeta.AddUnavailableDeviceIds(std::move(unavailableDeviceId));
+    }
+
     if (State) {
         newMeta.MutableLaggingAgentsInfo()->CopyFrom(
             State->GetMeta().GetLaggingAgentsInfo());
@@ -256,10 +274,13 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     UnfinishedUpdateVolumeConfig.Replicas = {};
     UnfinishedUpdateVolumeConfig.FreshDeviceIds = {};
     UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds = {};
+    UnfinishedUpdateVolumeConfig.UnavailableDeviceIds = {};
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Updating volume config to version %u",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Updating volume config to version %u",
+        LogTitle.GetWithTime().c_str(),
         UnfinishedUpdateVolumeConfig.ConfigVersion);
 
     Y_ABORT_UNLESS(NextVolumeConfigVersion == GetCurrentConfigVersion());
@@ -310,9 +331,11 @@ void TVolumeActor::CompleteUpdateConfig(
 {
     Y_ABORT_UNLESS(args.Meta.GetVersion() == NextVolumeConfigVersion);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Sending OK response for UpdateVolumeConfig with version=%u",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Sending OK response for UpdateVolumeConfig with version=%u",
+        LogTitle.GetWithTime().c_str(),
         args.Meta.GetVersion());
 
     auto response = std::make_unique<TEvBlockStore::TEvUpdateVolumeConfigResponse>();
@@ -366,9 +389,11 @@ void TVolumeActor::CompleteUpdateConfig(
         BecomeAux(ctx, STATE_WORK);
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] State initialization finished",
-        TabletID());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s State initialization finished",
+        LogTitle.GetWithTime().c_str());
 
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);

@@ -1,3 +1,4 @@
+#include "part_nonrepl_migration.h"
 #include "part_nonrepl_migration_actor.h"
 #include "ut_env.h"
 
@@ -205,9 +206,10 @@ struct TTestEnv
             params{
                 ToLogicalBlocks(devices, DefaultBlockSize),
                 TNonreplicatedPartitionConfig::TVolumeInfo{
-                    Now(),
+                    .CreationTs = Now(),
                     // only SSD/HDD distinction matters
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                    .EncryptionMode = NProto::NO_ENCRYPTION},
                 "test",
                 DefaultBlockSize,
                 VolumeActorId};
@@ -216,7 +218,7 @@ struct TTestEnv
         auto partConfig =
             std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
-        auto part = std::make_unique<TNonreplicatedPartitionMigrationActor>(
+        auto part = CreateNonreplicatedPartitionMigration(
             std::move(config),
             CreateDiagnosticsConfig(),
             CreateProfileLogStub(),

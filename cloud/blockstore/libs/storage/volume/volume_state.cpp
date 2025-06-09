@@ -180,7 +180,8 @@ void TVolumeState::AddLaggingAgent(NProto::TLaggingAgent agent)
 std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
     const TString& agentId)
 {
-    CurrentlyMigratingLaggingAgents.erase(agentId);
+    ResetLaggingAgentMigrationState(agentId);
+
     auto agentIdPredicate = [&agentId](const auto& info)
     {
         return info.GetAgentId() == agentId;
@@ -234,6 +235,11 @@ void TVolumeState::UpdateLaggingAgentMigrationState(
     };
 }
 
+void TVolumeState::ResetLaggingAgentMigrationState(const TString& agentId)
+{
+    CurrentlyMigratingLaggingAgents.erase(agentId);
+}
+
 auto TVolumeState::GetLaggingAgentsMigrationInfo() const
     -> const THashMap<TString, TLaggingAgentMigrationInfo>&
 {
@@ -273,17 +279,7 @@ bool TVolumeState::ShouldTrackUsedBlocks() const
     }
 
     const bool overlay = !GetBaseDiskId().empty();
-    if (overlay) {
-        return true;
-    }
-
-    // TODO(drbasic)
-    // For encrypted disk-registry based disks, we will continue to
-    // write a map of encrypted blocks for a while.
-    const auto mode = Meta.GetVolumeConfig().GetEncryptionDesc().GetMode();
-
-    return mode != NProto::NO_ENCRYPTION &&
-           mode != NProto::ENCRYPTION_AT_REST;
+    return overlay;
 }
 
 void TVolumeState::Reset()
@@ -311,10 +307,12 @@ void TVolumeState::Reset()
     }
 
     if (!IsDiskRegistryMediaKind()) {
+        ui32 partitionIndex = 0;
         for (ui64 tabletId: Meta.GetPartitions()) {
             Partitions.emplace_back(
                 tabletId,
                 Meta.GetConfig(),
+                partitionIndex++,
                 StorageConfig->GetTabletRebootCoolDownIncrement(),
                 StorageConfig->GetTabletRebootCoolDownMax());
             CreatePartitionStatInfo(GetDiskId(), tabletId);
@@ -892,25 +890,37 @@ const THashMultiMap<TActorId, TString>& TVolumeState::GetPipeServerId2ClientId()
 }
 
 TVector<NProto::TDeviceConfig>
-TVolumeState::GetAllDevicesForAcquireRelease() const
+TVolumeState::GetDevicesForAcquireOrRelease() const
 {
+    const THashSet<TString> deviceIdsToIgnore(
+        Meta.GetUnavailableDeviceIds().begin(),
+        Meta.GetUnavailableDeviceIds().end());
+
     const size_t allDevicesCount =
         ((Meta.ReplicasSize() + 1) * Meta.DevicesSize()) +
-        GetMeta().MigrationsSize();
+        Meta.MigrationsSize();
 
     TVector<NProto::TDeviceConfig> resultDevices;
     resultDevices.reserve(allDevicesCount);
 
+    auto addDeviceIfNeeded = [&](const auto& d)
+    {
+        if (deviceIdsToIgnore.contains(d.GetDeviceUUID())) {
+            return;
+        }
+        resultDevices.emplace_back(d);
+    };
+
     for (const auto& device: Meta.GetDevices()) {
-        resultDevices.emplace_back(device);
+        addDeviceIfNeeded(device);
     }
     for (const auto& replica: Meta.GetReplicas()) {
         for (const auto& device: replica.GetDevices()) {
-            resultDevices.emplace_back(device);
+            addDeviceIfNeeded(device);
         }
     }
     for (const auto& migration: Meta.GetMigrations()) {
-        resultDevices.emplace_back(migration.GetTargetDevice());
+        addDeviceIfNeeded(migration.GetTargetDevice());
     }
 
     return resultDevices;

@@ -225,7 +225,9 @@ STFUNC(TScanDiskActor::StateWork)
 
         default:
             HandleUnexpectedEvent(
-                ev, TBlockStoreComponents::PARTITION_WORKER);
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -480,11 +482,13 @@ void TPartitionActor::HandleScanDiskBatch(
 
     AddTransaction<TEvPartitionPrivate::TScanDiskBatchMethod>(*requestInfo);
 
-    ExecuteTx(ctx, CreateTx<TScanDiskBatch>(
-        requestInfo,
-        msg->BlobId,
-        msg->Count,
-        msg->FinalBlobId));
+    ExecuteTx(
+        ctx,
+        CreateTx<TScanDiskBatch>(
+            requestInfo,
+            msg->BlobId,
+            msg->Count,
+            msg->FinalBlobId));
 }
 
 void TPartitionActor::HandleScanDiskCompleted(

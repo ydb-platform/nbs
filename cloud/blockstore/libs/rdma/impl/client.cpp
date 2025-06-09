@@ -18,6 +18,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/history.h>
 #include <cloud/storage/core/libs/common/thread.h>
@@ -54,6 +55,7 @@ constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Seconds(60);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
+constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
 
 constexpr size_t REQUEST_HISTORY_SIZE = 1024;
 
@@ -348,39 +350,75 @@ struct TEndpointCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TReconnect
+class TReconnect
 {
+private:
     const TDuration MaxDelay;
 
-    TDuration Delay;
+    std::optional<TBackoffDelayProvider> DelayProvider;
     TTimerHandle Timer;
     TAdaptiveLock Lock;
 
-    TReconnect(TDuration maxDelay)
+public:
+    explicit TReconnect(TDuration maxDelay)
         : MaxDelay(maxDelay)
     {}
+
+    ~TReconnect() = default;
 
     void Cancel()
     {
         auto guard = Guard(Lock);
-
-        Delay = TDuration::Zero();
-        Timer.Clear();
+        CancelLocked();
     }
 
-    void Schedule(TDuration minDelay = MIN_RECONNECT_DELAY)
+    void Schedule()
+    {
+        Schedule(MIN_RECONNECT_DELAY);
+    }
+
+    void Schedule(TDuration minDelay)
     {
         auto guard = Guard(Lock);
+        ScheduleLocked(minDelay, TDuration());
+    }
 
-        Delay = Min(Delay ? Delay * 2 : minDelay, MaxDelay);
-        Timer.Set(Delay);
+    void InstantReschedule(TDuration minDelay)
+    {
+        auto guard = Guard(Lock);
+        CancelLocked();
+        ScheduleLocked(minDelay, INSTANT_RECONNECT_DELAY);
     }
 
     bool Hanging() const
     {
         auto guard = Guard(Lock);
+        if (!DelayProvider) {
+            return false;
+        }
+        return DelayProvider->GetDelay() >= MaxDelay / 2;
+    }
 
-        return Delay >= MaxDelay / 2;
+    int Handle() const
+    {
+        return Timer.Handle();
+    }
+
+private:
+    void CancelLocked()
+    {
+        DelayProvider.reset();
+        Timer.Clear();
+    }
+
+    void ScheduleLocked(TDuration minDelay, TDuration initialDelay)
+    {
+        if (!DelayProvider) {
+            DelayProvider.emplace(minDelay, MaxDelay);
+        }
+        const auto delay =
+            initialDelay ? initialDelay : DelayProvider->GetDelayAndIncrease();
+        Timer.Set(delay);
     }
 };
 
@@ -513,6 +551,7 @@ public:
         TClientRequestPtr creq,
         TCallContextPtr callContext) noexcept override;
     void CancelRequest(ui64 reqId) noexcept override;
+    void TryForceReconnect() noexcept override;
     TFuture<void> Stop() noexcept override;
 
     // called from CQ thread
@@ -572,7 +611,7 @@ TClientEndpoint::TClientEndpoint(
     // user data attached to connection events
     Connection->context = this;
 
-    Log.SetFormatter([=](ELogPriority p, TStringBuf msg) {
+    Log.SetFormatter([=, this](ELogPriority p, TStringBuf msg) {
         Y_UNUSED(p);
         return TStringBuilder() << "[" << Id << "] " << msg;
     });
@@ -870,6 +909,23 @@ void TClientEndpoint::CancelRequest(ui64 reqId) noexcept
     if (WaitMode == EWaitMode::Poll) {
         CancelRequestEvent.Set();
     }
+}
+
+void TClientEndpoint::TryForceReconnect() noexcept
+{
+    switch (State) {
+        case EEndpointState::ResolvingAddress:
+        case EEndpointState::ResolvingRoute:
+        case EEndpointState::Connected:
+            return;
+        case EEndpointState::Connecting:
+        case EEndpointState::Disconnecting:
+        case EEndpointState::Disconnected:
+            break;
+    }
+
+    RDMA_DEBUG("Scheduling force reconnect");
+    Reconnect.InstantReschedule(MIN_CONNECT_TIMEOUT / 2);
 }
 
 bool TClientEndpoint::HandleCancelRequests()
@@ -1219,7 +1275,7 @@ void TClientEndpoint::SetConnection(NVerbs::TConnectionPtr connection) noexcept
 
 int TClientEndpoint::ReconnectTimerHandle() const
 {
-    return Reconnect.Timer.Handle();
+    return Reconnect.Handle();
 }
 
 void TClientEndpoint::FlushQueues() noexcept
@@ -1964,19 +2020,11 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
     if (endpoint->Reconnect.Hanging()) {
         // if this is our first connection, fail over to IC
         if (endpoint->StartResult.Initialized()) {
-            RDMA_ERROR(
-                endpoint->Log,
-                TStringBuilder()
-                    << "connection timeout for endpoint "
-                    << endpoint->Host);
+            RDMA_ERROR(endpoint->Log, "connection timeout");
 
             auto startResult = std::move(endpoint->StartResult);
             startResult.SetException(std::make_exception_ptr(TServiceError(
-                MakeError(
-                    endpoint->Status,
-                    TStringBuilder()
-                        << "connection timeout for endpoint "
-                        << endpoint->Host))));
+                MakeError(endpoint->Status, "connection timeout"))));
 
             StopEndpoint(endpoint);
             return;

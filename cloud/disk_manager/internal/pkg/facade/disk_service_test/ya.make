@@ -10,10 +10,8 @@ SET_APPEND(RECIPE_ARGS --disable-disk-registry-based-disks)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
 
 GO_XTEST_SRCS(
-    common_test.go
     disk_relocation_test.go
     disk_service_test.go
-    disk_service_sharded_test.go
 )
 
 END()

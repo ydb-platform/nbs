@@ -256,7 +256,7 @@ void TTestRunner::SendReadRequest(const TBlockRange64& range)
         std::move(request));
 
     future.Subscribe(
-        [=, p=shared_from_this()] (const auto& f) mutable {
+        [=, this, p=shared_from_this()] (const auto& f) mutable {
             guardedSgList.Close();
             Allocator->Release(buffer);
 
@@ -317,7 +317,7 @@ void TTestRunner::SendWriteRequest(const TBlockRange64& range)
         std::move(request));
 
     future.Subscribe(
-        [=, p=shared_from_this()] (const auto& f) mutable {
+        [=, this, p=shared_from_this()] (const auto& f) mutable {
             guardedSgList.Close();
             Allocator->Release(buffer);
 
@@ -364,7 +364,7 @@ void TTestRunner::SendZeroRequest(const TBlockRange64& range)
         std::move(request));
 
     future.Subscribe(
-        [=, p=shared_from_this()] (const auto& f) {
+        [=, this, p=shared_from_this()] (const auto& f) {
             const auto& response = f.GetValue();
             const auto& error = response.GetError();
             if (FAILED(error.GetCode())) {

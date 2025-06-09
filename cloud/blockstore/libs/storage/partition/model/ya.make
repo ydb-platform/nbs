@@ -9,12 +9,13 @@ SRCS(
     barrier.cpp
     blob_index.cpp
     blob_to_confirm.cpp
-    block.cpp
     block_index.cpp
     block_mask.cpp
+    block.cpp
     checkpoint.cpp
     cleanup_queue.cpp
     commit_queue.cpp
+    compaction_map_load_state.cpp
     fresh_blob.cpp
     garbage_queue.cpp
     mixed_index_cache.cpp
@@ -34,4 +35,6 @@ PEERDIR(
 
 END()
 
-RECURSE_FOR_TESTS(ut)
+RECURSE_FOR_TESTS(
+    ut
+)

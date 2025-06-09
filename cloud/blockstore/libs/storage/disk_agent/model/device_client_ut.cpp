@@ -1,4 +1,5 @@
 #include "device_client.h"
+
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>

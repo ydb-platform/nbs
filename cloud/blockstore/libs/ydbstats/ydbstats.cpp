@@ -69,6 +69,18 @@ struct TSetupTableResult
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TYDBTableNames
+{
+    TString Stats;
+    TString History;
+    TString Archive;
+    TString Metrics;
+    TString Groups;
+    TString Partitions;
+
+    TYDBTableNames() = default;
+};
+
 struct TSetupTablesResult
 {
     const NProto::TError Error;
@@ -88,7 +100,7 @@ class TWaitSetup
 {
 private:
     TAdaptiveLock Lock;
-    size_t ResponsesToWait = 4;
+    size_t ResponsesToWait = 6;
 
     NProto::TError Error;
     TYDBTableNames TableNames;
@@ -124,6 +136,22 @@ public:
     {
         with_lock (Lock) {
             TableNames.Metrics = result.TableName;
+            CheckForCompletion(result.Error);
+        }
+    }
+
+    void SetGroupsTable(const TSetupTableResult& result)
+    {
+        with_lock (Lock) {
+            TableNames.Groups = result.TableName;
+            CheckForCompletion(result.Error);
+        }
+    }
+
+    void SetPartitionsTable(const TSetupTableResult& result)
+    {
+        with_lock (Lock) {
+            TableNames.Partitions = result.TableName;
             CheckForCompletion(result.Error);
         }
     }
@@ -342,6 +370,8 @@ private:
     TFuture<TSetupTableResult> SetupHistoryTable() const;
     TFuture<TSetupTableResult> SetupArchiveStatsTable() const;
     TFuture<TSetupTableResult> SetupMetricsTable() const;
+    TFuture<TSetupTableResult> SetupGroupsTable() const;
+    TFuture<TSetupTableResult> SetupPartitionsTable() const;
 
     TFuture<NProto::TError> SetupTable(
         const TString& tableName,
@@ -419,6 +449,18 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
             rowsBuilder.AddListItem(row.GetYdbValues());
         }
     };
+    auto addGroupsRows = [&](TValueBuilder& rowsBuilder)
+    {
+        for (const auto& row: rows.Groups) {
+            rowsBuilder.AddListItem(row.GetYdbValues());
+        }
+    };
+    auto addPartitionsRows = [&](TValueBuilder& rowsBuilder)
+    {
+        for (const auto& row: rows.Partitions) {
+            rowsBuilder.AddListItem(row.GetYdbValues());
+        }
+    };
 
     auto buildYdbRows = [&] (const std::function<void(TValueBuilder&)>& addRows) {
         TValueBuilder rowsBuilder;
@@ -460,6 +502,18 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
             buildYdbRows(addMetricsRows));
     }
 
+    if (setupResult.TableNames.Groups) {
+        dataForUpload.emplace_back(
+            setupResult.TableNames.Groups,
+            buildYdbRows(addGroupsRows));
+    }
+
+    if (setupResult.TableNames.Partitions) {
+        dataForUpload.emplace_back(
+            setupResult.TableNames.Partitions,
+            buildYdbRows(addPartitionsRows));
+    }
+
     auto executor = std::make_shared<TBulkUpsertExecutor>(
         DbStorage,
         Config->GetDatabaseName(),
@@ -491,7 +545,7 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::EnsureInitialized()
             InitResponse = NewPromise<TSetupTablesResult>();
             State = EState::INITIALIZING;
             SetupTables().Subscribe(
-                [=] (const auto& future) {
+                [=, this] (const auto& future) {
                     HandleSetupTablesResult(future.GetValue());
                 });
         }
@@ -503,7 +557,7 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::EnsureInitialized()
                 CleanupRunning = true;
                 STORAGE_INFO("Going to check for obsolete history tables");
                 RemoveObsoleteTables().Subscribe(
-                    [=] (const auto& future) {
+                    [=, this] (const auto& future) {
                         HandleRemoveObsoleteTablesResult(future.GetValue());
                     });
             }
@@ -579,6 +633,16 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::SetupTables() const
             waitSetup->SetMetricsTable(future.GetValue());
         });
 
+    SetupGroupsTable().Subscribe(
+        [pThis, waitSetup](const auto& future) {
+            waitSetup->SetGroupsTable(future.GetValue());
+        });
+
+    SetupPartitionsTable().Subscribe(
+        [pThis, waitSetup](const auto& future) {
+            waitSetup->SetPartitionsTable(future.GetValue());
+        });
+
     return waitSetup->GetResult();
 }
 
@@ -615,10 +679,32 @@ TFuture<TSetupTableResult> TYdbStatsUploader::SetupMetricsTable() const
         });
 }
 
+TFuture<TSetupTableResult> TYdbStatsUploader::SetupGroupsTable() const
+{
+    auto tableName = Config->GetGroupsTableName();
+    if (!tableName) {
+        return MakeFuture(TSetupTableResult(MakeError(S_OK), tableName));
+    }
+    return SetupTable(tableName, TableSchemes.Groups)
+        .Apply([=](const auto& future)
+               { return TSetupTableResult(future.GetValue(), tableName); });
+}
+
+TFuture<TSetupTableResult> TYdbStatsUploader::SetupPartitionsTable() const
+{
+    auto tableName = Config->GetPartitionsTableName();
+    if (!tableName) {
+        return MakeFuture(TSetupTableResult(MakeError(S_OK), tableName));
+    }
+    return SetupTable(tableName, TableSchemes.Partitions)
+        .Apply([=](const auto& future)
+               { return TSetupTableResult(future.GetValue(), tableName); });
+}
+
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupHistoryTable() const
 {
     return DbStorage->GetHistoryTables().Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             const auto& result = future.GetValue();
             if (FAILED(result.Error.GetCode())) {
                 return MakeFuture(TSetupTableResult(result.Error));
@@ -652,7 +738,7 @@ TFuture<NProto::TError> TYdbStatsUploader::SetupTable(
     TStatsTableSchemePtr tableScheme) const
 {
     return DbStorage->DescribeTable(tableName).Apply(
-        [=] (const auto& future) {
+        [=, this] (const auto& future) {
             const auto& response = future.GetValue();
             if (SUCCEEDED(response.Error.GetCode())) {
                 return AlterTable(tableName, *tableScheme, response.TableScheme);
@@ -874,6 +960,37 @@ public:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TYDBTableSchemes::TYDBTableSchemes(
+        TStatsTableSchemePtr stats,
+        TStatsTableSchemePtr history,
+        TStatsTableSchemePtr archive,
+        TStatsTableSchemePtr metrics,
+        TStatsTableSchemePtr groups,
+        TStatsTableSchemePtr partitions)
+    : Stats(std::move(stats))
+    , History(std::move(history))
+    , Archive(std::move(archive))
+    , Metrics(std::move(metrics))
+    , Groups(std::move(groups))
+    , Partitions(std::move(partitions))
+{}
+
+TYDBTableSchemes::TYDBTableSchemes(TDuration statsTtl, TDuration archiveTtl)
+    : Stats(CreateStatsTableScheme(statsTtl))
+    , History(CreateHistoryTableScheme())
+    , Archive(CreateArchiveStatsTableScheme(archiveTtl))
+    , Metrics(CreateBlobLoadMetricsTableScheme())
+    , Groups(CreateGroupsTableScheme())
+    , Partitions(CreatePartitionsTableScheme())
+{}
+
+TYDBTableSchemes::~TYDBTableSchemes() = default;
+
+IStartable* AsStartable(IYdbStoragePtr storagePtr)
+{
+    return storagePtr.get();
+}
 
 IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
     TYdbStatsConfigPtr config,

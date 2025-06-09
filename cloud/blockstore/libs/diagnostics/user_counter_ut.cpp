@@ -5,6 +5,7 @@
 #include <library/cpp/monlib/encode/json/json.h>
 #include <library/cpp/monlib/encode/spack/spack_v1.h>
 #include <library/cpp/monlib/encode/text/text.h>
+#include <library/cpp/resource/resource.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NUserCounter {
@@ -125,302 +126,40 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         makeCounters("WriteBlocks");
         makeCounters("ZeroBlocks");
 
-        auto supplier = CreateUserCounterSupplier();
-        RegisterServerVolumeInstance(
-            *supplier,
-            "cloudId",
-            "folderId",
-            "diskId",
-            "instanceId",
-            stats);
+        struct TestConfiguration {
+            bool ReportZeroBlocksMetrics;
+            TString Resource;
+        };
 
-        const TString testResult = R"--({
-            "sensors":
-            [{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.read_ops"
-                },
-                "ts":12,
-                "value":1
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.read_ops_burst"
-                },
-                "ts":12,
-                "value":10
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.read_ops_in_flight"
-                },
-                "ts":12,
-                "value":4
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.read_ops_in_flight_burst"
-                },
-                "ts":12,
-                "value":40
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.read_errors"
-                },
-                "ts":12,
-                "value":2
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.read_bytes"
-                },
-                "ts":12,
-                "value":3
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.read_bytes_burst"
-                },
-                "ts":12,
-                "value":30
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.read_bytes_in_flight"
-                },
-                "ts":12,
-                "value":5
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.read_bytes_in_flight_burst"
-                },
-                "ts":12,
-                "value":50
-            },{
-                "kind":"HIST_RATE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.read_latency"
-                },
-                "ts":12,
-                "hist":
-                {
-                    "bounds":[1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,35000],
-                    "buckets":[46,2,3,4,5,6,7,8,9,10,11,12,13,14],
-                    "inf":15
-                }
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.write_ops"
-                },
-                "ts":12,
-                "value":2
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.write_ops_burst"
-                },
-                "ts":12,
-                "value":20
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.write_ops_in_flight"
-                },
-                "ts":12,
-                "value":8
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.write_ops_in_flight_burst"
-                },
-                "ts":12,
-                "value":80
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.write_errors"
-                },
-                "ts":12,
-                "value":4
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.write_bytes"
-                },
-                "ts":12,
-                "value":6
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.write_bytes_burst"
-                },
-                "ts":12,
-                "value":60
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.write_bytes_in_flight"
-                },
-                "ts":12,
-                "value":10
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.write_bytes_in_flight_burst"
-                },
-                "ts":12,
-                "value":100
-            },{
-                "kind":"HIST_RATE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "instance":"instanceId",
-                    "name":"disk.write_latency"
-                },
-                "ts":12,
-                "hist":
-                {
-                    "bounds":[1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,35000],
-                    "buckets":[92,4,6,8,10,12,14,16,18,20,22,24,26,28],
-                    "inf":30
-                }
-            }]
+        std::vector<TestConfiguration> testConfigurations = {
+            {true, "user_server_volume_instance_test"},
+            {false, "user_server_volume_instance_skip_zero_blocks_test"}};
+
+        for (const auto& config: testConfigurations) {
+            auto supplier = CreateUserCounterSupplier();
+            RegisterServerVolumeInstance(
+                *supplier,
+                "cloudId",
+                "folderId",
+                "diskId",
+                "instanceId",
+                config.ReportZeroBlocksMetrics,
+                stats);
+
+            const TString testResult = NResource::Find(config.Resource);
+
+            NJson::TJsonValue testJson =
+                NJson::ReadJsonFastTree(testResult, true);
+
+            TStringStream jsonOut;
+            auto encoder = EncoderJson(&jsonOut);
+            supplier->Accept(TInstant::Seconds(12), encoder.Get());
+
+            NJson::TJsonValue resultJson =
+                NJson::ReadJsonFastTree(jsonOut.Str(), true);
+
+            ValidateJsons(testJson, resultJson);
         }
-        )--";
-
-        NJson::TJsonValue testJson =
-            NJson::ReadJsonFastTree(testResult, true);
-
-        TStringStream jsonOut;
-        auto encoder = EncoderJson(&jsonOut);
-        supplier->Accept(TInstant::Seconds(12), encoder.Get());
-
-        NJson::TJsonValue resultJson =
-            NJson::ReadJsonFastTree(jsonOut.Str(), true);
-
-        ValidateJsons(testJson, resultJson);
     }
 
     Y_UNIT_TEST(UserServiceVolumeInstanceTests)
@@ -474,69 +213,8 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             "diskId",
             stats);
 
-        const TString testResult = R"--({
-            "sensors":
-            [{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "name":"disk.io_quota_utilization_percentage"
-                },
-                "ts":12,
-                "value":1
-            },{
-                "kind":"GAUGE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "name":"disk.io_quota_utilization_percentage_burst"
-                },
-                "ts":12,
-                "value":10
-            },{
-                "kind":"HIST_RATE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "name":"disk.read_throttler_delay"
-                },
-                "ts":12,
-                "hist":
-                {
-                    "bounds":[1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,35000],
-                    "buckets":[46,2,3,4,5,6,7,8,9,10,11,12,13,14],
-                    "inf":15
-                }
-            },{
-                "kind":"HIST_RATE",
-                "labels":
-                {
-                    "service":"compute",
-                    "project":"cloudId",
-                    "cluster":"folderId",
-                    "disk":"diskId",
-                    "name":"disk.write_throttler_delay"
-                },
-                "ts":12,
-                "hist":
-                {
-                    "bounds":[1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,35000],
-                    "buckets":[92,4,6,8,10,12,14,16,18,20,22,24,26,28],
-                    "inf":30
-                }
-            }]
-        }
-        )--";
+        const TString testResult =
+            NResource::Find("user_service_volume_instance_test");
 
         NJson::TJsonValue testJson =
             NJson::ReadJsonFastTree(testResult, true);

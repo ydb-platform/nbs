@@ -20,7 +20,6 @@ PEERDIR(
     cloud/disk_manager/internal/pkg/services/images/config
     cloud/disk_manager/internal/pkg/services/placementgroup/config
     cloud/disk_manager/internal/pkg/services/pools/config
-    cloud/disk_manager/internal/pkg/services/shards/config
     cloud/disk_manager/internal/pkg/services/snapshots/config
     cloud/tasks/config
     cloud/tasks/tracing/config

@@ -140,4 +140,73 @@ TStatsTableSchemePtr CreateBlobLoadMetricsTableScheme()
     return out.Finish();
 }
 
+TStatsTableSchemePtr CreateGroupsTableScheme()
+{
+    using namespace NYdb;
+
+    TStatsTableSchemeBuilder out;
+
+    static const TVector<std::pair<TString, EPrimitiveType>> columns = {
+        {TYdbGroupRow::TabletIdName.data(), EPrimitiveType::Uint64},
+        {TYdbGroupRow::ChannelName.data(), EPrimitiveType::Uint32},
+        {TYdbGroupRow::GroupIdName.data(), EPrimitiveType::Uint32},
+        {TYdbGroupRow::GenerationName.data(), EPrimitiveType::Uint32},
+        {TYdbGroupRow::TimestampName.data(), EPrimitiveType::Uint64}};
+
+    STORAGE_VERIFY_C(
+        out.AddColumns(columns),
+        TWellKnownEntityTypes::YDB_TABLE,
+        "groups table",
+        "unable to setup fields");
+
+    STORAGE_VERIFY_C(
+        out.SetKeyColumns({
+            TYdbGroupRow::TabletIdName.data(),
+            TYdbGroupRow::ChannelName.data(),
+            TYdbGroupRow::GroupIdName.data(),
+            TYdbGroupRow::GenerationName.data()}),
+        TWellKnownEntityTypes::YDB_TABLE,
+        "groups table",
+        "unable to setup key fields");
+
+    out.SetTtl(NTable::TTtlSettings{
+        TYdbGroupRow::TimestampName.data(),
+        NTable::TTtlSettings::EUnit::Seconds,
+        TYdbGroupRow::TtlDuration});
+
+    return out.Finish();
+}
+
+TStatsTableSchemePtr CreatePartitionsTableScheme()
+{
+    using namespace NYdb;
+
+    TStatsTableSchemeBuilder out;
+
+    static const TVector<std::pair<TString, EPrimitiveType>> columns = {
+        {TYdbPartitionRow::PartitionTabletIdName.data(), EPrimitiveType::Uint64},
+        {TYdbPartitionRow::VolumeTabletIdName.data(), EPrimitiveType::Uint64},
+        {TYdbPartitionRow::DiskIdName.data(), EPrimitiveType::String},
+        {TYdbPartitionRow::TimestampName.data(), EPrimitiveType::Uint64}};
+
+    STORAGE_VERIFY_C(
+        out.AddColumns(columns),
+        TWellKnownEntityTypes::YDB_TABLE,
+        "partitions table",
+        "unable to setup fields");
+
+    STORAGE_VERIFY_C(
+        out.SetKeyColumns({TYdbPartitionRow::PartitionTabletIdName.data()}),
+        TWellKnownEntityTypes::YDB_TABLE,
+        "partitions table",
+        "unable to setup key fields");
+
+    out.SetTtl(NTable::TTtlSettings{
+        TYdbPartitionRow::TimestampName.data(),
+        NTable::TTtlSettings::EUnit::Seconds,
+        TYdbPartitionRow::TtlDuration});
+
+    return out.Finish();
+}
+
 }   // namespace NCloud::NBlockStore::NYdbStats

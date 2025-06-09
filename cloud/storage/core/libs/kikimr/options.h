@@ -40,6 +40,8 @@ struct TOptionsYdbBase
 
     bool LoadCmsConfigs = false;
 
+    ui32 ActorSystemAvailableCpuCoresPercentage = 0;
+
     TOptionsYdbBase();
     virtual ~TOptionsYdbBase() = default;
 };

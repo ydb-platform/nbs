@@ -144,8 +144,8 @@ public:
     {
         auto request = std::make_unique<TEvService::TEvCreateFileStoreRequest>();
         request->Record.SetFileSystemId(fileSystemId);
-        request->Record.SetCloudId("test");
-        request->Record.SetFolderId("test");
+        request->Record.SetCloudId("test_cloud");
+        request->Record.SetFolderId("test_folder");
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(blocksCount);
         request->Record.SetStorageMediaKind(mediaKind);
@@ -446,6 +446,19 @@ public:
         request->Record.MutableUpdate()->SetSize(size);
         request->Record.SetFlags(
             ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE));
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvSetNodeAttrRequest> CreateSetNodeAttrRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const TSetNodeAttrArgs& args)
+    {
+        auto request = std::make_unique<TEvService::TEvSetNodeAttrRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+
+        args.Fill(request->Record);
         return request;
     }
 

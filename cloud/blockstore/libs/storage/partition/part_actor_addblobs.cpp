@@ -642,6 +642,26 @@ void TPartitionActor::HandleAddBlobs(
 {
     auto* msg = ev->Get();
 
+    if (CompactionMapLoadState) {
+        const THashSet<ui32> rangeIndices =
+            GetRangeIndices(msg->FreshBlobs, msg->MixedBlobs, msg->MergedBlobs);
+
+        const auto ranges =
+            CompactionMapLoadState->GetNotLoadedRanges(rangeIndices);
+
+        if (!ranges.empty()) {
+            CompactionMapLoadState->EnqueueOutOfOrderRanges(ranges);
+
+            const auto error =
+                MakeError(E_REJECTED, "compaction map not loaded yet");
+            auto response =
+                std::make_unique<TEvPartitionPrivate::TEvAddBlobsResponse>(
+                    error);
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -657,18 +677,19 @@ void TPartitionActor::HandleAddBlobs(
 
     AddTransaction<TEvPartitionPrivate::TAddBlobsMethod>(*requestInfo);
 
-    ExecuteTx<TAddBlobs>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        msg->CommitId,
-        std::move(msg->MixedBlobs),
-        std::move(msg->MergedBlobs),
-        std::move(msg->FreshBlobs),
-        msg->Mode,
-        std::move(msg->AffectedBlobs),
-        std::move(msg->AffectedBlocks),
-        std::move(msg->MixedBlobCompactionInfos),
-        std::move(msg->MergedBlobCompactionInfos));
+        CreateTx<TAddBlobs>(
+            requestInfo,
+            msg->CommitId,
+            std::move(msg->MixedBlobs),
+            std::move(msg->MergedBlobs),
+            std::move(msg->FreshBlobs),
+            msg->Mode,
+            std::move(msg->AffectedBlobs),
+            std::move(msg->AffectedBlocks),
+            std::move(msg->MixedBlobCompactionInfos),
+            std::move(msg->MergedBlobCompactionInfos)));
 }
 
 bool TPartitionActor::PrepareAddBlobs(
@@ -736,6 +757,37 @@ void TPartitionActor::CompleteAddBlobs(
 
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.AddBlobs.AddRequest(time);
+}
+
+THashSet<ui32> TPartitionActor::GetRangeIndices(
+    const TVector<TAddFreshBlob>& freshBlobs,
+    const TVector<TAddMixedBlob>& mixedBlobs,
+    const TVector<TAddMergedBlob>& mergedBlobs) const
+{
+    const auto& compactionMap = State->GetCompactionMap();
+
+    THashSet<ui32> rangeIndices;
+
+    for (const auto& blob: freshBlobs) {
+        if (!blob.Blocks.empty()) {
+            rangeIndices.emplace(
+                compactionMap.GetRangeIndex(blob.Blocks.front().BlockIndex));
+        }
+    }
+
+    for (const auto& blob: mixedBlobs) {
+        for (const auto& block: blob.Blocks) {
+            rangeIndices.emplace(compactionMap.GetRangeIndex(block));
+        }
+    }
+
+    for (const auto& blob: mergedBlobs) {
+        const auto rangeStart =
+            compactionMap.GetRangeStart(blob.BlockRange.Start);
+        rangeIndices.emplace(compactionMap.GetRangeIndex(rangeStart));
+    }
+
+    return rangeIndices;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

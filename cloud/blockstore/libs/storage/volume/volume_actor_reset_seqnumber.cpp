@@ -150,8 +150,11 @@ STFUNC(THttpResetMountSeqNumberActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
-        break;
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME,
+                __PRETTY_FUNCTION__);
+            break;
     }
 }
 

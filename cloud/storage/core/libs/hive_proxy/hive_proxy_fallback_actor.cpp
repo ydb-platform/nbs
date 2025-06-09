@@ -106,7 +106,7 @@ private:
             HFunc(TResponse, HandleResponse);
 
             default:
-                HandleUnexpectedEvent(ev, LogComponent);
+                HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -154,7 +154,7 @@ bool THiveProxyFallbackActor::HandleRequests(STFUNC_SIG)
 STFUNC(THiveProxyFallbackActor::StateWork)
 {
     if (!HandleRequests(ev)) {
-        LogUnexpectedEvent(ev, Config.LogComponent);
+        LogUnexpectedEvent(ev, Config.LogComponent, __PRETTY_FUNCTION__);
     }
 }
 
@@ -232,7 +232,7 @@ void THiveProxyFallbackActor::HandleBootExternal(
     const auto* msg = ev->Get();
 
     auto requestInfo = TRequestInfo(ev->Sender, ev->Cookie);
-    auto reply = [=](const auto& ctx, auto r) {
+    auto reply = [=, this](const auto& ctx, auto r) {
         if (HasError(r->Error)) {
             NCloud::Reply(
                 ctx,

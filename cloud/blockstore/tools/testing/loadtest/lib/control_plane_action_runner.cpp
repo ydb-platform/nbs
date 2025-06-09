@@ -670,13 +670,17 @@ int TControlPlaneActionRunner::RunReplaceDevicesRequest(
         executeAction.SetAction("ReplaceDevice");
         executeAction.SetInput(NJson::WriteJson(inputJson));
 
-        WaitForCompletion(
+        NProto::TExecuteActionResponse response = WaitForCompletion(
             "ExecuteAction",
             Client->ExecuteAction(
                 MakeIntrusive<TCallContext>(requestId),
                 std::make_shared<NProto::TExecuteActionRequest>(
                     std::move(executeAction))),
             {});
+
+        TString log;
+        NProtobufJson::Proto2Json(response, log, {});
+        STORAGE_INFO("Replace device result: " << log);
     }
 
     return 0;

@@ -54,8 +54,7 @@ public:
     const auto& GetBlockstoreServerTarget() const
     {
         return Config.GetBlockstoreServerTarget();
-    }
-
+    }    
 };
 
 }   // namespace NCloud::NBlockStore::NRdma

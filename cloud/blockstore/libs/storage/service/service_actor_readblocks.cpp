@@ -95,7 +95,10 @@ private:
             HFunc(TEvService::TEvReadBlocksRequest, HandleUndelivery);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -139,7 +142,7 @@ private:
 
         msg->Record.ClearBlocks();
         auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
-            msg->Record);
+            NProto::TReadBlocksLocalResponse(std::move(msg->Record)));
 
         NCloud::Reply(ctx, *Request, std::move(response));
 

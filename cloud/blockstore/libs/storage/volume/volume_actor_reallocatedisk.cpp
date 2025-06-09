@@ -91,6 +91,7 @@ void TReallocateActor::HandleAllocateDiskResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    auto& record = msg->Record;
 
     if (HasError(msg->GetError())) {
         LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
@@ -128,12 +129,18 @@ void TReallocateActor::HandleAllocateDiskResponse(
             std::move(*removedLaggingDevice.MutableDeviceUUID()));
     }
 
+    TVector<TString> unavailableDeviceIds(
+        std::make_move_iterator(
+            record.MutableUnavailableDeviceUUIDs()->begin()),
+        std::make_move_iterator(record.MutableUnavailableDeviceUUIDs()->end()));
+
     auto request = std::make_unique<TEvVolumePrivate::TEvUpdateDevicesRequest>(
         std::move(*msg->Record.MutableDevices()),
         std::move(*msg->Record.MutableMigrations()),
         std::move(replicas),
         std::move(freshDeviceIds),
         std::move(removedLaggingDevices),
+        std::move(unavailableDeviceIds),
         msg->Record.GetIOMode(),
         TInstant::MicroSeconds(msg->Record.GetIOModeTs()),
         msg->Record.GetMuteIOErrors());
@@ -163,7 +170,10 @@ STFUNC(TReallocateActor::StateWork)
             HandleUpdateDevicesResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -208,6 +208,7 @@ void InitTestActorRuntime(
                 CreateBlockDigestGeneratorStub(),
                 partConfig,
                 storageAccessMode,
+                0,  // partitionIndex
                 1,  // siblingCount
                 VolumeActorId
             );
@@ -1313,7 +1314,10 @@ STFUNC(TTestVolumeProxyActor::StateWork)
         IgnoreFunc(TEvVolume::TEvClearBaseDiskIdToTabletIdMapping);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -4452,7 +4456,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }),
                     TVector<ui32>({
                         env.GetGroupIds()[1],
-                    })
+                    }),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
@@ -4476,7 +4481,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     TVector<ui32>({
                         env.GetGroupIds()[0],
                         env.GetGroupIds()[1],
-                    })
+                    }),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
@@ -4493,6 +4499,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto request =
                 std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
+                    TVector<ui32>(),
                     TVector<ui32>(),
                     TVector<ui32>()
                 );
@@ -5342,8 +5349,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        runtime->SetObserverFunc(
-            StorageStateChanger(NKikimrBlobStorage::StatusDiskSpaceLightYellowMove));
+        runtime->SetObserverFunc(StorageStateChanger(
+            NKikimrBlobStorage::StatusDiskSpaceLightYellowMove |
+            NKikimrBlobStorage::StatusDiskSpaceYellowStop));
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
 
         {
@@ -5351,15 +5359,23 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
         }
 
+        ui32 flags = NKikimrBlobStorage::StatusDiskSpaceLightYellowMove |
+            NKikimrBlobStorage::StatusDiskSpaceYellowStop;
+
         const auto badFlags = {
+            NKikimrBlobStorage::StatusDiskSpaceLightOrange,
+            NKikimrBlobStorage::StatusDiskSpacePreOrange,
             NKikimrBlobStorage::StatusDiskSpaceOrange,
             NKikimrBlobStorage::StatusDiskSpaceRed,
+            NKikimrBlobStorage::StatusDiskSpaceBlack
         };
 
         for (const auto flag: badFlags) {
+            flags |= flag;
+
             partition.RebootTablet();
 
-            runtime->SetObserverFunc(StorageStateChanger(flag));
+            runtime->SetObserverFunc(StorageStateChanger(flags));
             partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
 
             auto request = partition.CreateCompactionRequest();
@@ -5463,7 +5479,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto request =
                 std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
                     TVector<ui32>({env.GetGroupIds()[0], env.GetGroupIds()[1]}),
-                    TVector<ui32>({env.GetGroupIds()[0], env.GetGroupIds()[1]})
+                    TVector<ui32>({env.GetGroupIds()[0], env.GetGroupIds()[1]}),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
@@ -5526,7 +5543,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto request =
                 std::make_unique<TEvTablet::TEvCheckBlobstorageStatusResult>(
                     TVector<ui32>({env.GetGroupIds()[0]}),
-                    TVector<ui32>({env.GetGroupIds()[0]})
+                    TVector<ui32>({env.GetGroupIds()[0]}),
+                    TVector<ui32>()
                 );
             partition.SendToPipe(std::move(request));
         }
@@ -8620,6 +8638,82 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotKillTabletBeforeMaxWriteBlobErrorsHappen)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1_MB);
+        config.SetMaxWriteBlobErrorsBeforeSuicide(5);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1001), 1);
+
+        const auto eventHandler = [&] (const TEvBlobStorage::TEvPut::TPtr& ev) {
+            TLogoBlobID logoBlobId;
+            auto response = std::make_unique<TEvBlobStorage::TEvPutResult>(
+                NKikimrProto::ERROR,
+                logoBlobId,
+                0, // statusFlags
+                0, // groupId
+                0 // approximateFreeSpaceShare
+            );
+
+            runtime->Schedule(
+                new IEventHandle(
+                    ev->Sender,
+                    ev->Recipient,
+                    response.release(),
+                    0,
+                    ev->Cookie),
+                TDuration());
+
+            return true;
+        };
+
+        runtime->SetEventFilter(
+            [eventHandler] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev) {
+                bool handled = false;
+
+                const auto wrapped = [&] (const auto& ev) {
+                    handled = eventHandler(ev);
+                };
+
+                switch (ev->GetTypeRewrite()) {
+                    hFunc(TEvBlobStorage::TEvPut, wrapped);
+                }
+                return handled;
+            }
+        );
+
+        bool suicideHappened = false;
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvTablet::EEv::EvTabletDead: {
+                        suicideHappened = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(ev);
+            }
+        );
+
+        for (ui32 i = 1; i < config.GetMaxWriteBlobErrorsBeforeSuicide(); i++) {
+            partition.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1001), 1);
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+            UNIT_ASSERT(!suicideHappened);
+        }
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1001), 1);
+        auto response = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+
+        UNIT_ASSERT(suicideHappened);
+    }
+
     Y_UNIT_TEST(ShouldProcessMultipleRangesUponCompaction)
     {
         auto config = DefaultConfig();
@@ -10521,7 +10615,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             longRunningPingCount++;
                         }
                         break;
-                    case EReason::Finished:
+                    case EReason::FinishedOk:
                         longRunningFinishCount++;
                         break;
                     case EReason::Cancelled:
@@ -11214,10 +11308,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, compactionByBlockCount);
     }
 
-    Y_UNIT_TEST(ShouldAbortCompactionIfReadBlobFailsWithDeadlineExceeded)
+    void DoShouldAbortCompactionIfBlobStorageRequestFailsWithDeadlineExceeded(
+        int requestType)
     {
         NProto::TStorageServiceConfig config;
-        config.SetBlobStorageAsyncGetTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
+        config.SetBlobStorageAsyncRequestTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -11227,26 +11322,44 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.Flush();
 
         ui32 failedReadBlob = 0;
-        runtime->SetEventFilter([&]
-            (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
-        {
-            Y_UNUSED(runtime);
 
-            if (ev->GetTypeRewrite() == TEvBlobStorage::EvVGet) {
-                const auto* msg = ev->Get<TEvBlobStorage::TEvVGet>();
-                if (msg->Record.GetHandleClass() == NKikimrBlobStorage::AsyncRead &&
-                    msg->Record.GetMsgQoS().HasDeadlineSeconds())
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+
+                if (requestType == TEvBlobStorage::EvVGet &&
+                    ev->GetTypeRewrite() == TEvBlobStorage::EvVGet)
                 {
-                    return true;
+                    const auto* msg = ev->Get<TEvBlobStorage::TEvVGet>();
+                    if (msg->Record.GetHandleClass() ==
+                            NKikimrBlobStorage::AsyncRead &&
+                        msg->Record.GetMsgQoS().HasDeadlineSeconds())
+                    {
+                        return true;
+                    }
+                } else if (
+                    requestType == TEvBlobStorage::EvVPut &&
+                    ev->GetTypeRewrite() == TEvBlobStorage::EvVPut)
+                {
+                    const auto* msg = ev->Get<TEvBlobStorage::TEvVPut>();
+                    if (msg->Record.GetHandleClass() ==
+                            NKikimrBlobStorage::AsyncBlob &&
+                        msg->Record.GetMsgQoS().HasDeadlineSeconds())
+                    {
+                        return true;
+                    }
+                } else if (
+                    ev->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+                {
+                    auto* msg =
+                        ev->Get<TEvStatsService::TEvVolumePartCounters>();
+                    failedReadBlob =
+                        msg->DiskCounters->Simple.ReadBlobDeadlineCount.Value;
                 }
-            } else if (ev->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters) {
-                auto* msg =
-                    ev->Get<TEvStatsService::TEvVolumePartCounters>();
-                failedReadBlob =
-                    msg->DiskCounters->Simple.ReadBlobDeadlineCount.Value;
-            }
-            return false;
-        });
+                return false;
+            });
 
         partition.SendCompactionRequest();
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
@@ -11254,6 +11367,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+
+        if (requestType != TEvBlobStorage::EvVGet) {
+            return;
+        }
 
         partition.SendToPipe(
             std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
@@ -11263,6 +11380,53 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             runtime->DispatchEvents(options);
         }
         UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
+    }
+
+    Y_UNIT_TEST(ShouldAbortCompactionIfReadBlobFailsWithDeadlineExceeded)
+    {
+        DoShouldAbortCompactionIfBlobStorageRequestFailsWithDeadlineExceeded(
+            TEvBlobStorage::EvVGet);
+    }
+
+    Y_UNIT_TEST(ShouldAbortCompactionIfWriteBlobFailsWithDeadlineExceeded)
+    {
+        DoShouldAbortCompactionIfBlobStorageRequestFailsWithDeadlineExceeded(
+            TEvBlobStorage::EvVPut);
+    }
+
+    Y_UNIT_TEST(ShouldAbortFlushIfWriteBlobFailsWithDeadlineExceeded)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetBlobStorageAsyncRequestTimeoutHDD(
+            TDuration::Seconds(1).MilliSeconds());
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(3, 33);
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+
+                if (ev->GetTypeRewrite() == TEvBlobStorage::EvVPut) {
+                    const auto* msg = ev->Get<TEvBlobStorage::TEvVPut>();
+                    if (msg->Record.GetHandleClass() ==
+                            NKikimrBlobStorage::AsyncBlob &&
+                        msg->Record.GetMsgQoS().HasDeadlineSeconds())
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        partition.SendFlushRequest();
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        auto response = partition.RecvFlushResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldAllowForcedCompactionRequestsInPresenseOfTabletCompaction)
@@ -12060,8 +12224,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
                         break;
                     }
-                    case TEvService::EvReadBlocksResponse: {
-                        using TEv = TEvService::TEvReadBlocksResponse;
+                    case TEvService::EvReadBlocksLocalResponse: {
+                        using TEv = TEvService::TEvReadBlocksLocalResponse;
 
                         auto response = std::make_unique<TEv>(
                             MakeError(E_IO, "block is broken"));
@@ -12076,8 +12240,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             0);
 
                         return TTestActorRuntime::EEventAction::DROP;
-
-                        break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -12396,6 +12558,369 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetMergedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotHangWhenConsecutiveReadBlobErrorsHappen)
+    {
+        auto config = DefaultConfig();
+        config.SetMaxIORequestsInFlight(10);
+        config.SetMaxReadBlobErrorsBeforeSuicide(1000);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvGetResult: {
+                    auto* msg = event->Get<TEvBlobStorage::TEvGetResult>();
+                    msg->Status = NKikimrProto::ERROR;
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 777), 1);
+
+        for (int i = 0; i < 100; i++) {
+            partition.SendReadBlocksRequest(TBlockRange32::WithLength(0, 777));
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotHangWhenConsecutiveWriteBlobErrorsHappen)
+    {
+        auto config = DefaultConfig();
+        config.SetMaxIORequestsInFlight(10);
+        config.SetMaxWriteBlobErrorsBeforeSuicide(1000);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvPutResult: {
+                    auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                    msg->Status = NKikimrProto::ERROR;
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        for (int i = 0; i < 100; i++) {
+            partition.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 777));
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
+    {
+        constexpr ui32 blobCount = 4;
+        constexpr ui32 blockCount = 512 * blobCount;
+
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(100_KB);
+        auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        {
+            ui32 current_offset = 0;
+            for (ui32 i = 0; i < blobCount; ++i) {
+                const auto blockRange =
+                    TBlockRange32::WithLength(current_offset, 512);
+                partition.WriteBlocks(blockRange, 1);
+                current_offset += 512;
+            }
+        }
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest: {
+                        auto response = std::make_unique<
+                            TEvPartitionCommonPrivate::TEvReadBlobResponse>(
+                            MakeError(E_IO, "Simulated blob read failure"));
+
+                        runtime->Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TGuardedBuffer<TString> Buffer = TGuardedBuffer(
+            TString::Uninitialized(blockCount * DefaultBlockSize));
+        auto sgList = Buffer.GetGuardedSgList();
+        auto sgListOrError =
+            SgListNormalize(sgList.Acquire().Get(), DefaultBlockSize);
+
+        UNIT_ASSERT(!HasError(sgListOrError));
+
+        auto request = partition.CreateReadBlocksLocalRequest(
+            TBlockRange32::WithLength(0, blockCount),
+            sgListOrError.ExtractResult());
+
+        request->Record.ShouldReportFailedRangesOnFailure = true;
+
+        partition.SendToPipe(std::move(request));
+
+        auto response = partition.RecvReadBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_UNEQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            blobCount,
+            response->Record.FailInfo.FailedRanges.size());
+    }
+
+    Y_UNIT_TEST(ShouldRejectWriteIfCompactionMapIsNotLoaded)
+    {
+        auto config = DefaultConfig();
+        config.SetMaxCompactionRangesLoadingPerTx(1);
+
+        auto runtime = PrepareTestActorRuntime(config, 1024);
+
+        TAutoPtr<IEventHandle> capturedLoadCMRequest;
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvLoadCompactionMapChunkRequest: {
+                        UNIT_ASSERT(!capturedLoadCMRequest);
+                        capturedLoadCMRequest = event.Release();
+                        return true;
+                    }
+                }
+                return false;
+            }
+        );
+
+        TPartitionClient partition(*runtime);
+
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        UNIT_ASSERT(capturedLoadCMRequest);
+        runtime->Send(capturedLoadCMRequest.Release());
+
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAddRequestToLoadCompactionMapRangeIfNotLoaded)
+    {
+        const ui32 rangeCount = 100;
+
+        auto config = DefaultConfig();
+        config.SetMaxCompactionRangesLoadingPerTx(5);
+
+        auto runtime = PrepareTestActorRuntime(config, rangeCount * 1024);
+
+        TPartitionClient partition(*runtime);
+
+        for (ui32 i = 0; i < rangeCount; ++i) {
+            partition.WriteBlocks(TBlockRange32::WithLength(i * 1024, 256), i);
+        }
+
+        std::vector<ui32> waitOutOfOrderRangeIdx;
+        TAutoPtr<IEventHandle> delayEvent;
+        ui32 rangesLoaded = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvLoadCompactionMapChunkRequest: {
+                        auto* msg =
+                            event->Get<TEvPartitionPrivate::
+                                           TEvLoadCompactionMapChunkRequest>();
+                        rangesLoaded += msg->Range.Size();
+                        if (!waitOutOfOrderRangeIdx.empty()) {
+                            UNIT_ASSERT_EQUAL(
+                                waitOutOfOrderRangeIdx.back(),
+                                msg->Range.Start);
+                            waitOutOfOrderRangeIdx.pop_back();
+                            return false;
+                        }
+                        if (msg->Range.Start == 40 ||
+                            msg->Range.Start == 50) {
+                            UNIT_ASSERT(!delayEvent);
+                            delayEvent = event.Release();
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+                return false;
+            });
+
+        partition.RebootTablet();
+
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(42 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(66 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(83 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        waitOutOfOrderRangeIdx = { 80, 65 };
+
+        UNIT_ASSERT(delayEvent);
+        runtime->Send(delayEvent.Release());
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT(waitOutOfOrderRangeIdx.empty());
+
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(42 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(66 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(83 * 1024, 256),
+                1);
+            const auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+
+        UNIT_ASSERT(delayEvent);
+        runtime->Send(delayEvent.Release());
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_GE(rangesLoaded, rangeCount);
+    }
+
+    Y_UNIT_TEST(ShouldRejectWriteIfCompactionMapIsNotLoaded1)
+    {
+        const ui32 rangeSize = 1024;
+
+        auto config = DefaultConfig();
+        config.SetMaxCompactionRangesLoadingPerTx(1);
+
+        auto runtime = PrepareTestActorRuntime(config, 1024 * 1024);
+
+        TPartitionClient partition(*runtime);
+
+        partition.WriteBlocks(TBlockRange32::WithLength(rangeSize * 0, 10), 0);
+        partition.WriteBlocks(TBlockRange32::WithLength(rangeSize * 1, 20), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(rangeSize * 2, 30), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(rangeSize * 3, 40), 3);
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        }
+
+        TAutoPtr<IEventHandle> loadCompactionMapEvent;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvLoadCompactionMapChunkRequest: {
+                        UNIT_ASSERT(!loadCompactionMapEvent);
+                        loadCompactionMapEvent = event.Release();
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        partition.RebootTablet();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        }
+
+        {
+            partition.SendFlushRequest();
+            auto response = partition.RecvFlushResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        UNIT_ASSERT(loadCompactionMapEvent);
+        runtime->Send(loadCompactionMapEvent.Release());
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        }
+
+        {
+            partition.SendFlushRequest();
+            auto response = partition.RecvFlushResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
     }
 }

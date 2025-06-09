@@ -6,9 +6,11 @@
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
 #include <contrib/ydb/library/actors/core/mon.h>
@@ -1563,7 +1565,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             response->Record.GetError().GetCode());
 
         auto counter = counters->GetCounter(
-            "AppCriticalEvents/DiskAgentSecureEraseDuringIo",
+            "DiskAgentCriticalEvents/DiskAgentSecureEraseDuringIo",
             true);
         UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 1);
     }
@@ -1837,7 +1839,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
 
         auto unexpectedIdentifierRepetition = counters->GetCounter(
-            "AppCriticalEvents/UnexpectedIdentifierRepetition",
+            "DiskAgentCriticalEvents/UnexpectedIdentifierRepetition",
             true);
         UNIT_ASSERT_VALUES_EQUAL(
             monitoringMode ? 2 : 1,
@@ -3805,7 +3807,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         io(E_REJECTED);
 
         auto counter = counters->GetCounter(
-            "AppCriticalEvents/DiskAgentIoDuringSecureErase",
+            "DiskAgentCriticalEvents/DiskAgentIoDuringSecureErase",
             true);
         UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 3);
 
@@ -4586,7 +4588,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         InitCriticalEventsCounter(counters);
 
         auto mismatch = counters->GetCounter(
-            "AppCriticalEvents/DiskAgentConfigMismatch",
+            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
             true);
 
         UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
@@ -4606,7 +4608,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
     Y_UNIT_TEST_F(ShouldCacheSessions, TFixture)
     {
         auto cacheRestoreError = Counters->GetCounter(
-            "AppCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
@@ -4825,7 +4827,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         auto cacheRestoreError = Counters->GetCounter(
-            "AppCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
@@ -4940,7 +4942,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         auto cacheRestoreError = Counters->GetCounter(
-            "AppCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
@@ -4963,7 +4965,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         auto cacheRestoreError = Counters->GetCounter(
-            "AppCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
@@ -4997,7 +4999,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         auto cacheRestoreError = Counters->GetCounter(
-            "AppCriticalEvents/DiskAgentSessionCacheRestoreError",
+            "DiskAgentCriticalEvents/DiskAgentSessionCacheRestoreError",
             true);
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
@@ -6318,7 +6320,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 TBlockRange64::WithLength(0, 10)));
     }
 
-    Y_UNIT_TEST_F(ShouldHandleTimeoutForMultiWrite, TMultiWriteFixture)
+    Y_UNIT_TEST_F(ShouldHandleTimeoutForMultiWriteOnRemote, TMultiWriteFixture)
     {
         // Setup message filter for intercepting write.
         auto timeoutWrite = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
@@ -6343,6 +6345,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             target.SetNodeId(DiskAgent1->GetNodeId());
             target.SetDeviceUUID("DA1-1");
             target.SetStartIndex(1);
+            target.SetTimeout(1000);
             replicationTargets.push_back(std::move(target));
         }
         {
@@ -6350,6 +6353,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             target.SetNodeId(DiskAgent2->GetNodeId());
             target.SetDeviceUUID("DA2-1");
             target.SetStartIndex(2);
+            target.SetTimeout(2000);
             replicationTargets.push_back(std::move(target));
         }
         auto response = MultiWriteBlocks(
@@ -6358,7 +6362,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             5,
             'a');
 
-        Runtime->AdvanceCurrentTime(TDuration::Seconds(5));
+        Runtime->AdvanceCurrentTime(TDuration::Seconds(2));
         Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetError().GetCode());
@@ -6372,11 +6376,85 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             const auto& subResponse2 =
                 response->Record.GetReplicationResponses(1);
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, subResponse2.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Subrequest #1 timeout 2.000s",
+                subResponse2.GetMessage());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleTimeoutForMultiWriteOnLocal, TMultiWriteFixture)
+    {
+        // Setup message filter for intercepting write.
+        auto timeoutWrite = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                const auto* msg =
+                    event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+
+                const bool isMultiWrite =
+                    msg->Record.ReplicationTargetsSize() != 0;
+                if (event->Recipient == DiskAgent1->DiskAgentActorId() &&
+                    !isMultiWrite)
+                {
+                    // Don't reply to request.
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        Runtime->SetEventFilter(timeoutWrite);
+
+        TVector<NProto::TReplicationTarget> replicationTargets;
+        {
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent1->GetNodeId());
+            target.SetDeviceUUID("DA1-1");
+            target.SetStartIndex(1);
+            target.SetTimeout(1000);
+            replicationTargets.push_back(std::move(target));
+        }
+        {
+            NProto::TReplicationTarget target;
+            target.SetNodeId(DiskAgent2->GetNodeId());
+            target.SetDeviceUUID("DA2-1");
+            target.SetStartIndex(2);
+            target.SetTimeout(2000);
+            replicationTargets.push_back(std::move(target));
+        }
+        auto response = MultiWriteBlocks(
+            *DiskAgent1,
+            std::move(replicationTargets),
+            5,
+            'a');
+
+        Runtime->AdvanceCurrentTime(TDuration::Seconds(2));
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetError().GetCode());
+
+        {
+            const auto& subResponse1 =
+                response->Record.GetReplicationResponses(0);
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, subResponse1.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Subrequest #0 timeout 1.000s",
+                subResponse1.GetMessage());
+        }
+        {
+            const auto& subResponse2 =
+                response->Record.GetReplicationResponses(1);
+
+            UNIT_ASSERT(subResponse2.GetCode() == S_OK);
         }
     }
 
     Y_UNIT_TEST_F(
-        ShouldReponseWithArgumentErrorForMultiWrite,
+        ShouldResponseWithArgumentErrorForMultiWrite,
         TMultiWriteFixture)
     {
         auto request =
@@ -6407,6 +6485,63 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 ->RecvResponse<TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldHandleMultiWriteFromRdmaPath,
+        TMultiWriteFixture)
+    {
+        auto logging = CreateLoggingService("console");
+        auto multiAgentWriteHandler = CreateMultiAgentWriteHandler(
+            Runtime->GetActorSystem(0),
+            DiskAgent1->DiskAgentActorId());
+
+        auto request = std::make_shared<NProto::TWriteDeviceBlocksRequest>();
+        {
+            request->MutableHeaders()->SetClientId(ClientId);
+            request->SetBlockSize(DefaultBlockSize);
+            {
+                NProto::TReplicationTarget target;
+                target.SetNodeId(DiskAgent1->GetNodeId());
+                target.SetDeviceUUID("DA1-1");
+                target.SetStartIndex(1);
+                request->MutableReplicationTargets()->Add(std::move(target));
+            }
+            {
+                NProto::TReplicationTarget target;
+                target.SetNodeId(DiskAgent2->GetNodeId());
+                target.SetDeviceUUID("DA2-1");
+                target.SetStartIndex(2);
+                request->MutableReplicationTargets()->Add(std::move(target));
+            }
+            request->MutableBlocks()->AddBuffers(TString(BlockSize, 'a'));
+        }
+
+        // Send request through multiAgentWriteHandler.
+        auto future = multiAgentWriteHandler->PerformMultiAgentWrite(
+            MakeIntrusive<TCallContext>(static_cast<ui64>(100)),
+            std::move(request));
+
+        // Handle request in actor system.
+        Runtime->DispatchEvents({}, 1s);
+
+        // Get response through future.
+        const auto& response = future.GetValue();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, response.ReplicationResponses.size());
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.ReplicationResponses[0].GetCode(),
+            FormatError(response.ReplicationResponses[0]));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.ReplicationResponses[1].GetCode(),
+            FormatError(response.ReplicationResponses[1]));
     }
 }
 

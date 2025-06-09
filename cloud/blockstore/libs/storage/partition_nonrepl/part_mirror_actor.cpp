@@ -116,17 +116,21 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
     for (const auto& replicaInfo: State.GetReplicaInfos()) {
         IActorPtr actor;
         if (replicaInfo.Migrations.size()) {
+            auto migrationSrcActorId = State.IsMigrationConfigPreparedForFresh()
+                                           ? SelfId()
+                                           : TActorId();
             actor = CreateNonreplicatedPartitionMigration(
                 Config,
                 DiagnosticsConfig,
                 ProfileLog,
                 BlockDigestGenerator,
-                0,  // initialMigrationIndex
+                0,   // initialMigrationIndex
                 State.GetRWClientId(),
                 replicaInfo.Config,
                 replicaInfo.Migrations,
                 RdmaClient,
-                SelfId());
+                SelfId(),
+                migrationSrcActorId);
         } else {
             actor = CreateNonreplicatedPartition(
                 Config,
@@ -214,7 +218,10 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
             DiskId.c_str(),
             DescribeRange(GetScrubbingRange()).c_str());
 
-        if (Config->GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch())
+        if (Config
+                ->GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() &&
+            // a temporary buffer is already used for encrypted volumes
+            !State.IsEncrypted())
         {
             AddTagForBufferCopying(ctx);
         }
@@ -585,6 +592,7 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
                 DiagnosticsConfig,
                 replicaInfo.Config,
                 replicaInfo.Migrations,
+                replicaIndex,
                 ProfileLog,
                 BlockDigestGenerator,
                 State.GetRWClientId(),
@@ -593,11 +601,13 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
         State.SetLaggingReplicaProxy(replicaIndex, proxyActorId);
     }
 
-    NCloud::Send<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
-        ctx,
-        State.GetReplicaActors()[replicaIndex],
-        0,   // cookie
-        msg->LaggingAgent);
+    for (const auto replicaActor: State.GetReplicaActors()) {
+        NCloud::Send<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
+            ctx,
+            replicaActor,
+            0,   // cookie
+            msg->LaggingAgent);
+    }
     State.AddLaggingAgent(std::move(msg->LaggingAgent));
 }
 
@@ -611,7 +621,7 @@ void TMirrorPartitionActor::HandleRemoveLaggingAgent(
         TBlockStoreComponents::PARTITION,
         "[%s] Removing lagging agent: %s, replica index: %u",
         DiskId.c_str(),
-        msg->LaggingAgent.GetAgentId().c_str(),
+        msg->LaggingAgent.GetAgentId().Quote().c_str(),
         msg->LaggingAgent.GetReplicaIndex());
 
     State.RemoveLaggingAgent(msg->LaggingAgent);
@@ -714,7 +724,7 @@ void TMirrorPartitionActor::HandleLockAndDrainRange(
         std::move(reqInfo),
         msg->Range);
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Range %s is blocked for writing requests",
@@ -732,7 +742,7 @@ void TMirrorPartitionActor::HandleReleaseRange(
     BlockRangeRequests.RemoveRequest(msg->Range);
 
     DrainActorCompanion.RemoveDrainRangeRequest(ctx, msg->Range);
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Releasing range %s for writing requests",
@@ -843,7 +853,10 @@ STFUNC(TMirrorPartitionActor::StateWork)
         IgnoreFunc(TEvents::TEvPoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -898,7 +911,10 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

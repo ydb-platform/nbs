@@ -495,7 +495,7 @@ private:
         TPromise<typename T::TResponse> promise)
     {
         T::Execute(client, callContext, request).Subscribe(
-            [=, promise = std::move(promise)] (auto future) mutable {
+            [=, this, promise = std::move(promise)] (auto future) mutable {
                 auto response = ExtractResponse(future);
 
                 try {

@@ -26,7 +26,6 @@ enum class EClientRequestType
     WriteBlocks,
     ZeroBlocks,
     MountVolume,
-    UnmountVolume,
 };
 
 ////////////////////////////////////////////////////////////////////////////////

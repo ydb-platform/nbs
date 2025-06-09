@@ -15,6 +15,9 @@ DEPENDS(
     cloud/disk_manager/cmd/disk-manager-init-db
     cloud/disk_manager/cmd/disk-manager-admin
     cloud/disk_manager/test/mocks/metadata
+
+    cloud/tasks/test/nemesis
+
     contrib/python/moto/bin
 )
 
@@ -43,7 +46,6 @@ IF (SANITIZER_TYPE)
         ya:manual
         sb:ttl=3
         sb:logs_ttl=3
-        ya:large_tests_on_multi_slots
     )
 ELSE()
     TAG(
@@ -51,7 +53,6 @@ ELSE()
         ya:force_sandbox
         sb:ttl=3
         sb:logs_ttl=3
-        ya:large_tests_on_multi_slots
     )
 ENDIF()
 

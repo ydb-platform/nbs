@@ -8,7 +8,6 @@
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -171,7 +170,10 @@ STFUNC(TConfirmBlobsActor::StateWork)
         HFunc(TEvBlobStorage::TEvGetResult, HandleGetResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -237,10 +239,11 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
         TabletID(),
         PartitionConfig.GetDiskId().c_str());
 
-    ExecuteTx<TConfirmBlobs>(
+    ExecuteTx(
         ctx,
-        msg->StartCycleCount,
-        std::move(msg->UnrecoverableBlobs));
+        CreateTx<TConfirmBlobs>(
+            msg->StartCycleCount,
+            std::move(msg->UnrecoverableBlobs)));
 }
 
 bool TPartitionActor::PrepareConfirmBlobs(

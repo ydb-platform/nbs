@@ -105,6 +105,11 @@ TFileStat TIndexNode::Stat(const TString& name)
     return NLowLevel::StatAt(NodeFd, name);
 }
 
+NLowLevel::TFileSystemStat TIndexNode::StatFs() const
+{
+    return NLowLevel::StatFs(NodeFd);
+}
+
 TFileHandle TIndexNode::OpenHandle(int flags)
 {
     return NLowLevel::Open(NodeFd, flags, 0);
@@ -113,6 +118,12 @@ TFileHandle TIndexNode::OpenHandle(int flags)
 TFileHandle TIndexNode::OpenHandle(const TString& name, int flags, int mode)
 {
     return NLowLevel::OpenAt(NodeFd, name.data(), flags, mode);
+}
+
+NLowLevel::TOpenOrCreateResult
+TIndexNode::OpenOrCreateHandle(const TString& name, int flags, int mode)
+{
+    return NLowLevel::OpenOrCreateAt(NodeFd, name.data(), flags, mode);
 }
 
 void TIndexNode::Access(int mode)

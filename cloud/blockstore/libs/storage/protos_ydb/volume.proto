@@ -76,6 +76,9 @@ message TVolumeMeta
 
     // Whether active resync should emit critical events for found mismatches.
     bool AlertResyncChecksumMismatch = 18;
+
+    // Ids of devices lost by disk agent or devices with unavailable agent.
+    repeated string UnavailableDeviceIds = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -312,10 +312,24 @@ void TAcquireDevicesActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    OnAcquireResponse(
-        ctx,
-        SafeIntegerCast<ui32>(ev->Cookie),
-        MakeError(E_REJECTED, "timeout"));
+    Y_UNUSED(ev);
+
+    const auto err = TStringBuilder()
+                     << "TAcquireDevicesActor timeout." << " DiskId: " << DiskId
+                     << " ClientId: " << ClientId
+                     << " Targets: " << LogTargets()
+                     << " VolumeGeneration: " << VolumeGeneration
+                     << " PendingRequests: " << PendingRequests
+                     << " MuteIoErrors: " << MuteIOErrors;
+
+    LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, err);
+
+    NProto::TError errorToReply;
+    if (!MuteIOErrors) {
+        errorToReply = MakeError(E_TIMEOUT, err);
+    }
+
+    ReplyAndDie(ctx, errorToReply);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -342,7 +356,10 @@ STFUNC(TAcquireDevicesActor::StateAcquire)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -357,7 +374,7 @@ void TVolumeActor::SendAcquireDevicesToAgents(
     ui64 mountSeqNumber,
     const TActorContext& ctx)
 {
-    auto devices = State->GetAllDevicesForAcquireRelease();
+    auto devices = State->GetDevicesForAcquireOrRelease();
 
     auto actor = NCloud::Register<TAcquireDevicesActor>(
         ctx,

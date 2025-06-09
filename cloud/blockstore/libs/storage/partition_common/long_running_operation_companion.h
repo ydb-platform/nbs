@@ -51,7 +51,7 @@ private:
     const ui32 GroupId;
 
     TBackoffDelayProvider PingDelayProvider;
-    TInstant StartAt = {};
+    TInstant StartAt;
     ui32 PingCount = 0;
     bool LongRunningDetected = false;
 
@@ -64,8 +64,9 @@ public:
         ui32 groupId);
 
     void RequestStarted(const NActors::TActorContext& ctx);
-    void RequestFinished(const NActors::TActorContext& ctx);
-    void RequestCancelled(const NActors::TActorContext& ctx);
+    void RequestFinished(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
 
     void HandleTimeout(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

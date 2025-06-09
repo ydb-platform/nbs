@@ -92,12 +92,14 @@ void TLongRunningOperationCompanion::RequestStarted(const TActorContext& ctx)
     }
 }
 
-void TLongRunningOperationCompanion::RequestFinished(const TActorContext& ctx)
+void TLongRunningOperationCompanion::RequestFinished(
+    const TActorContext& ctx,
+    const NProto::TError& error)
 {
     using TEvLongRunningOperation =
         TEvPartitionCommonPrivate::TEvLongRunningOperation;
 
-    if (!LongRunningDetected) {
+    if (!LongRunningDetected && !HasError(error)) {
         return;
     }
 
@@ -108,7 +110,9 @@ void TLongRunningOperationCompanion::RequestFinished(const TActorContext& ctx)
             true,
             ctx.Now() - StartAt,
             GroupId,
-            TEvLongRunningOperation::EReason::Finished);
+            HasError(error) ? TEvLongRunningOperation::EReason::Cancelled
+                            : TEvLongRunningOperation::EReason::FinishedOk,
+            error);
     };
     NCloud::Send(ctx, PartitionActor, makeMessage());
     NCloud::Send(ctx, VolumeActor, makeMessage());
@@ -132,31 +136,15 @@ void TLongRunningOperationCompanion::HandleTimeout(
             PingCount == 1,
             ctx.Now() - StartAt,
             GroupId,
-            TEvLongRunningOperation::EReason::LongRunningDetected);
+            TEvLongRunningOperation::EReason::LongRunningDetected,
+            MakeError(S_OK)   // doesn't matter, it won't be used
+        );
     };
     NCloud::Send(ctx, PartitionActor, makeMessage());
     NCloud::Send(ctx, VolumeActor, makeMessage());
 
     PingDelayProvider.IncreaseDelay();
     ctx.Schedule(PingDelayProvider.GetDelay(), new TEvents::TEvWakeup());
-}
-
-void TLongRunningOperationCompanion::RequestCancelled(
-    const NActors::TActorContext& ctx)
-{
-    using TEvLongRunningOperation =
-        TEvPartitionCommonPrivate::TEvLongRunningOperation;
-    auto makeMessage = [&]()
-    {
-        return std::make_unique<TEvLongRunningOperation>(
-            Operation,
-            true,
-            ctx.Now() - StartAt,
-            GroupId,
-            TEvLongRunningOperation::EReason::Cancelled);
-    };
-    NCloud::Send(ctx, PartitionActor, makeMessage());
-    NCloud::Send(ctx, VolumeActor, makeMessage());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

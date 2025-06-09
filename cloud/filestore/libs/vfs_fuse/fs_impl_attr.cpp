@@ -12,18 +12,6 @@ namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-// NBS-3322
-const THashSet<TString> UnsupportedXAttrs = {
-    "system.posix_acl_access",
-    "system.posix_acl_default",
-};
-
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 // node attributes
 
@@ -154,11 +142,6 @@ void TFileSystem::SetXAttr(
         return;
     }
 
-    if (UnsupportedXAttrs.count(name)) {
-        ReplyError(*callContext, ErrorInvalidAttribute(name), req, ENOTSUP);
-        return;
-    }
-
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
@@ -213,11 +196,6 @@ void TFileSystem::GetXAttr(
 
     if (Config->GetExtendedAttributesDisabled()) {
         ReplyError(*callContext, MakeError(E_FS_NOTSUPP), req, ENOSYS);
-        return;
-    }
-
-    if (UnsupportedXAttrs.count(name)) {
-        ReplyError(*callContext, ErrorInvalidAttribute(name), req, ENOTSUP);
         return;
     }
 
@@ -317,11 +295,6 @@ void TFileSystem::RemoveXAttr(
 
     if (Config->GetExtendedAttributesDisabled()) {
         ReplyError(*callContext, MakeError(E_FS_NOTSUPP), req, ENOSYS);
-        return;
-    }
-
-    if (UnsupportedXAttrs.count(name)) {
-        ReplyError(*callContext, ErrorInvalidAttribute(name), req, ENOTSUP);
         return;
     }
 

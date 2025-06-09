@@ -363,6 +363,8 @@ bool ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
         request.Event->Record.SetBlocksCount(blocksCount);
         request.Event->Record.SetCheckpointId(proto.GetCheckpointId());
         request.Event->Record.BlockSize = blockSize;
+        request.Event->Record.ShouldReportFailedRangesOnFailure =
+            ev->Get()->Record.ShouldReportFailedRangesOnFailure;
     }
 
     return true;

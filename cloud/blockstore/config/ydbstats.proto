@@ -43,4 +43,10 @@ message TYdbStatsConfig
 
     // Archive stats table ttl.
     optional uint32 ArchiveStatsTableTtl = 12;
+
+    // Table to report correspondence between blob storage groups and partition tablets.
+    optional string GroupsTableName = 13;
+
+    // Table to report correspondence between partition tablets and volume tablets.
+    optional string PartitionsTableName = 14;
 }

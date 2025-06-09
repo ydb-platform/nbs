@@ -600,7 +600,10 @@ STFUNC(TListNodesActor::StateWork)
             HandleGetNodeAttrBatchResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -615,7 +618,10 @@ STFUNC(TListNodesActor::StateCheck)
             HandleGetNodeAttrResponseCheck);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

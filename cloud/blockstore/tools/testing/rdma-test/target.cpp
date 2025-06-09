@@ -74,8 +74,8 @@ public:
         TStringBuf in,
         TStringBuf out) override
     {
-        TaskQueue->ExecuteSimple([=] {
-            auto error = SafeExecute<NProto::TError>([=] {
+        TaskQueue->ExecuteSimple([=, this] {
+            auto error = SafeExecute<NProto::TError>([=, this] {
                 return DoHandleRequest(context, callContext, in, out);
             });
 
@@ -147,10 +147,10 @@ private:
             std::move(request),
             guardedSgList);
 
-        future.Subscribe([=] (auto future) {
+        future.Subscribe([=, this] (auto future) {
             auto response = ExtractResponse(future);
 
-            TaskQueue->ExecuteSimple([=] {
+            TaskQueue->ExecuteSimple([=, this] {
                 Y_UNUSED(buffer);
 
                 auto guard = guardedSgList.Acquire();
@@ -192,10 +192,10 @@ private:
             std::move(request),
             guardedSgList);
 
-        future.Subscribe([=] (auto future) {
+        future.Subscribe([=, this] (auto future) {
             auto response = ExtractResponse(future);
 
-            TaskQueue->ExecuteSimple([=] {
+            TaskQueue->ExecuteSimple([=, this] {
                 Y_UNUSED(guardedSgList);
 
                 size_t responseBytes =

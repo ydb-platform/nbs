@@ -187,8 +187,11 @@ STFUNC(TVolumeProxyTimedDeliveryActor<TMethod>::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
-        break;
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
+            break;
     }
 }
 

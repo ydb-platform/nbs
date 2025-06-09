@@ -70,4 +70,6 @@ message TasksConfig {
     // This parameter limits the number of tasks that will be retrieved from the
     // database.
     optional uint64 TasksToListLimit = 34 [default = 10000];
+
+    optional string AvailabilityMonitoringSuccessRateReportingPeriod  = 35 [default = "15s"];
 }

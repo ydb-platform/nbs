@@ -56,6 +56,11 @@ public:
         return NodeId;
     }
 
+    [[nodiscard]] const TFileHandle& GetNodeFd() const
+    {
+        return NodeFd;
+    }
+
     TIndexNodePtr CreateFile(const TString& name, int flags);
     TIndexNodePtr CreateDirectory(const TString& name, int flags);
     TIndexNodePtr CreateLink(const TIndexNode& parent, const TString& name);
@@ -75,9 +80,12 @@ public:
 
     TFileStat Stat();
     TFileStat Stat(const TString& name);
+    NLowLevel::TFileSystemStat StatFs() const;
 
     TFileHandle OpenHandle(int flags);
     TFileHandle OpenHandle(const TString& name, int flags, int mode);
+    NLowLevel::TOpenOrCreateResult
+    OpenOrCreateHandle(const TString& name, int flags, int mode);
 
     //
     // Attrs

@@ -50,6 +50,7 @@ public:
     {
         TInstant CreationTs;
         NProto::EStorageMediaKind MediaKind;
+        NProto::EEncryptionMode EncryptionMode;
     };
 
     struct TNonreplicatedPartitionConfigInitParams

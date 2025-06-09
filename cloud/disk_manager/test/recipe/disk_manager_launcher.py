@@ -1,6 +1,11 @@
 import logging
 import os
 import time
+import typing
+import urllib.request
+import urllib.error
+
+from collections import defaultdict
 
 from yatest.common import process
 
@@ -114,24 +119,6 @@ NbsConfig: <
             ]
         >
     >
-    Zones: <
-        key: "zone-d"
-        value: <
-            Endpoints: [
-                "localhost:{nbs4_port}",
-                "localhost:{nbs4_port}"
-            ]
-        >
-    >
-    Zones: <
-        key: "zone-d-shard1"
-        value: <
-            Endpoints: [
-                "localhost:{nbs5_port}",
-                "localhost:{nbs5_port}"
-            ]
-        >
-    >
     RootCertsFile: "{root_certs_file}"
     GrpcKeepAlive: <>
     UseGZIPCompression: true
@@ -167,18 +154,6 @@ PoolsConfig: <
     MinOptimizedPoolAge: "1s"
     BaseDiskIdPrefix: "{base_disk_id_prefix}"
 >
-ShardsConfig: <
-    Shards: <
-        key: "zone-d"
-        value: <
-            Shards: [
-                "zone-d-shard1",
-                "zone-d"
-            ]
-        >
-    >
-    ExcludedFolders: ["excluded-folder"]
->
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"
     ClearDeletedImagesTaskScheduleInterval: "2s"
@@ -193,14 +168,6 @@ ImagesConfig: <
         >,
         <
             ZoneId: "zone-c"
-            Capacity: 0
-        >,
-        <
-            ZoneId: "zone-d"
-            Capacity: 0
-        >,
-        <
-            ZoneId: "zone-d-shard1"
             Capacity: 0
         >
     ]
@@ -252,7 +219,7 @@ S3Config: <
 
 DATAPLANE_CONFIG_TEMPLATE = """
 TasksConfig: <
-    ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d", "zone-d-shard1"]
+    ZoneIds: ["zone-a", "zone-b", "zone-c"]
     TaskPingPeriod: "1s"
     PollForTaskUpdatesPeriod: "1s"
     PollForTasksPeriodMin: "1s"
@@ -297,24 +264,6 @@ NbsConfig: <
             Endpoints: [
                 "localhost:{nbs3_port}",
                 "localhost:{nbs3_port}"
-            ]
-        >
-    >
-    Zones: <
-        key: "zone-d"
-        value: <
-            Endpoints: [
-                "localhost:{nbs4_port}",
-                "localhost:{nbs4_port}"
-            ]
-        >
-    >
-    Zones: <
-        key: "zone-d-shard1"
-        value: <
-            Endpoints: [
-                "localhost:{nbs5_port}",
-                "localhost:{nbs5_port}"
             ]
         >
     >
@@ -386,9 +335,16 @@ MIGRATION_CONFIG_TEMPLATE = """
         S3Bucket: "snapshot"
         ChunkBlobsS3KeyPrefix: "snapshot/chunks"
     >
+    MigratingSnapshotsInflightLimit: {migrating_snapshots_inflight_limit}
 """
 
 SERVICE_NAME = "disk_manager"
+
+
+class Metric(typing.NamedTuple):
+    name: str
+    labels: dict[str, str]
+    value: float
 
 
 class DiskManagerServer(Daemon):
@@ -437,8 +393,6 @@ class DiskManagerLauncher:
         nbs_port,
         nbs2_port,
         nbs3_port,
-        nbs4_port,
-        nbs5_port,
         metadata_url,
         root_certs_file,
         idx,
@@ -461,6 +415,7 @@ class DiskManagerLauncher:
         migration_dst_ydb_port=None,
         migration_dst_s3_port=None,
         migration_dst_s3_credentials_file=None,
+        migrating_snapshots_inflight_limit=None,
         retry_broken_disk_registry_based_disk_checkpoint=False,
     ):
         self.__idx = idx
@@ -501,8 +456,6 @@ class DiskManagerLauncher:
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
                     nbs3_port=nbs3_port,
-                    nbs4_port=nbs4_port,
-                    nbs5_port=nbs5_port,
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
@@ -518,7 +471,8 @@ class DiskManagerLauncher:
                         s3_config="" if migration_dst_s3_port is None else S3_CONFIG_TEMPLATE.format(
                             s3_port=migration_dst_s3_port,
                             s3_credentials_file=migration_dst_s3_credentials_file,
-                        )
+                        ),
+                        migrating_snapshots_inflight_limit=migrating_snapshots_inflight_limit,
                     ),
                 ))
         else:
@@ -541,8 +495,6 @@ class DiskManagerLauncher:
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
                     nbs3_port=nbs3_port,
-                    nbs4_port=nbs4_port,
-                    nbs5_port=nbs5_port,
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
@@ -615,3 +567,35 @@ class DiskManagerLauncher:
     @property
     def pid(self) -> int:
         return self.__daemon.pid
+
+    def get_metrics(self) -> defaultdict[str, list['Metric']]:
+        """
+        Get metrics from the disk manager server.
+        Parses metrics in prometheus format e.g.
+
+        ydb_go_sdk_ydb_table_pool_inflight{component="ydb"} 0
+        # HELP ydb_go_sdk_ydb_table_pool_inflight_latency
+        """
+        result = defaultdict(list)
+        data = ""
+        try:
+            with urllib.request.urlopen(f"http://localhost:{self.__monitoring_port}/metrics/") as response:
+                data = response.read().decode()
+        except urllib.error.URLError:
+            return result
+
+        for line in data.splitlines():
+            if not line:
+                continue
+            if line.startswith("#"):
+                continue
+
+            selector, value = line.split(" ", 2)
+            name, labels = selector.split("{", 1)
+            labels = labels.rstrip("}")
+            labels = dict(
+                label.split("=") for label in labels.split(",")
+            )
+            result[name] += [Metric(name, labels, float(value))]
+
+        return result

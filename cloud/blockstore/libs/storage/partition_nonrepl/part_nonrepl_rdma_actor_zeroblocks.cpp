@@ -25,119 +25,31 @@ using TResponse = TEvService::TEvZeroBlocksResponse;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestContext: public NRdma::IClientHandler
+class TRdmaRequestZeroBlocksHandler final
+    : public TRdmaDeviceRequestHandlerBase<TRdmaRequestZeroBlocksHandler>
 {
-private:
-    TActorSystem* ActorSystem;
-    TNonreplicatedPartitionConfigPtr PartConfig;
-    TRequestInfoPtr RequestInfo;
-    TAdaptiveLock Lock;
-    size_t ResponseCount;
-    NProto::TError Error;
-    const ui32 RequestBlockCount;
-    NActors::TActorId ParentActorId;
-    ui64 RequestId;
-
-    // Indices of devices that participated in the request.
-    TStackVec<ui32, 2> DeviceIndices;
-
-    // Indices of devices where requests have resulted in errors.
-    TStackVec<ui32, 2> ErrorDeviceIndices;
+    using TBase =
+        TRdmaDeviceRequestHandlerBase<TRdmaRequestZeroBlocksHandler>;
 
 public:
-    TRdmaRequestContext(
-            TActorSystem* actorSystem,
-            TNonreplicatedPartitionConfigPtr partConfig,
-            TRequestInfoPtr requestInfo,
-            size_t requestCount,
-            ui32 requestBlockCount,
-            NActors::TActorId parentActorId,
-            ui64 requestId)
-        : ActorSystem(actorSystem)
-        , PartConfig(std::move(partConfig))
-        , RequestInfo(std::move(requestInfo))
-        , ResponseCount(requestCount)
-        , RequestBlockCount(requestBlockCount)
-        , ParentActorId(parentActorId)
-        , RequestId(requestId)
-    {}
+    using TRequestContext = TDeviceRequestRdmaContext;
+    using TResponseProto = NProto::TZeroDeviceBlocksResponse;
 
-    void HandleResult(TStringBuf buffer)
+    using TBase::TBase;
+
+    std::unique_ptr<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>
+    CreateCompletionEvent(const NProto::TError& error)
     {
-        auto* serializer = TBlockStoreProtocol::Serializer();
-        auto [result, err] = serializer->Parse(buffer);
-
-        if (HasError(err)) {
-            Error = std::move(err);
-            return;
-        }
-
-        const auto& concreteProto =
-            static_cast<NProto::TZeroDeviceBlocksResponse&>(*result.Proto);
-        if (HasError(concreteProto.GetError())) {
-            Error = concreteProto.GetError();
-        }
+        auto completion = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>(error);
+        auto& counters = *completion->Stats.MutableUserWriteCounters();
+        counters.SetBlocksCount(GetRequestBlockCount());
+        return completion;
     }
 
-    void HandleResponse(
-        NRdma::TClientRequestPtr req,
-        ui32 status,
-        size_t responseBytes) override
+    std::unique_ptr<IEventBase> CreateResponse(const NProto::TError& error)
     {
-        TRequestScope timer(*RequestInfo);
-
-        auto guard = Guard(Lock);
-
-        auto buffer = req->ResponseBuffer.Head(responseBytes);
-        auto* reqCtx = static_cast<TDeviceRequestContext*>(req->Context.get());
-
-        DeviceIndices.emplace_back(reqCtx->DeviceIdx);
-
-        if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(buffer);
-        } else {
-            Error = NRdma::ParseError(buffer);
-            if (NeedToNotifyAboutDeviceRequestError(Error)) {
-                ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
-            }
-        }
-
-        if (--ResponseCount != 0) {
-            return;
-        }
-
-        // Got all device responses. Do processing.
-
-        ProcessError(*ActorSystem, *PartConfig, Error);
-
-        auto response = std::make_unique<TResponse>(Error);
-        auto event = std::make_unique<IEventHandle>(
-            RequestInfo->Sender,
-            TActorId(),
-            response.release(),
-            0,
-            RequestInfo->Cookie);
-        ActorSystem->Send(event.release());
-
-        using TCompletionEvent =
-            TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted;
-        auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
-        auto& counters = *completion->Stats.MutableUserWriteCounters();
-        completion->TotalCycles = RequestInfo->GetTotalCycles();
-        completion->DeviceIndices = DeviceIndices;
-        completion->ErrorDeviceIndices = ErrorDeviceIndices;
-
-        timer.Finish();
-        completion->ExecCycles = RequestInfo->GetExecCycles();
-
-        counters.SetBlocksCount(RequestBlockCount);
-        auto completionEvent = std::make_unique<IEventHandle>(
-            ParentActorId,
-            TActorId(),
-            completion.release(),
-            0,
-            RequestId);
-        ActorSystem->Send(completionEvent.release());
+        return std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
     }
 };
 
@@ -182,14 +94,14 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_shared<TRdmaRequestContext>(
+    auto requestContext = std::make_shared<TRdmaRequestZeroBlocksHandler>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
-        deviceRequests.size(),
-        msg->Record.GetBlocksCount(),
+        requestId,
         SelfId(),
-        requestId);
+        msg->Record.GetBlocksCount(),
+        deviceRequests.size());
 
     struct TDeviceRequestInfo
     {
@@ -198,10 +110,13 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
     };
 
     TVector<TDeviceRequestInfo> requests;
+    TRequestContext sentRequestCtx;
 
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
+
+        sentRequestCtx.emplace_back(r.DeviceIdx);
 
         NProto::TZeroDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
@@ -215,7 +130,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
 
-        auto context = std::make_unique<TDeviceRequestContext>();
+        auto context = std::make_unique<TDeviceRequestRdmaContext>();
         context->DeviceIdx = r.DeviceIdx;
 
         auto [req, err] = ep->AllocateRequest(
@@ -229,6 +144,8 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
                 "Failed to allocate rdma memory for ZeroDeviceBlocksRequest"
                 ", error: %s",
                 FormatError(err).c_str());
+
+            NotifyDeviceTimedOutIfNeeded(ctx, r.Device.GetDeviceUUID());
 
             NCloud::Reply(
                 ctx,
@@ -247,13 +164,14 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         requests.push_back({std::move(ep), std::move(req)});
     }
 
-    for (auto& request: requests) {
-        request.Endpoint->SendRequest(
+    for (size_t i = 0; i < requests.size(); ++i) {
+        auto& request = requests[i];
+        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId);
+    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

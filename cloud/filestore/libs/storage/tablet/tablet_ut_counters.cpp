@@ -123,106 +123,48 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         auto registry = Env.GetRegistry();
 
         registry->Visit(TInstant::Zero(), Visitor);
-        // clang-format off
+
+        auto storageFsLabels = [](TString sensor) {
+            return NMetrics::TLabels {
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"cloud", "test_cloud"},
+                {"folder", "test_folder"},
+                {"sensor", sensor},
+            };
+        };
+        auto storageLabels = [](TString sensor) {
+            return NMetrics::TLabels {
+                {"component", "storage"},
+                {"type", "hdd"},
+                {"sensor", sensor},
+            };
+        };
+
         Visitor.ValidateExpectedCounters({
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "FreshBytesCount"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "GarbageQueueSize"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "MixedBytesCount"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "MixedBlobsCount"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "GarbageQueueSize"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "GarbageBytesCount"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "FreshBlocksCount"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "PostponedRequests"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "RejectedRequests"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "UsedSessionsCount"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "UsedBytesCount"}}, 0},
-            {{
-                {"component", "storage_fs"},
-                {"host", "cluster"},
-                {"filesystem", "test"},
-                {"sensor", "UsedQuota"}}, 0},
-            {{
-                {"component", "storage"},
-                {"type", "hdd"},
-                {"sensor", "FreshBytesCount"}}, 0},
-            {{
-                {"component", "storage"},
-                {"type", "hdd"},
-                {"sensor", "GarbageQueueSize"}}, 0},
-            {{
-                {"component", "storage"},
-                {"type", "hdd"},
-                {"sensor", "MixedBytesCount"}}, 0},
-            {{
-                {"component", "storage"},
-                {"type", "hdd"},
-                {"sensor", "UsedSessionsCount"}}, 0},
-            {{
-                {"component", "storage"},
-                {"type", "hdd"},
-                {"sensor", "UsedBytesCount"}}, 0},
-            {{
-                {"component", "storage"},
-                {"type", "hdd"},
-                {"sensor", "MixedBlobsCount"}}, 0},
-            {{
-                {"component", "storage"},
-                {"type", "hdd"},
-                {"sensor", "GarbageQueueSize"}}, 0},
-            {{
-                {"component", "storage"},
-                {"type", "hdd"},
-                {"sensor", "GarbageBytesCount"}}, 0},
-            {{
-                {"component", "storage"},
-                {"type", "hdd"},
-                {"sensor", "FreshBlocksCount"}}, 0}
+            {storageFsLabels("FreshBytesCount"), 0},
+            {storageFsLabels("FreshBytesItemCount"), 0},
+            {storageFsLabels("GarbageQueueSize"), 0},
+            {storageFsLabels("MixedBytesCount"), 0},
+            {storageFsLabels("MixedBlobsCount"), 0},
+            {storageFsLabels("GarbageQueueSize"), 0},
+            {storageFsLabels("GarbageBytesCount"), 0},
+            {storageFsLabels("FreshBlocksCount"), 0},
+            {storageFsLabels("PostponedRequests"), 0},
+            {storageFsLabels("RejectedRequests"), 0},
+            {storageFsLabels("UsedSessionsCount"), 0},
+            {storageFsLabels("UsedBytesCount"), 0},
+            {storageFsLabels("UsedQuota"), 0},
+            {storageLabels("FreshBytesCount"), 0},
+            {storageLabels("GarbageQueueSize"), 0},
+            {storageLabels("MixedBytesCount"), 0},
+            {storageLabels("UsedSessionsCount"), 0},
+            {storageLabels("UsedBytesCount"), 0},
+            {storageLabels("MixedBlobsCount"), 0},
+            {storageLabels("GarbageQueueSize"), 0},
+            {storageLabels("GarbageBytesCount"), 0},
+            {storageLabels("FreshBlocksCount"), 0}
         });
-        // clang-format on
     }
 
     Y_UNIT_TEST_F(ShouldCorrectlyWriteThrottlerMaxParams, TEnv)
@@ -739,6 +681,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCounters({
             {{{"sensor", "FreshBytesCount"}, {"filesystem", "test"}}, DefaultBlockSize - 1},
+            {{{"sensor", "FreshBytesItemCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "FreshBlocksCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "MixedBlobsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "CMMixedBlobsCount"}, {"filesystem", "test"}}, 1},

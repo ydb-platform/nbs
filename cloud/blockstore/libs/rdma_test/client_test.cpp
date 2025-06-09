@@ -14,6 +14,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NThreading;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -53,9 +55,16 @@ struct TRdmaClientTest::TRdmaEndpointImpl
     NProto::TError AllocationError;
     NProto::TError RdmaResponseError;
     NProto::TError ResponseError;
-    TRdmaClientTest::TMessageObserver MessageObserver;
+    TMessageObserver MessageObserver;
+    TForceReconnectObserver ForceReconnectObserver;
 
-    TRdmaEndpointImpl() = default;
+    ui64 NextRequestId = 0;
+    THashMap<ui64, NRdma::TClientRequestPtr> Requests;
+
+    TFuture<void> FutureToWaitBeforeRequestProcessing;
+
+    TRdmaEndpointImpl() : FutureToWaitBeforeRequestProcessing(MakeFuture())
+    {}
 
     TResultOrError<NRdma::TClientRequestPtr> AllocateRequest(
         NRdma::IClientHandlerPtr handler,
@@ -82,6 +91,30 @@ struct TRdmaClientTest::TRdmaEndpointImpl
     {
         Y_UNUSED(callContext);
 
+        auto reqId = ++NextRequestId;
+
+        Requests[reqId] = std::move(req);
+
+        FutureToWaitBeforeRequestProcessing.Subscribe(
+            [self = this, reqId](const auto&)
+            {
+                auto it = self->Requests.find(reqId);
+
+                if (it == self->Requests.end()) {
+                    return;
+                }
+
+                auto req = std::move(it->second);
+                self->Requests.erase(it);
+
+                self->ContinueRequestSending(std::move(req));
+            });
+
+        return reqId;
+    }
+
+    void ContinueRequestSending(NRdma::TClientRequestPtr req)
+    {
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(req->RequestBuffer);
         Y_ENSURE_EX(!HasError(err), yexception() << err.GetMessage());
@@ -102,7 +135,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                 NRdma::RDMA_PROTO_FAIL,
                 len);
 
-            return 0;
+            return;
         }
 
         size_t responseBytes = 0;
@@ -150,18 +183,24 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                 if (!HasError(ResponseError)) {
                     using TProto = NProto::TWriteDeviceBlocksRequest;
                     auto* request = static_cast<TProto*>(result.Proto.get());
-                    const auto blockCount =
-                        result.Data.size() / request->GetBlockSize();
-                    const size_t minSize = request->GetStartIndex() + blockCount;
-
-                    auto& blocks =
-                        GetDeviceBlocks(request->GetDeviceUUID(), minSize);
-
-                    ui64 offset = 0;
-                    for (ui32 i = request->GetStartIndex(); i < minSize; ++i) {
-                        blocks[i] =
-                            result.Data.substr(offset, request->GetBlockSize());
-                        offset += request->GetBlockSize();
+                    if (request->GetReplicationTargets().empty()) {
+                        PerformWrite(
+                            request->GetDeviceUUID(),
+                            result.Data,
+                            request->GetBlockSize(),
+                            request->GetStartIndex());
+                    } else {
+                        for (const auto& replicationTarget:
+                             request->GetReplicationTargets())
+                        {
+                            PerformWrite(
+                                replicationTarget.GetDeviceUUID(),
+                                result.Data,
+                                request->GetBlockSize(),
+                                replicationTarget.GetStartIndex());
+                            *response.AddReplicationResponses() =
+                                MakeError(S_OK);
+                        }
                     }
                 }
 
@@ -247,41 +286,81 @@ struct TRdmaClientTest::TRdmaEndpointImpl
             std::move(req),
             NRdma::RDMA_PROTO_OK,
             responseBytes);
-        return 0;
     }
 
     void CancelRequest(ui64 reqId) override
     {
-        Y_UNUSED(reqId);
+        auto it = Requests.find(reqId);
+        if (it == Requests.end()) {
+            return;
+        }
+
+        auto req = std::move(it->second);
+        Requests.erase(it);
+
+        auto len = NRdma::SerializeError(
+            E_CANCELLED,
+            "cancelled",
+            req->ResponseBuffer);
+
+        auto* handler = req->Handler.get();
+        handler->HandleResponse(std::move(req), NRdma::RDMA_PROTO_FAIL, len);
     }
 
-    NThreading::TFuture<void> Stop() override
+    TFuture<void> Stop() override
     {
-        return NThreading::MakeFuture();
+        return MakeFuture();
+    }
+
+    void TryForceReconnect() override
+    {
+        if (ForceReconnectObserver) {
+            ForceReconnectObserver();
+        }
     }
 
     TDeque<TString>& GetDeviceBlocks(
         const TString& deviceUUID,
         size_t minBlockCount)
     {
+        Y_ABORT_UNLESS(deviceUUID);
+
         auto& blocks = Devices[deviceUUID];
         if (blocks.size() < minBlockCount) {
             blocks.resize(minBlockCount, TString(4_KB, 0));
         }
         return blocks;
     }
+
+    void PerformWrite(
+        const TString& deviceUUID,
+        TStringBuf data,
+        ui32 blockSize,
+        ui64 startIndex)
+    {
+        const auto blockCount = data.size() / blockSize;
+        const size_t minSize = startIndex + blockCount;
+
+        auto& blocks = GetDeviceBlocks(deviceUUID, minSize);
+
+        ui64 offset = 0;
+        for (ui64 i = startIndex; i < minSize; ++i) {
+            blocks[i] = data.substr(offset, blockSize);
+            offset += blockSize;
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NThreading::TFuture<NRdma::IClientEndpointPtr> TRdmaClientTest::StartEndpoint(
+TFuture<NRdma::IClientEndpointPtr> TRdmaClientTest::StartEndpoint(
     TString host,
     ui32 port)
 {
     auto& ep = Endpoints[MakeKey(host, port)];
     if (!ep.Endpoint) {
         ep.Endpoint = std::make_shared<TRdmaEndpointImpl>();
-        ep.Promise = NThreading::NewPromise<NRdma::IClientEndpointPtr>();
+        ep.Promise = NewPromise<NRdma::IClientEndpointPtr>();
     }
     return ep.Promise;
 }
@@ -317,11 +396,28 @@ ui32 TRdmaClientTest::InitAllEndpointsWithError()
     return Endpoints.size();
 }
 
-void TRdmaClientTest::SetMessageObserver(TMessageObserver messageObserver)
+void TRdmaClientTest::SetMessageObserver(
+    const TMessageObserver& messageObserver)
 {
-    MessageObserver = messageObserver;
     for (auto& [_, endpointInfo]: Endpoints) {
-        endpointInfo.Endpoint->MessageObserver = MessageObserver;
+        endpointInfo.Endpoint->MessageObserver = messageObserver;
+    }
+}
+
+void TRdmaClientTest::SetForceReconnectObserver(
+    const TForceReconnectObserver& forceReconnectObserver)
+{
+    for (auto& [_, endpointInfo]: Endpoints) {
+        endpointInfo.Endpoint->ForceReconnectObserver = forceReconnectObserver;
+    }
+}
+
+void TRdmaClientTest::InjectFutureToWaitBeforeRequestProcessing(
+    const TFuture<void>& future)
+{
+    for (auto& x: Endpoints) {
+        auto& ep = static_cast<TRdmaEndpointImpl&>(*x.second.Endpoint);
+        ep.FutureToWaitBeforeRequestProcessing = future;
     }
 }
 

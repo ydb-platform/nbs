@@ -8,6 +8,7 @@
 
 #include <cloud/storage/core/libs/common/media.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
@@ -133,6 +134,8 @@ struct TVolumeStatsInfo
     NBlobMetrics::TBlobLoadMetrics OffsetBlobMetrics;
     TInstant ApproximateStartTs;
     TDuration ApproximateBootstrapTime;
+
+    THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
     TVolumeStatsInfo(
             NProto::TVolume config,

@@ -43,6 +43,7 @@ struct TPartitionInfo
     };
 
     const ui64 TabletId;
+    const ui32 PartitionIndex;
     const NProto::TPartitionConfig PartitionConfig;
 
     TRetryPolicy RetryPolicy;
@@ -63,6 +64,7 @@ struct TPartitionInfo
     TPartitionInfo(
         ui64 tabletId,
         NProto::TPartitionConfig partitionConfig,
+        ui32 partitionIndex,
         TDuration timeoutIncrement,
         TDuration timeoutMax);
 

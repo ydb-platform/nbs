@@ -49,13 +49,16 @@ private:
     ui32 WriteRequestCount = 0;
     ui32 ZeroRequestCount = 0;
 
+    ui32 ZeroedBlocksCount = 0;
+
 public:
     TTestEnvironment(
             ui64 blocksCount,
             ui32 blockSize,
             ui32 sectorsPerBlock,
             ui32 maxBlockCount = 1024,
-            bool unalignedRequestsDisabled = false)
+            bool unalignedRequestsDisabled = false,
+            ui32 maxZeroBlocksSubRequestSize = 0)
         : BlocksCount(blocksCount)
         , BlockSize(blockSize)
         , SectorSize(BlockSize / sectorsPerBlock)
@@ -92,7 +95,7 @@ public:
                 ctx->AddTime(EProcessingStage::Postponed, TDuration::Seconds(10));
 
                 auto future = WriteTrigger.GetFuture();
-                return future.Apply([=] (const auto& f) {
+                return future.Apply([=, this] (const auto& f) {
                     Y_UNUSED(f);
 
                     auto startIndex = request->GetStartIndex();
@@ -114,10 +117,11 @@ public:
         testStorage->ZeroBlocksHandler =
             [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TZeroBlocksRequest> request) {
                 ++ZeroRequestCount;
+                ZeroedBlocksCount += request->GetBlocksCount();
                 ctx->AddTime(EProcessingStage::Postponed, TDuration::Seconds(100));
 
                 auto future = WriteTrigger.GetFuture();
-                return future.Apply([=] (const auto& f) {
+                return future.Apply([=, this] (const auto& f) {
                     Y_UNUSED(f);
 
                     auto startIndex = request->GetStartIndex();
@@ -142,8 +146,8 @@ public:
             BlockSize,
             unalignedRequestsDisabled,   // unalignedRequestsDisabled,
             false,                       // checkBufferModificationDuringWriting
-            false                        // isReliableMediaKind
-        );
+            false,                       // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
     }
 
     TCallContextPtr WriteSectors(ui64 firstSector, ui64 totalSectors, char data)
@@ -263,6 +267,12 @@ public:
         ReadRequestCount = 0;
         WriteRequestCount = 0;
         ZeroRequestCount = 0;
+        ZeroedBlocksCount = 0;
+    }
+
+    ui32 GetZeroedBlocksCount() const
+    {
+        return ZeroedBlocksCount;
     }
 };
 
@@ -348,6 +358,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         const ui32 blockSize = DefaultBlockSize;
         const ui64 deviceBlocksCount = 8 * 1024;
         const ui64 blocksCountLimit = deviceBlocksCount / 4;
+        const ui32 maxZeroBlocksSubRequestSize = 0;
 
         auto storage = std::make_shared<TTestStorage>();
 
@@ -359,8 +370,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             false,   // checkBufferModificationDuringWriting
-            false    // isReliableMediaKind
-        );
+            false,   // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
         for (auto& zeroBlock: zeroBlocks) {
@@ -411,11 +422,61 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotSliceZeroRequest)
+    {
+        const auto diskId = "disk1";
+        const auto clientId = "testClientId";
+        const ui32 blockSize = DefaultBlockSize;
+        const ui64 deviceBlocksCount = 8 * 1024;
+        const ui64 blocksCountLimit = deviceBlocksCount / 4;
+        const ui32 maxZeroBlocksSubRequestSize = 512 * 1024 * 1024;
+
+        auto storage = std::make_shared<TTestStorage>();
+
+        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto deviceHandler = factory->CreateDeviceHandler(
+            storage,
+            diskId,
+            clientId,
+            blockSize,
+            false,   // unalignedRequestsDisabled,
+            false,   // checkBufferModificationDuringWriting
+            false,   // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
+
+        std::array<bool, deviceBlocksCount> zeroBlocks;
+        for (auto& zeroBlock: zeroBlocks) {
+            zeroBlock = false;
+        }
+
+        ui32 requestCounter = 0;
+
+        storage->ZeroBlocksHandler = [&] (
+            TCallContextPtr callContext,
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            ++requestCounter;
+            return MakeFuture<NProto::TZeroBlocksResponse>();
+        };
+
+        auto future = deviceHandler->Zero(
+            MakeIntrusive<TCallContext>(),
+            0,
+            deviceBlocksCount * blockSize);
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(response));
+        UNIT_ASSERT_EQUAL_C(1, requestCounter, requestCounter);
+    }
+
     Y_UNIT_TEST(ShouldHandleAlignedRequestsWhenUnalignedRequestsDisabled)
     {
         const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
+        const ui32 maxZeroBlocksSubRequestSize = 0;
 
         auto storage = std::make_shared<TTestStorage>();
 
@@ -426,8 +487,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             true,    // unalignedRequestsDisabled,
             false,   // checkBufferModificationDuringWriting
-            false    // isReliableMediaKind
-        );
+            false,   // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
 
         ui32 startIndex = 42;
         ui32 blocksCount = 17;
@@ -507,6 +568,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
+        const ui32 maxZeroBlocksSubRequestSize = 0;
 
         auto storage = std::make_shared<TTestStorage>();
 
@@ -517,8 +579,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             true,    // unalignedRequestsDisabled,
             false,   // checkBufferModificationDuringWriting
-            false    // isReliableMediaKind
-        );
+            false,   // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
 
         {
             auto future = device->Read(
@@ -597,10 +659,27 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         env.RunWriteService();
 
-        // An unaligned request requires the execution of a read-modify-write pattern.
+        // An unaligned request requires the execution of a read-modify-write
+        // pattern for first and last blocks with unaligned offsets.
         env.ZeroSectors(1, 46);
-        UNIT_ASSERT_VALUES_EQUAL(6, env.GetReadRequestCount());
-        UNIT_ASSERT_VALUES_EQUAL(6, env.GetWriteRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetReadRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetWriteRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(6, env.GetZeroRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(22, env.GetZeroedBlocksCount());
+        env.ResetRequestCounters();
+
+        env.ZeroSectors(1, 39);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetReadRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetWriteRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(5, env.GetZeroRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(19, env.GetZeroedBlocksCount());
+        env.ResetRequestCounters();
+
+        env.ZeroSectors(8, 37);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetReadRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetWriteRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(5, env.GetZeroRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(18, env.GetZeroedBlocksCount());
         env.ResetRequestCounters();
 
         env.WriteSectors(3, 8, 'a');
@@ -627,6 +706,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         const ui32 blockSize = DefaultBlockSize;
         const ui64 deviceBlocksCount = 12;
         const ui64 blocksCountLimit = deviceBlocksCount / 4;
+        const ui32 maxZeroBlocksSubRequestSize = 0;
 
         TString device(deviceBlocksCount * blockSize, 1);
         TString zeroBlock(blockSize, 0);
@@ -641,8 +721,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             unalignedRequestDisabled,   // unalignedRequestsDisabled,
             false,                      // checkBufferModificationDuringWriting
-            false                       // isReliableMediaKind
-        );
+            false,                      // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
 
         storage->ZeroBlocksHandler = [&] (
             TCallContextPtr callContext,
@@ -750,6 +830,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
+        const ui32 maxZeroBlocksSubRequestSize = 0;
 
         auto storage = std::make_shared<TTestStorage>();
 
@@ -761,8 +842,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
                 blockSize,
                 false,   // unalignedRequestsDisabled,
                 false,   // checkBufferModificationDuringWriting
-                false    // isReliableMediaKind
-            );
+                false,   // isReliableMediaKind
+                maxZeroBlocksSubRequestSize);
 
         storage->WriteBlocksLocalHandler = [&] (
             TCallContextPtr callContext,
@@ -819,6 +900,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
+        const ui32 maxZeroBlocksSubRequestSize = 0;
 
         auto storage = std::make_shared<TTestStorage>();
 
@@ -830,8 +912,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
                 blockSize,
                 false,   // unalignedRequestsDisabled,
                 false,   // checkBufferModificationDuringWriting
-                false    // isReliableMediaKind
-            );
+                false,   // isReliableMediaKind
+                maxZeroBlocksSubRequestSize);
 
         storage->WriteBlocksLocalHandler = [&] (
             TCallContextPtr callContext,
@@ -947,6 +1029,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         const ui32 blockSize = DefaultBlockSize;
         const ui64 deviceBlocksCount = 8*1024;
         const ui64 blocksCountLimit = deviceBlocksCount / 4;
+        const ui32 maxZeroBlocksSubRequestSize = 0;
 
         auto storage = std::make_shared<TTestStorage>();
 
@@ -958,8 +1041,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            false    // isReliableMediaKind
-        );
+            false,   // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
 
         ui32 writeAttempts  = 0;
 
@@ -1031,6 +1114,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         const ui32 blockSize = DefaultBlockSize;
         const ui64 deviceBlocksCount = 8 * 1024;
         const ui64 blocksCountLimit = deviceBlocksCount / 4;
+        const ui32 maxZeroBlocksSubRequestSize = 0;
 
         auto storage = std::make_shared<TTestStorage>();
 
@@ -1042,8 +1126,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            true     // isReliableMediaKind
-        );
+            true,    // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
         auto deviceHandlerForNonReliableDisk = factory->CreateDeviceHandler(
             storage,
             diskId,
@@ -1051,8 +1135,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            false    // isReliableMediaKind
-        );
+            false,   // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
 
         auto buffer = TString(DefaultBlockSize, 'g');
         TSgList sgList{{buffer.data(), buffer.size()}};
@@ -1185,6 +1269,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         const ui32 blockSize = DefaultBlockSize;
         const ui64 deviceBlocksCount = 8 * 1024;
         const ui64 blocksCountLimit = deviceBlocksCount / 4;
+        const ui32 maxZeroBlocksSubRequestSize = 0;
 
         auto storage = std::make_shared<TTestStorage>();
 
@@ -1196,8 +1281,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            true     // isReliableMediaKind
-        );
+            true,    // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
         auto deviceHandlerForNonReliableDisk = factory->CreateDeviceHandler(
             storage,
             diskId,
@@ -1205,8 +1290,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            false    // isReliableMediaKind
-        );
+            false,   // isReliableMediaKind
+            maxZeroBlocksSubRequestSize);
 
         auto buffer = TString(DefaultBlockSize, 'g');
         TSgList sgList{{buffer.data(), buffer.size()}};

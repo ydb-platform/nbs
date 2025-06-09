@@ -16,8 +16,12 @@
 
 namespace NCloud::NBlockStore::NProto {
 
-    using TChecksumBlocksRequest = NProto::TChecksumDeviceBlocksRequest;
-    using TChecksumBlocksResponse = NProto::TChecksumDeviceBlocksResponse;
+using TChecksumBlocksRequest = NProto::TChecksumDeviceBlocksRequest;
+using TChecksumBlocksResponse = NProto::TChecksumDeviceBlocksResponse;
+
+struct TMultiAgentWriteRequest;
+struct TMultiAgentWriteResponse;
+
 }   // namespace NCloud::NBlockStore::NProto
 
 namespace NCloud::NBlockStore::NStorage {
@@ -26,6 +30,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 #define BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(xxx, ...)             \
     xxx(ChecksumBlocks, __VA_ARGS__)                                        \
+    xxx(MultiAgentWrite, __VA_ARGS__)                                       \
 // BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -217,11 +222,15 @@ struct TEvNonreplPartitionPrivate
         // Request execution total time.
         TDuration ExecutionTime;
 
-        // Indices of devices that participated in the request.
-        TStackVec<ui32, 2> DeviceIndices;
+        struct TDeviceRequestResult
+        {
+            // Index of device that participated in the request and the
+            // result of the request for that device.
+            ui32 DeviceIndex = 0;
+            NProto::TError Error;
+        };
 
-        // Indices of devices where requests have resulted in errors.
-        TStackVec<ui32, 2> ErrorDeviceIndices;
+        TStackVec<TDeviceRequestResult, 2> RequestResults;
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;
@@ -377,6 +386,7 @@ struct TEvNonreplPartitionPrivate
         EvScrubbingNextRange,
         EvReadBlocksCompleted,
         EvWriteBlocksCompleted,
+        EvMultiAgentWriteBlocksCompleted,
         EvZeroBlocksCompleted,
         EvRangeMigrated,
         EvMigrateNextRange,
@@ -410,6 +420,7 @@ struct TEvNonreplPartitionPrivate
     using TEvScrubbingNextRange = TResponseEvent<TEmpty, EvScrubbingNextRange>;
     using TEvReadBlocksCompleted = TResponseEvent<TOperationCompleted, EvReadBlocksCompleted>;
     using TEvWriteBlocksCompleted = TResponseEvent<TOperationCompleted, EvWriteBlocksCompleted>;
+    using TEvMultiAgentWriteBlocksCompleted = TResponseEvent<TOperationCompleted, EvMultiAgentWriteBlocksCompleted>;
     using TEvZeroBlocksCompleted = TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
     using TEvChecksumBlocksCompleted = TResponseEvent<TOperationCompleted, EvChecksumBlocksCompleted>;
 
@@ -502,3 +513,22 @@ struct TEvNonreplPartitionPrivate
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
+
+namespace NCloud::NBlockStore::NProto {
+
+struct TMultiAgentWriteRequest: public NProto::TWriteBlocksRequest
+{
+    using TGetDeviceForRangeResponse = NCloud::NBlockStore::NStorage::
+        TEvNonreplPartitionPrivate::TGetDeviceForRangeResponse;
+
+    ui32 BlockSize = 0;
+    TBlockRange64 Range;
+    TVector<TGetDeviceForRangeResponse> DevicesAndRanges;
+};
+
+struct TMultiAgentWriteResponse: public NProto::TWriteBlocksResponse
+{
+    bool InconsistentResponse = false;
+};
+
+}   // namespace NCloud::NBlockStore::NProto

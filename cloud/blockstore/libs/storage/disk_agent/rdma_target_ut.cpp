@@ -392,6 +392,138 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, env.Storage->ErrorCount);
     }
+
+    Y_UNIT_TEST(ShouldForwardMultiAgentWriteRequest)
+    {
+        using TMultiAgentWriteDeviceBlocksResponse =
+            TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
+
+        TRdmaTestEnvironment env;
+
+        {   // Mock response from actor system.
+            TMultiAgentWriteDeviceBlocksResponse mockResponse;
+            mockResponse.Error = MakeError(S_OK);
+            mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
+            mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
+            env.MultiAgentWriteHandler->PushMockResponse(
+                std::move(mockResponse));
+        }
+
+        NProto::TWriteDeviceBlocksRequest request =
+            env.MakeMultiAgentWriteRequest(
+                TBlockRange64::WithLength(64, 1),
+                'A',
+                100);
+
+        const auto originalRequest = TStringBuilder() << request.AsJSON();
+        // Check response from rdma endpoint.
+        auto responseFuture = env.Run(std::move(request));
+        const auto& response = responseFuture.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        // Check request forwarded to actor system match with original.
+        auto interceptedRequest =
+            env.MultiAgentWriteHandler->PopInterceptedRequest();
+        UNIT_ASSERT(interceptedRequest);
+        const auto forwardedRequest = TStringBuilder()
+                                      << interceptedRequest->AsJSON();
+        UNIT_ASSERT_VALUES_EQUAL(originalRequest, forwardedRequest);
+    }
+
+    Y_UNIT_TEST(ShouldDelayOverlappedMultiAgentWriteRequestAndReject)
+    {
+        using TMultiAgentWriteDeviceBlocksResponse =
+            TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
+
+        const auto blockRange = TBlockRange64::WithLength(0, 100);
+
+        TRdmaTestEnvironment env(4_MB, 2);
+
+        {   // Mock response from actor system.
+            TMultiAgentWriteDeviceBlocksResponse mockResponse;
+            mockResponse.Error = MakeError(S_OK);
+            mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
+            mockResponse.ReplicationResponses.push_back(MakeError(S_OK));
+            env.MultiAgentWriteHandler->PushMockResponse(
+                std::move(mockResponse));
+        }
+
+        // Set handbrake and begin write request.
+        auto writeHandbrake = NThreading::NewPromise<void>();
+        NThreading::TFuture<NProto::TWriteDeviceBlocksResponse> writeFuture;
+        {
+            env.Storage->SetHandbrake(writeHandbrake.GetFuture());
+            writeFuture = env.Run(env.MakeWriteRequest(blockRange, 'A', 100));
+
+            // Request on handbrake. Check it not completed yet.
+            writeFuture.Wait(TDuration::MilliSeconds(1000));
+            UNIT_ASSERT_VALUES_EQUAL(false, writeFuture.HasValue());
+        }
+
+        // Begin MultiAgent complete overlapped request.
+        NThreading::TFuture<NProto::TWriteDeviceBlocksResponse>
+            completeOverlappedFuture;
+        {
+            NProto::TWriteDeviceBlocksRequest completeOverlappedRequest =
+                env.MakeMultiAgentWriteRequest(blockRange, 'B', 99);
+            completeOverlappedFuture =
+                env.Run(std::move(completeOverlappedRequest));
+
+            // MultiAgent request delayed. Check it. Let's wait a little.
+            completeOverlappedFuture.Wait(TDuration::MilliSeconds(1000));
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                completeOverlappedFuture.HasValue());
+        }
+
+        // Begin MultiAgent partial overlapped request.
+        NThreading::TFuture<NProto::TWriteDeviceBlocksResponse>
+            partialOverlappedFuture;
+        {
+            NProto::TWriteDeviceBlocksRequest partialOverlappedRequest =
+                env.MakeMultiAgentWriteRequest(
+                    TBlockRange64::WithLength(0, 200),
+                    'C',
+                    98);
+            partialOverlappedFuture =
+                env.Run(std::move(partialOverlappedRequest));
+
+            // MultiAgent request delayed. Check it. Let's wait a little.
+            partialOverlappedFuture.Wait(TDuration::MilliSeconds(1000));
+            UNIT_ASSERT_VALUES_EQUAL(false, partialOverlappedFuture.HasValue());
+        }
+
+        // Remove handbrake from first write request. It completed with S_OK.
+        writeHandbrake.SetValue();
+        {
+            const auto& writeResponse = writeFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                writeResponse.GetError().GetCode(),
+                FormatError(writeResponse.GetError()));
+        }
+
+        {
+            // Complete overlapped MultiAgent request completed with E_REJECTED.
+            const auto& response = completeOverlappedFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+
+        {
+            // Partial overlapped MultiAgent request completed with E_REJECTED.
+            const auto& response = partialOverlappedFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

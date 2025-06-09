@@ -117,6 +117,12 @@ message TLocalServiceConfig
 
     // Enable write-back cache on FUSE server
     optional bool ServerWriteBackCacheEnabled = 19;
+
+    // Don't populate node cache on ListNodes
+    optional bool DontPopulateNodeCacheWhenListingNodes = 20;
+
+    // Trust guest kernel to check user permissions for fuse operations
+    optional bool GuestOnlyPermissionsCheckEnabled = 21;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

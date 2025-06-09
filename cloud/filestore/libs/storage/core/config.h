@@ -88,6 +88,8 @@ public:
     bool GetUseMixedBlocksInsteadOfAliveBlocksInCompaction() const;
     ui32 GetCollectGarbageThreshold() const;
     ui64 GetFlushBytesThreshold() const;
+    ui32 GetFlushBytesItemCountThreshold() const;
+    bool GetFlushBytesByItemCountEnabled() const;
     ui32 GetMaxDeleteGarbageBlobsPerTx() const;
     ui32 GetLoadedCompactionRangesPerTx() const;
 
@@ -95,7 +97,7 @@ public:
     ui32 GetCleanupThresholdForBackpressure() const;
     ui32 GetCompactionThresholdForBackpressure() const;
     ui64 GetFlushBytesThresholdForBackpressure() const;
-    ui32 GetBackpressurePercentageForFairBlobIndexOpsPriority() const;
+    ui32 GetBackpressureThresholdPercentageForBackgroundOpsPriority() const;
 
     TString GetHDDSystemChannelPoolKind() const;
     TString GetHDDLogChannelPoolKind() const;
@@ -300,9 +302,12 @@ public:
     ui64 GetShardAllocationUnit() const;
     ui64 GetAutomaticallyCreatedShardSize() const;
     bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
+
     bool GetShardIdSelectionInLeaderEnabled() const;
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
+    NProto::EShardBalancerPolicy GetShardBalancerPolicy() const;
+
     bool GetDirectoryCreationInShardsEnabled() const;
 
     bool GetGuestWriteBackCacheEnabled() const;
@@ -318,6 +323,10 @@ public:
     bool GetGuestKeepCacheAllowed() const;
     NProto::EGuestCachingType GetGuestCachingType() const;
     ui64 GetSessionHandleOffloadedStatsCapacity() const;
+
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMinDelay() const;
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMaxDelay() const;
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsTotalTimeout() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

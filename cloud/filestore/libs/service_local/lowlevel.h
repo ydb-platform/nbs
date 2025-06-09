@@ -17,10 +17,14 @@ class UnixCredentialsGuard {
 private:
     uid_t OriginalUid = -1;
     gid_t OriginalGid = -1;
+    uid_t UserUid = -1;
+    gid_t UserGid = -1;
     bool IsRestoreNeeded = false;
+    bool TrustUserCredentials = false;
 
 public:
-    UnixCredentialsGuard(uid_t uid, gid_t gid);
+    UnixCredentialsGuard(uid_t uid, gid_t gid, bool trustUserCredentials);
+    bool TryApplyCredentials(const TFileHandle& handle);
     ~UnixCredentialsGuard();
 };
 
@@ -76,9 +80,39 @@ struct TFileId
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TFileSystemStat
+{
+    i64 Type = 0;           // Type of filesystem
+    i64 BlockSize = 0;      // Optimal transfer block size
+    ui64 TotalBlocks = 0;   // Total data blocks in filesystem
+    ui64 FreeBlocks = 0;    // Free blocks in filesystem
+    ui64 AvailBlocks = 0;   // Free blocks available to unprivileged user
+    ui64 TotalFiles = 0;    // Total file nodes in filesystem
+    ui64 FreeFiles = 0;     // Free file nodes in filesystem
+    i32 FsId[2] = {0, 0};   // Filesystem ID
+    i64 MaxNameLen = 0;     // Maximum length of filenames
+    i64 FragmentSize = 0;   // Fragment size
+    i64 MountFlags = 0;     // Mount flags of filesystem
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TOpenOrCreateResult
+{
+    TFileHandle Handle;
+    bool WasCreated = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TFileHandle Open(const TString& path, int flags, int mode);
 TFileHandle Open(const TFileHandle& handle, int flags, int mode);
 TFileHandle OpenAt(
+    const TFileHandle& handle,
+    const TString& name,
+    int flags,
+    int mode);
+TOpenOrCreateResult OpenOrCreateAt(
     const TFileHandle& handle,
     const TString& name,
     int flags,
@@ -108,6 +142,7 @@ TString ReadLink(const TFileHandle& handle);
 
 TFileStat Stat(const TFileHandle& handle);
 TFileStat StatAt(const TFileHandle& handle, const TString& name);
+TFileSystemStat StatFs(const TFileHandle& handle);
 
 TVector<std::pair<TString, TFileStat>> ListDirAt(
     const TFileHandle& handle,

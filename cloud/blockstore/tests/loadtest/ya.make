@@ -13,6 +13,7 @@ RECURSE(
     local-endpoints
     local-metrics
     local-mirror
+    local-mirror-lagging
     local-nemesis
     local-newfeatures
     local-nonrepl

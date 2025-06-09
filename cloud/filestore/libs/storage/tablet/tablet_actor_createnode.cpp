@@ -186,8 +186,11 @@ void TCreateNodeInShardActor::ProcessNodeAttr(NProto::TNodeAttr attr)
 {
     NProto::TNode requestAttrs;
     InitAttrs(requestAttrs, Request);
-    if (attr.GetSize() != requestAttrs.GetSize()
-            || attr.GetType() != requestAttrs.GetType())
+    // by the time of the request, the node may be already modified and thus we
+    // can ignore those nodes that mismatch in size, but have updated mtime
+    if ((attr.GetSize() != requestAttrs.GetSize() &&
+         attr.GetMTime() <= requestAttrs.GetMTime()) ||
+        attr.GetType() != requestAttrs.GetType())
     {
         ReportCreateNodeRequestResponseMismatchInShard(TStringBuilder()
             << "filesystem: " << LogTag
@@ -380,7 +383,10 @@ STFUNC(TCreateNodeInShardActor::StateWork)
         HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

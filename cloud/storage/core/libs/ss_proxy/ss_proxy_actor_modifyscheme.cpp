@@ -243,7 +243,7 @@ STFUNC(TModifySchemeActor::StateWork)
         HFunc(TEvSSProxy::TEvWaitSchemeTxResponse, HandleTxDone);
 
         default:
-            HandleUnexpectedEvent(ev, LogComponent);
+            HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             break;
     }
 }

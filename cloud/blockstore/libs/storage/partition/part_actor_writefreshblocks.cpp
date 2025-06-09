@@ -364,7 +364,10 @@ STFUNC(TWriteFreshBlocksActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddFreshBlocksResponse, HandleAddFreshBlocksResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -493,7 +496,9 @@ void TPartitionActor::WriteFreshBlocks(
                 DescribeRange(r.Data.Range).data()
             );
 
-            AddTransaction(*r.Data.RequestInfo, r.Data.RequestInfo->CancelRoutine);
+            AddTransaction(
+                *r.Data.RequestInfo,
+                r.Data.RequestInfo->CancelRoutine);
 
             subRequests.emplace_back(
                 std::move(r.Data.RequestInfo),
@@ -508,11 +513,9 @@ void TPartitionActor::WriteFreshBlocks(
             }
         }
 
-        auto tx = CreateTx<TWriteBlocks>(
-            commitId,
-            std::move(subRequests)
-        );
-        ExecuteTx(ctx, std::move(tx));
+        ExecuteTx(
+            ctx,
+            CreateTx<TWriteBlocks>(commitId, std::move(subRequests)));
     }
 }
 

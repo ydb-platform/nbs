@@ -611,7 +611,10 @@ STFUNC(TCreateSessionActor::StateResolve)
         HFunc(TEvSSProxy::TEvDescribeFileStoreResponse, HandleDescribeFileStoreResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -632,7 +635,10 @@ STFUNC(TCreateSessionActor::StateWork)
         HFunc(TEvService::TEvGetSessionEventsResponse, HandleGetSessionEventsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -652,7 +658,10 @@ STFUNC(TCreateSessionActor::StateShutdown)
         IgnoreFunc(TEvService::TEvGetSessionEventsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

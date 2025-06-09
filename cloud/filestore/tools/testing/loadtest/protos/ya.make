@@ -1,6 +1,7 @@
 PROTO_LIBRARY(filestore-testing-loadtest-protos)
 
-ONLY_TAGS(CPP_PROTO)
+EXCLUDE_TAGS(GO_PROTO)
+EXCLUDE_TAGS(JAVA_PROTO)
 
 PEERDIR(
     cloud/filestore/public/api/protos

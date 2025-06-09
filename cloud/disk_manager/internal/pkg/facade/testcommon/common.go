@@ -24,17 +24,19 @@ import (
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	pools_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/config"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_headers "github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"google.golang.org/grpc"
 	grpc_codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -73,12 +75,6 @@ func newDefaultClientConfig() *client_config.Config {
 		BackoffTimeout:      &timeout,
 		OperationPollPeriod: &timeout,
 	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func ReplaceUnacceptableSymbolsFromResourceID(t *testing.T) string {
-	return strings.ReplaceAll(t.Name(), "/", "_")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -301,22 +297,6 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 					),
 				},
 			},
-			"zone-d": {
-				Endpoints: []string{
-					fmt.Sprintf(
-						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NBS4_PORT"),
-					),
-				},
-			},
-			"zone-d-shard1": {
-				Endpoints: []string{
-					fmt.Sprintf(
-						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NBS5_PORT"),
-					),
-				},
-			},
 		},
 		RootCertsFile:              &rootCertsFile,
 		DurableClientTimeout:       &durableClientTimeout,
@@ -463,7 +443,7 @@ func CreateImage(
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskID := ReplaceUnacceptableSymbolsFromResourceID(t) + "_temporary_disk_for_image_" + imageID
+	diskID := t.Name() + "_temporary_disk_for_image_" + imageID
 
 	reqCtx := GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -553,30 +533,6 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	)
 }
 
-func newResourceStorage(ctx context.Context) (resources.Storage, error) {
-	db, err := newYDB(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	endedMigrationExpirationTimeout, err := time.ParseDuration("30m")
-	if err != nil {
-		return nil, err
-	}
-
-	resourcesStorage, err := resources.NewStorage(
-		"disks",
-		"images",
-		"snapshot",
-		"filesystems",
-		"placement_groups",
-		db,
-		endedMigrationExpirationTimeout,
-	)
-
-	return resourcesStorage, err
-}
-
 func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 	db, err := newYDB(ctx)
 	if err != nil {
@@ -624,6 +580,50 @@ func newSnapshotStorage(ctx context.Context) (snapshot_storage.Storage, error) {
 	)
 }
 
+func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
+	db, err := newYDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return tasks_storage.NewStorage(
+		&tasks_config.TasksConfig{},
+		metrics.NewEmptyRegistry(),
+		db,
+	)
+}
+
+func newScheduler(ctx context.Context) (tasks.Scheduler, error) {
+	taskRegistry := tasks.NewRegistry()
+	taskStorage, err := NewTaskStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return tasks.NewScheduler(
+		ctx,
+		taskRegistry,
+		taskStorage,
+		&tasks_config.TasksConfig{},
+		metrics.NewEmptyRegistry(),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func WaitOperationEnded(
+	t *testing.T,
+	ctx context.Context,
+	operationID string,
+) {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	err = scheduler.WaitTaskEnded(ctx, operationID)
+	require.NoError(t, err)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func CheckBaseSnapshot(
@@ -633,10 +633,7 @@ func CheckBaseSnapshot(
 	expectedBaseSnapshotID string,
 ) {
 
-	storage, err := newSnapshotStorage(ctx)
-	require.NoError(t, err)
-
-	snapshotMeta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+	snapshotMeta, err := GetSnapshotMeta(ctx, snapshotID)
 	require.NoError(t, err)
 	require.EqualValues(t, expectedBaseSnapshotID, snapshotMeta.BaseSnapshotID)
 }
@@ -719,19 +716,6 @@ func GetIncremental(
 	return storage.GetIncremental(ctx, disk)
 }
 
-func GetDiskMeta(
-	ctx context.Context,
-	diskID string,
-) (*resources.DiskMeta, error) {
-
-	storage, err := newResourceStorage(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return storage.GetDiskMeta(ctx, diskID)
-}
-
 func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) {
 	switch key := encryptionDesc.Key.(type) {
 	case *types.EncryptionDesc_KeyHash:
@@ -741,6 +725,19 @@ func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) 
 	default:
 		return nil, errors.NewNonRetriableErrorf("unknown key %s", key)
 	}
+}
+
+func GetSnapshotMeta(
+	ctx context.Context,
+	snapshotID string,
+) (*snapshot_storage.SnapshotMeta, error) {
+
+	storage, err := newSnapshotStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return storage.GetSnapshotMeta(ctx, snapshotID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

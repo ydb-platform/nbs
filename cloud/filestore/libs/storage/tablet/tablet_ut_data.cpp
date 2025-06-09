@@ -382,6 +382,51 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldFlushFreshBytesByItemCountThreshold)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetFlushBytesItemCountThreshold(1000);
+        storageConfig.SetFlushBytesByItemCountEnabled(true);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        // Write 2 bytes 999 times
+        for (int i = 1; i <= 999; i++) {
+            tablet.WriteData(handle, i * 2, 2, 'a');
+        }
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1998, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(999, stats.GetFreshBytesItemCount());
+        }
+
+        // Write 1000th byte pair - FlushBytes should be triggered
+        tablet.WriteData(handle, 2000, 2, 'a');
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesItemCount());
+        }
+    }
+
     TABLET_TEST(ShouldAcceptLargeUnalignedWrites)
     {
         const auto rangeSize = 4 * tabletConfig.BlockSize;
@@ -2575,7 +2620,72 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         };
 
+        auto checkFlushBackpressureValues = [&](i64 value, i64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "FlushBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "FlushBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
+        auto checkCompactionBackpressureValues = [&](i64 value, i64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "CompactionBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "CompactionBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
+        auto checkCleanupBackpressureValues = [&](i64 value, i64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "CleanupBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "CleanupBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
+        auto checkFlushBytesBackpressureValues = [&](i64 value, i64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "FlushBytesBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "FlushBytesBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
         checkIsWriteAllowed(true);
+        checkFlushBackpressureValues(0, 2 * block);
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
@@ -2589,6 +2699,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
 
             checkIsWriteAllowed(false);
+            checkFlushBackpressureValues(2 * block, 2 * block);
         }
 
         tablet.Flush();
@@ -2608,6 +2719,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+            checkCompactionBackpressureValues(8, 8);
         }
 
         ui32 rangeId = GetMixedRangeIndex(id, 0);
@@ -2625,6 +2738,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+            checkCleanupBackpressureValues(20, 20);
         }
 
         tablet.Cleanup(rangeId); // 1 blob
@@ -2638,6 +2753,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+            checkFlushBytesBackpressureValues(block / 2, block / 2);
         }
 
         tablet.FlushBytes(); // 2 blobs

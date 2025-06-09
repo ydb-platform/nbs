@@ -407,7 +407,10 @@ private:
             HFunc(TEvService::TEvDestroyVolumeRequest, HandleDestroyVolumeRequest);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
         }
     }
 
@@ -437,7 +440,10 @@ private:
             HFunc(TEvVolume::TEvReallocateDiskRequest, HandleReallocateDiskRequest);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
         }
     }
 
@@ -1057,15 +1063,16 @@ public:
         return request;
     }
 
-    auto CreateAddLaggingDevicesRequest(
+    auto CreateAddOutdatedLaggingDevicesRequest(
         const TString& diskId,
         TVector<NProto::TLaggingDevice> laggingDevices)
     {
-        auto request =
-            std::make_unique<TEvDiskRegistry::TEvAddLaggingDevicesRequest>();
+        auto request = std::make_unique<
+            TEvDiskRegistry::TEvAddOutdatedLaggingDevicesRequest>();
         request->Record.SetDiskId(diskId);
         for (auto& laggingDevice: laggingDevices) {
-            *request->Record.AddLaggingDevices() = std::move(laggingDevice);
+            *request->Record.AddOutdatedLaggingDevices() =
+                std::move(laggingDevice);
         }
 
         return request;

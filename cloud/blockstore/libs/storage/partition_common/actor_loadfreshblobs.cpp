@@ -240,7 +240,10 @@ STFUNC(TLoadFreshBlobsActor::StateWork)
         HFunc(TEvBlobStorage::TEvRangeResult, HandleRangeResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -159,7 +159,10 @@ STFUNC(TDescribeBlocksActionActor::StateWork)
         HFunc(TEvVolume::TEvDescribeBlocksResponse, HandleDescribeBlocksResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

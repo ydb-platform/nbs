@@ -2,12 +2,12 @@
 
 #include "public.h"
 
-#include "disk_registry_state_notification.h"
-
 #include "disk_registry_database.h"
 #include "disk_registry_private.h"
 #include "disk_registry_self_counters.h"
+#include "disk_registry_state_notification.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/agent_list.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
@@ -39,7 +39,7 @@ struct TDiskInfo
     TVector<NProto::TDeviceConfig> Devices;
     TVector<NProto::TDeviceMigration> Migrations;
     TVector<TFinishedMigration> FinishedMigrations;
-    TVector<TLaggingDevice> LaggingDevices;
+    TVector<TLaggingDevice> OutdatedLaggingDevices;
     TVector<TVector<NProto::TDeviceConfig>> Replicas;
     TString MasterDiskId;
     ui32 LogicalBlockSize = 0;
@@ -59,6 +59,7 @@ struct TDiskInfo
     TVector<NProto::TDiskHistoryItem> History;
 
     ui64 GetBlocksCount() const;
+    TVector<TBlockRange64> GetDeviceRanges() const;
     TString GetPoolName() const;
 };
 
@@ -266,13 +267,14 @@ class TDiskRegistryState
         NProto::TCheckpointReplica CheckpointReplica;
 
         TVector<TDeviceId> DeviceReplacementIds;
+        THashSet<TString> LostDeviceIds;
 
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
 
         TVector<NProto::TDiskHistoryItem> History;
 
-        TVector<TLaggingDevice> LaggingDevices;
+        TVector<TLaggingDevice> OutdatedLaggingDevices;
     };
 
     struct TVolumeDeviceOverrides
@@ -358,6 +360,11 @@ public:
         TVector<NProto::TSuspendedDevice> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
         THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
+
+    ~TDiskRegistryState();
+
+    TDiskRegistryState(const TDiskRegistryState&) = delete;
+    TDiskRegistryState& operator=(const TDiskRegistryState&) = delete;
 
     struct TAgentRegistrationResult
     {
@@ -772,11 +779,11 @@ public:
         const TDeviceId& deviceId,
         bool isReplacement);
 
-    [[nodiscard]] NProto::TError AddLaggingDevices(
+    [[nodiscard]] NProto::TError AddOutdatedLaggingDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
-        TVector<NProto::TLaggingDevice> laggingDevices);
+        TVector<NProto::TLaggingDevice> outdatedDevices);
 
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
 
@@ -888,6 +895,9 @@ public:
         const TString& poolName,
         const ui64 totalByteCount) const;
 
+    THashSet<TDeviceId> GetUnavailableDevicesForDisk(
+        const TString& diskId) const;
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
@@ -919,8 +929,8 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         TInstant timestamp,
-        TVector<TDiskId>* affectedDisks,
-        TVector<TDiskId>* disksToReallocate);
+        TVector<TDiskId>& affectedDisks,
+        THashSet<TDiskId>& disksToReallocate);
 
     [[nodiscard]] TString GetDiskIdToNotify(const TString& diskId) const;
 
@@ -1109,7 +1119,7 @@ private:
         const TString& diskId,
         ui64 seqNo);
 
-    void RemoveLaggingDevices(
+    void RemoveOutdatedLaggingDevices(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         ui64 seqNo);
@@ -1354,6 +1364,10 @@ private:
     static bool MigrationCanBeStarted(
         const TDiskState& disk,
         const TString& deviceUUID);
+
+    void ReallocateDisksWithLostOrReappearedDevices(
+        const TAgentList::TAgentRegistrationResult& r,
+        THashSet<TDiskId>& disksToReallocate);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

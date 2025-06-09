@@ -57,11 +57,10 @@ struct TChangeNonreplDiskDevice
                 deviceConfig("dev-3", "uuid-1.3"),
             })};
 
-        State = std::make_unique<TDiskRegistryState>(
-            TDiskRegistryStateBuilder()
-                .WithKnownAgents(Agents)
-                .WithDisks({ Disk("disk-1", {"uuid-1.1", "uuid-1.2"}) })
-                .Build());
+        State = TDiskRegistryStateBuilder()
+                    .WithKnownAgents(Agents)
+                    .WithDisks({Disk("disk-1", {"uuid-1.1", "uuid-1.2"})})
+                    .Build();
     }
 };
 
@@ -106,13 +105,12 @@ struct TChangeMirrorDiskDevice
                 deviceConfig("dev-3", "uuid-2.3"),
             })};
 
-        State = std::make_unique<TDiskRegistryState>(
-            TDiskRegistryStateBuilder()
-                .WithKnownAgents(Agents)
-                .WithDisks({ MirrorDisk("disk-1", {
-                    {"uuid-1.1", "uuid-1.2"},
-                    {"uuid-2.1", "uuid-2.2"}}) })
-                .Build());
+        State = TDiskRegistryStateBuilder()
+                    .WithKnownAgents(Agents)
+                    .WithDisks({MirrorDisk(
+                        "disk-1",
+                        {{"uuid-1.1", "uuid-1.2"}, {"uuid-2.1", "uuid-2.2"}})})
+                    .Build();
     }
 };
 
@@ -137,12 +135,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateUpdatesTest)
 
         const auto diskId = "disk-1";
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents(agents)
-            .WithDisks({
-                Disk(diskId, { "uuid-1.1" })
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents(agents)
+                            .WithDisks({Disk(diskId, {"uuid-1.1"})})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             auto error = state.UpdateDiskBlockSize(Now(), db, "", 1_KB, false);
@@ -193,12 +190,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateUpdatesTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents(agents)
-            .WithDisks({
-                Disk(diskId, { deviceId })
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents(agents)
+                            .WithDisks({Disk(diskId, {deviceId})})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             auto error = state.UpdateDiskBlockSize(Now(), db, diskId, 128_KB, false);

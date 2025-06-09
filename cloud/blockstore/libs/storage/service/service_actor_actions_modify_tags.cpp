@@ -253,12 +253,30 @@ void TModifyTagsActionActor::HandleDescribeVolumeResponse(
         }
     }
 
+    bool changed = false;
+
     for (const auto& tag: Request.GetTagsToRemove()) {
-        tags.erase(tag);
+        if (tags.erase(tag) > 0) {
+            changed = true;
+        }
     }
 
     for (const auto& tag: Request.GetTagsToAdd()) {
-        tags.insert(tag);
+        auto [_, inserted] = tags.insert(tag);
+        if (inserted) {
+            changed = true;
+        }
+    }
+
+    if (!changed) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Skipping tag modification; tags are already as desired for volume "
+            "%s",
+            Request.GetDiskId().Quote().c_str());
+        ReplyAndDie(ctx, error);
+        return;
     }
 
     *VolumeConfig.MutableTagsStr() = JoinSeq(",", tags);
@@ -324,7 +342,10 @@ STFUNC(TModifyTagsActionActor::StateDescribeVolume)
         HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -335,7 +356,10 @@ STFUNC(TModifyTagsActionActor::StateAlterVolume)
         HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleAlterVolumeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -346,7 +370,10 @@ STFUNC(TModifyTagsActionActor::StateWaitReady)
         HFunc(TEvVolume::TEvWaitReadyResponse, HandleWaitReadyResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

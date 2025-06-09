@@ -190,7 +190,10 @@ STFUNC(TRebuildMetadataActor::StateWork)
             HandleRebuildMetadataResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -331,7 +334,10 @@ STFUNC(TRebuildMetadataStatusActor::StateWork)
             HandleGetRebuildMetadataStatusResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

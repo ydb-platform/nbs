@@ -268,7 +268,10 @@ STFUNC(THttpReadBlockActor::StateWork)
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlockRequest);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -311,6 +314,20 @@ void TPartitionActor::HandleHttpInfo_View(
     DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
 
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
+}
+
+void TPartitionActor::HandleHttpInfo_GetTransactionsLatency(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            TransactionTimeTracker.GetStatJson(GetCycleCount())));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

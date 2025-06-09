@@ -23,11 +23,13 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     const NActors::TActorContext& ctx,
+    NActors::TActorId migrationSrcActorId,
     NActors::TActorId srcActorId,
     NActors::TActorId dstActorId,
     bool takeOwnershipOverActors,
     std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator)
 {
+    MigrationSrcActorId = migrationSrcActorId;
     SrcActorId = srcActorId;
     DstActorId = dstActorId;
     TimeoutCalculator = std::move(timeoutCalculator);
@@ -111,7 +113,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
                 MakeIntrusive<TCallContext>()),
             BlockSize,
             range,
-            SrcActorId,
+            MigrationSrcActorId,
             DstActorId,
             RWClientId,
             BlockDigestGenerator,
@@ -127,7 +129,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
                 MakeIntrusive<TCallContext>()),
             BlockSize,
             range,
-            SrcActorId,
+            MigrationSrcActorId,
             DstActorId,
             RWClientId,
             BlockDigestGenerator,
@@ -141,7 +143,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationAllowed() const
 {
-    return SrcActorId && DstActorId && MigrationEnabled;
+    return MigrationSrcActorId && DstActorId && MigrationEnabled;
 }
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationFinished() const

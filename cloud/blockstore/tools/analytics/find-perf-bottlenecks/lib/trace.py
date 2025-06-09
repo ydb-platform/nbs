@@ -14,6 +14,9 @@ class Probe(object):
     def __init__(self, x):
         self.name = x[0]
         self.ts = x[1]
+        self.startBlock = None
+        self.requestSize = None
+        self.deviceUUID = None
 
         if self.name == "Fork":
             self.span = x[2]
@@ -27,10 +30,27 @@ class Probe(object):
         else:
             self.request = None
 
+        if self.name == "RequestStarted" and len(x) > 7:
+            self.startBlock = x[6]
+            self.requestSize = x[7]
+
+        if self.name == "RequestReceived_NonreplPartitionWorker" and len(x) > 4:
+            self.deviceUUID = x[4]
+
     def describe(self):
         x = self.name
         if self.request:
             x += ":" + self.request
+        additions = []
+        if self.startBlock:
+            additions.append("startBlock:" + self.startBlock)
+        if self.requestSize:
+            additions.append("size:" + self.requestSize)
+        if self.deviceUUID:
+            additions.append("device:" + self.deviceUUID)
+        params = ", ".join(additions)
+        if len(params):
+            x += " [{}]".format(params)
         return x
 
     def __str__(self):
@@ -50,7 +70,7 @@ class Trace(object):
             self.media_kind = j[0][3]
             # there is bug with arguments order for some tracing events, where media kind and reqid are swapped
             # example (correct one):
-            # ["RequestStarted",0,"ReadBlocks","1","12249921191883969784","a7lffa924b2p569p98eo"]
+            # ["RequestStarted",0,"ReadBlocks","1","12249921191883969784","a7lffa924b2p569p98eo","12823","65536"]
             # example (bad one)
             # ["BackgroundTaskStarted_Partition",0,"Compaction","10161783872880318072","1","c8rgmvrh9q3sv277aptm"]
             # This behaviour will be fixed in NBS-3069 and we need to add backward compatibility for this case

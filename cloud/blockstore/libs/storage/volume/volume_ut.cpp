@@ -153,6 +153,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         config.SetTabletRebootCoolDownIncrement(INCREMENT_TIME.MilliSeconds());
         config.SetTabletRebootCoolDownMax(MAX_TIME.MilliSeconds());
         config.SetThrottlingEnabled(false);
+        config.SetMaxWriteBlobErrorsBeforeSuicide(1);
         auto runtime = PrepareTestActorRuntime(config);
 
         TVolumeClient volume(*runtime);
@@ -948,32 +949,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, badMigrationConfigCounter->Val());
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(0, migratedRanges);
-    }
-
-    Y_UNIT_TEST(ShouldConvertTryAgainToRejectedWhenCanAllocateLocalDiskLater)
-    {
-        NProto::TStorageServiceConfig config;
-        config.SetLocalDiskAsyncDeallocationEnabled(true);
-
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        state->CurrentErrorCode = E_TRY_AGAIN;
-        auto runtime = PrepareTestActorRuntime(config, state);
-
-        TVolumeClient volume(*runtime);
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
-
-        volume.SendWaitReadyRequest();
-        {
-            auto response = volume.RecvWaitReadyResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
     }
 
     void DoShouldEnsureRejectWriteZeroRequestsOverlappingWithMigrating(
@@ -5342,12 +5317,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                                    TAutoPtr<IEventHandle>&) { return false; });
         auto now = Now();
         state->Disks["vol0"].IOModeTs = now;
+        state->Disks["vol0"].Devices[0].SetStateMessage("test_message");
+        state->Disks["vol0"].Devices[0].SetStateTs(now.MicroSeconds());
+        state->Disks["vol0"].Devices[0].SetState(NProto::DEVICE_STATE_WARNING);
         volume.ReallocateDisk();
         {
             // Lite reallocation happened. Meta history still contains 2 items.
             auto metaHistory = volume.ReadMetaHistory();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(2, metaHistory->MetaHistory.size());
         }
 
         state->Disks["vol0"].MuteIOErrors = true;
@@ -5361,6 +5338,21 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 now.MicroSeconds(),
                 metaHistory->MetaHistory.back().Meta.GetIOModeTs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "test_message",
+                metaHistory->MetaHistory.back()
+                    .Meta.GetDevices()[0]
+                    .GetStateMessage());
+            UNIT_ASSERT_VALUES_EQUAL(
+                now.MicroSeconds(),
+                metaHistory->MetaHistory.back()
+                    .Meta.GetDevices()[0]
+                    .GetStateTs());
+            UNIT_ASSERT_EQUAL(
+                NProto::DEVICE_STATE_WARNING,
+                metaHistory->MetaHistory.back()
+                    .Meta.GetDevices()[0]
+                    .GetState());
         }
     }
 
@@ -8363,19 +8355,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         volume.RebootTablet();
 
-        auto clientInfo = CreateVolumeClientInfo(
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL,
-            false);
-
         volume.GracefulShutdown();
         UNIT_ASSERT(partitionsStopped);
 
         // Check that volume after TEvGracefulShutdownRequest
-        // in zombie state and rejects requsts.
-        volume.SendGetVolumeInfoRequest();
-        auto response = volume.RecvGetVolumeInfoResponse();
-        UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
+        // not in zombie state.
+        volume.SendStatVolumeRequest();
+        auto response = volume.RecvStatVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldReturnClientsAndHostnameInStatVolumeResponse)
@@ -9294,59 +9281,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             response->Record.GetStorageConfig().GetCompactionRangeCountPerRun());
     }
 
-    Y_UNIT_TEST(ShouldUpdateUsedBlocksForEncryptedDiskRegistryBasedDisk)
-    {
-        auto runtime = PrepareTestActorRuntime();
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            7 * 1024,   // block count per partition
-            "vol0",
-            "cloud",
-            "folder",
-            1,    // partition count
-            0,    // blocksPerStripe
-            "",   // tags
-            "",   // baseDiskId
-            "",   // baseDiskCheckpointId
-            NProto::EEncryptionMode::ENCRYPTION_AES_XTS);
-
-        size_t updateUsedBlocksRequestCount = 0;
-        auto countUpdateUsedBlocksRequest =
-            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
-        {
-            switch (event->GetTypeRewrite()) {
-                case TEvVolume::EvUpdateUsedBlocksRequest: {
-                    ++updateUsedBlocksRequestCount;
-                }
-            }
-
-            return false;
-        };
-
-        runtime->SetEventFilter(countUpdateUsedBlocksRequest);
-
-        auto clientInfo = CreateVolumeClientInfo(
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL,
-            0);
-        volume.AddClient(clientInfo);
-
-        volume.WriteBlocks(
-            TBlockRange64::MakeOneBlock(1),
-            clientInfo.GetClientId(),
-            1u);
-
-        UNIT_ASSERT_VALUES_EQUAL(1u, updateUsedBlocksRequestCount);
-    }
-
     void DoShouldRejectRequestsWhenVolumeIsKilled(
         bool multipartition,
         bool trackUsed)
@@ -9906,6 +9840,95 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 E_BS_INVALID_SESSION,
                 response->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldForwardReadBlocksLocalRequestToMultipartitionVolume)
+    {
+        auto runtime = PrepareTestActorRuntime();
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD,
+            2048,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            2,          // partitions count
+            2           // blocksPerStripe
+        );
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        volume.AddClient(clientInfo);
+        volume.WaitReady();
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest: {
+                        auto response = std::make_unique<
+                            TEvPartitionCommonPrivate::TEvReadBlobResponse>(
+                            MakeError(E_IO, "Simulated blob read failure"));
+
+                        runtime->Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 3500),
+            clientInfo.GetClientId(),
+            1);
+
+        // ReadBlocksLocal
+        {
+            TGuardedBuffer<TString> Buffer =
+                TGuardedBuffer(TString::Uninitialized(1024 * DefaultBlockSize));
+            auto sgList = Buffer.GetGuardedSgList();
+            auto sgListOrError =
+                SgListNormalize(sgList.Acquire().Get(), DefaultBlockSize);
+
+            UNIT_ASSERT(!HasError(sgListOrError));
+            TGuardedSgList guardedSglist(
+                TSgList(std::move(sgListOrError.ExtractResult())));
+
+            auto request = volume.CreateReadBlocksLocalRequest(
+                TBlockRange64::WithLength(2000, 1024),
+                guardedSglist,
+                clientInfo.GetClientId());
+            request->Record.ShouldReportFailedRangesOnFailure = true;
+
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvReadBlocksLocalResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                response->Record.FailInfo.FailedRanges.size());
         }
     }
 }

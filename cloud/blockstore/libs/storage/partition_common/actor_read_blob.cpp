@@ -128,11 +128,7 @@ void TReadBlobActor::ReplyAndDie(
             RequestInfo->CallContext->RequestId);
     }
 
-    if (HasError(response->GetError())) {
-        TLongRunningOperationCompanion::RequestCancelled(ctx);
-    } else {
-        TLongRunningOperationCompanion::RequestFinished(ctx);
-    }
+    TLongRunningOperationCompanion::RequestFinished(ctx, response->GetError());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -312,7 +308,10 @@ STFUNC(TReadBlobActor::StateWork)
         HFunc(TEvents::TEvUndelivered, HandleUndelivered);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_COMMON);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_COMMON,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

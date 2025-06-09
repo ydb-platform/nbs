@@ -16,6 +16,7 @@ private:
     TNonreplicatedPartitionConfigPtr SrcConfig;
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> Migrations;
     NRdma::IClientPtr RdmaClient;
+    NActors::TActorId MigrationSrcActorId;
 
     bool UpdatingMigrationState = false;
     bool MigrationFinished = false;
@@ -31,7 +32,8 @@ public:
         TNonreplicatedPartitionConfigPtr srcConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
-        NActors::TActorId statActorId);
+        NActors::TActorId statActorId,
+        NActors::TActorId migrationSrcActorId);
 
     // IMigrationOwner implementation
     void OnBootstrap(const NActors::TActorContext& ctx) override;
@@ -42,6 +44,19 @@ public:
         ui64 migrationIndex) override;
     void OnMigrationFinished(const NActors::TActorContext& ctx) override;
     void OnMigrationError(const NActors::TActorContext& ctx) override;
+    NActors::TActorId GetActorToLockAndDrainRange() const override;
+
+private:
+    bool IsMigrationTarget(const NProto::TDeviceConfig& device) const
+    {
+        return AnyOf(
+            Migrations,
+            [&](const NProto::TDeviceMigration& m)
+            {
+                return m.GetTargetDevice().GetDeviceUUID() ==
+                       device.GetDeviceUUID();
+            });
+    }
 
 private:
     void PrepareForMigration(const NActors::TActorContext& ctx);

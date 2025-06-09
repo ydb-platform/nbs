@@ -74,7 +74,7 @@ public:
                             bootstrap.GetClientFactory());
 
                         tests.push_back(
-                            [=] () {
+                            [=, this] () {
                                 RunLoadTest(i, name, test);
                             });
 

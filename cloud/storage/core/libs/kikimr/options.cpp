@@ -91,6 +91,10 @@ TOptionsYdbBase::TOptionsYdbBase()
     Opts.AddLongOption("load-configs-from-cms", "load configs from CMS")
         .NoArgument()
         .StoreTrue(&LoadCmsConfigs);
+
+    Opts.AddLongOption("actor-system-available-cpu-cores-percentage")
+        .OptionalArgument("NUM")
+        .StoreResult(&ActorSystemAvailableCpuCoresPercentage);
 }
 
 }   // namespace NCloud::NStorage
