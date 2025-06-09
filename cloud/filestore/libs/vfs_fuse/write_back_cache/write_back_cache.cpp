@@ -232,14 +232,15 @@ public:
             // and apply cache on top of it
             return Session->ReadData(std::move(callContext), request).Apply(
                 [handle = request->GetHandle(),
-                startingFromOffset = request->GetOffset(),
-                length = request->GetLength(),
-                buffer = std::move(buffer),
-                parts = std::move(parts) ] (auto future)
+                 startingFromOffset = request->GetOffset(),
+                 length = request->GetLength(),
+                 buffer = std::move(buffer),
+                 parts = std::move(parts)] (auto future)
                 {
                     auto response = future.ExtractValue();
 
                     // TODO(svartmetal): handle response error
+                    Y_ABORT_UNLESS(SUCCEEDED(response.GetError().GetCode()));
 
                     if (response.GetBuffer().empty()) {
                         *response.MutableBuffer() = std::move(buffer);
@@ -247,7 +248,13 @@ public:
                     }
 
                     Y_ABORT_UNLESS(
-                        length == response.GetBuffer().length());
+                        length >= response.GetBuffer().length(),
+                        "expected length %lu to be >= than %lu",
+                        length,
+                        response.GetBuffer().length());
+                    // TODO(svartmetal): get rid of reallocation here
+                    response.MutableBuffer()->resize(length, 0);
+
                     // TODO(svartmetal): support buffer offsetting
                     Y_ABORT_UNLESS(0 == response.GetBufferOffset());
 
