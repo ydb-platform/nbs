@@ -15,10 +15,8 @@ FORK_SUBTESTS()
 SPLIT_FACTOR(4)
 
 GO_XTEST_SRCS(
-    ../disk_service_test/common_test.go
     ../disk_service_test/disk_relocation_test.go
     ../disk_service_test/disk_service_test.go
-    ../disk_service_test/disk_service_sharded_test.go
 )
 
 END()

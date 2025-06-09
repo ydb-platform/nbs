@@ -169,8 +169,12 @@ void TServiceActor::ForwardRequest(
 
         if (volume->State != TVolumeInfo::STARTED) {
             // Volume tablet is starting or rebooting
-            replyError(ctx, ev, E_REJECTED, TStringBuilder()
-                << "Volume not ready: " << diskId.Quote());
+            replyError(
+                ctx,
+                ev,
+                E_REJECTED,
+                TStringBuilder()
+                    << "Volume " << diskId.Quote() << " has not started yet");
             return;
         }
     }

@@ -26,6 +26,8 @@ public:
     TString GetArchiveStatsTableName() const;
     TString GetBlobLoadMetricsTableName() const;
     TString GetHistoryTablePrefix() const;
+    TString GetGroupsTableName() const;
+    TString GetPartitionsTableName() const;
     TString GetDatabaseName() const;
     TString GetTokenFile() const;
     TString GetServerAddress() const;

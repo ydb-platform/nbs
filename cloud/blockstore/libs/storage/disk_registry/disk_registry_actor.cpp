@@ -32,6 +32,13 @@ const TDiskRegistryActor::TStateInfo TDiskRegistryActor::States[STATE_MAX] = {
     { "Zombie",   (IActor::TReceiveFunc)&TDiskRegistryActor::StateZombie   },
 };
 
+const TString DiskRegistryTransactions[] = {
+#define TRANSACTION_NAME(name, ...) #name,
+    BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS(TRANSACTION_NAME)
+#undef TRANSACTION_NAME
+        "Total",
+};
+
 TDiskRegistryActor::TDiskRegistryActor(
         const TActorId& owner,
         TTabletStorageInfoPtr storage,
@@ -41,12 +48,13 @@ TDiskRegistryActor::TDiskRegistryActor(
         NNotify::IServicePtr notifyService,
         ILoggingServicePtr logging)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
+    , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , LogbrokerService(std::move(logbrokerService))
     , NotifyService(std::move(notifyService))
     , Logging(std::move(logging))
+    , TransactionTimeTracker(DiskRegistryTransactions)
 {}
 
 TDiskRegistryActor::~TDiskRegistryActor()
@@ -636,7 +644,10 @@ STFUNC(TDiskRegistryActor::StateInit)
 
         default:
             if (!RejectRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -713,7 +724,10 @@ STFUNC(TDiskRegistryActor::StateWork)
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -763,7 +777,8 @@ STFUNC(TDiskRegistryActor::StateRestore)
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
                     ev,
-                    TBlockStoreComponents::DISK_REGISTRY);
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -830,7 +845,8 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
                     ev,
-                    TBlockStoreComponents::DISK_REGISTRY);
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -857,7 +873,10 @@ STFUNC(TDiskRegistryActor::StateZombie)
 
         default:
             if (!RejectRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

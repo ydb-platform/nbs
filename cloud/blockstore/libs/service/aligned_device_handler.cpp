@@ -89,53 +89,13 @@ NProto::TError TryToNormalize(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlocksInfo::TBlocksInfo(ui64 from, ui64 length, ui32 blockSize)
-    : BlockSize(blockSize)
-{
-    ui64 startIndex = from / blockSize;
-    ui64 beginOffset = from - startIndex * blockSize;
-
-    auto realLength = beginOffset + length;
-    ui64 blocksCount = realLength / blockSize;
-
-    if (blocksCount * blockSize < realLength) {
-        ++blocksCount;
-    }
-
-    ui64 endOffset = blocksCount * blockSize - realLength;
-
-    Range = TBlockRange64::WithLength(startIndex, blocksCount);
-    BeginOffset = beginOffset;
-    EndOffset = endOffset;
-}
-
-size_t TBlocksInfo::BufferSize() const
-{
-    return Range.Size() * BlockSize - BeginOffset - EndOffset;
-}
-
-bool TBlocksInfo::IsAligned() const
-{
-    return SgListAligned && BeginOffset == 0 && EndOffset == 0;
-}
-
-TBlocksInfo TBlocksInfo::MakeAligned() const
-{
-    TBlocksInfo result(*this);
-    result.BeginOffset = 0;
-    result.EndOffset = 0;
-    result.SgListAligned = true;
-    return result;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 TAlignedDeviceHandler::TAlignedDeviceHandler(
         IStoragePtr storage,
         TString diskId,
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
+        ui32 maxZeroBlocksSubRequestSize,
         bool checkBufferModificationDuringWriting,
         bool isReliableMediaKind)
     : Storage(
@@ -146,9 +106,11 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
     , ClientId(std::move(clientId))
     , BlockSize(blockSize)
     , MaxBlockCount(maxSubRequestSize / BlockSize)
+    , MaxBlockCountForZeroBlocksRequest(maxZeroBlocksSubRequestSize / BlockSize)
     , IsReliableMediaKind(isReliableMediaKind)
 {
     Y_ABORT_UNLESS(MaxBlockCount > 0);
+    Y_ABORT_UNLESS(MaxBlockCountForZeroBlocksRequest > 0);
 }
 
 TFuture<NProto::TReadBlocksLocalResponse> TAlignedDeviceHandler::Read(
@@ -273,7 +235,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     // sub-request and leave the rest in original sgList.
     request->Sglist = TakeHeadBlocks(sgList, requestBlockCount);
     if (request->Sglist.Empty()) {
-        return MakeFuture<NProto::TReadBlocksResponse>(
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(
             CreateErrorAcquireResponse());
     }
 
@@ -312,7 +274,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
                     std::move(sgList),
                     std::move(checkpointId));
             }
-            return MakeFuture<NProto::TReadBlocksResponse>(
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
                 TErrorResponse(E_CANCELLED));
         });
 }
@@ -409,7 +371,9 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
 {
     Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
 
-    auto requestBlockCount = std::min<ui32>(blocksInfo.Range.Size(), MaxBlockCount);
+    auto requestBlockCount = std::min<ui32>(
+        blocksInfo.Range.Size(),
+        MaxBlockCountForZeroBlocksRequest);
 
     auto request = std::make_shared<NProto::TZeroBlocksRequest>();
     request->MutableHeaders()->SetRequestId(ctx->RequestId);

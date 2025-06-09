@@ -2,8 +2,8 @@ LIBRARY()
 
 SRCS(
     config.cpp
-    ydbrow.cpp
     ydbauth.cpp
+    ydbrow.cpp
     ydbscheme.cpp
     ydbstats.cpp
     ydbstorage.cpp

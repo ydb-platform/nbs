@@ -203,7 +203,10 @@ STFUNC(TGetShardStatsActor::StateWork)
             HandleGetStorageStatsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -241,6 +244,8 @@ TIndexTabletActor::TMetrics::TMetrics(IMetricsRegistryPtr metricsRegistry)
 
 void TIndexTabletActor::TMetrics::Register(
     const TString& fsId,
+    const TString& cloudId,
+    const TString& folderId,
     const TString& mediaKind)
 {
     if (Initialized) {
@@ -252,7 +257,11 @@ void TIndexTabletActor::TMetrics::Register(
         StorageRegistry);
 
     FsRegistry = CreateScopedMetricsRegistry(
-        {CreateLabel("filesystem", fsId)},
+        {
+            CreateLabel("filesystem", fsId),
+            CreateLabel("cloud", cloudId),
+            CreateLabel("folder", folderId),
+        },
         StorageFsRegistry);
     AggregatableFsRegistry = CreateScopedMetricsRegistry(
         {},
@@ -354,6 +363,7 @@ void TIndexTabletActor::TMetrics::Register(
         EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(FreshBytesItemCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(DeletedFreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBlobsCount, EMetricType::MT_ABSOLUTE);
@@ -369,6 +379,14 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(CMGarbageBlocksCount, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IsWriteAllowed, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(FlushBackpressureValue, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(FlushBackpressureThreshold, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(FlushBytesBackpressureValue, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(FlushBytesBackpressureThreshold, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CompactionBackpressureValue, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CompactionBackpressureThreshold, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CleanupBackpressureValue, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(CleanupBackpressureThreshold, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
@@ -510,6 +528,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UsedLocksCount, stats.GetUsedLocksCount());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
+    Store(FreshBytesItemCount, stats.GetFreshBytesItemCount());
     Store(DeletedFreshBytesCount, stats.GetDeletedFreshBytesCount());
     Store(MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
     Store(MixedBlobsCount, stats.GetMixedBlobsCount());
@@ -529,6 +548,15 @@ void TIndexTabletActor::TMetrics::Update(
             backpressureThresholds,
             backpressureValues,
             &backpressureReason));
+
+    Store(FlushBackpressureValue, backpressureValues.Flush);
+    Store(FlushBackpressureThreshold, backpressureThresholds.Flush);
+    Store(FlushBytesBackpressureValue, backpressureValues.FlushBytes);
+    Store(FlushBytesBackpressureThreshold, backpressureThresholds.FlushBytes);
+    Store(CompactionBackpressureValue, backpressureValues.CompactionScore);
+    Store(CompactionBackpressureThreshold, backpressureThresholds.CompactionScore);
+    Store(CleanupBackpressureValue, backpressureValues.CleanupScore);
+    Store(CleanupBackpressureThreshold, backpressureThresholds.CleanupScore);
 
     Store(MaxReadIops, performanceProfile.GetMaxReadIops());
     Store(MaxWriteIops, performanceProfile.GetMaxWriteIops());
@@ -733,7 +761,7 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         BuildBackpressureThresholds(),
         GetBackpressureValues());
 
-    Metrics.Register(fsId, storageMediaKind);
+    Metrics.Register(fsId, fs.GetCloudId(), fs.GetFolderId(), storageMediaKind);
 }
 
 void TIndexTabletActor::ScheduleUpdateCounters(const TActorContext& ctx)
@@ -879,6 +907,8 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetSuffer(Metrics.Suffer.load(std::memory_order_relaxed));
 
     stats->SetTotalBlocksCount(GetFileSystem().GetBlocksCount());
+
+    stats->SetFreshBytesItemCount(GetFreshBytesItemCount());
 }
 
 void TIndexTabletActor::HandleGetStorageStats(

@@ -230,7 +230,10 @@ STFUNC(TCreateFileStoreActor::StateCreateFileStore)
         HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleCreateFileStoreResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -241,7 +244,10 @@ STFUNC(TCreateFileStoreActor::StateCreateDir)
         HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleCreateDirResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -457,12 +457,6 @@ void TClientHandler::SendRequest(
             request->Complete({});
             return;
         }
-
-        case EClientRequestType::UnmountVolume: {
-            STORAGE_DEBUG(ExportInfo << " Dionnected from server");
-            request->Complete({});
-            return;
-        }
     }
 
     auto [it, inserted] = RequestsInFlight.emplace(
@@ -571,10 +565,6 @@ void TClientHandler::ProcessRequests_Structured(TRequestReader& in)
                 break;
             }
             case EClientRequestType::MountVolume: {
-                Y_ABORT("MountVolume request should not get receive");
-            }
-
-            case EClientRequestType::UnmountVolume: {
                 Y_ABORT("MountVolume request should not get receive");
             }
         }

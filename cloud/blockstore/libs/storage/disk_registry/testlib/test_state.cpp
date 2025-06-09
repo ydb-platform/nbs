@@ -483,9 +483,9 @@ TDiskRegistryStateBuilder TDiskRegistryStateBuilder::LoadState(
     return builder;
 }
 
-TDiskRegistryState TDiskRegistryStateBuilder::Build()
+std::unique_ptr<TDiskRegistryState> TDiskRegistryStateBuilder::Build()
 {
-    return TDiskRegistryState(
+    return std::make_unique<TDiskRegistryState>(
         std::move(Logging),
         std::move(StorageConfig),
         std::move(Counters),

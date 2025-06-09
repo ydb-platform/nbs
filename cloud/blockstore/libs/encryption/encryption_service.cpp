@@ -149,7 +149,11 @@ public:
 
             const auto& sessionOrError = f.GetValue();
 
-            STORAGE_INFO(
+            ELogPriority logPriority = HasError(sessionOrError)
+                                           ? ELogPriority::TLOG_ERR
+                                           : ELogPriority::TLOG_INFO;
+            STORAGE_LOG(
+                logPriority,
                 TRequestInfo(
                     EBlockStoreRequest::MountVolume,
                     ctx->RequestId,

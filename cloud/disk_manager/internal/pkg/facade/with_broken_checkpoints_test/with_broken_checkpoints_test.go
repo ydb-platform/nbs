@@ -247,7 +247,8 @@ func testCreateSnapshotOrImageFromDiskWithFailedShadowDisk(
 			return
 		}
 
-		if strings.Contains(err.Error(), "Device disabled") {
+		if strings.Contains(err.Error(), "Device disabled") ||
+			strings.Contains(err.Error(), "Can't GetChangedBlocks when shadow disk is broken") {
 			// Dataplane task failed with 'Device disabled' error, but shadow
 			// disk was filled successfully.
 			// TODO: improve this test after https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2541530203

@@ -47,6 +47,7 @@ public:
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
+        ui32 maxZeroBlocksSubRequestSize,
         ui32 maxUnalignedRequestSize,
         bool checkBufferModificationDuringWriting,
         bool isReliableMediaKind);
@@ -77,12 +78,19 @@ private:
     // returned. This flag should not be disregarded.
     [[nodiscard]] bool RegisterRequest(TModifyRequestPtr request);
 
-    NThreading::TFuture<NProto::TReadBlocksResponse>
+    NThreading::TFuture<NProto::TReadBlocksLocalResponse>
     ExecuteUnalignedReadRequest(
         TCallContextPtr ctx,
         TBlocksInfo blocksInfo,
         TGuardedSgList sgList,
         TString checkpointId) const;
+
+    NThreading::TFuture<NProto::TZeroBlocksResponse> Zero(
+        TCallContextPtr ctx,
+        const TBlocksInfo& blocksInfo);
+    NThreading::TFuture<NProto::TZeroBlocksResponse> ExecuteZeroBlocksRequest(
+        TCallContextPtr ctx,
+        const TBlocksInfo& blocksInfo);
 
     void OnRequestFinished(TModifyRequestWeakPtr weakRequest);
 };

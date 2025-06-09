@@ -3,6 +3,8 @@
 #include "actors/io_request_parser.h"
 
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -45,7 +47,10 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
         RdmaServer,
         NvmeManager,
         std::move(rdmaTargetConfig),
-        OldRequestCounters);
+        OldRequestCounters,
+        CreateMultiAgentWriteHandler(
+            TActivationContext::ActorSystem(),
+            ctx.SelfID));
 
     auto* actorSystem = TActivationContext::ActorSystem();
     auto replyTo = ctx.SelfID;

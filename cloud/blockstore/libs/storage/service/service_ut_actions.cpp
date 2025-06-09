@@ -276,6 +276,52 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         service.DestroyVolume();
     }
 
+    Y_UNIT_TEST(ShouldNotAlterVolumeIfTagsNotChanged)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume();
+
+        {
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            *request.AddTagsToAdd() = "a";
+            *request.AddTagsToAdd() = "b";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("ModifyTags", buf);
+        }
+
+        {
+            bool alterVolume = false;
+            env.GetRuntime().SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvSSProxy::EvModifySchemeRequest: {
+                            alterVolume = true;
+                        }
+                    }
+
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            *request.AddTagsToAdd() = "b";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("ModifyTags", buf);
+
+            UNIT_ASSERT_VALUES_EQUAL(false, alterVolume);
+        }
+    }
+
     Y_UNIT_TEST(ShouldAllowToChangeBaseDiskId)
     {
         TTestEnv env;
@@ -433,6 +479,34 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         const auto* group = drState->PlacementGroups.FindPtr("group-1");
         UNIT_ASSERT(group);
         UNIT_ASSERT_VALUES_EQUAL(100, group->Settings.GetMaxDisksInGroup());
+    }
+
+    Y_UNIT_TEST(ShouldForwardMarkReplacementDeviceToDiskRegistry)
+    {
+        auto drState = MakeIntrusive<TDiskRegistryState>();
+        TTestEnv env(1, 1, 4, 1, {drState});
+
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString deviceUUID = "device1";
+
+        UNIT_ASSERT(!drState->DeviceReplacementUUIDs.contains(deviceUUID));
+
+        NProto::TMarkReplacementDeviceRequest request;
+        request.SetDeviceId(deviceUUID);
+        request.SetIsReplacement(true);
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        auto executeResponse =
+            service.ExecuteAction("markreplacementdevice", buf);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, executeResponse->GetStatus());
+
+        UNIT_ASSERT(drState->DeviceReplacementUUIDs.contains(deviceUUID));
     }
 
     Y_UNIT_TEST(ShouldRebindLocalVolumes)

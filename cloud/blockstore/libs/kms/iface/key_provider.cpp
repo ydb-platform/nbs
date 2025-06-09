@@ -21,6 +21,7 @@ namespace {
 
 class TKmsKeyProvider
     : public IKmsKeyProvider
+    , public std::enable_shared_from_this<TKmsKeyProvider>
 {
 private:
     const TExecutorPtr Executor;
@@ -42,11 +43,16 @@ public:
 
     TFuture<TResponse> GetKey(
         const NProto::TKmsKey& kmsKey,
-        const TString& diskId)
+        const TString& diskId) override
     {
-        return Executor->Execute([=] () mutable {
-            return DoReadKeyFromKMS(diskId, kmsKey);
-        });
+        return Executor->Execute(
+            [diskId, kmsKey, self = weak_from_this()]() mutable
+            {
+                if (auto p = self.lock()) {
+                    return p->DoReadKeyFromKMS(diskId, kmsKey);
+                }
+                return TResponse{MakeError(E_CANCELLED, "KmsKeyProvider dead")};
+            });
     }
 
 private:
@@ -98,7 +104,7 @@ private:
         return TEncryptionKey(kmsResponse.ExtractResult());
     }
 
-    TResultOrError<TString> SafeBase64Decode(TString encoded)
+    static TResultOrError<TString> SafeBase64Decode(const TString& encoded)
     {
         try {
             return Base64Decode(encoded);

@@ -441,6 +441,158 @@ void OutputClientInfo(
     }
 }
 
+void RenderTextWithTooltip(
+    IOutputStream& out,
+    const TString& text,
+    const TString& tooltip)
+{
+    HTML (out) {
+        DIV_CLASS ("tooltip-latency") {
+            out << text;
+            if (tooltip) {
+                SPAN_CLASS ("tooltiptext-latency") {
+                    out << tooltip;
+                }
+            }
+        }
+    }
+}
+
+void RenderLatencyTable(IOutputStream& out, const TString& parentId)
+{
+    HTML (out) {
+        TABLE_CLASS ("table-latency") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Time";
+                    }
+                    TABLEH () {
+                        out << "Ok";
+                    }
+                    TABLEH () {
+                        out << "Fail";
+                    }
+                    TABLEH () {
+                        out << "Inflight";
+                    }
+                }
+            }
+
+            for (const auto& [key, descr, tooltip]:
+                 TRequestsTimeTracker::GetTimeBuckets())
+            {
+                TABLER () {
+                    TABLED () {
+                        RenderTextWithTooltip(out, descr, tooltip);
+                    }
+                    TABLED_ATTRS ({{"id", parentId + "_ok_" + key}}) {
+                    }
+                    TABLED_ATTRS ({{"id", parentId + "_fail_" + key}}) {
+                    }
+                    TABLED_ATTRS ({{"id", parentId + "_inflight_" + key}}) {
+                    }
+                }
+            }
+        }
+    }
+}
+
+void RenderPercentilesTable(IOutputStream& out, const TString& parentId)
+{
+    HTML (out) {
+        TABLE_CLASS ("table-latency") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        RenderTextWithTooltip(out, "Perc", "Percentile");
+                    }
+                    TABLEH () {
+                        RenderTextWithTooltip(out, "R", "Read");
+                    }
+                    TABLEH () {
+                        RenderTextWithTooltip(out, "W", "Write");
+                    }
+                    TABLEH () {
+                        RenderTextWithTooltip(out, "Z", "Zero");
+                    }
+                    TABLEH () {
+                        RenderTextWithTooltip(out, "D", "Describe");
+                    }
+                }
+            }
+
+            for (const auto& [key, descr, tooltip]:
+                 TRequestsTimeTracker::GetPercentileBuckets())
+            {
+                TABLER () {
+                    TABLED () {
+                        RenderTextWithTooltip(out, descr, tooltip);
+                    }
+                    TABLED_ATTRS ({{"id", "R_" + parentId + "_ok_" + key}}) {
+                    }
+                    TABLED_ATTRS ({{"id", "W_" + parentId + "_ok_" + key}}) {
+                    }
+                    TABLED_ATTRS ({{"id", "Z_" + parentId + "_ok_" + key}}) {
+                    }
+                    TABLED_ATTRS ({{"id", "D_" + parentId + "_ok_" + key}}) {
+                    }
+                }
+            }
+        }
+    }
+}
+
+void RenderSizeTable(IOutputStream& out, ui32 blockSize)
+{
+    HTML (out) {
+        TABLE_CLASS ("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Size";
+                    }
+                    TABLEH () {
+                        out << "Read";
+                    }
+                    TABLEH () {
+                        out << "Write";
+                    }
+                    TABLEH () {
+                        out << "Zero";
+                    }
+                    TABLEH () {
+                        out << "Describe";
+                    }
+                }
+            }
+            for (const auto& [key, descr, tooltip]:
+                 TRequestsTimeTracker::GetSizeBuckets(blockSize))
+            {
+                TABLER () {
+                    TABLED () {
+                        TAG (TH4) {
+                            out << "Size: " << descr;
+                        }
+                        RenderPercentilesTable(out, key);
+                    }
+                    TABLED () {
+                        RenderLatencyTable(out, "R_" + key);
+                    }
+                    TABLED_ATTRS () {
+                        RenderLatencyTable(out, "W_" + key);
+                    }
+                    TABLED_ATTRS () {
+                        RenderLatencyTable(out, "Z_" + key);
+                    }
+                    TABLED_ATTRS () {
+                        RenderLatencyTable(out, "D_" + key);
+                    }
+                }
+            }
+        }
+    }
+}
 
 } // namespace
 
@@ -480,6 +632,8 @@ void TVolumeActor::HandleHttpInfo(
 
     const THttpHandlers getActions {{
         {"rendernpinfo", &TActor::HandleHttpInfo_RenderNonreplPartitionInfo },
+        {"getRequestsLatency", &TActor::HandleHttpInfo_GetRequestsLatency },
+        {"getTransactionsLatency", &TActor::HandleHttpInfo_GetTransactionsLatency },
     }};
 
     auto* msg = ev->Get();
@@ -505,7 +659,7 @@ void TVolumeActor::HandleHttpInfo(
         auto params = GatherHttpParameters(*msg);
         const auto& action = params.Get("action");
 
-        if (auto* handler = postActions.FindPtr(action)) {
+        if (const auto* handler = postActions.FindPtr(action)) {
             if (methodType != HTTP_METHOD_POST) {
                 RejectHttpRequest(ctx, *requestInfo, "Wrong HTTP method");
                 return;
@@ -515,7 +669,7 @@ void TVolumeActor::HandleHttpInfo(
             return;
         }
 
-        if (auto* handler = getActions.FindPtr(action)) {
+        if (const auto* handler = getActions.FindPtr(action)) {
             std::invoke(*handler, this, ctx, params, std::move(requestInfo));
             return;
         }
@@ -582,6 +736,8 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* historyTabName = "History";
     const char* checkpointsTabName = "Checkpoints";
     const char* linksTabName = "Links";
+    const char* latencyTabName = "Latency";
+    const char* transactionsTabName = "Transactions";
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
     const char* rawVolumeConfigTabName = "RawVolumeConfig";
@@ -593,6 +749,8 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* historyTab = inactiveTab;
     const char* checkpointsTab = inactiveTab;
     const char* linksTab = inactiveTab;
+    const char* latencyTab = inactiveTab;
+    const char* transactionsTab = inactiveTab;
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
@@ -605,6 +763,10 @@ void TVolumeActor::HandleHttpInfo_Default(
         checkpointsTab = activeTab;
     } else if (tabName == linksTabName) {
         linksTab = activeTab;
+    } else if (tabName == latencyTabName) {
+        latencyTab = activeTab;
+    } else if (tabName == transactionsTabName) {
+        transactionsTab = activeTab;
     } else if (tabName == tracesTabName) {
         tracesTab = activeTab;
     } else if (tabName == storageConfigTabName) {
@@ -616,6 +778,8 @@ void TVolumeActor::HandleHttpInfo_Default(
     TStringStream out;
 
     HTML(out) {
+        AddLatencyCSS(out);
+
         DIV_CLASS_ID("container-fluid", "tabs") {
             BuildVolumeTabs(out);
 
@@ -635,6 +799,14 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(linksTab, linksTabName) {
                     RenderLinks(out);
+                }
+
+                DIV_CLASS_ID(latencyTab, latencyTabName) {
+                    RenderLatency(out);
+                }
+
+                DIV_CLASS_ID(transactionsTab, transactionsTabName) {
+                    RenderTransactions(out);
                 }
 
                 DIV_CLASS_ID(tracesTab, tracesTabName) {
@@ -903,10 +1075,122 @@ void TVolumeActor::RenderLinks(IOutputStream& out) const
     }
 }
 
+void TVolumeActor::RenderLatency(IOutputStream& out) const {
+    using namespace NMonitoringUtils;
+
+    if (!State) {
+        return;
+    }
+
+    const TString script = R"(
+        <script>
+            function applyRequestsValues(stat) {
+                for (let key in stat) {
+                    const element = document.getElementById(key);
+                    if (element) {
+                        element.textContent = stat[key];
+                    }
+                }
+            }
+
+            function loadRequestsLatency() {
+                var url = '?action=getRequestsLatency';
+                url += '&TabletID=)" + ToString(TabletID()) + R"(';
+                $.ajax({
+                    url: url,
+                    success: function(result) {
+                        applyRequestsValues(result.stat);
+                        applyRequestsValues(result.percentiles);
+                    },
+                    error: function(jqXHR, status) {
+                        console.log('error');
+                    }
+                });
+            }
+
+            setInterval(function() { loadRequestsLatency(); }, 1000);
+            loadRequestsLatency();
+        </script>
+        )";
+
+ const TString style = R"(
+        <style>
+            .table-latency {
+                width: 100%;
+                border-collapse: collapse;
+                padding: 0;
+            }
+
+            .table-latency th,
+            .table-latency td {
+                padding: 0 8px 0 8px;
+                border: none;
+            }
+
+            .table-latency th {
+                font-weight: bold;
+                text-align: center;
+            }
+
+            .table-latency td {
+                text-align: right;
+            }
+
+            .table-latency th:not(:last-child),
+            .table-latency td:not(:last-child) {
+                border-right: 1px solid black;
+            }
+
+            .tooltip-latency {
+                position: relative;
+                display: inline-block;
+            }
+
+            .tooltip-latency .tooltiptext-latency {
+                visibility: hidden;
+                width: 120px;
+                background-color: black;
+                color: #fff;
+                text-align: center;
+                border-radius: 6px;
+                padding: 5px 0;
+                position: absolute;
+                z-index: 1;
+            }
+
+            .tooltip-latency:hover .tooltiptext-latency {
+                visibility: visible;
+            }
+
+        </style>
+        )";
+
+    HTML (out) {
+        out << script;
+        out << style;
+
+        DIV_CLASS ("row") {
+            RenderSizeTable(out, State->GetBlockSize());
+        }
+    }
+}
+
+void TVolumeActor::RenderTransactions(IOutputStream& out) const
+{
+    HTML (out) {
+        DumpLatency(
+            out,
+            TabletID(),
+            TransactionTimeTracker,
+            8   // columnCount
+        );
+    }
+}
+
 void TVolumeActor::RenderTraces(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
-    const auto& diskId = State->GetMeta().GetVolumeConfig().GetDiskId();
+    const auto& diskId = State->GetDiskId();
     HTML(out) {
         DIV_CLASS("row") {
             TAG(TH3) {
@@ -2155,6 +2439,40 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
     }
 
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
+}
+
+void TVolumeActor::HandleHttpInfo_GetRequestsLatency(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    if (!State) {
+        return;
+    }
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            RequestTimeTracker.GetStatJson(
+                GetCycleCount(),
+                State->GetBlockSize())));
+}
+
+void TVolumeActor::HandleHttpInfo_GetTransactionsLatency(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            TransactionTimeTracker.GetStatJson(GetCycleCount())));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

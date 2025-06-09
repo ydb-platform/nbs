@@ -78,7 +78,8 @@ TVector<NProto::TAgentConfig> CreateSeveralAgents()
             })};
 }
 
-TDiskRegistryState CreateTestState(const TVector<NProto::TAgentConfig>& agents)
+std::unique_ptr<TDiskRegistryState> CreateTestState(
+    const TVector<NProto::TAgentConfig>& agents)
 {
     return TDiskRegistryStateBuilder()
         .WithKnownAgents(agents)
@@ -115,7 +116,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             })
         };
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithKnownAgents(agents)
                 .WithDisks({
@@ -127,6 +128,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                      TDirtyDevice{"uuid-4.2", {}},
                      TDirtyDevice{"uuid-4.3", {}}})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT(state.IsMigrationListEmpty());
 
@@ -300,10 +302,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             AgentConfig(3, { Device("dev-1", "uuid-3.1", "rack-1") }),
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents(agents)
-            .WithDisks({ Disk("foo", { "uuid-1.1" }) })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents(agents)
+                            .WithDisks({Disk("foo", {"uuid-1.1"})})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             auto affectedDisks = ChangeAgentState(
@@ -413,13 +416,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             }),
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents(agents)
-            .WithDisks({
-                Disk("foo", { "uuid-1.1" }),
-                Disk("bar", { "uuid-1.2", "uuid-1.3" })
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents(agents)
+                            .WithDisks(
+                                {Disk("foo", {"uuid-1.1"}),
+                                 Disk("bar", {"uuid-1.2", "uuid-1.3"})})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
@@ -499,10 +502,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .With(diskRegistryGroup)
-            .WithKnownAgents(agents)
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .With(diskRegistryGroup)
+                            .WithKnownAgents(agents)
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto minusCounter =
             diskRegistryGroup->GetCounter("Mirror3DisksMinus1");
@@ -999,17 +1003,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             Device("dev-2", "uuid-1.2")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({agent})
-            .WithDisks({
-                Disk("foo", {"uuid-1.1"}),
-                [] {
-                    auto config = Disk("bar", {"uuid-1.2"});
-                    config.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
-                    return config;
-                }()
-            })
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({agent})
+                            .WithDisks(
+                                {Disk("foo", {"uuid-1.1"}),
+                                 []
+                                 {
+                                     auto config = Disk("bar", {"uuid-1.2"});
+                                     config.SetStorageMediaKind(
+                                         NProto::STORAGE_MEDIA_SSD_LOCAL);
+                                     return config;
+                                 }()})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT(state.IsMigrationListEmpty());
 
@@ -1055,14 +1061,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             db.InitSchema();
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents(agents)
-            .WithDisks({
-                Disk("disk-1", {"uuid-1.1", "uuid-1.2"}),
-                Disk("disk-2", {"uuid-2.1"}),
-            })
-            .WithStorageConfig(std::move(config))
-            .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents(agents)
+                            .WithDisks({
+                                Disk("disk-1", {"uuid-1.1", "uuid-1.2"}),
+                                Disk("disk-2", {"uuid-2.1"}),
+                            })
+                            .WithStorageConfig(std::move(config))
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
 
@@ -1185,7 +1192,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         const TVector agents = CreateSeveralAgents();
 
-        TDiskRegistryState state = CreateTestState(agents);
+        auto statePtr = CreateTestState(agents);
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());
@@ -1325,7 +1333,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         const TVector agents = CreateSeveralAgents();
 
-        TDiskRegistryState state = CreateTestState(agents);
+        auto statePtr = CreateTestState(agents);
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());
@@ -1445,7 +1454,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         const TVector agents = CreateSeveralAgents();
 
-        TDiskRegistryState state = CreateTestState(agents);
+        auto statePtr = CreateTestState(agents);
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());
@@ -1568,7 +1578,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         const TVector agents = CreateSeveralAgents();
 
-        TDiskRegistryState state = CreateTestState(agents);
+        auto statePtr = CreateTestState(agents);
+        TDiskRegistryState& state = *statePtr;
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());

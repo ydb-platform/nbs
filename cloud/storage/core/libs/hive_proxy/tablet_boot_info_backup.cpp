@@ -238,7 +238,7 @@ STFUNC(TTabletBootInfoBackup::StateWork)
         HFunc(TEvHiveProxy::TEvBackupTabletBootInfosRequest, HandleBackupTabletBootInfos);
         HFunc(TEvHiveProxy::TEvListTabletBootInfoBackupsRequest, HandleListTabletBootInfoBackups);
         default:
-            HandleUnexpectedEvent(ev, LogComponent);
+            HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "part_nonrepl_events_private.h"
+#include "rdma_device_request_handler.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
@@ -28,25 +29,25 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceRequestContext: public NRdma::TNullContext
-{
-    ui32 DeviceIdx = 0;
-};
-
-struct TDeviceReadRequestContext: public TDeviceRequestContext
+struct TDeviceReadRequestContext: public TDeviceRequestRdmaContext
 {
     ui64 StartIndexOffset = 0;
     ui64 BlockCount = 0;
 };
-////////////////////////////////////////////////////////////////////////////////
-
-bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err);
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TNonreplicatedPartitionRdmaActor final
     : public NActors::TActorBootstrapped<TNonreplicatedPartitionRdmaActor>
 {
+    struct TDeviceRequestContext
+    {
+        ui32 DeviceIndex = 0;
+        ui64 SentRequestId = 0;
+    };
+
+    using TRequestContext = TStackVec<TDeviceRequestContext, 2>;
+
 private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -56,14 +57,16 @@ private:
 
     // TODO implement DeviceStats and similar stuff
 
-    TRequestsInProgress<EAllowedRequests::ReadWrite, ui64> RequestsInProgress;
+    TRequestsInProgress<EAllowedRequests::ReadWrite, ui64, TRequestContext>
+        RequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         PartConfig->GetName()};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite,
         Config,
-        PartConfig};
+        PartConfig,
+        nullptr};
 
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr PartCounters;
@@ -76,7 +79,8 @@ private:
 
     TRequestInfoPtr Poisoner;
 
-    struct TTimedOutDeviceCtx {
+    struct TTimedOutDeviceCtx
+    {
         TInstant FirstErrorTs;
         bool VolumeWasNotified = false;
     };
@@ -101,6 +105,7 @@ public:
 private:
     void KillActors(const NActors::TActorContext& ctx);
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
+    ui32 GetFlags() const;
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
     void NotifyDeviceTimedOutIfNeeded(
@@ -126,7 +131,17 @@ private:
         const TBlockRange64& blockRange,
         TVector<TDeviceRequest>* deviceRequests);
 
-    NProto::TError SendReadRequests(
+    template <typename TRequest, typename TResponse>
+    bool InitRequests(
+        const char* methodName,
+        const bool isWriteMethod,
+        const TRequest& msg,
+        const NActors::TActorContext& ctx,
+        TRequestInfo& requestInfo,
+        const TBlockRange64& blockRange,
+        TVector<TDeviceRequest>* deviceRequests);
+
+    TResultOrError<TRequestContext> SendReadRequests(
         const NActors::TActorContext& ctx,
         TCallContextPtr callContext,
         const NProto::THeaders& headers,
@@ -153,6 +168,11 @@ private:
         const TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleMultiAgentWriteBlocksCompleted(
+        const TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted::
+            TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleZeroBlocksCompleted(
         const TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -169,6 +189,10 @@ private:
         const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleDeviceTimedOutResponse(
+        const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
@@ -178,6 +202,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ChecksumBlocks, TEvNonreplPartitionPrivate);
+    BLOCKSTORE_IMPLEMENT_REQUEST(MultiAgentWrite, TEvNonreplPartitionPrivate);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);

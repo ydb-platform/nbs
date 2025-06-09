@@ -78,14 +78,19 @@ NProto::TError TMirrorPartitionState::Validate()
 
 void TMirrorPartitionState::PrepareMigrationConfig()
 {
-    if (MigrationConfigPrepared) {
+    using enum EMigrationConfigState;
+    if (MigrationConfigPrepared != NotPrepared) {
         return;
     }
 
-    if (PrepareMigrationConfigForFreshDevices() ||
-        PrepareMigrationConfigForWarningDevices())
-    {
-        MigrationConfigPrepared = true;
+    if (PrepareMigrationConfigForFreshDevices()) {
+        MigrationConfigPrepared = PreparedForFresh;
+        return;
+    }
+
+    if (PrepareMigrationConfigForWarningDevices()) {
+        MigrationConfigPrepared = PreparedForWarning;
+        return;
     }
 }
 
@@ -179,16 +184,10 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
 
         if (!anotherFreshDevices.contains(uuid)) {
             // we found a good device, lets build our migration config
-            auto targetDevice = devices[deviceIdx];
-            devices[deviceIdx] = anotherDevice;
+            auto& targetDevice = devices[deviceIdx];
             auto& migration = *replicaInfo->Migrations.Add();
-            migration.SetSourceDeviceId(uuid);
-            *migration.MutableTargetDevice() = std::move(targetDevice);
-
-            // we need to replace anotherDevice with a dummy device
-            // since now our migration actor will be responsible for
-            // write request replication to this device
-            anotherDevice.SetDeviceUUID({});
+            migration.ClearSourceDeviceId();
+            *migration.MutableTargetDevice() = targetDevice;
 
             return true;
         }
@@ -294,6 +293,11 @@ ui32 TMirrorPartitionState::GetBlockSize() const
 ui64 TMirrorPartitionState::GetBlockCount() const
 {
     return PartConfig->GetBlockCount();
+}
+
+bool TMirrorPartitionState::IsEncrypted() const
+{
+    return PartConfig->GetVolumeInfo().EncryptionMode != NProto::NO_ENCRYPTION;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

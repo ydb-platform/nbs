@@ -246,7 +246,10 @@ STFUNC(TGetChangedBlocksActor::StateWork)
         HFunc(TEvService::TEvGetChangedBlocksResponse, HandleGetChangedBlocksResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -429,13 +432,14 @@ void TPartitionActor::HandleGetChangedBlocks(
 
     AddTransaction<TEvService::TGetChangedBlocksMethod>(*requestInfo);
 
-    ExecuteTx<TGetChangedBlocks>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        ConvertRangeSafe(readRange),
-        lowCommitId,
-        highCommitId,
-        msg->Record.GetIgnoreBaseDisk());
+        CreateTx<TGetChangedBlocks>(
+            requestInfo,
+            ConvertRangeSafe(readRange),
+            lowCommitId,
+            highCommitId,
+            msg->Record.GetIgnoreBaseDisk()));
 }
 
 bool TPartitionActor::PrepareGetChangedBlocks(

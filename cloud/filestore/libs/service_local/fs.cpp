@@ -50,8 +50,25 @@ NProto::TStatFileStoreResponse TLocalFileSystem::StatFileStore(
 {
     STORAGE_TRACE("StatFileStore " << DumpMessage(request));
 
+    auto session = GetSession(request);
+    auto node = session->LookupNode(RootNodeId);
+    if (!node) {
+        return TErrorResponse(ErrorInvalidTarget(RootNodeId));
+    }
+
+    auto statfs = node->StatFs();
+
     NProto::TStatFileStoreResponse response;
-    response.MutableFileStore()->CopyFrom(Store);
+
+    auto* fileStore = response.MutableFileStore();
+    fileStore->CopyFrom(Store);
+    fileStore->SetBlockSize(statfs.BlockSize);
+    fileStore->SetBlocksCount(statfs.TotalBlocks);
+    fileStore->SetNodesCount(statfs.TotalFiles);
+
+    auto* stats = response.MutableStats();
+    stats->SetUsedNodesCount(statfs.TotalFiles - statfs.FreeFiles);
+    stats->SetUsedBlocksCount(statfs.TotalBlocks - statfs.FreeBlocks);
 
     return response;
 }

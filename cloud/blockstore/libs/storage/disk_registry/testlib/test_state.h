@@ -256,7 +256,7 @@ struct TDiskRegistryStateBuilder
 
     static TDiskRegistryStateBuilder LoadState(TDiskRegistryDatabase& db);
 
-    TDiskRegistryState Build();
+    std::unique_ptr<TDiskRegistryState> Build();
 
     TDiskRegistryStateBuilder& With(TStorageConfigPtr config);
 

@@ -32,7 +32,7 @@ struct TDiskRegistryState: TAtomicRefCount<TDiskRegistryState>
         TInstant IOModeTs;
         TMap<TString, NProto::TDeviceConfig> Migrations;
         TVector<TVector<NProto::TDeviceConfig>> Replicas;
-        TVector<NProto::TLaggingDevice> LaggingDevices;
+        TVector<NProto::TLaggingDevice> OutdatedLaggingDevices;
         bool MuteIOErrors = false;
         TString PoolName;
         NCloud::NProto::EStorageMediaKind MediaKind = {};
@@ -59,6 +59,8 @@ struct TDiskRegistryState: TAtomicRefCount<TDiskRegistryState>
     ui32 ReplicaCount = 0;
     ui32 FinishMigrationRequests = 0;
     THashSet<TString> DeviceReplacementUUIDs;
+
+    TVector<TString> UnavailableDeviceUUIDs;
 
     TVector<std::pair<TString, NProto::EAgentState>> AgentStates;
 

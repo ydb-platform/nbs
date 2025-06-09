@@ -241,7 +241,7 @@ bool TCommand::Execute()
     if (Timeout != TDuration::Zero()) {
         Scheduler->Schedule(
             Timer->Now() + Timeout,
-            [=] {
+            [=, this] {
                 Shutdown();
             });
     }

@@ -210,7 +210,7 @@ public:
         const TString& path,
         nvme_secure_erase_setting ses) override
     {
-        return Executor->Execute([=] {
+        return Executor->Execute([=, this] {
             try {
                 FormatImpl(path, ses);
                 return NProto::TError();
@@ -225,7 +225,7 @@ public:
         ui64 offsetBytes,
         ui64 sizeBytes) override
     {
-        return Executor->Execute([=] {
+        return Executor->Execute([=, this] {
             try {
                 DeallocateImpl(path, offsetBytes, sizeBytes);
                 return NProto::TError();

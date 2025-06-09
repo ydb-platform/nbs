@@ -310,7 +310,10 @@ STFUNC(TCompactionActor::StateWork)
         HFunc(TEvIndexTabletPrivate::TEvAddBlobResponse, HandleAddBlobResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -324,7 +327,63 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
     const auto compactionInfo = GetCompactionInfo();
     const auto cleanupInfo = GetCleanupInfo();
 
-    const bool shouldThrottleCleanup = ShouldThrottleCleanup(ctx, cleanupInfo);
+    if (IsBlobIndexOpsQueueEmpty()) {
+        AddBlobIndexOpIfNeeded(ctx, compactionInfo, cleanupInfo);
+    }
+
+    while (AdvanceBackgroundBlobIndexOp()) {
+        switch (GetCurrentBackgroundBlobIndexOp()) {
+            case EBlobIndexOp::Compaction: {
+                ctx.Send(
+                    SelfId(),
+                    new TEvIndexTabletPrivate::TEvCompactionRequest(
+                        compactionInfo.RangeId,
+                        false)
+                );
+                return;
+            }
+
+            case EBlobIndexOp::Cleanup: {
+                ctx.Send(
+                    SelfId(),
+                    new TEvIndexTabletPrivate::TEvCleanupRequest(
+                        cleanupInfo.RangeId)
+                );
+                return;
+            }
+
+            case EBlobIndexOp::FlushBytes: {
+                // Flush blocked since FlushBytes op rewrites some fresh blocks as
+                // blobs
+                if (!FlushState.Enqueue()) {
+                    StartBackgroundBlobIndexOp();
+                    CompleteBlobIndexOp();
+                    break;
+                }
+
+                ctx.Send(
+                    SelfId(),
+                    new TEvIndexTabletPrivate::TEvFlushBytesRequest()
+                );
+                return;
+            }
+
+            default:
+                TABLET_VERIFY(0);
+        }
+    }
+}
+
+void TIndexTabletActor::AddBlobIndexOpIfNeeded(
+    const TActorContext& ctx,
+    const TCompactionInfo& compactionInfo,
+    const TCleanupInfo& cleanupInfo)
+{
+    const auto backpressureStatus = GetBackgroundOpsBackpressureStatus();
+
+    const bool shouldThrottleCleanup =
+        ShouldThrottleCleanup(ctx, cleanupInfo, backpressureStatus);
+
     if (shouldThrottleCleanup) {
         // Without user operations, EnqueueBlobIndexOpIfNeeded will not be
         // called and cleanup will not resume after throttling.
@@ -335,103 +394,104 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
     const bool shouldCleanup =
         cleanupInfo.ShouldCleanup && !shouldThrottleCleanup;
 
-    if (IsBlobIndexOpsQueueEmpty()) {
-        auto blobIndexOpsPriority = Config->GetBlobIndexOpsPriority();
-        TString message;
-        if (IsCloseToBackpressureThresholds(&message)) {
-            // if we are close to our backpressure thresholds, we should fall
-            // back to fair scheduling so that all operations show some progress
-            blobIndexOpsPriority = NProto::BIOP_FAIR;
-            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-                "%s EnqueueBlobIndexOpIfNeeded: Falling back to BIOP_FAIR: %s",
-                LogTag.c_str(),
-                message.Quote().c_str());
-        }
 
-        switch (blobIndexOpsPriority) {
-            case NProto::BIOP_CLEANUP_FIRST: {
-                if (shouldCleanup) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
-                } else if (compactionInfo.ShouldCompact) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
-                }
-                break;
-            }
+    const bool shouldFlushBytesByFreshBytesCount =
+        GetFreshBytesCount() >= Config->GetFlushBytesThreshold();
 
-            case NProto::BIOP_COMPACTION_FIRST: {
-                if (compactionInfo.ShouldCompact) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
-                } else if (shouldCleanup) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
-                }
-                break;
-            }
+    const bool shouldFlushBytesByDeletedFreshBytesCount =
+        GetDeletedFreshBytesCount() >= Config->GetFlushBytesThreshold();
 
-            case NProto::BIOP_FAIR: {
-                if (compactionInfo.ShouldCompact) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
-                }
-                if (shouldCleanup) {
-                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
-                }
-                break;
-            }
-        }
+    const bool shouldFlushBytesByFreshBytesItemCount =
+        Config->GetFlushBytesByItemCountEnabled()
+        && GetFreshBytesItemCount()
+            >= Config->GetFlushBytesItemCountThreshold();
 
-        if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()
-                || GetDeletedFreshBytesCount()
-                >= Config->GetFlushBytesThreshold())
-        {
-            AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
-        }
-    }
+    const bool shouldFlushBytes =
+        shouldFlushBytesByFreshBytesCount
+        || shouldFlushBytesByDeletedFreshBytesCount
+        || shouldFlushBytesByFreshBytesItemCount;
 
-    if (!EnqueueBackgroundBlobIndexOp()) {
+
+    const int compactionPriority = compactionInfo.ShouldCompact
+        ? static_cast<int>(backpressureStatus.Compaction)
+        : 0;
+
+    const int cleanupPriority = shouldCleanup
+        ? static_cast<int>(backpressureStatus.Cleanup)
+        : 0;
+
+    const int flushBytesPriority = shouldFlushBytes
+        ? static_cast<int>(backpressureStatus.FlushBytes)
+        : 0;
+
+    // Prioritize background operations whose optimization targets are close
+    // to their backpressure thresholds
+    const int maxPriority = Max(
+        compactionPriority,
+        cleanupPriority,
+        flushBytesPriority);
+
+    if (maxPriority == 0) {
+        // No background operations are needed to run
         return;
     }
 
-    switch (GetCurrentBackgroundBlobIndexOp()) {
-        case EBlobIndexOp::Compaction: {
-            ctx.Send(
-                SelfId(),
-                new TEvIndexTabletPrivate::TEvCompactionRequest(
-                    compactionInfo.RangeId,
-                    false)
-            );
-            break;
-        }
+    if (compactionPriority == maxPriority || cleanupPriority == maxPriority) {
+        // Cleanup and Compaction affect each other scores. It may be reasonable
+        // to schedule both of them even if they have different priorities.
+        //
+        // For example, Cleanup is significantly cheaper to run and it can
+        // effectively reduce the compaction score without rewriting blobs.
+        //
+        // If both operations are needed, the logic is as follows:
+        // - both operations have the same priority: schedule Cleanup only,
+        //   Compaction only or both depending on BlobIndexOpsPriority.
+        // - one operation has higher priority than the other:
+        //   - the operation with the highest priority is always scheduled;
+        //   - the operation with the lowest priority is scheduled only if
+        //     BlobIndexOpsPriority gives it priority.
+        //
+        // By default, the priority is given to Cleanup. It means that it is
+        // always scheduled if it is needed, and Compaction is scheduled only
+        // when it has higher priority than Cleanup or Cleanup is not needed.
 
-        case EBlobIndexOp::Cleanup: {
-            ctx.Send(
-                SelfId(),
-                new TEvIndexTabletPrivate::TEvCleanupRequest(
-                    cleanupInfo.RangeId)
-            );
-            break;
-        }
-
-        case EBlobIndexOp::FlushBytes: {
-            // Flush blocked since FlushBytes op rewrites some fresh blocks as
-            // blobs
-            if (!FlushState.Enqueue()) {
-                StartBackgroundBlobIndexOp();
-                CompleteBlobIndexOp();
-                if (!IsBlobIndexOpsQueueEmpty()) {
-                    EnqueueBlobIndexOpIfNeeded(ctx);
+        switch (Config->GetBlobIndexOpsPriority()) {
+            case NProto::BIOP_CLEANUP_FIRST: {
+                if (compactionPriority > cleanupPriority) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
                 }
-
-                return;
+                if (cleanupPriority > 0) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
+                }
+                break;
             }
-
-            ctx.Send(
-                SelfId(),
-                new TEvIndexTabletPrivate::TEvFlushBytesRequest()
-            );
-            break;
+            case NProto::BIOP_COMPACTION_FIRST: {
+                if (compactionPriority > 0) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
+                }
+                if (cleanupPriority > compactionPriority) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
+                }
+                break;
+            }
+            case NProto::BIOP_FAIR: {
+                if (compactionPriority == maxPriority) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
+                }
+                if (cleanupPriority == maxPriority) {
+                    AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
+                }
+                break;
+            }
         }
+    }
 
-        default:
-            TABLET_VERIFY(0);
+    // Growing the amount of fresh bytes is strictly unwanted because
+    // FlushBytes operation will run for a long time and this will result
+    // in high delays for user operations.
+    // Therefore FlushBytes operation is enqueued at any priority level.
+    if (flushBytesPriority > 0) {
+        AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
     }
 }
 

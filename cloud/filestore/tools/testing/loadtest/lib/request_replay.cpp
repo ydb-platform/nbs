@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/eventlog/eventlog.h>
@@ -28,10 +29,34 @@ IReplayRequestGenerator::IReplayRequestGenerator(
 
     NEventLog::TOptions options;
     options.FileName = Spec.GetFileName();
+    options.ForceStrongOrdering = true;
 
-    // Sort eventlog items by timestamp
-    options.SetForceStrongOrdering(true);
+    if (const auto sleep = Spec.GetMaxSleepUs()) {
+        MaxSleepUs = sleep;
+    }
+
+    if (Spec.GetReplayTimeFrom()) {
+        ReplayTimeFrom.emplace();
+        if (!TInstant::TryParseIso8601(
+                Spec.GetReplayTimeFrom(),
+                ReplayTimeFrom.value()))
+        {
+            ReplayTimeFrom.reset();
+        }
+    }
+
+    if (Spec.GetReplayTimeTill()) {
+        ReplayTimeTill.emplace();
+        if (!TInstant::TryParseIso8601(
+                Spec.GetReplayTimeTill(),
+                ReplayTimeTill.value()))
+        {
+            ReplayTimeTill.reset();
+        }
+    }
+
     CurrentEvent = CreateIterator(options);
+    NextStatusAt = TInstant::Now() + StatusEverySeconds;
 }
 
 bool IReplayRequestGenerator::HasNextRequest()
@@ -54,9 +79,8 @@ bool IReplayRequestGenerator::ShouldFailOnError()
 
 void IReplayRequestGenerator::Advance()
 {
-    for (EventPtr = CurrentEvent->Next(); EventPtr;
-         EventPtr = CurrentEvent->Next())
-    {
+    while (EventPtr = CurrentEvent->Next()) {
+        ++EventsProcessed;
         MessagePtr = dynamic_cast<const NProto::TProfileLogRecord*>(
             EventPtr->GetProto());
 
@@ -68,9 +92,12 @@ void IReplayRequestGenerator::Advance()
         if (!Spec.GetFileSystemIdFilter().empty() &&
             fileSystemId != Spec.GetFileSystemIdFilter())
         {
+            ++EventsSkipped;
             STORAGE_DEBUG(
-                "Skipped event with FileSystemId=%s",
-                fileSystemId.c_str());
+                "Skipped events=%zu FileSystemId=%s Filter=%s",
+                EventsSkipped,
+                fileSystemId.c_str(),
+                Spec.GetFileSystemIdFilter().c_str());
             continue;
         }
 
@@ -87,7 +114,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::ReadData:
             return DoReadData(request);
         case EFileStoreRequest::WriteData:
-            return DoWrite(request);
+            return DoWriteData(request);
         case EFileStoreRequest::CreateNode:
             return DoCreateNode(request);
         case EFileStoreRequest::RenameNode:
@@ -114,6 +141,8 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::GenerateBlobIds:
         case EFileStoreRequest::PingSession:
         case EFileStoreRequest::Ping:
+        case EFileStoreRequest::DescribeData:
+        case EFileStoreRequest::AddData:
             return {};
 
         default:
@@ -128,7 +157,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
             break;
     }
 
-    STORAGE_INFO(
+    STORAGE_DEBUG(
         "Uninmplemented action=%u %s",
         action,
         RequestName(request.GetRequestType()).c_str());
@@ -142,52 +171,150 @@ IReplayRequestGenerator::ExecuteNextRequest()
     if (!HasNextRequest()) {
         return {};
     }
+    constexpr auto OneMillion = 1000000LL;
 
     for (; EventPtr; Advance()) {
         if (!MessagePtr) {
             continue;
         }
 
-        for (; EventMessageNumber > 0;) {
+        while (EventMessageNumber > 0) {
             NProto::TProfileLogRequestInfo request =
                 MessagePtr->GetRequests()[--EventMessageNumber];
             {
-                auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
-                                Spec.GetTimeScale();
-                TimestampMcs = request.GetTimestampMcs();
-                if (timediff > MaxSleepMcs) {
+                ++MessagesProcessed;
+                i64 timediff =
+                    (request.GetTimestampMcs() - TimestampMicroSeconds) *
+                    Spec.GetTimeScale();
+                TimestampMicroSeconds = request.GetTimestampMcs();
+                const auto timestampSeconds =
+                    TimestampMicroSeconds / OneMillion;
+                if (timediff > MaxSleepUs) {
+                    STORAGE_DEBUG(
+                        "Ignore too long timediff=%lu MaxSleepUs=%lu ",
+                        timediff,
+                        MaxSleepUs);
+
                     timediff = 0;
                 }
 
-                const auto current = TInstant::Now();
-                auto diff = current - Started;
+                const auto currentInstant = TInstant::Now();
 
-                if (timediff > diff.MicroSeconds()) {
+                if (NextStatusAt <= currentInstant) {
+                    NextStatusAt = currentInstant + StatusEverySeconds;
+                    STORAGE_INFO(
+                        "Current event=%zu Skipped=%zu Msg=%d TotalMsg=%zu "
+                        "Skipped=%zu "
+                        "Sleeps=%f "
+                        "Time=%s",
+                        EventsProcessed,
+                        EventsSkipped,
+                        EventMessageNumber,
+                        MessagesProcessed,
+                        MessagesSkipped,
+                        TimeInSleepBetweenEventsSeconds,
+                        TInstant::MicroSeconds(TimestampMicroSeconds)
+                            .ToString()
+                            .c_str())
+                }
+
+                if (ReplayTimeFrom &&
+                    timestampSeconds <
+                        static_cast<i64>(ReplayTimeFrom->Seconds()))
+                {
+                    continue;
+                }
+
+                if (ReplayTimeTill &&
+                    timestampSeconds >
+                        static_cast<i64>(ReplayTimeTill->Seconds()))
+                {
+                    return {};
+                }
+                constexpr auto RealtimeToleratePastSeconds = 10;
+                constexpr auto RealtimeTolerateFutureSeconds = 10;
+                if (const i64 realTimeAlignseconds = Spec.GetRealTime()) {
+                    const i64 alignMicroSeconds =
+                        realTimeAlignseconds * OneMillion;
+                    const i64 currentMicroSeconds =
+                        currentInstant.MicroSeconds() +
+                        Spec.GetRealTimeOffset() * OneMillion;
+                    const i64 nowPeriodStart =
+                        (currentMicroSeconds / alignMicroSeconds) *
+                        alignMicroSeconds;
+                    const i64 logPeriodStart =
+                        (TimestampMicroSeconds / alignMicroSeconds) *
+                        alignMicroSeconds;
+                    const i64 nowRelativeMicroSeconds =
+                        currentMicroSeconds - nowPeriodStart;
+                    const i64 logRelativeMicroSeconds =
+                        TimestampMicroSeconds - logPeriodStart;
+
+                    if (nowRelativeMicroSeconds -
+                            RealtimeToleratePastSeconds * OneMillion >
+                        logRelativeMicroSeconds)
+                    {
+                        ++MessagesSkipped;
+                        continue;
+                    }
+
+                    if (nowRelativeMicroSeconds < logRelativeMicroSeconds) {
+                        const auto sleepMcs =
+                            logRelativeMicroSeconds - nowRelativeMicroSeconds;
+                        if (sleepMcs / OneMillion >
+                            RealtimeTolerateFutureSeconds)
+                        {
+                            continue;
+                        }
+
+                        auto sleep = TDuration::MicroSeconds(sleepMcs);
+                        TimeInSleepBetweenEventsSeconds += sleep.SecondsFloat();
+                        Sleep(sleep);
+                    }
+                }
+
+                const auto diff = currentInstant - Started;
+                if (timediff > static_cast<i64>(diff.MicroSeconds())) {
                     auto sleep =
                         TDuration::MicroSeconds(timediff - diff.MicroSeconds());
+                    if (sleep.Seconds() > RealtimeTolerateFutureSeconds) {
+                        return {};
+                    }
                     STORAGE_DEBUG(
-                        "Sleep=%lu timediff=%f diff=%lu",
+                        "Sleep=%lu timediff=%lu diff=%lu",
                         sleep.MicroSeconds(),
                         timediff,
                         diff.MicroSeconds());
 
                     Sleep(sleep);
+                    TimeInSleepBetweenEventsSeconds += sleep.SecondsFloat();
                 }
 
-                Started = current;
+                Started = currentInstant;
             }
 
             STORAGE_DEBUG(
-                "Processing message n=%d typename=%s type=%d name=%s data=%s",
+                "Event=%zu Msg=%d Mcs=%lu T=%s: Processing typename=%s "
+                "type=%d name=%s "
+                "data=%s",
+                EventsProcessed,
                 EventMessageNumber,
+                request.GetTimestampMcs(),
+                TInstant::MicroSeconds(request.GetTimestampMcs())
+                    .ToString()
+                    .c_str(),
                 request.GetTypeName().c_str(),
                 request.GetRequestType(),
                 RequestName(request.GetRequestType()).c_str(),
                 request.ShortDebugString().Quote().c_str());
 
-            const auto future = ProcessRequest(request);
-            if (future.Initialized()) {
-                return future;
+            try {
+                const auto future = ProcessRequest(request);
+                if (future.Initialized()) {
+                    return future;
+                }
+            } catch (const std::exception& ex) {
+                STORAGE_ERROR("request exception: %s", ex.what());
             }
         }
     }

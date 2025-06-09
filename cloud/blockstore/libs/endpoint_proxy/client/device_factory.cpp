@@ -69,6 +69,8 @@ struct TProxyDevice: NBD::IDevice
             request->SetBlocksCount(BlockCount);
             request->SetBlockSize(BlockSize);
         }
+        request->SetMaxZeroBlocksSubRequestSize(
+            Config.MaxZeroBlocksSubRequestSize);
         return Client->StartProxyEndpoint(std::move(request)).Apply(
             [] (const auto& f) {
                 return f.GetValue().GetError();

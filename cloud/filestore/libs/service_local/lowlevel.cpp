@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/xattr.h>
@@ -45,7 +46,7 @@ ui32 GetSystemErrorCode()
     return MAKE_FILESTORE_ERROR(error);
 }
 
-TFileStat GetFileStat(struct stat fs)
+TFileStat GetFileStat(const struct stat& fs)
 {
     TFileStat st;
     st.Mode = fs.st_mode;
@@ -58,6 +59,23 @@ TFileStat GetFileStat(struct stat fs)
     st.CTime = fs.st_ctime;
     st.INode = fs.st_ino;
     return st;
+}
+
+TFileSystemStat GetFileSystemStat(const struct statfs& fs)
+{
+    return TFileSystemStat{
+        .Type = fs.f_type,
+        .BlockSize = fs.f_bsize,
+        .TotalBlocks = fs.f_blocks,
+        .FreeBlocks = fs.f_bfree,
+        .AvailBlocks = fs.f_bavail,
+        .TotalFiles = fs.f_files,
+        .FreeFiles = fs.f_ffree,
+        .FsId = {fs.f_fsid.__val[0], fs.f_fsid.__val[1]},
+        .MaxNameLen = fs.f_namelen,
+        .FragmentSize = fs.f_frsize,
+        .MountFlags = fs.f_flags,
+    };
 }
 
 TVector<TString> SplitStrings(const char* buf, size_t len)
@@ -131,6 +149,45 @@ TFileHandle OpenAt(
         << ": " << LastSystemErrorText());
 
     return fd;
+}
+
+TOpenOrCreateResult OpenOrCreateAt(
+    const TFileHandle& handle,
+    const TString& name,
+    int flags,
+    int mode)
+{
+    if ((flags & O_CREAT) && (flags & O_EXCL)) {
+        int fd = openat(Fd(handle), name.data(), flags, mode);
+        Y_ENSURE_EX(fd != -1, TServiceError(GetSystemErrorCode())
+            << "failed to create " << name.Quote()
+            << ": " << LastSystemErrorText());
+        return {fd, true /* new file was created */};
+    }
+
+    if (flags & O_CREAT) {
+        // try to create file exclusively and if the file already exist, fallback
+        // to trying to open without O_CREATE
+        flags |= O_EXCL;
+        int fd = openat(Fd(handle), name.data(), flags, mode);
+        if (fd != -1) {
+            return {fd, true /* new file was created */};
+        }
+
+        auto errorCode = GetSystemErrorCode();
+        Y_ENSURE_EX(errorCode == E_FS_EXIST, TServiceError(errorCode)
+            << "failed to open " << name.Quote()
+            << ": " << LastSystemErrorText());
+
+        flags &= ~O_EXCL;
+    }
+
+    int fd = openat(Fd(handle), name.data(), flags, mode);
+    Y_ENSURE_EX(fd != -1, TServiceError(GetSystemErrorCode())
+        << "failed to open " << name.Quote()
+        << ": " << LastSystemErrorText());
+
+    return {fd, false /* file was opened */};
 }
 
 void MkDirAt(const TFileHandle& handle, const TString& name, int mode)
@@ -228,6 +285,16 @@ TFileStat StatAt(const TFileHandle& handle, const TString& name)
         << ": " << LastSystemErrorText());
 
     return GetFileStat(fs);
+}
+
+TFileSystemStat StatFs(const TFileHandle& handle)
+{
+    struct statfs fs = {};
+    int res = fstatfs(Fd(handle), &fs);
+    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
+        << "failed to fstatfs: " << LastSystemErrorText());
+
+    return GetFileSystemStat(fs);
 }
 
 TVector<std::pair<TString, TFileStat>> ListDirAt(
@@ -581,7 +648,13 @@ bool Flock(const TFileHandle& handle, int operation)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-UnixCredentialsGuard::UnixCredentialsGuard(uid_t uid, gid_t gid)
+UnixCredentialsGuard::UnixCredentialsGuard(
+        uid_t UserUid,
+        gid_t UserGid,
+        bool trustUserCredentials)
+    : UserUid(UserUid)
+    , UserGid(UserGid)
+    , TrustUserCredentials(trustUserCredentials)
 {
     OriginalUid = geteuid();
     if (OriginalUid != 0) {
@@ -589,27 +662,48 @@ UnixCredentialsGuard::UnixCredentialsGuard(uid_t uid, gid_t gid)
         return;
     }
 
+    if (TrustUserCredentials) {
+        // Permission check for fuse operation is performed in guest kernel
+        // https://github.com/ydb-platform/nbs/blob/2ca9a5ee2b3d77fbeb9ce2852272001d137c2178/contrib/libs/virtiofsd/fuse_lowlevel.h#L166
+        // We don't try to change euid/egid, but the caller needs to invoke
+        // `ApplyCredentials` to set permissions for newly created nodes
+        return;
+    }
+
     OriginalGid = getegid();
 
-    if (uid == OriginalUid && gid == OriginalGid) {
+    if (UserUid == OriginalUid && UserGid == OriginalGid) {
         return;
     }
 
     // use syscall directly to change uid/gid per thread instead of glibc
     // version of setresgid/setresuid since they will change uid/gid for all
     // threads
-    int ret = syscall(SYS_setresgid, -1, gid, -1);
+    int ret = syscall(SYS_setresgid, -1, UserGid, -1);
     if (ret == -1) {
         return;
     }
 
-    ret = syscall(SYS_setresuid, -1, uid, -1);
+    ret = syscall(SYS_setresuid, -1, UserUid, -1);
     if (ret == -1) {
         syscall(SYS_setresgid, -1, OriginalGid, -1);
         return;
     }
 
     IsRestoreNeeded = true;
+}
+
+bool UnixCredentialsGuard::TryApplyCredentials(const TFileHandle& handle)
+{
+    if (!TrustUserCredentials || OriginalUid != 0) {
+        // need to be root to freely apply permissions
+        return true;
+    }
+
+    char path[64] = {0};
+    sprintf(path, "/proc/self/fd/%i", Fd(handle));
+
+    return chown(path, UserUid, UserGid) == 0;
 }
 
 UnixCredentialsGuard::~UnixCredentialsGuard()

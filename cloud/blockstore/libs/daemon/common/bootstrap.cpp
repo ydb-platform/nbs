@@ -148,7 +148,6 @@ NBD::TServerConfig CreateNbdServerConfig(const TServerAppConfig& config)
         .MaxInFlightBytesPerThread = config.GetMaxInFlightBytesPerThread(),
         .SocketAccessMode = config.GetSocketAccessMode(),
         .Affinity = config.GetNbdAffinity(),
-        .NbdPort = config.GetNbdPort()
     };
 }
 
@@ -425,7 +424,8 @@ void TBootstrapBase::Init()
             NbdServer,
             Logging,
             ServerStats,
-            Configs->ServerConfig->GetChecksumFlags());
+            Configs->ServerConfig->GetChecksumFlags(),
+            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize());
 
         endpointListeners.emplace(
             NProto::IPC_NBD,
@@ -453,7 +453,9 @@ void TBootstrapBase::Init()
 
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
-            Configs->ServerConfig->GetChecksumFlags());
+            Configs->ServerConfig->GetChecksumFlags(),
+	    Configs->ServerConfig->GetVhostDiscardEnabled(),
+            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize());
 
         if (Configs->ServerConfig->GetVhostServerPath()
                 && !Configs->Options->TemporaryServer)

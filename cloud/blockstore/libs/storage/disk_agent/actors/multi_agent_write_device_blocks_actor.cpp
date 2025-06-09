@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/common/iovector.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -39,11 +41,13 @@ TMultiAgentWriteDeviceBlocksActor::TMultiAgentWriteDeviceBlocksActor(
         const TActorId& parent,
         TRequestInfoPtr requestInfo,
         NProto::TWriteDeviceBlocksRequest request,
+        TResponsePromise responsePromise,
         TDuration maxRequestTimeout)
     : Parent(parent)
     , RequestInfo(std::move(requestInfo))
     , MaxRequestTimeout(maxRequestTimeout)
     , Request(std::move(request))
+    , ResponsePromise(std::move(responsePromise))
 {}
 
 void TMultiAgentWriteDeviceBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -79,10 +83,21 @@ void TMultiAgentWriteDeviceBlocksActor::Bootstrap(const TActorContext& ctx)
         );
 
         ctx.Send(event.release());
+
+        auto timeout =
+            additionalTarget.GetTimeout()
+                ? TDuration::MilliSeconds(additionalTarget.GetTimeout())
+                : MaxRequestTimeout;
+        ctx.Schedule(timeout, new TEvents::TEvWakeup(requestId));
         ++requestId;
     }
+}
 
-    ctx.Schedule(MaxRequestTimeout, new NActors::TEvents::TEvWakeup());
+bool TMultiAgentWriteDeviceBlocksActor::AllResponsesHaveBeenReceived() const
+{
+    return AllOf(
+        Responses,
+        [](const std::optional<NProto::TError>& r) { return r.has_value(); });
 }
 
 void TMultiAgentWriteDeviceBlocksActor::ReplyAndDie(
@@ -103,7 +118,16 @@ void TMultiAgentWriteDeviceBlocksActor::ReplyAndDie(
                                             // received, save E_CANCELLED.
     }
 
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    if (ResponsePromise.Initialized()) {
+        TMultiAgentWriteDeviceBlocksResponse localResponse(
+            response->GetError());
+        localResponse.ReplicationResponses.assign(
+            response->Record.GetReplicationResponses().begin(),
+            response->Record.GetReplicationResponses().end());
+        ResponsePromise.SetValue(std::move(localResponse));
+    } else {
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    }
 
     Die(ctx);
 }
@@ -121,11 +145,7 @@ void TMultiAgentWriteDeviceBlocksActor::HandleWriteBlocksResponse(
         return;
     }
 
-    bool allDone = AllOf(
-        Responses,
-        [](const std::optional<NProto::TError>& r) { return r.has_value(); });
-
-    if (allDone) {
+    if (AllResponsesHaveBeenReceived()) {
         ReplyAndDie(ctx, MakeError(S_OK));
     }
 }
@@ -148,17 +168,42 @@ void TMultiAgentWriteDeviceBlocksActor::HandleTimeout(
     const NActors::TEvents::TEvWakeup::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    const auto * msg = ev->Get();
+    const size_t requestId = msg->Tag;
+
+    if (Responses[requestId]) {
+        // The response has already been received, ignore the timeout.
+        return;
+    }
+
+    const auto timeout = TDuration::MilliSeconds(
+        Request.GetReplicationTargets(requestId).GetTimeout());
+
+    Responses[requestId] = MakeError(
+        E_TIMEOUT,
+        TStringBuilder() << "Subrequest #" << requestId << " timeout "
+                         << FormatDuration(timeout));
+
+    if (!AllResponsesHaveBeenReceived()) {
+        // Not all responses have been received, continue to wait.
+        return;
+    }
+
+    TStringBuilder timedOutDevices;
+    for (size_t i = 0; i < Responses.size(); ++i) {
+        if (Responses[i]->GetCode() == E_TIMEOUT) {
+            if (!timedOutDevices.empty()) {
+                timedOutDevices << ", ";
+            }
+            timedOutDevices
+                << Request.GetReplicationTargets(i).GetDeviceUUID().Quote();
+        }
+    }
 
     auto error = MakeError(
         E_TIMEOUT,
-        TStringBuilder() << "MultiAgentWriteDeviceBlocks timeout");
-
-    for (auto& subResponse: Responses) {
-        if (!subResponse) {
-            subResponse = error;
-        }
-    }
+        TStringBuilder() << "MultiAgentWriteDeviceBlocks timeout ["
+                         << timedOutDevices << "]");
 
     ReplyAndDie(ctx, std::move(error));
 }
@@ -175,7 +220,10 @@ STFUNC(TMultiAgentWriteDeviceBlocksActor::StateWork)
             HandleWriteBlocksUndelivery);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

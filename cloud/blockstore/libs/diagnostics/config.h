@@ -161,6 +161,8 @@ public:
 
     NCloud::NProto::EStatsFetcherType GetStatsFetcherType() const;
 
+    bool GetSkipReportingZeroBlocksMetricsForYDBBasedDisks() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

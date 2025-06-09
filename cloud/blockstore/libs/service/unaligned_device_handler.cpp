@@ -319,7 +319,7 @@ TWriteRequest::TResponseFuture TWriteRequest::ReadModifyWrite(
 
     return read.Apply(
         [weakPtr = weak_from_this()](
-            const TFuture<NProto::TReadBlocksResponse>& future) mutable
+            const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
         {
             const auto& response = future.GetValue();
             if (HasError(response)) {
@@ -424,7 +424,7 @@ TZeroRequest::TResponseFuture TZeroRequest::ReadModifyWrite(
 
     return read.Apply(
         [weakPtr = weak_from_this()](
-            const TFuture<NProto::TReadBlocksResponse>& future) mutable
+            const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
         {
             const auto& response = future.GetValue();
             if (HasError(response)) {
@@ -472,6 +472,7 @@ TUnalignedDeviceHandler::TUnalignedDeviceHandler(
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
+        ui32 maxZeroBlocksSubRequestSize,
         ui32 maxUnalignedRequestSize,
         bool checkBufferModificationDuringWriting,
         bool isReliableMediaKind)
@@ -481,6 +482,7 @@ TUnalignedDeviceHandler::TUnalignedDeviceHandler(
           std::move(clientId),
           blockSize,
           maxSubRequestSize,
+          maxZeroBlocksSubRequestSize,
           checkBufferModificationDuringWriting,
           isReliableMediaKind))
     , BlockSize(blockSize)
@@ -565,7 +567,39 @@ TFuture<NProto::TWriteBlocksLocalResponse> TUnalignedDeviceHandler::Write(
 TFuture<NProto::TZeroBlocksResponse>
 TUnalignedDeviceHandler::Zero(TCallContextPtr ctx, ui64 from, ui64 length)
 {
-    auto blocksInfo = TBlocksInfo(from, length, BlockSize);
+    return Zero(std::move(ctx), TBlocksInfo(from, length, BlockSize));
+}
+
+NThreading::TFuture<NProto::TZeroBlocksResponse> TUnalignedDeviceHandler::Zero(
+    TCallContextPtr ctx,
+    const TBlocksInfo& blocksInfo)
+{
+    auto [currentBlocksInfo, nextBlocksInfo] = blocksInfo.Split();
+    auto result = ExecuteZeroBlocksRequest(ctx, currentBlocksInfo);
+    return result.Apply(
+        [weakPtr = weak_from_this(),
+         ctx = std::move(ctx),
+         nextBlocksInfo = std::move(nextBlocksInfo)](
+            const TFuture<NProto::TZeroBlocksResponse>& f)
+        {
+            const auto& response = f.GetValue();
+            if (HasError(response) || !nextBlocksInfo) {
+                return f;
+            }
+
+            if (auto self = weakPtr.lock()) {
+                return self->Zero(std::move(ctx), *nextBlocksInfo);
+            }
+            return MakeFuture<NProto::TZeroBlocksResponse>(
+                TErrorResponse(E_CANCELLED));
+        });
+}
+
+NThreading::TFuture<NProto::TZeroBlocksResponse>
+TUnalignedDeviceHandler::ExecuteZeroBlocksRequest(
+    TCallContextPtr ctx,
+    const TBlocksInfo& blocksInfo)
+{
     auto request = std::make_shared<TZeroRequest>(Backend, ctx, blocksInfo);
     auto weakRequest = request->weak_from_this();
     auto* rawRequest = request.get();
@@ -638,7 +672,7 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
         [sgList = std::move(sgList),
          buffer = std::move(buffer),
          beginOffset = blocksInfo.BeginOffset](
-            const TFuture<NProto::TReadBlocksResponse>& future)
+            const TFuture<NProto::TReadBlocksLocalResponse>& future)
         {
             const auto& response = future.GetValue();
             if (HasError(response)) {

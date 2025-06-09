@@ -349,6 +349,7 @@ public:
         const TString& agentId,
         ui64 cleanBlocks,
         ui64 dirtyBlocks);
+    void ResetLaggingAgentMigrationState(const TString& agentId);
     const THashMap<TString, TLaggingAgentMigrationInfo>&
     GetLaggingAgentsMigrationInfo() const;
 
@@ -781,7 +782,7 @@ public:
         return ForceMirrorResync;
     }
 
-    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
+    TVector<NProto::TDeviceConfig> GetDevicesForAcquireOrRelease() const;
 
     //
     // Followers

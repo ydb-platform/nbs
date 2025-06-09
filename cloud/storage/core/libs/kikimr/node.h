@@ -1,8 +1,11 @@
 #pragma once
 
-#include "node_registration_settings.h"
 #include "public.h"
 
+#include "node_registration_settings.h"
+
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <contrib/ydb/core/protos/config.pb.h>
@@ -13,6 +16,24 @@
 #include <util/generic/string.h>
 
 namespace NCloud::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct INodeRegistrant
+{
+    using TRegistrationResult = std::tuple<ui32, NActors::TScopeId>;
+
+    virtual ~INodeRegistrant() = default;
+
+    virtual TResultOrError<TRegistrationResult> RegisterNode(
+        const TString& nodeBrokerAddress) = 0;
+
+    virtual TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
+        const TString& nodeBrokerAddress,
+        ui32 nodeId) = 0;
+};
+
+using INodeRegistrantPtr = std::unique_ptr<INodeRegistrant>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -42,11 +63,16 @@ struct TRegisterDynamicNodeOptions
 using TRegisterDynamicNodeResult =
     std::tuple<ui32, NActors::TScopeId, TMaybe<NKikimrConfig::TAppConfig>>;
 
-////////////////////////////////////////////////////////////////////////////////
+INodeRegistrantPtr CreateNodeRegistrant(
+    NKikimrConfig::TAppConfigPtr appConfig,
+    const TRegisterDynamicNodeOptions& options,
+    TLog& Log);
 
 TRegisterDynamicNodeResult RegisterDynamicNode(
     NKikimrConfig::TAppConfigPtr appConfig,
     const TRegisterDynamicNodeOptions& options,
-    TLog& Log);
+    INodeRegistrantPtr registrant,
+    TLog& Log,
+    ITimerPtr timer = CreateWallClockTimer());
 
 }   // namespace NCloud::NStorage

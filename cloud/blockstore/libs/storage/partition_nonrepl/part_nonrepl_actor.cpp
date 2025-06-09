@@ -21,40 +21,6 @@ using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-///////////////////////////////////////////////////////////////////////////////
-
-TDuration TNonreplicatedPartitionActor::TDeviceStat::WorstRequestTime() const
-{
-    TDuration result;
-    for (ui32 i = ResponseTimes.FirstIndex(); i < ResponseTimes.TotalSize();
-         ++i)
-    {
-        result = Max(result, ResponseTimes[i]);
-    }
-    return result;
-}
-
-TDuration TNonreplicatedPartitionActor::TDeviceStat::GetTimedOutStateDuration(
-    TInstant now) const
-{
-    return FirstTimedOutRequestStartTs ? (now - FirstTimedOutRequestStartTs) : TDuration();
-}
-
-bool TNonreplicatedPartitionActor::TDeviceStat::CooldownPassed(
-    TInstant now,
-    TDuration cooldownTimeout) const
-{
-    switch (DeviceStatus) {
-        case EDeviceStatus::Ok:
-        case EDeviceStatus::Unavailable:
-            return false;
-        case EDeviceStatus::SilentBroken:
-            return BrokenTransitionTs + cooldownTimeout < now;
-        case EDeviceStatus::Broken:
-            return true;
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
@@ -255,18 +221,42 @@ bool TNonreplicatedPartitionActor::InitRequests(
     TRequestTimeoutPolicy* timeoutPolicy,
     TRequestData* requestData)
 {
-    auto reply = [=] (
-        const TActorContext& ctx,
-        const TRequestInfo& requestInfo,
-        NProto::TError error)
+    return InitRequests<
+        typename TMethod::TRequest,
+        typename TMethod::TResponse>(
+        TMethod::Name,
+        IsWriteMethod<TMethod>,
+        msg,
+        ctx,
+        requestInfo,
+        blockRange,
+        deviceRequests,
+        timeoutPolicy,
+        requestData);
+}
+
+template <typename TRequest, typename TResponse>
+bool TNonreplicatedPartitionActor::InitRequests(
+    const char* methodName,
+    const bool isWriteMethod,
+    const TRequest& msg,
+    const NActors::TActorContext& ctx,
+    const TRequestInfo& requestInfo,
+    const TBlockRange64& blockRange,
+    TVector<TDeviceRequest>* deviceRequests,
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequestData* requestData)
+{
+    auto reply = [=](const TActorContext& ctx,
+                     const TRequestInfo& requestInfo,
+                     NProto::TError error)
     {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            std::move(error));
+        auto response = std::make_unique<TResponse>(std::move(error));
 
         LWTRACK(
             ResponseSent_Partition,
             requestInfo.CallContext->LWOrbit,
-            TMethod::Name,
+            methodName,
             requestInfo.CallContext->RequestId);
 
         NCloud::Reply(ctx, requestInfo, std::move(response));
@@ -284,11 +274,10 @@ bool TNonreplicatedPartitionActor::InitRequests(
         reply(
             ctx,
             requestInfo,
-            PartConfig->MakeError(E_ARGUMENT, TStringBuilder()
-                << "invalid block range ["
-                << "index: " << blockRange.Start
-                << ", count: " << blockRange.Size()
-                << "]"));
+            PartConfig->MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "invalid block range " << blockRange.Print()));
         return false;
     }
 
@@ -308,7 +297,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         return false;
     }
 
-    if (IsWriteMethod<TMethod> && PartConfig->IsReadOnly() &&
+    if (isWriteMethod && PartConfig->IsReadOnly() &&
         !msg.Record.GetHeaders().GetIsBackgroundRequest())
     {
         reply(
@@ -425,6 +414,19 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvNonreplPartitionPriv
     TRequestTimeoutPolicy* timeoutPolicy,
     TRequestData* requestData);
 
+template bool TNonreplicatedPartitionActor::InitRequests<
+    TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+    TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
+    const char* methodName,
+    const bool isWriteRequest,
+    const TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest& msg,
+    const TActorContext& ctx,
+    const TRequestInfo& requestInfo,
+    const TBlockRange64& blockRange,
+    TVector<TDeviceRequest>* deviceRequests,
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequestData* requestData);
+
 void TNonreplicatedPartitionActor::OnRequestCompleted(
     const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
     TInstant now)
@@ -432,7 +434,7 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
     using EStatus = TEvNonreplPartitionPrivate::TOperationCompleted::EStatus;
     switch (operation.Status) {
         case EStatus::Success: {
-            for (ui32 deviceIndex: operation.DeviceIndices) {
+            for (const auto& [deviceIndex, _]: operation.RequestResults) {
                 OnRequestSuccess(deviceIndex, operation.ExecutionTime, now);
             }
             break;
@@ -441,7 +443,7 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
             break;
         }
         case EStatus::Timeout: {
-            for (ui32 deviceIndex: operation.DeviceIndices) {
+            for (const auto& [deviceIndex, _]: operation.RequestResults) {
                 OnRequestTimeout(deviceIndex, operation.ExecutionTime, now);
             }
             break;
@@ -539,25 +541,46 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    const auto& laggingAgentId = msg->LaggingAgent.GetAgentId();
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Agent %s has become unavailable",
         PartConfig->GetName().c_str(),
-        msg->LaggingAgent.GetAgentId().Quote().c_str());
+        laggingAgentId.Quote().c_str());
 
+    auto getAgentIdByRow = [&](int row) -> const TString&
+    {
+        return PartConfig->GetDevices()[row].GetAgentId();
+    };
+
+    TSet<ui32> laggingRows;
     for (const auto& laggingDevice: msg->LaggingAgent.GetDevices()) {
         Y_DEBUG_ABORT_UNLESS(DeviceStats.size() > laggingDevice.GetRowIndex());
-        DeviceStats[laggingDevice.GetRowIndex()].DeviceStatus =
-            EDeviceStatus::Unavailable;
+        Y_DEBUG_ABORT_UNLESS(
+            static_cast<ui32>(PartConfig->GetDevices().size()) >
+            laggingDevice.GetRowIndex());
+
+        laggingRows.insert(laggingDevice.GetRowIndex());
+
+        if (getAgentIdByRow(laggingDevice.GetRowIndex()) == laggingAgentId) {
+            DeviceStats[laggingDevice.GetRowIndex()].DeviceStatus =
+                EDeviceStatus::Unavailable;
+        }
     }
 
+    // Cancel all write/zero requests that intersects with the rows of the lagging
+    // agent. And read requests to the lagging replica.
     for (const auto& [actorId, requestData]: RequestsInProgress.AllRequests()) {
         for (int deviceIndex: requestData.Value.DeviceIndices) {
-            if (PartConfig->GetDevices()[deviceIndex].GetAgentId() ==
-                msg->LaggingAgent.GetAgentId())
-            {
-                // TODO(komarevtsev-d): implement fast reject (via error flags).
+            const bool shouldCancelRequest =
+                laggingRows.contains(deviceIndex) &&
+                (requestData.IsWrite ||
+                 getAgentIdByRow(deviceIndex) == laggingAgentId);
+
+            if (shouldCancelRequest) {
                 NCloud::Send<TEvNonreplPartitionPrivate::TEvCancelRequest>(
                     ctx,
                     actorId,
@@ -669,9 +692,15 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.HandleGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+            HandleMultiAgentWrite);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted,
+            HandleMultiAgentWriteBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
 
         HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, HandleChecksumBlocks);
@@ -696,7 +725,10 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -742,7 +774,10 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

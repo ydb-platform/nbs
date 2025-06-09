@@ -47,7 +47,10 @@ struct TReassignTabletActionActor final
             HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignResponse);
 
             default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }

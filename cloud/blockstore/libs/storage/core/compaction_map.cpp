@@ -347,6 +347,10 @@ void TCompactionMap::Update(
     const TVector<TCompactionCounter>& counters,
     const TCompressedBitmap* used)
 {
+    if (counters.empty()) {
+        return;
+    }
+
     for (const auto& c: counters) {
         auto usedBlockCount = c.Stat.BlockCount;
 

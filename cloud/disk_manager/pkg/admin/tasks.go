@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
@@ -706,6 +707,47 @@ func newResumeTaskCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type scheduleBlankTask struct {
+	config *client_config.ClientConfig
+}
+
+func (c *scheduleBlankTask) run() error {
+	ctx := newContext(c.config)
+
+	client, err := internal_client.NewPrivateClientForCLI(ctx, c.config)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer client.Close()
+
+	resp, err := client.ScheduleBlankOperation(getRequestContext(ctx))
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Operation: %v\n", resp.Id)
+
+	return nil
+}
+
+func newScheduleBlankTaskCmd(config *client_config.ClientConfig) *cobra.Command {
+	c := &scheduleBlankTask{
+		config: config,
+	}
+
+	cmd := &cobra.Command{
+		Use:   "schedule-blank",
+		Short: "Schedule blank task",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newTasksCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -723,6 +765,7 @@ func newTasksCmd(
 		newForceFinishTaskCmd(clientConfig, serverConfig),
 		newPauseTaskCmd(clientConfig, serverConfig),
 		newResumeTaskCmd(clientConfig, serverConfig),
+		newScheduleBlankTaskCmd(clientConfig),
 	)
 
 	return cmd

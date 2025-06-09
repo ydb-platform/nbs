@@ -375,6 +375,158 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(2, partitionCount);
     }
 
+    Y_UNIT_TEST(ShouldFillIngestTimeRequestCounters)
+    {
+        NProto::TStorageServiceConfig config;
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_HYBRID,
+            1024
+        );
+
+        volume.WaitReady();
+
+        TVector<TBucketInfo> readBuckets;
+        TVector<TBucketInfo> writeBuckets;
+        TVector<TBucketInfo> zeroBuckets;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvStatsService::EvVolumeSelfCounters: {
+                        if (event->Recipient != MakeStorageStatsServiceId()) {
+                            return false;
+                        }
+                        auto* msg =
+                            event
+                                ->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                        readBuckets =
+                            msg->VolumeSelfCounters->IngestTimeRequestCounters
+                                .ReadBlocks.GetBuckets();
+                        writeBuckets =
+                            msg->VolumeSelfCounters->IngestTimeRequestCounters
+                                .WriteBlocks.GetBuckets();
+                        zeroBuckets =
+                            msg->VolumeSelfCounters->IngestTimeRequestCounters
+                                .ZeroBlocks.GetBuckets();
+                    }
+                        return false;
+                }
+
+                return false;
+            });
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        const auto time = TInstant::Now();
+        runtime->UpdateCurrentTime(time);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // Do requests with timestamps in the past.
+        {
+            auto readRequest = volume.CreateReadBlocksRequest(
+                TBlockRange64::WithLength(0, 100),
+                clientInfo.GetClientId());
+            const auto timestamp = time - TDuration::Seconds(1);
+            readRequest->Record.MutableHeaders()->SetTimestamp(
+                timestamp.MicroSeconds());
+
+            volume.SendToPipe(std::move(readRequest));
+            auto response = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
+        {
+            auto writeRequest = volume.CreateWriteBlocksRequest(
+                TBlockRange64::WithLength(100, 100),
+                clientInfo.GetClientId(),
+                'A');
+            const auto timestamp = time - TDuration::Seconds(5);
+            writeRequest->Record.MutableHeaders()->SetTimestamp(
+                timestamp.MicroSeconds());
+
+            volume.SendToPipe(std::move(writeRequest));
+            auto response = volume.RecvWriteBlocksResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
+        {
+            auto zeroRequest = volume.CreateZeroBlocksRequest(
+                TBlockRange64::WithLength(200, 100),
+                clientInfo.GetClientId());
+            const auto timestamp = time - TDuration::Seconds(35);
+            zeroRequest->Record.MutableHeaders()->SetTimestamp(
+                timestamp.MicroSeconds());
+
+            volume.SendToPipe(std::move(zeroRequest));
+            auto response = volume.RecvZeroBlocksResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // Make sure that proper buckets are filled.
+        auto readIndex = FindIndexIf(readBuckets, [](const auto& bucket) {
+            return bucket.second == 1;
+        });
+        auto writeIndex = FindIndexIf(writeBuckets, [](const auto& bucket) {
+            return bucket.second == 1;
+        });
+        auto zeroIndex = FindIndexIf(zeroBuckets, [](const auto& bucket) {
+            return bucket.second == 1;
+        });
+        UNIT_ASSERT_GE(readIndex, 19);
+        UNIT_ASSERT_VALUES_UNEQUAL(readIndex, NPOS);
+        UNIT_ASSERT_GE(writeIndex, 21);
+        UNIT_ASSERT_VALUES_UNEQUAL(writeIndex, NPOS);
+        UNIT_ASSERT_GE(zeroIndex, 23);
+        UNIT_ASSERT_VALUES_UNEQUAL(zeroIndex, NPOS);
+
+        // Make sure that retry request is not recorded in ingestion stats.
+        {
+            auto readRequest = volume.CreateReadBlocksRequest(
+                TBlockRange64::WithLength(0, 100),
+                clientInfo.GetClientId());
+            const auto timestamp = time - TDuration::MilliSeconds(100);
+            readRequest->Record.MutableHeaders()->SetTimestamp(
+                timestamp.MicroSeconds());
+            readRequest->Record.MutableHeaders()->SetRetryNumber(1);
+
+            volume.SendToPipe(std::move(readRequest));
+            auto response = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        auto readIndex2 = FindIndexIf(readBuckets, [](const auto& bucket) {
+            return bucket.second == 1;
+        });
+        UNIT_ASSERT_VALUES_EQUAL(readIndex2, NPOS);
+    }
+
     Y_UNIT_TEST(ShouldReportCpuConsumptionAndNetUtilizationForNrdPartitions)
     {
         NProto::TStorageServiceConfig storageServiceConfig;

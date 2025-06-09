@@ -200,7 +200,10 @@ STFUNC(TMetadataRebuildBlockCountActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse, HandleMetadataRebuildResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -312,14 +315,17 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
         gen,
         step);
 
-    AddTransaction<TEvPartitionPrivate::TMetadataRebuildBlockCountMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TMetadataRebuildBlockCountMethod>(
+        *requestInfo);
 
-    ExecuteTx(ctx, CreateTx<TMetadataRebuildBlockCount>(
-        requestInfo,
-        msg->BlobId,
-        msg->Count,
-        msg->FinalBlobId,
-        msg->RebuildState));
+    ExecuteTx(
+        ctx,
+        CreateTx<TMetadataRebuildBlockCount>(
+            requestInfo,
+            msg->BlobId,
+            msg->Count,
+            msg->FinalBlobId,
+            msg->RebuildState));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

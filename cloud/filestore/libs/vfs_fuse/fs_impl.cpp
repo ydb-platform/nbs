@@ -274,12 +274,12 @@ void TFileSystem::CompleteAsyncDestroyHandle(
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
             ReportAsyncDestroyHandleFailed();
             with_lock (HandleOpsQueueLock) {
-                HandleOpsQueue->Pop();
+                HandleOpsQueue->PopFront();
             }
         }
     } else {
         with_lock (HandleOpsQueueLock) {
-            HandleOpsQueue->Pop();
+            HandleOpsQueue->PopFront();
         }
         with_lock (DelayedReleaseQueueLock) {
             if (!DelayedReleaseQueue.empty()) {
@@ -312,7 +312,7 @@ void TFileSystem::ProcessHandleOpsQueue()
             TStringBuilder()
             << "Failed to get TQueueEntry from queue, filesystem: "
             << Config->GetFileSystemId());
-        HandleOpsQueue->Pop();
+        HandleOpsQueue->PopFront();
         ScheduleProcessHandleOpsQueue();
         return;
     }
@@ -347,7 +347,7 @@ void TFileSystem::ProcessHandleOpsQueue()
         ReportHandleOpsQueueProcessError(
             TStringBuilder() << "Unexpected TQueueEntry in queue, filesystem: "
                              << Config->GetFileSystemId());
-        HandleOpsQueue->Pop();
+        HandleOpsQueue->PopFront();
         ScheduleProcessHandleOpsQueue();
         return;
     }

@@ -12,6 +12,8 @@ namespace NYdbStats {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TYdbRowData;
+
 struct IYdbVolumesStatsUploader;
 using IYdbVolumesStatsUploaderPtr = std::shared_ptr<IYdbVolumesStatsUploader>;
 

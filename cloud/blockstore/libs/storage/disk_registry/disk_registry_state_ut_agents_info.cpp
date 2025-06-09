@@ -43,7 +43,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                  Device("dev-3", "uuid-2.3"),
                  Device("dev-4", "uuid-2.4")})};
 
-        TDiskRegistryState state =
+        auto state =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -60,30 +60,93 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                 .WithAgents(agents)
                 .Build();
 
-        auto agentsInfo = state.QueryAgentsInfo();
+        const TInstant agentStateTs = TInstant::FromValue(100042);
+        const TString agentStateMessage = "message";
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                auto error = state->UpdateAgentState(
+                    db,
+                    agents[1].GetAgentId(),
+                    NProto::AGENT_STATE_WARNING,
+                    agentStateTs,
+                    agentStateMessage,
+                    affectedDisks);
+                UNIT_ASSERT_SUCCESS(error);
+            });
+
+        auto agentsInfo = state->QueryAgentsInfo();
         UNIT_ASSERT_VALUES_EQUAL(2, agentsInfo.size());
-        const auto& agentInfo = agentsInfo[0];
-        const auto& agent = agents[0];
-        const auto& device = agent.GetDevices(0);
-        UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), agentInfo.GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL(agent.DevicesSize(), agentInfo.DevicesSize());
 
-        const auto& deviceInfo = agentInfo.GetDevices(0);
-        UNIT_ASSERT_VALUES_EQUAL(
-            device.GetDeviceName(),
-            deviceInfo.GetDeviceName());
-        UNIT_ASSERT_VALUES_EQUAL(
-            device.GetSerialNumber(),
-            deviceInfo.GetDeviceSerialNumber());
+        {
+            const auto& agentInfo = agentsInfo[0];
+            const auto& agent = agents[0];
 
-        const auto deviceSpaceInBytes =
-            device.GetBlockSize() * device.GetBlocksCount();
-        UNIT_ASSERT_VALUES_EQUAL(
-            deviceSpaceInBytes,
-            deviceInfo.GetDeviceTotalSpaceInBytes());
-        UNIT_ASSERT_VALUES_EQUAL(
-            deviceSpaceInBytes,
-            deviceInfo.GetDeviceFreeSpaceInBytes());
+            const auto& device = agent.GetDevices(0);
+            const auto& deviceInfo = agentInfo.GetDevices(0);
+
+            UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), agentInfo.GetAgentId());
+            UNIT_ASSERT_EQUAL(
+                NProto::AGENT_STATE_ONLINE,
+                agentInfo.GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", agentInfo.GetStateMessage());
+            UNIT_ASSERT_VALUES_EQUAL(0, agentInfo.GetStateTs());
+            UNIT_ASSERT_VALUES_EQUAL(agent.DevicesSize(), agentInfo.DevicesSize());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                device.GetDeviceName(),
+                deviceInfo.GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL(
+                device.GetSerialNumber(),
+                deviceInfo.GetDeviceSerialNumber());
+
+            const auto deviceSpaceInBytes =
+                device.GetBlockSize() * device.GetBlocksCount();
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceTotalSpaceInBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceFreeSpaceInBytes());
+        }
+
+        {
+            const auto& agentInfo = agentsInfo[1];
+            const auto& agent = agents[1];
+
+            const auto& device = agent.GetDevices(0);
+            const auto& deviceInfo = agentInfo.GetDevices(0);
+
+            UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), agentInfo.GetAgentId());
+            UNIT_ASSERT_EQUAL(
+                NProto::AGENT_STATE_WARNING,
+                agentInfo.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agentStateMessage,
+                agentInfo.GetStateMessage());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agentStateTs,
+                TInstant::MicroSeconds(agentInfo.GetStateTs()));
+            UNIT_ASSERT_VALUES_EQUAL(agent.DevicesSize(), agentInfo.DevicesSize());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                device.GetDeviceName(),
+                deviceInfo.GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL(
+                device.GetSerialNumber(),
+                deviceInfo.GetDeviceSerialNumber());
+
+            const auto deviceSpaceInBytes =
+                device.GetBlockSize() * device.GetBlocksCount();
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceTotalSpaceInBytes());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceDecommissionedSpaceInBytes(), deviceInfo);
+        }
     }
 
     Y_UNIT_TEST(QueryAgentsInfoWithDirtyDevices)
@@ -95,7 +158,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             1,
             {Device("dev-1", "uuid-1.1"), Device("dev-2", "uuid-1.2")})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -112,6 +175,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                 .WithAgents(agents)
                 .WithDirtyDevices({TDirtyDevice{"uuid-1.1", {}}})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto agentsInfo = state.QueryAgentsInfo();
         UNIT_ASSERT_VALUES_EQUAL(1, agentsInfo.size());
@@ -139,7 +203,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             1,
             {Device("dev-1", "uuid-1.1"), Device("dev-2", "uuid-1.2")})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -156,6 +220,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                 .WithAgents(agents)
                 .WithSuspendedDevices({"uuid-1.1"})
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto agentsInfo = state.QueryAgentsInfo();
         UNIT_ASSERT_VALUES_EQUAL(1, agentsInfo.size());
@@ -183,7 +248,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             1,
             {Device("dev-1", "uuid-1.1"), Device("dev-2", "uuid-1.2")})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -199,6 +264,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     }())
                 .WithAgents(agents)
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         auto allocate = [&](auto db,
                             TString agentId,
@@ -268,7 +334,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     "uuid-2.2",
                     NProto::EDeviceState::DEVICE_STATE_ERROR)})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -283,6 +349,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     }())
                 .WithAgents(agents)
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         const auto agentsInfo = state.QueryAgentsInfo();
         UNIT_ASSERT_VALUES_EQUAL(2, agentsInfo.size());
@@ -341,7 +408,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     "uuid-2.2",
                     NProto::EDeviceState::DEVICE_STATE_WARNING)})};
 
-        TDiskRegistryState state =
+        auto statePtr =
             TDiskRegistryStateBuilder()
                 .WithConfig(
                     [&]
@@ -356,6 +423,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                     }())
                 .WithAgents(agents)
                 .Build();
+        TDiskRegistryState& state = *statePtr;
 
         const auto agentsInfo = state.QueryAgentsInfo();
         UNIT_ASSERT_VALUES_EQUAL(2, agentsInfo.size());

@@ -277,14 +277,38 @@ func createStandardSSDNonreplDisk(
 	require.NoError(t, err)
 }
 
-func deleteSync(
+func deleteSyncWithReties(
 	t *testing.T,
 	ctx context.Context,
 	client nbs.Client,
 	diskID string,
 ) {
 
-	require.NoError(t, client.DeleteSync(ctx, diskID))
+	attemptsCount := 10
+	var err error
+
+	for attempt := 1; attempt <= attemptsCount; attempt++ {
+		err = client.DeleteSync(ctx, diskID)
+		if err == nil {
+			return
+		}
+
+		logging.Warn(
+			ctx,
+			"DeleteSync request failed on attempt %v: %v",
+			attempt,
+			err.Error(),
+		)
+
+		time.Sleep(time.Second * 10)
+	}
+
+	require.Fail(
+		t,
+		"DeleteSync failed after %v attempts, last error is %v",
+		attemptsCount,
+		err.Error(),
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1783,8 +1807,8 @@ func TestAlterPlacementGroupMembership(t *testing.T) {
 	diskID1 := t.Name() + "1"
 	createStandardSSDNonreplDisk(t, ctx, client, diskID0)
 	createStandardSSDNonreplDisk(t, ctx, client, diskID1)
-	defer deleteSync(t, ctx, client, diskID0)
-	defer deleteSync(t, ctx, client, diskID1)
+	defer deleteSyncWithReties(t, ctx, client, diskID0)
+	defer deleteSyncWithReties(t, ctx, client, diskID1)
 
 	err = client.AlterPlacementGroupMembership(
 		ctx,
@@ -1844,7 +1868,7 @@ func TestAlterPlacementGroupMembershipFailureBecauseGroupDoesNotExist(t *testing
 
 	diskID := t.Name()
 	createStandardSSDNonreplDisk(t, ctx, client, diskID)
-	defer deleteSync(t, ctx, client, diskID)
+	defer deleteSyncWithReties(t, ctx, client, diskID)
 
 	err := client.AlterPlacementGroupMembership(
 		ctx,
@@ -1877,7 +1901,7 @@ func TestAlterPlacementGroupMembershipFailureBecauseDiskIsInAnotherGroup(t *test
 
 	diskID := t.Name()
 	createStandardSSDNonreplDisk(t, ctx, client, diskID)
-	defer deleteSync(t, ctx, client, diskID)
+	defer deleteSyncWithReties(t, ctx, client, diskID)
 
 	err := client.AlterPlacementGroupMembership(
 		ctx,
@@ -1924,7 +1948,7 @@ func TestAlterPlacementGroupMembershipFailureBecauseOfTooManyDisksInGroup(t *tes
 	for i := 0; i < diskCount; i++ {
 		diskIDs = append(diskIDs, t.Name()+strconv.Itoa(i))
 		createStandardSSDNonreplDisk(t, ctx, client, diskIDs[i])
-		defer deleteSync(t, ctx, client, diskIDs[i])
+		defer deleteSyncWithReties(t, ctx, client, diskIDs[i])
 	}
 
 	err = client.AlterPlacementGroupMembership(

@@ -321,7 +321,7 @@ private:
 NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
     const NProto::TStartEndpointRequest& request)
 {
-    STORAGE_TRACE("StartEndpoint " << DumpMessage(request));
+    STORAGE_INFO("StartEndpoint " << DumpMessage(request));
 
     auto g = Guard(EndpointsLock);
     if (DrainingStarted) {
@@ -367,7 +367,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
             auto future = endpoint->Endpoint->AlterAsync(
                 readOnly,
                 mountSeqNumber).Apply(
-                [=] (const TFuture<NProto::TError>& future) {
+                [=, this] (const TFuture<NProto::TError>& future) {
                     NProto::TStartEndpointResponse response;
                     auto error = future.GetValue();
                     if (!HasError(error)) {

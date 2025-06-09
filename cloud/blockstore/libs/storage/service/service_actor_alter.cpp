@@ -503,7 +503,10 @@ STFUNC(TAlterVolumeActor::StateDescribeVolume)
         HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -514,7 +517,10 @@ STFUNC(TAlterVolumeActor::StateAlterVolume)
         HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleAlterVolumeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -525,7 +531,10 @@ STFUNC(TAlterVolumeActor::StateWaitReady)
         HFunc(TEvVolume::TEvWaitReadyResponse, HandleWaitReadyResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -11,7 +11,6 @@ SRCS(
     drain_actor_companion.cpp
     get_device_for_range_companion.cpp
     long_running_operation_companion.cpp
-    remote_partition_actor.cpp
 )
 
 PEERDIR(

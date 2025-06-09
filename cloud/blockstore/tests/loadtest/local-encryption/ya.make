@@ -5,7 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/loadtest/ya.make.inc)
 REQUIREMENTS(
     cpu:8
     ram:48
-)
+) 
 
 TEST_SRCS(
     test.py

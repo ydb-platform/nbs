@@ -304,9 +304,15 @@ void TVolumeSelfCounters::AggregateWith(const TVolumeSelfCounters& source)
         counter.AggregateWith(meta.GetValue(source.Cumulative));
     }
 
-    for (auto meta: TVolumeSelfRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(RequestCounters);
-        counter.AggregateWith(meta.GetValue(source.RequestCounters));
+    for (auto meta: TVolumeThrottlerDelayCounters::AllCounters) {
+        auto& counter = meta.GetValue(ThrottlerDelayRequestCounters);
+        counter.AggregateWith(
+            meta.GetValue(source.ThrottlerDelayRequestCounters));
+    }
+
+    for (auto meta: TVolumeIngestTimeCounters::AllCounters) {
+        auto& counter = meta.GetValue(IngestTimeRequestCounters);
+        counter.AggregateWith(meta.GetValue(source.IngestTimeRequestCounters));
     }
 }
 
@@ -322,9 +328,14 @@ void TVolumeSelfCounters::Add(const TVolumeSelfCounters& source)
         counter.Add(meta.GetValue(source.Cumulative));
     }
 
-    for (auto meta: TVolumeSelfRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(RequestCounters);
-        counter.Add(meta.GetValue(source.RequestCounters));
+    for (auto meta: TVolumeThrottlerDelayCounters::AllCounters) {
+        auto& counter = meta.GetValue(ThrottlerDelayRequestCounters);
+        counter.Add(meta.GetValue(source.ThrottlerDelayRequestCounters));
+    }
+
+    for (auto meta: TVolumeIngestTimeCounters::AllCounters) {
+        auto& counter = meta.GetValue(IngestTimeRequestCounters);
+        counter.Add(meta.GetValue(source.IngestTimeRequestCounters));
     }
 }
 
@@ -340,8 +351,13 @@ void TVolumeSelfCounters::Reset()
         counter.Reset();
     }
 
-    for (auto meta: TVolumeSelfRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(RequestCounters);
+    for (auto meta: TVolumeThrottlerDelayCounters::AllCounters) {
+        auto& counter = meta.GetValue(ThrottlerDelayRequestCounters);
+        counter.Reset();
+    }
+
+    for (auto meta: TVolumeIngestTimeCounters::AllCounters) {
+        auto& counter = meta.GetValue(IngestTimeRequestCounters);
         counter.Reset();
     }
 }
@@ -370,8 +386,8 @@ void TVolumeSelfCounters::Register(
         }
     }
 
-    for (auto meta: TVolumeSelfRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(RequestCounters);
+    for (auto meta: TVolumeThrottlerDelayCounters::AllCounters) {
+        auto& counter = meta.GetValue(ThrottlerDelayRequestCounters);
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
             Policy == counter.PublishingPolicy)
@@ -379,6 +395,19 @@ void TVolumeSelfCounters::Register(
             counter.ForceRegister(
                 counters->GetSubgroup("request", TString(meta.Name)),
                 "ThrottlerDelay",
+                aggregate);
+        }
+    }
+
+    for (auto meta: TVolumeIngestTimeCounters::AllCounters) {
+        auto& counter = meta.GetValue(IngestTimeRequestCounters);
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.ForceRegister(
+                counters->GetSubgroup("request", TString(meta.Name)),
+                "IngestTime",
                 aggregate);
         }
     }
@@ -406,8 +435,18 @@ void TVolumeSelfCounters::Publish(TInstant now)
         }
     }
 
-    for (auto meta: TVolumeSelfRequestCounters::AllCounters) {
-        auto& counter = meta.GetValue(RequestCounters);
+    for (auto meta: TVolumeThrottlerDelayCounters::AllCounters) {
+        auto& counter = meta.GetValue(ThrottlerDelayRequestCounters);
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish();
+        }
+    }
+
+    for (auto meta: TVolumeIngestTimeCounters::AllCounters) {
+        auto& counter = meta.GetValue(IngestTimeRequestCounters);
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
             Policy == counter.PublishingPolicy)

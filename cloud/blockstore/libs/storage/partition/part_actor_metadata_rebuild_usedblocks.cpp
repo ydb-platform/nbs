@@ -164,7 +164,10 @@ STFUNC(TMetadataRebuildUsedBlocksActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse, HandleMetadataRebuildUsedBlocksResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -274,9 +277,12 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
         PartitionConfig.GetDiskId().c_str(),
         DescribeRange(blockRange).data());
 
-    AddTransaction<TEvPartitionPrivate::TMetadataRebuildUsedBlocksMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TMetadataRebuildUsedBlocksMethod>(
+        *requestInfo);
 
-    ExecuteTx(ctx, CreateTx<TMetadataRebuildUsedBlocks>(requestInfo, blockRange));
+    ExecuteTx(
+        ctx,
+        CreateTx<TMetadataRebuildUsedBlocks>(requestInfo, blockRange));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

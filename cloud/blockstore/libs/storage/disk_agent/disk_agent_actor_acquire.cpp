@@ -93,7 +93,7 @@ void TDiskAgentActor::HandleAcquireDevices(
 
         WaitExceptionOrAll(futures).Subscribe(
             [
-                =,
+                =, this,
                 uuids = std::move(uuids),
                 diskId = record.GetDiskId(),
                 volumeGeneration = record.GetVolumeGeneration()

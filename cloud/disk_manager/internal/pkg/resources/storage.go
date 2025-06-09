@@ -87,6 +87,7 @@ type FilesystemMeta struct {
 	CreatedAt     time.Time     `json:"created_at"`
 	CreatedBy     string        `json:"created_by"`
 	DeleteTaskID  string        `json:"delete_task_id"`
+	IsExternal    bool          `json:"is_external"`
 }
 
 type PlacementGroupMeta struct {

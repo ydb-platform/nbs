@@ -140,7 +140,10 @@ STFUNC(TAlterFileStoreActor::StateWork)
         HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::SS_PROXY);
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SS_PROXY,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

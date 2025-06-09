@@ -234,7 +234,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
 
     auto subDomainPath = "/local/" + name;
 
-    auto factory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
+    auto factory = [=, this] (const TActorId& owner, TTabletStorageInfo* storage) {
         UNIT_ASSERT_EQUAL(storage->TabletType, TTabletTypes::BlockStoreVolume);
         auto actor = CreateVolumeTablet(
             owner,
@@ -244,8 +244,10 @@ ui32 TTestEnv::CreateBlockStoreNode(
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             TraceSerializer,
-            nullptr, // RdmaClient
-            NServer::CreateEndpointEventProxy()
+            nullptr,   // RdmaClient
+            NServer::CreateEndpointEventProxy(),
+            EVolumeStartMode::ONLINE,
+            {}   // diskId
         );
         return actor.release();
     };

@@ -476,6 +476,7 @@ public:
     bool GetEnableConversionIntoMixedIndexV2() const;
 
     ui32 GetStatsUploadDiskCount() const;
+    ui32 GetStatsUploadMaxRowsPerTx() const;
     TDuration GetStatsUploadRetryTimeout() const;
 
     bool GetRemoteMountOnly() const;
@@ -505,6 +506,7 @@ public:
     ui32 GetMixedIndexCacheV1SizeSSD() const;
 
     ui32 GetMaxReadBlobErrorsBeforeSuicide() const;
+    ui32 GetMaxWriteBlobErrorsBeforeSuicide() const;
 
     bool GetRejectMountOnAddClientTimeout() const;
 
@@ -641,14 +643,17 @@ public:
     [[nodiscard]] bool GetLaggingDevicesForMirror3DisksEnabled() const;
     [[nodiscard]] TDuration GetLaggingDeviceTimeoutThreshold() const;
     [[nodiscard]] TDuration GetLaggingDevicePingInterval() const;
+    [[nodiscard]] ui32 GetLaggingDeviceMaxMigrationBandwidth() const;
+    [[nodiscard]] ui32 GetLaggingDeviceMaxMigrationIoDepth() const;
     [[nodiscard]] bool GetResyncAfterLaggingAgentMigration() const;
     [[nodiscard]] bool GetMultiAgentWriteEnabled() const;
     [[nodiscard]] ui32 GetMultiAgentWriteRequestSizeThreshold() const;
+    [[nodiscard]] TDuration GetNetworkForwardingTimeout() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 
-    TDuration GetBlobStorageAsyncGetTimeoutHDD() const;
-    TDuration GetBlobStorageAsyncGetTimeoutSSD() const;
+    [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutHDD() const;
+    [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutSSD() const;
 
     [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
 
@@ -680,6 +685,13 @@ public:
 
     [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
     GetLinkedDiskFillBandwidth() const;
+
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMinDelay() const;
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMaxDelay() const;
+    [[nodiscard]] TDuration GetLoadConfigsFromCmsTotalTimeout() const;
+
+    [[nodiscard]] ui32 GetMaxCompactionRangesLoadingPerTx() const;
+    [[nodiscard]] ui32 GetMaxOutOfOrderCompactionMapChunksInflight() const;
 };
 
 ui64 GetAllocationUnit(

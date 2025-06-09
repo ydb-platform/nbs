@@ -223,7 +223,7 @@ STFUNC(TBootRequestActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, LogComponent);
+            HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             break;
     }
 }

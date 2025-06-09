@@ -35,8 +35,9 @@ class TFlushActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
-
     const TActorId Tablet;
+    const TDuration BlobStorageAsyncRequestTimeout;
+
     TVector<TWriteBlob> Requests;
     TVector<TBlockRange64> AffectedRanges;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
@@ -51,6 +52,7 @@ public:
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         const TActorId& tablet,
+        TDuration blobStorageAsyncRequestTimeout,
         TVector<TWriteBlob> requests);
 
     void Bootstrap(const TActorContext& ctx);
@@ -88,10 +90,12 @@ TFlushActor::TFlushActor(
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         const TActorId& tablet,
+        TDuration blobStorageAsyncRequestTimeout,
         TVector<TWriteBlob> requests)
     : RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
     , Tablet(tablet)
+    , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
     , Requests(std::move(requests))
 {}
 
@@ -137,10 +141,15 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
     for (auto& req: Requests) {
         BlockCount += req.Blocks.size();
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            req.BlobContent.GetGuardedSgList(),
-            true);  // async
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                req.BlobContent.GetGuardedSgList(),
+                true,   // async
+                BlobStorageAsyncRequestTimeout
+                    ? ctx.Now() + BlobStorageAsyncRequestTimeout
+                    : TInstant::Max()   // deadline
+            );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -295,7 +304,10 @@ STFUNC(TFlushActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -541,6 +553,7 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
         std::move(flushCtx.RequestInfo),
         BlockDigestGenerator,
         SelfId(),
+        GetBlobStorageAsyncRequestTimeout(),
         std::move(blobs));
 
     Actors.insert(actor);

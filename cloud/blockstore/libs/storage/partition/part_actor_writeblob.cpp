@@ -214,11 +214,7 @@ void TWriteBlobActor::ReplyAndDie(
             RequestInfo->CallContext->RequestId);
     }
 
-    if (HasError(response->GetError())) {
-        TLongRunningOperationCompanion::RequestCancelled(ctx);
-    } else {
-        TLongRunningOperationCompanion::RequestFinished(ctx);
-    }
+    TLongRunningOperationCompanion::RequestFinished(ctx, response->GetError());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -296,17 +292,37 @@ STFUNC(TWriteBlobActor::StateWork)
         HFunc(TEvBlobStorage::TEvPutResult, HandlePutResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
 
 EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ssf)
 {
+    /*
+    YellowStop: Tablets switch to read-only mode. Only system writes are allowed.
+
+    LightOrange: Alert: "Tablets have not stopped". Compaction writes are not
+    allowed if this flag is received.
+
+    PreOrange: VDisk switches to read-only mode.
+
+    Orange: All VDisks in the group switch to read-only mode.
+
+    Red: PDisk stops issuing chunks.
+
+    Black: Reserved for recovery.
+    */
+
     const auto outOfSpaceMask = static_cast<NKikimrBlobStorage::EStatusFlags>(
-        NKikimrBlobStorage::StatusDiskSpaceRed
+        NKikimrBlobStorage::StatusDiskSpaceBlack
+        | NKikimrBlobStorage::StatusDiskSpaceRed
         | NKikimrBlobStorage::StatusDiskSpaceOrange
-        // no need to check StatusDiskSpaceBlack since BS won't accept any write requests in black state anyway
+        | NKikimrBlobStorage::StatusDiskSpacePreOrange
+        | NKikimrBlobStorage::StatusDiskSpaceLightOrange
     );
     if (ssf.Check(outOfSpaceMask)) {
         return {};
@@ -397,6 +413,26 @@ void TPartitionActor::HandleWriteBlobCompleted(
 
     ui32 channel = msg->BlobId.Channel();
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
+    UpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize());
+    if (groupId == Max<ui32>()) {
+        Y_DEBUG_ABORT_UNLESS(
+            0,
+            "HandleWriteBlobCompleted: invalid blob id received");
+    } else {
+        UpdateWriteThroughput(
+            ctx.Now(),
+            channel,
+            groupId,
+            msg->BlobId.BlobSize());
+    }
+
+    PartCounters->RequestCounters.WriteBlob.AddRequest(
+        msg->RequestTime.MicroSeconds(),
+        msg->BlobId.BlobSize(),
+        1,
+        State->GetChannelDataKind(channel));
+
+    State->CompleteIORequest(channel);
 
     const auto isValidFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
     const auto yellowMoveFlag =
@@ -437,39 +473,29 @@ void TPartitionActor::HandleWriteBlobCompleted(
 
     if (FAILED(msg->GetStatus())) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Stop tablet because of WriteBlob error (actor %s, group %u): %s",
+            "[%lu][d:%s] WriteBlob error happened: %s",
             TabletID(),
             PartitionConfig.GetDiskId().c_str(),
-            ev->Sender.ToString().c_str(),
-            groupId,
             FormatError(msg->GetError()).data());
 
-        ReportTabletBSFailure();
-        Suicide(ctx);
-        return;
-    }
+        if (State->IncrementWriteBlobErrorCount()
+                >= Config->GetMaxWriteBlobErrorsBeforeSuicide())
+        {
+            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+                "[%lu][d:%s] Stop tablet because of too many WritedBlob errors (actor %s, group %u): %s",
+                TabletID(),
+                PartitionConfig.GetDiskId().c_str(),
+                ev->Sender.ToString().c_str(),
+                groupId,
+                FormatError(msg->GetError()).data());
 
-    if (groupId == Max<ui32>()) {
-        Y_DEBUG_ABORT_UNLESS(
-            0,
-            "HandleWriteBlobCompleted: invalid blob id received");
+            ReportTabletBSFailure();
+            Suicide(ctx);
+            return;
+        }
     } else {
-        UpdateWriteThroughput(
-            ctx.Now(),
-            channel,
-            groupId,
-            msg->BlobId.BlobSize());
         State->RegisterSuccess(ctx.Now(), groupId);
     }
-    UpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize());
-
-    PartCounters->RequestCounters.WriteBlob.AddRequest(
-        msg->RequestTime.MicroSeconds(),
-        msg->BlobId.BlobSize(),
-        1,
-        State->GetChannelDataKind(channel));
-
-    State->CompleteIORequest(channel);
 
     ProcessIOQueue(ctx, channel);
 }

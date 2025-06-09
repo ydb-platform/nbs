@@ -8,10 +8,8 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/service/service_events_private.h>   // TODO: invalid reference
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
-
-// TODO: invalid reference
-#include <cloud/blockstore/libs/storage/service/service_events_private.h>
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
@@ -24,8 +22,8 @@
 #include <library/cpp/lwtrace/protos/lwtrace.pb.h>
 #include <library/cpp/lwtrace/signature.h>
 
-#include <util/string/builder.h>
 #include <util/stream/str.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -54,6 +52,13 @@ const TVolumeActor::TStateInfo TVolumeActor::States[STATE_MAX] = {
     { "Zombie", (IActor::TReceiveFunc)&TVolumeActor::StateZombie },
 };
 
+const TString VolumeTransactions[] = {
+#define TRANSACTION_NAME(name, ...) #name,
+    BLOCKSTORE_VOLUME_TRANSACTIONS(TRANSACTION_NAME)
+#undef TRANSACTION_NAME
+        "Total",
+};
+
 TVolumeActor::TVolumeActor(
         const TActorId& owner,
         TTabletStorageInfoPtr storage,
@@ -64,9 +69,10 @@ TVolumeActor::TVolumeActor(
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        EVolumeStartMode startMode)
+        EVolumeStartMode startMode,
+        TString diskId)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
+    , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , GlobalStorageConfig(config)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -76,14 +82,16 @@ TVolumeActor::TVolumeActor(
     , RdmaClient(std::move(rdmaClient))
     , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
+    , LogTitle(TabletID(), std::move(diskId), StartTime)
     , ThrottlerLogger(
-        TabletID(),
-        [this](ui32 opType, TDuration time) {
-            UpdateDelayCounter(
-                static_cast<TVolumeThrottlingPolicy::EOpType>(opType),
-                time);
-        }
-    )
+          TabletID(),
+          [this](ui32 opType, TDuration time)
+          {
+              UpdateDelayCounter(
+                  static_cast<TVolumeThrottlingPolicy::EOpType>(opType),
+                  time);
+          })
+    , TransactionTimeTracker(VolumeTransactions)
 {}
 
 TVolumeActor::~TVolumeActor()
@@ -127,12 +135,16 @@ void TVolumeActor::BecomeAux(const TActorContext& ctx, EState state)
     }
 
     Become(States[state].Func);
+    const auto prevState = CurrentState;
     CurrentState = state;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Switched to state %s (system: %s, user: %s, executor: %s)",
-        TabletID(),
-        States[state].Name.data(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Switched state %s -> %s (system: %s, user: %s, executor: %s)",
+        LogTitle.GetWithTime().c_str(),
+        GetStateName(prevState).Quote().c_str(),
+        GetStateName(state).Quote().c_str(),
         ToString(Tablet()).data(),
         ToString(SelfId()).data(),
         ToString(ExecutorID()).data());
@@ -255,9 +267,13 @@ void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
 {
     ExecutorActivationTimestamp = ctx.Now();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Activated executor",
-        TabletID());
+    LogTitle.SetGeneration(Executor()->Generation());
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Activated executor",
+        LogTitle.GetWithTime().c_str());
 
     ScheduleRegularUpdates(ctx);
 
@@ -673,7 +689,7 @@ void TVolumeActor::HandleServerConnected(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Pipe client %s (server %s) connected to volume %s",
         TabletID(),
         ToString(msg->ClientId).data(),
@@ -688,7 +704,7 @@ void TVolumeActor::HandleServerDisconnected(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Pipe client %s (server %s) disconnected from volume %s at %s",
         TabletID(),
         ToString(msg->ClientId).data(),
@@ -706,7 +722,7 @@ void TVolumeActor::HandleServerDestroyed(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Pipe client %s's server %s got destroyed for volume %s at %s",
         TabletID(),
         ToString(msg->ClientId).data(),
@@ -768,9 +784,15 @@ void TVolumeActor::HandleTakeVolumeRequestId(
             std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
                 MakeError(
                     E_REJECTED,
-                    "can't advance request id, restarting tablet"));
+                    "volume request id overflow, restarting tablet"));
         NCloud::Reply(ctx, *ev, std::move(resp));
+
         NCloud::Send(ctx, SelfId(), std::make_unique<TEvents::TEvPoisonPill>());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Sent PoisonPill to volume because of volume request id overflow",
+            LogTitle.GetWithTime().c_str());
         return;
     }
 
@@ -998,10 +1020,10 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(TEvVolume::TEvResyncFinished, HandleResyncFinished);
 
         HFunc(
-            TEvDiskRegistry::TEvAddLaggingDevicesResponse,
-            HandleAddLaggingDevicesResponse);
+            TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse,
+            HandleAddOutdatedLaggingDevicesResponse);
         HFunc(
-            TEvVolumePrivate::TEvReportLaggingDevicesToDR,
+            TEvVolumePrivate::TEvReportOutdatedLaggingDevicesToDR,
             HandleReportLaggingDevicesToDR);
         HFunc(
             TEvVolumePrivate::TEvDeviceTimedOutRequest,
@@ -1056,7 +1078,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateThrottlerState);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateReadWriteClientInfo);
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
-        IgnoreFunc(TEvVolumePrivate::TEvReportLaggingDevicesToDR);
+        IgnoreFunc(TEvVolumePrivate::TEvReportOutdatedLaggingDevicesToDR);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
         IgnoreFunc(TEvVolumePrivate::TEvAcquireDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
@@ -1081,7 +1103,7 @@ STFUNC(TVolumeActor::StateZombie)
 
         IgnoreFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse);
 
-        IgnoreFunc(TEvDiskRegistry::TEvAddLaggingDevicesResponse);
+        IgnoreFunc(TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse);
 
         IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);

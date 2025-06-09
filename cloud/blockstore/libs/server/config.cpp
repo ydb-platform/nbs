@@ -5,7 +5,6 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
-#include <util/generic/hash.h>
 #include <util/system/sysstat.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -106,7 +105,8 @@ constexpr TDuration Seconds(int s)
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
-    xxx(NbdPort,                     ui32,                   {}               )\
+    xxx(VhostDiscardEnabled,         bool,                   false            )\
+    xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \

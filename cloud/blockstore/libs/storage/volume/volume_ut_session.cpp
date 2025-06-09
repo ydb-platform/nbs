@@ -61,6 +61,9 @@ struct TFixture: public NUnitTest::TBaseFixture
         Runtime = PrepareTestActorRuntime(config, State);
         auto volume = GetVolumeClient();
 
+        const ui64 blockCount = DefaultDeviceBlockCount *
+                                DefaultDeviceBlockSize / DefaultBlockSize * 3;
+
         volume.UpdateVolumeConfig(
             0,
             0,
@@ -69,7 +72,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+            blockCount);
 
         volume.WaitReady();
     }
@@ -359,8 +362,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
         writerClient.SendAddClientRequest(writer);
         auto response = writerClient.RecvAddClientResponse();
-        UNIT_ASSERT_EQUAL(response->GetError().GetCode(), E_REJECTED);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetMessage(), "timeout");
+        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_TIMEOUT);
     }
 
     Y_UNIT_TEST_F(ShouldPassErrorsFromDiskAgent, TFixture)
@@ -450,6 +452,50 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         writerClient.AddClient(writer);
     }
 
+    Y_UNIT_TEST_F(ShouldIgnoreTimeoutIfMuteIoErrorsFlagIsSet, TFixture)
+    {
+        SetupTest(100ms);
+
+        auto writerClient = GetVolumeClient();
+
+        std::unique_ptr<IEventHandle> stollenResponse;
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAcquireDevicesResponse)
+                {
+                    stollenResponse.reset(event.Release());
+                    return TTestActorRuntimeBase::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto writer = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        auto& disk = State->Disks.at("vol0");
+        disk.IOMode = NProto::VOLUME_IO_ERROR_READ_ONLY;
+        disk.IOModeTs = Runtime->GetCurrentTime();
+        disk.MuteIOErrors = true;
+
+        for (auto& device: disk.Devices) {
+            State->UnavailableDeviceUUIDs.emplace_back(device.GetDeviceUUID());
+        };
+
+        auto volume = GetVolumeClient();
+        volume.ReallocateDisk();
+        // reallocate disk will trigger pipes reset, so reestablish connection
+        volume.ReconnectPipe();
+
+        writerClient.AddClient(writer);
+
+        writerClient.RemoveClient(writer.GetClientId());
+    }
+
     Y_UNIT_TEST_F(ShouldHandleRequestsUndelivery, TFixture)
     {
         SetupTest();
@@ -475,6 +521,106 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
         UNIT_ASSERT_EQUAL(response->GetError().GetCode(), E_REJECTED);
         UNIT_ASSERT_EQUAL(response->GetError().GetMessage(), "not delivered");
+    }
+
+    Y_UNIT_TEST_F(ShouldFilterUnavailableDevicesDuringAcquire, TFixture)
+    {
+        SetupTest();
+
+        auto volume = GetVolumeClient();
+
+        auto response = volume.GetVolumeInfo();
+        auto diskInfo = response->Record.GetVolume();
+
+        TVector<TString> devices;
+        for (const auto& d: diskInfo.GetDevices()) {
+            devices.emplace_back(d.GetDeviceUUID());
+        }
+
+        State->UnavailableDeviceUUIDs.emplace_back(devices[0]);
+
+        volume.ReallocateDisk();
+        // reallocate disk will trigger pipes reset, so reestablish connection
+        volume.ReconnectPipe();
+
+        THashSet<TString> acquiredDevices;
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAcquireDevicesRequest)
+                {
+                    auto* ev =
+                        static_cast<TEvDiskAgent::TEvAcquireDevicesRequest*>(
+                            event->GetBase());
+
+                    for (const auto& d: ev->Record.GetDeviceUUIDs()) {
+                        acquiredDevices.emplace(d);
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto writerClient = GetVolumeClient();
+
+        auto writer = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        writerClient.AddClient(writer);
+
+        // Lost device should not be acquired.
+        UNIT_ASSERT_VALUES_EQUAL(devices.size() - 1, acquiredDevices.size());
+        for (size_t i = 1; i < devices.size(); ++i) {
+            UNIT_ASSERT(acquiredDevices.contains(devices[i]));
+        }
+        acquiredDevices.clear();
+
+        State->UnavailableDeviceUUIDs.clear();
+
+        volume.ReallocateDisk();
+        // reallocate disk will trigger pipes reset, so reestablish connection
+        volume.ReconnectPipe();
+
+        Runtime->AdvanceCurrentTime(2s);
+        Runtime->DispatchEvents({}, 10ms);
+
+        // All devices should be acquired.
+        UNIT_ASSERT_VALUES_EQUAL(devices.size(), acquiredDevices.size());
+        for (const auto& device: devices) {
+            UNIT_ASSERT(acquiredDevices.contains(device));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldMountVolumeWithOnlyUnavailableDevices, TFixture)
+    {
+        SetupTest();
+
+        auto volume = GetVolumeClient();
+
+        auto response = volume.GetVolumeInfo();
+        auto diskInfo = response->Record.GetVolume();
+
+        // Mark all devices as lost.
+        for (const auto& d: diskInfo.GetDevices()) {
+            State->UnavailableDeviceUUIDs.emplace_back(d.GetDeviceUUID());
+        }
+
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+
+        auto writerClient = GetVolumeClient();
+
+        auto writer = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        // Successful mount and unmount.
+        writerClient.AddClient(writer);
+        writerClient.RemoveClient(writer.GetClientId());
     }
 }
 

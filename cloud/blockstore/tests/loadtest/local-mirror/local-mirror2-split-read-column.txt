@@ -40,7 +40,7 @@ Vertices {
                 End: 262644
                 WriteRate: 100
                 ReadRate: 100
-                ZeroRate: 100
+                ZeroRate: 10
                 LoadType: LOAD_TYPE_RANDOM
                 IoDepth: 20
                 MaxRequestSize: 100

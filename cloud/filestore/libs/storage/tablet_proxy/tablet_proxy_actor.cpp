@@ -359,7 +359,10 @@ void TIndexTabletProxyActor::HandleResponse(
     if (it == ActiveRequests.end()) {
         // ActiveRequests are cleared upon connection reset
         if (!LogLateMessage(ev)) {
-            LogUnexpectedEvent(ev, TFileStoreComponents::TABLET_PROXY);
+            LogUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_PROXY,
+                __PRETTY_FUNCTION__);
         }
         return;
     }
@@ -480,7 +483,10 @@ STFUNC(TIndexTabletProxyActor::StateWork)
 
         default:
             if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_PROXY);
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET_PROXY,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

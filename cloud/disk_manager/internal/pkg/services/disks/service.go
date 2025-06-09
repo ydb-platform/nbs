@@ -15,7 +15,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/shards"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -158,29 +157,10 @@ type service struct {
 	config          *disks_config.DisksConfig
 	nbsFactory      nbs.Factory
 	poolService     pools.Service
-	shardsService   shards.Service
 	resourceStorage resources.Storage
 }
 
-func (s *service) prepareZoneId(
-	ctx context.Context,
-	req *disk_manager.CreateDiskRequest,
-) (string, error) {
-
-	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, req.DiskId.DiskId)
-	if err != nil {
-		return "", err
-	}
-
-	if diskMeta != nil {
-		return diskMeta.ZoneID, nil
-	}
-
-	return s.shardsService.PickShard(ctx, req.DiskId, req.FolderId), nil
-}
-
 func (s *service) prepareCreateDiskParams(
-	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
 ) (*protos.CreateDiskParams, error) {
 
@@ -191,11 +171,6 @@ func (s *service) prepareCreateDiskParams(
 			"invalid disk id: %v",
 			req.DiskId,
 		)
-	}
-
-	zoneID, err := s.prepareZoneId(ctx, req)
-	if err != nil {
-		return nil, err
 	}
 
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
@@ -272,7 +247,7 @@ func (s *service) prepareCreateDiskParams(
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{
-			ZoneId: zoneID,
+			ZoneId: req.DiskId.ZoneId,
 			DiskId: req.DiskId.DiskId,
 		},
 		BlockSize:               blockSize,
@@ -361,7 +336,7 @@ func (s *service) CreateDisk(
 	req *disk_manager.CreateDiskRequest,
 ) (string, error) {
 
-	params, err := s.prepareCreateDiskParams(ctx, req)
+	params, err := s.prepareCreateDiskParams(req)
 	if err != nil {
 		return "", err
 	}
@@ -797,7 +772,6 @@ func NewService(
 	config *disks_config.DisksConfig,
 	nbsFactory nbs.Factory,
 	poolService pools.Service,
-	shardsService shards.Service,
 	resourceStorage resources.Storage,
 ) Service {
 
@@ -807,7 +781,6 @@ func NewService(
 		config:          config,
 		nbsFactory:      nbsFactory,
 		poolService:     poolService,
-		shardsService:   shardsService,
 		resourceStorage: resourceStorage,
 	}
 }

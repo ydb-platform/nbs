@@ -25,11 +25,15 @@
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
+#include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
+#include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
+
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/protos/trace.pb.h>
 
@@ -189,6 +193,7 @@ public:
     };
 
 private:
+    const ui64 StartTime = GetCycleCount();
     TStorageConfigPtr GlobalStorageConfig;
     TStorageConfigPtr Config;
     bool HasStorageConfigPatch = false;
@@ -200,6 +205,7 @@ private:
     const NRdma::IClientPtr RdmaClient;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
+    TLogTitle LogTitle;
     TVolumeThrottlerLogger ThrottlerLogger;
 
     std::unique_ptr<TVolumeState> State;
@@ -238,6 +244,7 @@ private:
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
         TVector<TString> RemovedLaggingDeviceIds;
+        TVector<TString> UnavailableDeviceIds;
 
         void Clear()
         {
@@ -301,6 +308,9 @@ private:
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
+
+    TRequestsTimeTracker RequestTimeTracker{StartTime};
+    TTransactionTimeTracker TransactionTimeTracker;
 
     // inflight VolumeRequestId -> duplicate request queue
     // we respond to duplicate requests as soon as our original request is completed
@@ -381,7 +391,8 @@ public:
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        EVolumeStartMode startMode);
+        EVolumeStartMode startMode,
+        TString diskId);
     ~TVolumeActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::VOLUME;
@@ -414,6 +425,11 @@ private:
     void UpdateTabletMetrics(
         const NActors::TActorContext& ctx,
         const NKikimrTabletBase::TMetrics& tabletMetrics);
+
+    template <typename TMethod>
+    void UpdateIngestTimeStats(
+        const typename TMethod::TRequest::TPtr& ev,
+        TInstant now);
 
     void SendPartStatsToService(const NActors::TActorContext& ctx);
     void DoSendPartStatsToService(
@@ -451,6 +467,8 @@ private:
         IOutputStream& out) const;
     void RenderCheckpoints(IOutputStream& out) const;
     void RenderLinks(IOutputStream& out) const;
+    void RenderLatency(IOutputStream& out) const;
+    void RenderTransactions(IOutputStream& out) const;
     void RenderTraces(IOutputStream& out) const;
     void RenderStorageConfig(IOutputStream& out) const;
     void RenderRawVolumeConfig(IOutputStream& out) const;
@@ -503,7 +521,7 @@ private:
     void SetupDiskRegistryBasedPartitions(const NActors::TActorContext& ctx);
 
     bool LaggingDevicesAreAllowed() const;
-    void ReportLaggingDevicesToDR(const NActors::TActorContext& ctx);
+    void ReportOutdatedLaggingDevicesToDR(const NActors::TActorContext& ctx);
 
     void DumpUsageStats(
         const NActors::TActorContext& ctx,
@@ -640,6 +658,16 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_GetRequestsLatency(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetTransactionsLatency(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_Default(
         const NActors::TActorContext& ctx,
         const TVolumeMountHistorySlice& history,
@@ -693,7 +721,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleReportLaggingDevicesToDR(
-        const TEvVolumePrivate::TEvReportLaggingDevicesToDR::TPtr& ev,
+        const TEvVolumePrivate::TEvReportOutdatedLaggingDevicesToDR::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
@@ -824,8 +852,8 @@ private:
         const NActors::TActorContext& ctx,
         NProto::TError error);
 
-    void HandleAddLaggingDevicesResponse(
-        const TEvDiskRegistry::TEvAddLaggingDevicesResponse::TPtr& ev,
+    void HandleAddOutdatedLaggingDevicesResponse(
+        const TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void ScheduleAllocateDiskIfNeeded(const NActors::TActorContext& ctx);
@@ -911,6 +939,7 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         NActors::TActorId newRecipient,
         ui64 volumeRequestId,
+        TBlockRange64 blockRange,
         ui64 traceTime,
         bool forkTraces,
         bool isMultipartition);
@@ -920,6 +949,7 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
         ui64 volumeRequestId,
+        TBlockRange64 blockRange,
         ui32 partitionId,
         ui64 traceTs);
 

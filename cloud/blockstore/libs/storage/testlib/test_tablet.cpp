@@ -221,7 +221,10 @@ STFUNC(TTabletActor::StateWork)
             if (!HandleRequests(ev) &&
                 !HandleDefaultEvents(ev, SelfId()))
             {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -236,7 +239,10 @@ STFUNC(TTabletActor::StateZombie)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
             break;
     }
 }

@@ -52,6 +52,9 @@ class TDummyClientEndpoint: public NRdma::IClientEndpoint
     {
         return MakeFuture();
     }
+
+    void TryForceReconnect() override
+    {}
 };
 
 class TRdmaClientHelper: public NRdma::IClient

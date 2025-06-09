@@ -52,4 +52,10 @@ TDuration TConfigInitializerLocal::GetInactiveClientsTimeout() const
     return TDuration::Max();
 }
 
+TString TConfigInitializerLocal::GetLogBackendFileName() const
+{
+    return "";
+}
+
+
 }   // namespace NCloud::NBlockStore::NServer

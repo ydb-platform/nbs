@@ -1,0 +1,62 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            BlocksCount: 786432
+            BlockSize: 4096
+            StorageMediaKind: STORAGE_MEDIA_SSD_MIRROR2
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 200000
+                End: 300000
+                WriteRate: 80
+                ZeroRate: 20
+                ReadRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestSizes {
+                    Probability: 0.4
+                    MinSize: 1
+                    MaxSize: 2
+                }
+                RequestSizes {
+                    Probability: 0.4
+                    MinSize: 8
+                    MaxSize: 32
+                }
+                RequestSizes {
+                    Probability: 0.2
+                    MinSize: 512
+                    MaxSize: 1024
+                }
+            }
+            Ranges {
+                Start: 400000
+                End: 600000
+                WriteRate: 80
+                ZeroRate: 20
+                ReadRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestSizes {
+                    Probability: 0.4
+                    MinSize: 1
+                    MaxSize: 2
+                }
+                RequestSizes {
+                    Probability: 0.4
+                    MinSize: 8
+                    MaxSize: 32
+                }
+                RequestSizes {
+                    Probability: 0.2
+                    MinSize: 512
+                    MaxSize: 1024
+                }
+            }
+        }
+        TestDuration: 60
+        Verify: true
+        Name: "test_vol0"
+    }
+}

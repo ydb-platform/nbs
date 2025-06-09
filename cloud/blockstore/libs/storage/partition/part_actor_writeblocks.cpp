@@ -202,7 +202,7 @@ void TPartitionActor::WriteBlocks(
     IWriteBlocksHandlerPtr writeHandler,
     bool replyLocal)
 {
-    auto replyError = [=] (const TActorContext& ctx, NProto::TError error) {
+    auto replyError = [=, this] (const TActorContext& ctx, NProto::TError error) {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu][d:%s] WriteBlocks error: %s",
             TabletID(),

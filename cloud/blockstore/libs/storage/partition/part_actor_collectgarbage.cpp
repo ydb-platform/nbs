@@ -295,7 +295,10 @@ STFUNC(TCollectGarbageActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvDeleteGarbageResponse, HandleDeleteGarbageResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -510,7 +513,10 @@ STFUNC(TCollectGarbageHardActor::StateWork)
         HFunc(TEvBlobStorage::TEvCollectGarbageResult, HandleCollectGarbageResult);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -627,7 +633,7 @@ void TPartitionActor::HandleCollectGarbage(
 
         AddTransaction<TEvPartitionPrivate::TCollectGarbageMethod>(*requestInfo);
 
-        ExecuteTx<TCollectGarbage>(ctx, requestInfo, commitId);
+        ExecuteTx(ctx, CreateTx<TCollectGarbage>(requestInfo, commitId));
         return;
     }
 

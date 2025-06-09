@@ -4,6 +4,7 @@ LIBRARY()
 
 GENERATE_ENUM_SERIALIZATION(checkpoint.h)
 GENERATE_ENUM_SERIALIZATION(follower_disk.h)
+GENERATE_ENUM_SERIALIZATION(requests_time_tracker.h)
 
 SRCS(
     checkpoint.cpp
@@ -13,6 +14,7 @@ SRCS(
     helpers.cpp
     merge.cpp
     meta.cpp
+    requests_time_tracker.cpp
     requests_inflight.cpp
     retry_policy.cpp
     stripe.cpp
