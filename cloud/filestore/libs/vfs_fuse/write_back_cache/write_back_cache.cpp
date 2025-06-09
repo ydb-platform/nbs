@@ -131,6 +131,7 @@ public:
             request.GetOffset(),
             request.GetBuffer().length(),
             serializedRequest,
+            request.GetFileSystemId(),
             request.GetHeaders());
         WriteDataEntriesByHandle[request.GetHandle()].emplace_back(
             entry.get());
@@ -271,7 +272,9 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request)
     {
-        Y_UNUSED(callContext);
+        if (request->GetFileSystemId().empty()) {
+            request->SetFileSystemId(callContext->FileSystemId);
+        }
 
         auto promise = NewPromise<NProto::TWriteDataResponse>();
         auto future = promise.GetFuture();
@@ -367,6 +370,7 @@ public:
             }
 
             auto request = std::make_shared<NProto::TWriteDataRequest>();
+            request->SetFileSystemId(parts[partIndex].Source->FileSystemId);
             *request->MutableHeaders() =
                 parts[partIndex].Source->RequestHeaders;
             request->SetHandle(handle);
@@ -482,8 +486,10 @@ public:
         state->WriteRequestsRemaining = writeRequests.size();
 
         for (auto& request: writeRequests) {
+            auto callContext = MakeIntrusive<TCallContext>(
+                request->GetFileSystemId());
             Session->WriteData(
-                MakeIntrusive<TCallContext>(),
+                std::move(callContext),
                 std::move(request)).Subscribe(
                     [state] (auto)
                     {

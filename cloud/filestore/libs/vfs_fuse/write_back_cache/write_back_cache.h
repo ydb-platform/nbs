@@ -68,6 +68,7 @@ private:
         ui64 Length;
         // serialized TWriteDataRequest
         TStringBuf SerializedRequest;
+        TString FileSystemId;
         NProto::THeaders RequestHeaders;
 
         TWriteDataEntry(
@@ -75,11 +76,13 @@ private:
                 ui64 offset,
                 ui64 length,
                 TStringBuf serializedRequest,
+                TString fileSystemId,
                 NProto::THeaders requestHeaders)
             : Handle(handle)
             , Offset(offset)
             , Length(length)
             , SerializedRequest(serializedRequest)
+            , FileSystemId(std::move(fileSystemId))
             , RequestHeaders(std::move(requestHeaders))
         {}
 

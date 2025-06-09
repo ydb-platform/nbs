@@ -155,8 +155,13 @@ struct TBootstrap
         proto.SetSocketPath(SocketPath);
         proto.SetFileSystemId(FileSystemId);
         if (featuresConfig.GetAsyncDestroyHandleEnabled()) {
-            proto.SetHandleOpsQueuePath(TempDir.Path());
+            proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
             proto.SetHandleOpsQueueSize(handleOpsQueueSize);
+        }
+        if (featuresConfig.GetServerWriteBackCacheEnabled()) {
+            proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
+            // disable automatic flush
+            proto.SetWriteBackCacheAutomaticFlushPeriod(0);
         }
 
         auto config = std::make_shared<TVFSConfig>(std::move(proto));
@@ -1415,7 +1420,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_EXCEPTION(future.GetValue(), yexception);
     }
 
-    Y_UNIT_TEST(ShouldHandlReadRequest)
+    Y_UNIT_TEST(ShouldHandleReadRequest)
     {
         TBootstrap bootstrap;
 
@@ -1827,6 +1832,129 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // Check that second request was added to the queue and processed later.
         scheduler->RunAllScheduledTasks();
         UNIT_ASSERT_EQUAL(2, handlerCalled);
+    }
+
+    Y_UNIT_TEST(ShouldReadAndWriteWithServerWriteBackCacheEnabled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        const ui64 size = 789;
+
+        bootstrap.Service->CreateHandleHandler = [&] (auto callContext, auto request) {
+            Y_UNUSED(request);
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            NProto::TCreateHandleResponse result;
+            result.SetHandle(handleId);
+            result.MutableNodeAttr()->SetId(nodeId);
+            return MakeFuture(result);
+        };
+
+        std::atomic<int> readDataCalled = 0;
+
+        bootstrap.Service->ReadDataHandler = [&] (auto callContext, auto request) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handleId);
+
+            readDataCalled++;
+
+            NProto::TReadDataResponse result;
+            result.MutableBuffer()->assign(TString(request->GetLength(), 'a'));
+
+            return MakeFuture(result);
+        };
+
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            writeDataCalled++;
+
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        std::atomic<int> fsyncCalled = 0;
+
+        bootstrap.Service->FsyncHandler = [&] (auto callContext, auto) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            fsyncCalled++;
+            return MakeFuture(NProto::TFsyncResponse());
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        // should read empty data
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handleId, 0, size);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
+        UNIT_ASSERT_VALUES_EQUAL(1, readDataCalled.load());
+
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(handleId, handle.GetValue(WaitTimeout));
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        // should not write (flush) data from cache immediately
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        // should read data from cache
+        read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handleId, 0, size);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
+        // ReadData should not be called since last time
+        UNIT_ASSERT_VALUES_EQUAL(1, readDataCalled.load());
+
+        auto fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
+            nodeId, handleId, false /* datasync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalled.load());
+        // cache should be flushed
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+
+        read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handleId, 0, size);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
+        // should read data from underlying session after flush
+        UNIT_ASSERT_VALUES_EQUAL(2, readDataCalled.load());
+
+        // subsequent fsync does nothing
+        fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
+            nodeId, handleId, false /* datasync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(2, fsyncCalled.load());
+        // no new writes (flushes) are expected
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+
+        // call fsync with |datasync == true| - should work the same way it did
+        // before
+        fsync = bootstrap.Fuse->SendRequest<TFsyncRequest>(
+            nodeId, handleId, true /* datasync */);
+        UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(3, fsyncCalled.load());
+        // cache should be flushed
+        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
     }
 }
 
