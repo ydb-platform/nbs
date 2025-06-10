@@ -1036,12 +1036,12 @@ private:
             ? request.GetClientId()
             : request.GetInstanceId();
 
-        if (volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL &&
-            volume.GetBlockSize() != DefaultLocalSSDBlockSize)
-        {
-            ReportStartExternalEndpointError(
-                "Local disks should have block size of 512 bytes.");
-        }
+        // if (volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL &&
+        //     volume.GetBlockSize() != DefaultLocalSSDBlockSize)
+        // {
+        //     ReportStartExternalEndpointError(
+        //         "Local disks should have block size of 512 bytes.");
+        // }
 
         TVector<TString> args {
             "--disk-id", request.GetDiskId(),
