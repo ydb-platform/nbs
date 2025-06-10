@@ -167,10 +167,10 @@ void TAcquireDevicesActor::ReplyAndDie(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%s] AcquireDevices DiskId: %s targets %s error: %s",
+            "[%s] AcquireDevices DiskId: %s PendingAgents %s error: %s",
             ClientId.c_str(),
             DiskId.c_str(),
-            LogTargets().c_str(),
+            LogPendingAgents().c_str(),
             FormatError(error).c_str());
     }
 
@@ -268,12 +268,13 @@ void TAcquireDevicesActor::OnAcquireResponse(
             ctx,
             TBlockStoreComponents::VOLUME,
             "[%s] AcquireDevices for disk %s on the node #%d and agent %s "
-            "error: %s",
+            "error: %s, PendingAgents: %s",
             ClientId.c_str(),
             DiskId.Quote().c_str(),
             nodeId,
             PendingAgents.at(nodeId).c_str(),
-            FormatError(error).c_str());
+            FormatError(error).c_str(),
+            LogPendingAgents().c_str());
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
             LOG_DEBUG(

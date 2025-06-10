@@ -102,7 +102,7 @@ void TReleaseDevicesActor::OnReleaseResponse(
             DiskId.Quote().c_str(),
             nodeId,
             PendingAgents.at(nodeId).c_str(),
-            LogPendingAgents(),
+            LogPendingAgents().c_str(),
             FormatError(error).c_str());
     }
 
