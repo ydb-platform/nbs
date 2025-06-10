@@ -583,24 +583,21 @@ func TestDiskServiceMigrateHddNonreplDisk(t *testing.T) {
 }
 
 func TestDiskServiceMigrateMirroredDisk(t *testing.T) {
-	/*
-		TODO: NBS-4747: Fix creation of mirrored disks in large tests on Disk Manager.
-		param := migrationTestParams{
-			SrcZoneID: "zone-a",
-			DstZoneID: "zone-b",
-			DiskID:    t.Name(),
-			DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD_MIRROR3,
-			DiskSize:  1073741824,
-			FillDisk:  false,
-		}
+	param := migrationTestParams{
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD_MIRROR3,
+		DiskSize:  1073741824,
+		FillDisk:  false,
+	}
 
-		ctx, client := setupMigrationTest(t, param)
-		defer client.Close()
+	ctx, client := setupMigrationTest(t, param)
+	defer client.Close()
 
-		successfullyMigrateDisk(t, ctx, client, param)
+	successfullyMigrateDisk(t, ctx, client, param)
 
-		testcommon.CheckConsistency(t, ctx)
-	*/
+	testcommon.CheckConsistency(t, ctx)
 }
 
 func TestDiskServiceMigrateDisk(t *testing.T) {

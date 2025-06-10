@@ -69,6 +69,8 @@ class NbsLauncher:
         storage_config_patch = TStorageServiceConfig()
         storage_config_patch.AllocationUnitNonReplicatedSSD = 1
         storage_config_patch.AllocationUnitNonReplicatedHDD = 1
+        storage_config_patch.AllocationUnitMirror2SSD = 1
+        storage_config_patch.AllocationUnitMirror3SSD = 1
         storage_config_patch.AcquireNonReplicatedDevices = True
         storage_config_patch.ClientRemountPeriod = 1000
         storage_config_patch.NonReplicatedMigrationStartAllowed = True
