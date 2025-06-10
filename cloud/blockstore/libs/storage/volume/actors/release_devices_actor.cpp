@@ -53,12 +53,15 @@ void TReleaseDevicesActor::Bootstrap(const TActorContext& ctx)
         PrepareRequest(request->Record);
 
         const ui32 nodeId = it->GetNodeId();
+        const TString& agentId = it->GetAgentId();
 
         for (; it != Devices.end() && it->GetNodeId() == nodeId; ++it) {
             *request->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
         }
 
-        ++PendingRequests;
+        auto [_, inserted] = PendingAgents.emplace(nodeId, agentId);
+        Y_ABORT_UNLESS(inserted);
+
         NCloud::Send(
             ctx,
             MakeDiskAgentServiceId(nodeId),
@@ -84,23 +87,26 @@ void TReleaseDevicesActor::ReplyAndDie(
 
 void TReleaseDevicesActor::OnReleaseResponse(
     const TActorContext& ctx,
-    ui64 cookie,
+    TNodeId nodeId,
     NProto::TError error)
 {
-    Y_ABORT_UNLESS(PendingRequests > 0);
+    Y_ABORT_UNLESS(!PendingAgents.empty());
 
     if (HasError(error)) {
         LOG_LOG(
             ctx,
             MuteIOErrors ? NLog::PRI_WARN : NLog::PRI_ERROR,
             TBlockStoreComponents::VOLUME,
-            "ReleaseDevices %s error: %s, %llu",
-            LogTargets().c_str(),
-            FormatError(error).c_str(),
-            cookie);
+            "ReleaseDevices DiskId: %s, NodeId: %d, AgentId: %s, error: %s",
+            DiskId.c_str(),
+            nodeId,
+            PendingAgents.at(nodeId).c_str(),
+            FormatError(error).c_str());
     }
 
-    if (--PendingRequests == 0) {
+    auto eraseCount = PendingAgents.erase(nodeId);
+    Y_ABORT_UNLESS(eraseCount == 1);
+    if (PendingAgents.empty()) {
         ReplyAndDie(ctx, {});
     }
 }
@@ -108,6 +114,19 @@ void TReleaseDevicesActor::OnReleaseResponse(
 TString TReleaseDevicesActor::LogTargets() const
 {
     return LogDevices(Devices);
+}
+
+TString TReleaseDevicesActor::LogPendingAgents() const
+{
+    TStringBuilder sb;
+    sb << "(";
+
+    for (const auto& [nodeId, agent]: PendingAgents) {
+        sb << "(NodeId: " << nodeId << ", AgentId: " << agent << ") ";
+    }
+    sb << ")";
+
+    return sb;
 }
 
 void TReleaseDevicesActor::HandleReleaseDevicesResponse(
@@ -142,9 +161,8 @@ void TReleaseDevicesActor::HandleTimeout(
     const auto err = TStringBuilder()
                      << "TReleaseDevicesActor timeout." << " DiskId: " << DiskId
                      << " ClientId: " << ClientId
-                     << " Targets: " << LogTargets()
+                     << " PendingAgents: " << LogPendingAgents()
                      << " VolumeGeneration: " << VolumeGeneration
-                     << " PendingRequests: " << PendingRequests
                      << " MuteIoErrors: " << MuteIOErrors;
 
     LOG_WARN(ctx, TBlockStoreComponents::VOLUME, err);
