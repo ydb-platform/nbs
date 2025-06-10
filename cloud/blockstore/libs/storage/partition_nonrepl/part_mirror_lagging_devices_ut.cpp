@@ -1,9 +1,8 @@
-#include "part_mirror.h"
-
 #include "part_mirror_actor.h"
 #include "ut_env.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -12,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -55,8 +55,8 @@ struct TTestEnv
     TVector<TDiskAgentStatePtr> DiskAgentStates;
     TVector<TActorId> ReplicaActors;
     TVector<TActorId> DiskAgentActors;
-
     TVector<NProto::TLaggingAgent> LaggingAgents;
+    NRdma::IClientPtr RdmaClient;
 
     static void AddDevice(
         ui32 nodeId,
@@ -130,7 +130,7 @@ struct TTestEnv
         return replicasDevices;
     }
 
-    explicit TTestEnv(TTestBasicRuntime& runtime)
+    explicit TTestEnv(TTestBasicRuntime& runtime, bool useRdma = false)
         : TTestEnv(
               runtime,
               DefaultDevices(runtime.GetNodeId(0), "agent-1"),
@@ -144,8 +144,8 @@ struct TTestEnv
               {std::make_shared<TDiskAgentState>(),
                std::make_shared<TDiskAgentState>(),
                std::make_shared<TDiskAgentState>()},
-              {}   // configBase
-          )
+              {},   // configBase
+              useRdma)
     {}
 
     TTestEnv(
@@ -156,7 +156,8 @@ struct TTestEnv
             THashSet<TString> freshDeviceIds = {},
             THashSet<TString> outdatedDeviceIds = {},
             TVector<TDiskAgentStatePtr> diskAgentStates = {},
-            NProto::TStorageServiceConfig configBase = {})
+            NProto::TStorageServiceConfig configBase = {},
+            bool useRdma = false)
         : Runtime(runtime)
         , Devices(std::move(devices))
         , Replicas(std::move(replicas))
@@ -165,6 +166,9 @@ struct TTestEnv
         , VolumeActorId(Runtime.GetNodeId(0), "volume")
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
         , DiskAgentStates(std::move(diskAgentStates))
+        , RdmaClient(
+              useRdma ? std::make_shared<TRdmaClientTest>()
+                      : NRdma::IClientPtr())
     {
         SetupLogging();
 
@@ -224,6 +228,7 @@ struct TTestEnv
         params.FreshDeviceIds = std::move(freshDeviceIds);
         params.OutdatedDeviceIds = std::move(outdatedDeviceIds);
         params.UseSimpleMigrationBandwidthLimiter = false;
+        params.LaggingDevicesAllowed = true;
         auto partConfig =
             std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
@@ -236,7 +241,7 @@ struct TTestEnv
             partConfig,
             Migrations,
             Replicas,
-            nullptr,   // rdmaClient
+            RdmaClient,
             VolumeActorId,
             TActorId()   // resyncActorId
         );
@@ -296,6 +301,15 @@ struct TTestEnv
             DiskAgentActors.push_back(MakeDiskAgentServiceId(nodeId));
             Runtime.RegisterService(MakeDiskAgentServiceId(nodeId), actorId, i);
         }
+
+        if (useRdma) {
+            Rdma().InitAllEndpoints();
+        }
+    }
+
+    TRdmaClientTest& Rdma()
+    {
+        return static_cast<TRdmaClientTest&>(*RdmaClient);
     }
 
     void AddReplica(TActorId partActorId)
@@ -1287,12 +1301,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             'C');
     }
 
-    Y_UNIT_TEST(ShouldCancelWriteRequestsOnAllReplicas)
+    void DoShouldCancelWriteRequestsOnAllReplicas(bool useRdma)
     {
         constexpr ui32 AgentCount = 3;
         TTestBasicRuntime runtime(AgentCount);
 
-        TTestEnv env(runtime);
+        TTestEnv env(runtime, useRdma);
 
         TPartitionClient client(runtime, env.MirrorPartActorId);
 
@@ -1308,12 +1322,18 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             }
             return false;
         };
+        runtime.SetEventFilter(timeoutWriteDeviceBlocksRequests);
+
+        auto promise = NThreading::NewPromise();
+        if (useRdma) {
+            env.Rdma().InjectFutureToWaitBeforeRequestProcessing(
+                promise.GetFuture());
+        }
 
         // Start write request.
-        runtime.SetEventFilter(timeoutWriteDeviceBlocksRequests);
         client.SendWriteBlocksRequest(TBlockRange64::MakeOneBlock(100), 'B');
         runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
-        UNIT_ASSERT_VALUES_EQUAL(3, writeDeviceBlocksRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(useRdma ? 0 : 3, writeDeviceBlocksRequestCount);
 
         size_t cancelledRequestCount = 0;
         auto countCanceledResponses =
@@ -1356,12 +1376,22 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         UNIT_ASSERT_VALUES_EQUAL(4, cancelledRequestCount);
     }
 
-    Y_UNIT_TEST(ShouldCancelReadRequestsOnlyForLaggingReplica)
+    Y_UNIT_TEST(ShouldCancelWriteRequestsOnAllReplicas)
+    {
+        DoShouldCancelWriteRequestsOnAllReplicas(false);
+    }
+
+    Y_UNIT_TEST(ShouldCancelWriteRequestsOnAllReplicasRdma)
+    {
+        DoShouldCancelWriteRequestsOnAllReplicas(true);
+    }
+
+    void DoShouldCancelReadRequestsOnlyForLaggingReplica(bool useRdma)
     {
         constexpr ui32 AgentCount = 3;
         TTestBasicRuntime runtime(AgentCount);
 
-        TTestEnv env(runtime);
+        TTestEnv env(runtime, useRdma);
 
         TPartitionClient client(runtime, env.MirrorPartActorId);
 
@@ -1377,14 +1407,20 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             }
             return false;
         };
+        runtime.SetEventFilter(timeoutReadDeviceBlocksRequests);
+
+        auto promise = NThreading::NewPromise();
+        if (useRdma) {
+            env.Rdma().InjectFutureToWaitBeforeRequestProcessing(
+                promise.GetFuture());
+        }
 
         // Start three read request to to different replicas.
-        runtime.SetEventFilter(timeoutReadDeviceBlocksRequests);
         client.SendReadBlocksRequest(TBlockRange64::MakeOneBlock(100));
         client.SendReadBlocksRequest(TBlockRange64::MakeOneBlock(100));
         client.SendReadBlocksRequest(TBlockRange64::MakeOneBlock(100));
         runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
-        UNIT_ASSERT_VALUES_EQUAL(3, readDeviceBlocksRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(useRdma ? 0 : 3, readDeviceBlocksRequestCount);
 
         size_t cancelledRequestCount = 0;
         auto countCanceledResponses =
@@ -1428,6 +1464,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         // 1 from TNonreplicatedPartitionActor, 1 from TMirrorPartitionActor
         UNIT_ASSERT_VALUES_EQUAL(2, cancelledRequestCount);
 
+        if (useRdma) {
+            // RDMA has a different strategy for handling timeouts, so we won't
+            // get responses to hung requests.
+            return;
+        }
+
         // Expect requests to second ant third replicas timedout since we stole
         // response
         response = client.RecvReadBlocksResponse();
@@ -1451,6 +1493,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
                 response->GetError().GetFlags(),
                 NProto::EF_INSTANT_RETRIABLE),
             FormatError(response->GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldCancelReadRequestsOnlyForLaggingReplica)
+    {
+        DoShouldCancelReadRequestsOnlyForLaggingReplica(false);
+    }
+
+    Y_UNIT_TEST(ShouldCancelReadRequestsOnlyForLaggingReplicaRdma)
+    {
+        DoShouldCancelReadRequestsOnlyForLaggingReplica(true);
     }
 }
 

@@ -683,12 +683,15 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    const auto& laggingAgentId = msg->LaggingAgent.GetAgentId();
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Agent %s has become unavailable (lagging)",
         PartConfig->GetName().c_str(),
-        msg->LaggingAgent.GetAgentId().Quote().c_str());
+        laggingAgentId.Quote().c_str());
 
     if (!PartConfig->GetLaggingDevicesAllowed()) {
         return;
@@ -700,13 +703,19 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
     }
 
     const auto& devices = PartConfig->GetDevices();
+
+    // Cancel all write/zero requests that intersects with the rows of the lagging
+    // agent. And read requests to the lagging replica.
     for (const auto& [_, requestInfo]: RequestsInProgress.AllRequests()) {
         const auto& requestCtx = requestInfo.Value;
         bool needToCancel = AnyOf(
             requestCtx,
             [&](const auto& ctx)
             {
-                return laggingRows.contains(ctx.DeviceIndex);
+                return laggingRows.contains(ctx.DeviceIndex) &&
+                       (requestInfo.IsWrite ||
+                        devices[ctx.DeviceIndex].GetAgentId() ==
+                            laggingAgentId);
             });
 
         if (!needToCancel) {
