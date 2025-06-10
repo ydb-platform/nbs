@@ -73,6 +73,7 @@ class TReadBlocksHandler final
 public:
     using TRequest = NProto::TReadBlocksLocalRequest;
     using TResponse = NProto::TReadBlocksLocalResponse;
+    using TReceivedResponse = NProto::TReadBlocksResponse;
 
 private:
     const TCallContextPtr CallContext;
@@ -135,13 +136,15 @@ public:
         const auto& response = resultOrError.GetResult();
         Y_ENSURE(response.MsgId == TBlockStoreProtocol::ReadBlocksResponse);
 
-        auto& responseMsg = static_cast<TResponse&>(*response.Proto);
+        auto& responseMsg = static_cast<TReceivedResponse&>(*response.Proto);
+        TResponse localResponse;
+        localResponse.CopyFrom(responseMsg);
 
         if (!HasError(responseMsg.GetError())) {
             CopyData(Request->Sglist, response.Data);
         }
 
-        Response.SetValue(std::move(responseMsg));
+        Response.SetValue(std::move(localResponse));
     }
 
     void HandleError(ui32 error, TStringBuf message) override

@@ -171,13 +171,7 @@ struct TMultiShardDescribeHandler
 
     void SetResponse(NProto::TDescribeVolumeResponse response)
     {
-        with_lock(Lock) {
-            if (HasValue) {
-                return;
-            }
-            HasValue = true;
-        }
-        Promise.SetValue(std::move(response));
+        Promise.TrySetValue(std::move(response));
     }
 
     void HandleTimeout()
