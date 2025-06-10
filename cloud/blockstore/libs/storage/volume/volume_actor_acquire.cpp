@@ -21,6 +21,10 @@ namespace {
 class TAcquireDevicesActor final
     : public TActorBootstrapped<TAcquireDevicesActor>
 {
+    using TAgentId = TString;
+
+    using TNodeId = ui32;
+
 private:
     const TActorId Owner;
     TVector<NProto::TDeviceConfig> Devices;
@@ -32,7 +36,7 @@ private:
     const TDuration RequestTimeout;
     const bool MuteIOErrors;
 
-    int PendingRequests = 0;
+    THashMap<TNodeId, TAgentId> PendingAgents;
 
 public:
     TAcquireDevicesActor(
@@ -56,14 +60,14 @@ private:
 
     void OnAcquireResponse(
         const TActorContext& ctx,
-        ui32 nodeId,
+        TNodeId nodeId,
         NProto::TError error);
 
     template <typename TRequest>
     struct TSentRequest
     {
-        TString AgentId;
-        ui32 NodeId = 0;
+        TAgentId AgentId;
+        TNodeId NodeId = 0;
         decltype(TRequest::Record) Record;
     };
 
@@ -95,6 +99,8 @@ private:
         const TActorContext& ctx);
 
     TString LogTargets() const;
+
+    TString LogPendingAgents() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -138,10 +144,17 @@ void TAcquireDevicesActor::Bootstrap(const TActorContext& ctx)
         TBlockStoreComponents::VOLUME,
         "[%s] Sending acquire devices requests for disk %s, targets %s",
         ClientId.c_str(),
-        DiskId.c_str(),
+        DiskId.Quote().c_str(),
         LogTargets().c_str());
 
-    SendRequests(ctx, CreateRequests<TEvDiskAgent::TEvAcquireDevicesRequest>());
+    auto acquireRequests =
+        CreateRequests<TEvDiskAgent::TEvAcquireDevicesRequest>();
+    PendingAgents.reserve(acquireRequests.size());
+    for (const auto& r: acquireRequests) {
+        PendingAgents[r.NodeId] = r.AgentId;
+    }
+
+    SendRequests(ctx, acquireRequests);
 }
 
 void TAcquireDevicesActor::ReplyAndDie(
@@ -154,10 +167,10 @@ void TAcquireDevicesActor::ReplyAndDie(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%s] AcquireDevices %s targets %s error: %s",
+            "[%s] AcquireDevices DiskId: %s PendingAgents %s error: %s",
             ClientId.c_str(),
             DiskId.c_str(),
-            LogTargets().c_str(),
+            LogPendingAgents().c_str(),
             FormatError(error).c_str());
     }
 
@@ -208,8 +221,6 @@ void TAcquireDevicesActor::SendRequests(
     const TActorContext& ctx,
     const TVector<TSentRequest<TRequest>>& requests)
 {
-    PendingRequests = 0;
-
     for (const auto& r: requests) {
         auto request = std::make_unique<TRequest>(TCallContextPtr{}, r.Record);
 
@@ -231,8 +242,6 @@ void TAcquireDevicesActor::SendRequests(
         );
 
         ctx.Send(event.release());
-
-        ++PendingRequests;
     }
 }
 
@@ -249,20 +258,23 @@ void TAcquireDevicesActor::HandlePoisonPill(
 
 void TAcquireDevicesActor::OnAcquireResponse(
     const TActorContext& ctx,
-    ui32 nodeId,
+    TNodeId nodeId,
     NProto::TError error)
 {
-    Y_ABORT_UNLESS(PendingRequests > 0);
+    Y_ABORT_UNLESS(!PendingAgents.empty());
 
     if (HasError(error) && !MuteIOErrors) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%s] AcquireDevices on the node #%d %s error: %s",
+            "[%s] AcquireDevices for disk %s on the node #%d and agent %s "
+            "error: %s, PendingAgents: %s",
             ClientId.c_str(),
+            DiskId.Quote().c_str(),
             nodeId,
-            LogTargets().c_str(),
-            FormatError(error).c_str());
+            PendingAgents.at(nodeId).c_str(),
+            FormatError(error).c_str(),
+            LogPendingAgents().c_str());
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
             LOG_DEBUG(
@@ -283,7 +295,9 @@ void TAcquireDevicesActor::OnAcquireResponse(
         return;
     }
 
-    if (--PendingRequests == 0) {
+    auto eraseCount = PendingAgents.erase(nodeId);
+    Y_ABORT_UNLESS(eraseCount == 1);
+    if (PendingAgents.empty()) {
         ReplyAndDie(ctx, {});
     }
 }
@@ -317,9 +331,8 @@ void TAcquireDevicesActor::HandleWakeup(
     const auto err = TStringBuilder()
                      << "TAcquireDevicesActor timeout." << " DiskId: " << DiskId
                      << " ClientId: " << ClientId
-                     << " Targets: " << LogTargets()
+                     << " Pending agents: " << LogPendingAgents()
                      << " VolumeGeneration: " << VolumeGeneration
-                     << " PendingRequests: " << PendingRequests
                      << " MuteIoErrors: " << MuteIOErrors;
 
     LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, err);
@@ -337,6 +350,19 @@ void TAcquireDevicesActor::HandleWakeup(
 TString TAcquireDevicesActor::LogTargets() const
 {
     return LogDevices(Devices);
+}
+
+TString TAcquireDevicesActor::LogPendingAgents() const
+{
+    TStringBuilder sb;
+    sb << "(";
+
+    for (const auto& [nodeId, agent]: PendingAgents) {
+        sb << "(NodeId: " << nodeId << ", AgentId: " << agent << ") ";
+    }
+    sb << ")";
+
+    return sb;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
