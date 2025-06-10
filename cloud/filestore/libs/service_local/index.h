@@ -68,6 +68,8 @@ public:
     TIndexNodePtr CreateSocket(const TString& name, int flags);
 
     TVector<std::pair<TString, TFileStat>> List(bool ignoreErrors = false);
+    NLowLevel::TListDirResult
+    List(uint64_t offset, size_t entriesLimit, bool ignoreErrors = false);
 
     void Rename(
         const TString& name,

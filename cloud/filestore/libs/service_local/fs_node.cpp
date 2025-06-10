@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <util/generic/guid.h>
+#include <util/stream/format.h>
 
 namespace NCloud::NFileStore {
 
@@ -205,7 +206,14 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
         return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
     }
 
-    auto entries = parent->List();
+    uint64_t offset = 0;
+    auto& cookie = request.GetCookie();
+    if (cookie) {
+        offset = FromString(cookie);
+    }
+
+    auto listRes = parent->List(offset, Config->GetMaxEntriesPerListNodes());
+    auto& entries = listRes.DirEntries;
 
     NProto::TListNodesResponse response;
     response.MutableNames()->Reserve(entries.size());
@@ -237,6 +245,7 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
         ConvertStats(entry.second, *response.MutableNodes()->Add());
     }
 
+    response.SetCookie(ToString(listRes.DirOffset));
     return response;
 }
 
