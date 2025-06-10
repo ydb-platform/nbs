@@ -137,7 +137,15 @@ class FilestoreCliClient:
         names = common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout.decode().splitlines()
         return sorted(names)
 
-    def start_endpoint(self, fs, socket, mount_seqno, readonly, persistent=False, client_id=""):
+    def start_endpoint(
+            self,
+            fs,
+            socket,
+            mount_seqno,
+            readonly,
+            persistent=False,
+            client_id=""):
+
         cmd = [
             self.__binary_path, "startendpoint",
             "--filesystem", fs,
