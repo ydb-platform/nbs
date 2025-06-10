@@ -144,7 +144,7 @@ void TAcquireDevicesActor::Bootstrap(const TActorContext& ctx)
         TBlockStoreComponents::VOLUME,
         "[%s] Sending acquire devices requests for disk %s, targets %s",
         ClientId.c_str(),
-        DiskId.c_str(),
+        DiskId.Quote().c_str(),
         LogTargets().c_str());
 
     auto acquireRequests =
@@ -267,8 +267,10 @@ void TAcquireDevicesActor::OnAcquireResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%s] AcquireDevices on the node #%d and agent %s error: %s",
+            "[%s] AcquireDevices for disk %s on the node #%d and agent %s "
+            "error: %s",
             ClientId.c_str(),
+            DiskId.Quote().c_str(),
             nodeId,
             PendingAgents.at(nodeId).c_str(),
             FormatError(error).c_str());

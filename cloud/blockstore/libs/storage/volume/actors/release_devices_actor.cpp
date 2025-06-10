@@ -97,10 +97,12 @@ void TReleaseDevicesActor::OnReleaseResponse(
             ctx,
             MuteIOErrors ? NLog::PRI_WARN : NLog::PRI_ERROR,
             TBlockStoreComponents::VOLUME,
-            "ReleaseDevices DiskId: %s, NodeId: %d, AgentId: %s, error: %s",
-            DiskId.c_str(),
+            "ReleaseDevices DiskId: %s, NodeId: %d, AgentId: %s, "
+            "PendingAgents: %s, error: %s",
+            DiskId.Quote().c_str(),
             nodeId,
             PendingAgents.at(nodeId).c_str(),
+            LogPendingAgents(),
             FormatError(error).c_str());
     }
 
@@ -159,7 +161,8 @@ void TReleaseDevicesActor::HandleTimeout(
     Y_UNUSED(ev);
 
     const auto err = TStringBuilder()
-                     << "TReleaseDevicesActor timeout." << " DiskId: " << DiskId
+                     << "TReleaseDevicesActor timeout."
+                     << " DiskId: " << DiskId.Quote()
                      << " ClientId: " << ClientId
                      << " PendingAgents: " << LogPendingAgents()
                      << " VolumeGeneration: " << VolumeGeneration
