@@ -746,6 +746,7 @@ private:
     const TString LocalAgentId;
     const ui32 SocketAccessMode;
     const bool IsAlignedDataEnabled;
+    const bool IsNonDefaultLocalSSDBlockSizeAlertEnabled;
     const IEndpointListenerPtr FallbackListener;
     const TExternalEndpointFactory EndpointFactory;
     const TDuration VhostServerTimeoutAfterParentExit;
@@ -764,6 +765,7 @@ public:
             ui32 socketAccessMode,
             TDuration vhostServerTimeoutAfterParentExit,
             bool isAlignedDataEnabled,
+            bool isNonDefaultLocalSSDBlockSizeAlertEnabled,
             IEndpointListenerPtr fallbackListener,
             TExternalEndpointFactory endpointFactory)
         : Logging {std::move(logging)}
@@ -772,6 +774,7 @@ public:
         , LocalAgentId {std::move(localAgentId)}
         , SocketAccessMode {socketAccessMode}
         , IsAlignedDataEnabled(isAlignedDataEnabled)
+        , IsNonDefaultLocalSSDBlockSizeAlertEnabled(isNonDefaultLocalSSDBlockSizeAlertEnabled)
         , FallbackListener {std::move(fallbackListener)}
         , EndpointFactory {std::move(endpointFactory)}
         , VhostServerTimeoutAfterParentExit{vhostServerTimeoutAfterParentExit}
@@ -1036,12 +1039,13 @@ private:
             ? request.GetClientId()
             : request.GetInstanceId();
 
-        // if (volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL &&
-        //     volume.GetBlockSize() != DefaultLocalSSDBlockSize)
-        // {
-        //     ReportStartExternalEndpointError(
-        //         "Local disks should have block size of 512 bytes.");
-        // }
+        if (volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL &&
+            volume.GetBlockSize() != DefaultLocalSSDBlockSize &&
+            IsNonDefaultLocalSSDBlockSizeAlertEnabled)
+        {
+            ReportStartExternalEndpointError(
+                "Local disks should have block size of 512 bytes.");
+        }
 
         TVector<TString> args {
             "--disk-id", request.GetDiskId(),
@@ -1226,71 +1230,49 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IEndpointListenerPtr CreateExternalVhostEndpointListener(
+TExternalEndpointFactory CreateDefaultExternalEndpointFactory(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
-    TString binaryPath,
-    TString localAgentId,
-    ui32 socketAccessMode,
-    TDuration vhostServerTimeoutAfterParentExit,
-    bool isAlignedDataEnabled,
-    IEndpointListenerPtr fallbackListener)
+    TString binaryPath)
 {
-    auto defaultFactory = [=] (
-        const TString& clientId,
-        const TString& diskId,
-        TVector<TString> args,
-        TVector<TString> cgroups)
+    return [logging = std::move(logging),
+            serverStats = std::move(serverStats),
+            executor = std::move(executor),
+            binaryPath = std::move(binaryPath)](
+               const TString& clientId,
+               const TString& diskId,
+               TVector<TString> args,
+               TVector<TString> cgroups)
     {
         return std::make_shared<TEndpoint>(
             clientId,
             logging,
             executor,
-            TEndpointStats {
+            TEndpointStats{
                 .ClientId = clientId,
                 .DiskId = diskId,
-                .ServerStats = serverStats
-            },
+                .ServerStats = serverStats},
             binaryPath,
             std::move(args),
-            std::move(cgroups)
-        );
+            std::move(cgroups));
     };
-
-    return std::make_shared<TExternalVhostEndpointListener>(
-        std::move(logging),
-        std::move(serverStats),
-        std::move(executor),
-        std::move(localAgentId),
-        socketAccessMode,
-        vhostServerTimeoutAfterParentExit,
-        isAlignedDataEnabled,
-        std::move(fallbackListener),
-        std::move(defaultFactory));
 }
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
-    ILoggingServicePtr logging,
-    IServerStatsPtr serverStats,
-    TExecutorPtr executor,
-    TString localAgentId,
-    ui32 socketAccessMode,
-    TDuration vhostServerTimeoutAfterParentExit,
-    bool isAlignedDataEnabled,
-    IEndpointListenerPtr fallbackListener,
-    TExternalEndpointFactory factory)
+    TCreateExternalVhostEndpointListenerParams params)
 {
     return std::make_shared<TExternalVhostEndpointListener>(
-        std::move(logging),
-        std::move(serverStats),
-        std::move(executor),
-        std::move(localAgentId),
-        socketAccessMode,
-        vhostServerTimeoutAfterParentExit,
-        isAlignedDataEnabled,
-        std::move(fallbackListener),
-        std::move(factory));
+        std::move(params.Logging),
+        std::move(params.ServerStats),
+        std::move(params.Executor),
+        std::move(params.LocalAgentId),
+        params.SocketAccessMode,
+        params.VhostServerTimeoutAfterParentExit,
+        params.IsAlignedDataEnabled,
+        params.IsNonDefaultLocalSSDBlockSizeAlertEnabled,
+        std::move(params.FallbackListener),
+        std::move(params.Factory));
 }
 
 }   // namespace NCloud::NBlockStore::NServer
