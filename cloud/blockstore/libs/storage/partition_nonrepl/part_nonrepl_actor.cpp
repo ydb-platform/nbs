@@ -551,6 +551,10 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
         PartConfig->GetName().c_str(),
         laggingAgentId.Quote().c_str());
 
+    if (!PartConfig->GetLaggingDevicesAllowed()) {
+        return;
+    }
+
     auto getAgentIdByRow = [&](int row) -> const TString&
     {
         return PartConfig->GetDevices()[row].GetAgentId();
