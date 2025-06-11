@@ -590,6 +590,7 @@ func TestDiskServiceMigrateMirroredDisk(t *testing.T) {
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD_MIRROR3,
 		DiskSize:  1073741824,
 		FillDisk:  false,
+		FolderID:  "folder",
 	}
 
 	ctx, client := setupMigrationTest(t, param)
