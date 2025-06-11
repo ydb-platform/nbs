@@ -145,7 +145,7 @@ CellsConfig: <
     Cells: <
         key: "zone-d"
         value: <
-            ZoneCells: [
+            Cells: [
                 "zone-d-shard1",
                 "zone-d"
             ]
