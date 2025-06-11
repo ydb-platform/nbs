@@ -167,13 +167,14 @@ type service struct {
 	cellSelector    cells.CellSelector
 }
 
-func (s *service) prepareZoneId(
+func (s *service) prepareZoneID(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
 ) (string, error) {
 
 	if isLocalDiskKind(req.Kind) {
-		// When creating a local disk, we need to find a cell for its agentId.
+		// When creating a local disk, we need to find a cell
+		// for its agents (storage nodes).
 		// TODO: implement this selection.
 		return req.DiskId.ZoneId, nil
 	}
@@ -204,7 +205,7 @@ func (s *service) prepareCreateDiskParams(
 		)
 	}
 
-	zoneId, err := s.prepareZoneId(ctx, req)
+	zoneID, err := s.prepareZoneID(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +284,7 @@ func (s *service) prepareCreateDiskParams(
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{
-			ZoneId: zoneId,
+			ZoneId: zoneID,
 			DiskId: req.DiskId.DiskId,
 		},
 		BlockSize:               blockSize,
