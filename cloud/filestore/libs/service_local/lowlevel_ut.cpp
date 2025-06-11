@@ -34,8 +34,8 @@ Y_UNIT_TEST_SUITE(TLowlevelTest)
 
         char buf[256] = {};
         UNIT_ASSERT_EQUAL(
-            static_cast<i32>(expectedData.Size()),
-            res.Handle.Read(buf, expectedData.Size()));
+            static_cast<i32>(expectedData.size()),
+            res.Handle.Read(buf, expectedData.size()));
 
         // O_EXCL should still behave properly
         res = NLowLevel::OpenOrCreateAt(
