@@ -276,7 +276,6 @@ void TAcquireDevicesActor::OnAcquireResponse(
             "error: %s, PendingAgents: %s",
             LogTitle.GetWithTime().c_str(),
             ClientId.Quote().c_str(),
-            DiskId.Quote().c_str(),
             nodeId,
             PendingAgents.at(nodeId).Quote().c_str(),
             FormatError(error).c_str(),
