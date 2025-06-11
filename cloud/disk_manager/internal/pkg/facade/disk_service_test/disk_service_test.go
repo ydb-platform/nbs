@@ -506,7 +506,7 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestDiskServiceCreateDiskFromImage(t *testing.T) {
-	testCreateDiskFromImage(
+	testCreateDiskFromImageWithZoneID(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD,
 		32*1024*4096, // imageSize
@@ -519,7 +519,7 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 }
 
 func TestDiskServiceCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
-	testCreateDiskFromImage(
+	testCreateDiskFromImageWithZoneID(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
@@ -536,7 +536,7 @@ func TestDiskServiceCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromPooledImage(
 	t *testing.T,
 ) {
-	testCreateDiskFromImage(
+	testCreateDiskFromImageWithZoneID(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
@@ -548,7 +548,7 @@ func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromPooledImage(
 }
 
 func TestDiskServiceCreateEncryptedSsdNonreplDiskFromPooledImage(t *testing.T) {
-	testCreateDiskFromImage(
+	testCreateDiskFromImageWithZoneID(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
@@ -570,7 +570,7 @@ func TestDiskServiceCreateEncryptedSsdNonreplDiskFromPooledImage(t *testing.T) {
 */
 
 func TestDiskServiceCreateEncryptedSsdNonreplDiskFromImage(t *testing.T) {
-	testCreateDiskFromImage(
+	testCreateDiskFromImageWithZoneID(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
@@ -595,7 +595,7 @@ func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromImage(
 	t *testing.T,
 ) {
 
-	testCreateDiskFromImage(
+	testCreateDiskFromImageWithZoneID(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize

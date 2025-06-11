@@ -62,7 +62,7 @@ func testDiskServiceCreateEmptyDiskWithZoneID(t *testing.T, zoneID string) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func testCreateDiskFromImage(
+func testCreateDiskFromImageWithZoneID(
 	t *testing.T,
 	diskKind disk_manager.DiskKind,
 	imageSize uint64,
