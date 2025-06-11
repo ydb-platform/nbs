@@ -137,12 +137,21 @@ class FilestoreCliClient:
         names = common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout.decode().splitlines()
         return sorted(names)
 
-    def start_endpoint(self, fs, socket, mount_seqno, readonly, persistent=False):
+    def start_endpoint(
+            self,
+            fs,
+            socket,
+            mount_seqno,
+            readonly,
+            persistent=False,
+            client_id=""):
+
         cmd = [
             self.__binary_path, "startendpoint",
             "--filesystem", fs,
             "--socket-path", socket,
             "--mount-seqno", str(mount_seqno),
+            "--client-id", client_id,
         ] + self.__cmd_opts(vhost=True)
 
         if readonly:
@@ -367,7 +376,16 @@ class FilestoreCliClient:
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
 
-def create_endpoint(client, filesystem, socket_path, socket_prefix, endpoint_storage_dir, mount_seqno=0, readonly=False):
+def create_endpoint(
+        client,
+        filesystem,
+        socket_path,
+        socket_prefix,
+        endpoint_storage_dir,
+        mount_seqno=0,
+        readonly=False,
+        client_id=""):
+
     _uid = str(uuid.uuid4())
 
     socket = os.path.join(
@@ -376,7 +394,13 @@ def create_endpoint(client, filesystem, socket_path, socket_prefix, endpoint_sto
     socket = os.path.abspath(socket)
 
     persistent = (endpoint_storage_dir is not None)
-    client.start_endpoint(filesystem, socket, mount_seqno, readonly, persistent=persistent)
+    client.start_endpoint(
+        filesystem,
+        socket,
+        mount_seqno,
+        readonly,
+        persistent=persistent,
+        client_id=client_id)
 
     return socket
 
