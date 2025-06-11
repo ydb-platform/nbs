@@ -276,7 +276,7 @@ Y_UNIT_TEST_SUITE(THostEndpointsManagerTest)
 
         UNIT_ASSERT(!manager->IsReady(NProto::RDMA));
 
-        setup->RdmaSetupPromise.SetValue(nullptr);
+        setup->RdmaSetupPromise.SetValue(std::make_shared<TTestBlockStore>());
 
         UNIT_ASSERT(manager->IsReady(NProto::RDMA));
         UNIT_ASSERT(manager->IsReady(NProto::GRPC));

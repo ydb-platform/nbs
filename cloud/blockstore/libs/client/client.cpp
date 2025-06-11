@@ -682,7 +682,7 @@ void TClient::Start()
         Executors.push_back(std::move(executor));
     }
 
-    if (Config->GetIsServerSideClient()) {
+    if (!Config->GetIsServerSideClient()) {
         // init any service for UploadClientMetrics
         with_lock (EndpointLock) {
             bool anyEndpoint = InitDataEndpoint();
@@ -1070,7 +1070,7 @@ void TClient::ScheduleUploadStats()
                 p->UploadStats();
                 p->ScheduleUploadStats();
             }
-        });
+        }/*, TStringBuilder() << __LOCATION__.File << ":" << __LOCATION__.Line*/);
 }
 
 bool TClient::InitControlEndpoint()

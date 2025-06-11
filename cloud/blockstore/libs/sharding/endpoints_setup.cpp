@@ -52,7 +52,12 @@ struct THostEndpointsSetupProvider
 
         auto promise = NewPromise<TRdmaResult>();
         future.Subscribe([=] (const auto& future) mutable {
-            promise.SetValue(future.GetValue());
+            auto result = future.GetValue();
+            if (HasError(result.GetError())) {
+                promise.SetValue(nullptr);
+                return;
+            }
+            promise.SetValue(result.GetResult());
         });
 
         return promise.GetFuture();
