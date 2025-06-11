@@ -293,7 +293,7 @@ public:
 
     ui64 RequestStarted(
         EBlockStoreRequest requestType,
-        ui32 requestBytes) override
+        ui64 requestBytes) override
     {
         VolumeBase->PostponeTimePredictorStats.OnRequestStarted(
             GetPossiblePostponeDuration().MilliSeconds());
@@ -308,7 +308,7 @@ public:
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         TDuration postponedTime,
-        ui32 requestBytes,
+        ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
