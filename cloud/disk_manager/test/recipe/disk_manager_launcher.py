@@ -119,9 +119,38 @@ NbsConfig: <
             ]
         >
     >
+    Zones: <
+        key: "zone-d"
+        value: <
+            Endpoints: [
+                "localhost:{nbs2_port}",
+                "localhost:{nbs2_port}"
+            ]
+        >
+    >
+    Zones: <
+        key: "zone-d-shard1"
+        value: <
+            Endpoints: [
+                "localhost:{nbs3_port}",
+                "localhost:{nbs3_port}"
+            ]
+        >
+    >
     RootCertsFile: "{root_certs_file}"
     GrpcKeepAlive: <>
     UseGZIPCompression: true
+>
+CellsConfig: <
+    Cells: <
+        key: "zone-d"
+        value: <
+            Cells: [
+                "zone-d-shard1",
+                "zone-d"
+            ]
+        >
+    >
 >
 DisksConfig: <
     DeletedDiskExpirationTimeout: "1s"
@@ -168,6 +197,14 @@ ImagesConfig: <
         >,
         <
             ZoneId: "zone-c"
+            Capacity: 0
+        >,
+        <
+            ZoneId: "zone-d"
+            Capacity: 0
+        >,
+        <
+            ZoneId: "zone-d-shard1"
             Capacity: 0
         >
     ]
@@ -219,7 +256,7 @@ S3Config: <
 
 DATAPLANE_CONFIG_TEMPLATE = """
 TasksConfig: <
-    ZoneIds: ["zone-a", "zone-b", "zone-c"]
+    ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d", "zone-d-shard1"]
     TaskPingPeriod: "1s"
     PollForTaskUpdatesPeriod: "1s"
     PollForTasksPeriodMin: "1s"
@@ -260,6 +297,24 @@ NbsConfig: <
     >
     Zones: <
         key: "zone-c"
+        value: <
+            Endpoints: [
+                "localhost:{nbs3_port}",
+                "localhost:{nbs3_port}"
+            ]
+        >
+    >
+    Zones: <
+        key: "zone-d"
+        value: <
+            Endpoints: [
+                "localhost:{nbs2_port}",
+                "localhost:{nbs2_port}"
+            ]
+        >
+    >
+    Zones: <
+        key: "zone-d-shard1"
         value: <
             Endpoints: [
                 "localhost:{nbs3_port}",

@@ -4,6 +4,7 @@ package server;
 
 import "google/protobuf/duration.proto";
 import "cloud/disk_manager/internal/pkg/auth/config/config.proto";
+import "cloud/disk_manager/internal/pkg/cells/config/config.proto";
 import "cloud/disk_manager/internal/pkg/clients/nbs/config/config.proto";
 import "cloud/disk_manager/internal/pkg/clients/nfs/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/config/config.proto";
@@ -70,4 +71,5 @@ message ServerConfig {
     optional performance.PerformanceConfig PerformanceConfig = 16;
     optional bool LockProcessMemory = 17 [default = true];
     optional tracing.TracingConfig TracingConfig = 18;
+    optional cells.CellsConfig CellsConfig = 19;
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
@@ -71,6 +72,11 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 			kind,
 		)
 	}
+}
+
+func isLocalDiskKind(kind disk_manager.DiskKind) bool {
+	return (kind == disk_manager.DiskKind_DISK_KIND_HDD_LOCAL ||
+		kind == disk_manager.DiskKind_DISK_KIND_SSD_LOCAL)
 }
 
 func prepareEncryptionMode(
@@ -158,9 +164,35 @@ type service struct {
 	nbsFactory      nbs.Factory
 	poolService     pools.Service
 	resourceStorage resources.Storage
+	cellSelector    cells.CellSelector
+}
+
+func (s *service) prepareZoneID(
+	ctx context.Context,
+	req *disk_manager.CreateDiskRequest,
+) (string, error) {
+
+	if isLocalDiskKind(req.Kind) {
+		// When creating a local disk, we need to find a cell
+		// for its agents (storage nodes).
+		// TODO: implement this selection.
+		return req.DiskId.ZoneId, nil
+	}
+
+	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, req.DiskId.DiskId)
+	if err != nil {
+		return "", err
+	}
+
+	if diskMeta != nil {
+		return diskMeta.ZoneID, nil
+	}
+
+	return s.cellSelector.SelectCell(ctx, req.DiskId), nil
 }
 
 func (s *service) prepareCreateDiskParams(
+	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
 ) (*protos.CreateDiskParams, error) {
 
@@ -171,6 +203,11 @@ func (s *service) prepareCreateDiskParams(
 			"invalid disk id: %v",
 			req.DiskId,
 		)
+	}
+
+	zoneID, err := s.prepareZoneID(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
@@ -247,7 +284,7 @@ func (s *service) prepareCreateDiskParams(
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{
-			ZoneId: req.DiskId.ZoneId,
+			ZoneId: zoneID,
 			DiskId: req.DiskId.DiskId,
 		},
 		BlockSize:               blockSize,
@@ -336,7 +373,7 @@ func (s *service) CreateDisk(
 	req *disk_manager.CreateDiskRequest,
 ) (string, error) {
 
-	params, err := s.prepareCreateDiskParams(req)
+	params, err := s.prepareCreateDiskParams(ctx, req)
 	if err != nil {
 		return "", err
 	}
@@ -773,6 +810,7 @@ func NewService(
 	nbsFactory nbs.Factory,
 	poolService pools.Service,
 	resourceStorage resources.Storage,
+	cellSelector cells.CellSelector,
 ) Service {
 
 	return &service{
@@ -782,5 +820,6 @@ func NewService(
 		nbsFactory:      nbsFactory,
 		poolService:     poolService,
 		resourceStorage: resourceStorage,
+		cellSelector:    cellSelector,
 	}
 }
