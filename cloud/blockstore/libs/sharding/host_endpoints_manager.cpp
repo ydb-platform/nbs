@@ -109,8 +109,13 @@ TFuture<void> THostEndpointsManager::Start()
                 optFuture->Subscribe([=] (const auto& f) {
                     if (auto self = weak.lock(); self) {
                         with_lock(self->StateLock) {
-                            self->RdmaState = EState::ACTIVE;
-                            self->RdmaHostEndpoint = f.GetValue();
+                            auto blockstorePtr = f.GetValue();
+                            if (blockstorePtr == nullptr) {
+                                self->RdmaState = EState::INACTIVE;
+                            } else {
+                                self->RdmaState = EState::ACTIVE;
+                            }
+                            self->RdmaHostEndpoint = blockstorePtr;
                         }
                     }
                 });

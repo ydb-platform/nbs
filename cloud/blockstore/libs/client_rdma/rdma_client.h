@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <library/cpp/threading/future/future.h>
@@ -29,7 +30,7 @@ IBlockStorePtr CreateRdmaEndpointClient(
     IBlockStorePtr volumeClient,
     const TRdmaEndpointConfig& config);
 
-NThreading::TFuture<IBlockStorePtr> CreateRdmaEndpointClientAsync(
+NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsync(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
