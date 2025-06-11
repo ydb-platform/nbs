@@ -6,6 +6,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TChildLogTitle;
+
 class TLogTitle
 {
 public:
@@ -47,6 +49,8 @@ public:
     static TString
     GetPartitionPrefix(ui64 tabletId, ui32 partitionIndex, ui32 partitionCount);
 
+    [[nodiscard]] TChildLogTitle GetChild(const ui64 startTime) const;
+
     [[nodiscard]] TString Get(EDetails details) const;
 
     [[nodiscard]] TString GetWithTime() const;
@@ -59,6 +63,20 @@ private:
     void RebuildForVolume();
     void RebuildForPartition();
     TString GetPartitionPrefix() const;
+};
+
+class TChildLogTitle
+{
+private:
+    friend class TLogTitle;
+
+    const TString CachedPrefix;
+    const ui64 StartTime;
+
+    TChildLogTitle(TString cachedPrefix, ui64 startTime);
+
+public:
+    [[nodiscard]] TString GetWithTime() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

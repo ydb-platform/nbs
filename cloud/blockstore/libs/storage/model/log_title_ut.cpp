@@ -85,6 +85,21 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             logTitle1.GetWithTime(),
             "[p1:12345 g:5 d:disk1 t:");
     }
+
+    Y_UNIT_TEST(GetChildLogger)
+    {
+        const ui64 startTime =
+            GetCycleCount() - GetCyclesPerMillisecond() * 2001;
+        TLogTitle logTitle1(12345, "disk1", startTime);
+        logTitle1.SetGeneration(5);
+
+        auto childLogTitle =
+            logTitle1.GetChild(startTime + GetCyclesPerMillisecond() * 1001);
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            childLogTitle.GetWithTime(),
+            "[v:12345 g:5 d:disk1 t:1.001s + 1.");
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

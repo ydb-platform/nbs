@@ -35,12 +35,14 @@ private:
     const ui32 VolumeGeneration;
     const TDuration RequestTimeout;
     const bool MuteIOErrors;
+    TChildLogTitle LogTitle;
 
     THashMap<TNodeId, TAgentId> PendingAgents;
 
 public:
     TAcquireDevicesActor(
         const TActorId& owner,
+        TChildLogTitle logTitle,
         TVector<NProto::TDeviceConfig> devices,
         TString diskId,
         TString clientId,
@@ -107,6 +109,7 @@ private:
 
 TAcquireDevicesActor::TAcquireDevicesActor(
         const TActorId& owner,
+        TChildLogTitle logTitle,
         TVector<NProto::TDeviceConfig> devices,
         TString diskId,
         TString clientId,
@@ -124,6 +127,7 @@ TAcquireDevicesActor::TAcquireDevicesActor(
     , VolumeGeneration(volumeGeneration)
     , RequestTimeout(requestTimeout)
     , MuteIOErrors(muteIOErrors)
+    , LogTitle(std::move(logTitle))
 {
     SortBy(Devices, [](auto& d) { return d.GetNodeId(); });
 }
@@ -142,9 +146,9 @@ void TAcquireDevicesActor::Bootstrap(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%s] Sending acquire devices requests for disk %s, targets %s",
-        ClientId.c_str(),
-        DiskId.Quote().c_str(),
+        "%s Sending acquire devices requests for client: %s, targets: %s",
+        LogTitle.GetWithTime().c_str(),
+        ClientId.Quote().c_str(),
         LogTargets().c_str());
 
     auto acquireRequests =
@@ -167,9 +171,9 @@ void TAcquireDevicesActor::ReplyAndDie(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%s] AcquireDevices DiskId: %s PendingAgents %s error: %s",
-            ClientId.c_str(),
-            DiskId.c_str(),
+            "%s AcquireDevices for client: %s PendingAgents %s error: %s",
+            LogTitle.GetWithTime().c_str(),
+            ClientId.Quote().c_str(),
             LogPendingAgents().c_str(),
             FormatError(error).c_str());
     }
@@ -227,8 +231,9 @@ void TAcquireDevicesActor::SendRequests(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%s] Send an acquire request to node #%d. Devices: %s",
-            ClientId.c_str(),
+            "%s Send an acquire request for client: %s to node #%d. Devices: [%s]",
+            LogTitle.GetWithTime().c_str(),
+            ClientId.Quote().c_str(),
             r.NodeId,
             JoinSeq(", ", request->Record.GetDeviceUUIDs()).c_str());
 
@@ -267,12 +272,12 @@ void TAcquireDevicesActor::OnAcquireResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%s] AcquireDevices for disk %s on the node #%d and agent %s "
+            "%s AcquireDevices for client: %s on the node #%d and agent %s "
             "error: %s, PendingAgents: %s",
-            ClientId.c_str(),
-            DiskId.Quote().c_str(),
+            LogTitle.GetWithTime().c_str(),
+            ClientId.Quote().c_str(),
             nodeId,
-            PendingAgents.at(nodeId).c_str(),
+            PendingAgents.at(nodeId).Quote().c_str(),
             FormatError(error).c_str(),
             LogPendingAgents().c_str());
 
@@ -280,9 +285,9 @@ void TAcquireDevicesActor::OnAcquireResponse(
             LOG_DEBUG(
                 ctx,
                 TBlockStoreComponents::VOLUME,
-                "[%s] Canceling acquire operation for disk %s, targets %s",
-                ClientId.c_str(),
-                DiskId.c_str(),
+                "%s Canceling acquire operation for client: %s, targets: [%s]",
+                LogTitle.GetWithTime().c_str(),
+                ClientId.Quote().c_str(),
                 LogTargets().c_str());
 
             SendRequests(
@@ -335,7 +340,12 @@ void TAcquireDevicesActor::HandleWakeup(
                      << " VolumeGeneration: " << VolumeGeneration
                      << " MuteIoErrors: " << MuteIOErrors;
 
-    LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, err);
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
+        err.c_str());
 
     NProto::TError errorToReply;
     if (!MuteIOErrors) {
@@ -356,7 +366,6 @@ TString TAcquireDevicesActor::LogPendingAgents() const
 {
     TStringBuilder sb;
     sb << "(";
-
     for (const auto& [nodeId, agent]: PendingAgents) {
         sb << "(NodeId: " << nodeId << ", AgentId: " << agent << ") ";
     }
@@ -405,6 +414,7 @@ void TVolumeActor::SendAcquireDevicesToAgents(
     auto actor = NCloud::Register<TAcquireDevicesActor>(
         ctx,
         ctx.SelfID,
+        LogTitle.GetChild(GetCycleCount()),
         std::move(devices),
         State->GetDiskId(),
         std::move(clientId),

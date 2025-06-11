@@ -53,6 +53,16 @@ TString TLogTitle::GetPartitionPrefix(
     return builder;
 }
 
+TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
+{
+    TStringBuilder childPrefix;
+    childPrefix << CachedPrefix;
+    const auto duration = CyclesToDurationSafe(startTime - StartTime);
+    childPrefix << " t:" << FormatDuration(duration);
+
+    return TChildLogTitle(childPrefix, startTime);
+}
+
 TString TLogTitle::Get(EDetails details) const
 {
     TStringBuilder result;
@@ -135,6 +145,21 @@ void TLogTitle::RebuildForPartition()
     builder << " d:" << (DiskId.empty() ? "???" : DiskId);
 
     CachedPrefix = builder;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TChildLogTitle::TChildLogTitle(TString cachedPrefix, ui64 startTime)
+    : CachedPrefix(std::move(cachedPrefix))
+    , StartTime(startTime)
+{}
+
+TString TChildLogTitle::GetWithTime() const
+{
+    const auto duration = CyclesToDurationSafe(GetCycleCount() - StartTime);
+    TStringBuilder builder;
+    builder << CachedPrefix << " + " << FormatDuration(duration) << "]";
+    return builder;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -521,12 +521,10 @@ bool TVolumeActor::ReplyToOriginalRequest(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Disk: %s, Generation: %u. The first successful %s "
-            "request was started at %s finished at %s. The very first request "
-            "was started at %s. Failed requests: %lu",
-            TabletID(),
-            State->GetDiskId().Quote().c_str(),
-            Executor()->Generation(),
+            "%s The first successful %s request was started at %s finished at "
+            "%s. The very first request was started at %s. Failed requests: "
+            "%lu",
+            LogTitle.GetWithTime().c_str(),
             ToString(firstSuccess->RequestType).c_str(),
             FormatDuration(firstSuccess->SuccessfulRequestStartTime).c_str(),
             FormatDuration(firstSuccess->SuccessfulRequestFinishTime).c_str(),
