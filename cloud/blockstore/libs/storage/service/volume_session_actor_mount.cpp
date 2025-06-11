@@ -11,11 +11,11 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/core/tablet/tablet_setup.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/datetime/base.h>
@@ -163,6 +163,7 @@ class TMountRequestActor final
 private:
     const TStorageConfigPtr Config;
     const TRequestInfoPtr RequestInfo;
+    TChildLogTitle LogTitle;
     NProto::TMountVolumeRequest Request;
     const TString SessionId;
     bool AddClientRequestCompleted = false;
@@ -184,6 +185,7 @@ private:
 
 public:
     TMountRequestActor(
+        TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TRequestInfoPtr requestInfo,
         NProto::TMountVolumeRequest request,
@@ -259,6 +261,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TMountRequestActor::TMountRequestActor(
+        TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TRequestInfoPtr requestInfo,
         NProto::TMountVolumeRequest request,
@@ -267,6 +270,7 @@ TMountRequestActor::TMountRequestActor(
         bool mountOptionsChanged)
     : Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
+    , LogTitle(std::move(logTitle))
     , Request(std::move(request))
     , SessionId(std::move(sessionId))
     , Params(params)
@@ -287,11 +291,14 @@ void TMountRequestActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-        "Start mounting volume " << Request.GetDiskId().Quote() << " with"
-        " mount mode: " << EVolumeMountMode_Name(Request.GetVolumeMountMode()) <<
-        " binding: " << EVolumeBinding_Name(Params.BindingType) <<
-        " source: " << EPreemptionSource_Name(Params.PreemptionSource));
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        LogTitle.GetWithTime()
+            << " Start mounting volume with mount mode: "
+            << EVolumeMountMode_Name(Request.GetVolumeMountMode())
+            << " binding: " << EVolumeBinding_Name(Params.BindingType)
+            << " source: " << EPreemptionSource_Name(Params.PreemptionSource));
 
     DescribeVolume(ctx);
 }
@@ -302,9 +309,11 @@ void TMountRequestActor::DescribeVolume(const TActorContext& ctx)
 {
     const auto& diskId = Request.GetDiskId();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending describe request for volume: %s",
-        diskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending describe request",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -340,9 +349,12 @@ void TMountRequestActor::HandleDescribeVolumeResponse(
             volumeDescription.GetMountToken());
 
         if (parseStatus != TMountToken::EStatus::OK) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-                "Invalid mount token: %s",
-                volumeDescription.GetMountToken().Quote().data());
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "%s Invalid mount token: %s",
+                LogTitle.GetWithTime().c_str(),
+                volumeDescription.GetMountToken().Quote().c_str());
 
             auto error = MakeError(E_FAIL, TStringBuilder()
                 << "Cannot parse mount token (" << parseStatus << ")");
@@ -361,13 +373,19 @@ void TMountRequestActor::HandleDescribeVolumeResponse(
                     mountSecret,
                     publicToken.Salt);
 
-                LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-                    "Invalid mount secret: %s. Expected: %s",
+                LOG_WARN(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
+                    "%s Invalid mount secret: %s. Expected: %s",
+                    LogTitle.GetWithTime().c_str(),
                     current.ToString().data(),
                     publicToken.ToString().data());
             } else {
-                LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-                    "Invalid mount secret. Expected empty secret");
+                LOG_WARN(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
+                    "%s Invalid mount secret. Expected empty secret",
+                    LogTitle.GetWithTime().c_str());
             }
 
             auto error = MakeError(E_ARGUMENT, "Mount token verification failed");
@@ -442,12 +460,12 @@ void TMountRequestActor::HandleDescribeVolumeError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    const auto& diskId = Request.GetDiskId();
-
-    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-        "Describe request failed for volume %s: %s",
-        diskId.Quote().data(),
-        FormatError(error).data());
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Describe request failed: %s",
+        LogTitle.GetWithTime().c_str(),
+        FormatError(error).c_str());
 
     Error = error;
 
@@ -479,12 +497,12 @@ void TMountRequestActor::HandleAlterVolumeError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    const auto& diskId = Request.GetDiskId();
-
-    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-        "Alter request failed for volume %s: %s",
-        diskId.Quote().data(),
-        FormatError(error).data());
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Alter volume request failed: %s",
+        LogTitle.GetWithTime().c_str(),
+        FormatError(error).c_str());
 
     Error = error;
 
@@ -578,9 +596,11 @@ void TMountRequestActor::RequestVolumeStop(const TActorContext& ctx)
 
 void TMountRequestActor::LockVolume(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Acquiring tablet lock",
-        VolumeTabletId);
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Acquiring tablet lock",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send<TEvHiveProxy::TEvLockTabletRequest>(
         ctx,
@@ -711,17 +731,21 @@ void TMountRequestActor::HandleLockTabletResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Failed to acquire tablet lock: %s",
-            VolumeTabletId,
-            FormatError(error).data());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Failed to acquire tablet lock: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
 
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Successfully acquired tablet lock",
-        VolumeTabletId);
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Successfully acquired tablet lock",
+        LogTitle.GetWithTime().c_str());
 
     // NBS-3481 - unlock this volume to release it to hive to be sure
     // that during migration this volume will not get stuck at the source node
@@ -734,9 +758,11 @@ void TMountRequestActor::HandleUnlockTabletResponse(
 {
     Y_UNUSED(ev);
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Tablet lock has been released",
-        VolumeTabletId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Tablet lock has been released",
+        LogTitle.GetWithTime().c_str());
 
     IsTabletAcquired = true;
 
@@ -847,19 +873,23 @@ void TVolumeSessionActor::LogNewClient(
     TStringBuf throttlingStr =
         IsThrottlingDisabled(msg->Record) ? "disabled" : "enabled";
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-        "Mounting volume: " << diskId.Quote() <<
-        " (client: " << clientId.Quote() <<
-        " instance: " << instanceId.Quote() <<
-        " access: " << AccessModeToString(accessMode) <<
-        " mount mode: " << EVolumeMountMode_Name(mountMode) <<
-        " throttling: " << throttlingStr <<
-        " seq_num: " << mountSeqNumber <<
-        " binding: " << EVolumeBinding_Name(msg->BindingType) <<
-        " source: " << EPreemptionSource_Name(msg->PreemptionSource) <<
-        " cur binding: " << EVolumeBinding_Name(VolumeInfo->BindingType) <<
-        " cur source: " << EPreemptionSource_Name(VolumeInfo->PreemptionSource) <<
-        ") ts: " << tick);
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        LogTitle.GetWithTime()
+            << " Mounting volume: " << diskId.Quote()
+            << " (client: "<< clientId.Quote()
+            << " instance: " << instanceId.Quote()
+            << " access: " << AccessModeToString(accessMode)
+            << " mount mode: " << EVolumeMountMode_Name(mountMode)
+            << " throttling: " << throttlingStr
+            << " seq_num: " << mountSeqNumber
+            << " binding: " << EVolumeBinding_Name(msg->BindingType)
+            << " source: " << EPreemptionSource_Name(msg->PreemptionSource)
+            << " cur binding: " << EVolumeBinding_Name(VolumeInfo->BindingType)
+            << " cur source: "
+            << EPreemptionSource_Name(VolumeInfo->PreemptionSource)
+            << ") ts: " << tick);
 }
 
 TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRequest(
@@ -868,7 +898,6 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
     ui64 tick)
 {
     const auto* msg = ev->Get();
-    const auto& diskId = msg->Record.GetDiskId();
     const auto& clientId = msg->Record.GetHeaders().GetClientId();
     const auto& accessMode = msg->Record.GetVolumeAccessMode();
     const auto& mountMode = msg->Record.GetVolumeMountMode();
@@ -900,8 +929,12 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
         " key_hash: " << encryptionKeyHash.Quote() <<
         ") ts: " << tick;
 
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::SERVICE,
-        "Mounting volume: " << diskId.Quote() << mountParamsStr);
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Mounting volume: %s",
+        LogTitle.GetWithTime().c_str(),
+        mountParamsStr.c_str());
 
     // TODO: check for duplicate requests
     auto prevActivityTime = clientInfo->LastActivityTime;
@@ -924,9 +957,12 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
     bool mountOptionsChanged = clientInfo->VolumeMountMode != mountMode;
 
     if (mountOptionsChanged) {
-        LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-            "Re-mounting volume with new options: " << diskId.Quote()
-            << mountParamsStr);
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Re-mounting volume with new options: %s",
+            LogTitle.GetWithTime().c_str(),
+            mountParamsStr.c_str());
 
         return {{}, true};
     }
@@ -966,11 +1002,13 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
     if (prevActivityTime &&
         (now - prevActivityTime) > remountPeriod + RemountDelayWarn)
     {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Late ping from client %s for volume %s, no activity for %s",
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Late ping from client %s, no activity for %s",
+            LogTitle.GetWithTime().c_str(),
             clientId.Quote().data(),
-            diskId.Quote().data(),
-            ToString(remountPeriod + RemountDelayWarn).data());
+            FormatDuration(remountPeriod + RemountDelayWarn).c_str());
     }
 
     return {MakeError(S_ALREADY, "Volume already mounted"), false};
@@ -1014,11 +1052,14 @@ void TVolumeSessionActor::HandleInternalMountVolume(
     const auto& clientId = msg->Record.GetHeaders().GetClientId();
 
     if (MountRequestActor || UnmountRequestActor) {
-        LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-            "Queuing mount volume " << diskId.Quote() <<
-            " by client " << clientId.Quote() <<
-            " request because of active " <<
-            (MountRequestActor ? "mount" : "unmount") << " request");
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Queuing mount volume by client %s request because of active %s "
+            "request",
+            LogTitle.GetWithTime().c_str(),
+            clientId.Quote().c_str(),
+            (MountRequestActor ? "mount" : "unmount"));
 
         MountUnmountRequests.emplace(ev.Release());
         return;
@@ -1109,6 +1150,7 @@ void TVolumeSessionActor::HandleInternalMountVolume(
 
     MountRequestActor = NCloud::Register<TMountRequestActor>(
         ctx,
+        LogTitle.GetChild(GetCycleCount()),
         Config,
         std::move(requestInfo),
         std::move(msg->Record),
@@ -1144,7 +1186,7 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    auto& mountRequest = msg->Request;
+    const auto& mountRequest = msg->Request;
     const auto& diskId = mountRequest.GetDiskId();
     const auto& clientId = mountRequest.GetHeaders().GetClientId();
     const auto mountStartTick = msg->MountStartTick;
@@ -1155,10 +1197,9 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
     TStringBuilder mountStr =
         TStringBuilder() <<
         "Mount completed for client " << clientId.Quote() <<
-        " , volume " << diskId.Quote() <<
-        " , msg binding " << EVolumeBinding_Name(msg->BindingType) <<
-        " , msg source " << EPreemptionSource_Name(msg->PreemptionSource) <<
-        " , time " << ToString(mountStartTick).Quote();
+        ", msg binding " << EVolumeBinding_Name(msg->BindingType) <<
+        ", msg source " << EPreemptionSource_Name(msg->PreemptionSource) <<
+        ", time " << ToString(mountStartTick).Quote();
 
     if (HasError(msg->GetError())) {
         VolumeInfo->RemoveClientInfo(clientId);
@@ -1175,14 +1216,15 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
                 VolumeInfo->PreemptionSource);
         }
 
-        LOG_ERROR_S(
+        LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            mountStr << " , binding "
-                     << EVolumeBinding_Name(VolumeInfo->BindingType)
-                     << " , source "
-                     << EPreemptionSource_Name(VolumeInfo->PreemptionSource)
-                     << " , result (" << FormatError(msg->GetError()) << ")");
+            "%s %s, binding %s, source %s, Error: %s",
+            LogTitle.GetWithTime().c_str(),
+            mountStr.c_str(),
+            EVolumeBinding_Name(VolumeInfo->BindingType).c_str(),
+            EPreemptionSource_Name(VolumeInfo->PreemptionSource).c_str(),
+            FormatError(msg->GetError()).c_str());
 
         SendInternalMountVolumeResponse(
             ctx,
@@ -1221,10 +1263,14 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
         msg->BindingType,
         msg->GetError());
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-        mountStr <<
-        " , binding " << EVolumeBinding_Name(VolumeInfo->BindingType) <<
-        " , source " << EPreemptionSource_Name(VolumeInfo->PreemptionSource));
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s %s, binding %s, source %s",
+        LogTitle.GetWithTime().c_str(),
+        mountStr.c_str(),
+        EVolumeBinding_Name(VolumeInfo->BindingType).c_str(),
+        EPreemptionSource_Name(VolumeInfo->PreemptionSource).c_str());
 
     if (VolumeInfo->ShouldSyncManuallyPreemptedVolumes()) {
         SendUpdateManuallyPreemptedVolumes(

@@ -2,6 +2,7 @@
 
 #include <util/generic/string.h>
 #include <util/system/types.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -17,19 +18,21 @@ public:
         WithTime,
     };
 
-private:
     enum class EType
     {
         Volume,
         Partition,
+        Session,
     };
 
+private:
     const EType Type;
     const ui64 StartTime;
-    const ui64 TabletId = 0;
     const ui32 PartitionIndex = 0;
     const ui32 PartitionCount = 0;
+    const TString SessionId;
 
+    ui64 TabletId = 0;
     ui64 Generation = 0;
     TString DiskId;
     TString CachedPrefix;
@@ -46,6 +49,9 @@ public:
         ui32 partitionIndex,
         ui32 partitionCount);
 
+    // Constructor for Session
+    TLogTitle(EType type, TString diskId, TString sessionId, ui64 startTime);
+
     static TString
     GetPartitionPrefix(ui64 tabletId, ui32 partitionIndex, ui32 partitionCount);
 
@@ -57,11 +63,13 @@ public:
 
     void SetDiskId(TString diskId);
     void SetGeneration(ui32 generation);
+    void SetTabletId(ui64 tabletId);
 
 private:
     void Rebuild();
     void RebuildForVolume();
     void RebuildForPartition();
+    void RebuildForSession();
     TString GetPartitionPrefix() const;
 };
 

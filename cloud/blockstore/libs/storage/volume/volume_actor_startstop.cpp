@@ -517,7 +517,6 @@ void TVolumeActor::OnDiskRegistryBasedPartitionStopped(
         }
     }
 
-    size_t removed = 0;
     while (WaitForPartitionDestroy) {
         auto& callback = WaitForPartitionDestroy.front();
         if (!callback.Destroyed) {
@@ -527,7 +526,6 @@ void TVolumeActor::OnDiskRegistryBasedPartitionStopped(
             std::invoke(std::move(callback.PoisonCallback), ctx, error);
         }
         WaitForPartitionDestroy.pop_front();
-        ++removed;
     }
 
     TVector<TString> stillWait;
@@ -542,9 +540,8 @@ void TVolumeActor::OnDiskRegistryBasedPartitionStopped(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Partitions removed from the wait list: count=%lu. Still wait [%s]",
+        "%s Partition stoped. Still wait [%s]",
         LogTitle.GetWithTime().c_str(),
-        removed,
         JoinSeq(", ", stillWait).c_str());
 }
 

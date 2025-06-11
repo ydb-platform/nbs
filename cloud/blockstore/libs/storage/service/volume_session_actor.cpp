@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/datetime/base.h>
@@ -31,9 +33,11 @@ void TVolumeSessionActor::Bootstrap(const TActorContext& ctx)
 
 void TVolumeSessionActor::DescribeVolume(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending describe request for volume: %s",
-        VolumeInfo->DiskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending describe request",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -49,10 +53,12 @@ void TVolumeSessionActor::HandleDescribeVolumeResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Describe request failed for volume %s: %s",
-            VolumeInfo->DiskId.Quote().data(),
-            FormatError(error).data());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Describe request failed: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
         FailPendingRequestsAndDie(ctx, error);
     } else {
         const auto& pathDescription = msg->PathDescription;
@@ -60,6 +66,7 @@ void TVolumeSessionActor::HandleDescribeVolumeResponse(
             pathDescription.GetBlockStoreVolumeDescription();
 
         TabletId = volumeDescription.GetVolumeTabletId();
+        LogTitle.SetTabletId(TabletId);
 
         VolumeClient = NCloud::Register(
             ctx,
@@ -116,12 +123,12 @@ void TVolumeSessionActor::RemoveInactiveClients(const TActorContext& ctx)
             && !UnmountRequestActor)
         {
             LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-                "Unmounting client %s from volume %s as it has been inactive "
+                "%s Unmounting client %s as it has been inactive "
                 "for too long (last activity at %s, timeout is %s)",
+                LogTitle.GetWithTime().c_str(),
                 clientInfo->ClientId.Quote().data(),
-                VolumeInfo->DiskId.Quote().data(),
-                ToString(clientInfo->LastActivityTime).data(),
-                inactiveClientsTimeout.ToString().data());
+                ToString(clientInfo->LastActivityTime).c_str(),
+                FormatDuration(inactiveClientsTimeout).c_str());
 
             auto request = std::make_unique<TEvService::TEvUnmountVolumeRequest>();
             request->Record.MutableHeaders()->SetClientId(clientInfo->ClientId);
@@ -132,10 +139,13 @@ void TVolumeSessionActor::RemoveInactiveClients(const TActorContext& ctx)
         } else {
             // reset inactivity timeout since there are mount/unmount
             // requests in a queue.
-            LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE,
-                "Skip unmounting inactive client " << clientInfo->ClientId
-                 << " (timeout " << (now - clientInfo->LastActivityTime) << ")"
-                 << " from volume " << VolumeInfo->DiskId);
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "%s Skip unmounting inactive client %s (timeout %s)",
+                LogTitle.GetWithTime().c_str(),
+                clientInfo->ClientId.Quote().data(),
+                FormatDuration(inactiveClientsTimeout).c_str());
 
             clientInfo->LastActivityTime = now;
         }
@@ -182,10 +192,12 @@ void TVolumeSessionActor::ScheduleInactiveClientsRemoval(const TActorContext& ct
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sleeping for %s before checking volume %s for inactive clients",
-        nextTimeout.ToString().Quote().data(),
-        VolumeInfo->DiskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sleeping for %s before checking volume for inactive clients",
+        LogTitle.GetWithTime().c_str(),
+        FormatDuration(nextTimeout).c_str());
 
     IsClientsCheckScheduled = true;
     ctx.Schedule(
@@ -330,9 +342,11 @@ void TVolumeSessionActor::HandleVolumePipeReset(
     const auto* msg = ev->Get();
 
     LastPipeResetTick = msg->ResetTick;
-    LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-        "Pipe to volume " << VolumeInfo->DiskId.Quote() <<
-        " is disconnected at " << LastPipeResetTick);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Pipe to volume is disconnected",
+        LogTitle.GetWithTime().c_str());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -86,6 +86,28 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             "[p1:12345 g:5 d:disk1 t:");
     }
 
+    Y_UNIT_TEST(GetForSession)
+    {
+        TLogTitle logTitle(
+            TLogTitle::EType::Session,
+            "disk1",
+            "session-1",
+            GetCycleCount());
+
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[vs:? d:disk1 s:session-1]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        logTitle.SetTabletId(12345);
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[vs:12345 d:disk1 s:session-1]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            logTitle.GetWithTime(),
+            "[vs:12345 d:disk1 s:session-1 t:");
+    }
+
     Y_UNIT_TEST(GetChildLogger)
     {
         const ui64 startTime =
