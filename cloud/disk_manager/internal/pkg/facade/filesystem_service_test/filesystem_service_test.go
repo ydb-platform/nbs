@@ -154,7 +154,7 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	waitOperationOrTimeout(
 		"CreateFilesystem.1",
 		true, /* should timeout */
-		10*time.Second,
+		60*time.Second,
 		operation.Id,
 	)
 
@@ -194,7 +194,7 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	waitOperationOrTimeout(
 		"DeleteFilesystem.1",
 		true, /* should timeout */
-		10*time.Second,
+		60*time.Second,
 		operation.Id,
 	)
 
