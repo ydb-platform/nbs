@@ -437,7 +437,7 @@ struct TRequestCounters::TStatCounters
         AtomicSet(FullyInitialized, true);
     }
 
-    void Started(ui32 requestBytes)
+    void Started(ui64 requestBytes)
     {
         MaxInProgressCalc.Add(InProgress->Inc());
 
@@ -446,7 +446,7 @@ struct TRequestCounters::TStatCounters
         }
     }
 
-    void Completed(ui32 requestBytes)
+    void Completed(ui64 requestBytes)
     {
         InProgress->Dec();
 
@@ -459,7 +459,7 @@ struct TRequestCounters::TStatCounters
         TDuration requestTime,
         TDuration requestCompletionTime,
         TDuration postponedTime,
-        ui32 requestBytes,
+        ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         bool unaligned,
         ECalcMaxTime calcMaxTime)
@@ -761,7 +761,7 @@ void TRequestCounters::Subscribe(TRequestCountersPtr subscriber)
 
 ui64 TRequestCounters::RequestStarted(
     TRequestType requestType,
-    ui32 requestBytes)
+    ui64 requestBytes)
 {
     RequestStartedImpl(requestType, requestBytes);
     return GetCycleCount();
@@ -771,7 +771,7 @@ TDuration TRequestCounters::RequestCompleted(
     TRequestType requestType,
     ui64 requestStarted,
     TDuration postponedTime,
-    ui32 requestBytes,
+    ui64 requestBytes,
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
     bool unaligned,
@@ -926,7 +926,7 @@ void TRequestCounters::UpdateStats(bool updatePercentiles)
 
 void TRequestCounters::RequestStartedImpl(
     TRequestType requestType,
-    ui32 requestBytes)
+    ui64 requestBytes)
 {
     if (ShouldReport(requestType)) {
         AccessRequestStats(requestType).Started(requestBytes);
@@ -942,7 +942,7 @@ void TRequestCounters::RequestCompletedImpl(
     TDuration requestTime,
     TDuration requestCompletionTime,
     TDuration postponedTime,
-    ui32 requestBytes,
+    ui64 requestBytes,
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
     bool unaligned,
