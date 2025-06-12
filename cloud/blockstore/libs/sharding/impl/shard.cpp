@@ -1,6 +1,4 @@
-#include "shard_manager.h"
-
-#include "config.h"
+#include "shard.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -9,7 +7,6 @@
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/server/config.h>
-#include <cloud/blockstore/libs/sharding/config.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -126,6 +123,13 @@ void TShardManager::ResizeIfNeeded()
                 }
         });
     }
+}
+
+IShardManagerPtr CreateShardManager(
+    TShardingArguments args,
+    TShardConfig config)
+{
+    return std::make_shared<TShardManager>(std::move(args), std::move(config));
 }
 
 }   // namespace NCloud::NBlockStore::NSharding

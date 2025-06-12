@@ -7,7 +7,7 @@
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/server/config.h>
-#include <cloud/blockstore/libs/sharding/config.h>
+#include <cloud/blockstore/libs/sharding/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>

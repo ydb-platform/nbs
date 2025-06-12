@@ -1,6 +1,4 @@
-#include "shard_manager.h"
-
-#include "config.h"
+#include "shard.h"
 
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/config/sharding.pb.h>

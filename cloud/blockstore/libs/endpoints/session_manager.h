@@ -13,7 +13,7 @@
 #include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
-#include <cloud/blockstore/libs/sharding/public.h>
+#include <cloud/blockstore/libs/sharding/iface/public.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 

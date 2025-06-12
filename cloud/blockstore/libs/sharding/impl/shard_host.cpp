@@ -1,4 +1,4 @@
-#include "host_endpoints_manager.h"
+#include "shard_host.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>

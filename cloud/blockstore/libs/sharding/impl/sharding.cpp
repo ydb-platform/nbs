@@ -1,11 +1,5 @@
-#include "sharding_manager.h"
-
-#include "config.h"
 #include "describe_volume.h"
-#include "endpoints_setup.h"
-#include "host_endpoint.h"
-#include "sharding_common.h"
-#include "shard_manager.h"
+#include "sharding.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -14,7 +8,6 @@
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/server/config.h>
-#include <cloud/blockstore/libs/sharding/config.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -30,41 +23,6 @@
 namespace NCloud::NBlockStore::NSharding {
 
 using namespace NMonitoring;
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TShardingManager
-    : public IShardingManager
-{
-    const TShardingArguments Args;
-
-    THashMap<TString, TShardManagerPtr> Shards;
-
-    TShardingManager(
-        TShardingConfigPtr config,
-        TShardingArguments args);
-
-    void Start() override;
-    void Stop() override;
-
-    TResultOrError<THostEndpoint> GetShardEndpoint(
-        const TString& shardId,
-        const NClient::TClientAppConfigPtr& clientConfig) override;
-
-    [[nodiscard]] std::optional<TDescribeFuture> DescribeVolume(
-        const TString& diskId,
-        const NProto::THeaders& headers,
-        const IBlockStorePtr& localService,
-        const NProto::TClientConfig& clientConfig) override;
-
-    void OutputHtml(IOutputStream& out, const IMonHttpRequest& request);
-
-private:
-    [[nodiscard]] TShardsEndpoints GetShardsEndpoints(
-        const NClient::TClientAppConfigPtr& clientConfig);
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -97,12 +55,16 @@ TShardingManager::TShardingManager(
     for (const auto& shard: Config->GetShards()) {
         Shards.emplace(
             shard.first,
-            std::make_shared<TShardManager>(Args, shard.second));
+            CreateShardManager(Args, shard.second));
     }
 
-    auto rootPage = Args.Monitoring->RegisterIndexPage("blockstore", "BlockStore");
-    static_cast<TIndexMonPage&>(*rootPage).Register(
-        new TShardsMonPage(*this, "Sharding"));
+    if (args.Monitoring) {
+        auto rootPage = Args.Monitoring->RegisterIndexPage(
+            "blockstore",
+            "BlockStore");
+        static_cast<TIndexMonPage&>(*rootPage).Register(
+            new TShardsMonPage(*this, "Sharding"));
+    }
 }
 
 void TShardingManager::Start()
@@ -183,8 +145,6 @@ void TShardingManager::OutputHtml(
     Y_UNUSED(out);
     Y_UNUSED(request);
 }
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

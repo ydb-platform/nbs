@@ -1,6 +1,4 @@
-#include "host_endpoints_manager.h"
-
-#include "config.h"
+#include "shard_host.h"
 
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/config/sharding.pb.h>
@@ -9,6 +7,7 @@
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/sharding/iface/config.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>

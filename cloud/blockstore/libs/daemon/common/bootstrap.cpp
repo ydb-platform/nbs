@@ -68,7 +68,7 @@
 #include <cloud/blockstore/libs/service_throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_tracker.h>
 #include <cloud/blockstore/libs/service_throttling/throttling.h>
-#include <cloud/blockstore/libs/sharding/sharding_manager.h>
+#include <cloud/blockstore/libs/sharding/iface/sharding.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
@@ -373,7 +373,7 @@ void TBootstrapBase::Init()
     auto& config = *clientAppConfig.MutableClientConfig();
     config.SetNoClientId(true);
 
-    RemoteStorageProvider = CreateShardingManager(
+    ShardingManager = CreateShardingManager(
         Configs->ShardingConfig,
         Timer,
         Scheduler,
@@ -392,7 +392,7 @@ void TBootstrapBase::Init()
         VolumeStats,
         ServerStats,
         Service,
-        RemoteStorageProvider,
+        ShardingManager,
         StorageProvider,
         RdmaClient,
         encryptionClientFactory,
@@ -933,7 +933,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(RdmaClient);
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
-    START_COMMON_COMPONENT(RemoteStorageProvider);
+    START_COMMON_COMPONENT(ShardingManager);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -986,7 +986,7 @@ void TBootstrapBase::Stop()
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
-    STOP_COMMON_COMPONENT(RemoteStorageProvider);
+    STOP_COMMON_COMPONENT(ShardingManager);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaClient);

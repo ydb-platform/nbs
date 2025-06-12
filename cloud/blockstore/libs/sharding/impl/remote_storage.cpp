@@ -1,11 +1,9 @@
-#include "remote_storage.h"
-
-#include "config.h"
-
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/storage.h>
+#include <cloud/blockstore/libs/sharding/iface/remote_storage.h>
+
 
 #include <util/datetime/base.h>
 
@@ -16,6 +14,7 @@ using namespace NThreading;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
 struct TRemoteStorage
     : public IStorage
 {

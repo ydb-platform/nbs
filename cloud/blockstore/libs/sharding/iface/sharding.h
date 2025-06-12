@@ -4,7 +4,6 @@
 
 #include "host_endpoint.h"
 
-
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/service.h>
