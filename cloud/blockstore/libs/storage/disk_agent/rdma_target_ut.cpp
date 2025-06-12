@@ -117,10 +117,10 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
             writeResponse.GetError().GetCode(),
             writeResponse.GetError().GetMessage());
 
-        // Single-device Zero request completed with S_ALREADY.
+        // Single-device Zero request completed with E_REJECTED.
         auto singleDeviceZeroResponse = singleDeviceZeroFuture.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            S_ALREADY,
+            E_REJECTED,
             singleDeviceZeroResponse.GetError().GetCode(),
             singleDeviceZeroResponse.GetError().GetMessage());
 
@@ -133,10 +133,8 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
 
         auto delayedCounter = env.Counters->GetCounter("Delayed");
         auto rejectedCounter = env.Counters->GetCounter("Rejected");
-        auto alreadyCounter = env.Counters->GetCounter("Already");
         UNIT_ASSERT_VALUES_EQUAL(2, delayedCounter->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, rejectedCounter->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, alreadyCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, rejectedCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldNotDelayNotOverlappedRequest)
@@ -220,12 +218,12 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
             writeResponse.GetError().GetMessage());
 
         // Make single-device overlapped Zero request. Request completed with
-        // S_ALREADY.
+        // E_REJECTED.
         auto singleDeviceZeroFuture =
             env.Run(env.MakeZeroRequest(blockRange, 99, false));
         auto singleDeviceZeroResponse = singleDeviceZeroFuture.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            S_ALREADY,
+            E_REJECTED,
             singleDeviceZeroResponse.GetError().GetCode(),
             singleDeviceZeroResponse.GetError().GetMessage());
 
@@ -241,10 +239,8 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
 
         auto delayedCounter = env.Counters->GetCounter("Delayed");
         auto rejectedCounter = env.Counters->GetCounter("Rejected");
-        auto alreadyCounter = env.Counters->GetCounter("Already");
         UNIT_ASSERT_VALUES_EQUAL(0, delayedCounter->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, rejectedCounter->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, alreadyCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, rejectedCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldRespectDeviceErasure)

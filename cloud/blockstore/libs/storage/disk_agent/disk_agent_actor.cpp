@@ -80,7 +80,6 @@ void TDiskAgentActor::RegisterCounters(const TActorContext& ctx)
 
         OldRequestCounters.Delayed = outOfOrderCounters->GetCounter("Delayed");
         OldRequestCounters.Rejected = outOfOrderCounters->GetCounter("Rejected");
-        OldRequestCounters.Already = outOfOrderCounters->GetCounter("Already");
 
         UpdateCounters(ctx);
         ScheduleCountersUpdate(ctx);

@@ -25,8 +25,7 @@ using namespace NActors;
 void TDiskAgentActor::InitAgent(const TActorContext& ctx)
 {
     Y_DEBUG_ABORT_UNLESS(
-        OldRequestCounters.Delayed && OldRequestCounters.Rejected &&
-        OldRequestCounters.Already);
+        OldRequestCounters.Delayed && OldRequestCounters.Rejected);
 
     TRdmaTargetConfigPtr rdmaTargetConfig = nullptr;
     if (RdmaConfig && RdmaConfig->GetDiskAgentTargetEnabled()) {

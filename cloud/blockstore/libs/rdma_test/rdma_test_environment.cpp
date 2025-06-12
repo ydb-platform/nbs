@@ -95,8 +95,7 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
 
     TOldRequestCounters oldRequestCounters{
         Counters->GetCounter("Delayed"),
-        Counters->GetCounter("Rejected"),
-        Counters->GetCounter("Already")};
+        Counters->GetCounter("Rejected")};
 
     RdmaTarget = CreateRdmaTarget(
         std::move(rdmaTargetConfig),

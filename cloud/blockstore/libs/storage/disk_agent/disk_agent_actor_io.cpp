@@ -285,15 +285,13 @@ bool TDiskAgentActor::CheckIntersection(
     }
 
     TString overlapDetails;
-    auto result = OverlapStatusToResult(
-        recentBlocksTracker
-            .CheckRecorded(volumeRequestId, range, &overlapDetails),
-        msg->Record.GetMultideviceRequest());
+    auto result = OverlapStatusToResult(recentBlocksTracker.CheckRecorded(
+        volumeRequestId,
+        range,
+        &overlapDetails));
     if (result != S_OK) {
         if (result == E_REJECTED) {
             OldRequestCounters.Rejected->Inc();
-        } else if (result == S_ALREADY) {
-            OldRequestCounters.Already->Inc();
         } else {
             Y_DEBUG_ABORT_UNLESS(false);
         }
