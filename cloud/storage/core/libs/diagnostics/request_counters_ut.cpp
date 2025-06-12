@@ -798,6 +798,37 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
         UNIT_ASSERT(!histogram);
     }
+
+    Y_UNIT_TEST(ShouldReportStatsforLargeRequests)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCountersPtr();
+        counters->Register(*monitoring->GetCounters());
+
+        auto outerSubscriber = MakeRequestCountersPtr();
+        outerSubscriber->Register(
+            *monitoring->GetCounters()->GetSubgroup("subscribers", "outer"));
+        counters->Subscribe(outerSubscriber);
+
+        auto innerSubscriber = MakeRequestCountersPtr();
+        innerSubscriber->Register(
+            *monitoring->GetCounters()->GetSubgroup("subscribers", "inner"));
+        outerSubscriber->Subscribe(innerSubscriber);
+
+        AddRequestStats(
+            *counters,
+            WriteRequestType,
+            {
+                {8_GB, TDuration::MilliSeconds(100), TDuration::Zero()},
+            });
+
+        counters->UpdateStats();
+        auto requestBytes = monitoring->GetCounters()
+                                ->GetSubgroup("request", "WriteBlocks")
+                                ->GetCounter("RequestBytes");
+
+        UNIT_ASSERT_EQUAL_C(8_GB, requestBytes->Val(), requestBytes->Val());
+    }
 }
 
 }   // namespace NCloud
