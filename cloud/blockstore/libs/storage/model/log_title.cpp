@@ -37,12 +37,12 @@ TLogTitle::TLogTitle(
 
 TLogTitle::TLogTitle(
         EType type,
-        TString diskId,
         TString sessionId,
+        TString diskId,
         ui64 startTime)
     : Type(type)
-    , StartTime(startTime)
     , SessionId(std::move(sessionId))
+    , StartTime(startTime)
     , DiskId(std::move(diskId))
 {
     Rebuild();

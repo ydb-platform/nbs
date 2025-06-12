@@ -43,7 +43,7 @@ private:
     };
 
 private:
-    TVolumeInfoPtr VolumeInfo;
+    const TVolumeInfoPtr VolumeInfo;
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
@@ -53,6 +53,7 @@ private:
     const NRdma::IClientPtr RdmaClient;
     const std::shared_ptr<NKikimr::TTabletCountersBase> Counters;
     const TSharedServiceCountersPtr SharedCounters;
+
     TLogTitle LogTitle{
         TLogTitle::EType::Session,
         VolumeInfo->DiskId,

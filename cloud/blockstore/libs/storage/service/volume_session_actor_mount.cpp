@@ -161,24 +161,21 @@ class TMountRequestActor final
     : public TActorBootstrapped<TMountRequestActor>
 {
 private:
+    const TChildLogTitle LogTitle;
     const TStorageConfigPtr Config;
     const TRequestInfoPtr RequestInfo;
-    TChildLogTitle LogTitle;
-    NProto::TMountVolumeRequest Request;
     const TString SessionId;
-    bool AddClientRequestCompleted = false;
-
-    // Most recent error code from suboperation (add client, start volume)
-    NProto::TError Error;
-
-    ui64 VolumeTabletId = 0;
-    NProto::TVolume Volume;
-
-    bool VolumeStarted = false;
-    TMountRequestParams Params;
-    NProto::EVolumeMountMode MountMode;
+    const TMountRequestParams Params;
     const bool MountOptionsChanged;
 
+    NProto::TMountVolumeRequest Request;
+    bool AddClientRequestCompleted = false;
+    // Most recent error code from suboperation (add client, start volume)
+    NProto::TError Error;
+    ui64 VolumeTabletId = 0;
+    NProto::TVolume Volume;
+    bool VolumeStarted = false;
+    NProto::EVolumeMountMode MountMode;
     bool IsTabletAcquired = false;
     bool VolumeSessionRestartRequired = false;
     bool IsVolumeRestarting = false;
@@ -268,13 +265,13 @@ TMountRequestActor::TMountRequestActor(
         TString sessionId,
         const TMountRequestParams& params,
         bool mountOptionsChanged)
-    : Config(std::move(config))
+    : LogTitle(std::move(logTitle))
+    , Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
-    , LogTitle(std::move(logTitle))
-    , Request(std::move(request))
     , SessionId(std::move(sessionId))
     , Params(params)
     , MountOptionsChanged(mountOptionsChanged)
+    , Request(std::move(request))
 {
     MountMode = Request.GetVolumeMountMode();
     if (Params.BindingType == NProto::BINDING_REMOTE) {

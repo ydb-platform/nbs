@@ -26,20 +26,18 @@ class TUnmountRequestActor final
     : public TActorBootstrapped<TUnmountRequestActor>
 {
 private:
+    const TChildLogTitle LogTitle;
     const TStorageConfigPtr Config;
     const TRequestInfoPtr RequestInfo;
     const TString DiskId;
     const TString ClientId;
     const NProto::EVolumeMountMode MountMode;
     const NProto::EControlRequestSource Source;
-    TChildLogTitle LogTitle;
+    const TActorId SessionActorId;
+    const TActorId VolumeProxy;
+    const ui64 TabletId;
 
     NProto::TError Error;
-
-    TActorId SessionActorId;
-    TActorId VolumeProxy;
-
-    ui64 TabletId = 0;
     bool DiskRecreated = false;
 
 public:
@@ -95,13 +93,13 @@ TUnmountRequestActor::TUnmountRequestActor(
         TActorId sessionActorId,
         TActorId volumeProxy,
         ui64 tabletId)
-    : Config(std::move(config))
+    : LogTitle(std::move(logTitle))
+    , Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))
     , MountMode(mountMode)
     , Source(source)
-    , LogTitle(std::move(logTitle))
     , SessionActorId(sessionActorId)
     , VolumeProxy(volumeProxy)
     , TabletId(tabletId)
