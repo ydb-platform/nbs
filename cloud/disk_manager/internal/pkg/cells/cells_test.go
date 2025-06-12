@@ -8,7 +8,6 @@ import (
 )
 
 func TestCellsIsFolderAllowed(t *testing.T) {
-
 	{
 		config := &cells_config.CellsConfig{}
 
