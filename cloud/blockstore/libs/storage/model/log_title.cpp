@@ -39,10 +39,12 @@ TLogTitle::TLogTitle(
         EType type,
         TString sessionId,
         TString diskId,
+        bool temporaryServer,
         ui64 startTime)
     : Type(type)
     , SessionId(std::move(sessionId))
     , StartTime(startTime)
+    , TemporaryServer(temporaryServer)
     , DiskId(std::move(diskId))
 {
     Rebuild();
@@ -190,6 +192,9 @@ void TLogTitle::RebuildForSession()
     auto builder = TStringBuilder();
 
     builder << "[";
+    if (TemporaryServer) {
+        builder << "~";
+    }
     builder << "vs:";
     if (TabletId) {
         builder << TabletId;

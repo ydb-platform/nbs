@@ -19,7 +19,8 @@ IActorPtr CreateStorageService(
     NRdma::IClientPtr rdmaClient,
     IVolumeStatsPtr volumeStats,
     TManuallyPreemptedVolumesPtr preemptedVolumes,
-    IRootKmsKeyProviderPtr rootKmsKeyProvider)
+    IRootKmsKeyProviderPtr rootKmsKeyProvider,
+    bool temporaryServer)
 {
     return std::make_unique<TServiceActor>(
         std::move(config),
@@ -32,7 +33,8 @@ IActorPtr CreateStorageService(
         std::move(rdmaClient),
         std::move(volumeStats),
         std::move(preemptedVolumes),
-        std::move(rootKmsKeyProvider));
+        std::move(rootKmsKeyProvider),
+        temporaryServer);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

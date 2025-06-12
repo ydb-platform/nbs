@@ -361,7 +361,8 @@ IActorPtr CreateVolumeSessionActor(
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     NRdma::IClientPtr rdmaClient,
     std::shared_ptr<NKikimr::TTabletCountersBase> counters,
-    TSharedServiceCountersPtr sharedCounters)
+    TSharedServiceCountersPtr sharedCounters,
+    bool temporaryServer)
 {
     return std::make_unique<TVolumeSessionActor>(
         std::move(volumeInfo),
@@ -373,7 +374,8 @@ IActorPtr CreateVolumeSessionActor(
         std::move(endpointEventHandler),
         std::move(rdmaClient),
         std::move(counters),
-        std::move(sharedCounters));
+        std::move(sharedCounters),
+        temporaryServer);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

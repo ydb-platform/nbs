@@ -142,9 +142,8 @@ void TServiceActor::HandleMountVolume(
                 EndpointEventHandler,
                 RdmaClient,
                 Counters,
-                SharedCounters
-            )
-        );
+                SharedCounters,
+                TemporaryServer));
     }
 
     NCloud::Register(

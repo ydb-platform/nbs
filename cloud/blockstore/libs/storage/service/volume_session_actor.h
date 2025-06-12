@@ -53,11 +53,13 @@ private:
     const NRdma::IClientPtr RdmaClient;
     const std::shared_ptr<NKikimr::TTabletCountersBase> Counters;
     const TSharedServiceCountersPtr SharedCounters;
+    const bool TemporaryServer;
 
     TLogTitle LogTitle{
         TLogTitle::EType::Session,
         VolumeInfo->SessionId,
         VolumeInfo->DiskId,
+        TemporaryServer,
         GetCycleCount()};
 
     TQueue<NActors::IEventHandlePtr> MountUnmountRequests;
@@ -89,7 +91,8 @@ public:
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
         std::shared_ptr<NKikimr::TTabletCountersBase> counters,
-        TSharedServiceCountersPtr sharedCounters)
+        TSharedServiceCountersPtr sharedCounters,
+        bool temporaryServer)
         : VolumeInfo(std::move(volumeInfo))
         , Config(std::move(config))
         , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -100,6 +103,7 @@ public:
         , RdmaClient(std::move(rdmaClient))
         , Counters(std::move(counters))
         , SharedCounters(std::move(sharedCounters))
+        , TemporaryServer(temporaryServer)
     {}
 
     void Bootstrap(const NActors::TActorContext& ctx);

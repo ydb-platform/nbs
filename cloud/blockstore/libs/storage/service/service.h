@@ -25,6 +25,7 @@ NActors::IActorPtr CreateStorageService(
     NRdma::IClientPtr rdmaClient,
     IVolumeStatsPtr volumeStats,
     TManuallyPreemptedVolumesPtr preemptedVolumes,
-    IRootKmsKeyProviderPtr rootKmsKeyProvider);
+    IRootKmsKeyProviderPtr rootKmsKeyProvider,
+    bool temporaryServer);
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -27,7 +27,8 @@ TServiceActor::TServiceActor(
         NRdma::IClientPtr rdmaClient,
         IVolumeStatsPtr volumeStats,
         TManuallyPreemptedVolumesPtr preemptedVolumes,
-        IRootKmsKeyProviderPtr rootKmsKeyProvider)
+        IRootKmsKeyProviderPtr rootKmsKeyProvider,
+        bool temporaryServer)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
@@ -38,6 +39,7 @@ TServiceActor::TServiceActor(
     , RdmaClient(std::move(rdmaClient))
     , VolumeStats(std::move(volumeStats))
     , RootKmsKeyProvider(std::move(rootKmsKeyProvider))
+    , TemporaryServer(temporaryServer)
     , SharedCounters(MakeIntrusive<TSharedServiceCounters>(Config))
     , State(std::move(preemptedVolumes))
 {}
