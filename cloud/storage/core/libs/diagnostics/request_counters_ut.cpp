@@ -799,7 +799,7 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         UNIT_ASSERT(!histogram);
     }
 
-    Y_UNIT_TEST(ShouldReportStatsforLargeRequests)
+    Y_UNIT_TEST(ShouldReportStatsForLargeRequests)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr();
