@@ -60,12 +60,12 @@ void DumpChannels(
                                 // we need this check for legacy volumes
                                 // see NBS-752
                                 if (channel.Channel < static_cast<ui32>(cps.size())) {
-                                    const auto dataKind = static_cast<EChannelDataKind>(
+                                    const auto channelKind = static_cast<EChannelDataKind>(
                                         cps[channel.Channel].GetDataKind());
                                     const auto& poolKind =
                                         cps[channel.Channel].GetPoolKind();
                                     TABLED() { out << "PoolKind: " << poolKind; }
-                                    TABLED() { out << "DataKind: " << dataKind; }
+                                    TABLED() { out << "DataKind: " << channelKind; }
                                 } else {
                                     // we need to output 2 cells, otherwise table
                                     // markup will be a bit broken
@@ -105,11 +105,22 @@ void DumpChannels(
                                     << "'>Status</a>";
                             }
                             TABLED() {
+                                TString channelKind;
+                                if (channel.Channel <
+                                    static_cast<ui32>(cps.size()))
+                                {
+                                    channelKind =
+                                        TStringBuilder()
+                                        << static_cast<EChannelDataKind>(
+                                               cps[channel.Channel]
+                                                   .GetDataKind());
+                                }
                                 out << "<a href='"
                                     << GetMonitoringYDBGroupUrl(
                                            config,
                                            latestEntry->GroupID,
-                                           channel.StoragePool)
+                                           channel.StoragePool,
+                                           channelKind)
                                     << "'>Graphs</a>";
                                 auto monitoringDashboardUrl =
                                     GetMonitoringDashboardYDBGroupUrl(
