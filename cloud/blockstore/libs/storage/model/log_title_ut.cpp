@@ -90,8 +90,8 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
     {
         TLogTitle logTitle(
             TLogTitle::EType::Session,
-            "disk1",
             "session-1",
+            "disk1",
             GetCycleCount());
 
         UNIT_ASSERT_STRINGS_EQUAL(

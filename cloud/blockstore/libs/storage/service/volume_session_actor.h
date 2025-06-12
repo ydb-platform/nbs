@@ -56,8 +56,8 @@ private:
 
     TLogTitle LogTitle{
         TLogTitle::EType::Session,
-        VolumeInfo->DiskId,
         VolumeInfo->SessionId,
+        VolumeInfo->DiskId,
         GetCycleCount()};
 
     TQueue<NActors::IEventHandlePtr> MountUnmountRequests;
