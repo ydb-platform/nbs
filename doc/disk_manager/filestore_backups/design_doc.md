@@ -153,7 +153,6 @@ The backup process should be separated into the following stages:
 * File attributes backup
 * Data backup.
 
-Since the data is sharded, the data backup process should perform backup of separate shard.
 
 The restoration would consist of the following stages:
 * Filesystem entry creation
@@ -242,6 +241,7 @@ mod: Uint
 tree_depth: Uint64
 shard_id: Utf8
 shard_node_name: Utf8
+batch_index: Uint64
 ```
 primarey key is (`filesystem_id`, `backup_id`, `src_parent_id`, `name`).
 additional index is `shard_id`
@@ -268,18 +268,12 @@ Attributes backup can be performed in parallel using the approach used in transf
 Attributes backup will follow this algorithm:
 * A separate goroutine reads node refs from the database (either directories or files, files should be read in separate tasks per shard).
 * Node refs are read in batches.
-* For each batch, reader will read attributes using `TGetNodeAttrBatchRequest` and save them to the database.
+* For each batch, reader will read attributes using `TGetNodeAttrBatchRequest` and save them to the database, for each node attributes record, chunk_map entries are created (file size is split into 4MB chunks, so if file size is 10MB, there will be 3 chunks). Chunk indices are extracted from batch index and the index of the node within the batch + index of the chunk within the file. This way there will be no contention.
 * Milestone is updated to be equal the biggest batch number, all batches before that are processed.
 
 ### 💽 Data backup
-All the nodes should be grouped by shard. For each shard there should be a separate data backup task.
-For file data extraction there should be an index by shard id. Within each shard, nodes should be ordered by parent id and node name.
-Each shard backup task will have the following logic:
-* extract all nodes up to limit nodes from the database.
-* split nodes into batches, the total size of each batch does not exceed the size of chunk. (e.g. 4MB, so if one file size exceeds 4MB - there should be two chunks)
-  (This should be done within the same SQL query)
-* After that perform batched file data reads via Filestore API. For that we should implement a batch read API handle.
-* Since requests are idempotent, we store (parent id, node name, chunk index) as a milestone. The metadata backup SHOULD not be changed.
+Data backup will use channel with inflight queue and milestone to store the progress, but there be a slight modification to the inflight queue algorithm, since we will maintain not the number of goroutines, but rather the amount of data being processed. Data is saved to the `chunk_blobs` table.
+
 
 ### 🌳↩️ Filesystem hierarchy restoration
 To properly restore the filesystem hierarchy, we will read the `node_references` table and create the filesystem tree using the following steps:
