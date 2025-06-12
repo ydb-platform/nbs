@@ -804,17 +804,6 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr();
         counters->Register(*monitoring->GetCounters());
-
-        auto outerSubscriber = MakeRequestCountersPtr();
-        outerSubscriber->Register(
-            *monitoring->GetCounters()->GetSubgroup("subscribers", "outer"));
-        counters->Subscribe(outerSubscriber);
-
-        auto innerSubscriber = MakeRequestCountersPtr();
-        innerSubscriber->Register(
-            *monitoring->GetCounters()->GetSubgroup("subscribers", "inner"));
-        outerSubscriber->Subscribe(innerSubscriber);
-
         AddRequestStats(
             *counters,
             WriteRequestType,
