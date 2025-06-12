@@ -823,6 +823,23 @@ private:
                                  << " as base64: " << FormatError(error)));
         }
 
+        /// damage fastbin
+        {
+            char *ptr1 = (char *) malloc(32);
+            char *ptr2 = (char *) malloc(32);
+
+            free(ptr1);
+
+            *(size_t*)ptr1 = 0xdeadbeef;
+            *(void**)(ptr1 + 8) = (void*)0x123456;
+
+            char *ptr3 = (char *) malloc(32);
+
+            Y_UNUSED(ptr1, ptr2, ptr3);
+        }
+
+        ///
+
         NProto::TEncryptionSpec spec;
         spec.SetMode(desc.GetMode());
 
