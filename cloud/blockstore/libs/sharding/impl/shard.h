@@ -1,12 +1,5 @@
 #pragma once
 
-#include "public.h"
-
-#include "config.h"
-#include "host_endpoint.h"
-#include "host_endpoints_manager.h"
-#include "sharding_common.h"
-
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
@@ -14,7 +7,10 @@
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/server/config.h>
-#include <cloud/blockstore/libs/sharding/config.h>
+#include <cloud/blockstore/libs/sharding/iface/config.h>
+#include <cloud/blockstore/libs/sharding/iface/host_endpoint.h>
+#include <cloud/blockstore/libs/sharding/iface/shard_host.h>
+#include <cloud/blockstore/libs/sharding/iface/shard.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -27,7 +23,7 @@ namespace NCloud::NBlockStore::NSharding {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TShardManager
-    : public IStartable
+    : public IShardManager
     , public std::enable_shared_from_this<TShardManager>
 {
 private:
@@ -47,13 +43,13 @@ public:
         TShardConfig config);
 
     [[nodiscard]] TResultOrError<THostEndpoint> GetShardClient(
-        const NClient::TClientAppConfigPtr& clientConfig)
+        const NClient::TClientAppConfigPtr& clientConfig) override
     {
         return PickHost(clientConfig);
     }
 
     [[nodiscard]] TShardEndpoints GetShardClients(
-        const NClient::TClientAppConfigPtr& clientConfig)
+        const NClient::TClientAppConfigPtr& clientConfig) override
     {
         return PickHosts(Config.GetShardDescribeHostCnt(), clientConfig);
     }

@@ -1,8 +1,5 @@
 #include "describe_volume.h"
 
-#include "config.h"
-#include "sharding_manager.h"
-
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/config/sharding.pb.h>
 #include <cloud/blockstore/libs/client/config.h>

@@ -1,8 +1,5 @@
 #include "describe_volume.h"
 
-#include "config.h"
-#include "sharding_common.h"
-
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>

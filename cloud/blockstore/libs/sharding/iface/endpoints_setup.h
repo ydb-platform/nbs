@@ -1,7 +1,7 @@
 #pragma once
 
-#include "public.h"
-#include "sharding_common.h"
+#include "config.h"
+#include "sharding_arguments.h"
 
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/service/public.h>

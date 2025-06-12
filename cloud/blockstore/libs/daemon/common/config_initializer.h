@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
-#include <cloud/blockstore/libs/sharding/public.h>
+#include <cloud/blockstore/libs/sharding/iface/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
