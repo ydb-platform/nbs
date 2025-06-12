@@ -120,16 +120,18 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
     {
         const TString fsId = "test_fs";
         const TString clientId = "test_client";
+        const TString cloudId = "test_cloud";
+        const TString folderId = "test_folder";
 
         const TString testResult = NResource::Find("counters.json");
         auto testJson = NJson::ReadJsonFastTree(testResult, true);
         auto emptyJson = NJson::ReadJsonFastTree("{}", true);
 
-        auto stats = Registry->GetFileSystemStats(fsId, clientId);
-
+        auto stats =
+            Registry->GetFileSystemStats(cloudId, folderId, fsId, clientId);
 
         // First registration
-        Registry->RegisterUserStats("cloud", "folder", fsId, clientId);
+        Registry->RegisterUserStats(cloudId, folderId, fsId, clientId);
 
         TStringStream firstOut;
         auto firstEncoder = EncoderJson(&firstOut);
@@ -139,7 +141,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         ValidateJsons(testJson, firstResult);
 
         // Second registration
-        Registry->RegisterUserStats("cloud", "folder", fsId, clientId);
+        Registry->RegisterUserStats(cloudId, folderId, fsId, clientId);
 
         TStringStream secondOut;
         auto secondEncoder = EncoderJson(&secondOut);

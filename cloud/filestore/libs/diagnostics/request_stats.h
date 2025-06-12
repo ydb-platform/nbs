@@ -57,6 +57,8 @@ struct IRequestStatsRegistry
     virtual IRequestStatsPtr GetRequestStats() = 0;
 
     virtual IRequestStatsPtr GetFileSystemStats(
+        const TString& cloudId,
+        const TString& folderId,
         const TString& filesystem,
         const TString& client) = 0;
 
