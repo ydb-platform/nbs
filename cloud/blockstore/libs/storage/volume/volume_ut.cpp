@@ -8975,6 +8975,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.UpdateVolumeConfig();
         volume.WaitReady();
 
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+
         NKikimrTabletBase::TMetrics metrics;
         NKikimrTabletBase::TMetrics partitionMetrics;
         runtime->SetObserverFunc(
@@ -9069,13 +9072,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 options.FinalEvents.emplace_back(TEvStatsService::EvVolumePartCounters);
                 runtime->DispatchEvents(options);
             }
-        }
-
-        runtime->AdvanceCurrentTime(TDuration::Seconds(120));
-        {
-            TDispatchOptions options;
-            options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
-            runtime->DispatchEvents(options);
         }
 
         UNIT_ASSERT_VALUES_UNEQUAL(0, metrics.GetCPU());
