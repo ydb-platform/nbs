@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -42,7 +43,7 @@ private:
     };
 
 private:
-    TVolumeInfoPtr VolumeInfo;
+    const TVolumeInfoPtr VolumeInfo;
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
@@ -52,6 +53,12 @@ private:
     const NRdma::IClientPtr RdmaClient;
     const std::shared_ptr<NKikimr::TTabletCountersBase> Counters;
     const TSharedServiceCountersPtr SharedCounters;
+
+    TLogTitle LogTitle{
+        TLogTitle::EType::Session,
+        VolumeInfo->SessionId,
+        VolumeInfo->DiskId,
+        GetCycleCount()};
 
     TQueue<NActors::IEventHandlePtr> MountUnmountRequests;
 

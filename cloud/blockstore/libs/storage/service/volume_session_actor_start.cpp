@@ -993,9 +993,11 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
     const auto& diskId = VolumeInfo->DiskId;
 
     if (!StartVolumeActor) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Starting volume %s locally",
-            diskId.Quote().data());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Starting volume locally",
+            LogTitle.GetWithTime().c_str());
 
         CurrentRequest = START_REQUEST;
         StartVolumeActor = NCloud::Register<TStartVolumeActor>(
@@ -1017,8 +1019,12 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
         auto response = std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
             MakeError(E_REJECTED, TStringBuilder()
                 << "Volume " << diskId << " is being stopped"));
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            FormatError(response->GetError()));
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(response->GetError()).c_str());
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -1039,24 +1045,25 @@ void TVolumeSessionActor::HandleVolumeTabletStatus(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const auto& diskId = VolumeInfo->DiskId;
 
     if (!msg->VolumeActor) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Volume %s failed: %s",
-            VolumeInfo->TabletId,
-            diskId.Quote().data(),
-            ToString(msg->Error).data());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume start failed: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->Error).c_str());
 
         VolumeInfo->VolumeActor = {};
         VolumeInfo->SetFailed(msg->Error);
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Volume %s started",
-        msg->TabletId,
-        diskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Volume started",
+        LogTitle.GetWithTime().c_str());
 
     VolumeInfo->SetStarted(msg->TabletId, msg->VolumeInfo, msg->VolumeActor);
 

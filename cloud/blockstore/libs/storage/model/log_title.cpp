@@ -27,9 +27,22 @@ TLogTitle::TLogTitle(
         ui32 partitionCount)
     : Type(EType::Partition)
     , StartTime(startTime)
-    , TabletId(tabletId)
     , PartitionIndex(partitionIndex)
     , PartitionCount(partitionCount)
+    , TabletId(tabletId)
+    , DiskId(std::move(diskId))
+{
+    Rebuild();
+}
+
+TLogTitle::TLogTitle(
+        EType type,
+        TString sessionId,
+        TString diskId,
+        ui64 startTime)
+    : Type(type)
+    , SessionId(std::move(sessionId))
+    , StartTime(startTime)
     , DiskId(std::move(diskId))
 {
     Rebuild();
@@ -101,6 +114,12 @@ void TLogTitle::SetGeneration(ui32 generation)
     Rebuild();
 }
 
+void TLogTitle::SetTabletId(ui64 tabletId)
+{
+    TabletId = tabletId;
+    Rebuild();
+}
+
 void TLogTitle::Rebuild()
 {
     switch (Type) {
@@ -110,6 +129,10 @@ void TLogTitle::Rebuild()
         }
         case EType::Partition: {
             RebuildForPartition();
+            break;
+        }
+        case EType::Session: {
+            RebuildForSession();
             break;
         }
     }
@@ -160,6 +183,23 @@ TString TChildLogTitle::GetWithTime() const
     TStringBuilder builder;
     builder << CachedPrefix << " + " << FormatDuration(duration) << "]";
     return builder;
+}
+
+void TLogTitle::RebuildForSession()
+{
+    auto builder = TStringBuilder();
+
+    builder << "[";
+    builder << "vs:";
+    if (TabletId) {
+        builder << TabletId;
+    } else {
+        builder << "?";
+    }
+    builder << " d:" << DiskId;
+    builder << " s:" << SessionId;
+
+    CachedPrefix = builder;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
