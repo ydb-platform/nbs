@@ -542,6 +542,8 @@ public:
     TFuture<NProto::TError> StartAsync() override
     {
         RequestStats = StatsRegistry->GetFileSystemStats(
+            "", // folderId, empty only for first request, will be updated later
+            "", // cloudId
             Config->GetFileSystemId(),
             Config->GetClientId());
 
@@ -561,6 +563,11 @@ public:
                         p->Log,
                         *callContext,
                         response.GetError());
+                    p->RequestStats = p->StatsRegistry->GetFileSystemStats(
+                        response.GetFileStore().GetCloudId(),
+                        response.GetFileStore().GetFolderId(),
+                        p->Config->GetFileSystemId(),
+                        p->Config->GetClientId());
 
                     return p->StartWithSessionState(future);
                 }

@@ -411,6 +411,8 @@ class TFileSystemStats final
     , TRequestLogger
 {
 private:
+    const TString CloudId;
+    const TString FolderId;
     const TString FileSystemId;
     const TString ClientId;
 
@@ -425,6 +427,8 @@ private:
 
 public:
     TFileSystemStats(
+            TString cloudId,
+            TString folderId,
             TString fileSystemId,
             TString clientId,
             ITimerPtr timer,
@@ -434,6 +438,8 @@ public:
             TDuration totalTimeThreshold,
             EHistogramCounterOptions histogramCounterOptions)
         : TRequestLogger{executionTimeThreshold, totalTimeThreshold}
+        , CloudId{std::move(cloudId)}
+        , FolderId{std::move(folderId)}
         , FileSystemId{std::move(fileSystemId)}
         , ClientId{std::move(clientId)}
         , Counters{MakeRequestCounters(
@@ -540,6 +546,14 @@ public:
         for (auto& provider: IncompleteRequestProviders) {
             provider.reset();
         }
+    }
+
+    TString GetCloudId() {
+        return CloudId;
+    }
+
+    TString GetFolderId() {
+        return FolderId;
     }
 
 private:
@@ -716,6 +730,8 @@ public:
     }
 
     IRequestStatsPtr GetFileSystemStats(
+        const TString& cloudId,
+        const TString& folderId,
         const TString& fileSystemId,
         const TString& clientId) override
     {
@@ -724,12 +740,38 @@ public:
         TWriteGuard guard(Lock);
 
         auto it = StatsMap.find(key);
+        bool shouldRecreateFsCounters = false;
+
         if (it == StatsMap.end()) {
+            shouldRecreateFsCounters = true;
+        } else {
+            const auto& currentCloudId = it->second.Stats->GetCloudId();
+            const auto& currentFolderId = it->second.Stats->GetFolderId();
+            if (cloudId && cloudId != currentCloudId ||
+                folderId && folderId != currentFolderId)
+            {
+                shouldRecreateFsCounters = true;
+                MoveFileSystemStats(
+                    fileSystemId,
+                    clientId,
+                    currentCloudId,
+                    currentFolderId,
+                    cloudId,
+                    folderId);
+            }
+        }
+
+        if (shouldRecreateFsCounters)
+        {
             auto counters = FsCounters
                 ->GetSubgroup("filesystem", fileSystemId)
-                ->GetSubgroup("client", clientId);
+                ->GetSubgroup("client", clientId)
+                ->GetSubgroup("cloud", cloudId)
+                ->GetSubgroup("folder", folderId);
 
             auto stats = CreateRequestStats(
+                cloudId,
+                folderId,
                 fileSystemId,
                 clientId,
                 std::move(counters),
@@ -778,7 +820,9 @@ public:
 
             auto counters = FsCounters
                 ->GetSubgroup("filesystem", fileSystemId)
-                ->GetSubgroup("client", clientId);
+                ->GetSubgroup("client", clientId)
+                ->GetSubgroup("cloud", cloudId)
+                ->GetSubgroup("folder", folderId);
 
             NUserCounter::RegisterFilestore(
                 *UserCounters,
@@ -839,6 +883,8 @@ public:
 
 private:
     std::shared_ptr<TFileSystemStats> CreateRequestStats(
+        TString cloudId,
+        TString folderId,
         TString fileSystemId,
         TString clientId,
         TDynamicCountersPtr counters,
@@ -857,6 +903,8 @@ private:
             delayMaxTime);
 
         return std::make_shared<TFileSystemStats>(
+            std::move(cloudId),
+            std::move(folderId),
             std::move(fileSystemId),
             std::move(clientId),
             std::move(timer),
@@ -865,6 +913,40 @@ private:
             executionTimeThreshold,
             totalTimeThreshold,
             histogramCounterOptions);
+    }
+
+    void MoveFileSystemStats(
+        const TString& fileSystemId,
+        const TString& clientId,
+        const TString& currentCloudId,
+        const TString& currentFolderId,
+        const TString& newCloudId,
+        const TString& newFolderId)
+    {
+        auto fsCounters = FsCounters
+            ->GetSubgroup("filesystem", fileSystemId)
+            ->GetSubgroup("client", clientId)
+            ->GetSubgroup("cloud", currentCloudId)
+            ->GetSubgroup("folder", currentFolderId);
+
+        FsCounters->RemoveSubgroupChain({
+            {"filesystem", fileSystemId},
+            {"client", clientId}
+        });
+
+        // GetSubgroup is used to create all neccessary subgroups
+        auto newSubgroupCounters = FsCounters
+            ->GetSubgroup("filesystem", fileSystemId)
+            ->GetSubgroup("client", clientId)
+            ->GetSubgroup("cloud", newCloudId)
+            ->GetSubgroup("folder", newFolderId);
+        Y_UNUSED(newSubgroupCounters);
+
+        FsCounters
+            ->GetSubgroup("filesystem", fileSystemId)
+            ->GetSubgroup("client", clientId)
+            ->GetSubgroup("cloud", newCloudId)
+            ->ReplaceSubgroup("folder", newFolderId, fsCounters);
     }
 };
 
@@ -877,9 +959,13 @@ public:
     TRequestStatsRegistryStub() = default;
 
     IRequestStatsPtr GetFileSystemStats(
+        const TString& cloudId,
+        const TString& folderId,
         const TString& fileSystemId,
         const TString& clientId) override
     {
+        Y_UNUSED(cloudId);
+        Y_UNUSED(folderId);
         Y_UNUSED(fileSystemId);
         Y_UNUSED(clientId);
 
