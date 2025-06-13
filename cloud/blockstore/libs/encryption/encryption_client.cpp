@@ -518,61 +518,32 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
             "failed to acquire sglist in EncryptionClient");
     }
 
-    ui64 bufferSize = static_cast<ui64>(request->BlocksCount) *
-        request->BlockSize;
-    auto buffer = AllocateStorageBuffer(*Client, bufferSize);
-
-    TSgList encryptedSglist;
-    {
-        auto sgListOrError = SgListNormalize(
-            { buffer.get(), bufferSize },
-            request->BlockSize);
-
-        if (HasError(sgListOrError)) {
-            return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-                TErrorResponse(sgListOrError.GetError()));
-        }
-        encryptedSglist = sgListOrError.ExtractResult();
+    auto sgListOrError = SgListNormalize(guard.Get(), request->BlockSize);
+    if (HasError(sgListOrError)) {
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(
+            TErrorResponse(sgListOrError.GetError()));
     }
+    auto sglist = sgListOrError.ExtractResult();
 
-    TSgList srcSglist;
+    auto encryptedRequest = std::make_shared<NProto::TWriteBlocksRequest>();
+
+    auto encryptedSglist = ResizeIOVector(
+        *encryptedRequest->MutableBlocks(),
+        sglist.size(),
+        BlockSize);
+
+    if (auto error = Encrypt(sglist, encryptedSglist, request->GetStartIndex());
+        HasError(error))
     {
-        auto sgListOrError = SgListNormalize(guard.Get(), request->BlockSize);
-        if (HasError(sgListOrError)) {
-            return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-                TErrorResponse(sgListOrError.GetError()));
-        }
-        srcSglist = sgListOrError.ExtractResult();
-    }
-
-    auto err = Encrypt(
-        srcSglist,
-        encryptedSglist,
-        request->GetStartIndex());
-
-    if (HasError(err)) {
         return MakeFutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
-            std::move(err));
+            std::move(error));
     }
 
-    TGuardedSgList guardedSgList(std::move(encryptedSglist));
+    encryptedRequest->MergeFrom(*request);
 
-    auto encryptedRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
-    *encryptedRequest = *request;
-    encryptedRequest->Sglist = guardedSgList;
-
-    auto future = Client->WriteBlocksLocal(
+    return Client->WriteBlocks(
         std::move(callContext),
         std::move(encryptedRequest));
-
-    return future.Apply([
-        sgList = std::move(guardedSgList),
-        buf = std::move(buffer)] (const auto& f) mutable
-    {
-        sgList.Close();
-        buf.reset();
-        return f;
-    });
 }
 
 TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
