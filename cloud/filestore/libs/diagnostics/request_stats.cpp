@@ -383,10 +383,7 @@ public:
         , MaxCalc(std::move(timer))
     {}
 
-    ~TPostponeTimePredictorStats()
-    {
-        RootCounters->RemoveCounter(COUNTER_LABEL.data());
-    }
+    ~TPostponeTimePredictorStats() = default;
 
     void SetupStats(TDuration predictedDelay)
     {
@@ -396,6 +393,11 @@ public:
     void UpdateStats()
     {
         *Counter = MaxCalc.NextValue();
+    }
+
+    void Unregister()
+    {
+        RootCounters->RemoveCounter(COUNTER_LABEL.data());
     }
 };
 
@@ -543,6 +545,7 @@ public:
 
     void Reset() override
     {
+        PredictorStats.Unregister();
         for (auto& provider: IncompleteRequestProviders) {
             provider.reset();
         }
