@@ -134,7 +134,8 @@ void TIndexTabletActor::HandleUpdateConfig(
         // autosharding params are deliberately applied upon FS creation
         newConfig.SetAutomaticShardCreationEnabled(
             Config->GetAutomaticShardCreationEnabled());
-        newConfig.SetShardAllocationUnit(Config->GetShardAllocationUnit());
+        newConfig.SetShardAllocationUnitBlocks(
+            Config->GetShardAllocationUnitBlocks());
 
         LOG_INFO(ctx,TFileStoreComponents::TABLET,
             "%s Starting tablet config initialization [txId: %d]"
@@ -142,7 +143,7 @@ void TIndexTabletActor::HandleUpdateConfig(
             LogTag.c_str(),
             txId,
             Config->GetAutomaticShardCreationEnabled(),
-            Config->GetShardAllocationUnit());
+            Config->GetShardAllocationUnitBlocks());
 
         // First config update on tablet creation. No need to validate config.
         ExecuteTx<TUpdateConfig>(
@@ -162,6 +163,8 @@ void TIndexTabletActor::HandleUpdateConfig(
     newConfig.SetAutomaticShardCreationEnabled(
         oldConfig.GetAutomaticShardCreationEnabled());
     newConfig.SetShardAllocationUnit(oldConfig.GetShardAllocationUnit());
+    newConfig.SetShardAllocationUnitBlocks(
+        oldConfig.GetShardAllocationUnitBlocks());
     newConfig.SetDirectoryCreationInShardsEnabled(
         oldConfig.GetDirectoryCreationInShardsEnabled());
 
