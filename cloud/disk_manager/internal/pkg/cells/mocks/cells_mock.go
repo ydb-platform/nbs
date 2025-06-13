@@ -21,9 +21,9 @@ func NewCellSelectorMock() *CellSelectorMock {
 
 func (s *CellSelectorMock) SelectCell(
 	ctx context.Context,
-	disk *disk_manager.DiskId,
+	req *disk_manager.CreateDiskRequest,
 ) string {
 
-	args := s.Called(ctx, disk)
+	args := s.Called(ctx, req)
 	return args.String(0)
 }

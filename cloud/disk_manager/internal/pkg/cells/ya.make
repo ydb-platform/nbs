@@ -6,6 +6,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    cells_test.go
 )
 
 END()
@@ -16,4 +17,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     mocks
+    tests
 )

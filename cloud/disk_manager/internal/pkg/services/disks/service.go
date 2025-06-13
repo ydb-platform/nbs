@@ -188,7 +188,7 @@ func (s *service) prepareZoneID(
 		return diskMeta.ZoneID, nil
 	}
 
-	return s.cellSelector.SelectCell(ctx, req.DiskId), nil
+	return s.cellSelector.SelectCell(ctx, req), nil
 }
 
 func (s *service) prepareCreateDiskParams(
