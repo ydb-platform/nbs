@@ -31,6 +31,7 @@ private:
     const ui64 StartTime;
     const ui32 PartitionIndex = 0;
     const ui32 PartitionCount = 0;
+    const bool TemporaryServer = false;
 
     ui64 TabletId = 0;
     ui64 Generation = 0;
@@ -50,7 +51,12 @@ public:
         ui32 partitionCount);
 
     // Constructor for Session
-    TLogTitle(EType type, TString sessionId, TString diskId, ui64 startTime);
+    TLogTitle(
+        EType type,
+        TString sessionId,
+        TString diskId,
+        bool temporaryServer,
+        ui64 startTime);
 
     static TString
     GetPartitionPrefix(ui64 tabletId, ui32 partitionIndex, ui32 partitionCount);

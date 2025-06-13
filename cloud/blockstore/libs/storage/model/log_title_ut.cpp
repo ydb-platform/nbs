@@ -92,6 +92,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             TLogTitle::EType::Session,
             "session-1",
             "disk1",
+            false,
             GetCycleCount());
 
         UNIT_ASSERT_STRINGS_EQUAL(
@@ -106,6 +107,29 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
         UNIT_ASSERT_STRING_CONTAINS(
             logTitle.GetWithTime(),
             "[vs:12345 d:disk1 s:session-1 t:");
+    }
+
+    Y_UNIT_TEST(GetForSessionOnTemporaryServer)
+    {
+        TLogTitle logTitle(
+            TLogTitle::EType::Session,
+            "session-1",
+            "disk1",
+            true,
+            GetCycleCount());
+
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[~vs:? d:disk1 s:session-1]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        logTitle.SetTabletId(12345);
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[~vs:12345 d:disk1 s:session-1]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            logTitle.GetWithTime(),
+            "[~vs:12345 d:disk1 s:session-1 t:");
     }
 
     Y_UNIT_TEST(GetChildLogger)

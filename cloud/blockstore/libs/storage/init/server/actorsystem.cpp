@@ -227,7 +227,8 @@ public:
             Args.RdmaClient,
             Args.VolumeStats,
             Args.PreemptedVolumes,
-            Args.RootKmsKeyProvider);
+            Args.RootKmsKeyProvider,
+            Args.TemporaryServer);
 
         setup->LocalServices.emplace_back(
             MakeStorageServiceId(),

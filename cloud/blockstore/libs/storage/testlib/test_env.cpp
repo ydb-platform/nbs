@@ -378,10 +378,12 @@ ui32 TTestEnv::CreateBlockStoreNode(
         NDiscovery::CreateDiscoveryServiceStub(),
         TraceSerializer,
         NServer::CreateEndpointEventProxy(),
-        nullptr, // rdmaClient
+        nullptr,   // rdmaClient
         CreateVolumeStatsStub(),
         std::move(manuallyPreemptedVolumes),
-        CreateRootKmsKeyProviderMock());
+        CreateRootKmsKeyProviderMock(),
+        false   // temporaryServer
+    );
 
     auto storageServiceId = Runtime.Register(
         storageService.release(),
