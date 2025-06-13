@@ -45,7 +45,6 @@ private:
     THashMap<ui64, TInFlightRequest> InFlightRequests;
 
     NMonitoring::TDynamicCounters::TCounterPtr CpuWait;
-    NMonitoring::TDynamicCounters::TCounterPtr CpuWaitFailure;
 
     NMonitoring::TDynamicCounters::TCounterPtr TotalFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr TotalTabletCount;

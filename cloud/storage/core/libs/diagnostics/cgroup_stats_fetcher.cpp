@@ -95,9 +95,9 @@ public:
             auto value = TDuration::MicroSeconds(FromString<ui64>(buf) / 1000);
 
             if (value < Last) {
-                auto errorMessage = ReportCpuWaitCounterReadError(
-                    TStringBuilder() << StatsFile << " : new value " << value
-                                     << " is less than previous " << Last);
+                auto errorMessage = TStringBuilder()
+                                    << StatsFile << " : new value " << value
+                                    << " is less than previous " << Last;
                 Last = value;
                 return MakeError(E_INVALID_STATE, std::move(errorMessage));
             }
