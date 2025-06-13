@@ -8,54 +8,53 @@ import (
 )
 
 func TestCellsIsFolderAllowed(t *testing.T) {
-	{
-		config := &cells_config.CellsConfig{}
-
-		selector := cellSelector{
-			config: config,
-		}
-
-		require.True(t, selector.isFolderAllowed("anyFolder"))
+	testCases := []struct {
+		name            string
+		excludedFolders []string
+		includedFolders []string
+		mustBeAllowed   []string
+		mustBeDenied    []string
+	}{
+		{name: "Empty config", mustBeAllowed: []string{"anyFolder"}},
+		{
+			name:            "Excluded folders only",
+			excludedFolders: []string{"excludedFolderID"},
+			mustBeDenied:    []string{"excludedFolderID"},
+			mustBeAllowed:   []string{"otherFolderID"},
+		},
+		{
+			name:            "Excluded and included folders",
+			excludedFolders: []string{"excludedFolderID"},
+			includedFolders: []string{"includedFolderID"},
+			mustBeDenied:    []string{"excludedFolderID", "otherFolderID"},
+			mustBeAllowed:   []string{"includedFolderID"},
+		},
+		{
+			name:            "Included and excluded folders are the same",
+			excludedFolders: []string{"includedAndExcludedFolderID"},
+			includedFolders: []string{"includedAndExcludedFolderID"},
+			mustBeDenied:    []string{"includedAndExcludedFolderID"},
+		},
 	}
 
-	{
-		config := &cells_config.CellsConfig{
-			ExcludedFolders: []string{"excludedFolderID"},
-		}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := &cells_config.CellsConfig{
+				ExcludedFolders: testCase.excludedFolders,
+				IncludedFolders: testCase.includedFolders,
+			}
 
-		selector := cellSelector{
-			config: config,
-		}
+			selector := cellSelector{
+				config: config,
+			}
 
-		require.False(t, selector.isFolderAllowed("excludedFolderID"))
-		require.True(t, selector.isFolderAllowed("otherFolderID"))
-	}
+			for _, folderID := range testCase.mustBeAllowed {
+				require.True(t, selector.isFolderAllowed(folderID))
+			}
 
-	{
-		config := &cells_config.CellsConfig{
-			ExcludedFolders: []string{"excludedFolderID"},
-			IncludedFolders: []string{"includedFolderID"},
-		}
-
-		selector := cellSelector{
-			config: config,
-		}
-
-		require.False(t, selector.isFolderAllowed("excludedFolderID"))
-		require.True(t, selector.isFolderAllowed("includedFolderID"))
-		require.False(t, selector.isFolderAllowed("otherFolderID"))
-	}
-
-	{
-		config := &cells_config.CellsConfig{
-			ExcludedFolders: []string{"includedAndExcludedFolderID"},
-			IncludedFolders: []string{"includedAndExcludedFolderID"},
-		}
-
-		selector := cellSelector{
-			config: config,
-		}
-
-		require.False(t, selector.isFolderAllowed("includedAndExcludedFolderID"))
+			for _, folderID := range testCase.mustBeDenied {
+				require.False(t, selector.isFolderAllowed(folderID))
+			}
+		})
 	}
 }
