@@ -113,6 +113,7 @@ private:
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
     const NBlockCodecs::ICodec* BlobCodec;
+    const ui64 VolumeTabletId;
 
     TLogTitle LogTitle;
 
@@ -165,7 +166,8 @@ public:
         EStorageAccessMode storageAccessMode,
         ui32 partitionIndex,
         ui32 siblingCount,
-        const NActors::TActorId& volumeActorId);
+        const NActors::TActorId& volumeActorId,
+        ui64 volumeTabletId);
     ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;

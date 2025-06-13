@@ -84,15 +84,14 @@ TString GetMonitoringVolumeUrl(
            << data.MonitoringClusterName << "&p.volume=" << diskId;
 }
 
-TString GetMonitoringPartitionUrl(const TDiagnosticsConfig& config)
+TString GetMonitoringVolumeUrlWithoutDiskId(const TDiagnosticsConfig& config)
 {
     TMonitoringUrlData data = config.GetMonitoringUrlData();
     return TStringBuilder()
            << data.MonitoringUrl << "/projects/" << data.MonitoringProject
-           << "/dashboards/" << data.MonitoringPartitionDashboard
-           << "?from=now-1d&to=now&"
-              "refresh=60000&p.service=tablets&p.cluster="
-           << data.MonitoringClusterName << "&p.host=" << GetShortHostName();
+           << "/dashboards/" << data.MonitoringVolumeDashboard
+           << "?from=now-1d&to=now&refresh=60000&p.cluster="
+           << data.MonitoringClusterName << "&p.volume=";
 }
 
 TString GetMonitoringNBSAlertsUrl(const TDiagnosticsConfig& config)
