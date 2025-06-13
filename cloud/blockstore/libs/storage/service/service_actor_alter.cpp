@@ -9,6 +9,8 @@
 #include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/size_literals.h>
@@ -318,7 +320,7 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
                 Error = MakeError(
                     E_ARGUMENT,
                     TStringBuilder() << "disk size for media kind "
-                        << static_cast<int>(volumeParams.MediaKind)
+                        << MediaKindToString(volumeParams.MediaKind)
                         << " should be <= " << maxBlocks << " blocks"
                 );
                 ReplyAndDie(ctx);
