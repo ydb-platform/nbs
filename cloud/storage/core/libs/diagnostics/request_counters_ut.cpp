@@ -798,6 +798,26 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
         UNIT_ASSERT(!histogram);
     }
+
+    Y_UNIT_TEST(ShouldReportStatsForLargeRequests)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCountersPtr();
+        counters->Register(*monitoring->GetCounters());
+        AddRequestStats(
+            *counters,
+            WriteRequestType,
+            {
+                {8_GB, TDuration::MilliSeconds(100), TDuration::Zero()},
+            });
+
+        counters->UpdateStats();
+        auto requestBytes = monitoring->GetCounters()
+                                ->GetSubgroup("request", "WriteBlocks")
+                                ->GetCounter("RequestBytes");
+
+        UNIT_ASSERT_EQUAL_C(8_GB, requestBytes->Val(), requestBytes->Val());
+    }
 }
 
 }   // namespace NCloud
