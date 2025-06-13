@@ -907,12 +907,18 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 GetFsCounters(rootCounters, oldCloud, oldCloud, FS, CLIENT);
             UNIT_ASSERT(fsCounters);
 
-            auto counters = fsCounters->GetSubgroup("request", "CreateSession");
-            UNIT_ASSERT(counters);
+            auto maxPredictedPostponeTimeCounter =
+                fsCounters->FindCounter("MaxPredictedPostponeTime");
+            UNIT_ASSERT(maxPredictedPostponeTimeCounter);
+            UNIT_ASSERT_EQUAL(maxPredictedPostponeTimeCounter->Val(), 0);
 
-            auto counter = counters->GetCounter("Count");
-            UNIT_ASSERT(counter);
-            UNIT_ASSERT_EQUAL(counter->Val(), 1);
+            auto requestsCounters =
+                fsCounters->GetSubgroup("request", "CreateSession");
+            UNIT_ASSERT(requestsCounters);
+
+            auto createSessionCounter = requestsCounters->GetCounter("Count");
+            UNIT_ASSERT(createSessionCounter);
+            UNIT_ASSERT_EQUAL(createSessionCounter->Val(), 1);
         }
 
         // emulating assigning new cloud and folder (after session is created)
@@ -921,27 +927,33 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                     ->GetFileSystemStats(newCloud, newFolder, FS, CLIENT);
 
         {
-            auto counters = rootCounters->FindSubgroup("filesystem", FS);
-            UNIT_ASSERT(counters);
+            auto fsCounters = rootCounters->FindSubgroup("filesystem", FS);
+            UNIT_ASSERT(fsCounters);
 
-            counters = counters->FindSubgroup("client", CLIENT);
-            UNIT_ASSERT(counters);
+            fsCounters = fsCounters->FindSubgroup("client", CLIENT);
+            UNIT_ASSERT(fsCounters);
 
-            auto emptyCounters = counters->FindSubgroup("cloud", oldCloud);
+            auto emptyCounters = fsCounters->FindSubgroup("cloud", oldCloud);
             UNIT_ASSERT(!emptyCounters);
 
-            counters = counters->FindSubgroup("cloud", newCloud);
-            UNIT_ASSERT(counters);
+            fsCounters = fsCounters->FindSubgroup("cloud", newCloud);
+            UNIT_ASSERT(fsCounters);
 
-            counters = counters->FindSubgroup("folder", newFolder);
-            UNIT_ASSERT(counters);
+            fsCounters = fsCounters->FindSubgroup("folder", newFolder);
+            UNIT_ASSERT(fsCounters);
 
-            counters = counters->GetSubgroup("request", "CreateSession");
-            UNIT_ASSERT(counters);
+            auto maxPredictedPostponeTimeCounter =
+                fsCounters->FindCounter("MaxPredictedPostponeTime");
+            UNIT_ASSERT(maxPredictedPostponeTimeCounter);
+            UNIT_ASSERT_EQUAL(maxPredictedPostponeTimeCounter->Val(), 0);
 
-            auto counter = counters->GetCounter("Count");
-            UNIT_ASSERT(counter);
-            UNIT_ASSERT_EQUAL(counter->Val(), 1);
+            auto requestsCounters =
+                fsCounters->GetSubgroup("request", "CreateSession");
+            UNIT_ASSERT(requestsCounters);
+
+            auto createSessionCounter = requestsCounters->GetCounter("Count");
+            UNIT_ASSERT(createSessionCounter);
+            UNIT_ASSERT_EQUAL(createSessionCounter->Val(), 1);
         }
     }
 }
