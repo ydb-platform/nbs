@@ -2124,6 +2124,45 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
         UNIT_ASSERT_VALUES_EQUAL("W2R2W3", observedOrder);
     }
+
+    Y_UNIT_TEST(ShouldReturnDataFromListNodeRefs)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+        auto id1 = CreateNode(
+            tablet,
+            TCreateNodeArgs::Directory(RootNodeId, "test1"));
+        auto id2 = CreateNode(
+            tablet,
+            TCreateNodeArgs::Directory(RootNodeId, "test2"));
+
+        CreateNode(
+            tablet,
+            TCreateNodeArgs::File(id1, "test3"));
+        CreateNode(
+            tablet,
+            TCreateNodeArgs::File(id1, "test4"));
+        CreateNode(
+            tablet,
+            TCreateNodeArgs::File(id2, "test5"));
+
+        auto response = tablet.ListNodeRefs(0, "", 1);
+        UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetNodeRefs().size());
+        UNIT_ASSERT_VALUES_EQUAL(RootNodeId, response->Record.GetNextNodeId());
+        UNIT_ASSERT_VALUES_EQUAL("test2", response->Record.GetNextCookie());
+
+        response = tablet.ListNodeRefs(response->Record.GetNextNodeId(),
+                                            response->Record.GetNextCookie(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetNodeRefs().size());
+        UNIT_ASSERT_VALUES_EQUAL(id1, response->Record.GetNextNodeId());
+        UNIT_ASSERT_VALUES_EQUAL("test4", response->Record.GetNextCookie());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
