@@ -759,10 +759,6 @@ private:
         const NActors::TActorContext& ctx,
         ui64 requestId);
 
-    void HandleUpdateShadowDiskStateRequest(
-        const TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleGetDrTabletInfoResponse(
         const TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -1112,6 +1108,26 @@ private:
         const NActors::TActorContext& ctx,
         NActors::TActorId nonreplicatedActorId,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
+
+    void HandleCreateLinkFinished(
+        const TEvVolumePrivate::TEvCreateLinkFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLinkOnFollowerDestroyed(
+        const TEvVolumePrivate::TEvLinkOnFollowerDestroyed::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    // Create link to leader volume on follower side
+    void CreateLeaderLink(
+        TRequestInfoPtr requestInfo,
+        TLeaderFollowerLink link,
+        const NActors::TActorContext& ctx);
+
+    // Remove link to leader volume on follower side
+    void DestroyLeaderLink(
+        TRequestInfoPtr requestInfo,
+        TLeaderFollowerLink link,
+        const NActors::TActorContext& ctx);
 
     // Restart partitions. If these were partition of DiskRegistry-based disk,
     // then the onPartitionStopped callback will be called after the partition
