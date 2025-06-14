@@ -100,14 +100,14 @@ public:
 
             AddWriteDataEntry(parsedRequest, serializedRequest);
         });
-
-        if (AutomaticFlushPeriod) {
-            ScheduleAutomaticFlush();
-        }
     }
 
-    void ScheduleAutomaticFlush()
+    void ScheduleAutomaticFlushIfNeeded()
     {
+        if (!AutomaticFlushPeriod) {
+            return;
+        }
+
         Scheduler->Schedule(
             Timer->Now() + AutomaticFlushPeriod,
             [ptr = weak_from_this()] () {
@@ -115,7 +115,7 @@ public:
                     self->FlushAllData().Subscribe(
                         [ptr = self->weak_from_this()] (auto) {
                             if (auto self = ptr.lock()) {
-                                self->ScheduleAutomaticFlush();
+                                self->ScheduleAutomaticFlushIfNeeded();
                             }
                         });
                 }
@@ -625,6 +625,8 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TWriteBackCache::TWriteBackCache() = default;
+
 TWriteBackCache::TWriteBackCache(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
@@ -640,7 +642,9 @@ TWriteBackCache::TWriteBackCache(
             filePath,
             capacityBytes,
             automaticFlushPeriod))
-{}
+{
+    Impl->ScheduleAutomaticFlushIfNeeded();
+}
 
 TWriteBackCache::~TWriteBackCache() = default;
 
@@ -666,25 +670,6 @@ TFuture<void> TWriteBackCache::FlushData(ui64 handle)
 TFuture<void> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-TWriteBackCachePtr CreateWriteBackCache(
-    IFileStorePtr session,
-    ISchedulerPtr scheduler,
-    ITimerPtr timer,
-    const TString& filePath,
-    ui32 capacityBytes,
-    TDuration automaticFlushPeriod)
-{
-    return std::make_unique<TWriteBackCache>(
-        session,
-        scheduler,
-        timer,
-        filePath,
-        capacityBytes,
-        automaticFlushPeriod);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -27,6 +27,8 @@ private:
     std::shared_ptr<TImpl> Impl;
 
 public:
+    TWriteBackCache();
+
     TWriteBackCache(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
@@ -118,15 +120,5 @@ private:
         ui64 startingFromOffset,
         ui64 length);
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-TWriteBackCachePtr CreateWriteBackCache(
-    IFileStorePtr session,
-    ISchedulerPtr scheduler,
-    ITimerPtr timer,
-    const TString& filePath,
-    ui32 capacityBytes,
-    TDuration automaticFlushPeriod);
 
 }   // namespace NCloud::NFileStore::NFuse

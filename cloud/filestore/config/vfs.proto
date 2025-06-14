@@ -51,7 +51,7 @@ message TVFSConfig
     optional string WriteBackCachePath = 15;
 
     // Max WriteBackCache capacity in bytes.
-    optional uint32 WriteBackCacheCapacity = 16;
+    optional uint64 WriteBackCacheCapacity = 16;
 
     // WriteBackCache automatic flush period (in milliseconds).
     optional uint32 WriteBackCacheAutomaticFlushPeriod = 17;
