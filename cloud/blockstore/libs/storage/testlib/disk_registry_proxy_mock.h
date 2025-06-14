@@ -456,6 +456,8 @@ private:
             clientId == disk->WriterClientId || clientId == AnyWriterClientId)
         {
             disk->WriterClientId = "";
+        } else if (clientId == AnyReaderClientId) {
+            disk->ReaderClientIds.clear();
         } else {
             auto it = Find(
                 disk->ReaderClientIds.begin(),

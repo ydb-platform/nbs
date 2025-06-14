@@ -1,12 +1,15 @@
 #include "volume_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 #include <cloud/blockstore/libs/storage/volume/tracing.h>
+
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
@@ -28,6 +31,14 @@ namespace {
 // actor to stop. It should stop much faster, this timeout is a fuse against
 // hanging requests for deleting checkpoints.
 constexpr auto ExternalDrainTimeout = TDuration::Seconds(30);
+
+constexpr auto ReleaseShadowDiskRetryTimeout = TDuration::Seconds(5);
+
+enum class EReleaseSessionKind
+{
+    AnyReader = 1,
+    AnyWriter = 2,
+};
 
 struct TPartitionDescr
 {
@@ -155,12 +166,16 @@ private:
     const TRequestTraceInfo TraceInfo;
     const ECheckpointRequestType RequestType;
     const bool CreateCheckpointShadowDisk;
+    const ui32 Generation = 0;
 
     EDrainSource DrainSource = EDrainSource::None;
     bool ExternalDrainDone = false;
     ui32 DrainResponses = 0;
     ui32 Responses = 0;
     NProto::TError Error;
+    TString ShadowDiskId;
+    bool ReleaseShadowDiskRequestForAnyReaderFinished = false;
+    bool ReleaseShadowDiskRequestForAnyWriterFinished = false;
 
     TVector<TCallContextPtr> ChildCallContexts;
 
@@ -176,7 +191,8 @@ public:
         TRequestTraceInfo traceInfo,
         ECheckpointRequestType requestType,
         bool createCheckpointShadowDisk,
-        bool waitForExternalDrain);
+        bool waitForExternalDrain,
+        ui32 generation);
 
     void Bootstrap(const TActorContext& ctx);
     void Drain(const TActorContext& ctx);
@@ -199,11 +215,14 @@ private:
         ui32 partitionIndex);
     void ForkTraces(TCallContextPtr callContext);
     void JoinTraces(ui32 cookie);
+    std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
+    MakeReleaseDiskRequest(EReleaseSessionKind releaseSessionKind) const;
 
 private:
     STFUNC(StateDrain);
     STFUNC(StateDoAction);
     STFUNC(StateUpdateCheckpointRequest);
+    STFUNC(StateReleaseShadowDisk);
 
     void HandleResponse(
         const typename TMethod::TResponse::TPtr& ev,
@@ -244,6 +263,10 @@ private:
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
+
+    void HandleReleaseDiskResponse(
+        const TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& ev,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -260,7 +283,8 @@ TCheckpointActor<TMethod>::TCheckpointActor(
         TRequestTraceInfo traceInfo,
         ECheckpointRequestType requestType,
         bool createCheckpointShadowDisk,
-        bool waitForExternalDrain)
+        bool waitForExternalDrain,
+        ui32 generation)
     : RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
     , DiskId(std::move(diskId))
@@ -271,6 +295,7 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     , TraceInfo(std::move(traceInfo))
     , RequestType(requestType)
     , CreateCheckpointShadowDisk(createCheckpointShadowDisk)
+    , Generation(generation)
     , DrainSource(
           waitForExternalDrain ? EDrainSource::External
                                : EDrainSource::None)
@@ -411,6 +436,29 @@ void TCheckpointActor<TMethod>::JoinTraces(ui32 cookie)
     }
 }
 
+template <typename TMethod>
+std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
+TCheckpointActor<TMethod>::MakeReleaseDiskRequest(
+    EReleaseSessionKind releaseSessionKind) const
+{
+    TString clientId = "";
+
+    switch (releaseSessionKind) {
+        case EReleaseSessionKind::AnyReader:
+            clientId = AnyReaderClientId;
+            break;
+        case EReleaseSessionKind::AnyWriter:
+            clientId = AnyWriterClientId;
+            break;
+    }
+
+    auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
+    request->Record.SetDiskId(ShadowDiskId);
+    request->Record.MutableHeaders()->SetClientId(clientId);
+    request->Record.SetVolumeGeneration(Generation);
+    return request;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -473,18 +521,29 @@ void TCheckpointActor<TMethod>::HandleExternalDrainDone(
 {
     STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::External);
 
-    Y_UNUSED(ev);
-
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "[%lu] External drain done",
         VolumeTabletId);
 
-    if (!ExternalDrainDone) {
-        ExternalDrainDone = true;
-        DoAction(ctx);
-    }
+    ShadowDiskId = ev->Get()->ShadowDiskId;
+    ReleaseShadowDiskRequestForAnyReaderFinished = false;
+    ReleaseShadowDiskRequestForAnyWriterFinished = false;
+
+    NCloud::Send(
+        ctx,
+        MakeDiskRegistryProxyServiceId(),
+        MakeReleaseDiskRequest(EReleaseSessionKind::AnyReader),
+        static_cast<ui64>(EReleaseSessionKind::AnyReader));
+
+    NCloud::Send(
+        ctx,
+        MakeDiskRegistryProxyServiceId(),
+        MakeReleaseDiskRequest(EReleaseSessionKind::AnyWriter),
+        static_cast<ui64>(EReleaseSessionKind::AnyWriter));
+
+    TBase::Become(&TThis::StateReleaseShadowDisk);
 }
 
 template <typename TMethod>
@@ -654,6 +713,62 @@ void TCheckpointActor<TMethod>::HandlePoisonPill(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
+void TCheckpointActor<TMethod>::HandleReleaseDiskResponse(
+    const TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& record = ev->Get()->Record;
+
+    const auto releaseSessionKind =
+        static_cast<EReleaseSessionKind>(ev->Cookie);
+
+    if (record.HasError()) {
+        if (GetErrorKind(record.GetError()) == EErrorKind::ErrorRetriable) {
+            ctx.ExecutorThread.Schedule(
+                ReleaseShadowDiskRetryTimeout,
+                new IEventHandle(
+                    MakeDiskRegistryProxyServiceId(),
+                    TBase::SelfId(),
+                    MakeReleaseDiskRequest(releaseSessionKind).release(),
+                    0,   // flags
+                    ev->Cookie));
+
+            return;
+        }
+
+        ReportReleaseShadowDiskError(
+            TStringBuilder()
+            << "Could not release shadow disk " << ShadowDiskId.Quote()
+            << " Error: " << FormatError(record.GetError()));
+    }
+
+    switch (releaseSessionKind) {
+        case EReleaseSessionKind::AnyReader:
+            ReleaseShadowDiskRequestForAnyReaderFinished = true;
+            break;
+        case EReleaseSessionKind::AnyWriter:
+            ReleaseShadowDiskRequestForAnyWriterFinished = true;
+            break;
+    }
+
+    if (!ReleaseShadowDiskRequestForAnyReaderFinished ||
+        !ReleaseShadowDiskRequestForAnyWriterFinished)
+    {
+        return;
+    }
+
+    // part from HandleExternalDrainDone
+    if (!ExternalDrainDone) {
+        ExternalDrainDone = true;
+        DoAction(ctx);
+    } else {
+        TBase::Become(&TThis::StateDrain);
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
 STFUNC(TCheckpointActor<TMethod>::StateDrain)
 {
     switch (ev->GetTypeRewrite()) {
@@ -710,6 +825,22 @@ STFUNC(TCheckpointActor<TMethod>::StateUpdateCheckpointRequest)
 
         IgnoreFunc(TEvVolumePrivate::TEvExternalDrainDone);
         IgnoreFunc(TEvents::TEvWakeup);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::VOLUME,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+template <typename TMethod>
+STFUNC(TCheckpointActor<TMethod>::StateReleaseShadowDisk)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvDiskRegistry::TEvReleaseDiskResponse, HandleReleaseDiskResponse);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
             HandleUnexpectedEvent(
@@ -1381,7 +1512,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                         TraceSerializer),
                     request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints(),
-                    false);
+                    false,
+                    Executor()->Generation());
             break;
         }
         case ECheckpointRequestType::Delete: {
@@ -1407,7 +1539,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                         TraceSerializer),
                     request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints(),
-                    needToDestroyShadowActor);
+                    needToDestroyShadowActor,
+                    Executor()->Generation());
             break;
         }
         case ECheckpointRequestType::DeleteData: {
@@ -1427,7 +1560,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                         TraceSerializer),
                     request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints(),
-                    needToDestroyShadowActor);
+                    needToDestroyShadowActor,
+                    Executor()->Generation());
             break;
         }
         default:
@@ -1440,11 +1574,14 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
         DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
 
         TPoisonCallback onPartitionStopped =
-            [actorId](const NActors::TActorContext& ctx, NProto::TError error)
+            [actorId, shadowDiskId = checkpointInfo->ShadowDiskId](
+                const NActors::TActorContext& ctx,
+                NProto::TError error)
         {
             Y_UNUSED(error);
             auto event =
-                std::make_unique<TEvVolumePrivate::TEvExternalDrainDone>();
+                std::make_unique<TEvVolumePrivate::TEvExternalDrainDone>(
+                    shadowDiskId);
             NCloud::Send(ctx, actorId, std::move(event));
         };
         RestartPartition(ctx, std::move(onPartitionStopped));
