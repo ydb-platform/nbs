@@ -835,7 +835,7 @@ private:
                 HandleOpsQueueInitialized = true;
             }
 
-            TWriteBackCachePtr writeBackCache;
+            TWriteBackCache writeBackCache;
             if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 TString path =
                     TFsPath(Config->GetWriteBackCachePath()) /
@@ -851,13 +851,14 @@ private:
                 }
                 auto file = TFsPath(path) / WriteBackCacheFileName;
                 file.Touch();
-                writeBackCache = CreateWriteBackCache(
+                writeBackCache = TWriteBackCache(
                     Session,
                     Scheduler,
                     Timer,
                     file.GetPath(),
                     Config->GetWriteBackCacheCapacity(),
                     Config->GetWriteBackCacheAutomaticFlushPeriod());
+                writeBackCache.ScheduleAutomaticFlush();
                 WriteBackCacheInitialized = true;
             }
 

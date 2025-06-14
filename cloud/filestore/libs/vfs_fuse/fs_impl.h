@@ -92,7 +92,7 @@ private:
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
 
-    TWriteBackCachePtr WriteBackCache;
+    TWriteBackCache WriteBackCache;
 
 public:
     TFileSystem(
@@ -105,7 +105,7 @@ public:
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
-        TWriteBackCachePtr writeBackCache);
+        TWriteBackCache writeBackCache);
 
     ~TFileSystem();
 

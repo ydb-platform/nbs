@@ -100,14 +100,14 @@ public:
 
             AddWriteDataEntry(parsedRequest, serializedRequest);
         });
-
-        if (AutomaticFlushPeriod) {
-            ScheduleAutomaticFlush();
-        }
     }
 
     void ScheduleAutomaticFlush()
     {
+        if (!AutomaticFlushPeriod) {
+            return;
+        }
+
         Scheduler->Schedule(
             Timer->Now() + AutomaticFlushPeriod,
             [ptr = weak_from_this()] () {
@@ -625,6 +625,8 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TWriteBackCache::TWriteBackCache() = default;
+
 TWriteBackCache::TWriteBackCache(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
@@ -643,6 +645,11 @@ TWriteBackCache::TWriteBackCache(
 {}
 
 TWriteBackCache::~TWriteBackCache() = default;
+
+void TWriteBackCache::ScheduleAutomaticFlush()
+{
+    Impl->ScheduleAutomaticFlush();
+}
 
 TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadData(
     TCallContextPtr callContext,
@@ -666,25 +673,6 @@ TFuture<void> TWriteBackCache::FlushData(ui64 handle)
 TFuture<void> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-TWriteBackCachePtr CreateWriteBackCache(
-    IFileStorePtr session,
-    ISchedulerPtr scheduler,
-    ITimerPtr timer,
-    const TString& filePath,
-    ui32 capacityBytes,
-    TDuration automaticFlushPeriod)
-{
-    return std::make_unique<TWriteBackCache>(
-        session,
-        scheduler,
-        timer,
-        filePath,
-        capacityBytes,
-        automaticFlushPeriod);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

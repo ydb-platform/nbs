@@ -93,7 +93,8 @@ struct TBootstrap
             ITimerPtr timer = CreateWallClockTimer(),
             ISchedulerPtr scheduler = CreateScheduler(),
             const NProto::TFileStoreFeatures& featuresConfig = {},
-            ui32 handleOpsQueueSize = 1000)
+            ui32 handleOpsQueueSize = 1000,
+            ui32 writeBackCacheAutomaticFlushPeriodMs = 0)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -160,8 +161,10 @@ struct TBootstrap
         }
         if (featuresConfig.GetServerWriteBackCacheEnabled()) {
             proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
-            // disable automatic flush
-            proto.SetWriteBackCacheAutomaticFlushPeriod(0);
+            // minimum possible capacity
+            proto.SetWriteBackCacheCapacity(1024*1024 + 1024);
+            proto.SetWriteBackCacheAutomaticFlushPeriod(
+                writeBackCacheAutomaticFlushPeriodMs);
         }
 
         auto config = std::make_shared<TVFSConfig>(std::move(proto));
@@ -327,9 +330,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features.SetGuestWriteBackCacheEnabled(true);
         }
 
+        auto timer = CreateWallClockTimer();
         TBootstrap bootstrap(
-            CreateWallClockTimer(),
-            CreateScheduler(),
+            timer,
+            CreateScheduler(timer),
             features);
 
         const ui64 nodeId = 123;
@@ -2001,6 +2005,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             nodeId, dirHandleId, false /* datasync */);
         UNIT_ASSERT_NO_EXCEPTION(fsyncDir.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalled.load());
+        // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
 
         write = bootstrap.Fuse->SendRequest<TWriteRequest>(
@@ -2115,6 +2120,52 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, destroyHandleCalled.load());
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldFlushAutomaticallyWithServerWriteBackCacheEnabled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        ui32 automaticFlushPeriodMs = 1;
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            0,
+            automaticFlushPeriodMs);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            writeDataCalled++;
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        while (true) {
+            bootstrap.Timer->Sleep(TDuration::MilliSeconds(1));
+
+            if (writeDataCalled.load() == 0) {
+                continue;
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+            break;
+        }
     }
 }
 
