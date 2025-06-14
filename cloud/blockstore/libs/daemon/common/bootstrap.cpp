@@ -421,17 +421,28 @@ void TBootstrapBase::Init()
                 && !Configs->Options->TemporaryServer)
         {
             vhostEndpointListener = CreateExternalVhostEndpointListener(
-                Logging,
-                ServerStats,
-                Executor,
-                Configs->ServerConfig->GetVhostServerPath(),
-                Configs->Options->SkipDeviceLocalityValidation
-                    ? TString {}
-                    : FQDNHostName(),
-                Configs->ServerConfig->GetSocketAccessMode(),
-                Configs->ServerConfig->GetVhostServerTimeoutAfterParentExit(),
-                RdmaClient && RdmaClient->IsAlignedDataEnabled(),
-                std::move(vhostEndpointListener));
+                {.Logging = Logging,
+                 .ServerStats = ServerStats,
+                 .Executor = Executor,
+                 .LocalAgentId = Configs->Options->SkipDeviceLocalityValidation
+                                     ? TString{}
+                                     : FQDNHostName(),
+                 .SocketAccessMode =
+                     Configs->ServerConfig->GetSocketAccessMode(),
+                 .VhostServerTimeoutAfterParentExit =
+                     Configs->ServerConfig
+                         ->GetVhostServerTimeoutAfterParentExit(),
+                 .IsAlignedDataEnabled =
+                     RdmaClient && RdmaClient->IsAlignedDataEnabled(),
+                 .IsNonDefaultLocalSSDBlockSizeAlertEnabled =
+                     Configs->ServerConfig
+                         ->GetVhostServerNonDefaultLocalSSDBlockSizeAlertEnabled(),
+                 .FallbackListener = std::move(vhostEndpointListener),
+                 .Factory = CreateDefaultExternalEndpointFactory(
+                     Logging,
+                     ServerStats,
+                     Executor,
+                     Configs->ServerConfig->GetVhostServerPath())});
 
             STORAGE_INFO("VHOST External Vhost EndpointListener initialized");
         }

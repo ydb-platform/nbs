@@ -33,26 +33,27 @@ using TExternalEndpointFactory = std::function<IExternalEndpointPtr (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IEndpointListenerPtr CreateExternalVhostEndpointListener(
+TExternalEndpointFactory CreateDefaultExternalEndpointFactory(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
-    TString binaryPath,
-    TString localAgentId,
-    ui32 socketAccessMode,
-    TDuration vhostServerTimeoutAfterParentExit,
-    bool isAlignedDataEnabled,
-    IEndpointListenerPtr fallbackListener);
+    TString binaryPath);
+
+struct TCreateExternalVhostEndpointListenerParams
+{
+    ILoggingServicePtr Logging;
+    IServerStatsPtr ServerStats;
+    TExecutorPtr Executor;
+    TString LocalAgentId;
+    ui32 SocketAccessMode = 0;
+    TDuration VhostServerTimeoutAfterParentExit;
+    bool IsAlignedDataEnabled = false;
+    bool IsNonDefaultLocalSSDBlockSizeAlertEnabled = true;
+    IEndpointListenerPtr FallbackListener;
+    TExternalEndpointFactory Factory;
+};
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
-    ILoggingServicePtr logging,
-    IServerStatsPtr serverStats,
-    TExecutorPtr executor,
-    TString localAgentId,
-    ui32 socketAccessMode,
-    TDuration vhostServerTimeoutAfterParentExit,
-    bool isAlignedDataEnabled,
-    IEndpointListenerPtr fallbackListener,
-    TExternalEndpointFactory factory);
+    TCreateExternalVhostEndpointListenerParams params);
 
 }   // namespace NCloud::NBlockStore::NServer
