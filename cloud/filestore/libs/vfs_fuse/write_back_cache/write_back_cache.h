@@ -27,15 +27,19 @@ private:
     std::shared_ptr<TImpl> Impl;
 
 public:
+    TWriteBackCache();
+
     TWriteBackCache(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
-        TDuration automaticFlushPeriod,
         const TString& filePath,
-        ui32 capacityBytes);
+        ui32 capacityBytes,
+        TDuration automaticFlushPeriod);
 
     ~TWriteBackCache();
+
+    void ScheduleAutomaticFlush();
 
     NThreading::TFuture<NProto::TReadDataResponse> ReadData(
         TCallContextPtr callContext,
@@ -68,6 +72,7 @@ private:
         ui64 Length;
         // serialized TWriteDataRequest
         TStringBuf SerializedRequest;
+        TString FileSystemId;
         NProto::THeaders RequestHeaders;
 
         TWriteDataEntry(
@@ -75,11 +80,13 @@ private:
                 ui64 offset,
                 ui64 length,
                 TStringBuf serializedRequest,
+                TString fileSystemId,
                 NProto::THeaders requestHeaders)
             : Handle(handle)
             , Offset(offset)
             , Length(length)
             , SerializedRequest(serializedRequest)
+            , FileSystemId(std::move(fileSystemId))
             , RequestHeaders(std::move(requestHeaders))
         {}
 
@@ -115,15 +122,5 @@ private:
         ui64 startingFromOffset,
         ui64 length);
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-TWriteBackCachePtr CreateWriteBackCache(
-    IFileStorePtr session,
-    ISchedulerPtr scheduler,
-    ITimerPtr timer,
-    TDuration automaticFlushPeriod,
-    const TString& filePath,
-    ui32 capacityBytes);
 
 }   // namespace NCloud::NFileStore::NFuse
