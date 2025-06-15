@@ -466,4 +466,17 @@ struct TFsyncDirRequest
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFlushRequest
+    : public TRequestBase<fuse_flush_in, void, void>
+{
+    TFlushRequest(ui64 nodeId, ui64 fh)
+    {
+        In->Header.opcode = FUSE_FLUSH;
+        In->Header.nodeid = nodeId;
+        In->Body.fh = fh;
+    }
+};
+
 }   // namespace NCloud::NFileStore::NVhost

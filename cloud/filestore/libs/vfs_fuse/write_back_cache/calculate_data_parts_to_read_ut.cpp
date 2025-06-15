@@ -238,6 +238,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
                 e.Offset,
                 e.Length,
                 TStringBuf(),
+                TString(),
                 NProto::THeaders());
             entries.PushBack(entry.release());
         }
@@ -291,6 +292,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
                 e.Offset,
                 e.Length,
                 TStringBuf(),
+                TString(),
                 NProto::THeaders());
             entries.PushBack(entry.release());
         }

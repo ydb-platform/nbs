@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/public.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache.h>
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -475,6 +476,6 @@ IFileSystemPtr CreateFileSystem(
     IRequestStatsPtr stats,
     ICompletionQueuePtr queue,
     THandleOpsQueuePtr handleOpsQueue,
-    TWriteBackCachePtr writeBackCache);
+    TWriteBackCache writeBackCache);
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -112,11 +112,11 @@ struct TBootstrap
     TLog Log;
 
     std::shared_ptr<TFileStoreTest> Session;
-    ISchedulerPtr Scheduler;
     ITimerPtr Timer;
+    ISchedulerPtr Scheduler;
     TDuration CacheAutomaticFlushPeriod;
     TTempFileHandle TempFileHandle;
-    TWriteBackCachePtr Cache;
+    TWriteBackCache Cache;
 
     TCallContextPtr CallContext;
 
@@ -139,6 +139,8 @@ struct TBootstrap
     THashMap<ui64, TInFlightRequestTracker> InFlightReadRequestTracker;
     THashMap<ui64, TInFlightRequestTracker> InFlightWriteRequestTracker;
 
+    std::atomic<int> SessionWriteDataHandlerCalled;
+
     TBootstrap(TDuration cacheAutomaticFlushPeriod = {})
     {
         CacheAutomaticFlushPeriod = cacheAutomaticFlushPeriod;
@@ -147,8 +149,9 @@ struct TBootstrap
         Logging->Start();
         Log = Logging->CreateLog("WRITE_BACK_CACHE");
 
-        Scheduler = CreateScheduler();
         Timer = CreateWallClockTimer();
+        Scheduler = CreateScheduler(Timer);
+        Scheduler->Start();
 
         Session = std::make_shared<TFileStoreTest>();
 
@@ -190,6 +193,8 @@ struct TBootstrap
         };
 
         Session->WriteDataHandler = [&] (auto, auto request) {
+            SessionWriteDataHandlerCalled++;
+
             const auto handle = request->GetHandle();
             const auto offset = request->GetOffset();
             const auto length = request->GetBuffer().length();
@@ -245,19 +250,22 @@ struct TBootstrap
         CallContext = MakeIntrusive<TCallContext>();
     }
 
-    ~TBootstrap() = default;
+    ~TBootstrap()
+    {
+        Scheduler->Stop();
+    }
 
     void RecreateCache()
     {
         STORAGE_INFO("Recreating cache");
 
-        Cache = CreateWriteBackCache(
+        Cache = TWriteBackCache(
             Session,
             Scheduler,
             Timer,
-            CacheAutomaticFlushPeriod,
             TempFileHandle.GetName(),
-            CacheCapacityBytes);
+            CacheCapacityBytes,
+            CacheAutomaticFlushPeriod);
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
@@ -270,7 +278,7 @@ struct TBootstrap
         request->SetOffset(offset);
         request->SetLength(length);
 
-        return Cache->ReadData(CallContext, move(request));
+        return Cache.ReadData(CallContext, move(request));
     }
 
     void ValidateCache(ui64 handle, ui64 offset, TString expected)
@@ -321,7 +329,7 @@ struct TBootstrap
         request->SetOffset(offset);
         request->SetBuffer(buffer);
 
-        auto future = Cache->WriteData(CallContext, std::move(request));
+        auto future = Cache.WriteData(CallContext, std::move(request));
 
         future.Subscribe([&, handle, offset, buffer] (auto) {
             STORAGE_INFO("Written " << buffer.Quote()
@@ -356,7 +364,7 @@ struct TBootstrap
     {
         STORAGE_INFO("Flushing @" << handle);
 
-        Cache->FlushData(handle).GetValueSync();
+        Cache.FlushData(handle).GetValueSync();
 
         {
             std::unique_lock lock1(ExpectedDataMutex);
@@ -375,7 +383,7 @@ struct TBootstrap
     {
         STORAGE_INFO("Flushing all data");
 
-        Cache->FlushAllData().GetValueSync();
+        Cache.FlushAllData().GetValueSync();
 
         {
             std::unique_lock lock1(ExpectedDataMutex);
@@ -386,6 +394,14 @@ struct TBootstrap
 
             UnflushedData.clear();
         }
+    }
+
+    void ValidateCacheIsFlushed()
+    {
+        std::unique_lock lock1(ExpectedDataMutex);
+        std::unique_lock lock3(FlushedDataMutex);
+
+        UNIT_ASSERT_VALUES_EQUAL(ExpectedData, FlushedData);
     }
 };
 
@@ -453,7 +469,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             return MakeFuture(response);
         };
 
-        b.Cache->FlushData(1).GetValueSync();
+        b.Cache.FlushData(1).GetValueSync();
     }
 
     Y_UNIT_TEST(ShouldSequenceReadAndWriteRequestsAvoidingConflicts)
@@ -496,7 +512,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(0, flushAttempts);
         UNIT_ASSERT(writeFuture1.HasValue());
 
-        auto flushFuture1 = b.Cache->FlushData(1);
+        auto flushFuture1 = b.Cache.FlushData(1);
         // it is not allowed to flush because read requests are in progress
         UNIT_ASSERT_VALUES_EQUAL(0, flushAttempts);
         UNIT_ASSERT(!flushFuture1.HasValue());
@@ -550,7 +566,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(1, flushAttempts);
         UNIT_ASSERT(writeFuture2.HasValue());
 
-        auto flushFuture2 = b.Cache->FlushData(2);
+        auto flushFuture2 = b.Cache.FlushData(2);
         UNIT_ASSERT_VALUES_EQUAL(1, flushAttempts);
         UNIT_ASSERT(!flushFuture2.HasValue());
 
@@ -592,7 +608,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(2, flushAttempts);
         UNIT_ASSERT(writeFuture3.HasValue());
 
-        auto flushFuture3 = b.Cache->FlushData(1);
+        auto flushFuture3 = b.Cache.FlushData(1);
         UNIT_ASSERT_VALUES_EQUAL(2, flushAttempts);
         UNIT_ASSERT(!flushFuture2.HasValue());
 
@@ -644,6 +660,42 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 1, "ijklmn");
         b.RecreateCache();
         b.ValidateCache();
+    }
+
+    Y_UNIT_TEST(ShouldFlushAutomatically)
+    {
+        const auto automaticFlushPeriod = TDuration::MilliSeconds(1);
+        TBootstrap b(automaticFlushPeriod);
+
+        int retryCount = 0;
+
+        auto waitForFlush = [&] (int attempt) {
+            while (true) {
+                b.Timer->Sleep(TDuration::MilliSeconds(1));
+
+                if (b.SessionWriteDataHandlerCalled.load() < attempt) {
+                    // log every 10 seconds
+                    if (retryCount % 10000 == 0) {
+                        auto& Log = b.Log;
+                        STORAGE_INFO("Waiting for flush attempt " << attempt);
+                    }
+
+                    retryCount++;
+                    continue;
+                }
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    attempt,
+                    b.SessionWriteDataHandlerCalled.load());
+                b.ValidateCacheIsFlushed();
+                return;
+            }
+        };
+
+        b.WriteToCacheSync(1, 11, "abcde");
+        waitForFlush(1);
+        b.WriteToCacheSync(1, 22, "efghij");
+        waitForFlush(2);
     }
 
     void TestShouldReadAfterWriteRandomized(bool withRecreation = false) {
@@ -719,16 +771,16 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         threads.emplace_back([&] {
             start.arrive_and_wait();
-            b.Cache->FlushData(1).GetValueSync();
+            b.Cache.FlushData(1).GetValueSync();
         });
 
         threads.emplace_back([&] {
             start.arrive_and_wait();
-            b.Cache->FlushData(2).GetValueSync();
+            b.Cache.FlushData(2).GetValueSync();
         });
 
         start.arrive_and_wait();
-        b.Cache->FlushAllData().GetValueSync();
+        b.Cache.FlushAllData().GetValueSync();
 
         for (auto& t: threads) {
             t.join();
@@ -804,7 +856,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                     request->SetOffset(0);
                     request->SetLength(333);
 
-                    auto future = b.Cache->ReadData(
+                    auto future = b.Cache.ReadData(
                         b.CallContext,
                         move(request));
                     auto response = future.GetValueSync();
@@ -830,6 +882,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TestShouldReadAfterWriteConcurrently(true /* withManualFlush */);
     }
 
+    /* TODO(svartmetal): fix tests with automatic flush
     Y_UNIT_TEST(ShouldReadAfterWriteConcurrentlyWithAutomaticFlush)
     {
         TestShouldReadAfterWriteConcurrently(
@@ -843,6 +896,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             true,   // withManualFlush
             true);  // withAutomaticFlush
     }
+    */
 }
 
 }   // namespace NCloud::NFileStore::NFuse

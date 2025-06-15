@@ -78,9 +78,9 @@ public:
             IFileStorePtr session,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
-            TDuration automaticFlushPeriod,
             const TString& filePath,
-            ui32 capacityBytes)
+            ui32 capacityBytes,
+            TDuration automaticFlushPeriod)
         : Session(CreateSessionSequencer(std::move(session)))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
@@ -100,14 +100,14 @@ public:
 
             AddWriteDataEntry(parsedRequest, serializedRequest);
         });
-
-        if (AutomaticFlushPeriod) {
-            ScheduleAutomaticFlush();
-        }
     }
 
-    void ScheduleAutomaticFlush()
+    void ScheduleAutomaticFlushIfNeeded()
     {
+        if (!AutomaticFlushPeriod) {
+            return;
+        }
+
         Scheduler->Schedule(
             Timer->Now() + AutomaticFlushPeriod,
             [ptr = weak_from_this()] () {
@@ -115,7 +115,7 @@ public:
                     self->FlushAllData().Subscribe(
                         [ptr = self->weak_from_this()] (auto) {
                             if (auto self = ptr.lock()) {
-                                self->ScheduleAutomaticFlush();
+                                self->ScheduleAutomaticFlushIfNeeded();
                             }
                         });
                 }
@@ -131,6 +131,7 @@ public:
             request.GetOffset(),
             request.GetBuffer().length(),
             serializedRequest,
+            request.GetFileSystemId(),
             request.GetHeaders());
         WriteDataEntriesByHandle[request.GetHandle()].emplace_back(
             entry.get());
@@ -231,14 +232,15 @@ public:
             // and apply cache on top of it
             return Session->ReadData(std::move(callContext), request).Apply(
                 [handle = request->GetHandle(),
-                startingFromOffset = request->GetOffset(),
-                length = request->GetLength(),
-                buffer = std::move(buffer),
-                parts = std::move(parts) ] (auto future)
+                 startingFromOffset = request->GetOffset(),
+                 length = request->GetLength(),
+                 buffer = std::move(buffer),
+                 parts = std::move(parts)] (auto future)
                 {
                     auto response = future.ExtractValue();
 
                     // TODO(svartmetal): handle response error
+                    Y_ABORT_UNLESS(SUCCEEDED(response.GetError().GetCode()));
 
                     if (response.GetBuffer().empty()) {
                         *response.MutableBuffer() = std::move(buffer);
@@ -246,7 +248,13 @@ public:
                     }
 
                     Y_ABORT_UNLESS(
-                        length == response.GetBuffer().length());
+                        length >= response.GetBuffer().length(),
+                        "expected length %lu to be >= than %lu",
+                        length,
+                        response.GetBuffer().length());
+                    // TODO(svartmetal): get rid of reallocation here
+                    response.MutableBuffer()->resize(length, 0);
+
                     // TODO(svartmetal): support buffer offsetting
                     Y_ABORT_UNLESS(0 == response.GetBufferOffset());
 
@@ -271,7 +279,9 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request)
     {
-        Y_UNUSED(callContext);
+        if (request->GetFileSystemId().empty()) {
+            request->SetFileSystemId(callContext->FileSystemId);
+        }
 
         auto promise = NewPromise<NProto::TWriteDataResponse>();
         auto future = promise.GetFuture();
@@ -367,6 +377,7 @@ public:
             }
 
             auto request = std::make_shared<NProto::TWriteDataRequest>();
+            request->SetFileSystemId(parts[partIndex].Source->FileSystemId);
             *request->MutableHeaders() =
                 parts[partIndex].Source->RequestHeaders;
             request->SetHandle(handle);
@@ -482,8 +493,10 @@ public:
         state->WriteRequestsRemaining = writeRequests.size();
 
         for (auto& request: writeRequests) {
+            auto callContext = MakeIntrusive<TCallContext>(
+                request->GetFileSystemId());
             Session->WriteData(
-                MakeIntrusive<TCallContext>(),
+                std::move(callContext),
                 std::move(request)).Subscribe(
                     [state] (auto)
                     {
@@ -612,22 +625,26 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TWriteBackCache::TWriteBackCache() = default;
+
 TWriteBackCache::TWriteBackCache(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
-        TDuration automaticFlushPeriod,
         const TString& filePath,
-        ui32 capacityBytes)
+        ui32 capacityBytes,
+        TDuration automaticFlushPeriod)
     : Impl(
         new TImpl(
             session,
             scheduler,
             timer,
-            automaticFlushPeriod,
             filePath,
-            capacityBytes))
-{}
+            capacityBytes,
+            automaticFlushPeriod))
+{
+    Impl->ScheduleAutomaticFlushIfNeeded();
+}
 
 TWriteBackCache::~TWriteBackCache() = default;
 
@@ -653,25 +670,6 @@ TFuture<void> TWriteBackCache::FlushData(ui64 handle)
 TFuture<void> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-TWriteBackCachePtr CreateWriteBackCache(
-    IFileStorePtr session,
-    ISchedulerPtr scheduler,
-    ITimerPtr timer,
-    TDuration automaticFlushPeriod,
-    const TString& filePath,
-    ui32 capacityBytes)
-{
-    return std::make_unique<TWriteBackCache>(
-        session,
-        scheduler,
-        timer,
-        automaticFlushPeriod,
-        filePath,
-        capacityBytes);
 }
 
 }   // namespace NCloud::NFileStore::NFuse
