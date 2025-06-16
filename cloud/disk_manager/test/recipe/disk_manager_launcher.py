@@ -638,6 +638,8 @@ class DiskManagerLauncher:
                 data = response.read().decode()
         except urllib.error.URLError:
             return result
+        except ConnectionError:
+            return result
 
         for line in data.splitlines():
             if not line:
