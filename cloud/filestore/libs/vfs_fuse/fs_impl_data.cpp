@@ -415,6 +415,8 @@ void TFileSystem::Write(
     const auto size = buffer.size();
 
     if (Config->GetServerWriteBackCacheEnabled()) {
+        // TODO(svartmetal): check whether handle is non-direct and has write
+        // permission
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(
                 [=,
