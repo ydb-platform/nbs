@@ -9880,6 +9880,107 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(3, notifyFollowerVolumeResponseCount);
     }
 
+    Y_UNIT_TEST(ShouldFailCreateLinkPropagateFollowerLink)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        runtime->RegisterService(
+            MakeVolumeProxyServiceId(),
+            runtime->AllocateEdgeActor(),
+            0);
+
+        TVolumeClient volume1(*runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD,
+            7 * 1024,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        TVolumeClient volume2(*runtime, 0, TestVolumeTablets[1]);
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD,
+            7 * 1024,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
+
+        auto forwardRequest = [&](TAutoPtr<IEventHandle>& event, TString diskId)
+        {
+            if (diskId == "vol1") {
+                volume1.ForwardToPipe(event);
+            } else if (diskId == "vol2") {
+                volume2.ForwardToPipe(event);
+            } else {
+                UNIT_ASSERT_C(
+                    false,
+                    TStringBuilder() << "Unknown disk id: " << diskId);
+            }
+        };
+
+        auto volumeProxyRequestHandler =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->Recipient == MakeVolumeProxyServiceId()) {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvNotifyFollowerVolumeRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvNotifyFollowerVolumeRequest>();
+                    forwardRequest(event, msg->Record.GetDiskId());
+                }
+                return true;
+            }
+
+            if (event->GetTypeRewrite() ==
+                TEvVolume::EvNotifyFollowerVolumeRequest)
+            {
+                auto response = std::make_unique<
+                    TEvVolume::TEvNotifyFollowerVolumeResponse>(MakeError(
+                    E_ARGUMENT,
+                    "Simulated non-retiable error on follower"));
+
+                runtime->Send(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0,   // flags
+                        event->Cookie),
+                    0);
+                return true;
+            }
+            return false;
+        };
+
+        runtime->SetEventFilter(volumeProxyRequestHandler);
+
+        TLeaderFollowerLink link{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol1",
+            .LeaderScaleUnitId = "su1",
+            .FollowerDiskId = "vol2",
+            .FollowerScaleUnitId = "su2"};
+
+        // Create link
+        volume1.SendLinkLeaderVolumeToFollowerRequest(link);
+        auto response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+    }
+
     Y_UNIT_TEST(ShouldPerformIoWithPredefinedCopyVolumeClientId)
     {
         NProto::TStorageServiceConfig config;

@@ -72,7 +72,7 @@ void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
                             << sourceSize << " > " << targetSize;
         LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, errorMessage.c_str());
 
-        ReplyAndDie(ctx, MakeError(E_INVALID_STATE, errorMessage));
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, errorMessage));
         return;
     }
 
@@ -121,7 +121,7 @@ void TCreateVolumeLinkActor::HandleDescribeVolumeResponse(
         (ev->Cookie == DESCRIBE_KIND_LEADER) ? LeaderVolume : FollowerVolume;
 
     const auto& error = msg->GetError();
-    if (FAILED(error.GetCode())) {
+    if (HasError(error)) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -163,10 +163,12 @@ void TCreateVolumeLinkActor::HandlePersistedOnLeader(
             ReplyAndDie(
                 ctx,
                 MakeError(
-                    E_FAIL,
+                    E_INVALID_STATE,
                     TStringBuilder()
                         << "unexpected follower state during link creation: "
-                        << ToString(message->Follower.State).Quote()));
+                        << ToString(message->Follower.State).Quote()
+                        << " error: "
+                        << message->Follower.ErrorMessage.Quote()));
             break;
         }
         case TFollowerDiskInfo::EState::None:
@@ -201,9 +203,7 @@ void TCreateVolumeLinkActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    const bool hasError = HasError(error);
-
-    if (hasError) {
+    if (HasError(error)) {
         Follower.State = TFollowerDiskInfo::EState::Error;
         Follower.ErrorMessage = FormatError(error);
 

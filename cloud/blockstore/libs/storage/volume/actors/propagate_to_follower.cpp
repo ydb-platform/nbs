@@ -35,14 +35,15 @@ void TPropagateLinkToFollowerActor::Bootstrap(const NActors::TActorContext& ctx)
 void TPropagateLinkToFollowerActor::PersistOnFollower(
     const NActors::TActorContext& ctx)
 {
+    ++TryCount;
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Propagate link %s %s to follower (try %lu)",
+        "%s Propagate link %s %s to follower (try #%lu)",
         LogPrefix.c_str(),
         ToString(Reason).c_str(),
         Link.Describe().c_str(),
-        ++TryCount);
+        TryCount);
 
     auto request =
         std::make_unique<TEvVolume::TEvNotifyFollowerVolumeRequest>();
