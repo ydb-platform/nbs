@@ -10,7 +10,7 @@ from cloud.blockstore.public.api.protos.encryption_pb2 import \
 
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
-from cloud.blockstore.public.sdk.python.client import Session
+from cloud.blockstore.public.sdk.python.client import Session, ClientError
 from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED
 from cloud.blockstore.config.root_kms_pb2 import TRootKmsConfig
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
@@ -19,6 +19,8 @@ from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 
 from contrib.ydb.tests.library.harness.kikimr_runner import \
     get_unique_path_for_current_test, ensure_path_exists
+
+from library.python.retry import retry
 
 
 DEVICE_SIZE = 1024**3   # 1 GiB
@@ -191,3 +193,46 @@ def test_create_volume_with_default_ecnryption(nbs, disk_agent, method):
 
     assert error.get("Code") == 1   # S_FALSE
     assert error.get("Message") == "Used block tracking not set up"
+
+
+def test_create_bunch_of_encrypted_volumes(nbs, disk_agent):
+
+    client = CreateTestClient(f"localhost:{nbs.port}")
+
+    encryption_spec = TEncryptionSpec(Mode=ENCRYPTION_AT_REST)
+
+    volume_count = 10
+
+    @retry(max_times=300, delay=1, exception=ClientError)
+    def create_volume(disk_id):
+        client.create_volume(
+            disk_id=disk_id,
+            block_size=4096,
+            blocks_count=2*DEVICE_SIZE//4096,
+            storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
+            encryption_spec=encryption_spec)
+
+    for i in range(volume_count):
+        disk_id = f"nrd{i}"
+
+        create_volume(disk_id)
+
+        session = Session(client, disk_id, "")
+        volume = session.mount_volume()['Volume']
+
+        assert len(volume.Devices) == 2
+        assert volume.EncryptionDesc.Mode == ENCRYPTION_AT_REST
+
+        assert volume.EncryptionDesc.EncryptionKey.KekId == KEK_ID
+        assert len(volume.EncryptionDesc.EncryptionKey.EncryptedDEK) != 0
+
+        expected_data = os.urandom(4096)
+
+        session.write_blocks(0, [expected_data])
+        blocks = session.read_blocks(0, 1, checkpoint_id="")
+        assert len(blocks) == 1
+        assert expected_data == blocks[0]
+
+        session.unmount_volume()
+
+        client.destroy_volume(disk_id)
