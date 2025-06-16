@@ -22,7 +22,6 @@ struct TOldRequestCounters
 {
     NMonitoring::TDynamicCounters::TCounterPtr Delayed = {};
     NMonitoring::TDynamicCounters::TCounterPtr Rejected = {};
-    NMonitoring::TDynamicCounters::TCounterPtr Already = {};
 };
 
 struct TRdmaTargetConfig

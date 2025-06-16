@@ -47,7 +47,7 @@ void DoBenchmarkRdmaTarget(
     {
         const auto& response = requestFuture.GetValueSync();
         bool ok = response.GetError().GetCode() == S_OK ||
-                  response.GetError().GetCode() == S_ALREADY;
+                  response.GetError().GetCode() == E_REJECTED;
         UNIT_ASSERT(ok);
     };
 
@@ -55,7 +55,7 @@ void DoBenchmarkRdmaTarget(
     {
         const auto& response = requestFuture.GetValueSync();
         bool ok = response.GetError().GetCode() == S_OK ||
-                  response.GetError().GetCode() == S_ALREADY;
+                  response.GetError().GetCode() == E_REJECTED;
         UNIT_ASSERT(ok);
     };
 

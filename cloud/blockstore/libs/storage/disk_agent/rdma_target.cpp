@@ -59,7 +59,6 @@ struct TRequestDetails
 
     ui64 VolumeRequestId = 0;
     TBlockRange64 Range;
-    bool RejectCompleteOverlapped = false;
 };
 
 template <typename TRequest>
@@ -435,13 +434,10 @@ private:
             synchronizedData.RecentBlocksTracker.CheckRecorded(
                 requestDetails.VolumeRequestId,
                 requestDetails.Range,
-                overlapDetails),
-            requestDetails.RejectCompleteOverlapped);
+                overlapDetails));
         if (result != S_OK) {
             if (result == E_REJECTED) {
                 synchronizedData.OldRequestCounters.Rejected->Inc();
-            } else if (result == S_ALREADY) {
-                synchronizedData.OldRequestCounters.Already->Inc();
             } else {
                 Y_DEBUG_ABORT_UNLESS(false);
             }
@@ -712,8 +708,7 @@ private:
                  .VolumeRequestId = request.GetVolumeRequestId(),
                  .Range = TBlockRange64::WithLength(
                      request.GetStartIndex(),
-                     blockCount),
-                 .RejectCompleteOverlapped = request.GetMultideviceRequest()},
+                     blockCount)},
             .ExecutionData = {
                 .CallContext = std::move(callContext),
                 .BlockSize = request.GetBlockSize(),
@@ -841,8 +836,7 @@ private:
                  .DeviceUUID = deviceUUID,
                  .ClientId = req->GetHeaders().GetClientId(),
                  .VolumeRequestId = req->GetVolumeRequestId(),
-                 .Range = range,
-                 .RejectCompleteOverlapped = true},
+                 .Range = range},
             .ExecutionData = {
                 .CallContext = std::move(callContext),
                 .BlockSize = req->GetBlockSize(),
@@ -963,8 +957,7 @@ private:
                  .VolumeRequestId = request.GetVolumeRequestId(),
                  .Range = TBlockRange64::WithLength(
                      request.GetStartIndex(),
-                     GetBlocksCount(request)),
-                 .RejectCompleteOverlapped = request.GetMultideviceRequest()},
+                     GetBlocksCount(request))},
             .ExecutionData = {
                 .CallContext = std::move(callContext),
                 .BlockSize = request.GetBlockSize(),
