@@ -335,8 +335,8 @@ func newPlacementGroupCmd(
 ) *cobra.Command {
 
 	cmd := &cobra.Command{
-		Use:     "placement_groups",
-		Aliases: []string{"placement_group"},
+		Use:     "placement-groups",
+		Aliases: []string{"placement-group", "placement_group", "placement_groups"},
 	}
 
 	cmd.AddCommand(

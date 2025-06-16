@@ -360,7 +360,8 @@ func newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
 	}
 
 	cmd := &cobra.Command{
-		Use: "schedule_create_snapshot_from_legacy_snapshot_task",
+		Use:     "schedule-create-snapshot-from-legacy-snapshot-task",
+		Aliases: []string{"schedule_create_snapshot_from_legacy_snapshot_task"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -423,7 +424,8 @@ func newScheduleMigrateSnapshotTaskCmd(
 	}
 
 	cmd := &cobra.Command{
-		Use: "schedule_migrate_snapshot_task",
+		Use:     "schedule-migrate-snapshot-task",
+		Aliases: []string{"schedule_migrate_snapshot_task"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -483,7 +485,8 @@ func newMigrateSnapshotDatabaseCmd(
 	}
 
 	return &cobra.Command{
-		Use: "schedule_migrate_snapshot_database_task",
+		Use:     "schedule-migrate-snapshot-database-task",
+		Aliases: []string{"schedule_migrate_snapshot_database_task"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
