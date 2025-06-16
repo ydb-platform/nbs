@@ -57,10 +57,10 @@ func (s *cellSelector) getCells(zoneID string) []string {
 }
 
 func (s *cellSelector) isFolderAllowed(folderID string) bool {
-	if slices.Contains(s.config.GetExcludedFolders(), folderID) {
+	if slices.Contains(s.config.GetFolderDenyList(), folderID) {
 		return false
 	}
 
-	return len(s.config.GetIncludedFolders()) == 0 ||
-		slices.Contains(s.config.GetIncludedFolders(), folderID)
+	return len(s.config.GetFolderAllowList()) == 0 ||
+		slices.Contains(s.config.GetFolderAllowList(), folderID)
 }

@@ -7,6 +7,8 @@ import (
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 func TestCellsIsFolderAllowed(t *testing.T) {
 	testCases := []struct {
 		name            string
@@ -40,8 +42,8 @@ func TestCellsIsFolderAllowed(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			config := &cells_config.CellsConfig{
-				ExcludedFolders: testCase.excludedFolders,
-				IncludedFolders: testCase.includedFolders,
+				FolderDenyList:  testCase.excludedFolders,
+				FolderAllowList: testCase.includedFolders,
 			}
 
 			selector := cellSelector{
