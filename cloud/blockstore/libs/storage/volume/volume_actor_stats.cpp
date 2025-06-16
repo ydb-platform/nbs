@@ -481,12 +481,15 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
         return;
     }
 
-    const auto& pp = State->GetConfig().GetPerformanceProfile();
+    const auto& volumeThrottlingPolicyConfig =
+        State->GetThrottlingPolicy().GetConfig();
     auto& simple = VolumeSelfCounters->Simple;
-    simple.MaxReadBandwidth.Set(pp.GetMaxReadBandwidth());
-    simple.MaxWriteBandwidth.Set(pp.GetMaxWriteBandwidth());
-    simple.MaxReadIops.Set(pp.GetMaxReadIops());
-    simple.MaxWriteIops.Set(pp.GetMaxWriteIops());
+    simple.MaxReadBandwidth.Set(
+        volumeThrottlingPolicyConfig.GetMaxReadBandwidth());
+    simple.MaxWriteBandwidth.Set(
+        volumeThrottlingPolicyConfig.GetMaxWriteBandwidth());
+    simple.MaxReadIops.Set(volumeThrottlingPolicyConfig.GetMaxReadIops());
+    simple.MaxWriteIops.Set(volumeThrottlingPolicyConfig.GetMaxWriteIops());
 
     {
         using EOperation =
@@ -501,9 +504,15 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     }
 
     const auto& tp = State->GetThrottlingPolicy();
+    double realMaxWriteBandwidth =
+        static_cast<double>(
+            volumeThrottlingPolicyConfig.GetMaxWriteBandwidth()) /
+        tp.GetWriteCostMultiplier();
+    constexpr double Epsilon = 1e-16;
     simple.RealMaxWriteBandwidth.Set(
-        tp.GetWriteCostMultiplier()
-        ? pp.GetMaxWriteBandwidth() / tp.GetWriteCostMultiplier() : 0);
+        tp.GetWriteCostMultiplier() < Epsilon
+            ? static_cast<ui64>(realMaxWriteBandwidth)
+            : 0);
     simple.PostponedQueueWeight.Set(tp.CalculatePostponedWeight());
 
     const auto& bp = tp.GetCurrentBackpressure();
