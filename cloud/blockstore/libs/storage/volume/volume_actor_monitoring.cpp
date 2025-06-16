@@ -344,15 +344,21 @@ void BuildChangeThrottlingPolicyButton(
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
         << "<input type='hidden' name='Volume' value='" << diskId << "'/>"
         << "<input type='hidden' name='action' value='changethrottlingpolicy'/>"
+        << "<label style='font-weight: normal'> Max read Iops "
         << "<input type='text' name='MaxReadIops' value='"
-        << pp.GetMaxReadIops() << "'/>"
+        << pp.GetMaxReadIops() << "' style='font-weight: normal'/> </label>"
+        << "<label style='font-weight: normal'> Max write Iops "
         << "<input type='text' name='MaxWriteIops' value='"
-        << pp.GetMaxWriteIops() << "'/>"
+        << pp.GetMaxWriteIops() << "' style='font-weight: normal'/> </label>"
+        << "<label style='font-weight: normal'> Max read bandwidth "
         << "<input type='text' name='MaxReadBandwidth' value='"
-        << pp.GetMaxReadBandwidth() << "'/>"
+        << pp.GetMaxReadBandwidth()
+        << "' style='font-weight: normal'/> </label>"
+        << "<label style='font-weight: normal'> Max write bandwith "
         << "<input type='text' name='MaxWriteBandwidth' value='"
-        << pp.GetMaxWriteBandwidth() << "'/>"
-        << "<input class='btn btn-primary' type='button'"
+        << pp.GetMaxWriteBandwidth()
+        << "' style='font-weight: normal'/> </label>"
+        << "<br> <input class='btn btn-primary' type='button'"
         << " value='Change Throttling Policy' "
         << "data-toggle='modal' data-target='#change-throttling-policy'/>"
         << "</form>" << Endl;
@@ -2147,6 +2153,37 @@ void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
             TABLE_SORTABLE_CLASS("table table-condensed") {
                 TABLER() {
                     TABLED() {
+                        TAG (TH3) {
+                            const auto& defaultConfig =
+                                State->GetConfig().GetPerformanceProfile();
+                            const auto& volumeThrottrlingPolicyConfig =
+                                State->GetThrottlingPolicy().GetConfig();
+                            bool IsSetDefaultThrottlingPolicy =
+                                defaultConfig.GetMaxReadIops() ==
+                                    volumeThrottrlingPolicyConfig
+                                        .GetMaxReadIops() &&
+                                defaultConfig.GetMaxWriteIops() ==
+                                    volumeThrottrlingPolicyConfig
+                                        .GetMaxWriteIops() &&
+                                defaultConfig.GetMaxReadBandwidth() ==
+                                    volumeThrottrlingPolicyConfig
+                                        .GetMaxReadBandwidth() &&
+                                defaultConfig.GetMaxWriteBandwidth() ==
+                                    volumeThrottrlingPolicyConfig
+                                        .GetMaxWriteBandwidth();
+
+                            TString statusText = IsSetDefaultThrottlingPolicy
+                                                     ? "Default"
+                                                     : "Custom";
+                            TString cssClass = IsSetDefaultThrottlingPolicy
+                                                   ? "label-success"
+                                                   : "label-danger";
+
+                            out << "Throttling Policy status: ";
+                            SPAN_CLASS ("label " + cssClass) {
+                                out << statusText;
+                            }
+                        }
                         BuildChangeThrottlingPolicyButton(
                             out,
                             State->GetDiskId(),

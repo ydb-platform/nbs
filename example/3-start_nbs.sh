@@ -25,6 +25,7 @@ nbsd \
     --storage-file       nbs/nbs-storage.txt \
     --naming-file        nbs/nbs-names.txt \
     --diag-file          nbs/nbs-diag.txt \
+    --features-file      nbs/nbs-features.txt \
     --auth-file          nbs/nbs-auth.txt \
     --dr-proxy-file      nbs/nbs-dr-proxy.txt \
     --rdma-file          nbs/nbs-rdma.txt \
