@@ -45,7 +45,8 @@ TPartitionActor::TPartitionActor(
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
         ui32 siblingCount,
-        const TActorId& volumeActorId)
+        const TActorId& volumeActorId,
+        ui64 volumeTabletId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), nullptr)
     , Config(std::move(config))
@@ -57,6 +58,7 @@ TPartitionActor::TPartitionActor(
     , SiblingCount(siblingCount)
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
+    , VolumeTabletId(volumeTabletId)
 {}
 
 TPartitionActor::~TPartitionActor()
