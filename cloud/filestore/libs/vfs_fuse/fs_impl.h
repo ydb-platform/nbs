@@ -92,7 +92,7 @@ private:
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
 
-    TWriteBackCachePtr WriteBackCache;
+    TWriteBackCache WriteBackCache;
 
 public:
     TFileSystem(
@@ -105,7 +105,7 @@ public:
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
-        TWriteBackCachePtr writeBackCache);
+        TWriteBackCache writeBackCache);
 
     ~TFileSystem();
 
@@ -429,7 +429,12 @@ private:
         TCallContextPtr callContext,
         fuse_req_t req,
         fuse_ino_t ino,
-        ui64 fh);
+        ui64 handle);
+    void ReleaseImpl(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        fuse_ino_t ino,
+        ui64 handle);
     void CompleteAsyncDestroyHandle(
         TCallContext& callContext,
         const NProto::TDestroyHandleResponse& response);

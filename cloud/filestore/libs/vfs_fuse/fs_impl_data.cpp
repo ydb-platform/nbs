@@ -9,6 +9,8 @@
 
 #include <cloud/storage/core/libs/common/aligned_buffer.h>
 
+#include <library/cpp/threading/future/subscription/wait_all.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
@@ -179,37 +181,64 @@ bool TFileSystem::ProcessAsyncRelease(
     return true;
 }
 
-void TFileSystem::Release(
+void TFileSystem::ReleaseImpl(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
-    fuse_file_info* fi)
+    ui64 handle)
 {
-    STORAGE_DEBUG("Release #" << ino << " @" << fi->fh);
-
-    if (!ValidateNodeId(*callContext, req, ino)) {
-        return;
-    }
-
     if (Config->GetAsyncDestroyHandleEnabled()) {
-        if (!ProcessAsyncRelease(callContext, req, ino, fi->fh)) {
+        if (!ProcessAsyncRelease(callContext, req, ino, handle)) {
             with_lock (DelayedReleaseQueueLock) {
                 DelayedReleaseQueue.push(
-                    TReleaseRequest(callContext, req, ino, fi->fh));
+                    TReleaseRequest(callContext, req, ino, handle));
             }
         }
         return;
     }
 
     auto request = StartRequest<NProto::TDestroyHandleRequest>(ino);
-    request->SetHandle(fi->fh);
+    request->SetHandle(handle);
     Session->DestroyHandle(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
+            auto self = ptr.lock();
+            if (!self) {
+                return;
+            }
+
             const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
+            if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyError(*callContext, response.GetError(), req, 0);
             }
         });
+}
+
+void TFileSystem::Release(
+    TCallContextPtr callContext,
+    fuse_req_t req,
+    fuse_ino_t ino,
+    fuse_file_info* fi)
+{
+    auto handle = fi->fh;
+
+    STORAGE_DEBUG("Release #" << ino << " @" << handle);
+
+    if (!ValidateNodeId(*callContext, req, ino)) {
+        return;
+    }
+
+    if (Config->GetServerWriteBackCacheEnabled()) {
+        WriteBackCache.FlushData(handle).Subscribe(
+            [=, ptr = weak_from_this()] (const auto&)
+            {
+                if (auto self = ptr.lock()) {
+                    self->ReleaseImpl(callContext, req, ino, handle);
+                }
+            });
+        return;
+    }
+
+    ReleaseImpl(std::move(callContext), req, ino, handle);
 }
 
 void TFileSystem::ReadLocal(
@@ -324,20 +353,31 @@ void TFileSystem::Read(
     request->SetOffset(offset);
     request->SetLength(size);
 
-    Session->ReadData(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                const auto& buffer = response.GetBuffer();
-                ui32 bufferOffset = response.GetBufferOffset();
-                self->ReplyBuf(
-                    *callContext,
-                    response.GetError(),
-                    req,
-                    buffer.data() + bufferOffset,
-                    buffer.size() - bufferOffset);
-            }
-        });
+    TFuture<NProto::TReadDataResponse> future;
+    if (Config->GetServerWriteBackCacheEnabled()) {
+        future = WriteBackCache.ReadData(callContext, std::move(request));
+    } else {
+        future = Session->ReadData(callContext, std::move(request));
+    }
+
+    future.Subscribe([=, ptr = weak_from_this()] (const auto& future) {
+        auto self = ptr.lock();
+        if (!self) {
+            return;
+        }
+
+        const auto& response = future.GetValue();
+        if (CheckResponse(self, *callContext, req, response)) {
+            const auto& buffer = response.GetBuffer();
+            ui32 bufferOffset = response.GetBufferOffset();
+            self->ReplyBuf(
+                *callContext,
+                response.GetError(),
+                req,
+                buffer.data() + bufferOffset,
+                buffer.size() - bufferOffset);
+        }
+    });
 }
 
 void TFileSystem::Write(
@@ -372,12 +412,37 @@ void TFileSystem::Write(
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
     request->SetBuffer(alignedBuffer.TakeBuffer());
 
+    const auto size = buffer.size();
+
+    if (Config->GetServerWriteBackCacheEnabled()) {
+        // TODO(svartmetal): check whether handle is non-direct and has write
+        // permission
+        WriteBackCache.WriteData(callContext, std::move(request))
+            .Subscribe(
+                [=,
+                 ptr = weak_from_this()] (const auto& future)
+                {
+                    auto self = ptr.lock();
+                    if (!self) {
+                        return;
+                    }
+
+                    const auto& response = future.GetValue();
+                    const auto& error = response.GetError();
+
+                    if (CheckResponse(self, *callContext, req, response)) {
+                        self->ReplyWrite(*callContext, error, req, size);
+                    }
+                });
+        return;
+    }
+
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
     FSyncQueue.Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
     Session->WriteData(callContext, std::move(request))
-        .Subscribe([=, size = buffer.size(), ptr = weak_from_this()] (const auto& future) {
+        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             auto self = ptr.lock();
             if (!self) {
                 return;
@@ -497,6 +562,26 @@ void TFileSystem::WriteBuf(
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
     request->SetBuffer(alignedBuffer.TakeBuffer());
 
+    if (Config->GetServerWriteBackCacheEnabled()) {
+        WriteBackCache.WriteData(callContext, std::move(request))
+            .Subscribe(
+                [=, ptr = weak_from_this()] (const auto& future)
+                {
+                    auto self = ptr.lock();
+                    if (!self) {
+                        return;
+                    }
+
+                    const auto& response = future.GetValue();
+                    const auto& error = response.GetError();
+
+                    if (CheckResponse(self, *callContext, req, response)) {
+                        self->ReplyWrite(*callContext, error, req, size);
+                    }
+                });
+        return;
+    }
+
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
     FSyncQueue.Enqueue(reqId, TNodeId {ino}, THandle {handle});
@@ -612,22 +697,36 @@ void TFileSystem::Flush(
                 return;
             }
 
-            const auto& response = future.GetValue();
+            const auto& error = future.GetValue();
 
             FinalizeProfileLogRequestInfo(
                 std::move(requestInfo),
                 Now(),
                 self->Config->GetFileSystemId(),
-                response,
+                error,
                 self->ProfileLog);
 
-            if (self->CheckError(*callContext, req, response)) {
-                self->ReplyError(*callContext, response, req, 0);
+            if (self->CheckError(*callContext, req, error)) {
+                self->ReplyError(*callContext, error, req, 0);
             }
         };
 
-    FSyncQueue.WaitForDataRequests(reqId, TNodeId {ino}, THandle {fi->fh})
-        .Subscribe(std::move(callback));
+    auto fsyncQueueFuture = FSyncQueue.WaitForDataRequests(
+        reqId,
+        TNodeId {ino},
+        THandle {fi->fh});
+
+    auto future = fsyncQueueFuture;
+
+    if (Config->GetServerWriteBackCacheEnabled()) {
+        auto writeBackCacheFlushFuture = WriteBackCache.FlushData(fi->fh)
+            .Apply([] (const auto&) { return MakeError(S_OK); });
+
+        future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
+            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+    }
+
+    future.Subscribe(std::move(callback));
 }
 
 void TFileSystem::FSync(
@@ -703,23 +802,46 @@ void TFileSystem::FSync(
         };
     }
 
+    TFuture<NProto::TError> fsyncQueueFuture;
+
     if (fi) {
         if (datasync) {
-            FSyncQueue.WaitForDataRequests(reqId, TNodeId {ino}, THandle {fi->fh})
-                .Subscribe(std::move(callback));
+            fsyncQueueFuture = FSyncQueue.WaitForDataRequests(
+                reqId,
+                TNodeId {ino},
+                THandle {fi->fh});
         } else {
-            FSyncQueue.WaitForRequests(reqId, TNodeId {ino})
-                .Subscribe(std::move(callback));
+            fsyncQueueFuture = FSyncQueue.WaitForRequests(
+                reqId,
+                TNodeId {ino});
         }
     } else {
         if (datasync) {
-            FSyncQueue.WaitForDataRequests(reqId)
-                .Subscribe(std::move(callback));
+            fsyncQueueFuture = FSyncQueue.WaitForDataRequests(reqId);
         } else {
-            FSyncQueue.WaitForRequests(reqId)
-                .Subscribe(std::move(callback));
+            fsyncQueueFuture = FSyncQueue.WaitForRequests(reqId);
         }
     }
+
+    auto future = fsyncQueueFuture;
+
+    if (Config->GetServerWriteBackCacheEnabled()) {
+        auto convertOK = [] (const auto&) { return MakeError(S_OK); };
+
+        TFuture<NProto::TError> writeBackCacheFlushFuture;
+        if (fi) {
+            writeBackCacheFlushFuture = WriteBackCache.FlushData(fi->fh)
+                .Apply(convertOK);
+        } else {
+            writeBackCacheFlushFuture = WriteBackCache.FlushAllData()
+                .Apply(convertOK);
+        }
+
+        future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
+            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+    }
+
+    future.Subscribe(std::move(callback));
 }
 
 void TFileSystem::FSyncDir(
@@ -761,17 +883,17 @@ void TFileSystem::FSyncDir(
                 return;
             }
 
-            const auto& response = future.GetValue();
+            const auto& error = future.GetValue();
 
             FinalizeProfileLogRequestInfo(
                 std::move(requestInfo),
                 Now(),
                 self->Config->GetFileSystemId(),
-                response,
+                error,
                 self->ProfileLog);
 
-            if (self->CheckError(*callContext, req, response)) {
-                self->ReplyError(*callContext, response, req, 0);
+            if (self->CheckError(*callContext, req, error)) {
+                self->ReplyError(*callContext, error, req, 0);
             }
         };
 
@@ -780,7 +902,7 @@ void TFileSystem::FSyncDir(
          callContext,
          ino,
          datasync,
-         callback = std::move(callback)](const auto& future) mutable
+         callback = std::move(callback)] (const auto& future) mutable
     {
         auto self = ptr.lock();
         if (!self) {
@@ -800,13 +922,25 @@ void TFileSystem::FSyncDir(
             .Subscribe(std::move(callback));
     };
 
+    TFuture<NProto::TError> fsyncQueueFuture;
+
     if (datasync) {
-        FSyncQueue.WaitForDataRequests(reqId).Subscribe(
-            std::move(waitCallback));
+        fsyncQueueFuture = FSyncQueue.WaitForDataRequests(reqId);
     } else {
-        FSyncQueue.WaitForRequests(reqId).Subscribe(
-            std::move(waitCallback));
+        fsyncQueueFuture = FSyncQueue.WaitForRequests(reqId);
     }
+
+    auto future = fsyncQueueFuture;
+
+    if (Config->GetServerWriteBackCacheEnabled()) {
+        auto writeBackCacheFlushFuture = WriteBackCache.FlushAllData()
+            .Apply([] (const auto&) { return MakeError(S_OK); });
+
+        future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
+            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+    }
+
+    future.Subscribe(std::move(waitCallback));
 }
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -442,7 +442,7 @@ IFileSystemPtr CreateFileSystem(
     IRequestStatsPtr stats,
     ICompletionQueuePtr queue,
     THandleOpsQueuePtr handleOpsQueue,
-    TWriteBackCachePtr writeBackCache)
+    TWriteBackCache writeBackCache)
 {
     return std::make_shared<TFileSystem>(
         std::move(logging),
