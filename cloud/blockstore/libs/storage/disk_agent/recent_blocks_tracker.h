@@ -27,8 +27,6 @@ enum class EOverlapStatus
 
 ///////////////////////////////////////////////////////////////////////////////
 // Translate EOverlapStatus to EWellKnownResultCodes.
-// N.B. For multidevice requests any overlapping should be treated as
-// E_REJECTED.
 EWellKnownResultCodes OverlapStatusToResult(EOverlapStatus overlapStatus);
 
 ///////////////////////////////////////////////////////////////////////////////
