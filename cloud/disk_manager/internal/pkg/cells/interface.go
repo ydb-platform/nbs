@@ -11,6 +11,6 @@ import (
 type CellSelector interface {
 	SelectCell(
 		ctx context.Context,
-		disk *disk_manager.DiskId,
+		req *disk_manager.CreateDiskRequest,
 	) string
 }

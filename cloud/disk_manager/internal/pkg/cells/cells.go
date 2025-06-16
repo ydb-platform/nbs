@@ -2,6 +2,7 @@ package cells
 
 import (
 	"context"
+	"slices"
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
@@ -26,15 +27,19 @@ func NewCellSelector(
 
 func (s *cellSelector) SelectCell(
 	ctx context.Context,
-	disk *disk_manager.DiskId,
+	req *disk_manager.CreateDiskRequest,
 ) string {
 
-	cells := s.getCells(disk.ZoneId)
+	if !s.isFolderAllowed(req.FolderId) {
+		return req.DiskId.ZoneId
+	}
+
+	cells := s.getCells(req.DiskId.ZoneId)
 
 	if len(cells) == 0 {
 		// We end up here if a zone not divided into cells or a cell
 		// of a zone is provided as ZoneId.
-		return disk.ZoneId
+		return req.DiskId.ZoneId
 	}
 
 	return cells[0]
@@ -49,4 +54,13 @@ func (s *cellSelector) getCells(zoneID string) []string {
 	}
 
 	return cells.Cells
+}
+
+func (s *cellSelector) isFolderAllowed(folderID string) bool {
+	if slices.Contains(s.config.GetFolderDenyList(), folderID) {
+		return false
+	}
+
+	return len(s.config.GetFolderAllowList()) == 0 ||
+		slices.Contains(s.config.GetFolderAllowList(), folderID)
 }

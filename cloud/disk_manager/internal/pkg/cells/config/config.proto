@@ -13,4 +13,9 @@ message ZoneCells {
 message CellsConfig {
     // Mapping from zone ID to cell ID.
     map<string, ZoneCells> Cells = 1;
+
+    repeated string FolderDenyList = 2;
+
+    // If empty, every folder is included.
+    repeated string FolderAllowList = 3;
 }
