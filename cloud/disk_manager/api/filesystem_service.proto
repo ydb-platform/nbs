@@ -60,6 +60,10 @@ message CreateFilesystemRequest {
     bool is_external = 7;
 }
 
+message CreateFilesystemResponse {
+    string external_storage_cluster_name = 1;
+}
+
 message DeleteFilesystemRequest {
     FilesystemId filesystem_id = 1;
 }

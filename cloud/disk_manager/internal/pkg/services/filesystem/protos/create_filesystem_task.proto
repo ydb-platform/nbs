@@ -21,4 +21,6 @@ message CreateFilesystemRequest {
 }
 
 message CreateFilesystemTaskState {
+    string CreateExternalFilesystemTaskID = 1;
+    string ExternalStorageClusterName = 2;
 }
