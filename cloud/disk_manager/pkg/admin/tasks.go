@@ -598,7 +598,8 @@ func newForceFinishTaskCmd(
 	}
 
 	cmd := &cobra.Command{
-		Use:   "force_finish",
+		Use:     "force-finish",
+		Aliases: []string{"force_finish"},
 		Short: "Sets task as finished successfully. Dangerous command, use it carefully",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()

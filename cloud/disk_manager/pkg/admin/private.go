@@ -63,7 +63,8 @@ func newRebaseOverlayDiskCmd(config *client_config.ClientConfig) *cobra.Command 
 	}
 
 	cmd := &cobra.Command{
-		Use: "rebase_overlay_disk",
+		Use:     "rebase-overlay-disk",
+		Aliases: []string{"rebase_overlay_disk"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -149,7 +150,8 @@ func newReleaseBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "release_base_disk",
+		Use:     "release-base-disk",
+		Aliases: []string{"release_base_disk"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -225,7 +227,8 @@ func newRetireBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "retire_base_disk",
+		Use:     "retire-base-disk",
+		Aliases: []string{"retire_base_disk"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -306,7 +309,8 @@ func newRetireBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "retire_base_disks",
+		Use:     "retire-base-disks",
+		Aliases: []string{"retire_base_disks"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -390,7 +394,8 @@ func newOptimizeBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command 
 	}
 
 	cmd := &cobra.Command{
-		Use: "optimize_base_disks",
+		Use:     "optimize-base-disks",
+		Aliases: []string{"optimize_base_disks"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -449,7 +454,8 @@ func newConfigurePoolCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "configure_pool",
+		Use:     "configure-pool",
+		Aliases: []string{"configure_pool"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -534,7 +540,8 @@ func newDeletePoolCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "delete_pool",
+		Use:     "delete-pool",
+		Aliases: []string{"delete_pool"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -599,7 +606,8 @@ func newGetAliveNodesCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "get_alive_nodes",
+		Use:     "get-alive-nodes",
+		Aliases: []string{"get_alive_nodes"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -667,7 +675,8 @@ func newGetCheckpointSizeCmd(
 	}
 
 	cmd := &cobra.Command{
-		Use: "get-checkpoint-size",
+		Use:     "get-checkpoint-size",
+		Aliases: []string{"get_checkpoint_size"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
