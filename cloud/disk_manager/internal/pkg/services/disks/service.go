@@ -167,6 +167,32 @@ type service struct {
 	cellSelector    cells.CellSelector
 }
 
+func (s *service) prepareZoneIDForExistingDisk(
+	ctx context.Context,
+	diskID *disk_manager.DiskId,
+) (string, error) {
+
+	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, diskID.DiskId)
+	if err != nil {
+		return "", err
+	}
+
+	if diskMeta == nil {
+		return "", nil
+	}
+
+	if diskMeta.ZoneID != diskID.ZoneId &&
+		!s.cellSelector.IsCellOfZone(diskMeta.ZoneID, diskID.ZoneId) {
+		return "", errors.NewInvalidArgumentError(
+			"provided zone id %v does not match with an actual zone id %v",
+			diskID.ZoneId,
+			diskMeta.ZoneID,
+		)
+	}
+
+	return diskMeta.ZoneID, nil
+}
+
 func (s *service) prepareZoneID(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
@@ -179,13 +205,13 @@ func (s *service) prepareZoneID(
 		return req.DiskId.ZoneId, nil
 	}
 
-	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, req.DiskId.DiskId)
+	existingZoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return "", err
 	}
 
-	if diskMeta != nil {
-		return diskMeta.ZoneID, nil
+	if len(existingZoneID) > 0 {
+		return existingZoneID, nil
 	}
 
 	return s.cellSelector.SelectCell(ctx, req), nil
@@ -482,13 +508,25 @@ func (s *service) ResizeDisk(
 		)
 	}
 
+	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	if err != nil {
+		return "", err
+	}
+
+	if zoneID == "" {
+		return "", errors.NewInvalidArgumentError(
+			"no such disk: %v",
+			req.DiskId,
+		)
+	}
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.ResizeDisk",
 		"",
 		&protos.ResizeDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: req.DiskId.ZoneId,
+				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
 			},
 			Size: uint64(req.Size),
@@ -508,13 +546,25 @@ func (s *service) AlterDisk(
 		)
 	}
 
+	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	if err != nil {
+		return "", err
+	}
+
+	if zoneID == "" {
+		return "", errors.NewInvalidArgumentError(
+			"no such disk: %v",
+			req.DiskId,
+		)
+	}
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.AlterDisk",
 		"",
 		&protos.AlterDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: req.DiskId.ZoneId,
+				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
 			},
 			CloudId:  req.CloudId,
@@ -676,7 +726,19 @@ func (s *service) StatDisk(
 		)
 	}
 
-	client, err := s.nbsFactory.GetClient(ctx, req.DiskId.ZoneId)
+	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	if err != nil {
+		return nil, err
+	}
+
+	if zoneID == "" {
+		return nil, errors.NewInvalidArgumentError(
+			"no such disk: %v",
+			req.DiskId,
+		)
+	}
+
+	client, err := s.nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {
 		return nil, err
 	}
@@ -709,13 +771,25 @@ func (s *service) MigrateDisk(
 		)
 	}
 
+	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	if err != nil {
+		return "", err
+	}
+
+	if zoneID == "" {
+		return "", errors.NewInvalidArgumentError(
+			"no such disk: %v",
+			req.DiskId,
+		)
+	}
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.MigrateDisk",
 		"",
 		&protos.MigrateDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: req.DiskId.ZoneId,
+				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
 			},
 			DstZoneId:                  req.DstZoneId,
@@ -783,7 +857,19 @@ func (s *service) DescribeDisk(
 		)
 	}
 
-	client, err := s.nbsFactory.GetClient(ctx, req.DiskId.ZoneId)
+	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	if err != nil {
+		return nil, err
+	}
+
+	if zoneID == "" {
+		return nil, errors.NewInvalidArgumentError(
+			"no such disk: %v",
+			req.DiskId,
+		)
+	}
+
+	client, err := s.nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {
 		return nil, err
 	}
