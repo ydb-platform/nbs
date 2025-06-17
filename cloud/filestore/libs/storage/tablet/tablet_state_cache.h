@@ -6,6 +6,8 @@
 
 #include <library/cpp/cache/cache.h>
 
+#include <cloud/storage/core/libs/common/lru_cache.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -198,8 +200,6 @@ public:
         TVector<TDeletionMarker>& deletionMarkers) override;
 
 private:
-    // TODO(#1146): use LRU cache / something with better eviction policy
-    ui64 NodeRefsCapacity = 0;
 
     //
     // Nodes
@@ -211,7 +211,7 @@ private:
         NProto::TNode Node;
     };
 
-    TLRUCache<ui64, TNodeRow> Nodes;
+    ::TLRUCache<ui64, TNodeRow> Nodes;
 
     //
     // NodeAttrs
@@ -242,7 +242,7 @@ private:
         ui64 Version = 0;
     };
 
-    TLRUCache<TNodeAttrsKey, TNodeAttrsRow> NodeAttrs;
+    ::TLRUCache<TNodeAttrsKey, TNodeAttrsRow> NodeAttrs;
 
     //
     // NodeRefs
@@ -262,6 +262,21 @@ private:
         {
             return std::tie(NodeId, Name) < std::tie(rhs.NodeId, rhs.Name);
         }
+
+        bool operator==(const TNodeRefsKey& rhs) const
+        {
+            return std::tie(NodeId, Name) == std::tie(rhs.NodeId, rhs.Name);
+        }
+    };
+
+    struct TNodeRefsKeyHash
+    {
+        size_t operator()(
+            const NCloud::NFileStore::NStorage::TInMemoryIndexState::TNodeRefsKey&
+                key) const
+        {
+            return MultiHash(key.NodeId, key.Name);
+        }
     };
 
     struct TNodeRefsRow
@@ -272,7 +287,8 @@ private:
         TString ShardNodeName;
     };
 
-    TMap<TNodeRefsKey, TNodeRefsRow> NodeRefs;
+    using TBaseMap = TMap<TNodeRefsKey, TNodeRefsRow, TLess<TNodeRefsKey>, TStlAllocator>;
+    NCloud::TLRUCache<TNodeRefsKey, TNodeRefsRow, TNodeRefsKeyHash, TBaseMap> NodeRefs;
     bool IsNodeRefsEvictionObserved = false;
     bool IsNodeRefsExhaustive = false;
 

@@ -189,48 +189,72 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         UNIT_ASSERT(!state.ReadNodeAttr(nodeId1, commitId1, attrName1, attr));
     }
 
-    const TString nodeName1 = "node1";
-    const TString nodeName2 = "node2";
-    const TString shardNodeName1 = "shard1";
-    const TString shardNodeName2 = "shard2";
-    const TString shardId1 = "shardId1";
-    const TString shardId2 = "shardId2";
+    const TVector<TString> nodeNames = {"node1", "node2", "node3", "node4"};
+    const TVector<TString> shardNodeNames = {"shard1", "shard2", "shard3", "shard4"};
+    const TVector<TString> shardIds = {"shardId1", "shardId2", "shardId3", "shardId4"};
+    const TVector<ui64> rootNodeIds = {1, 2, 3, 4};
+    const TVector<ui64> childNodeIds = {1001, 1002, 1003, 1004};
+
+    namespace {
+
+    void CheckNodeRef(const TInMemoryIndexState::TWriteNodeRefsRequest& request, IIndexTabletDatabase::TNodeRef& ref)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsKey.NodeId, ref.NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsKey.Name, ref.Name);
+        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsRow.ChildId, ref.ChildNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsRow.CommitId, ref.MinCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, ref.MaxCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsRow.ShardId, ref.ShardId);
+        UNIT_ASSERT_VALUES_EQUAL(request.NodeRefsRow.ShardNodeName, ref.ShardNodeName);
+    }
+
+    void ReadAndCheckNodeRef(TInMemoryIndexState& state, const TInMemoryIndexState::TWriteNodeRefsRequest& request)
+    {
+        TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+        UNIT_ASSERT(state.ReadNodeRef(request.NodeRefsKey.NodeId, request.NodeRefsRow.CommitId, request.NodeRefsKey.Name, ref));
+        CheckNodeRef(request, *ref);
+    }
+
+    void FillStatesRequests(TVector<TInMemoryIndexState::TIndexStateRequest>& stateRequests, const TVector<TInMemoryIndexState::TWriteNodeRefsRequest>& requests )
+    {
+        stateRequests.reserve(requests.size());
+        for(const auto& req: requests) {
+            stateRequests.push_back(req);
+        }
+    }
+
+    }  // namespace
 
     //
     // NodeRefs
     //
     Y_UNIT_TEST(ShouldPopulateNodeRefs)
     {
-        // For now
         TInMemoryIndexState state(TDefaultAllocator::Instance());
         state.Reset(0, 0, 1);
 
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
-        UNIT_ASSERT(!state.ReadNodeRef(nodeId1, commitId2, nodeName1, ref));
+        UNIT_ASSERT(!state.ReadNodeRef(rootNodeIds[0], commitId1, nodeNames[0], ref));
 
-        state.UpdateState({TInMemoryIndexState::TWriteNodeRefsRequest{
-            .NodeRefsKey = {RootNodeId, nodeName1},
+        TInMemoryIndexState::TWriteNodeRefsRequest request = {
+            .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
             .NodeRefsRow = {
                 .CommitId = commitId2,
-                .ChildId = nodeId1,
-                .ShardId = shardId1,
-                .ShardNodeName = shardNodeName1}}});
+                .ChildId = childNodeIds[0],
+                .ShardId = shardIds[0],
+                .ShardNodeName = shardNodeNames[0]
+            }
+        };
+        state.UpdateState({request});
 
-        UNIT_ASSERT(state.ReadNodeRef(RootNodeId, commitId2, nodeName1, ref));
-        UNIT_ASSERT_VALUES_EQUAL(RootNodeId, ref->NodeId);
-        UNIT_ASSERT_VALUES_EQUAL(nodeName1, ref->Name);
-        UNIT_ASSERT_VALUES_EQUAL(nodeId1, ref->ChildNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(commitId2, ref->MinCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, ref->MaxCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(shardId1, ref->ShardId);
-        UNIT_ASSERT_VALUES_EQUAL(shardNodeName1, ref->ShardNodeName);
+        ReadAndCheckNodeRef(state, request);
 
         // The cache is preemptive, so the listing should not be possible for
         // now
         TVector<IIndexTabletDatabase::TNodeRef> refs;
         TString next;
         UNIT_ASSERT(!state.ReadNodeRefs(
-            RootNodeId,
+            rootNodeIds[0],
             commitId2,
             "",
             refs,
@@ -243,37 +267,98 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         // commitId1. So read from cache is considered successful, but the node
         // that was read should be empty
         ref = {};
-        UNIT_ASSERT(state.ReadNodeRef(RootNodeId, commitId1, nodeName1, ref));
+        UNIT_ASSERT(state.ReadNodeRef(request.NodeRefsKey.NodeId, commitId1, request.NodeRefsKey.Name, ref));
         UNIT_ASSERT(ref.Empty());
     }
 
     Y_UNIT_TEST(ShouldEvictNodeRefs)
     {
         TInMemoryIndexState state(TDefaultAllocator::Instance());
-        state.Reset(0, 0, 1);
+        state.Reset(0, 0, 3);
 
-        state.UpdateState(
-            {TInMemoryIndexState::TWriteNodeRefsRequest{
-                 .NodeRefsKey = {RootNodeId, nodeName1},
-                 .NodeRefsRow =
-                     {
-                         .CommitId = commitId1,
-                         .ChildId = nodeId1,
-                         .ShardId = shardId1,
-                         .ShardNodeName = shardNodeName1,
-                     }},
-             TInMemoryIndexState::TWriteNodeRefsRequest{
-                 .NodeRefsKey = {RootNodeId, nodeName2},
-                 .NodeRefsRow = {
+        const TVector<TInMemoryIndexState::TWriteNodeRefsRequest> requests = {
+            {
+                .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
+                .NodeRefsRow = {
+                    .CommitId = commitId1,
+                    .ChildId = childNodeIds[0],
+                    .ShardId = shardIds[0],
+                    .ShardNodeName = shardNodeNames[0],
+                }
+            },
+            {
+                .NodeRefsKey = {rootNodeIds[0], nodeNames[1]},
+                .NodeRefsRow = {
                      .CommitId = commitId1,
-                     .ChildId = nodeId2,
-                     .ShardId = shardId2,
-                     .ShardNodeName = shardNodeName2,
-                 }}});
+                     .ChildId = childNodeIds[1],
+                     .ShardId = shardIds[1],
+                     .ShardNodeName = shardNodeNames[1],
+                }
+            },
+            {
+                .NodeRefsKey = {rootNodeIds[2], nodeNames[2]},
+                .NodeRefsRow = {
+                     .CommitId = commitId1,
+                     .ChildId = childNodeIds[2],
+                     .ShardId = shardIds[2],
+                     .ShardNodeName = shardNodeNames[2],
+                }
+            }
+        };
 
+        TVector<TInMemoryIndexState::TIndexStateRequest> stateRequests;
+        FillStatesRequests(stateRequests, requests);
+
+        state.UpdateState(stateRequests);
+        state.MarkNodeRefsLoadComplete();
+
+        // read two first refs
+        TVector<IIndexTabletDatabase::TNodeRef> refs;
+        TString nextName;
+
+        UNIT_ASSERT(state.ReadNodeRefs( requests[0].NodeRefsKey.NodeId, commitId1, requests[0].NodeRefsKey.Name, refs, Max<ui32>(), &nextName));
+        UNIT_ASSERT(refs.size() == 2);
+        UNIT_ASSERT(nextName.empty());
+
+        // all three refs should be in cache
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+        for(const auto& request: requests) {
+            ReadAndCheckNodeRef(state, request);
+        }
 
-        UNIT_ASSERT(!state.ReadNodeRef(RootNodeId, commitId1, nodeName1, ref));
+        // here the order should be 2, 1, 0
+        // after we add one more ref, 0 should be evicted
+        TInMemoryIndexState::TWriteNodeRefsRequest request3  = {
+            .NodeRefsKey = {rootNodeIds[3], nodeNames[3]},
+            .NodeRefsRow = {
+                    .CommitId = commitId1,
+                    .ChildId = childNodeIds[3],
+                    .ShardId = shardIds[3],
+                    .ShardNodeName = shardNodeNames[3],
+            }
+        };
+        state.UpdateState({request3});
+
+        ReadAndCheckNodeRef(state, request3);
+        ReadAndCheckNodeRef(state, requests[1]);
+        ReadAndCheckNodeRef(state, requests[2]);
+
+        // after some refs are evicted ReadNodeRefs should always return false
+        UNIT_ASSERT(!state.ReadNodeRefs( requests[0].NodeRefsKey.NodeId, commitId1, requests[0].NodeRefsKey.Name, refs, Max<ui32>(), &nextName));
+
+        // write a ref with the same key bu different value
+        TInMemoryIndexState::TWriteNodeRefsRequest request4  = {
+            .NodeRefsKey = {rootNodeIds[3], nodeNames[3]},
+            .NodeRefsRow = {
+                    .CommitId = commitId2,
+                    .ChildId = childNodeIds[0],
+                    .ShardId = shardIds[1],
+                    .ShardNodeName = shardNodeNames[2],
+            }
+        };
+        state.UpdateState({request4});
+
+        ReadAndCheckNodeRef(state, request4);
     }
 
     Y_UNIT_TEST(ShouldDeleteNodeRefs)
@@ -281,24 +366,28 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         TInMemoryIndexState state(TDefaultAllocator::Instance());
         state.Reset(0, 0, 1);
 
-        state.UpdateState({TInMemoryIndexState::TWriteNodeRefsRequest{
-            .NodeRefsKey = {RootNodeId, nodeName1},
+        TInMemoryIndexState::TWriteNodeRefsRequest request = {
+            .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
             .NodeRefsRow = {
                 .CommitId = commitId1,
-                .ChildId = nodeId1,
-                .ShardId = shardId1,
-                .ShardNodeName = shardNodeName1,
-            }}});
+                .ChildId = childNodeIds[0],
+                .ShardId = shardIds[0],
+                .ShardNodeName = shardNodeNames[0]
+            }
+        };
+
+        state.UpdateState({request});
+        state.MarkNodeRefsLoadComplete();
 
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
-        UNIT_ASSERT(state.ReadNodeRef(RootNodeId, commitId1, nodeName1, ref));
+        UNIT_ASSERT(state.ReadNodeRef(request.NodeRefsKey.NodeId, request.NodeRefsRow.CommitId, request.NodeRefsKey.Name, ref));
         UNIT_ASSERT(ref.Defined());
 
         state.UpdateState({TInMemoryIndexState::TDeleteNodeRefsRequest{
-            RootNodeId,
-            nodeName1}});
+            request.NodeRefsKey.NodeId,
+            request.NodeRefsKey.Name}});
 
-        UNIT_ASSERT(!state.ReadNodeRef(RootNodeId, commitId1, nodeName1, ref));
+        UNIT_ASSERT(!state.ReadNodeRef(request.NodeRefsKey.NodeId, request.NodeRefsRow.CommitId, request.NodeRefsKey.Name, ref));
     }
 }
 
