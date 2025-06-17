@@ -373,7 +373,8 @@ TDiskRegistryState::TDiskRegistryState(
         TVector<TString> outdatedVolumeConfigs,
         TVector<NProto::TSuspendedDevice> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
-        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams)
+        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams,
+        THashMap<TString, TString> replicasWithRecentlyReplacedDevices)
     : Log(logging->CreateLog("BLOCKSTORE_DISK_REGISTRY"))
     , StorageConfig(std::move(storageConfig))
     , Counters(counters)
@@ -402,6 +403,8 @@ TDiskRegistryState::TDiskRegistryState(
         diskStateSeqNo,
         std::move(outdatedVolumeConfigs)
     }
+    , ReplicasWithRecentlyReplacedDevices(
+          std::move(replicasWithRecentlyReplacedDevices))
 {
     for (const auto& x: AutomaticallyReplacedDevices) {
         AutomaticallyReplacedDeviceIds.insert(x.DeviceId);
@@ -1345,11 +1348,7 @@ void TDiskRegistryState::TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
     TInstant timestamp,
     TString reason)
 {
-    if (!CheckIfDeviceReplacementIsAllowed(
-            timestamp,
-            disk.MasterDiskId,
-            deviceId))
-    {
+    if (!CheckIfDeviceReplacementIsAllowed(timestamp, diskId, disk, deviceId)) {
         return;
     }
 
@@ -1499,6 +1498,8 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
                     targetDevice.GetDeviceUUID());
 
                 Y_DEBUG_ABORT_UNLESS(replaced);
+
+                ReplicasWithRecentlyReplacedDevices[disk.MasterDiskId] = diskId;
             }
         }
 
@@ -5033,6 +5034,61 @@ void TDiskRegistryState::DeleteDiskToReallocate(
     NotificationSystem.DeleteDiskToReallocate(db, diskId, seqNo);
     RemoveFinishedMigrations(db, diskId, seqNo);
     RemoveOutdatedLaggingDevices(db, diskId, seqNo);
+    ReplaceNextDevices(db, diskId, seqNo);
+}
+
+void TDiskRegistryState::ReplaceNextDevices(
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    ui64 seqNo)
+{
+    const TDiskState* disk = FindDiskState(diskId);
+    if (!disk) {
+        return;
+    }
+
+    if (disk->MasterDiskId) {
+        ReplaceNextDevices(db, disk->MasterDiskId, seqNo);
+        return;
+    }
+
+    db.DeleteDiskWithRecentlyReplacedDevices(diskId);
+    ReplicasWithRecentlyReplacedDevices.erase(diskId);
+
+    for (ui32 i = 0; i < disk->ReplicaCount; ++i) {
+        const auto replicaId = GetReplicaDiskId(diskId, i);
+        const TDiskState* replicaState = FindDiskState(replicaId);
+        Y_DEBUG_ABORT_UNLESS(replicaState);
+
+        for (const auto& deviceId: replicaState->Devices) {
+            const auto* device = DeviceList.FindDevice(deviceId);
+            if (!device) {
+                continue;
+            }
+
+            const auto* agent = AgentList.FindAgent(device->GetAgentId());
+            if (!agent) {
+                continue;
+            }
+
+            if (device->GetState() == NProto::DEVICE_STATE_ERROR ||
+                agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE)
+            {
+                const bool replaced =
+                TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+                    db,
+                    replicaState,
+                    replicaId,
+                    deviceId,
+                    now,
+                    "?");
+
+                if (replaced) {
+                    TryUpdateDiskState(db, replicaId, *replicaState, now);
+                }
+            }
+        }
+    }
 }
 
 void TDiskRegistryState::AddUserNotification(
@@ -7660,7 +7716,9 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
         return false;
     }
 
-    return true;
+    const TString* replicaIdWithReplacement =
+        ReplicasWithRecentlyReplacedDevices.FindPtr(masterDiskId);
+    return !replicaIdWithReplacement || *replicaIdWithReplacement == diskId;
 }
 
 NProto::TError TDiskRegistryState::CreateDiskFromDevices(

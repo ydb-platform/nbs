@@ -337,6 +337,8 @@ private:
 
     NDiskRegistry::TNotificationSystem NotificationSystem;
 
+    THashMap<TString, TString> ReplicasWithRecentlyReplacedDevices;
+
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
 public:
@@ -359,7 +361,8 @@ public:
         TVector<TString> outdatedVolumeConfigs,
         TVector<NProto::TSuspendedDevice> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
-        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
+        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams,
+        THashMap<TString, TString> replicasWithRecentlyReplacedDevices);
 
     ~TDiskRegistryState();
 
@@ -1121,6 +1124,11 @@ private:
         ui64 seqNo);
 
     void RemoveOutdatedLaggingDevices(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        ui64 seqNo);
+
+    void ReplaceNextDevices(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         ui64 seqNo);

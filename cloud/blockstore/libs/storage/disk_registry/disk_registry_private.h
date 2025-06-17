@@ -146,6 +146,7 @@ struct TDiskRegistryStateSnapshot
     TVector<NProto::TSuspendedDevice> SuspendedDevices;
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
+    THashMap<TString, TString> ReplicasWithRecentlyReplacedDevices;
 
     void Clear()
     {
@@ -166,6 +167,7 @@ struct TDiskRegistryStateSnapshot
         SuspendedDevices.clear();
         AutomaticallyReplacedDevices.clear();
         DiskRegistryAgentListParams.clear();
+        ReplicasWithRecentlyReplacedDevices.clear();
     }
 };
 
