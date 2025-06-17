@@ -1,6 +1,6 @@
 PROGRAM(nbsd)
 
-ALLOCATOR(TCMALLOC_TC)
+ALLOCATOR(SYSTEM)
 
 SRCS(
     main.cpp
