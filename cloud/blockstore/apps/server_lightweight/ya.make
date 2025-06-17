@@ -10,6 +10,10 @@ IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG")
     SPLIT_DWARF()
 ENDIF()
 
+IF (SANITIZER_TYPE)
+    NO_SPLIT_DWARF()
+ENDIF()
+
 PEERDIR(
     cloud/blockstore/libs/daemon/local
     cloud/blockstore/libs/service
