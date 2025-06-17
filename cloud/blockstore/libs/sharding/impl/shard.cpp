@@ -49,7 +49,7 @@ TResultOrError<THostEndpoint> TShardManager::PickHost(
                 return hostManager->GetHostEndpoint(
                     clientConfig,
                     {},
-                    true);
+                    false);
             }
         }
 
@@ -59,7 +59,7 @@ TResultOrError<THostEndpoint> TShardManager::PickHost(
         return hostManagetIt->second->GetHostEndpoint(
             clientConfig,
             {},
-            true);
+            false);
     }
 }
 
