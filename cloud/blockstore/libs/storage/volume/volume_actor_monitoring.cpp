@@ -602,11 +602,11 @@ void RenderSizeTable(IOutputStream& out, ui32 blockSize)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool IsSetDefaultThrottlingPolicy(const std::unique_ptr<TVolumeState>& State)
+bool IsSetDefaultThrottlingPolicy(const TVolumeState* state)
 {
-    const auto& defaultConfig = State->GetConfig().GetPerformanceProfile();
+    const auto& defaultConfig = state->GetConfig().GetPerformanceProfile();
     const auto& volumeThrottlingPolicyConfig =
-        State->GetThrottlingPolicy().GetConfig();
+        state->GetThrottlingPolicy().GetConfig();
 
     return defaultConfig.GetMaxReadIops() ==
                volumeThrottlingPolicyConfig.GetMaxReadIops() &&
@@ -2172,8 +2172,8 @@ void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
                 TABLER() {
                     TABLED() {
                         TAG (TH3) {
-                            auto isDefaultPolicy =
-                                IsSetDefaultThrottlingPolicy(State);
+                            const bool isDefaultPolicy =
+                                IsSetDefaultThrottlingPolicy(State.get());
 
                             TString statusText =
                                 isDefaultPolicy ? "Default" : "Custom";
