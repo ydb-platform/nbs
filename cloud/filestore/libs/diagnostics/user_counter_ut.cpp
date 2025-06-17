@@ -128,10 +128,10 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         auto emptyJson = NJson::ReadJsonFastTree("{}", true);
 
         auto stats =
-            Registry->GetFileSystemStats(cloudId, folderId, fsId, clientId);
+            Registry->GetFileSystemStats(fsId, clientId, cloudId, folderId);
 
         // First registration
-        Registry->RegisterUserStats(cloudId, folderId, fsId, clientId);
+        Registry->RegisterUserStats(fsId, clientId, cloudId, folderId);
 
         TStringStream firstOut;
         auto firstEncoder = EncoderJson(&firstOut);
@@ -141,7 +141,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         ValidateJsons(testJson, firstResult);
 
         // Second registration
-        Registry->RegisterUserStats(cloudId, folderId, fsId, clientId);
+        Registry->RegisterUserStats(fsId, clientId, cloudId, folderId);
 
         TStringStream secondOut;
         auto secondEncoder = EncoderJson(&secondOut);

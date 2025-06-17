@@ -57,10 +57,10 @@ struct IRequestStatsRegistry
     virtual IRequestStatsPtr GetRequestStats() = 0;
 
     virtual IRequestStatsPtr GetFileSystemStats(
-        const TString& cloudId,
-        const TString& folderId,
         const TString& filesystem,
-        const TString& client) = 0;
+        const TString& client,
+        const TString& cloudId,
+        const TString& folderId) = 0;
 
     virtual void SetFileSystemMediaKind(
         const TString& filesystem,
@@ -68,10 +68,10 @@ struct IRequestStatsRegistry
         NCloud::NProto::EStorageMediaKind media) = 0;
 
     virtual void RegisterUserStats(
-        const TString& cloudId,
-        const TString& folderId,
         const TString& fileSystemId,
-        const TString& clientId) = 0;
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) = 0;
 
     virtual void Unregister(
         const TString& fileSystemId,

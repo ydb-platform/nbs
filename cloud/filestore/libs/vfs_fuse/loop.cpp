@@ -542,10 +542,10 @@ public:
     TFuture<NProto::TError> StartAsync() override
     {
         RequestStats = StatsRegistry->GetFileSystemStats(
-            "", // folderId, empty only for first request, will be updated later
-            "", // cloudId
             Config->GetFileSystemId(),
-            Config->GetClientId());
+            Config->GetClientId(),
+            "", // folderId, empty until session is created
+            ""); // cloudId
 
         auto callContext = MakeIntrusive<TCallContext>(
             Config->GetFileSystemId(),
@@ -563,11 +563,13 @@ public:
                         p->Log,
                         *callContext,
                         response.GetError());
+                    // After the session is established, we patch RequestStats
+                    // with newly known cloudId and folderId
                     p->RequestStats = p->StatsRegistry->GetFileSystemStats(
-                        response.GetFileStore().GetCloudId(),
-                        response.GetFileStore().GetFolderId(),
                         p->Config->GetFileSystemId(),
-                        p->Config->GetClientId());
+                        p->Config->GetClientId(),
+                        response.GetFileStore().GetCloudId(),
+                        response.GetFileStore().GetFolderId());
 
                     return p->StartWithSessionState(future);
                 }
@@ -806,10 +808,10 @@ private:
                 Config->GetClientId(),
                 StorageMediaKind);
             StatsRegistry->RegisterUserStats(
-                filestore.GetCloudId(),
-                filestore.GetFolderId(),
                 Config->GetFileSystemId(),
-                Config->GetClientId());
+                Config->GetClientId(),
+                filestore.GetCloudId(),
+                filestore.GetFolderId());
 
             CompletionQueue = std::make_shared<TCompletionQueue>(
                 Config->GetFileSystemId(),

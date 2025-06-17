@@ -397,7 +397,9 @@ public:
 
     void Unregister()
     {
-        RootCounters->RemoveCounter(COUNTER_LABEL.data());
+        if (RootCounters) {
+            RootCounters->RemoveCounter(COUNTER_LABEL.data());
+        }
     }
 };
 
@@ -413,10 +415,10 @@ class TFileSystemStats final
     , TRequestLogger
 {
 private:
-    const TString CloudId;
-    const TString FolderId;
     const TString FileSystemId;
     const TString ClientId;
+    const TString CloudId;
+    const TString FolderId;
 
     TRequestCountersPtr Counters;
     IPostponeTimePredictorPtr Predictor;
@@ -429,10 +431,10 @@ private:
 
 public:
     TFileSystemStats(
-            TString cloudId,
-            TString folderId,
             TString fileSystemId,
             TString clientId,
+            TString cloudId,
+            TString folderId,
             ITimerPtr timer,
             TDynamicCountersPtr counters,
             IPostponeTimePredictorPtr predictor,
@@ -440,10 +442,10 @@ public:
             TDuration totalTimeThreshold,
             EHistogramCounterOptions histogramCounterOptions)
         : TRequestLogger{executionTimeThreshold, totalTimeThreshold}
-        , CloudId{std::move(cloudId)}
-        , FolderId{std::move(folderId)}
         , FileSystemId{std::move(fileSystemId)}
         , ClientId{std::move(clientId)}
+        , CloudId{std::move(cloudId)}
+        , FolderId{std::move(folderId)}
         , Counters{MakeRequestCounters(
             timer,
             *counters,
@@ -733,10 +735,10 @@ public:
     }
 
     IRequestStatsPtr GetFileSystemStats(
-        const TString& cloudId,
-        const TString& folderId,
         const TString& fileSystemId,
-        const TString& clientId) override
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
     {
         std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
 
@@ -773,10 +775,10 @@ public:
                 ->GetSubgroup("folder", folderId);
 
             auto stats = CreateRequestStats(
-                cloudId,
-                folderId,
                 fileSystemId,
                 clientId,
+                cloudId,
+                folderId,
                 std::move(counters),
                 Timer,
                 DiagnosticsConfig->GetPostponeTimePredictorInterval(),
@@ -808,10 +810,10 @@ public:
     }
 
     void RegisterUserStats(
-        const TString& cloudId,
-        const TString& folderId,
         const TString& fileSystemId,
-        const TString& clientId) override
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
     {
         std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
 
@@ -886,10 +888,10 @@ public:
 
 private:
     std::shared_ptr<TFileSystemStats> CreateRequestStats(
-        TString cloudId,
-        TString folderId,
         TString fileSystemId,
         TString clientId,
+        TString cloudId,
+        TString folderId,
         TDynamicCountersPtr counters,
         ITimerPtr timer,
         TDuration delayWindowInterval,
@@ -906,10 +908,10 @@ private:
             delayMaxTime);
 
         return std::make_shared<TFileSystemStats>(
-            std::move(cloudId),
-            std::move(folderId),
             std::move(fileSystemId),
             std::move(clientId),
+            std::move(cloudId),
+            std::move(folderId),
             std::move(timer),
             std::move(counters),
             std::move(predictor),
@@ -938,12 +940,10 @@ private:
         });
 
         // GetSubgroup is used to create all neccessary subgroups
-        auto newSubgroupCounters = FsCounters
-            ->GetSubgroup("filesystem", fileSystemId)
+        FsCounters->GetSubgroup("filesystem", fileSystemId)
             ->GetSubgroup("client", clientId)
             ->GetSubgroup("cloud", newCloudId)
             ->GetSubgroup("folder", newFolderId);
-        Y_UNUSED(newSubgroupCounters);
 
         FsCounters
             ->GetSubgroup("filesystem", fileSystemId)
@@ -962,15 +962,15 @@ public:
     TRequestStatsRegistryStub() = default;
 
     IRequestStatsPtr GetFileSystemStats(
-        const TString& cloudId,
-        const TString& folderId,
         const TString& fileSystemId,
-        const TString& clientId) override
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
     {
-        Y_UNUSED(cloudId);
-        Y_UNUSED(folderId);
         Y_UNUSED(fileSystemId);
         Y_UNUSED(clientId);
+        Y_UNUSED(cloudId);
+        Y_UNUSED(folderId);
 
         return std::make_shared<TRequestStatsStub>();
     }
@@ -986,15 +986,15 @@ public:
     }
 
     void RegisterUserStats(
-        const TString& cloudId,
-        const TString& folderId,
         const TString& fileSystemId,
-        const TString& clientId) override
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
     {
-        Y_UNUSED(cloudId);
-        Y_UNUSED(folderId);
         Y_UNUSED(fileSystemId);
         Y_UNUSED(clientId);
+        Y_UNUSED(cloudId);
+        Y_UNUSED(folderId);
     }
 
     IRequestStatsPtr GetRequestStats() override

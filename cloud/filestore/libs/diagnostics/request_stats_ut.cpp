@@ -32,10 +32,10 @@ const TString CLIENT = "test_client";
 template <typename TCountersType>
 auto GetFsCounters(
     const TCountersType& counters,
-    const TString& cloud,
-    const TString& folder,
     const TString& fs,
-    const TString& client)
+    const TString& client,
+    const TString& cloud,
+    const TString& folder)
 {
     auto fsCounters = counters->FindSubgroup("filesystem", fs);
     UNIT_ASSERT(fsCounters);
@@ -88,7 +88,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         UNIT_ASSERT(counters);
 
         auto stats =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         {
             auto fsCounters = counters->FindSubgroup("filesystem", FS);
             UNIT_ASSERT(fsCounters);
@@ -115,7 +115,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
 
         UNIT_ASSERT(
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS, CLIENT));
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER));
         bootstrap.Registry->SetFileSystemMediaKind(FS, CLIENT, NProto::STORAGE_MEDIA_SSD);
 
         auto stats = bootstrap.Registry->GetRequestStats();
@@ -145,9 +145,9 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         UNIT_ASSERT(counters);
 
         auto stats =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(stats);
-        auto fsCounters = GetFsCounters(counters, CLOUD, FOLDER, FS, CLIENT);
+        auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(fsCounters);
 
         {
@@ -178,9 +178,9 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         UNIT_ASSERT(counters);
 
         auto stats =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(stats);
-        auto fsCounters = GetFsCounters(counters, CLOUD, FOLDER, FS, CLIENT);
+        auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(fsCounters);
 
         auto predictedCounter = fsCounters->FindCounter(COUNTER);
@@ -427,17 +427,17 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         UNIT_ASSERT(counters);
 
         auto statsFirst =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS_1, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS_1, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(statsFirst);
         auto statsSecond =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS_2, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS_2, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(statsSecond);
 
         auto fsCountersFirst =
-            GetFsCounters(counters, CLOUD, FOLDER, FS_1, CLIENT);
+            GetFsCounters(counters, FS_1, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(fsCountersFirst);
         auto fsCountersSecond =
-            GetFsCounters(counters, CLOUD, FOLDER, FS_2, CLIENT);
+            GetFsCounters(counters, FS_2, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(fsCountersSecond);
 
         auto predictedCounterFirst = fsCountersFirst->FindCounter(COUNTER);
@@ -587,10 +587,10 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         UNIT_ASSERT(counters);
 
         auto stats =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(stats);
 
-        auto fsCounters = GetFsCounters(counters, CLOUD, FOLDER, FS, CLIENT);
+        auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(fsCounters);
 
         auto predictedCounter = fsCounters->FindCounter(COUNTER);
@@ -724,7 +724,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
 
         auto stats =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         bootstrap.Registry->SetFileSystemMediaKind(FS, CLIENT, NProto::STORAGE_MEDIA_SSD);
 
         auto context = MakeIntrusive<TCallContext>(FS, ui64(1));
@@ -752,9 +752,9 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
 
         auto firstStats =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         auto secondStats =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
 
         {
             auto counters = fsComponentCounters->FindSubgroup("filesystem", FS);
@@ -798,9 +798,9 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         UNIT_ASSERT(counters);
 
         auto stats =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(stats);
-        auto fsCounters = GetFsCounters(counters, CLOUD, FOLDER, FS, CLIENT);
+        auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
 
         // non lazy-init request
         auto readData = fsCounters->FindSubgroup("request", "ReadData");
@@ -869,10 +869,10 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
 
         auto stats =
-            bootstrap.Registry->GetFileSystemStats(CLOUD, FOLDER, FS, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
 
         {
-            auto fsCounters = GetFsCounters(counters, CLOUD, FOLDER, FS, CLIENT);
+            auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
             UNIT_ASSERT(fsCounters);
         }
     }
@@ -893,7 +893,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         const TString newCloud = CLOUD;
         const TString newFolder = FOLDER;
         auto stats =
-            bootstrap.Registry->GetFileSystemStats("", "", FS, CLIENT);
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, "", "");
 
         // emulating first CreateSession request in vfs loop (it is performed
         // with empty cloud and folder)
@@ -904,7 +904,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
         {
             auto fsCounters =
-                GetFsCounters(rootCounters, oldCloud, oldCloud, FS, CLIENT);
+                GetFsCounters(rootCounters, FS, CLIENT, oldCloud, oldCloud);
             UNIT_ASSERT(fsCounters);
 
             auto maxPredictedPostponeTimeCounter =
@@ -924,7 +924,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         // emulating assigning new cloud and folder (after session is created)
         // counters should migrate to new cloud and folder subgroup
         stats = bootstrap.Registry
-                    ->GetFileSystemStats(newCloud, newFolder, FS, CLIENT);
+                    ->GetFileSystemStats(FS, CLIENT, newCloud, newFolder);
 
         {
             auto fsCounters = rootCounters->FindSubgroup("filesystem", FS);
