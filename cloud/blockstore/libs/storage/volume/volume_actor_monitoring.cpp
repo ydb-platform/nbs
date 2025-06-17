@@ -600,6 +600,24 @@ void RenderSizeTable(IOutputStream& out, ui32 blockSize)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsSetDefaultThrottlingPolicy(const TVolumeState* state)
+{
+    const auto& defaultConfig = state->GetConfig().GetPerformanceProfile();
+    const auto& volumeThrottlingPolicyConfig =
+        state->GetThrottlingPolicy().GetConfig();
+
+    return defaultConfig.GetMaxReadIops() ==
+               volumeThrottlingPolicyConfig.GetMaxReadIops() &&
+           defaultConfig.GetMaxWriteIops() ==
+               volumeThrottlingPolicyConfig.GetMaxWriteIops() &&
+           defaultConfig.GetMaxReadBandwidth() ==
+               volumeThrottlingPolicyConfig.GetMaxReadBandwidth() &&
+           defaultConfig.GetMaxWriteBandwidth() ==
+               volumeThrottlingPolicyConfig.GetMaxWriteBandwidth();
+}
+
 } // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2154,30 +2172,13 @@ void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
                 TABLER() {
                     TABLED() {
                         TAG (TH3) {
-                            const auto& defaultConfig =
-                                State->GetConfig().GetPerformanceProfile();
-                            const auto& volumeThrottrlingPolicyConfig =
-                                State->GetThrottlingPolicy().GetConfig();
-                            bool IsSetDefaultThrottlingPolicy =
-                                defaultConfig.GetMaxReadIops() ==
-                                    volumeThrottrlingPolicyConfig
-                                        .GetMaxReadIops() &&
-                                defaultConfig.GetMaxWriteIops() ==
-                                    volumeThrottrlingPolicyConfig
-                                        .GetMaxWriteIops() &&
-                                defaultConfig.GetMaxReadBandwidth() ==
-                                    volumeThrottrlingPolicyConfig
-                                        .GetMaxReadBandwidth() &&
-                                defaultConfig.GetMaxWriteBandwidth() ==
-                                    volumeThrottrlingPolicyConfig
-                                        .GetMaxWriteBandwidth();
+                            const bool isDefaultPolicy =
+                                IsSetDefaultThrottlingPolicy(State.get());
 
-                            TString statusText = IsSetDefaultThrottlingPolicy
-                                                     ? "Default"
-                                                     : "Custom";
-                            TString cssClass = IsSetDefaultThrottlingPolicy
-                                                   ? "label-success"
-                                                   : "label-danger";
+                            TString statusText =
+                                isDefaultPolicy ? "Default" : "Custom";
+                            TString cssClass = isDefaultPolicy ? "label-success"
+                                                               : "label-danger";
 
                             out << "Throttling Policy status: ";
                             SPAN_CLASS ("label " + cssClass) {
