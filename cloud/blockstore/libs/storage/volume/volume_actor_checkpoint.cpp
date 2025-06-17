@@ -166,14 +166,14 @@ private:
     const TRequestTraceInfo TraceInfo;
     const ECheckpointRequestType RequestType;
     const bool CreateCheckpointShadowDisk;
-    const ui32 Generation = 0;
+    const ui32 VolumeGeneration = 0;
+    const TString ShadowDiskId;
+    const bool NeedToDestroyShadowActor;
 
     EDrainSource DrainSource = EDrainSource::None;
-    bool ExternalDrainDone = false;
     ui32 DrainResponses = 0;
     ui32 Responses = 0;
     NProto::TError Error;
-    TString ShadowDiskId;
     bool ReleaseShadowDiskRequestForAnyReaderFinished = false;
     bool ReleaseShadowDiskRequestForAnyWriterFinished = false;
 
@@ -192,7 +192,8 @@ public:
         ECheckpointRequestType requestType,
         bool createCheckpointShadowDisk,
         bool waitForExternalDrain,
-        ui32 generation);
+        ui32 volumeGeneration,
+        TString shadowDiskId);
 
     void Bootstrap(const TActorContext& ctx);
     void Drain(const TActorContext& ctx);
@@ -284,7 +285,8 @@ TCheckpointActor<TMethod>::TCheckpointActor(
         ECheckpointRequestType requestType,
         bool createCheckpointShadowDisk,
         bool waitForExternalDrain,
-        ui32 generation)
+        ui32 volumeGeneration,
+        TString shadowDiskId)
     : RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
     , DiskId(std::move(diskId))
@@ -295,7 +297,9 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     , TraceInfo(std::move(traceInfo))
     , RequestType(requestType)
     , CreateCheckpointShadowDisk(createCheckpointShadowDisk)
-    , Generation(generation)
+    , VolumeGeneration(volumeGeneration)
+    , ShadowDiskId(std::move(shadowDiskId))
+    , NeedToDestroyShadowActor(waitForExternalDrain)
     , DrainSource(
           waitForExternalDrain ? EDrainSource::External
                                : EDrainSource::None)
@@ -441,7 +445,7 @@ std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
 TCheckpointActor<TMethod>::MakeReleaseDiskRequest(
     EReleaseSessionKind releaseSessionKind) const
 {
-    TString clientId = "";
+    TString clientId;
 
     switch (releaseSessionKind) {
         case EReleaseSessionKind::AnyReader:
@@ -454,8 +458,8 @@ TCheckpointActor<TMethod>::MakeReleaseDiskRequest(
 
     auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
     request->Record.SetDiskId(ShadowDiskId);
-    request->Record.MutableHeaders()->SetClientId(clientId);
-    request->Record.SetVolumeGeneration(Generation);
+    request->Record.MutableHeaders()->SetClientId(std::move(clientId));
+    request->Record.SetVolumeGeneration(VolumeGeneration);
     return request;
 }
 
@@ -521,15 +525,13 @@ void TCheckpointActor<TMethod>::HandleExternalDrainDone(
 {
     STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::External);
 
+    Y_UNUSED(ev);
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "[%lu] External drain done",
         VolumeTabletId);
-
-    ShadowDiskId = ev->Get()->ShadowDiskId;
-    ReleaseShadowDiskRequestForAnyReaderFinished = false;
-    ReleaseShadowDiskRequestForAnyWriterFinished = false;
 
     NCloud::Send(
         ctx,
@@ -561,8 +563,21 @@ void TCheckpointActor<TMethod>::HandleExternalDrainTimeout(
         "[%lu] External drain timed out",
         VolumeTabletId);
 
-    if (!ExternalDrainDone) {
-        ExternalDrainDone = true;
+    if (NeedToDestroyShadowActor) {
+        NCloud::Send(
+            ctx,
+            MakeDiskRegistryProxyServiceId(),
+            MakeReleaseDiskRequest(EReleaseSessionKind::AnyReader),
+            static_cast<ui64>(EReleaseSessionKind::AnyReader));
+
+        NCloud::Send(
+            ctx,
+            MakeDiskRegistryProxyServiceId(),
+            MakeReleaseDiskRequest(EReleaseSessionKind::AnyWriter),
+            static_cast<ui64>(EReleaseSessionKind::AnyWriter));
+
+        TBase::Become(&TThis::StateReleaseShadowDisk);
+    } else {
         DoAction(ctx);
     }
 }
@@ -757,13 +772,7 @@ void TCheckpointActor<TMethod>::HandleReleaseDiskResponse(
         return;
     }
 
-    // part from HandleExternalDrainDone
-    if (!ExternalDrainDone) {
-        ExternalDrainDone = true;
-        DoAction(ctx);
-    } else {
-        TBase::Become(&TThis::StateDrain);
-    }
+    DoAction(ctx);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -839,8 +848,13 @@ template <typename TMethod>
 STFUNC(TCheckpointActor<TMethod>::StateReleaseShadowDisk)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskRegistry::TEvReleaseDiskResponse, HandleReleaseDiskResponse);
+        HFunc(
+            TEvDiskRegistry::TEvReleaseDiskResponse,
+            HandleReleaseDiskResponse);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        IgnoreFunc(TEvVolumePrivate::TEvExternalDrainDone);
+        IgnoreFunc(TEvents::TEvWakeup);
 
         default:
             HandleUnexpectedEvent(
@@ -857,11 +871,10 @@ template <typename TMethod>
 void TCheckpointActor<TMethod>::DoAction(const TActorContext& ctx)
 {
     STORAGE_CHECK_PRECONDITION(
-        (DrainSource == EDrainSource::None && DrainResponses == 0 &&
-         !ExternalDrainDone) ||
+        (DrainSource == EDrainSource::None && DrainResponses == 0) ||
         (DrainSource == EDrainSource::Internal &&
          DrainResponses == PartitionDescrs.size()) ||
-        (DrainSource == EDrainSource::External && ExternalDrainDone));
+        (DrainSource == EDrainSource::External));
 
     ui32 partitionIndex = 0;
     for (const auto& x: PartitionDescrs) {
@@ -1486,6 +1499,9 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
          request.ReqType == ECheckpointRequestType::DeleteData) &&
         checkpointInfo && checkpointInfo->HasShadowActor;
 
+    TString shadowDiskId =
+        needToDestroyShadowActor ? checkpointInfo->ShadowDiskId : "";
+
     TActorId actorId;
     switch (request.ReqType) {
         case ECheckpointRequestType::Create:
@@ -1513,7 +1529,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints(),
                     false,
-                    Executor()->Generation());
+                    Executor()->Generation(),
+                    std::move(shadowDiskId));
             break;
         }
         case ECheckpointRequestType::Delete: {
@@ -1540,7 +1557,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints(),
                     needToDestroyShadowActor,
-                    Executor()->Generation());
+                    Executor()->Generation(),
+                    std::move(shadowDiskId));
             break;
         }
         case ECheckpointRequestType::DeleteData: {
@@ -1561,7 +1579,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints(),
                     needToDestroyShadowActor,
-                    Executor()->Generation());
+                    Executor()->Generation(),
+                    std::move(shadowDiskId));
             break;
         }
         default:
@@ -1574,14 +1593,11 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
         DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
 
         TPoisonCallback onPartitionStopped =
-            [actorId, shadowDiskId = checkpointInfo->ShadowDiskId](
-                const NActors::TActorContext& ctx,
-                NProto::TError error)
+            [actorId](const NActors::TActorContext& ctx, NProto::TError error)
         {
             Y_UNUSED(error);
             auto event =
-                std::make_unique<TEvVolumePrivate::TEvExternalDrainDone>(
-                    shadowDiskId);
+                std::make_unique<TEvVolumePrivate::TEvExternalDrainDone>();
             NCloud::Send(ctx, actorId, std::move(event));
         };
         RestartPartition(ctx, std::move(onPartitionStopped));
