@@ -1118,7 +1118,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateFollowerStateRequest);
         IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
-        IgnoreFunc(TEvVolume::TEvNotifyFollowerVolumeResponse);
+        IgnoreFunc(TEvVolume::TEvUpdateLinkOnFollowerResponse);
 
         default:
             if (!RejectRequests(ev)) {

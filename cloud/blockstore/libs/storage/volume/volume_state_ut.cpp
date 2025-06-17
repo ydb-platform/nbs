@@ -1994,9 +1994,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "uuid1",
                     .LeaderDiskId = "vol0",
-                    .LeaderScaleUnitId = "su0",
+                    .LeaderShardId = "su0",
                     .FollowerDiskId = "vol1",
-                    .FollowerScaleUnitId = "su1"},
+                    .FollowerShardId = "su1"},
             .State = TFollowerDiskInfo::EState::None,
             .MediaKind = NProto::STORAGE_MEDIA_SSD});
 
@@ -2013,9 +2013,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "uuid1",
                     .LeaderDiskId = "vol0",
-                    .LeaderScaleUnitId = "su0",
+                    .LeaderShardId = "su0",
                     .FollowerDiskId = "vol1",
-                    .FollowerScaleUnitId = "su1"},
+                    .FollowerShardId = "su1"},
             .State = TFollowerDiskInfo::EState::Preparing,
             .MediaKind = NProto::STORAGE_MEDIA_SSD,
             .MigratedBytes = 100});
@@ -2031,9 +2031,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "uuid2",
                     .LeaderDiskId = "vol0",
-                    .LeaderScaleUnitId = "su0",
+                    .LeaderShardId = "su0",
                     .FollowerDiskId = "vol2",
-                    .FollowerScaleUnitId = "su1"},
+                    .FollowerShardId = "su1"},
             .State = TFollowerDiskInfo::EState::None,
             .MediaKind = NProto::STORAGE_MEDIA_SSD});
         UNIT_ASSERT_VALUES_EQUAL(2, followers.size());
@@ -2049,9 +2049,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         volumeState.RemoveFollower(TLeaderFollowerLink{
             .LinkUUID = "",
             .LeaderDiskId = "vol0",
-            .LeaderScaleUnitId = "su0",
+            .LeaderShardId = "su0",
             .FollowerDiskId = "vol2",
-            .FollowerScaleUnitId = "su1"});
+            .FollowerShardId = "su1"});
         UNIT_ASSERT_VALUES_EQUAL(0, followers.size());
     }
 }

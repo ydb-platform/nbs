@@ -17,11 +17,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 struct TLeaderFollowerLink
 {
-    TString LinkUUID; // It can be empty if the exact uuid is not known.
+    TString LinkUUID;   // It can be empty if the exact uuid is not known.
     TString LeaderDiskId;
-    TString LeaderScaleUnitId;
+    TString LeaderShardId;
     TString FollowerDiskId;
-    TString FollowerScaleUnitId;
+    TString FollowerShardId;
 
     TString LeaderDiskIdForPrint() const;
     TString FollowerDiskIdForPrint() const;

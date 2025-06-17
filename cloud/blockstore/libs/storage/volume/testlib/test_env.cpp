@@ -587,8 +587,8 @@ TVolumeClient::CreateLinkLeaderVolumeToFollowerRequest(
         std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>();
     result->Record.SetDiskId(link.LeaderDiskId);
     result->Record.SetFollowerDiskId(link.FollowerDiskId);
-    result->Record.SetLeaderScaleUnitId(link.LeaderScaleUnitId);
-    result->Record.SetFollowerScaleUnitId(link.FollowerScaleUnitId);
+    result->Record.SetLeaderShardId(link.LeaderShardId);
+    result->Record.SetFollowerShardId(link.FollowerShardId);
 
     return result;
 }
@@ -601,8 +601,8 @@ TVolumeClient::CreateUnlinkLeaderVolumeFromFollowerRequest(
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>();
     result->Record.SetDiskId(link.LeaderDiskId);
     result->Record.SetFollowerDiskId(link.FollowerDiskId);
-    result->Record.SetLeaderScaleUnitId(link.LeaderScaleUnitId);
-    result->Record.SetFollowerScaleUnitId(link.FollowerScaleUnitId);
+    result->Record.SetLeaderShardId(link.LeaderShardId);
+    result->Record.SetFollowerShardId(link.FollowerShardId);
     return result;
 }
 

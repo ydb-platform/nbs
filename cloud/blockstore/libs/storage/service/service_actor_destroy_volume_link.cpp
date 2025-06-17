@@ -41,7 +41,7 @@ private:
         const TActorContext& ctx);
 
     void HandleLinkRemovedOnFollower(
-        const TEvVolume::TEvNotifyFollowerVolumeResponse::TPtr& ev,
+        const TEvVolume::TEvUpdateLinkOnFollowerResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void ReplyAndDie(
@@ -87,13 +87,12 @@ void TDestroyVolumeLinkActor::RemoveLinkOnFollower(
     const NActors::TActorContext& ctx)
 {
     auto request =
-        std::make_unique<TEvVolume::TEvNotifyFollowerVolumeRequest>();
+        std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
     request->Record.SetDiskId(FollowerDiskId);
-    request->Record.SetFollowerScaleUnitId({});
+    request->Record.SetFollowerShardId({});
     request->Record.SetLeaderDiskId(LeaderDiskId);
-    request->Record.SetLeaderScaleUnitId({});
-    request->Record.SetReason(NProto::EFollowerNotificationReason::
-                                  FOLLOWER_NOTIFICATION_REASON_DESTROYED);
+    request->Record.SetLeaderShardId({});
+    request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
 
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
@@ -127,7 +126,7 @@ void TDestroyVolumeLinkActor::HandleUnlinkLeaderVolumeFromFollowerResponse(
 }
 
 void TDestroyVolumeLinkActor::HandleLinkRemovedOnFollower(
-    const TEvVolume::TEvNotifyFollowerVolumeResponse::TPtr& ev,
+    const TEvVolume::TEvUpdateLinkOnFollowerResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* message = ev->Get();
@@ -166,7 +165,7 @@ STFUNC(TDestroyVolumeLinkActor::StateWork)
             HandleUnlinkLeaderVolumeFromFollowerResponse);
 
         HFunc(
-            TEvVolume::TEvNotifyFollowerVolumeResponse,
+            TEvVolume::TEvUpdateLinkOnFollowerResponse,
             HandleLinkRemovedOnFollower);
 
         default:

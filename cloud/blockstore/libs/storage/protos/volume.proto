@@ -14,12 +14,12 @@ import "cloud/storage/core/protos/media.proto";
 import "cloud/storage/core/protos/trace.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
-// Follower volume notification
+// Follower volume link update action
 
-enum EFollowerNotificationReason
+enum ELinkAction
 {
-    FOLLOWER_NOTIFICATION_REASON_CREATED = 0;
-    FOLLOWER_NOTIFICATION_REASON_DESTROYED = 1;
+    LINK_ACTION_CREATE = 0;
+    LINK_ACTION_DESTROY = 1;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -736,11 +736,11 @@ message TLinkLeaderVolumeToFollowerRequest
     // Follower volume.
     string FollowerDiskId = 3;
 
-    // Leader volume scale unit Id.
-    string LeaderScaleUnitId = 4;
+    // Leader volume shard Id.
+    string LeaderShardId = 4;
 
-    // Follower volume scale unit Id.
-    string FollowerScaleUnitId = 5;
+    // Follower volume shard Id.
+    string FollowerShardId = 5;
 }
 
 message TLinkLeaderVolumeToFollowerResponse
@@ -755,7 +755,7 @@ message TLinkLeaderVolumeToFollowerResponse
     NCloud.NProto.TTraceInfo Trace = 3;
 }
 
-message TNotifyFollowerVolumeRequest
+message TUpdateLinkOnFollowerRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
@@ -767,19 +767,19 @@ message TNotifyFollowerVolumeRequest
     string LinkUUID = 3;
 
     // Reason of notification.
-    EFollowerNotificationReason Reason = 4;
+    ELinkAction Action = 4;
 
     // Leader volume.
     string LeaderDiskId = 5;
 
-    // Leader volume scale unit.
-    string LeaderScaleUnitId = 6;
+    // Leader volume shard.
+    string LeaderShardId = 6;
 
-    // Follower volume scale unit.
-    string FollowerScaleUnitId = 7;
+    // Follower volume shard.
+    string FollowerShardId = 7;
 }
 
-message TNotifyFollowerVolumeResponse
+message TUpdateLinkOnFollowerResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
@@ -803,11 +803,11 @@ message TUnlinkLeaderVolumeFromFollowerRequest
     // Follower volume.
     string FollowerDiskId = 3;
 
-    // Leader volume scale unit Id.
-    string LeaderScaleUnitId = 4;
+    // Leader volume shard Id.
+    string LeaderShardId = 4;
 
-    // Follower volume scale unit Id.
-    string FollowerScaleUnitId = 5;
+    // Follower volume shard Id.
+    string FollowerShardId = 5;
 }
 
 message TUnlinkLeaderVolumeFromFollowerResponse

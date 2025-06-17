@@ -9699,10 +9699,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         {
             if (event->Recipient == MakeVolumeProxyServiceId()) {
                 if (event->GetTypeRewrite() ==
-                    TEvVolume::EvNotifyFollowerVolumeRequest)
+                    TEvVolume::EvUpdateLinkOnFollowerRequest)
                 {
                     auto* msg =
-                        event->Get<TEvVolume::TEvNotifyFollowerVolumeRequest>();
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
                     forwardRequest(event, msg->Record.GetDiskId());
                 }
 
@@ -9716,9 +9716,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TLeaderFollowerLink link{
             .LinkUUID = "",
             .LeaderDiskId = "vol1",
-            .LeaderScaleUnitId = "su1",
+            .LeaderShardId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerScaleUnitId = "su2"};
+            .FollowerShardId = "su2"};
         {
             // Create link
             auto response = volume1.LinkLeaderVolumeToFollower(link);
@@ -9838,26 +9838,26 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             }
         };
 
-        size_t notifyFollowerVolumeResponseCount = 0;
+        size_t updateLinkOnFollowerResponseCount = 0;
         auto volumeProxyRequestHandler =
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
         {
             if (event->Recipient == MakeVolumeProxyServiceId()) {
                 if (event->GetTypeRewrite() ==
-                    TEvVolume::EvNotifyFollowerVolumeRequest)
+                    TEvVolume::EvUpdateLinkOnFollowerRequest)
                 {
                     auto* msg =
-                        event->Get<TEvVolume::TEvNotifyFollowerVolumeRequest>();
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
                     forwardRequest(event, msg->Record.GetDiskId());
                 }
                 return true;
             }
 
             if (event->GetTypeRewrite() ==
-                TEvVolume::EvNotifyFollowerVolumeResponse)
+                TEvVolume::EvUpdateLinkOnFollowerResponse)
             {
                 // Drop first 3 responses from follower.
-                if (notifyFollowerVolumeResponseCount++ < 2) {
+                if (updateLinkOnFollowerResponseCount++ < 2) {
                     return true;
                 }
             }
@@ -9869,15 +9869,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TLeaderFollowerLink link{
             .LinkUUID = "",
             .LeaderDiskId = "vol1",
-            .LeaderScaleUnitId = "su1",
+            .LeaderShardId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerScaleUnitId = "su2"};
+            .FollowerShardId = "su2"};
 
         // Create link
         volume1.LinkLeaderVolumeToFollower(link);
 
         // Should get 4 responses from follower.
-        UNIT_ASSERT_VALUES_EQUAL(3, notifyFollowerVolumeResponseCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, updateLinkOnFollowerResponseCount);
     }
 
     Y_UNIT_TEST(ShouldFailCreateLinkPropagateFollowerLink)
@@ -9932,22 +9932,22 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         {
             if (event->Recipient == MakeVolumeProxyServiceId()) {
                 if (event->GetTypeRewrite() ==
-                    TEvVolume::EvNotifyFollowerVolumeRequest)
+                    TEvVolume::EvUpdateLinkOnFollowerRequest)
                 {
                     auto* msg =
-                        event->Get<TEvVolume::TEvNotifyFollowerVolumeRequest>();
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
                     forwardRequest(event, msg->Record.GetDiskId());
                 }
                 return true;
             }
 
             if (event->GetTypeRewrite() ==
-                TEvVolume::EvNotifyFollowerVolumeRequest)
+                TEvVolume::EvUpdateLinkOnFollowerRequest)
             {
                 auto response = std::make_unique<
-                    TEvVolume::TEvNotifyFollowerVolumeResponse>(MakeError(
+                    TEvVolume::TEvUpdateLinkOnFollowerResponse>(MakeError(
                     E_ARGUMENT,
-                    "Simulated non-retiable error on follower"));
+                    "Simulated non-retriable error on follower"));
 
                 runtime->Send(
                     new IEventHandle(
@@ -9967,9 +9967,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TLeaderFollowerLink link{
             .LinkUUID = "",
             .LeaderDiskId = "vol1",
-            .LeaderScaleUnitId = "su1",
+            .LeaderShardId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerScaleUnitId = "su2"};
+            .FollowerShardId = "su2"};
 
         // Create link
         volume1.SendLinkLeaderVolumeToFollowerRequest(link);

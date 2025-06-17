@@ -48,7 +48,7 @@ private:
     void PersistOnFollower(const NActors::TActorContext& ctx);
 
     void HandlePersistedOnFollower(
-        const TEvVolume::TEvNotifyFollowerVolumeResponse::TPtr& ev,
+        const TEvVolume::TEvUpdateLinkOnFollowerResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWakeup(

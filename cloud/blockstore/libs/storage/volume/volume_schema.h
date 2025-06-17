@@ -288,7 +288,7 @@ struct TVolumeSchema
         {
         };
 
-        struct LeaderScaleUnitId
+        struct LeaderShardId
             : public Column<4, NKikimr::NScheme::NTypeIds::String>
         {
         };
@@ -298,7 +298,7 @@ struct TVolumeSchema
         {
         };
 
-        struct FollowerScaleUnitId
+        struct FollowerShardId
             : public Column<6, NKikimr::NScheme::NTypeIds::String>
         {
         };
@@ -326,9 +326,9 @@ struct TVolumeSchema
             Uuid,
             CreatedAt,
             LeaderDiskId,
-            LeaderScaleUnitId,
+            LeaderShardId,
             FollowerDiskId,
-            FollowerScaleUnitId,
+            FollowerShardId,
             State,
             MigratedBytes,
             MediaKind,
@@ -349,7 +349,7 @@ struct TVolumeSchema
         {
         };
 
-        struct LeaderScaleUnitId
+        struct LeaderShardId
             : public Column<4, NKikimr::NScheme::NTypeIds::String>
         {
         };
@@ -359,7 +359,7 @@ struct TVolumeSchema
         {
         };
 
-        struct FollowerScaleUnitId
+        struct FollowerShardId
             : public Column<6, NKikimr::NScheme::NTypeIds::String>
         {
         };
@@ -378,9 +378,9 @@ struct TVolumeSchema
             Uuid,
             CreatedAt,
             LeaderDiskId,
-            LeaderScaleUnitId,
+            LeaderShardId,
             FollowerDiskId,
-            FollowerScaleUnitId,
+            FollowerShardId,
             State,
             ErrorMessage>;
     };

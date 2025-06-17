@@ -45,7 +45,7 @@ void TVolumeActor::CompleteUpdateLeader(
     TTxVolume::TUpdateLeader& args)
 {
     auto response =
-        std::make_unique<TEvVolume::TEvNotifyFollowerVolumeResponse>(
+        std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
             MakeError(S_OK));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
@@ -88,7 +88,7 @@ void TVolumeActor::CompleteRemoveLeader(
     TTxVolume::TRemoveLeader& args)
 {
     auto response =
-        std::make_unique<TEvVolume::TEvNotifyFollowerVolumeResponse>(
+        std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
             MakeError(S_OK));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
@@ -108,7 +108,7 @@ void TVolumeActor::CreateLeaderLink(
         NCloud::Reply(
             ctx,
             *requestInfo,
-            std::make_unique<TEvVolume::TEvNotifyFollowerVolumeResponse>(
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
                 MakeError(S_ALREADY)));
         return;
     }
@@ -131,7 +131,7 @@ void TVolumeActor::DestroyLeaderLink(
         NCloud::Reply(
             ctx,
             *requestInfo,
-            std::make_unique<TEvVolume::TEvNotifyFollowerVolumeResponse>(
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
                 MakeError(S_ALREADY)));
         return;
     }
@@ -139,8 +139,8 @@ void TVolumeActor::DestroyLeaderLink(
     ExecuteTx<TRemoveLeader>(ctx, std::move(requestInfo), std::move(link));
 }
 
-void TVolumeActor::HandleNotifyFollowerVolume(
-    const TEvVolume::TEvNotifyFollowerVolumeRequest::TPtr& ev,
+void TVolumeActor::HandleUpdateLinkOnFollower(
+    const TEvVolume::TEvUpdateLinkOnFollowerRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -148,9 +148,9 @@ void TVolumeActor::HandleNotifyFollowerVolume(
     auto link = TLeaderFollowerLink{
         .LinkUUID = msg->Record.GetLinkUUID(),
         .LeaderDiskId = msg->Record.GetLeaderDiskId(),
-        .LeaderScaleUnitId = msg->Record.GetLeaderScaleUnitId(),
+        .LeaderShardId = msg->Record.GetLeaderShardId(),
         .FollowerDiskId = msg->Record.GetDiskId(),
-        .FollowerScaleUnitId = msg->Record.GetFollowerScaleUnitId()};
+        .FollowerShardId = msg->Record.GetFollowerShardId()};
 
     LOG_INFO(
         ctx,
@@ -158,25 +158,18 @@ void TVolumeActor::HandleNotifyFollowerVolume(
         "%s Update link %s on follower %s",
         LogTitle.GetWithTime().c_str(),
         link.Describe().c_str(),
-        NProto::EFollowerNotificationReason_Name(msg->Record.GetReason())
-            .c_str());
+        NProto::ELinkAction_Name(msg->Record.GetAction()).c_str());
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    switch (msg->Record.GetReason()) {
-        case NProto::FOLLOWER_NOTIFICATION_REASON_CREATED: {
-            CreateLeaderLink(
-                std::move(requestInfo),
-                std::move(link),
-                ctx);
+    switch (msg->Record.GetAction()) {
+        case NProto::LINK_ACTION_CREATE: {
+            CreateLeaderLink(std::move(requestInfo), std::move(link), ctx);
             break;
         }
-        case NProto::FOLLOWER_NOTIFICATION_REASON_DESTROYED: {
-            DestroyLeaderLink(
-                std::move(requestInfo),
-                std::move(link),
-                ctx);
+        case NProto::LINK_ACTION_DESTROY: {
+            DestroyLeaderLink(std::move(requestInfo), std::move(link), ctx);
             break;
         }
         default: {

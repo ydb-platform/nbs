@@ -11,9 +11,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString IdForPrint(const TString& diskId, const TString& scaleUnitId)
+TString IdForPrint(const TString& diskId, const TString& shardId)
 {
-    return scaleUnitId ? (scaleUnitId + "/" + diskId) : diskId;
+    return shardId ? (shardId + "/" + diskId) : diskId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -22,12 +22,12 @@ TString IdForPrint(const TString& diskId, const TString& scaleUnitId)
 
 TString TLeaderFollowerLink::LeaderDiskIdForPrint() const
 {
-    return IdForPrint(LeaderDiskId, LeaderScaleUnitId);
+    return IdForPrint(LeaderDiskId, LeaderShardId);
 }
 
 TString TLeaderFollowerLink::FollowerDiskIdForPrint() const
 {
-    return IdForPrint(FollowerDiskId, FollowerScaleUnitId);
+    return IdForPrint(FollowerDiskId, FollowerShardId);
 }
 
 TString TLeaderFollowerLink::Describe() const
@@ -55,9 +55,9 @@ bool TLeaderFollowerLink::Match(const TLeaderFollowerLink& rhs) const
     {
         return std::tie(
             o.LeaderDiskId,
-            o.LeaderScaleUnitId,
+            o.LeaderShardId,
             o.FollowerDiskId,
-            o.FollowerScaleUnitId);
+            o.FollowerShardId);
     };
     return withoutUUID(*this) == withoutUUID(rhs);
 }

@@ -129,19 +129,18 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             Y_UNUSED(runtime);
 
             if (ev->GetTypeRewrite() ==
-                TEvVolume::EvNotifyFollowerVolumeRequest)
+                TEvVolume::EvUpdateLinkOnFollowerRequest)
             {
                 ++followerNotificationCount;
 
                 const auto* msg =
-                    ev->Get<TEvVolume::TEvNotifyFollowerVolumeRequest>();
+                    ev->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
                 UNIT_ASSERT_VALUES_EQUAL(
                     "vol-1",
                     msg->Record.GetLeaderDiskId());
                 UNIT_ASSERT_EQUAL(
-                    NProto::EFollowerNotificationReason::
-                        FOLLOWER_NOTIFICATION_REASON_DESTROYED,
-                    msg->Record.GetReason());
+                    NProto::ELinkAction::LINK_ACTION_DESTROY,
+                    msg->Record.GetAction());
             }
             return false;
         };

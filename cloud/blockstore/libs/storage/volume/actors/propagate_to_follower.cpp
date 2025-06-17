@@ -46,23 +46,20 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
         TryCount);
 
     auto request =
-        std::make_unique<TEvVolume::TEvNotifyFollowerVolumeRequest>();
+        std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
     request->Record.SetLinkUUID(Link.LinkUUID);
     request->Record.SetDiskId(Link.FollowerDiskId);
-    request->Record.SetFollowerScaleUnitId(Link.FollowerScaleUnitId);
+    request->Record.SetFollowerShardId(Link.FollowerShardId);
     request->Record.SetLeaderDiskId(Link.LeaderDiskId);
-    request->Record.SetLeaderScaleUnitId(Link.LeaderScaleUnitId);
+    request->Record.SetLeaderShardId(Link.LeaderShardId);
 
     switch (Reason) {
         case EReason::Creation: {
-            request->Record.SetReason(NProto::EFollowerNotificationReason::
-                                          FOLLOWER_NOTIFICATION_REASON_CREATED);
+            request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_CREATE);
             break;
         }
         case EReason::Destruction: {
-            request->Record.SetReason(
-                NProto::EFollowerNotificationReason::
-                    FOLLOWER_NOTIFICATION_REASON_DESTROYED);
+            request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
             break;
         }
     }
@@ -75,7 +72,7 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
 }
 
 void TPropagateLinkToFollowerActor::HandlePersistedOnFollower(
-    const TEvVolume::TEvNotifyFollowerVolumeResponse::TPtr& ev,
+    const TEvVolume::TEvUpdateLinkOnFollowerResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* message = ev->Get();
@@ -144,7 +141,7 @@ STFUNC(TPropagateLinkToFollowerActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvVolume::TEvNotifyFollowerVolumeResponse,
+            TEvVolume::TEvUpdateLinkOnFollowerResponse,
             HandlePersistedOnFollower);
 
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);

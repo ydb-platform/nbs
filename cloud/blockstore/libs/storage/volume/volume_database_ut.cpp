@@ -1290,18 +1290,18 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             .Link = TLeaderFollowerLink{
                 .LinkUUID = "x",
                 .LeaderDiskId = "vol0",
-                .LeaderScaleUnitId = "su0",
+                .LeaderShardId = "su0",
                 .FollowerDiskId = "vol1",
-                .FollowerScaleUnitId = "su1"}};
+                .FollowerShardId = "su1"}};
 
         TFollowerDiskInfo follower2{
             .Link =
                 TLeaderFollowerLink{
                     .LinkUUID = "y",
                     .LeaderDiskId = "vol0",
-                    .LeaderScaleUnitId = "su0",
+                    .LeaderShardId = "su0",
                     .FollowerDiskId = "vol2",
-                    .FollowerScaleUnitId = "su1"},
+                    .FollowerShardId = "su1"},
             .State = TFollowerDiskInfo::EState::Preparing,
             .MigratedBytes = 1_MB};
 

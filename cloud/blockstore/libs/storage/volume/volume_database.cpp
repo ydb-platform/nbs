@@ -718,12 +718,11 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
             NIceDb::TUpdate<TTable::CreatedAt>(
                 follower.CreatedAt.MicroSeconds()),
             NIceDb::TUpdate<TTable::LeaderDiskId>(follower.Link.LeaderDiskId),
-            NIceDb::TUpdate<TTable::LeaderScaleUnitId>(
-                follower.Link.LeaderScaleUnitId),
+            NIceDb::TUpdate<TTable::LeaderShardId>(follower.Link.LeaderShardId),
             NIceDb::TUpdate<TTable::FollowerDiskId>(
                 follower.Link.FollowerDiskId),
-            NIceDb::TUpdate<TTable::FollowerScaleUnitId>(
-                follower.Link.FollowerScaleUnitId),
+            NIceDb::TUpdate<TTable::FollowerShardId>(
+                follower.Link.FollowerShardId),
             NIceDb::TUpdate<TTable::State>(static_cast<ui32>(follower.State)),
             NIceDb::TUpdate<TTable::ErrorMessage>(follower.ErrorMessage));
 
@@ -773,10 +772,9 @@ bool TVolumeDatabase::ReadFollowers(TFollowerDisks& followers)
             .Link{
                 .LinkUUID = it.GetValue<TTable::Uuid>(),
                 .LeaderDiskId = it.GetValue<TTable::LeaderDiskId>(),
-                .LeaderScaleUnitId = it.GetValue<TTable::LeaderScaleUnitId>(),
+                .LeaderShardId = it.GetValue<TTable::LeaderShardId>(),
                 .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
-                .FollowerScaleUnitId =
-                    it.GetValue<TTable::FollowerScaleUnitId>()},
+                .FollowerShardId = it.GetValue<TTable::FollowerShardId>()},
             .CreatedAt =
                 TInstant::MicroSeconds(it.GetValue<TTable::CreatedAt>()),
             .State = static_cast<TFollowerDiskInfo::EState>(
@@ -806,11 +804,10 @@ void TVolumeDatabase::WriteLeader(const TLeaderDiskInfo& leader)
         .Update(
             NIceDb::TUpdate<TTable::CreatedAt>(leader.CreatedAt.MicroSeconds()),
             NIceDb::TUpdate<TTable::LeaderDiskId>(leader.Link.LeaderDiskId),
-            NIceDb::TUpdate<TTable::LeaderScaleUnitId>(
-                leader.Link.LeaderScaleUnitId),
+            NIceDb::TUpdate<TTable::LeaderShardId>(leader.Link.LeaderShardId),
             NIceDb::TUpdate<TTable::FollowerDiskId>(leader.Link.FollowerDiskId),
-            NIceDb::TUpdate<TTable::FollowerScaleUnitId>(
-                leader.Link.FollowerScaleUnitId),
+            NIceDb::TUpdate<TTable::FollowerShardId>(
+                leader.Link.FollowerShardId),
             NIceDb::TUpdate<TTable::State>(static_cast<ui32>(leader.State)),
             NIceDb::TUpdate<TTable::ErrorMessage>(leader.ErrorMessage));
 }
@@ -839,10 +836,9 @@ bool TVolumeDatabase::ReadLeaders(TLeaderDisks& leaders)
             .Link{
                 .LinkUUID = it.GetValue<TTable::Uuid>(),
                 .LeaderDiskId = it.GetValue<TTable::LeaderDiskId>(),
-                .LeaderScaleUnitId = it.GetValue<TTable::LeaderScaleUnitId>(),
+                .LeaderShardId = it.GetValue<TTable::LeaderShardId>(),
                 .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
-                .FollowerScaleUnitId =
-                    it.GetValue<TTable::FollowerScaleUnitId>()},
+                .FollowerShardId = it.GetValue<TTable::FollowerShardId>()},
             .CreatedAt =
                 TInstant::MicroSeconds(it.GetValue<TTable::CreatedAt>()),
             .State = static_cast<TLeaderDiskInfo::EState>(
