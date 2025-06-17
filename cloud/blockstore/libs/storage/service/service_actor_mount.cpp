@@ -117,6 +117,7 @@ void TServiceActor::HandleMountVolume(
 {
     auto* msg = ev->Get();
     const auto& diskId = msg->Record.GetDiskId();
+    const auto& clientId = msg->Record.GetHeaders().GetClientId();
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -143,6 +144,7 @@ void TServiceActor::HandleMountVolume(
                 RdmaClient,
                 Counters,
                 SharedCounters,
+                clientId,
                 TemporaryServer));
     }
 

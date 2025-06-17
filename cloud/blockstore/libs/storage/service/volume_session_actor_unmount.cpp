@@ -426,9 +426,11 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
                     TraceSerializer,
                     EndpointEventHandler,
                     SelfId(),
+                    VolumeInfo->SessionId,
+                    clientId,
+                    TemporaryServer,
                     VolumeInfo->DiskId,
-                    TabletId
-                ));
+                    TabletId));
             VolumeInfo->VolumeClientActor = VolumeClient;
         }
 

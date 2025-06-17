@@ -21,6 +21,8 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -53,6 +55,7 @@ private:
     const NRdma::IClientPtr RdmaClient;
     const std::shared_ptr<NKikimr::TTabletCountersBase> Counters;
     const TSharedServiceCountersPtr SharedCounters;
+    const TString InitialClientId;
     const bool TemporaryServer;
 
     TLogTitle LogTitle{
@@ -92,6 +95,7 @@ public:
         NRdma::IClientPtr rdmaClient,
         std::shared_ptr<NKikimr::TTabletCountersBase> counters,
         TSharedServiceCountersPtr sharedCounters,
+        TString clientId,
         bool temporaryServer)
         : VolumeInfo(std::move(volumeInfo))
         , Config(std::move(config))
@@ -103,6 +107,7 @@ public:
         , RdmaClient(std::move(rdmaClient))
         , Counters(std::move(counters))
         , SharedCounters(std::move(sharedCounters))
+        , InitialClientId(std::move(clientId))
         , TemporaryServer(temporaryServer)
     {}
 

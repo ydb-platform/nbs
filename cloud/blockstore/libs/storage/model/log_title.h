@@ -23,11 +23,13 @@ public:
         Volume,
         Partition,
         Session,
+        Client,
     };
 
 private:
     const EType Type;
     const TString SessionId;
+    const TString ClientId;
     const ui64 StartTime;
     const ui32 PartitionIndex = 0;
     const ui32 PartitionCount = 0;
@@ -35,6 +37,7 @@ private:
 
     ui64 TabletId = 0;
     ui64 Generation = 0;
+    ui32 PipeGeneration = 0;
     TString DiskId;
     TString CachedPrefix;
 
@@ -58,6 +61,15 @@ public:
         bool temporaryServer,
         ui64 startTime);
 
+    // Constructor for Client
+    TLogTitle(
+        ui64 tabletId,
+        TString sessionId,
+        TString clientId,
+        TString diskId,
+        bool temporaryServer,
+        ui64 startTime);
+
     static TString
     GetPartitionPrefix(ui64 tabletId, ui32 partitionIndex, ui32 partitionCount);
 
@@ -70,12 +82,14 @@ public:
     void SetDiskId(TString diskId);
     void SetGeneration(ui32 generation);
     void SetTabletId(ui64 tabletId);
+    void SetPipeGeneration(ui32 pipeGeneration);
 
 private:
     void Rebuild();
     void RebuildForVolume();
     void RebuildForPartition();
     void RebuildForSession();
+    void RebuildForClient();
     TString GetPartitionPrefix() const;
 };
 

@@ -75,6 +75,9 @@ void TVolumeSessionActor::HandleDescribeVolumeResponse(
                 TraceSerializer,
                 EndpointEventHandler,
                 SelfId(),
+                VolumeInfo->SessionId,
+                InitialClientId,
+                TemporaryServer,
                 VolumeInfo->DiskId,
                 TabletId
             ));
@@ -362,6 +365,7 @@ IActorPtr CreateVolumeSessionActor(
     NRdma::IClientPtr rdmaClient,
     std::shared_ptr<NKikimr::TTabletCountersBase> counters,
     TSharedServiceCountersPtr sharedCounters,
+    TString clientId,
     bool temporaryServer)
 {
     return std::make_unique<TVolumeSessionActor>(
@@ -375,6 +379,7 @@ IActorPtr CreateVolumeSessionActor(
         std::move(rdmaClient),
         std::move(counters),
         std::move(sharedCounters),
+        std::move(clientId),
         temporaryServer);
 }
 
