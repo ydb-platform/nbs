@@ -841,7 +841,8 @@ void TBootstrapYdb::WarmupBSGroupConnections()
 void TBootstrapYdb::InitRdmaRequestServer()
 {
     // TODO: read config
-    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>();
+    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>(
+        Configs->RdmaConfig->GetServer());
 
     RdmaRequestServer = ServerModuleFactories->RdmaServerFactory(
         Logging,

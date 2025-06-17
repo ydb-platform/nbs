@@ -1070,7 +1070,7 @@ void TClient::ScheduleUploadStats()
                 p->UploadStats();
                 p->ScheduleUploadStats();
             }
-        }/*, TStringBuilder() << __LOCATION__.File << ":" << __LOCATION__.Line*/);
+        });
 }
 
 bool TClient::InitControlEndpoint()
