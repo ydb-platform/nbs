@@ -178,7 +178,10 @@ func (s *service) prepareZoneIDForExistingDisk(
 	}
 
 	if diskMeta == nil {
-		return "", nil
+		return "", errors.NewInvalidArgumentError(
+			"no such disk: %v",
+			diskID,
+		)
 	}
 
 	if diskMeta.ZoneID != diskID.ZoneId &&
@@ -205,13 +208,13 @@ func (s *service) prepareZoneID(
 		return req.DiskId.ZoneId, nil
 	}
 
-	existingZoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, req.DiskId.DiskId)
 	if err != nil {
 		return "", err
 	}
 
-	if len(existingZoneID) > 0 {
-		return existingZoneID, nil
+	if diskMeta != nil {
+		return diskMeta.ZoneID, nil
 	}
 
 	return s.cellSelector.SelectCell(ctx, req), nil
@@ -513,13 +516,6 @@ func (s *service) ResizeDisk(
 		return "", err
 	}
 
-	if zoneID == "" {
-		return "", errors.NewInvalidArgumentError(
-			"no such disk: %v",
-			req.DiskId,
-		)
-	}
-
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.ResizeDisk",
@@ -549,13 +545,6 @@ func (s *service) AlterDisk(
 	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return "", err
-	}
-
-	if zoneID == "" {
-		return "", errors.NewInvalidArgumentError(
-			"no such disk: %v",
-			req.DiskId,
-		)
 	}
 
 	return s.taskScheduler.ScheduleTask(
@@ -731,13 +720,6 @@ func (s *service) StatDisk(
 		return nil, err
 	}
 
-	if zoneID == "" {
-		return nil, errors.NewInvalidArgumentError(
-			"no such disk: %v",
-			req.DiskId,
-		)
-	}
-
 	client, err := s.nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {
 		return nil, err
@@ -774,13 +756,6 @@ func (s *service) MigrateDisk(
 	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return "", err
-	}
-
-	if zoneID == "" {
-		return "", errors.NewInvalidArgumentError(
-			"no such disk: %v",
-			req.DiskId,
-		)
 	}
 
 	return s.taskScheduler.ScheduleTask(
@@ -860,13 +835,6 @@ func (s *service) DescribeDisk(
 	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
-	}
-
-	if zoneID == "" {
-		return nil, errors.NewInvalidArgumentError(
-			"no such disk: %v",
-			req.DiskId,
-		)
 	}
 
 	client, err := s.nbsFactory.GetClient(ctx, zoneID)
