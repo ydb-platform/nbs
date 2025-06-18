@@ -27,6 +27,8 @@ from contrib.ydb.tests.library.harness.kikimr_runner import \
 DEVICE_SIZE = 1024 ** 3  # 1 GiB
 DEVICES_PER_PATH = 6
 
+INACTIVE_CLIENTS_TIMEOUT = 2
+
 KNOWN_DEVICE_POOLS = {
     "KnownDevicePools": [
         {"Kind": "DEVICE_POOL_KIND_DEFAULT", "AllocationUnit": DEVICE_SIZE},
@@ -41,21 +43,32 @@ def start_ydb_cluster():
     ydb_cluster.stop()
 
 
+def apply_common_params_to_config(cfg):
+    cfg.files["storage"].NonReplicatedDontSuspendDevices = True
+    cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
+    cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
+    cfg.files["storage"].AcquireNonReplicatedDevices = True
+    cfg.files["storage"].InactiveClientsTimeout = INACTIVE_CLIENTS_TIMEOUT * 1000
+
+    cfg.files["server"].ServerConfig.VhostEnabled = True
+    cfg.files["server"].ServerConfig.VhostServerPath = yatest_common.binary_path(
+        "cloud/blockstore/vhost-server/blockstore-vhost-server")
+
+
 @pytest.fixture(name='nbs_with_dr')
 def start_nbs_daemon_with_dr(request, ydb):
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
+    apply_common_params_to_config(cfg)
     cfg.files["storage"].DisableLocalService = False
-    cfg.files["storage"].NonReplicatedDontSuspendDevices = True
-    cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
-    cfg.files["storage"].NonReplicatedAgentMinTimeout = request.param
-    cfg.files["storage"].NonReplicatedAgentMaxTimeout = request.param
-    cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
-    cfg.files["storage"].AcquireNonReplicatedDevices = True
-    cfg.files["server"].ServerConfig.VhostEnabled = True
-    cfg.files["server"].ServerConfig.VhostServerPath = yatest_common.binary_path(
-        "cloud/blockstore/vhost-server/blockstore-vhost-server")
+
+    timeout = 60000
+    if hasattr(request, 'param'):
+        timeout = request.param
+
+    cfg.files["storage"].NonReplicatedAgentMinTimeout = timeout
+    cfg.files["storage"].NonReplicatedAgentMaxTimeout = timeout
 
     daemon = start_nbs(cfg)
 
@@ -74,14 +87,8 @@ def start_nbs_daemon(ydb):
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
+    apply_common_params_to_config(cfg)
     cfg.files["storage"].DisableLocalService = True
-    cfg.files["storage"].NonReplicatedDontSuspendDevices = True
-    cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
-    cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
-    cfg.files["storage"].AcquireNonReplicatedDevices = True
-    cfg.files["server"].ServerConfig.VhostEnabled = True
-    cfg.files["server"].ServerConfig.VhostServerPath = yatest_common.binary_path(
-        "cloud/blockstore/vhost-server/blockstore-vhost-server")
 
     daemon = start_nbs(cfg)
 
@@ -185,7 +192,6 @@ def restart_volume(client, disk_id):
     restart_tablet(client, tablet_id)
 
 
-@pytest.mark.parametrize("nbs_with_dr", [(60000)], indirect=["nbs_with_dr"])
 def test_should_mount_volume_with_unknown_devices(
         nbs_with_dr,
         nbs,
@@ -272,7 +278,6 @@ def test_should_mount_volume_with_unknown_devices(
     session.unmount_volume()
 
 
-@pytest.mark.parametrize("nbs_with_dr", [(6000)], indirect=["nbs_with_dr"])
 def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_configurators):
 
     logger = logging.getLogger("client")
@@ -404,7 +409,6 @@ def test_should_mount_volume_with_unavailable_agents(
     session.unmount_volume()
 
 
-@pytest.mark.parametrize("nbs_with_dr", [(6000)], indirect=["nbs_with_dr"])
 def test_should_stop_not_restored_endpoint(nbs_with_dr,
                                            nbs,
                                            agent_ids,
@@ -412,7 +416,7 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
 
     client = CreateTestClient(f"localhost:{nbs.port}")
 
-    test_disk_id = "vol0-multiple_endpoints"
+    test_disk_id = "vol0"
 
     agent_id = agent_ids[0]
     configurator = disk_agent_configurators[0]
@@ -422,7 +426,6 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
-    # create a volume
     client.create_volume(
         disk_id=test_disk_id,
         block_size=4096,
@@ -430,9 +433,6 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
         storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
         cloud_id="test")
 
-    # Start a lot of blockstore-vhost-server processes.
-    # SOCKET_COUNT = 1
-    # for i in range(0, SOCKET_COUNT):
     socket = tempfile.NamedTemporaryFile()
     client.start_endpoint(
         unix_socket_path=socket.name,
@@ -444,7 +444,8 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
     )
 
     nbs.kill()
-    time.sleep(10)
+    # sleep time should not be less than InactiveClientsTimeout parameter
+    time.sleep(INACTIVE_CLIENTS_TIMEOUT + 1)
     nbs.start()
 
     client.stop_endpoint(

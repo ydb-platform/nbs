@@ -25,7 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<TEvVolume::TEvRemoveClientResponse> CreateReleaseRespose(
+std::unique_ptr<TEvVolume::TEvRemoveClientResponse> CreateReleaseResponse(
     const NProto::TError& error,
     TString diskId,
     TString clientId,
@@ -119,7 +119,7 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
         NCloud::Reply(
             ctx,
             *cr->RequestInfo,
-            CreateReleaseRespose(
+            CreateReleaseResponse(
                 error,
                 cr->DiskId,
                 cr->GetClientId(),
@@ -243,7 +243,7 @@ void TVolumeActor::CompleteRemoveClient(
         NCloud::Reply(
             ctx,
             *args.RequestInfo,
-            CreateReleaseRespose(args.Error, diskId, clientId, TabletID()));
+            CreateReleaseResponse(args.Error, diskId, clientId, TabletID()));
         return;
     }
 
@@ -273,7 +273,7 @@ void TVolumeActor::CompleteRemoveClient(
         NCloud::Reply(
             ctx,
             *args.RequestInfo,
-            CreateReleaseRespose(args.Error, diskId, clientId, TabletID()));
+            CreateReleaseResponse(args.Error, diskId, clientId, TabletID()));
     }
 
     OnClientListUpdate(ctx);
