@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/vfs_fuse/public.h>
 
@@ -8,9 +7,6 @@
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <library/cpp/threading/future/future.h>
-
-#include <util/generic/intrlist.h>
-#include <util/generic/strbuf.h>
 
 #include <memory>
 
@@ -55,68 +51,9 @@ private:
     // only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
-    enum class EWriteDataEntryStatus
-    {
-        NotStarted,
-        Pending,
-        PendingFlushRequested,
-        Cached,
-        CachedFlushRequested,
-        Finished
-    };
-
-    struct TWriteDataEntry
-        : public TIntrusiveListItem<TWriteDataEntry>
-    {
-        std::shared_ptr<NProto::TWriteDataRequest> Request;
-        TString RequestBuffer;
-        NThreading::TPromise<NProto::TWriteDataResponse> Promise;
-        NThreading::TPromise<void> FinishedPromise;
-        EWriteDataEntryStatus Status = EWriteDataEntryStatus::NotStarted;
-
-        // Is not valid when WriteDataRequestStatus is Finished
-        TStringBuf Buffer;
-
-        explicit TWriteDataEntry(
-                std::shared_ptr<NProto::TWriteDataRequest> request)
-            : Request(std::move(request))
-            , RequestBuffer(std::move(*Request->MutableBuffer()))
-            , Buffer(RequestBuffer)
-        {
-            Buffer.Skip(Request->GetBufferOffset());
-            Request->ClearBuffer();
-            Request->ClearBufferOffset();
-        }
-
-        ui64 Begin() const
-        {
-            return Request->GetOffset();
-        }
-
-        ui64 End() const
-        {
-            return Request->GetOffset() + Buffer.size();
-        }
-    };
-
-    struct TWriteDataEntryPart
-    {
-        const TWriteDataEntry* Source = nullptr;
-        ui64 OffsetInSource = 0;
-        ui64 Offset = 0;
-        ui64 Length = 0;
-
-        ui64 End() const
-        {
-            return Offset + Length;
-        }
-
-        bool operator==(const TWriteDataEntryPart& p) const
-        {
-            return std::tie(Source, OffsetInSource, Offset, Length) ==
-                std::tie(p.Source, p.OffsetInSource, p.Offset, p.Length);
-        }
-    };
+    enum class EWriteDataEntryStatus;
+    struct TWriteDataEntry;
+    struct TWriteDataEntryPart;
 
     static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
         const TDeque<TWriteDataEntry*>& entries,
