@@ -287,10 +287,21 @@ private:
         TString ShardNodeName;
     };
 
-    using TBaseMap = TMap<TNodeRefsKey, TNodeRefsRow, TLess<TNodeRefsKey>, TStlAllocator>;
-    NCloud::TLRUCache<TNodeRefsKey, TNodeRefsRow, TNodeRefsKeyHash, TBaseMap> NodeRefs;
+    NCloud::TLRUCache<
+        TNodeRefsKey,
+        TNodeRefsRow,
+        TNodeRefsKeyHash,
+        TMap<TNodeRefsKey, TNodeRefsRow, TLess<TNodeRefsKey>, TStlAllocator>>
+        NodeRefs;
+
     bool IsNodeRefsEvictionObserved = false;
     bool IsNodeRefsExhaustive = false;
+
+    void NodeRefsEvictionObserved()
+    {
+        IsNodeRefsEvictionObserved = true;
+        IsNodeRefsExhaustive = false;
+    }
 
 public:
     struct TWriteNodeRequest

@@ -10,19 +10,22 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
 template<typename T>
 concept has_reserve = requires(T t) {
     { t.reserve(42) } -> std::same_as<void>;
 };
 
+} // namespace
+
 // A simple wrapper around THashMap that also evicts the least recently used
 // elements when the capacity is reached. It keeps track of the order in which
 // keys are accessed
 template <typename TKey, typename TValue, typename THashFnc = THash<TKey>, 
-    typename TBaseType = THashMap<TKey, TValue, THashFnc, TEqualTo<TKey>, TStlAllocator>>
-class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFnc, TBaseType>>
+    typename TBase = THashMap<TKey, TValue, THashFnc, TEqualTo<TKey>, TStlAllocator>>
+class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFnc, TBase>>
 {
-    using TBase = TBaseType;
     using TOrderList = TList<TKey, TStlAllocator>;
     using TOrderPositions = THashMap<
         TKey,

@@ -18,9 +18,9 @@ void TInMemoryIndexState::Reset(
 {
     Nodes.SetMaxSize(nodesCapacity);
     NodeAttrs.SetMaxSize(nodeAttrsCapacity);
-    if(NodeRefs.size() == NodeRefs.capacity() && nodeRefsCapacity < NodeRefs.capacity()) {
-        IsNodeRefsExhaustive = false;
-        IsNodeRefsEvictionObserved = true;
+    if (NodeRefs.size() > nodeRefsCapacity)
+    {
+        NodeRefsEvictionObserved();
     }
     NodeRefs.SetCapacity(nodeRefsCapacity);
 }
@@ -284,13 +284,9 @@ bool TInMemoryIndexState::ReadNodeRefs(
                 minCommitId,
                 maxCommitId});
 
-            bytes += sizeof(refs.back().NodeId)
-                + refs.back().Name.size()
-                + sizeof(refs.back().ChildNodeId)
-                + refs.back().ShardId.size()
-                + refs.back().ShardNodeName.size()
-                + sizeof(refs.back().MinCommitId)
-                + sizeof(refs.back().MaxCommitId);
+            // FIXME: bytes should represent the size of entire entry, not just
+            // the name
+            bytes += refs.back().Name.size();
         }
 
         ++it;
@@ -342,15 +338,14 @@ void TInMemoryIndexState::WriteNodeRef(
     const auto key = TNodeRefsKey(nodeId, name);
     auto it = NodeRefs.find(key);
     TNodeRefsRow value{
-            .CommitId = commitId,
-            .ChildId = childNode,
-            .ShardId = shardId,
-            .ShardNodeName = shardNodeName};
-    
-    if(it == NodeRefs.end()) {
-        if(NodeRefs.size() == NodeRefs.capacity()) {
-            IsNodeRefsEvictionObserved = true;
-            IsNodeRefsExhaustive = false;           
+        .CommitId = commitId,
+        .ChildId = childNode,
+        .ShardId = shardId,
+        .ShardNodeName = shardNodeName};
+
+    if (it == NodeRefs.end()) {
+        if (NodeRefs.size() == NodeRefs.capacity()) {
+            NodeRefsEvictionObserved();
         }
         NodeRefs.emplace(key, value);
     } else {
