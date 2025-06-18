@@ -544,7 +544,7 @@ public:
         RequestStats = StatsRegistry->GetFileSystemStats(
             Config->GetFileSystemId(),
             Config->GetClientId(),
-            "", // folderId, empty until session is created
+            "", // folderId, empty until the session is created
             ""); // cloudId
 
         auto callContext = MakeIntrusive<TCallContext>(
