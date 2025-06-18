@@ -27,6 +27,8 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/tests/library
 )
+SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img)
+DEPENDS(cloud/storage/core/tools/testing/qemu/image-noble)
 SET_APPEND(QEMU_INVOKE_TEST YES)
 SET_APPEND(QEMU_VIRTIO none)
 SET_APPEND(QEMU_ENABLE_KVM True)

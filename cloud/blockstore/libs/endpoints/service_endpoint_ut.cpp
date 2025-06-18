@@ -268,6 +268,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             endpointStorage,
             {{ ipcType, listener }},
             nullptr,    // nbdDeviceFactory
+            NBD::CreateErrorHandlerMapStub(),
             {}          // options
         );
         endpointManager->RestoreEndpoints().Wait(5s);
@@ -352,6 +353,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             endpointStorage,
             {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
             nullptr,    // nbdDeviceFactory
+            NBD::CreateErrorHandlerMapStub(),
             {}          // options
         );
         endpointManager->RestoreEndpoints().Wait(5s);
@@ -555,6 +557,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
             nullptr,    // nbdDeviceFactory
+            NBD::CreateErrorHandlerMapStub(),
             {}          // options
         );
 
@@ -596,6 +599,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             endpointStorage,
             {},         // listeners
             nullptr,    // nbdDeviceFactory
+            NBD::CreateErrorHandlerMapStub(),
             {}          // options
         );
 
@@ -633,6 +637,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             endpointStorage,
             {},         // listeners
             nullptr,    // nbdDeviceFactory
+            NBD::CreateErrorHandlerMapStub(),
             {}          // options
         );
 
@@ -692,6 +697,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
             nullptr,    // nbdDeviceFactory
+            NBD::CreateErrorHandlerMapStub(),
             {}          // options
         );
 
@@ -764,6 +770,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             endpointStorage,
             {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
             nullptr,    // nbdDeviceFactory
+            NBD::CreateErrorHandlerMapStub(),
             {}          // options
         );
         endpointManager->RestoreEndpoints().Wait(5s);
@@ -924,6 +931,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
             nullptr,    // nbdDeviceFactory
+            NBD::CreateErrorHandlerMapStub(),
             {}          // options
         );
         endpointManager->RestoreEndpoints().Wait(5s);
@@ -1035,6 +1043,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
             nullptr,    // nbdDeviceFactory
+            NBD::CreateErrorHandlerMapStub(),
             {}          // options
         );
 

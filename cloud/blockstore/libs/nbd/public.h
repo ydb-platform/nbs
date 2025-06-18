@@ -38,4 +38,7 @@ using ILimiterPtr = std::shared_ptr<ILimiter>;
 struct IErrorHandler;
 using IErrorHandlerPtr = std::shared_ptr<IErrorHandler>;
 
+struct IErrorHandlerMap;
+using IErrorHandlerMapPtr = std::shared_ptr<IErrorHandlerMap>;
+
 }   // namespace NCloud::NBlockStore::NBD

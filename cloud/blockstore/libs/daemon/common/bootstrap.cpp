@@ -44,6 +44,7 @@
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
+#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
@@ -380,12 +381,19 @@ void TBootstrapBase::Init()
 
         STORAGE_INFO("NBD Server initialized");
 
+        if (Configs->ServerConfig->GetNbdNetlink()) {
+            NbdErrorHandlerMap = NBD::CreateErrorHandlerMap();
+        } else {
+            NbdErrorHandlerMap = NBD::CreateErrorHandlerMapStub();
+        }
+
         auto nbdEndpointListener = CreateNbdEndpointListener(
             NbdServer,
             Logging,
             ServerStats,
             Configs->ServerConfig->GetChecksumFlags(),
-            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize());
+            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
+            NbdErrorHandlerMap);
 
         endpointListeners.emplace(
             NProto::IPC_NBD,
@@ -583,6 +591,7 @@ void TBootstrapBase::Init()
         std::move(endpointStorage),
         std::move(endpointListeners),
         std::move(nbdDeviceFactory),
+        NbdErrorHandlerMap,
         std::move(endpointManagerOptions));
 
     STORAGE_INFO("EndpointManager initialized");
