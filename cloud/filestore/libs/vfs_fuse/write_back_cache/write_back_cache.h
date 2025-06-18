@@ -55,45 +55,48 @@ private:
     // only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
-    enum class EFlushStatus
+    enum class EWriteDataEntryStatus
     {
         NotStarted,
-        Started,
+        Pending,
+        PendingFlushRequested,
+        Cached,
+        CachedFlushRequested,
         Finished
     };
 
     struct TWriteDataEntry
         : public TIntrusiveListItem<TWriteDataEntry>
     {
-        ui64 Handle;
-        ui64 Offset;
-        ui64 Length;
-        // serialized TWriteDataRequest
-        TStringBuf SerializedRequest;
-        TString FileSystemId;
-        NProto::THeaders RequestHeaders;
+        std::shared_ptr<NProto::TWriteDataRequest> Request;
+        TString RequestBuffer;
+        NThreading::TPromise<NProto::TWriteDataResponse> Promise;
+        NThreading::TPromise<void> FinishedPromise;
+        EWriteDataEntryStatus Status = EWriteDataEntryStatus::NotStarted;
 
-        TWriteDataEntry(
-                ui64 handle,
-                ui64 offset,
-                ui64 length,
-                TStringBuf serializedRequest,
-                TString fileSystemId,
-                NProto::THeaders requestHeaders)
-            : Handle(handle)
-            , Offset(offset)
-            , Length(length)
-            , SerializedRequest(serializedRequest)
-            , FileSystemId(std::move(fileSystemId))
-            , RequestHeaders(std::move(requestHeaders))
-        {}
+        // Is not valid when WriteDataRequestStatus is Finished
+        TStringBuf Buffer;
+
+        explicit TWriteDataEntry(
+                std::shared_ptr<NProto::TWriteDataRequest> request)
+            : Request(std::move(request))
+            , RequestBuffer(std::move(*Request->MutableBuffer()))
+            , Buffer(RequestBuffer)
+        {
+            Buffer.Skip(Request->GetBufferOffset());
+            Request->ClearBuffer();
+            Request->ClearBufferOffset();
+        }
+
+        ui64 Begin() const
+        {
+            return Request->GetOffset();
+        }
 
         ui64 End() const
         {
-            return Offset + Length;
+            return Request->GetOffset() + Buffer.size();
         }
-
-        EFlushStatus FlushStatus = EFlushStatus::NotStarted;
     };
 
     struct TWriteDataEntryPart
@@ -116,7 +119,7 @@ private:
     };
 
     static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TVector<TWriteDataEntry*>& entries,
+        const TDeque<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
         ui64 length);
 };

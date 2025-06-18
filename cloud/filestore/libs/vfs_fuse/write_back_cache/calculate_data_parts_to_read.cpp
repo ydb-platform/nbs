@@ -1,5 +1,6 @@
 #include "write_back_cache.h"
 
+#include <util/generic/deque.h>
 #include <util/generic/vector.h>
 
 #include <algorithm>
@@ -10,7 +11,7 @@ namespace NCloud::NFileStore::NFuse {
 
 // static
 auto TWriteBackCache::CalculateDataPartsToRead(
-    const TVector<TWriteDataEntry*>& entries,
+    const TDeque<TWriteDataEntry*>& entries,
     ui64 startingFromOffset,
     ui64 length) -> TVector<TWriteDataEntryPart>
 {
@@ -27,7 +28,7 @@ auto TWriteBackCache::CalculateDataPartsToRead(
     for (size_t i = 0; i < entries.size(); i++) {
         const auto* entry = entries[i];
 
-        auto pointBegin = entry->Offset;
+        auto pointBegin = entry->Begin();
         auto pointEnd = entry->End();
         if (length != 0) {
             // intersect with [startingFromOffset, length)
@@ -66,8 +67,8 @@ auto TWriteBackCache::CalculateDataPartsToRead(
         const auto partLength = currOffset - lastOffset;
         const auto& top = heap.front();
 
-        Y_DEBUG_ABORT_UNLESS(lastOffset >= top.Entry->Offset);
-        const auto offsetInSource = lastOffset - top.Entry->Offset;
+        Y_DEBUG_ABORT_UNLESS(lastOffset >= top.Entry->Begin());
+        const auto offsetInSource = lastOffset - top.Entry->Begin();
 
         if (!res.empty() &&
             res.back().Source == top.Entry &&

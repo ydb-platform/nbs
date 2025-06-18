@@ -14,18 +14,19 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 VERSION = 1;
-constexpr ui32 INVALID_POS = Max<ui32>();
+constexpr ui64 INVALID_POS = Max<ui64>();
 constexpr TStringBuf INVALID_MARKER = "invalid_entry_marker";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct THeader
+struct Y_PACKED THeader
 {
     ui32 Version = 0;
-    ui32 Capacity = 0;
-    ui32 ReadPos = 0;
-    ui32 WritePos = 0;
-    ui32 LastEntrySize = 0;
+    ui32 Reserved = 0; // alignment
+    ui64 Capacity = 0;
+    ui64 ReadPos = 0;
+    ui64 WritePos = 0;
+    ui64 LastEntrySize = 0;
 };
 
 struct Y_PACKED TEntryHeader
@@ -33,15 +34,6 @@ struct Y_PACKED TEntryHeader
     ui32 Size = 0;
     ui32 Checksum = 0;
 };
-
-void WriteEntry(IOutputStream& os, TStringBuf data)
-{
-    TEntryHeader eh;
-    eh.Size = data.size();
-    eh.Checksum = Crc32c(data.data(), data.size());
-    os.Write(&eh, sizeof(eh));
-    os.Write(data);
-}
 
 }   // namespace
 
@@ -53,7 +45,7 @@ private:
     TFileMap Map;
 
     char* Data = nullptr;
-    ui32 Count = 0;
+    ui64 Count = 0;
     const char* End = nullptr;
 
 private:
@@ -82,7 +74,12 @@ private:
         }
     }
 
-    ui32 VisitEntry(const TVisitor& visitor, ui32 pos) const
+    static ui64 SizeWithPadding(ui64 size)
+    {
+        return (size + sizeof(ui32) - 1) & ~(sizeof(ui32) - 1);
+    }
+
+    ui64 VisitEntry(const TVisitor& visitor, ui64 pos) const
     {
         const auto* b = Data + pos;
         if (b + sizeof(TEntryHeader) > End) {
@@ -101,21 +98,25 @@ private:
             return INVALID_POS;
         }
         visitor(eh->Checksum, {b + sizeof(TEntryHeader), eh->Size});
-        return pos + sizeof(TEntryHeader) + eh->Size;
+        return pos + SizeWithPadding(sizeof(TEntryHeader) + eh->Size);
     }
 
 public:
-    TImpl(const TString& filePath, ui32 capacity)
+    TImpl(const TString& filePath, ui64 capacity)
         : Map(filePath, TMemoryMapCommon::oRdWr)
     {
         Y_ABORT_UNLESS(sizeof(TEntryHeader) <= capacity);
+        Y_ABORT_UNLESS(capacity <= Max<size_t>() - sizeof(TEntryHeader));
 
-        const ui32 realSize = sizeof(THeader) + capacity;
-        if (Map.Length() < realSize) {
+        const ui64 realSize = sizeof(THeader) + capacity;
+        if (static_cast<ui64>(Map.Length()) < realSize) {
             Map.ResizeAndRemap(0, realSize);
         } else {
             Map.Map(0, realSize);
         }
+
+        Y_ABORT_UNLESS(Map.Ptr() != nullptr);
+        Y_ABORT_UNLESS(static_cast<ui64>(Map.Length()) >= realSize);
 
         if (Header()->Version) {
             Y_ABORT_UNLESS(Header()->Capacity == capacity);
@@ -139,13 +140,29 @@ public:
 public:
     bool PushBack(TStringBuf data)
     {
-        if (data.empty()) {
+        char* ptr = AllocateBack(data.size());
+        if (!ptr) {
             return false;
         }
 
-        const auto sz = data.size() + sizeof(TEntryHeader);
+        data.copy(ptr, data.size());
+        CompleteAllocation(ptr);
+        return true;
+    }
+
+    char* AllocateBack(size_t size)
+    {
+        if (size == 0) {
+            return nullptr;
+        }
+
+        if (size > Max<ui32>()) {
+            return nullptr;
+        }
+
+        const auto sz = SizeWithPadding(size + sizeof(TEntryHeader));
         if (sz > Header()->Capacity) {
-            return false;
+            return nullptr;
         }
         auto* ptr = Data + Header()->WritePos;
 
@@ -155,34 +172,41 @@ public:
             // and a buffer which is completely full
             if (Header()->ReadPos < Header()->WritePos) {
                 // we have a single contiguous occupied region
-                ui32 freeSpace = Header()->Capacity - Header()->WritePos;
-                if (freeSpace <= sz) {
+                ui64 freeSpace = Header()->Capacity - Header()->WritePos;
+                if (freeSpace < sz) {
                     if (Header()->ReadPos <= sz) {
                         // out of space
-                        return false;
+                        return nullptr;
                     }
 
-                    memset(ptr, 0, freeSpace);
+                    memset(ptr, 0, Min(sizeof(TEntryHeader), freeSpace));
                     ptr = Data;
                 }
             } else {
                 // we have two occupied regions
-                ui32 freeSpace = Header()->ReadPos - Header()->WritePos;
+                ui64 freeSpace = Header()->ReadPos - Header()->WritePos;
+                // there should remain free space between the occupied regions
                 if (freeSpace <= sz) {
                     // out of space
-                    return false;
+                    return nullptr;
                 }
             }
         }
 
-        TMemoryOutput mo(ptr, sz);
-        WriteEntry(mo, data);
+        auto* eh = reinterpret_cast<TEntryHeader*>(ptr);
+        *eh = TEntryHeader{.Size = static_cast<ui32>(size)};
 
         Header()->WritePos = ptr - Data + sz;
         Header()->LastEntrySize = sz;
         ++Count;
 
-        return true;
+        return ptr + sizeof(TEntryHeader);
+    }
+
+    void CompleteAllocation(char* ptr)
+    {
+        auto* eh = reinterpret_cast<TEntryHeader*>(ptr - sizeof(TEntryHeader));
+        eh->Checksum = Crc32c(ptr, eh->Size);
     }
 
     TStringBuf Front() const
@@ -246,13 +270,14 @@ public:
             return;
         }
 
-        Header()->ReadPos += sizeof(TEntryHeader) + data.size();
+        Header()->ReadPos +=
+            SizeWithPadding(sizeof(TEntryHeader) + data.size());
         --Count;
 
         SkipSlackSpace();
     }
 
-    ui32 Size() const
+    ui64 Size() const
     {
         return Count;
     }
@@ -283,7 +308,7 @@ public:
 
     void Visit(const TVisitor& visitor) const
     {
-        ui32 pos = Header()->ReadPos;
+        ui64 pos = Header()->ReadPos;
         while (pos > Header()->WritePos && pos != INVALID_POS) {
             pos = VisitEntry(visitor, pos);
         }
@@ -302,7 +327,7 @@ public:
 
 TFileRingBuffer::TFileRingBuffer(
         const TString& filePath,
-        ui32 capacity)
+        size_t capacity)
     : Impl(new TImpl(filePath, capacity))
 {}
 
@@ -311,6 +336,16 @@ TFileRingBuffer::~TFileRingBuffer() = default;
 bool TFileRingBuffer::PushBack(TStringBuf data)
 {
     return Impl->PushBack(data);
+}
+
+char* TFileRingBuffer::AllocateBack(size_t size)
+{
+    return Impl->AllocateBack(size);
+}
+
+void TFileRingBuffer::CompleteAllocation(char* ptr)
+{
+    Impl->CompleteAllocation(ptr);
 }
 
 TStringBuf TFileRingBuffer::Front() const
@@ -328,7 +363,7 @@ void TFileRingBuffer::PopFront()
     Impl->PopFront();
 }
 
-ui32 TFileRingBuffer::Size() const
+ui64 TFileRingBuffer::Size() const
 {
     return Impl->Size();
 }
