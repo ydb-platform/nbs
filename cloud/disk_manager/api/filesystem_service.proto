@@ -9,7 +9,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 
 service FilesystemService {
     // Returns operation with:
-    // response: google.protobuf.Empty
+    // response: CreateFilesystemResponse
     rpc Create(CreateFilesystemRequest) returns (Operation);
 
     // Returns operation with:
