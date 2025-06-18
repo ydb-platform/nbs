@@ -29,6 +29,8 @@ from contrib.ydb.tests.library.harness.kikimr_runner import \
 DEVICE_SIZE = 1024 ** 3  # 1 GiB
 DEVICES_PER_PATH = 6
 
+INACTIVE_CLIENTS_TIMEOUT = 2
+
 KNOWN_DEVICE_POOLS = {
     "KnownDevicePools": [
         {"Kind": "DEVICE_POOL_KIND_DEFAULT", "AllocationUnit": DEVICE_SIZE},
@@ -48,6 +50,7 @@ def apply_common_params_to_config(cfg):
     cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
     cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
     cfg.files["storage"].AcquireNonReplicatedDevices = True
+    cfg.files["storage"].InactiveClientsTimeout = INACTIVE_CLIENTS_TIMEOUT * 1000
 
     cfg.files["server"].ServerConfig.VhostEnabled = True
     cfg.files["server"].ServerConfig.VhostServerPath = yatest_common.binary_path(
@@ -443,11 +446,9 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
     )
 
     nbs.kill()
+    # sleep time should not be less than InactiveClientsTimeout parameter
+    time.sleep(INACTIVE_CLIENTS_TIMEOUT + 1)
     nbs.start()
-
-    client.stop_endpoint(
-        unix_socket_path=socket.name,
-    )
 
     client.stop_endpoint(
         unix_socket_path=socket.name,
