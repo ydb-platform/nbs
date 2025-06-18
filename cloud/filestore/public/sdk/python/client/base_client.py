@@ -21,6 +21,7 @@ CLIENT_METHODS = [
     "create_checkpoint",
     "destroy_checkpoint",
     "describe_filestore_model",
+    "execute_action",
 ]
 
 ENDPOINT_METHODS = [
