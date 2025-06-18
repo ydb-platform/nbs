@@ -449,6 +449,7 @@ NActors::IActorPtr CreateVolumeSessionActor(
     NRdma::IClientPtr rdmaClient,
     std::shared_ptr<NKikimr::TTabletCountersBase> counters,
     TSharedServiceCountersPtr sharedCounters,
+    TString clientId,
     bool temporaryServer);
 
 void RegisterAlterVolumeActor(

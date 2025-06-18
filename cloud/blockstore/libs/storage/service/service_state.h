@@ -84,7 +84,7 @@ struct TVolumeInfo
 
     ui64 TabletId = 0;
     TMaybe<NProto::TVolume> VolumeInfo;
-    TString SessionId;
+    const TString SessionId;
 
     NActors::TActorId VolumeSessionActor;
     NActors::TActorId VolumeClientActor;

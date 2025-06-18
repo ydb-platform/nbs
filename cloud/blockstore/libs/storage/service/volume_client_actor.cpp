@@ -9,15 +9,17 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -78,6 +80,8 @@ private:
     const ui64 TabletId;
     const NTabletPipe::TClientConfig ClientConfig;
 
+    TLogTitle LogTitle;
+
     ui32 Generation = 0;
     ui64 RequestId = 0;
 
@@ -91,6 +95,9 @@ public:
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         const TActorId& sessionActorId,
+        TString sessionId,
+        TString clientId,
+        bool temporaryServer,
         TString diskId,
         ui64 tabletId);
 
@@ -141,27 +148,38 @@ TVolumeClientActor::TVolumeClientActor(
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         const TActorId& sessionActorId,
+        TString sessionId,
+        TString clientId,
+        bool temporaryServer,
         TString diskId,
         ui64 tabletId)
     : TActor(&TThis::StateWork)
     , TraceSerializer(std::move(traceSerializer))
-    , EndpointEventHandler(endpointEventHandler)
+    , EndpointEventHandler(std::move(endpointEventHandler))
     , SessionActorId(sessionActorId)
     , DiskId(std::move(diskId))
     , TabletId(tabletId)
     , ClientConfig(CreateTabletPipeClientConfig(*config))
+    , LogTitle(
+          TabletId,
+          std::move(sessionId),
+          std::move(clientId),
+          DiskId,
+          temporaryServer,
+          GetCycleCount())
 {}
 
 void TVolumeClientActor::OnConnectionError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-         "Connection to volume with diskId %s (%lu) failed at %s: %s",
-         DiskId.Quote().data(),
-         TabletId,
-         ToString(ctx.Now()).data(),
-         FormatError(error).data());
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Connection to volume failed at %s: %s",
+        LogTitle.GetWithTime().c_str(),
+        ToString(ctx.Now()).c_str(),
+        FormatError(error).c_str());
 
     CancelActiveRequests();
 
@@ -196,20 +214,23 @@ void TVolumeClientActor::HandleConnect(
 
     if (msg->Status != NKikimrProto::OK) {
         auto error = MakeKikimrError(msg->Status, "Could not connect");
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Cannot connect to tablet %lu: %s",
-            msg->TabletId,
-            FormatError(error).data());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Cannot connect to tablet: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
         PipeClient = {};
 
         CancelActiveRequests();
         return;
     }
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-        "Connection to tablet: " <<
-        msg->TabletId <<
-        " has been established");
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Connection to tablet has been established",
+        LogTitle.GetWithTime().c_str());
     EndpointEventHandler->SwitchEndpointIfNeeded(DiskId, "volume connected");
 }
 
@@ -233,9 +254,11 @@ void TVolumeClientActor::HandleResetPipeClient(
 {
     Y_UNUSED(ev);
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Got request to close pipe for tablet %lu",
-        TabletId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Got request to close pipe for tablet",
+        LogTitle.GetWithTime().c_str());
 
     auto msg = std::make_unique<TEvServicePrivate::TEvVolumePipeReset>(GetCycleCount());
     NCloud::Send(ctx, SessionActorId, std::move(msg));
@@ -268,12 +291,15 @@ void TVolumeClientActor::HandleRequest(
     if (!PipeClient) {
         PipeClient = ctx.Register(CreateClient(SelfId(), TabletId, ClientConfig));
         ++Generation;
+        LogTitle.SetPipeGeneration(Generation);
     }
 
-    LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
-        "Forward request to volume: %lu (remote: %s)",
-        TabletId,
-        ToString(PipeClient).data());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Forward request to volume (remote: %s)",
+        LogTitle.GetWithTime().c_str(),
+        ToString(PipeClient).c_str());
 
     ui64 requestId = ++RequestId;
 
@@ -418,14 +444,16 @@ bool TVolumeClientActor::LogLateMessage(ui32 evType, const TActorContext& ctx)
 #define BLOCKSTORE_LOG_MESSAGE(name, ns)                                       \
     case ns::TEv##name##Request::EventType: {                                  \
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,                         \
-            "Late request : (0x%08X) %s request",                              \
+            "%s Late request : (0x%08X) %s request",                           \
+            LogTitle.GetWithTime().c_str(),                                    \
             evType,                                                            \
             #name);                                                            \
         break;                                                                 \
     }                                                                          \
     case ns::TEv##name##Response::EventType: {                                 \
         LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,                         \
-            "Late response : (0x%08X) %s response",                            \
+            "%s Late response : (0x%08X) %s response",                         \
+            LogTitle.GetWithTime().c_str(),                                    \
             evType,                                                            \
             #name);                                                            \
         break;                                                                 \
@@ -475,6 +503,9 @@ IActorPtr CreateVolumeClient(
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     const TActorId& sessionActorId,
+    TString sessionId,
+    TString clientId,
+    bool temporaryServer,
     TString diskId,
     ui64 tabletId)
 {
@@ -483,6 +514,9 @@ IActorPtr CreateVolumeClient(
         std::move(traceSerializer),
         std::move(endpointEventHandler),
         sessionActorId,
+        std::move(sessionId),
+        std::move(clientId),
+        temporaryServer,
         std::move(diskId),
         tabletId);
 }

@@ -50,6 +50,24 @@ TLogTitle::TLogTitle(
     Rebuild();
 }
 
+TLogTitle::TLogTitle(
+        ui64 tabletId,
+        TString sessionId,
+        TString clientId,
+        TString diskId,
+        bool temporaryServer,
+        ui64 startTime)
+    : Type(EType::Client)
+    , SessionId(std::move(sessionId))
+    , ClientId(std::move(clientId))
+    , StartTime(startTime)
+    , TemporaryServer(temporaryServer)
+    , TabletId(tabletId)
+    , DiskId(std::move(diskId))
+{
+    Rebuild();
+}
+
 // static
 TString TLogTitle::GetPartitionPrefix(
     ui64 tabletId,
@@ -122,6 +140,12 @@ void TLogTitle::SetTabletId(ui64 tabletId)
     Rebuild();
 }
 
+void TLogTitle::SetPipeGeneration(ui32 pipeGeneration)
+{
+    PipeGeneration = pipeGeneration;
+    Rebuild();
+}
+
 void TLogTitle::Rebuild()
 {
     switch (Type) {
@@ -135,6 +159,10 @@ void TLogTitle::Rebuild()
         }
         case EType::Session: {
             RebuildForSession();
+            break;
+        }
+        case EType::Client: {
+            RebuildForClient();
             break;
         }
     }
@@ -204,6 +232,28 @@ void TLogTitle::RebuildForSession()
     builder << " d:" << DiskId;
     builder << " s:" << SessionId;
 
+    CachedPrefix = builder;
+}
+
+void TLogTitle::RebuildForClient()
+{
+    auto builder = TStringBuilder();
+
+    builder << "[";
+    if (TemporaryServer) {
+        builder << "~";
+    }
+    builder << "vc:" << TabletId;
+    builder << " d:" << DiskId;
+    builder << " s:" << SessionId;
+    builder << " c:" << ClientId;
+
+    builder << " pg:";
+    if (PipeGeneration) {
+        builder << PipeGeneration;
+    } else {
+        builder << "?";
+    }
     CachedPrefix = builder;
 }
 

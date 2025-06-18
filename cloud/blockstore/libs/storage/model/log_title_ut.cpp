@@ -132,6 +132,41 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             "[~vs:12345 d:disk1 s:session-1 t:");
     }
 
+    Y_UNIT_TEST(GetForClient)
+    {
+        TLogTitle logTitle(
+            12345,
+            "session-1",
+            "client-1",
+            "disk1",
+            false,
+            GetCycleCount());
+
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[vc:12345 d:disk1 s:session-1 c:client-1 pg:?]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        logTitle.SetPipeGeneration(1);
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[vc:12345 d:disk1 s:session-1 c:client-1 pg:1]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            logTitle.GetWithTime(),
+            "[vc:12345 d:disk1 s:session-1 c:client-1 pg:1 t:");
+
+        TLogTitle temporayLogTitle(
+            12345,
+            "session-1",
+            "client-1",
+            "disk1",
+            true,
+            GetCycleCount());
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[~vc:12345 d:disk1 s:session-1 c:client-1 pg:?]",
+            temporayLogTitle.Get(TLogTitle::EDetails::Brief));
+    }
+
     Y_UNIT_TEST(GetChildLogger)
     {
         const ui64 startTime =

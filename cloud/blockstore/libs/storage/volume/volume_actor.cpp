@@ -610,9 +610,11 @@ void TVolumeActor::HandlePoisonTaken(
     const TEvents::TEvPoisonTaken::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Partition %s stopped",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Partition %s stopped",
+        LogTitle.GetWithTime().c_str(),
         ev->Sender.ToString().c_str());
 
     OnDiskRegistryBasedPartitionStopped(
@@ -689,12 +691,13 @@ void TVolumeActor::HandleServerConnected(
 {
     const auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Pipe client %s (server %s) connected to volume %s",
-        TabletID(),
-        ToString(msg->ClientId).data(),
-        ToString(msg->ServerId).data(),
-        (State ? State->GetDiskId().Quote().data() : "<empty>"));
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Pipe client %s server %s connected to volume",
+        LogTitle.GetWithTime().c_str(),
+        ToString(msg->ClientId).c_str(),
+        ToString(msg->ServerId).c_str());
 }
 
 void TVolumeActor::HandleServerDisconnected(
@@ -704,13 +707,13 @@ void TVolumeActor::HandleServerDisconnected(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Pipe client %s (server %s) disconnected from volume %s at %s",
-        TabletID(),
-        ToString(msg->ClientId).data(),
-        ToString(msg->ServerId).data(),
-        (State ? State->GetDiskId().Quote().data() : "<empty>"),
-        now.ToString().data());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Pipe client %s server %s disconnected from volume",
+        LogTitle.GetWithTime().c_str(),
+        ToString(msg->ClientId).c_str(),
+        ToString(msg->ServerId).c_str());
 
     OnServicePipeDisconnect(ctx, msg->ServerId, now);
 }
@@ -722,13 +725,13 @@ void TVolumeActor::HandleServerDestroyed(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Pipe client %s's server %s got destroyed for volume %s at %s",
-        TabletID(),
-        ToString(msg->ClientId).data(),
-        ToString(msg->ServerId).data(),
-        (State ? State->GetDiskId().Quote().data() : "<empty>"),
-        now.ToString().data());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Pipe client %s server %s got destroyed for volume",
+        LogTitle.GetWithTime().c_str(),
+        ToString(msg->ClientId).c_str(),
+        ToString(msg->ServerId).c_str());
 
     OnServicePipeDisconnect(ctx, msg->ServerId, now);
 }
