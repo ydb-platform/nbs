@@ -18,8 +18,7 @@ void TInMemoryIndexState::Reset(
 {
     Nodes.SetMaxSize(nodesCapacity);
     NodeAttrs.SetMaxSize(nodeAttrsCapacity);
-    if (NodeRefs.size() > nodeRefsCapacity)
-    {
+    if (NodeRefs.size() > nodeRefsCapacity) {
         NodeRefsEvictionObserved();
     }
     NodeRefs.SetCapacity(nodeRefsCapacity);
