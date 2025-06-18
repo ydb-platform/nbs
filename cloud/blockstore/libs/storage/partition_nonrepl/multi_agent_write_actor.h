@@ -24,9 +24,13 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 // The TMultiAgentWriteActor class is used to write to N replicas for the mirror
 // disk. It should process all errors from replicas into E_REJECTED. Because
 // sooner or later the disk agent will return to work, or the replica will be
-// replaced. All replicas are equivalent and are placed in the Replicas.
-// The replica for executing the request is selected by the round robin and
-// TEvMultiAgentWriteRequest send to it.
+// replaced.
+// First, to all the replicas, send a TEvGetDeviceForRangeRequest. To
+// determinate, it is possible to write directly. If there are multiple replicas
+// available for multi-agent writing, the TEvMultiAgentWriteRequest will be sent
+// to one agent selected through a round-robin process.
+// An ordinal write will be sent to the replicas that are unable to perform
+// multi-agent writes.
 
 template <typename TMethod>
 class TMultiAgentWriteActor final
@@ -36,8 +40,14 @@ private:
     using TBase = NActors::TActorBootstrapped<TMultiAgentWriteActor<TMethod>>;
     using TResponseProto = typename TMethod::TResponse::ProtoRecordType;
 
+    struct TReplicaDiscovery
+    {
+        NActors::TActorId ActorId;
+        bool ReadyForMultiAgentWrite = false;
+        TEvNonreplPartitionPrivate::TGetDeviceForRangeResponse DiscoveryResult;
+    };
+
     const TRequestInfoPtr RequestInfo;
-    const TVector<NActors::TActorId> Replicas;
     typename TMethod::TRequest::ProtoRecordType Request;
     const TBlockRange64 Range;
     const TString DiskId;
@@ -45,9 +55,12 @@ private:
     const ui64 NonreplicatedRequestCounter;
     const size_t RoundRobinSeed;
 
-    TVector<TEvNonreplPartitionPrivate::TGetDeviceForRangeResponse>
-        DevicesAndRanges;
+    TVector<TReplicaDiscovery> ReplicasDiscovery;
     size_t DiscoveryResponseCount = 0;
+
+    TVector<TCallContextPtr> ForkedCallContexts;
+    NProto::TError ReplicasCollectiveResponse;
+    size_t RemainResponseCount = 0;
 
 public:
     TMultiAgentWriteActor(
@@ -65,8 +78,11 @@ public:
 private:
     void SendDiscoveryRequests(const NActors::TActorContext& ctx);
     void SendWriteRequest(const NActors::TActorContext& ctx);
+    void SendMultiagentWriteRequest(const NActors::TActorContext& ctx);
+    void SendOrdinaryWriteRequests(const NActors::TActorContext& ctx);
     void Fallback(const NActors::TActorContext& ctx);
-    void Done(const NActors::TActorContext& ctx, NProto::TError error);
+    void Done(const NActors::TActorContext& ctx);
+    void UpdateResponse(NProto::TError error);
 
 private:
     STFUNC(StateWork);
@@ -78,6 +94,18 @@ private:
 
     void HandleMultiAgentWriteDeviceBlocksResponse(
         const TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleOrdinaryWriteResponse(
+        const typename TMethod::TResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleMultiAgentWriteUndelivery(
+        const TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleOrdinaryWriteUndelivery(
+        const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -98,7 +126,6 @@ TMultiAgentWriteActor<TMethod>::TMultiAgentWriteActor(
         ui64 nonreplicatedRequestCounter,
         size_t roundRobinSeed)
     : RequestInfo(std::move(requestInfo))
-    , Replicas(std::move(replicas))
     , Request(std::move(request))
     , Range(range)
     , DiskId(std::move(diskId))
@@ -106,8 +133,12 @@ TMultiAgentWriteActor<TMethod>::TMultiAgentWriteActor(
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
     , RoundRobinSeed(roundRobinSeed)
 {
-    Y_DEBUG_ABORT_UNLESS(!Replicas.empty());
-    DevicesAndRanges.resize(Replicas.size());
+    Y_DEBUG_ABORT_UNLESS(!replicas.empty());
+
+    ReplicasDiscovery.reserve(replicas.size());
+    for (const auto& actorId: replicas) {
+        ReplicasDiscovery.push_back(TReplicaDiscovery{.ActorId = actorId});
+    }
 }
 
 template <typename TMethod>
@@ -135,9 +166,9 @@ void TMultiAgentWriteActor<TMethod>::SendDiscoveryRequests(
         TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::EPurpose;
 
     ui64 count = 0;
-    for (const auto& actorId: Replicas) {
+    for (const auto& replica: ReplicasDiscovery) {
         ctx.Send(
-            actorId,
+            replica.ActorId,
             std::make_unique<
                 TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest>(
                 EPurpose::ForWriting,
@@ -151,12 +182,39 @@ template <typename TMethod>
 void TMultiAgentWriteActor<TMethod>::SendWriteRequest(
     const NActors::TActorContext& ctx)
 {
+    size_t readyForMultiagentWrite = CountIf(
+        ReplicasDiscovery,
+        [](const TReplicaDiscovery& replica)
+        { return replica.ReadyForMultiAgentWrite; });
+
+    if (readyForMultiagentWrite < 2) {
+        // Only one partition can perform direct disk-agent write.
+        // Let's fallback to TMirrorRequestActor<> actor.
+        Fallback(ctx);
+        return;
+    }
+
+    if (readyForMultiagentWrite != ReplicasDiscovery.size()) {
+        SendOrdinaryWriteRequests(ctx);
+    }
+    SendMultiagentWriteRequest(ctx);
+}
+
+template <typename TMethod>
+void TMultiAgentWriteActor<TMethod>::SendMultiagentWriteRequest(
+    const NActors::TActorContext& ctx)
+{
+    EraseIf(
+        ReplicasDiscovery,
+        [](const TReplicaDiscovery& replica)
+        { return !replica.ReadyForMultiAgentWrite; });
+
     // Select disk-agent that will do the job.
-    const size_t executeOnReplica = RoundRobinSeed % Replicas.size();
+    const size_t executeOnReplica = RoundRobinSeed % ReplicasDiscovery.size();
     Rotate(
-        DevicesAndRanges.begin(),
-        DevicesAndRanges.begin() + executeOnReplica,
-        DevicesAndRanges.end());
+        ReplicasDiscovery.begin(),
+        ReplicasDiscovery.begin() + executeOnReplica,
+        ReplicasDiscovery.end());
 
     auto request = std::make_unique<
         TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest>();
@@ -165,18 +223,20 @@ void TMultiAgentWriteActor<TMethod>::SendWriteRequest(
     auto& rec = request->Record;
 
     *rec.MutableHeaders() = Request.GetHeaders();
-    rec.BlockSize = DevicesAndRanges[0].PartConfig->GetBlockSize();
+    rec.BlockSize =
+        ReplicasDiscovery[0].DiscoveryResult.PartConfig->GetBlockSize();
     rec.Range = Range;
-    rec.DevicesAndRanges = DevicesAndRanges;
+    for (const auto& discovery: ReplicasDiscovery) {
+        rec.DevicesAndRanges.push_back(discovery.DiscoveryResult);
+    }
 
     if constexpr (IsLocalMethod<TMethod>) {
         auto guard = Request.Sglist.Acquire();
         if (!guard) {
-            Done(
-                ctx,
-                MakeError(
-                    E_CANCELLED,
-                    "failed to acquire sglist in TMultiAgentWriteActor"));
+            UpdateResponse(MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in TMultiAgentWriteActor"));
+            Done(ctx);
             return;
         }
         SgListCopy(
@@ -187,7 +247,50 @@ void TMultiAgentWriteActor<TMethod>::SendWriteRequest(
         rec.MutableBlocks()->Swap(Request.MutableBlocks());
     }
 
-    NCloud::Send(ctx, Replicas[executeOnReplica], std::move(request));
+    auto event = std::make_unique<NActors::IEventHandle>(
+        ReplicasDiscovery[0].ActorId,
+        ctx.SelfID,
+        request.release(),
+        NActors::IEventHandle::FlagForwardOnNondelivery,
+        RequestInfo->Cookie,   // cookie
+        &ctx.SelfID            // forwardOnNondelivery
+    );
+    ctx.Send(std::move(event));
+    ++RemainResponseCount;
+}
+
+template <typename TMethod>
+void TMultiAgentWriteActor<TMethod>::SendOrdinaryWriteRequests(
+    const NActors::TActorContext& ctx)
+{
+    for (const auto& replica: ReplicasDiscovery) {
+        if (replica.ReadyForMultiAgentWrite) {
+            continue;
+        }
+
+        auto request = std::make_unique<typename TMethod::TRequest>();
+        auto& callContext = *RequestInfo->CallContext;
+        if (!callContext.LWOrbit.Fork(request->CallContext->LWOrbit)) {
+            LWTRACK(
+                ForkFailed,
+                callContext.LWOrbit,
+                TMethod::Name,
+                callContext.RequestId);
+        }
+        ForkedCallContexts.push_back(request->CallContext);
+        request->Record = Request;
+
+        auto event = std::make_unique<NActors::IEventHandle>(
+            replica.ActorId,
+            ctx.SelfID,
+            request.release(),
+            NActors::IEventHandle::FlagForwardOnNondelivery,
+            RequestInfo->Cookie,   // cookie
+            &ctx.SelfID            // forwardOnNondelivery
+        );
+        ctx.Send(std::move(event));
+        ++RemainResponseCount;
+    }
 }
 
 template <typename TMethod>
@@ -201,10 +304,14 @@ void TMultiAgentWriteActor<TMethod>::Fallback(const NActors::TActorContext& ctx)
         Range.Print().c_str());
 
     // Delegate all work to original actor.
+    TVector<NActors::TActorId> replicas;
+    for (const auto& replica: ReplicasDiscovery) {
+        replicas.push_back(replica.ActorId);
+    }
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,
         std::move(RequestInfo),
-        Replicas,
+        std::move(replicas),
         std::move(Request),
         DiskId,
         ParentActorId,
@@ -213,10 +320,13 @@ void TMultiAgentWriteActor<TMethod>::Fallback(const NActors::TActorContext& ctx)
 }
 
 template <typename TMethod>
-void TMultiAgentWriteActor<TMethod>::Done(
-    const NActors::TActorContext& ctx,
-    NProto::TError error)
+void TMultiAgentWriteActor<TMethod>::Done(const NActors::TActorContext& ctx)
 {
+    auto& callContext = *RequestInfo->CallContext;
+    for (auto& cc: ForkedCallContexts) {
+        callContext.LWOrbit.Join(cc->LWOrbit);
+    }
+
     LWTRACK(
         RequestReceived_PartitionWorker,
         RequestInfo->CallContext->LWOrbit,
@@ -224,7 +334,7 @@ void TMultiAgentWriteActor<TMethod>::Done(
         RequestInfo->CallContext->RequestId);
 
     auto response = std::make_unique<typename TMethod::TResponse>();
-    *response->Record.MutableError() = std::move(error);
+    *response->Record.MutableError() = std::move(ReplicasCollectiveResponse);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -239,6 +349,16 @@ void TMultiAgentWriteActor<TMethod>::Done(
     TBase::Die(ctx);
 }
 
+template <typename TMethod>
+void TMultiAgentWriteActor<TMethod>::UpdateResponse(NProto::TError error)
+{
+    ProcessMirrorActorError(error);
+
+    if (!HasError(ReplicasCollectiveResponse)) {
+        ReplicasCollectiveResponse = std::move(error);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -246,20 +366,15 @@ void TMultiAgentWriteActor<TMethod>::HandleGetDeviceRangeResponse(
     const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
     const size_t replicaIdx = ev->Cookie;
 
-    DevicesAndRanges[replicaIdx] = *msg;
+    ReplicasDiscovery[replicaIdx].ReadyForMultiAgentWrite =
+        !HasError(msg->GetError());
+    ReplicasDiscovery[replicaIdx].DiscoveryResult = std::move(*msg);
+
     ++DiscoveryResponseCount;
-
-    if (HasError(msg->GetError())) {
-        // For partition we can't perform direct disk-agent write.
-        // Let's fallback to TMirrorRequestActor<> actor.
-        Fallback(ctx);
-        return;
-    }
-
-    if (DiscoveryResponseCount == Replicas.size()) {
+    if (DiscoveryResponseCount == ReplicasDiscovery.size()) {
         SendWriteRequest(ctx);
     }
 }
@@ -277,7 +392,7 @@ void TMultiAgentWriteActor<TMethod>::HandleMultiAgentWriteDeviceBlocksResponse(
         return;
     }
 
-    ProcessMirrorActorError(error);
+    UpdateResponse(std::move(error));
 
     if (msg->Record.InconsistentResponse) {
         // The disk agent returned a response that does not contain a subrequest
@@ -290,10 +405,86 @@ void TMultiAgentWriteActor<TMethod>::HandleMultiAgentWriteDeviceBlocksResponse(
             ParentActorId,
             std::make_unique<
                 TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent>(
-                DevicesAndRanges[0].PartConfig->GetName()));
+                ReplicasDiscovery[0].DiscoveryResult.PartConfig->GetName()));
     }
 
-    Done(ctx, std::move(error));
+    --RemainResponseCount;
+    if (!RemainResponseCount) {
+        Done(ctx);
+    }
+}
+
+template <typename TMethod>
+void TMultiAgentWriteActor<TMethod>::HandleOrdinaryWriteResponse(
+    const typename TMethod::TResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HasError(msg->Record)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
+            "[%s] %s got error from nonreplicated partition: %s",
+            DiskId.c_str(),
+            TMethod::Name,
+            FormatError(msg->Record.GetError()).c_str());
+    }
+
+    UpdateResponse(std::move(msg->Record.GetError()));
+
+    --RemainResponseCount;
+    if (!RemainResponseCount) {
+        Done(ctx);
+    }
+}
+
+template <typename TMethod>
+void TMultiAgentWriteActor<TMethod>::HandleMultiAgentWriteUndelivery(
+    const TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] TMultiAgentWriteRequest request undelivered to nonrepl partition",
+        DiskId.c_str());
+
+    UpdateResponse(MakeError(
+        E_REJECTED,
+        "TMultiAgentWriteRequestrequest undelivered to nonrepl partition"));
+
+    --RemainResponseCount;
+    if (!RemainResponseCount) {
+        Done(ctx);
+    }
+}
+
+template <typename TMethod>
+void TMultiAgentWriteActor<TMethod>::HandleOrdinaryWriteUndelivery(
+    const typename TMethod::TRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] %s request undelivered to some nonrepl partitions",
+        DiskId.c_str(),
+        TMethod::Name);
+
+    UpdateResponse(MakeError(
+        E_REJECTED,
+        TStringBuilder() << TMethod::Name
+                         << " request undelivered to some nonrepl partitions"));
+
+    --RemainResponseCount;
+    if (!RemainResponseCount) {
+        Done(ctx);
+    }
 }
 
 template <typename TMethod>
@@ -302,7 +493,9 @@ void TMultiAgentWriteActor<TMethod>::HandlePoisonPill(
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    Done(ctx, MakeError(E_REJECTED, "Dead"));
+
+    UpdateResponse(MakeError(E_REJECTED, "Dead"));
+    Done(ctx);
 }
 
 template <typename TMethod>
@@ -317,6 +510,11 @@ STFUNC(TMultiAgentWriteActor<TMethod>::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse,
             HandleMultiAgentWriteDeviceBlocksResponse);
+        HFunc(TMethod::TResponse, HandleOrdinaryWriteResponse);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+            HandleMultiAgentWriteUndelivery);
+        HFunc(TMethod::TRequest, HandleOrdinaryWriteUndelivery);
         HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
