@@ -75,6 +75,12 @@ def stop(argv):
         logger.exception("While killing pid `%s`", pid)
         raise
 
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError(
+            "Errors occurred during new access-service-new execution: {}".format(errors)
+        )
+
 
 if __name__ == "__main__":
     declare_recipe(start, stop)

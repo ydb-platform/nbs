@@ -15,6 +15,7 @@ from cloud.storage.core.tests.common import (
 logger = logging.getLogger(__name__)
 ERR_LOG_FILE_NAMES_FILE = "access_service_recipe.err_log_files"
 
+
 def start(argv):
     args = _parse_args(argv)
     start_access_service(args)
