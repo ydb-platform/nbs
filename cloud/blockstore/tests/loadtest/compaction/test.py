@@ -63,6 +63,8 @@ def nbs_server_start(kikimr_cluster, configurator, storage):
     storage.ThrottlingEnabledSSD = False
     storage.CleanupThreshold = 1
     storage.CollectGarbageThreshold = 1
+    storage.MaxCompactionRangesLoadingPerTx = 32
+    storage.MaxOutOfOrderCompactionMapChunksInflight = 10
 
     nbs = LocalNbs(
         kikimr_port,
@@ -102,7 +104,86 @@ def data_count_by_channels(nbs_client_binary_path, nbs_port):
     return fresh_blocks, mixed_blocks, mixed_blobs, merged_blocks, merged_blobs
 
 
-def compaction_test(compaction_threshold, expected_mixed_blocks, expected_mixed_blobs, expected_merged_blocks, expected_merged_blobs):
+def write_data(nbs_client_binary_path, nbs_port):
+    written_data = bytearray()
+    for i in range(DEFAULT_BLOCK_COUNT):
+        written_data += bytes(i % 256 for j in range(DEFAULT_BLOCK_SIZE))
+
+    p_result = run([
+        nbs_client_binary_path, "WriteBlocks",
+        "--disk-id", "vol0",
+        "--host", "localhost",
+        "--port", str(nbs_port),
+    ], input=written_data)
+    assert p_result.returncode == 0
+
+    return written_data
+
+
+def compact_disk(nbs_client_binary_path, nbs_port):
+    compaction_result = check_output([
+        nbs_client_binary_path, "ExecuteAction",
+        "--action", "compactrange",
+        "--input-bytes", '{"DiskId":"vol0",'
+                         '"StartIndex":"0",'
+                         '"BlocksCount":' + "{}".format(DEFAULT_BLOCK_COUNT) + '}',
+        "--port", str(nbs_port),
+    ])
+    operation_id = json.loads(compaction_result)["OperationId"]
+
+    is_completed = False
+    while not is_completed:
+        compaction_status = check_output([
+            nbs_client_binary_path, "ExecuteAction",
+            "--action", "getcompactionstatus",
+            "--input-bytes", '{"DiskId":"vol0",'
+                             '"OperationId":"' + str(operation_id) + '"}',
+            "--port", str(nbs_port),
+        ])
+        compaction_status_json = json.loads(compaction_status)
+        logging.info(f"compaction_status: {compaction_status}")
+        is_completed = False if "IsCompleted" not in compaction_status_json \
+            else compaction_status_json["IsCompleted"]
+        if not is_completed:
+            time.sleep(1)
+
+
+def check_data(nbs_client_binary_path,
+               nbs_port,
+               expected_mixed_blocks,
+               expected_mixed_blobs,
+               expected_merged_blocks,
+               expected_merged_blobs,
+               written_data):
+    fresh_blocks, mixed_blocks, mixed_blobs, merged_blocks, merged_blobs = \
+        data_count_by_channels(nbs_client_binary_path, nbs_port)
+
+    logging.info(f"fresh_blocks={fresh_blocks}")
+    logging.info(f"mixed_blocks={mixed_blocks} -> expected={expected_mixed_blocks}")
+    logging.info(f"mixed_blobs={mixed_blobs} -> expected={expected_mixed_blobs}")
+    logging.info(f"merged_blocks={merged_blocks} -> expected={expected_merged_blocks}")
+    logging.info(f"merged_blobs={merged_blobs} -> expected={expected_merged_blobs}")
+
+    assert merged_blocks == expected_merged_blocks
+    assert merged_blobs == expected_merged_blobs
+    assert mixed_blocks == expected_mixed_blocks
+    assert mixed_blobs == expected_mixed_blobs
+
+    read_data = check_output([
+        nbs_client_binary_path, "ReadBlocks",
+        "--disk-id", "vol0",
+        "--blocks-count", "{}".format(DEFAULT_BLOCK_COUNT),
+        "--host", "localhost",
+        "--port", str(nbs_port),
+    ])
+    assert read_data == written_data
+
+
+def compaction_test(compaction_threshold,
+                    expected_mixed_blocks,
+                    expected_mixed_blobs,
+                    expected_merged_blocks,
+                    expected_merged_blobs):
     nbs_client_binary_path = \
         yatest_common.binary_path(
             "cloud/blockstore/apps/client/blockstore-client")
@@ -126,66 +207,27 @@ def compaction_test(compaction_threshold, expected_mixed_blocks, expected_mixed_
     ])
     assert result == 0
 
-    written_data = bytearray()
-    for i in range(DEFAULT_BLOCK_COUNT):
-        written_data += bytes(i % 256 for j in range(DEFAULT_BLOCK_SIZE))
+    written_data = write_data(nbs_client_binary_path, nbs.nbs_port)
+    compact_disk(nbs_client_binary_path, nbs.nbs_port)
+    check_data(nbs_client_binary_path,
+               nbs.nbs_port,
+               expected_mixed_blocks,
+               expected_mixed_blobs,
+               expected_merged_blocks,
+               expected_merged_blobs,
+               written_data)
 
-    p_result = run([
-        nbs_client_binary_path, "WriteBlocks",
-        "--disk-id", "vol0",
-        "--host", "localhost",
-        "--port", str(nbs.nbs_port),
-    ], input=written_data)
-    assert p_result.returncode == 0
+    nbs.restart()
 
-    compaction_result = check_output([
-        nbs_client_binary_path, "ExecuteAction",
-        "--action", "compactrange",
-        "--input-bytes", '{"DiskId":"vol0",'
-                         '"StartIndex":"0",'
-                         '"BlocksCount":' + "{}".format(DEFAULT_BLOCK_COUNT) + '}',
-        "--port", str(nbs.nbs_port),
-    ])
-    operation_id = json.loads(compaction_result)["OperationId"]
-
-    is_completed = False
-    while not is_completed:
-        compaction_status = check_output([
-            nbs_client_binary_path, "ExecuteAction",
-            "--action", "getcompactionstatus",
-            "--input-bytes", '{"DiskId":"vol0",'
-                             '"OperationId":"' + str(operation_id) + '"}',
-            "--port", str(nbs.nbs_port),
-        ])
-        compaction_status_json = json.loads(compaction_status)
-        logging.info(f"compaction_status: {compaction_status}")
-        is_completed = False if "IsCompleted" not in compaction_status_json \
-            else compaction_status_json["IsCompleted"]
-        if not is_completed:
-            time.sleep(1)
-
-    fresh_blocks, mixed_blocks, mixed_blobs, merged_blocks, merged_blobs = \
-        data_count_by_channels(nbs_client_binary_path, nbs.nbs_port)
-
-    logging.info(f"fresh_blocks={fresh_blocks}")
-    logging.info(f"mixed_blocks={mixed_blocks} -> expected={expected_mixed_blocks}")
-    logging.info(f"mixed_blobs={mixed_blobs} -> expected={expected_mixed_blobs}")
-    logging.info(f"merged_blocks={merged_blocks} -> expected={expected_merged_blocks}")
-    logging.info(f"merged_blobs={merged_blobs} -> expected={expected_merged_blobs}")
-
-    assert merged_blocks == expected_merged_blocks
-    assert merged_blobs == expected_merged_blobs
-    assert mixed_blocks == expected_mixed_blocks
-    assert mixed_blobs == expected_mixed_blobs
-
-    read_data = check_output([
-        nbs_client_binary_path, "ReadBlocks",
-        "--disk-id", "vol0",
-        "--blocks-count", "{}".format(DEFAULT_BLOCK_COUNT),
-        "--host", "localhost",
-        "--port", str(nbs.nbs_port),
-    ])
-    assert read_data == written_data
+    written_data = write_data(nbs_client_binary_path, nbs.nbs_port)
+    compact_disk(nbs_client_binary_path, nbs.nbs_port)
+    check_data(nbs_client_binary_path,
+               nbs.nbs_port,
+               expected_mixed_blocks,
+               expected_mixed_blobs,
+               expected_merged_blocks,
+               expected_merged_blobs,
+               written_data)
 
     nbs.stop()
     kikimr_cluster.stop()
