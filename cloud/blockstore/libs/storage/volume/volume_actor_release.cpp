@@ -85,4 +85,27 @@ void TVolumeActor::ReleaseReplacedDevices(
     }
 }
 
+void TVolumeActor::ReleaseDiskFromOldClients(
+    const NActors::TActorContext& ctx,
+    const TVector<TString>& removedClients)
+{
+    if (removedClients.empty()) {
+        return;
+    }
+
+    for (const auto& clientId: removedClients) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Releasing devices from old client: %s",
+            TabletID(),
+            clientId.c_str());
+
+        AcquireReleaseDiskRequests.emplace_back(
+            clientId,
+            nullptr,
+            TVector<NProto::TDeviceConfig>{});
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -251,6 +251,8 @@ struct TTxVolume
         NProto::TError Error;
         bool ForceTabletRestart = false;
 
+        TVector<TString> RemovedClientIds;
+
         TAddClient(
                 TRequestInfoPtr requestInfo,
                 TString diskId,

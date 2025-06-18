@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import tempfile
+
 import pytest
 import time
 
@@ -8,7 +10,8 @@ import time
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
 from cloud.blockstore.public.sdk.python.client import Session
-from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED
+from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_NONREPLICATED, \
+    IPC_VHOST, VOLUME_ACCESS_READ_WRITE
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
@@ -50,6 +53,9 @@ def start_nbs_daemon_with_dr(request, ydb):
     cfg.files["storage"].NonReplicatedAgentMaxTimeout = request.param
     cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
     cfg.files["storage"].AcquireNonReplicatedDevices = True
+    cfg.files["server"].ServerConfig.VhostEnabled = True
+    cfg.files["server"].ServerConfig.VhostServerPath = yatest_common.binary_path(
+        "cloud/blockstore/vhost-server/blockstore-vhost-server")
 
     daemon = start_nbs(cfg)
 
@@ -73,6 +79,9 @@ def start_nbs_daemon(ydb):
     cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
     cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
     cfg.files["storage"].AcquireNonReplicatedDevices = True
+    cfg.files["server"].ServerConfig.VhostEnabled = True
+    cfg.files["server"].ServerConfig.VhostServerPath = yatest_common.binary_path(
+        "cloud/blockstore/vhost-server/blockstore-vhost-server")
 
     daemon = start_nbs(cfg)
 
@@ -393,3 +402,65 @@ def test_should_mount_volume_with_unavailable_agents(
         blocks = session.read_blocks(i*DEVICE_SIZE//4096, 1, checkpoint_id="")
 
     session.unmount_volume()
+
+
+@pytest.mark.parametrize("nbs_with_dr", [(6000)], indirect=["nbs_with_dr"])
+def test_should_stop_not_restored_endpoint(nbs_with_dr,
+                                           nbs,
+                                           agent_ids,
+                                           disk_agent_configurators):
+
+    client = CreateTestClient(f"localhost:{nbs.port}")
+
+    test_disk_id = "vol0-multiple_endpoints"
+
+    agent_id = agent_ids[0]
+    configurator = disk_agent_configurators[0]
+    agent = start_disk_agent(configurator, name=agent_id)
+    agent.wait_for_registration()
+    r = client.add_host(agent_id)
+    assert len(r.ActionResults) == 1
+    assert r.ActionResults[0].Result.Code == 0
+
+    # create a volume
+    client.create_volume(
+        disk_id=test_disk_id,
+        block_size=4096,
+        blocks_count=DEVICE_SIZE//4096,
+        storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
+        cloud_id="test")
+
+    # Start a lot of blockstore-vhost-server processes.
+    # SOCKET_COUNT = 1
+    # for i in range(0, SOCKET_COUNT):
+    socket = tempfile.NamedTemporaryFile()
+    client.start_endpoint(
+        unix_socket_path=socket.name,
+        disk_id=test_disk_id,
+        ipc_type=IPC_VHOST,
+        access_mode=VOLUME_ACCESS_READ_WRITE,
+        client_id=f"{socket.name}-id",
+        seq_number=0
+    )
+
+    nbs.kill()
+    time.sleep(10)
+    nbs.start()
+
+    client.stop_endpoint(
+        unix_socket_path=socket.name,
+    )
+
+    another_socket = tempfile.NamedTemporaryFile()
+    client.start_endpoint(
+        unix_socket_path=another_socket.name,
+        disk_id=test_disk_id,
+        ipc_type=IPC_VHOST,
+        access_mode=VOLUME_ACCESS_READ_WRITE,
+        client_id=f"{another_socket.name}-id-1",
+        seq_number=0
+    )
+
+    client.stop_endpoint(
+        unix_socket_path=another_socket.name,
+    )

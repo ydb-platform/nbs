@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 #include <util/generic/scope.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -18,6 +20,27 @@ using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+std::unique_ptr<TEvVolume::TEvRemoveClientResponse> CreateReleaseRespose(
+    const NProto::TError& error,
+    TString diskId,
+    TString clientId,
+    ui64 tabletId)
+{
+    auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>(error);
+
+    response->Record.SetDiskId(std::move(diskId));
+    response->Record.SetClientId(std::move(clientId));
+    response->Record.SetTabletId(tabletId);
+
+    return response;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -87,29 +110,20 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
             TBlockStoreComponents::VOLUME,
             "Can't release disk " << State->GetDiskId()
                                   << " due to error: " << FormatError(error));
-
-        if (cr) {
-            auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
-                error);
-            response->Record.SetDiskId(cr->DiskId);
-            response->Record.SetClientId(cr->GetClientId());
-            response->Record.SetTabletId(TabletID());
-
-            NCloud::Reply(ctx, *cr->RequestInfo, std::move(response));
-
-            PendingClientRequests.pop_front();
-            ProcessNextPendingClientRequest(ctx);
-        }
     } else if (cr) {
         // This shouldn't be release of replaced devices.
         Y_DEBUG_ABORT_UNLESS(request.DevicesToRelease.empty());
-        ExecuteTx<TRemoveClient>(
+    }
+
+    if (cr) {
+        NCloud::Reply(
             ctx,
-            std::move(cr->RequestInfo),
-            std::move(cr->DiskId),
-            cr->PipeServerActorId,
-            std::move(cr->RemovedClientId),
-            cr->IsMonRequest);
+            *cr->RequestInfo,
+            CreateReleaseRespose(
+                error,
+                cr->DiskId,
+                cr->GetClientId(),
+                TabletID()));
     }
 
     AcquireReleaseDiskRequests.pop_front();
@@ -226,13 +240,10 @@ void TVolumeActor::CompleteRemoveClient(
     const auto& diskId = args.DiskId;
 
     if (FAILED(args.Error.GetCode())) {
-        auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
-            std::move(args.Error));
-        response->Record.SetDiskId(diskId);
-        response->Record.SetClientId(clientId);
-        response->Record.SetTabletId(TabletID());
-
-        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        NCloud::Reply(
+            ctx,
+            *args.RequestInfo,
+            CreateReleaseRespose(args.Error, diskId, clientId, TabletID()));
         return;
     }
 
@@ -242,13 +253,28 @@ void TVolumeActor::CompleteRemoveClient(
         clientId.Quote().data(),
         diskId.Quote().data());
 
-    auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>();
-    *response->Record.MutableError() = std::move(args.Error);
-    response->Record.SetDiskId(diskId);
-    response->Record.SetClientId(clientId);
-    response->Record.SetTabletId(TabletID());
+    const auto mediaKind = State->GetMeta().GetConfig().GetStorageMediaKind();
+    if (IsDiskRegistryMediaKind(mediaKind) &&
+        Config->GetAcquireNonReplicatedDevices())
+    {
+        // Release all devices for client.
+        AcquireReleaseDiskRequests.emplace_back(
+            args.ClientId,
+            std::make_shared<TClientRequest>(
+                args.RequestInfo,
+                args.DiskId,
+                args.PipeServerActorId,
+                args.ClientId,
+                args.IsMonRequest),
+            TVector<NProto::TDeviceConfig>{});
 
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        ProcessNextAcquireReleaseDiskRequestIfNeeded(ctx, 1);
+    } else {
+        NCloud::Reply(
+            ctx,
+            *args.RequestInfo,
+            CreateReleaseRespose(args.Error, diskId, clientId, TabletID()));
+    }
 
     OnClientListUpdate(ctx);
 }
