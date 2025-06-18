@@ -3008,6 +3008,53 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(2, lockTabletRequestCount);
     }
 
+    Y_UNIT_TEST(ShouldWaitForAddClientAfterTabletUnlocking)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env, storageServiceConfig);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+        service.AssignVolume();
+
+        bool mountRequestProcessed = false;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvUnlockTabletRequest: {
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    case TEvServicePrivate::EvMountRequestProcessed: {
+                        if (!mountRequestProcessed) {
+                            auto* msg = event->Get<
+                                TEvServicePrivate::TEvMountRequestProcessed>();
+
+                            const_cast<NProto::TError&>(msg->Error) = MakeKikimrError(
+                                NKikimrProto::ERROR);
+
+                            mountRequestProcessed = true;
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.SendMountVolumeRequest();
+        auto response = service.RecvMountVolumeResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+
+        service.SendMountVolumeRequest();
+        response = service.RecvMountVolumeResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Failed to deliver AddClient request to volume",
+            response->GetErrorReason());
+    }
+
     Y_UNIT_TEST(ShouldShutdownVolumeAfterLockLostOnVolumeDeletionDuringMounting)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
