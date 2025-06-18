@@ -13,4 +13,5 @@ message DeleteFilesystemRequest {
 }
 
 message DeleteFilesystemTaskState {
+    string DeleteExternalFilesystemTaskID = 1;
 }

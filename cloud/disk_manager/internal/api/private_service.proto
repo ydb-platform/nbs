@@ -50,6 +50,9 @@ service PrivateService {
     // Get all nodes that are alive and can process tasks.
     // This endpoint is used for client task balancing.
     rpc GetAliveNodes(google.protobuf.Empty) returns (GetAliveNodesResponse);
+
+    rpc FinishExternalFilesystemCreation(FinishExternalFilesystemCreationRequest) returns (google.protobuf.Empty);
+    rpc FinishExternalFilesystemDeletion(FinishExternalFilesystemDeletionRequest) returns (google.protobuf.Empty);
 }
 
 message ReleaseBaseDiskRequest {
@@ -143,4 +146,13 @@ message GetAliveNodesResponse {
         uint32 inflight_task_count = 3;
     }
     repeated Node nodes = 1;
+}
+
+message FinishExternalFilesystemCreationRequest {
+    string filesystem_id = 1;
+    string external_storage_cluster_name = 2;
+}
+
+message FinishExternalFilesystemDeletionRequest {
+    string filesystem_id = 1;
 }

@@ -224,6 +224,16 @@ type PrivateClient interface {
 		ctx context.Context,
 	) (*api.GetAliveNodesResponse, error)
 
+	FinishExternalFilesystemCreation(
+		ctx context.Context,
+		req *api.FinishExternalFilesystemCreationRequest,
+	) error
+
+	FinishExternalFilesystemDeletion(
+		ctx context.Context,
+		req *api.FinishExternalFilesystemDeletionRequest,
+	) error
+
 	Close() error
 }
 
@@ -375,6 +385,26 @@ func (c *privateClient) GetAliveNodes(
 
 	return c.privateServiceClient.GetAliveNodes(ctx, new(empty.Empty))
 }
+
+func (c *privateClient) FinishExternalFilesystemCreation(
+	ctx context.Context,
+	req *api.FinishExternalFilesystemCreationRequest,
+) error {
+
+	_, err := c.privateServiceClient.FinishExternalFilesystemCreation(ctx, req)
+	return err
+}
+
+func (c *privateClient) FinishExternalFilesystemDeletion(
+	ctx context.Context,
+	req *api.FinishExternalFilesystemDeletionRequest,
+) error {
+
+	_, err := c.privateServiceClient.FinishExternalFilesystemDeletion(ctx, req)
+	return err
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 func (c *privateClient) Close() error {
 	return c.conn.Close()

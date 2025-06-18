@@ -90,6 +90,13 @@ func (t *deleteFilesystemTask) deleteFilesystem(
 			return err
 		}
 
+		t.state.DeleteExternalFilesystemTaskID = taskID
+
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+
 		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
 		if err != nil {
 			return err
