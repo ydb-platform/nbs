@@ -15,6 +15,10 @@ from cloud.disk_manager.test.recipe.nbs_launcher import NbsLauncher
 from cloud.disk_manager.test.recipe.nfs_launcher import NfsLauncher
 from cloud.disk_manager.test.recipe.s3_launcher import S3Launcher
 from cloud.disk_manager.test.recipe.ydb_launcher import YDBLauncher
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 S3_CREDENTIALS_FILE = """
 {
@@ -22,6 +26,7 @@ S3_CREDENTIALS_FILE = """
     "secret": "test"
 }
 """
+ERR_LOG_FILE_NAMES_FILE = "disk_manager_recipe.err_log_files"
 
 
 def parse_args(args):
@@ -133,6 +138,8 @@ def start(argv):
     nbs.start()
     set_env("DISK_MANAGER_RECIPE_NBS_PORT", str(nbs.port))
 
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs.nbs.stderr_file_name)
+
     if args.multiple_nbs:
         ydb2 = YDBLauncher(ydb_binary_path=ydb_binary_path)
         ydb2.start()
@@ -152,6 +159,7 @@ def start(argv):
             kms_port=kms_port,
             destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes)
         nbs2.start()
+        append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs2.nbs.stderr_file_name)
 
         ydb3 = YDBLauncher(ydb_binary_path=ydb_binary_path)
         ydb3.start()
@@ -171,6 +179,7 @@ def start(argv):
             kms_port=kms_port,
             destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes)
         nbs3.start()
+        append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs3.nbs.stderr_file_name)
     else:
         nbs2 = nbs
         nbs3 = nbs
@@ -187,6 +196,8 @@ def start(argv):
         nfs_binary_path=nfs_binary_path)
     nfs.start()
     set_env("DISK_MANAGER_RECIPE_NFS_PORT", str(nfs.port))
+
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs.nfs_server.stderr_file_name)
 
     if args.nfs_only:
         return
@@ -235,6 +246,10 @@ def start(argv):
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
+        append_recipe_err_files(
+            ERR_LOG_FILE_NAMES_FILE, disk_manager.disk_manager.stderr_file_name
+        )
+
     set_env("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT", str(disk_managers[0].monitoring_port))
 
     dataplane_disk_managers_count = 1
@@ -260,6 +275,9 @@ def start(argv):
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
+        append_recipe_err_files(
+            ERR_LOG_FILE_NAMES_FILE, disk_manager.disk_manager.stderr_file_name
+        )
 
     # First node is always control plane.
     set_env("DISK_MANAGER_RECIPE_DISK_MANAGER_PORT", str(disk_managers[0].port))
@@ -277,6 +295,10 @@ def stop(argv):
     ComputeLauncher.stop()
     YDBLauncher.stop()
     S3Launcher.stop()
+
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError("Errors during recipe execution:\n" + "\n".join(errors))
 
 
 if __name__ == "__main__":

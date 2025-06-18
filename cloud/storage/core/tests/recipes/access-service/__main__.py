@@ -7,9 +7,13 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from library.python.testing.recipe import declare_recipe, set_env
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 logger = logging.getLogger(__name__)
-
+ERR_LOG_FILE_NAMES_FILE = "access_service_recipe.err_log_files"
 
 def start(argv):
     args = _parse_args(argv)
@@ -29,6 +33,9 @@ def start_access_service(args):
         control_server_port=control_server_port)
 
     access_service.start()
+
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, access_service.daemon.err_log_file)
+
     set_env("ACCESS_SERVICE_PID", str(access_service.pid))
     set_env("ACCESS_SERVICE_PORT", str(port))
     set_env("ACCESS_SERVICE_CONTROL_PORT", str(control_server_port))
@@ -41,6 +48,12 @@ def start_access_service(args):
 
 def stop(argv):
     stop_access_service()
+
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError(
+            "Errors occurred during access-service execution: {}".format(errors)
+        )
 
 
 def stop_access_service():

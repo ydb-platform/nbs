@@ -12,10 +12,13 @@ from cloud.filestore.config.server_pb2 import \
 from cloud.filestore.tests.python.lib.common import shutdown
 from cloud.filestore.tests.python.lib.server import FilestoreServer, wait_for_filestore_server
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreServerConfigGenerator
-
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 PID_FILE_NAME = "local_service_nfs_server_recipe.pid"
-
+ERR_LOG_FILE_NAMES_FILE = "local_service_nfs_server_recipe.err_log_files"
 
 def start(argv):
     parser = argparse.ArgumentParser()
@@ -51,6 +54,8 @@ def start(argv):
     with open(PID_FILE_NAME, "w") as f:
         f.write(str(filestore_server.pid))
 
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, filestore_server.err_log_file)
+
     wait_for_filestore_server(filestore_server, filestore_configurator.port)
 
     set_env("NFS_SERVER_PORT", str(filestore_configurator.port))
@@ -74,6 +79,10 @@ def stop(argv):
         logging.warning(f"PID {pid}: backtrace:\n{bt}")
 
         shutdown(pid)
+
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError("Errors found in recipe error files:\n" + "\n".join(errors))
 
 
 if __name__ == "__main__":

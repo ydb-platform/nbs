@@ -8,9 +8,13 @@ from library.python.testing.recipe import declare_recipe, set_env
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 logger = logging.getLogger(__name__)
-
+ERR_LOG_FILE_NAMES_FILE = "access_service_new_recipe.err_log_files"
 
 def parse_args(args):
     parser = argparse.ArgumentParser()
@@ -50,6 +54,7 @@ def start(argv):
         cert_key_file=cert_key_file,
     )
     access_service.start()
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, access_service.daemon.err_log_file)
     set_env("ACCESS_SERVICE_TYPE", "new")
     set_env("ACCESS_SERVICE_PORT", str(port))
     set_env("ACCESS_SERVICE_CONTROL_PORT", str(control_port))

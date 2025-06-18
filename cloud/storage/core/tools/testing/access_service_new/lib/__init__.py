@@ -69,6 +69,10 @@ class NewAccessService:
             working_dir,
         )
 
+    @property
+    def daemon(self):
+        return self.__daemon
+
     def start(self):
         self.__daemon.start()
 

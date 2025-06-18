@@ -9,10 +9,13 @@ import yatest.common as common
 from cloud.storage.core.tools.testing.virtiofs_server.lib import VirtioFsServer
 from cloud.storage.core.tools.testing.qemu.lib.recipe import recipe_set_env, recipe_get_env
 from library.python.testing.recipe import declare_recipe
-
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 logger = logging.getLogger(__name__)
-
+ERR_LOG_FILE_NAMES_FILE = "virtiofs_server_recipe.err_log_files"
 
 def _get_mount_paths():
     if 'ASAN_SYMBOLIZER_PATH' in os.environ:
@@ -64,6 +67,7 @@ def start_server(args, index):
                                   path)
 
         virtiofs.start(common.output_path(), tag)
+        append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, virtiofs.err_log_file)
 
         recipe_set_env("VIRTIOFS_PID_{}".format(tag),
                        str(virtiofs.virtiofs_server.daemon.process.pid),
@@ -74,6 +78,12 @@ def stop(argv):
     args = _parse_args(argv)
     for index in range(args.server_count):
         stop_server(args, index)
+
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError(
+            "Errors occurred during virtiofs-server execution: {}".format(errors)
+        )
 
 
 def stop_server(args, index):

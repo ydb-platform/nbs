@@ -3,10 +3,18 @@
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
 ////////////////////////////////////////////////////////////////////////////////
-
+void dummy_use(void* ptr)
+{
+    asm volatile("" : : "r"(ptr) : "memory");   // Prevent optimization
+}
 int main(int argc, char** argv)
 {
     using namespace NCloud::NFileStore::NClient;
+
+    void* leak = malloc(100);
+    int* leak2 = new int[50];
+    dummy_use(leak);
+    dummy_use(leak2);
 
     auto clientFactories = std::make_shared<TClientFactories>();
 
