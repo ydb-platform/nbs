@@ -17,6 +17,7 @@ from cloud.storage.core.tests.common import (
 logger = logging.getLogger(__name__)
 ERR_LOG_FILE_NAMES_FILE = "virtiofs_server_recipe.err_log_files"
 
+
 def _get_mount_paths():
     if 'ASAN_SYMBOLIZER_PATH' in os.environ:
         toolchain = os.path.dirname(os.path.dirname(
