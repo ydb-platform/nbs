@@ -383,8 +383,6 @@ public:
         , MaxCalc(std::move(timer))
     {}
 
-    ~TPostponeTimePredictorStats() = default;
-
     void SetupStats(TDuration predictedDelay)
     {
         MaxCalc.Add(predictedDelay.MicroSeconds());
