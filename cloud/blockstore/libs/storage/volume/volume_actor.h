@@ -280,7 +280,7 @@ private:
                 NProto::EVolumeAccessMode accessMode,
                 ui64 mountSeqNumber,
                 TClientRequestPtr clientRequest,
-                bool forceTabletRestart = false)
+                bool forceTabletRestart)
             : IsAcquire(true)
             , ClientId(std::move(clientId))
             , AccessMode(accessMode)
@@ -537,9 +537,10 @@ private:
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
-    void ProcessNextAcquireReleaseDiskRequestIfNeeded(
+
+    void AddAcquireReleaseDiskRequest(
         const NActors::TActorContext& ctx,
-        size_t requestWasAdded);
+        TAcquireReleaseDiskRequest request);
     void ProcessNextAcquireReleaseDiskRequest(const NActors::TActorContext& ctx);
     void OnClientListUpdate(const NActors::TActorContext& ctx);
 

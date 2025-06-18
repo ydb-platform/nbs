@@ -102,7 +102,7 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
     }
 
     auto& request = AcquireReleaseDiskRequests.front();
-    auto& cr = request.ClientRequest;
+    auto clientRequest = request.ClientRequest;
 
     if (HasError(error) && (error.GetCode() != E_NOT_FOUND)) {
         LOG_ERROR_S(
@@ -110,20 +110,23 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
             TBlockStoreComponents::VOLUME,
             "Can't release disk " << State->GetDiskId()
                                   << " due to error: " << FormatError(error));
-    } else if (cr) {
+    } else if (clientRequest) {
         // This shouldn't be release of replaced devices.
         Y_DEBUG_ABORT_UNLESS(request.DevicesToRelease.empty());
     }
 
-    if (cr) {
+    if (clientRequest) {
         NCloud::Reply(
             ctx,
-            *cr->RequestInfo,
+            *clientRequest->RequestInfo,
             CreateReleaseResponse(
                 error,
-                cr->DiskId,
-                cr->GetClientId(),
+                clientRequest->DiskId,
+                clientRequest->GetClientId(),
                 TabletID()));
+
+        PendingClientRequests.pop_front();
+        ProcessNextPendingClientRequest(ctx);
     }
 
     AcquireReleaseDiskRequests.pop_front();
@@ -231,9 +234,13 @@ void TVolumeActor::CompleteRemoveClient(
     const TActorContext& ctx,
     TTxVolume::TRemoveClient& args)
 {
+    const bool needToAcquireOrReleaseDevices = State->IsDiskRegistryMediaKind() &&
+                                Config->GetAcquireNonReplicatedDevices();
     Y_DEFER {
-        PendingClientRequests.pop_front();
-        ProcessNextPendingClientRequest(ctx);
+        if (!needToAcquireOrReleaseDevices) {
+            PendingClientRequests.pop_front();
+            ProcessNextPendingClientRequest(ctx);
+        }
     };
 
     const auto& clientId = args.ClientId;
@@ -253,22 +260,18 @@ void TVolumeActor::CompleteRemoveClient(
         clientId.Quote().data(),
         diskId.Quote().data());
 
-    const auto mediaKind = State->GetMeta().GetConfig().GetStorageMediaKind();
-    if (IsDiskRegistryMediaKind(mediaKind) &&
-        Config->GetAcquireNonReplicatedDevices())
-    {
+    if (needToAcquireOrReleaseDevices) {
         // Release all devices for client.
-        AcquireReleaseDiskRequests.emplace_back(
-            args.ClientId,
-            std::make_shared<TClientRequest>(
-                args.RequestInfo,
-                args.DiskId,
-                args.PipeServerActorId,
-                args.ClientId,
-                args.IsMonRequest),
-            TVector<NProto::TDeviceConfig>{});
-
-        ProcessNextAcquireReleaseDiskRequestIfNeeded(ctx, 1);
+        AddAcquireReleaseDiskRequest(
+            ctx,
+            {args.ClientId,
+             std::make_shared<TClientRequest>(
+                 args.RequestInfo,
+                 args.DiskId,
+                 args.PipeServerActorId,
+                 args.ClientId,
+                 args.IsMonRequest),
+             TVector<NProto::TDeviceConfig>{}});
     } else {
         NCloud::Reply(
             ctx,

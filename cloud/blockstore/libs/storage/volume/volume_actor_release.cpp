@@ -89,22 +89,17 @@ void TVolumeActor::ReleaseDiskFromOldClients(
     const NActors::TActorContext& ctx,
     const TVector<TString>& removedClients)
 {
-    if (removedClients.empty()) {
-        return;
-    }
-
     for (const auto& clientId: removedClients) {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Releasing devices from old client: %s",
-            TabletID(),
+            "%s Releasing devices from old client: %s",
+            LogTitle.GetWithTime().c_str(),
             clientId.c_str());
 
-        AcquireReleaseDiskRequests.emplace_back(
-            clientId,
-            nullptr,
-            TVector<NProto::TDeviceConfig>{});
+        AddAcquireReleaseDiskRequest(
+            ctx,
+            {clientId, nullptr, TVector<NProto::TDeviceConfig>{}});
     }
 }
 

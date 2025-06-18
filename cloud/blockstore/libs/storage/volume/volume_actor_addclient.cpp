@@ -90,19 +90,21 @@ void TVolumeActor::AcquireDisk(
         std::move(request));
 }
 
-void TVolumeActor::ProcessNextAcquireReleaseDiskRequestIfNeeded(
+void TVolumeActor::AddAcquireReleaseDiskRequest(
     const NActors::TActorContext& ctx,
-    size_t requestWasAdded)
+    TAcquireReleaseDiskRequest request)
 {
-    if (AcquireReleaseDiskRequests.size() == requestWasAdded) {
+    AcquireReleaseDiskRequests.emplace_back(std::move(request));
+
+    if (AcquireReleaseDiskRequests.size() == 1) {
         ProcessNextAcquireReleaseDiskRequest(ctx);
     } else {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Postponing AcquireReleaseRequest[%s] for volume %s: "
+            "%s Postponing AcquireReleaseRequest[%s] for volume %s: "
             "another request in flight",
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             AcquireReleaseDiskRequests.back().ClientId.Quote().data(),
             State->GetDiskId().Quote().data());
     }
@@ -155,8 +157,8 @@ void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
             x.first,
             x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
             x.second.GetVolumeClientInfo().GetMountSeqNumber(),
-            nullptr
-        );
+            nullptr,
+            false);
 
         LOG_DEBUG_S(
             ctx,
@@ -253,7 +255,14 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     }
 
     auto& request = AcquireReleaseDiskRequests.front();
-    auto& cr = request.ClientRequest;
+    auto clientRequest = request.ClientRequest;
+
+    Y_DEFER {
+        if (clientRequest) {
+            PendingClientRequests.pop_front();
+            ProcessNextPendingClientRequest(ctx);
+        }
+    };
 
     if (HasError(error)) {
         LOG_DEBUG_S(
@@ -262,28 +271,25 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             "Can't acquire disk " << State->GetDiskId()
         );
 
-        if (cr) {
+        if (clientRequest) {
             auto response =
                 std::make_unique<TEvVolume::TEvAddClientResponse>(error);
-            response->Record.MutableVolume()->SetDiskId(cr->DiskId);
-            response->Record.SetClientId(cr->GetClientId());
+            response->Record.MutableVolume()->SetDiskId(clientRequest->DiskId);
+            response->Record.SetClientId(clientRequest->GetClientId());
             response->Record.SetTabletId(TabletID());
 
-            NCloud::Reply(ctx, *cr->RequestInfo, std::move(response));
-
-            PendingClientRequests.pop_front();
-            ProcessNextPendingClientRequest(ctx);
+            NCloud::Reply(ctx, *clientRequest->RequestInfo, std::move(response));
         }
-    } else if (cr) {
+    } else if (clientRequest) {
         auto response = CreateAddClientResponse(
             error,
             TabletID(),
-            cr->GetClientId(),
+            clientRequest->GetClientId(),
             request.ForceTabletRestart,
             request.ClientRequest->AddedClientInfo.GetInstanceId(),
             *State);
 
-        NCloud::Reply(ctx, *cr->RequestInfo, std::move(response));
+        NCloud::Reply(ctx, *clientRequest->RequestInfo, std::move(response));
     }
 
     AcquireReleaseDiskRequests.pop_front();
@@ -499,9 +505,16 @@ void TVolumeActor::CompleteAddClient(
     const TActorContext& ctx,
     TTxVolume::TAddClient& args)
 {
-    Y_DEFER {
-        PendingClientRequests.pop_front();
-        ProcessNextPendingClientRequest(ctx);
+    const bool needToAcquireOrReleaseDevices =
+        State->IsDiskRegistryMediaKind() &&
+        Config->GetAcquireNonReplicatedDevices();
+
+    Y_DEFER
+    {
+        if (!needToAcquireOrReleaseDevices) {
+            PendingClientRequests.pop_front();
+            ProcessNextPendingClientRequest(ctx);
+        }
     };
 
     const auto& clientId = args.Info.GetClientId();
@@ -524,15 +537,11 @@ void TVolumeActor::CompleteAddClient(
         clientId.Quote().data(),
         diskId.Quote().data());
 
-    const auto mediaKind = State->GetMeta().GetConfig().GetStorageMediaKind();
-
-    if (IsDiskRegistryMediaKind(mediaKind) &&
-        Config->GetAcquireNonReplicatedDevices())
-    {
+    if (needToAcquireOrReleaseDevices) {
         ReleaseDiskFromOldClients(ctx, args.RemovedClientIds);
 
         // Acquire disk for new client.
-        AcquireReleaseDiskRequests.emplace_back(
+        TAcquireReleaseDiskRequest request{
             args.Info.GetClientId(),
             args.Info.GetVolumeAccessMode(),
             args.Info.GetMountSeqNumber(),
@@ -540,11 +549,9 @@ void TVolumeActor::CompleteAddClient(
                 args.RequestInfo,
                 args.DiskId,
                 args.PipeServerActorId,
-                args.Info));
-
-        ProcessNextAcquireReleaseDiskRequestIfNeeded(
-            ctx,
-            args.RemovedClientIds.size() + 1);
+                args.Info),
+            args.ForceTabletRestart};
+        AddAcquireReleaseDiskRequest(ctx, std::move(request));
     } else {
         auto response = CreateAddClientResponse(
             args.Error,
@@ -558,6 +565,8 @@ void TVolumeActor::CompleteAddClient(
     }
 
     OnClientListUpdate(ctx);
+
+    const auto mediaKind = State->GetMeta().GetConfig().GetStorageMediaKind();
 
     if (IsReliableDiskRegistryMediaKind(mediaKind)) {
         const bool shouldResyncDueToInactivity = args.WriterLastActivityTimestamp
