@@ -137,7 +137,7 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
     const auto* msg = ev->Get();
 
     if (msg->Tag) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
             "Resend %s %s request to volume %s. Last error %s",
             TMethod::Name,
             Request->Record.GetHeaders().GetClientId().Quote().c_str(),

@@ -214,6 +214,13 @@ void TVolumeSessionActor::NotifyAndDie(const TActorContext& ctx)
     VolumeInfo->VolumeSessionActor = {};
 
     if (StartVolumeActor) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Sending PoisonPill to StartVolumeActor %s",
+            LogTitle.GetWithTime().c_str(),
+            ToString(StartVolumeActor).c_str());
+
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, StartVolumeActor);
         StartVolumeActor = {};
     }
@@ -221,6 +228,13 @@ void TVolumeSessionActor::NotifyAndDie(const TActorContext& ctx)
     auto notification = std::make_unique<TEvServicePrivate::TEvSessionActorDied>();
     notification->DiskId = VolumeInfo->DiskId;
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(notification));
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending PoisonPill to VolumeClient %s",
+        LogTitle.GetWithTime().c_str(),
+        ToString(VolumeClient).c_str());
 
     NCloud::Send<TEvents::TEvPoisonPill>(ctx, VolumeClient);
 

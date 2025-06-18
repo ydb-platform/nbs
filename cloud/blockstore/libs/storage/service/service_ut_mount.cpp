@@ -479,9 +479,16 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_REMOTE);
     }
 
-    void DoTestShouldCauseRemountWhenVolumeIsStolen(TTestEnv& env, ui32 nodeIdx)
+    Y_UNIT_TEST(ShouldCauseRemountWhenVolumeIsStolen)
     {
+        TTestEnv env(1, 2);
+        ui32 nodeIdx1 = SetupTestEnv(env);
+        ui32 nodeIdx2 = SetupTestEnv(env);
+
         auto& runtime = env.GetRuntime();
+
+        TServiceClient service1(runtime, nodeIdx1);
+        TServiceClient service2(runtime, nodeIdx2);
 
         TActorId volumeActorId;
         TActorId startVolumeActorId;
@@ -504,23 +511,40 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        TServiceClient service(runtime, nodeIdx);
-        service.CreateVolume();
-        service.AssignVolume(DefaultDiskId, "foo", "bar");
+        service1.CreateVolume();
+        service1.AssignVolume(DefaultDiskId, "foo", "bar");
 
         TString sessionId;
         {
-            auto response = service.MountVolume(DefaultDiskId, "foo", "bar");
+            auto response = service1.MountVolume(
+                DefaultDiskId,
+                "foo",
+                "bar",
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0, // mountFlags
+                0, // mountSeqNumber
+                NProto::TEncryptionDesc(),
+                0,  // fillSeqNumber
+                0   // fillGeneration
+            );
             sessionId = response->Record.GetSessionId();
         }
 
-        // Lock tablet to a different owner in hive
-        {
-            TActorId edge = runtime.AllocateEdgeActor();
-            runtime.SendToPipe(env.GetHive(), edge, new TEvHive::TEvLockTabletExecution(volumeTabletId));
-            auto reply = runtime.GrabEdgeEvent<TEvHive::TEvLockTabletExecutionResult>(edge);
-            UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetStatus(), NKikimrProto::OK);
-        }
+        service2.MountVolume(
+            DefaultDiskId,
+            "foo",
+            "bar",
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0, // mountFlags
+            1, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            0,  // fillSeqNumber
+            0   // fillGeneration
+        );
 
         // Wait until start volume actor is stopped
         if (!startVolumeActorStopped) {
@@ -532,12 +556,12 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         // Next write request should cause invalid session response
         {
-            service.SendWriteBlocksRequest(
+            service1.SendWriteBlocksRequest(
                 DefaultDiskId,
                 TBlockRange64::WithLength(0, 1024),
                 sessionId,
                 char(1));
-            auto response = service.RecvWriteBlocksResponse();
+            auto response = service1.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
                 response->GetStatus(),
@@ -547,23 +571,27 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         // Should work again after remount
         {
-            auto response = service.MountVolume(DefaultDiskId, "foo", "bar");
+            auto response = service1.MountVolume(
+                DefaultDiskId,
+                "foo",
+                "bar",
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0, // mountFlags
+                2, // mountSeqNumber
+                NProto::TEncryptionDesc(),
+                0,  // fillSeqNumber
+                0   // fillGeneration
+            );
             sessionId = response->Record.GetSessionId();
         }
 
-        service.WriteBlocks(
+        service1.WriteBlocks(
             DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
             sessionId);
-        service.UnmountVolume(DefaultDiskId, sessionId);
-    }
-
-    Y_UNIT_TEST(ShouldCauseRemountWhenVolumeIsStolen)
-    {
-        TTestEnv env;
-        ui32 nodeIdx = SetupTestEnv(env);
-
-        DoTestShouldCauseRemountWhenVolumeIsStolen(env, nodeIdx);
+        service1.UnmountVolume(DefaultDiskId, sessionId);
     }
 
     Y_UNIT_TEST(ShouldDisallowMountByAnotherClient)
@@ -3006,6 +3034,58 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "Concurrent lock requests detected", response->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(2, lockTabletRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldWaitForAddClientAfterTabletUnlocking)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env, storageServiceConfig);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+        service.AssignVolume();
+
+        bool mountRequestProcessed = false;
+        bool unlockRequestProcessed = false;
+
+        runtime.SetReschedulingDelay(TDuration::Seconds(10));
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvUnlockTabletRequest: {
+                        if (!unlockRequestProcessed) {
+                            unlockRequestProcessed = true;
+                            return TTestActorRuntime::EEventAction::RESCHEDULE;
+                        }
+                        break;
+                    }
+                    case TEvServicePrivate::EvMountRequestProcessed: {
+                        if (!mountRequestProcessed) {
+                            auto* msg = event->Get<
+                                TEvServicePrivate::TEvMountRequestProcessed>();
+
+                            const_cast<NProto::TError&>(msg->Error) = MakeKikimrError(
+                                NKikimrProto::ERROR);
+
+                            mountRequestProcessed = true;
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.SendMountVolumeRequest();
+        auto response = service.RecvMountVolumeResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+
+        service.SendMountVolumeRequest();
+        response = service.RecvMountVolumeResponse();
+        UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
     }
 
     Y_UNIT_TEST(ShouldShutdownVolumeAfterLockLostOnVolumeDeletionDuringMounting)
