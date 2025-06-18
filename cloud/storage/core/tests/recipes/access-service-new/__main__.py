@@ -54,7 +54,9 @@ def start(argv):
         cert_key_file=cert_key_file,
     )
     access_service.start()
-    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, access_service.daemon.err_log_file)
+    append_recipe_err_files(
+        ERR_LOG_FILE_NAMES_FILE, access_service.daemon.stderr_file_name
+    )
     set_env("ACCESS_SERVICE_TYPE", "new")
     set_env("ACCESS_SERVICE_PORT", str(port))
     set_env("ACCESS_SERVICE_CONTROL_PORT", str(control_port))

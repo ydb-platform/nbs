@@ -67,7 +67,9 @@ def start_server(args, index):
                                   path)
 
         virtiofs.start(common.output_path(), tag)
-        append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, virtiofs.err_log_file)
+        append_recipe_err_files(
+            ERR_LOG_FILE_NAMES_FILE, virtiofs.daemon.stderr_file_name
+        )
 
         recipe_set_env("VIRTIOFS_PID_{}".format(tag),
                        str(virtiofs.virtiofs_server.daemon.process.pid),
