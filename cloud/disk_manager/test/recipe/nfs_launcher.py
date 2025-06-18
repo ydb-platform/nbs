@@ -38,6 +38,10 @@ class NfsLauncher:
 
         self.__nfs_server = FilestoreServer(configurator=self.__nfs_configurator)
 
+    @property
+    def nfs_server(self):
+        return self.__nfs_server
+
     def start(self):
         self.__nfs_server.start()
         wait_for_filestore_server(self.__nfs_server, self.__nfs_configurator.port)
