@@ -54,7 +54,7 @@ def start(argv):
     with open(PID_FILE_NAME, "w") as f:
         f.write(str(filestore_server.pid))
 
-    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, filestore_server.err_log_file)
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, filestore_server.stderr_file_name)
 
     wait_for_filestore_server(filestore_server, filestore_configurator.port)
 

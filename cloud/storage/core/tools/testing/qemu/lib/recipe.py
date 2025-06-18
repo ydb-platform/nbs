@@ -99,7 +99,9 @@ def start_instance(args, inst_index):
     qemu.set_mount_paths(mount_paths)
     qemu.start()
 
-    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, qemu.qemu_bin.daemon.err_log_file)
+    append_recipe_err_files(
+        ERR_LOG_FILE_NAMES_FILE, qemu.qemu_bin.daemon.stderr_file_name
+    )
 
     with open(PID_FILE, "a+") as f:
         print(qemu.qemu_bin.daemon.process.pid, file=f)

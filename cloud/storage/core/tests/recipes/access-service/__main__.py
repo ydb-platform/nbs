@@ -34,7 +34,9 @@ def start_access_service(args):
 
     access_service.start()
 
-    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, access_service.daemon.err_log_file)
+    append_recipe_err_files(
+        ERR_LOG_FILE_NAMES_FILE, access_service.daemon.stderr_file_name
+    )
 
     set_env("ACCESS_SERVICE_PID", str(access_service.pid))
     set_env("ACCESS_SERVICE_PORT", str(port))
