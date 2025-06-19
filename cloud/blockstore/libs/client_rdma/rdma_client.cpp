@@ -12,6 +12,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/buffer.h>
@@ -78,7 +79,10 @@ public:
 private:
     const TCallContextPtr CallContext;
     const std::shared_ptr<TRequest> Request;
+    const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
+
+    ui64 SendTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
     NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
@@ -87,9 +91,11 @@ public:
     TReadBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
+            ITraceSerializerPtr traceSerializer,
             bool isAlignedDataEnabled)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
+        , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
         Y_UNUSED(isAlignedDataEnabled);
@@ -118,6 +124,11 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
+        SendTime = GetCycleCount();
+
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
@@ -142,6 +153,15 @@ public:
 
         if (!HasError(responseMsg.GetError())) {
             CopyData(Request->Sglist, response.Data);
+        }
+
+        if (CallContext->LWOrbit.HasShuttles()) {
+            TraceSerializer->HandleTraceInfo(
+                responseMsg.GetTrace(),
+                CallContext->LWOrbit,
+                SendTime,
+                GetCycleCount());
+            responseMsg.ClearTrace();
         }
 
         Response.SetValue(std::move(localResponse));
@@ -186,7 +206,10 @@ public:
 private:
     const TCallContextPtr CallContext;
     const std::shared_ptr<TRequest> Request;
+    const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
+
+    ui64 SendTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
     NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
@@ -195,9 +218,11 @@ public:
     TWriteBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
+            ITraceSerializerPtr traceSerializer,
             bool isAlignedDataEnabled)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
+        , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {}
 
@@ -230,6 +255,14 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
+        if (TraceSerializer) {
+            TraceSerializer->BuildTraceRequest(
+                *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+                CallContext->LWOrbit);
+
+            SendTime = GetCycleCount();
+        }
+
         return NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
             TBlockStoreProtocol::WriteBlocksRequest,
@@ -251,6 +284,16 @@ public:
         Y_ENSURE(response.Data.length() == 0);
 
         auto& responseMsg = static_cast<TResponse&>(*response.Proto);
+
+        if (CallContext->LWOrbit.HasShuttles()) {
+            TraceSerializer->HandleTraceInfo(
+                responseMsg.GetTrace(),
+                CallContext->LWOrbit,
+                SendTime,
+                GetCycleCount());
+            responseMsg.ClearTrace();
+        }
+
         Response.SetValue(std::move(responseMsg));
     }
 
@@ -272,7 +315,10 @@ public:
 private:
     const TCallContextPtr CallContext;
     const std::shared_ptr<TRequest> Request;
+    const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
+
+    ui64 SendTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
     NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
@@ -281,9 +327,11 @@ public:
     TZeroBlocksHandler(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
+            ITraceSerializerPtr traceSerializer,
             bool isAlignedDataEnabled)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
+        , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
     }
@@ -310,6 +358,11 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
+        SendTime = GetCycleCount();
+
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ZeroBlocksRequest,
@@ -330,6 +383,14 @@ public:
         Y_ENSURE(response.Data.length() == 0);
 
         auto& responseMsg = static_cast<TResponse&>(*response.Proto);
+
+        TraceSerializer->HandleTraceInfo(
+            responseMsg.GetTrace(),
+            CallContext->LWOrbit,
+            SendTime,
+            GetCycleCount());
+        responseMsg.ClearTrace();
+
         Response.SetValue(std::move(responseMsg));
     }
 
@@ -348,6 +409,7 @@ class TRdmaEndpoint final
 {
 private:
     const IBlockStorePtr VolumeClient;
+    const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
 
     NRdma::IClientEndpointPtr Endpoint;
@@ -362,12 +424,14 @@ public:
     static std::shared_ptr<TRdmaEndpoint> Create(
         ILoggingServicePtr logging,
         IBlockStorePtr volumeClient,
+        ITraceSerializerPtr traceSerializer,
         bool isAlignedDataEnabled)
     {
         return std::shared_ptr<TRdmaEndpoint>{
             new TRdmaEndpoint(
                 std::move(logging),
                 std::move(volumeClient),
+                std::move(traceSerializer),
                 isAlignedDataEnabled)};
     }
 
@@ -420,8 +484,10 @@ private:
     TRdmaEndpoint(
             ILoggingServicePtr logging,
             IBlockStorePtr volumeClient,
+            ITraceSerializerPtr traceSerializer,
             bool IsAlignedDataEnabled)
         : VolumeClient(std::move(volumeClient))
+        , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(IsAlignedDataEnabled)
     {
         Log = logging->CreateLog("BLOCKSTORE_RDMA");
@@ -484,6 +550,7 @@ TFuture<typename T::TResponse> TRdmaEndpoint::HandleRequest(
     auto handler = std::make_unique<T>(
         callContext,
         std::move(request),
+        TraceSerializer,
         IsAlignedDataEnabled);
 
     auto [req, err] = Endpoint->AllocateRequest(
@@ -533,12 +600,14 @@ IBlockStorePtr CreateRdmaEndpointClient(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
+    ITraceSerializerPtr traceSerializer,
     const TRdmaEndpointConfig& config)
 {
     auto endpoint =
         TRdmaEndpoint::Create(
             std::move(logging),
             std::move(volumeClient),
+            std::move(traceSerializer),
             client->IsAlignedDataEnabled());
 
     auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
@@ -551,12 +620,14 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsyn
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
+    ITraceSerializerPtr traceSerializer,
     const TRdmaEndpointConfig& config)
 {
     auto endpoint =
         TRdmaEndpoint::Create(
             std::move(logging),
             std::move(volumeClient),
+            std::move(traceSerializer),
             client->IsAlignedDataEnabled());
 
     auto future = client->StartEndpoint(config.Address, config.Port);

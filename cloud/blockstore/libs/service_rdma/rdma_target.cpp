@@ -200,7 +200,7 @@ private:
              guardedSgList = std::move(guardedSgList),
              blockSize = request.GetBlockSize(),
              taskQueue = TaskQueue,
-             endpoint = Endpoint](auto future)
+             endpoint = Endpoint](auto future) mutable
             {
                 auto response = ExtractResponse(future);
 

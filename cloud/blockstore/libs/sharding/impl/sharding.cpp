@@ -154,6 +154,7 @@ IShardingManagerPtr CreateShardingManager(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
+    ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
     NRdma::IClientPtr rdmaClient)
 {
@@ -175,6 +176,7 @@ IShardingManagerPtr CreateShardingManager(
         .Scheduler = std::move(scheduler),
         .Logging = std::move(logging),
         .Monitoring = std::move(monitoring),
+        .TraceSerializer = std::move(traceSerializer),
         .GrpcClient = std::move(result.GetResult()),
         .RdmaClient = std::move(rdmaClient),
         .EndpointsSetup = CreateHostEndpointsSetupProvider()

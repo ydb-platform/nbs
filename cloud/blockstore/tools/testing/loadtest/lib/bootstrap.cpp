@@ -29,6 +29,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
@@ -460,6 +461,7 @@ IBlockStorePtr TBootstrap::CreateEndpointDataClient(
                 Logging,
                 rdmaClient,
                 std::move(dataEndpoint),
+                CreateTraceSerializerStub(),
                 CreateRdmaEndpointConfig(*ClientConfig));
             break;
         }

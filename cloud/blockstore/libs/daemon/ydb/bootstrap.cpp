@@ -467,13 +467,18 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("RDMA config initialized");
 
     auto logging = std::make_shared<TLoggingProxy>();
+    TraceSerializer = CreateTraceSerializer(
+        logging,
+        "BLOCKSTORE_TRACE",
+        NLwTraceMonPage::TraceManager(false));
+
+    STORAGE_INFO("TraceSerializer initialized");
+
     auto monitoring = std::make_shared<TMonitoringProxy>();
-
-    std::shared_ptr<TFakeRdmaClientProxy> fakeRdmaClientProxy;
-
     Logging = logging;
     Monitoring = monitoring;
 
+    std::shared_ptr<TFakeRdmaClientProxy> fakeRdmaClientProxy;
     if (Configs->ServerConfig->GetUseFakeRdmaClient() &&
         Configs->RdmaConfig->GetClientEnabled())
     {
@@ -619,13 +624,6 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     STORAGE_INFO("DiscoveryService initialized");
-
-    TraceSerializer = CreateTraceSerializer(
-        logging,
-        "BLOCKSTORE_TRACE",
-        NLwTraceMonPage::TraceManager(false));
-
-    STORAGE_INFO("TraceSerializer initialized");
 
     if (Configs->DiagnosticsConfig->GetUseAsyncLogger()) {
         AsyncLogger = CreateAsyncLogger();
