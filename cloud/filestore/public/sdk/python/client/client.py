@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from typing import Optional, Union
+
 import cloud.filestore.public.sdk.python.protos as protos
 
 from .error import _handle_errors
@@ -427,6 +430,141 @@ class Client(object):
             timestamp,
             trace_id,
             request_timeout)
+
+    ## Session Operations
+
+    @_handle_errors
+    def create_session(
+        self,
+        filesystem_id: str,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> protos.TCreateSessionResponse:
+        request = protos.TCreateSessionRequest(
+            FileSystemId=filesystem_id,
+        )
+        return self.__impl.create_session(
+            request, idempotence_id, timestamp, trace_id, request_timeout
+        )
+
+    ## Filesystem Node Operations
+    @dataclass
+    class Directory:
+        Mode: int  # uint32
+
+    @dataclass
+    class File:
+        Mode: int  # uint32
+
+    @dataclass
+    class Link:
+        TargetNode: int  # uint64
+        ShardNodeName: Optional[str] = None
+
+    @dataclass
+    class SymLink:
+        TargetPath: bytes
+
+    @dataclass
+    class Socket:
+        Mode: int  # uint32
+
+    Node = Union[Directory, File, Link, SymLink, Socket]
+
+    @_handle_errors
+    def create_node(
+        self,
+        filesystem_id: str,
+        session_id: bytes,
+        node: Node,
+        parent_node_id: int,
+        name: str,
+        idempotence_id=None,
+        timestamp=None,
+        trace_id=None,
+        request_timeout=None,
+    ) -> protos.TCreateNodeResponse:
+
+        kwargs = {}
+        if isinstance(node, Client.Directory):
+            kwargs["Directory"] = protos.TCreateNodeRequest.TDirectory(
+                Mode=node.Mode
+            )
+        elif isinstance(node, Client.File):
+            kwargs["File"] = protos.TCreateNodeRequest.TFile(Mode=node.Mode)
+        elif isinstance(node, Client.Link):
+            kwargs["Link"] = protos.TCreateNodeRequest.TLink(
+                TargetNode=node.TargetNode
+            )
+        elif isinstance(node, Client.SymLink):
+            kwargs["SymLink"] = protos.TCreateNodeRequest.TSymLink(
+                TargetPath=node.TargetPath
+            )
+        elif isinstance(node, Client.Socket):
+            kwargs["Socket"] = protos.TCreateNodeRequest.TSocket(Mode=node.Mode)
+        else:
+            raise ValueError("Unsupported node type: {}".format(type(node)))
+        request = protos.TCreateNodeRequest(
+            Headers=protos.THeaders(SessionId=session_id),
+            FileSystemId=filesystem_id,
+            NodeId=parent_node_id,
+            Name=name.encode("utf-8"),
+            **kwargs
+        )
+
+        return self.__impl.create_node(
+            request, idempotence_id, timestamp, trace_id, request_timeout
+        )
+
+    @_handle_errors
+    def list_nodes(
+        self,
+        filesystem_id: str,
+        session_id: bytes,
+        node_id: int,
+        cookie: Optional[bytes] = None,
+        max_bytes: Optional[int] = None,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> protos.TListNodesResponse:
+        request = protos.TListNodesRequest(
+            Headers=protos.THeaders(SessionId=session_id),
+            FileSystemId=filesystem_id,
+            NodeId=node_id,
+            Cookie=cookie,
+            MaxBytes=max_bytes,
+        )
+        return self.__impl.list_nodes(
+            request, idempotence_id, timestamp, trace_id, request_timeout
+        )
+
+    @_handle_errors
+    def unlink_node(
+        self,
+        filesystem_id: str,
+        session_id: bytes,
+        node_id: int,
+        name: str,
+        unlink_directory: bool = False,
+        idempotence_id=None,
+        timestamp=None,
+        trace_id=None,
+        request_timeout=None,
+    ) -> protos.TUnlinkNodeResponse:
+        request = protos.TUnlinkNodeRequest(
+            Headers=protos.THeaders(SessionId=session_id),
+            FileSystemId=filesystem_id,
+            NodeId=node_id,
+            Name=name.encode("utf-8"),
+            UnlinkDirectory=unlink_directory,
+        )
+        return self.__impl.unlink_node(
+            request, idempotence_id, timestamp, trace_id, request_timeout
+        )
 
 
 def CreateClient(

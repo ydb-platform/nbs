@@ -21,6 +21,12 @@ CLIENT_METHODS = [
     "create_checkpoint",
     "destroy_checkpoint",
     "describe_filestore_model",
+    # sessions
+    "create_session",
+    # nodes
+    "create_node",
+    "list_nodes",
+    "unlink_node",
 ]
 
 ENDPOINT_METHODS = [
