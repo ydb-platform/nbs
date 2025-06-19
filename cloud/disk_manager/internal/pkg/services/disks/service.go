@@ -574,11 +574,6 @@ func (s *service) AssignDisk(
 		)
 	}
 
-	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
-	if err != nil {
-		return "", err
-	}
-
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.AssignDisk",
@@ -605,11 +600,6 @@ func (s *service) UnassignDisk(
 			"some of parameters are empty, req=%v",
 			req,
 		)
-	}
-
-	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
-	if err != nil {
-		return "", err
 	}
 
 	return s.taskScheduler.ScheduleTask(
