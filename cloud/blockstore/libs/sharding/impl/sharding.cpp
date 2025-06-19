@@ -173,8 +173,8 @@ IShardingManagerPtr CreateShardingManager(
             << "unable to create gRPC client";
     }
 
-    auto workers = config->GetRdmaTrasnsportWorkers() ?
-        CreateThreadPool("SHRD", config->GetRdmaTrasnsportWorkers()) :
+    auto workers = config->GetRdmaTransportWorkers() ?
+        CreateThreadPool("SHRD", config->GetRdmaTransportWorkers()) :
         CreateTaskQueueStub();
 
     workers->Start();
