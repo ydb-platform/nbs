@@ -379,9 +379,10 @@ void TBootstrapBase::Init()
         Scheduler,
         Logging,
         Monitoring,
+        static_cast<ITraceSerializer*>(GetTraceSerializer())
+            ->shared_from_this(),
         ServerStats,
-        RdmaClient
-    );
+        RdmaClient);
 
     auto sessionManager = CreateSessionManager(
         Timer,

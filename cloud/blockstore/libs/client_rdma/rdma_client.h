@@ -28,12 +28,14 @@ IBlockStorePtr CreateRdmaEndpointClient(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
+    ITraceSerializerPtr traceSerializer,
     const TRdmaEndpointConfig& config);
 
 NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsync(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
+    ITraceSerializerPtr traceSerializer,
     const TRdmaEndpointConfig& config);
 
 }   // namespace NCloud::NBlockStore::NClient

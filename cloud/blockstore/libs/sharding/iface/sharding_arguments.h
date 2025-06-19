@@ -19,6 +19,7 @@ struct TShardingArguments
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
+    ITraceSerializerPtr TraceSerializer;
 
     NClient::IClientPtr GrpcClient;
     NRdma::IClientPtr RdmaClient;

@@ -46,6 +46,7 @@ IShardingManagerPtr CreateShardingManager(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
+    ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
     NRdma::IClientPtr rdmaClient);
 
