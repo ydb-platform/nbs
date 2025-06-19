@@ -580,7 +580,7 @@ func (s *service) AssignDisk(
 		"",
 		&protos.AssignDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: req.ZoneId.ZoneId,
+				ZoneId: req.DiskId.ZoneId,
 				DiskId: req.DiskId.DiskId,
 			},
 			InstanceId: req.InstanceId,
@@ -608,7 +608,7 @@ func (s *service) UnassignDisk(
 		"",
 		&protos.UnassignDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: req.ZoneId.ZoneId,
+				ZoneId: req.DiskId.ZoneId,
 				DiskId: req.DiskId.DiskId,
 			},
 		},
