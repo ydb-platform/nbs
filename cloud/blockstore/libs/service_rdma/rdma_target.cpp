@@ -200,7 +200,7 @@ private:
              guardedSgList = std::move(guardedSgList),
              blockSize = request.GetBlockSize(),
              taskQueue = TaskQueue,
-             endpoint = Endpoint](auto future) mutable
+             endpoint = Endpoint](auto future)
             {
                 auto response = ExtractResponse(future);
 
@@ -213,12 +213,15 @@ private:
                             auto guard = guardedSgList.Acquire();
                             Y_ENSURE(guard);
 
+                            ui32 flags = 0;
+                            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+
                             size_t responseBytes = NRdma::
                                 TProtoMessageSerializer::SerializeWithData(
                                     out,
                                     TBlockStoreServerProtocol::
                                         EvReadBlocksResponse,
-                                    0,   // flags
+                                    flags,   // flags
                                     response,
                                     guard.Get());
                             if (auto ep = endpoint.lock()) {
@@ -260,10 +263,12 @@ private:
 
             taskQueue->ExecuteSimple([= , response = std::move(response)] {
 
+                ui32 flags = 0;
+                SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
                 size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
                     out,
                     TBlockStoreServerProtocol::EvWriteBlocksResponse,
-                    0,   // flags
+                    flags,   // flags
                     response);
                 if (auto ep = endpoint.lock()) {
                     ep->SendResponse(context, responseBytes);
@@ -291,11 +296,12 @@ private:
 
         future.Subscribe([out = out, context = std::move(context), endpoint = Endpoint] (auto future) {
             auto response = ExtractResponse(future);
-
+            ui32 flags = 0;
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
             size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
                 out,
                 TBlockStoreServerProtocol::EvZeroBlocksResponse,
-                0,   // flags
+                flags,   // flags
                 response);
 
             if (auto ep = endpoint.lock()) {

@@ -11,6 +11,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
@@ -410,6 +411,7 @@ class TRdmaEndpoint final
 private:
     const IBlockStorePtr VolumeClient;
     const ITraceSerializerPtr TraceSerializer;
+    const ITaskQueuePtr TaskQueue;
     const bool IsAlignedDataEnabled;
 
     NRdma::IClientEndpointPtr Endpoint;
@@ -425,6 +427,7 @@ public:
         ILoggingServicePtr logging,
         IBlockStorePtr volumeClient,
         ITraceSerializerPtr traceSerializer,
+        ITaskQueuePtr taskQueue,
         bool isAlignedDataEnabled)
     {
         return std::shared_ptr<TRdmaEndpoint>{
@@ -432,6 +435,7 @@ public:
                 std::move(logging),
                 std::move(volumeClient),
                 std::move(traceSerializer),
+                std::move(taskQueue),
                 isAlignedDataEnabled)};
     }
 
@@ -485,9 +489,11 @@ private:
             ILoggingServicePtr logging,
             IBlockStorePtr volumeClient,
             ITraceSerializerPtr traceSerializer,
+            ITaskQueuePtr taskQueue,
             bool IsAlignedDataEnabled)
         : VolumeClient(std::move(volumeClient))
         , TraceSerializer(std::move(traceSerializer))
+        , TaskQueue(std::move(taskQueue))
         , IsAlignedDataEnabled(IsAlignedDataEnabled)
     {
         Log = logging->CreateLog("BLOCKSTORE_RDMA");
@@ -576,20 +582,28 @@ void TRdmaEndpoint::HandleResponse(
     ui32 status,
     size_t responseBytes)
 {
-    // TODO: it is much better to process response in different thread
-
-    auto* handler = static_cast<IRequestHandler*>(req->Context.get());
-    try {
-        auto buffer = req->ResponseBuffer.Head(responseBytes);
-        if (status == 0) {
-            handler->HandleResponse(buffer);
-        } else {
-            auto error = NRdma::ParseError(buffer);
-            handler->HandleError(error.GetCode(), error.GetMessage());
+    auto self = shared_from_this();
+    TaskQueue->ExecuteSimple(
+        [
+            =,
+            Log = Log,
+            self = std::move(self),
+            req = std::move(req)
+        ] () mutable
+    {
+        auto* handler = static_cast<IRequestHandler*>(req->Context.get());
+        try {
+            auto buffer = req->ResponseBuffer.Head(responseBytes);
+            if (status == 0) {
+                handler->HandleResponse(buffer);
+            } else {
+                auto error = NRdma::ParseError(buffer);
+                handler->HandleError(error.GetCode(), error.GetMessage());
+            }
+        } catch (...) {
+            STORAGE_ERROR("Exception in callback: " << CurrentExceptionMessage());
         }
-    } catch (...) {
-        STORAGE_ERROR("Exception in callback: " << CurrentExceptionMessage());
-    }
+    });
 }
 
 }   // namespace
@@ -601,6 +615,7 @@ IBlockStorePtr CreateRdmaEndpointClient(
     NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
     ITraceSerializerPtr traceSerializer,
+    ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config)
 {
     auto endpoint =
@@ -608,6 +623,7 @@ IBlockStorePtr CreateRdmaEndpointClient(
             std::move(logging),
             std::move(volumeClient),
             std::move(traceSerializer),
+            std::move(taskQueue),
             client->IsAlignedDataEnabled());
 
     auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
@@ -621,6 +637,7 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsyn
     NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
     ITraceSerializerPtr traceSerializer,
+    ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config)
 {
     auto endpoint =
@@ -628,6 +645,7 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsyn
             std::move(logging),
             std::move(volumeClient),
             std::move(traceSerializer),
+            std::move(taskQueue),
             client->IsAlignedDataEnabled());
 
     auto future = client->StartEndpoint(config.Address, config.Port);

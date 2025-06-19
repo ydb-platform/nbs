@@ -10,6 +10,8 @@
 #include <cloud/blockstore/libs/server/config.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/monlib/service/pages/html_mon_page.h>
@@ -171,6 +173,12 @@ IShardingManagerPtr CreateShardingManager(
             << "unable to create gRPC client";
     }
 
+    auto workers = config->GetRdmaTransportWorkers() ?
+        CreateThreadPool("SHRD", config->GetRdmaTransportWorkers()) :
+        CreateTaskQueueStub();
+
+    workers->Start();
+
     TShardingArguments args {
         .Timer = std::move(timer),
         .Scheduler = std::move(scheduler),
@@ -179,6 +187,7 @@ IShardingManagerPtr CreateShardingManager(
         .TraceSerializer = std::move(traceSerializer),
         .GrpcClient = std::move(result.GetResult()),
         .RdmaClient = std::move(rdmaClient),
+        .Workers = std::move(workers),
         .EndpointsSetup = CreateHostEndpointsSetupProvider()
     };
 
