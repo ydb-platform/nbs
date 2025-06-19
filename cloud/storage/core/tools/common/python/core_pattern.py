@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from os.path import basename, join
+from os.path import basename
 
 
 logger = logging.getLogger(__name__)
