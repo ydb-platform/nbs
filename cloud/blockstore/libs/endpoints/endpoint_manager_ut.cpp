@@ -371,7 +371,7 @@ struct TBootstrap
     IEndpointEventProxyPtr EndpointEventHandler = CreateEndpointEventProxy();
     TEndpointManagerOptions Options;
     IEndpointManagerPtr EndpointManager;
-    NBD::IErrorHandlerMap NbdErrorHandlerMap = NBD::CreateErrorHandlerMap();
+    NBD::IErrorHandlerMapPtr NbdErrorHandlerMap = NBD::CreateErrorHandlerMap();
 
     TBootstrap() = default;
 
