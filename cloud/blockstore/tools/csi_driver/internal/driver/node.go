@@ -590,7 +590,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
-	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
+	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       podId,
@@ -607,7 +607,9 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
-	})
+	}
+	_, err := s.nbsClient.StartEndpoint(ctx,
+		s.resolveEndpoint(ctx, startEndpointRequest))
 
 	if err != nil {
 		if s.IsGrpcTimeoutError(err, false /* nbs */) {
@@ -687,7 +689,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
-	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
+	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       instanceId,
@@ -704,7 +706,9 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
-	})
+	}
+	_, err := s.nbsClient.StartEndpoint(ctx,
+		s.resolveEndpoint(ctx, startEndpointRequest))
 
 	if err != nil {
 		if s.IsGrpcTimeoutError(err, false /* nbs */) {
@@ -925,9 +929,10 @@ func (s *nodeService) startNbsEndpointForNBD(
 		nbsInstanceId = s.nodeId
 	}
 
+	unixSocketPath := filepath.Join(endpointDir, nbsSocketName)
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
-	resp, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
-		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
+	startEndpointRequest := &nbsapi.TStartEndpointRequest{
+		UnixSocketPath:   unixSocketPath,
 		DiskId:           diskId,
 		InstanceId:       nbsInstanceId,
 		ClientId:         fmt.Sprintf("%s-%s", s.clientId, nbsInstanceId),
@@ -943,7 +948,9 @@ func (s *nodeService) startNbsEndpointForNBD(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
-	})
+	}
+	resp, err := s.nbsClient.StartEndpoint(ctx,
+		s.resolveEndpoint(ctx, startEndpointRequest))
 
 	if s.IsGrpcTimeoutError(err, false /* nbs */) {
 		s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
@@ -952,6 +959,27 @@ func (s *nodeService) startNbsEndpointForNBD(
 	}
 
 	return resp, err
+}
+
+func (s *nodeService) resolveEndpoint(ctx context.Context,
+	startEndpointRequest *nbsapi.TStartEndpointRequest) *nbsapi.TStartEndpointRequest {
+	listEndpointsResp, err := s.nbsClient.ListEndpoints(ctx,
+		&nbsapi.TListEndpointsRequest{})
+	if err != nil {
+		return startEndpointRequest
+	}
+
+	for _, endpoint := range listEndpointsResp.Endpoints {
+		if endpoint.UnixSocketPath == startEndpointRequest.UnixSocketPath &&
+			endpoint.InstanceId == startEndpointRequest.InstanceId &&
+			endpoint.DiskId == startEndpointRequest.DiskId {
+			endpoint.GetHeaders().Internal = nil
+			logVolume(endpoint.DiskId, "Existing endpoint was found: %q", endpoint)
+			return endpoint
+		}
+	}
+
+	return startEndpointRequest
 }
 
 func (s *nodeService) getNfsClient(fileSystemId string) nfsclient.EndpointClientIface {
