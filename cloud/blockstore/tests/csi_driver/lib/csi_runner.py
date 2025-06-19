@@ -170,8 +170,8 @@ class NbsCsiDriverRunner:
     def delete_volume(self, name: str):
         return self._controller_run("deletevolume", "--id", name)
 
-    def stage_volume(self, volume_id: str, access_type: str, is_nfs: bool = False):
-        args = ["stagevolume", "--volume-id", volume_id, "--access-type", access_type]
+    def stage_volume(self, volume_id: str, access_type: str, is_nfs: bool = False, vhost_request_queues_count: int = 8):
+        args = ["stagevolume", "--volume-id", volume_id, "--access-type", access_type, "--vhost-request-queues-count", str(vhost_request_queues_count)]
         if is_nfs:
             args += ["--backend", "nfs"]
 
