@@ -293,7 +293,6 @@ IStartable* TBootstrapYdb::GetStatsAggregator()    { return StatsAggregator.get(
 IStartable* TBootstrapYdb::GetClientPercentiles()  { return ClientPercentiles.get(); }
 IStartable* TBootstrapYdb::GetStatsUploader()      { return StatsUploader.get(); }
 IStartable* TBootstrapYdb::GetYdbStorage()         { return AsStartable(YdbStorage); }
-IStartable* TBootstrapYdb::GetTraceSerializer()    { return TraceSerializer.get(); }
 IStartable* TBootstrapYdb::GetLogbrokerService()   { return LogbrokerService.get(); }
 IStartable* TBootstrapYdb::GetNotifyService()      { return NotifyService.get(); }
 IStartable* TBootstrapYdb::GetStatsFetcher()       { return StatsFetcher.get(); }
@@ -301,6 +300,10 @@ IStartable* TBootstrapYdb::GetIamTokenClient()     { return IamTokenClient.get()
 IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get(); }
 IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
 IStartable* TBootstrapYdb::GetRootKmsClient()      { return RootKmsClient.get(); }
+ITraceSerializerPtr TBootstrapYdb::GetTraceSerializer()
+{
+    return TraceSerializer;
+}
 
 void TBootstrapYdb::InitConfigs()
 {

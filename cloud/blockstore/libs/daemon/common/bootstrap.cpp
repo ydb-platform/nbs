@@ -373,14 +373,18 @@ void TBootstrapBase::Init()
     auto& config = *clientAppConfig.MutableClientConfig();
     config.SetNoClientId(true);
 
+    auto traceSerializer = GetTraceSerializer();
+    if (!traceSerializer) {
+        traceSerializer = CreateTraceSerializerStub();
+    }
+
     ShardingManager = CreateShardingManager(
         Configs->ShardingConfig,
         Timer,
         Scheduler,
         Logging,
         Monitoring,
-        static_cast<ITraceSerializer*>(GetTraceSerializer())
-            ->shared_from_this(),
+        GetTraceSerializer(),
         ServerStats,
         RdmaClient);
 
