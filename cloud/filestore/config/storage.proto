@@ -606,4 +606,9 @@ message TStorageConfig
     optional uint32 LoadConfigsFromCmsRetryMinDelay = 431;
     optional uint32 LoadConfigsFromCmsRetryMaxDelay = 432;
     optional uint32 LoadConfigsFromCmsTotalTimeout = 433;
+
+    // If set to true, the filestore will allow handleless read requests.
+    // Meaning that one will not need to open a file handle to read or write
+    // data.
+    optional bool AllowHandlelessIO = 434;
 }

@@ -45,11 +45,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString GenerateValidateData(ui32 size)
+TString GenerateValidateData(ui32 size, ui32 seed = 0)
 {
     TString data(size, 0);
     for (ui32 i = 0; i < size; ++i) {
-        data[i] = 'A' + (i % ('Z' - 'A' + 1));
+        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
     }
     return data;
 }
@@ -3437,6 +3437,101 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, hddTabletCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdFsCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdTabletCounter->GetAtomic());
+    }
+
+    Y_UNIT_TEST(ShouldUseThreeStageWriteAndTwoStageReadForHandlelessIO)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetTwoStageReadEnabled(true);
+        config.SetAllowHandlelessIO(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        {
+            // Single aligned blob
+            auto data = GenerateValidateData(256_KB);
+            service.WriteData(headers, fs, nodeId, InvalidHandle, 0, data);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                data,
+                service
+                    .ReadData(
+                        headers,
+                        fs,
+                        nodeId,
+                        InvalidHandle,
+                        0,
+                        data.size())
+                    ->Record.GetBuffer());
+            auto& runtime = env.GetRuntime();
+
+            UNIT_ASSERT(
+                runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsRequest));
+            UNIT_ASSERT(runtime.GetCounter(TEvIndexTablet::EvAddDataRequest));
+            UNIT_ASSERT(
+                runtime.GetCounter(TEvIndexTablet::EvDescribeDataRequest));
+            env.GetRuntime().ClearCounters();
+        }
+        {
+            // blob + head and tail
+            auto data = GenerateValidateData(256_KB + 2, 1);
+            service.WriteData(
+                headers,
+                fs,
+                nodeId,
+                InvalidHandle,
+                256_KB - 1,
+                data);
+            auto response = service.ReadData(
+                headers,
+                fs,
+                nodeId,
+                InvalidHandle,
+                256_KB - 1,
+                data.size());
+            UNIT_ASSERT_VALUES_EQUAL(data, response->Record.GetBuffer());
+        }
+        {
+            // Small unaligned data
+            auto data = GenerateValidateData(123, 2);
+            service.WriteData(headers, fs, nodeId, InvalidHandle, 77, data);
+            auto response = service.ReadData(
+                headers,
+                fs,
+                nodeId,
+                InvalidHandle,
+                77,
+                data.size());
+            UNIT_ASSERT_VALUES_EQUAL(data, response->Record.GetBuffer());
+        }
+        {
+            // Multiple blobs
+            auto data = GenerateValidateData(1_MB, 3);
+            service.WriteData(headers, fs, nodeId, InvalidHandle, 0, data);
+            auto response = service.ReadData(
+                headers,
+                fs,
+                nodeId,
+                InvalidHandle,
+                0,
+                data.size());
+            UNIT_ASSERT_VALUES_EQUAL(data, response->Record.GetBuffer());
+        }
     }
 }
 
