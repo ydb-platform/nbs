@@ -39,6 +39,7 @@ auto THostEndpointsSetupProvider::SetupHostRdmaEndpoint(
         args.RdmaClient,
         std::move(client),
         args.TraceSerializer,
+        args.Workers,
         rdmaEndpoint);
 
     return future.Apply([=] (const auto& future) {

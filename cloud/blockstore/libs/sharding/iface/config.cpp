@@ -46,6 +46,7 @@ BLOCKSTORE_SHARD_DEFAULT_CONFIG(BLOCKSTORE_SHARD_DECLARE_CONFIG)
 #define BLOCKSTORE_SHARDING_DEFAULT_CONFIG(xxx)                                \
     xxx(ShardId,                     TString,           {}                    )\
     xxx(DescribeTimeout,             TDuration,         TDuration::Seconds(30))\
+    xxx(RdmaTrasnsportWorkers,       ui32,              0                     )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SHARDING_DECLARE_CONFIG(name, type, value)                  \

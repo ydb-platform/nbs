@@ -123,6 +123,7 @@ public:
     [[nodiscard]] const TConfiguredShards& GetShards() const;
     [[nodiscard]] TDuration GetDescribeTimeout() const;
     [[nodiscard]] const NClient::TClientAppConfig& GetGrpcClientConfig() const;
+    [[nodiscard]] ui32 GetRdmaTrasnsportWorkers() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

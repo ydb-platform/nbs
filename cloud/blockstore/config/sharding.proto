@@ -78,4 +78,7 @@ message TShardingConfig
 
     // Settings for Grpc client.
     optional TClientConfig GrpcClientConfig = 4;
+
+    // Number of worker threads for RDMA Transport
+    optional uint32 RdmaTrasnsportWorkers = 5;
 }

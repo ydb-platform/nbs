@@ -24,6 +24,8 @@ struct TShardingArguments
     NClient::IClientPtr GrpcClient;
     NRdma::IClientPtr RdmaClient;
 
+    ITaskQueuePtr Workers;
+
     IHostEndpointsSetupProviderPtr EndpointsSetup;
 };
 
