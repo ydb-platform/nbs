@@ -2022,6 +2022,34 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         volumeState.RemoveFollower("y");
         UNIT_ASSERT_VALUES_EQUAL(0, followers.size());
     }
+
+    Y_UNIT_TEST(ShouldRdmaDisabledIfUsedRdmaDisableTag)
+    {
+        NProto::TStorageServiceConfig config;
+        // enable Rdma
+        config.SetUseRdma(true);
+
+        TVolumeMountHistorySlice history{.Items = {}, .NextOlderRecord = {}};
+
+        auto volumeState = CreateVolumeState(config, std::move(history));
+
+        NProto::TVolumeMeta meta;
+
+        {
+            *meta.MutableVolumeConfig()->MutableTagsStr() = "";
+            volumeState.ResetMeta(meta);
+
+            UNIT_ASSERT(volumeState.GetUseRdma());
+        }
+
+        {
+            // disable Rdma
+            *meta.MutableVolumeConfig()->MutableTagsStr() = "disable-rdma";
+            volumeState.ResetMeta(meta);
+
+            UNIT_ASSERT(!volumeState.GetUseRdma());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
