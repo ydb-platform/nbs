@@ -87,7 +87,9 @@ type FilesystemMeta struct {
 	CreatedAt     time.Time     `json:"created_at"`
 	CreatedBy     string        `json:"created_by"`
 	DeleteTaskID  string        `json:"delete_task_id"`
-	IsExternal    bool          `json:"is_external"`
+
+	IsExternal                 bool   `json:"is_external"`
+	ExternalStorageClusterName string `json:"external_storage_cluster_name"`
 }
 
 type PlacementGroupMeta struct {
@@ -201,6 +203,12 @@ type Storage interface {
 
 	// Returns filesystem if action has been accepted by storage and nil otherwise.
 	CreateFilesystem(ctx context.Context, filesystem FilesystemMeta) (*FilesystemMeta, error)
+
+	SetExternalFilesystemStorageClusterName(
+		ctx context.Context,
+		filesystemID string,
+		clusterName string,
+	) error
 
 	FilesystemCreated(ctx context.Context, filesystem FilesystemMeta) error
 

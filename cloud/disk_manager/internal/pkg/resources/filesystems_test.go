@@ -32,6 +32,8 @@ func requireFilesystemsAreEqual(t *testing.T, expected FilesystemMeta, actual Fi
 	}
 	require.Equal(t, expected.CreatedBy, actual.CreatedBy)
 	require.Equal(t, expected.DeleteTaskID, actual.DeleteTaskID)
+	require.Equal(t, expected.IsExternal, actual.IsExternal)
+	require.Equal(t, expected.ExternalStorageClusterName, actual.ExternalStorageClusterName)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -300,4 +302,54 @@ func TestFilesystemsGetFilesystem(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, d)
 	requireFilesystemsAreEqual(t, filesystem, *d)
+}
+
+func TestFilesystemsSetExternalStorageClusterName(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	filesystemID := t.Name()
+
+	filesystem := FilesystemMeta{
+		ID:          filesystemID,
+		ZoneID:      "zone",
+		BlocksCount: 1000000,
+		BlockSize:   4096,
+		Kind:        "ssd",
+		CloudID:     "cloud",
+		FolderID:    "folder",
+
+		CreateRequest: &wrappers.UInt64Value{
+			Value: 1,
+		},
+		CreateTaskID: "create",
+		CreatingAt:   time.Now(),
+		CreatedBy:    "user",
+	}
+
+	actual, err := storage.CreateFilesystem(ctx, filesystem)
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+
+	externalStorageClusterName := "cluster-1"
+	filesystem.ExternalStorageClusterName = externalStorageClusterName
+	err = storage.SetExternalFilesystemStorageClusterName(
+		ctx,
+		filesystemID,
+		externalStorageClusterName,
+	)
+	require.NoError(t, err)
+
+	filesystem.CreateRequest = nil
+
+	actual, err = storage.GetFilesystemMeta(ctx, filesystemID)
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+	requireFilesystemsAreEqual(t, filesystem, *actual)
 }

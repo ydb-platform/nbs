@@ -1488,6 +1488,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             ->FindSubgroup("host", "cluster")
             ->FindSubgroup("filesystem", FileSystemId)
             ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
             ->FindSubgroup("request", "CreateHandle");
 
         UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("InProgress")->GetAtomic());

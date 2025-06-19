@@ -543,7 +543,9 @@ public:
     {
         RequestStats = StatsRegistry->GetFileSystemStats(
             Config->GetFileSystemId(),
-            Config->GetClientId());
+            Config->GetClientId(),
+            "", // folderId, empty until the session is created
+            ""); // cloudId
 
         auto callContext = MakeIntrusive<TCallContext>(
             Config->GetFileSystemId(),
@@ -561,6 +563,13 @@ public:
                         p->Log,
                         *callContext,
                         response.GetError());
+                    // After the session is established, we patch RequestStats
+                    // with newly known cloudId and folderId
+                    p->RequestStats = p->StatsRegistry->GetFileSystemStats(
+                        p->Config->GetFileSystemId(),
+                        p->Config->GetClientId(),
+                        response.GetFileStore().GetCloudId(),
+                        response.GetFileStore().GetFolderId());
 
                     return p->StartWithSessionState(future);
                 }
@@ -799,10 +808,10 @@ private:
                 Config->GetClientId(),
                 StorageMediaKind);
             StatsRegistry->RegisterUserStats(
-                filestore.GetCloudId(),
-                filestore.GetFolderId(),
                 Config->GetFileSystemId(),
-                Config->GetClientId());
+                Config->GetClientId(),
+                filestore.GetCloudId(),
+                filestore.GetFolderId());
 
             CompletionQueue = std::make_shared<TCompletionQueue>(
                 Config->GetFileSystemId(),

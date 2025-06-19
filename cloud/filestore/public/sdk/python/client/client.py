@@ -431,8 +431,6 @@ class Client(object):
             trace_id,
             request_timeout)
 
-    ## Session Operations
-
     @_handle_errors
     def create_session(
         self,
@@ -449,7 +447,6 @@ class Client(object):
             request, idempotence_id, timestamp, trace_id, request_timeout
         )
 
-    ## Filesystem Node Operations
     @dataclass
     class Directory:
         Mode: int  # uint32
@@ -565,6 +562,27 @@ class Client(object):
         return self.__impl.unlink_node(
             request, idempotence_id, timestamp, trace_id, request_timeout
         )
+
+    @_handle_errors
+    def execute_action(
+            self,
+            action: str,
+            input: bytes,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+        request = protos.TExecuteActionRequest(
+            Action=action,
+            Input=input
+        )
+
+        return self.__impl.execute_action(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
 
 
 def CreateClient(

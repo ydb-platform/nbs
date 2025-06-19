@@ -73,6 +73,8 @@ var (
 		{name: "PrivateService.ListPlacementGroups", permission: "disk-manager.disks.list"},
 		// TODO: Find more suitable permission for this.
 		{name: "PrivateService.GetAliveNodes", permission: "disk-manager.operations.list"},
+		{name: "PrivateService.FinishExternalFilesystemCreation", permission: "disk-manager.filesystems.create"},
+		{name: "PrivateService.FinishExternalFilesystemDeletion", permission: "disk-manager.filesystems.delete"},
 
 		{name: "FilesystemService.Create", permission: "disk-manager.filesystems.create"},
 		{name: "FilesystemService.Delete", permission: "disk-manager.filesystems.delete"},

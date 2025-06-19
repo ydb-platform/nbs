@@ -7,49 +7,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	internal_api "github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-
-func getAndCheckDependencyTask(
-	t *testing.T,
-	ctx context.Context,
-	storage tasks_storage.Storage,
-	operationID string,
-	taskType string,
-) string {
-
-	dependentTask, err := storage.GetTask(ctx, operationID)
-	require.NoError(t, err)
-
-	dependencies := dependentTask.Dependencies.List()
-	require.True(
-		t,
-		len(dependencies) == 1,
-		"Invalid parent task dependencies, operationID=%s, taskType=%s, dependencies=%+v",
-		operationID,
-		taskType,
-		dependencies,
-	)
-
-	task, err := storage.GetTask(ctx, dependencies[0])
-	require.NoError(t, err)
-
-	require.Equal(
-		t,
-		task.TaskType,
-		taskType,
-		"Dependency task has invalid type, operationID=%s, expectedType=%s, actualType=%s",
-		operationID,
-		taskType,
-		task.TaskType,
-	)
-
-	return task.ID
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -104,9 +65,6 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	storage, err := testcommon.NewTaskStorage(ctx)
-	require.NoError(t, err)
-
 	filesystemID := t.Name()
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
@@ -158,25 +116,23 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 		operation.Id,
 	)
 
-	// Force finish CreateExternalFilesystem task
-	externalTaskId := getAndCheckDependencyTask(
-		t,
-		ctx,
-		storage,
-		operation.Id,
-		"filesystem.CreateExternalFilesystem",
-	)
+	privateClient, err := testcommon.NewPrivateClient(ctx)
+	require.NoError(t, err)
+	defer privateClient.Close()
 
-	err = storage.ForceFinishTask(ctx, externalTaskId)
+	err = privateClient.FinishExternalFilesystemCreation(
+		ctx,
+		&internal_api.FinishExternalFilesystemCreationRequest{
+			FilesystemId:               filesystemID,
+			ExternalStorageClusterName: "external-cluster-1",
+		},
+	)
 	require.NoError(t, err)
 
-	// Validate CreateFilesystem finish succesfully
-	waitOperationOrTimeout(
-		"CreateFilesystem.2",
-		false, /* should not timeout */
-		60*time.Second,
-		operation.Id,
-	)
+	response := disk_manager.CreateFilesystemResponse{}
+	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
+	require.NoError(t, err)
+	require.Equal(t, "external-cluster-1", response.ExternalStorageClusterName)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteFilesystem(
@@ -198,16 +154,12 @@ func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 		operation.Id,
 	)
 
-	externalTaskId = getAndCheckDependencyTask(
-		t,
+	err = privateClient.FinishExternalFilesystemDeletion(
 		ctx,
-		storage,
-		operation.Id,
-		"filesystem.DeleteExternalFilesystem",
+		&internal_api.FinishExternalFilesystemDeletionRequest{
+			FilesystemId: filesystemID,
+		},
 	)
-
-	// Force finish DeleteExternalFilesystem task
-	err = storage.ForceFinishTask(ctx, externalTaskId)
 	require.NoError(t, err)
 
 	// Validate DeleteFilesystem finish succesfully

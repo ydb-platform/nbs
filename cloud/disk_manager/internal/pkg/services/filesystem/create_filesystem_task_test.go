@@ -215,6 +215,8 @@ func TestCreateExternalFilesystemTask(t *testing.T) {
 		mock.Anything,
 	).Return(mock.Anything, nil)
 
+	execCtx.On("SaveState", mock.Anything).Return(nil)
+
 	storage.On("CreateFilesystem", ctx, mock.Anything).Return(&resources.FilesystemMeta{
 		ID:         "filesystem",
 		IsExternal: true,
