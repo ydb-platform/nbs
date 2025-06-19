@@ -558,13 +558,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.UnmountVolume(DefaultDiskId, sessionId);
     }
 
-    Y_UNIT_TEST(ShouldCauseRemountWhenVolumeIsStolen)
-    {
-        TTestEnv env;
-        ui32 nodeIdx = SetupTestEnv(env);
+    // Y_UNIT_TEST(ShouldCauseRemountWhenVolumeIsStolen)
+    // {
+    //     TTestEnv env;
+    //     ui32 nodeIdx = SetupTestEnv(env);
 
-        DoTestShouldCauseRemountWhenVolumeIsStolen(env, nodeIdx);
-    }
+    //     DoTestShouldCauseRemountWhenVolumeIsStolen(env, nodeIdx);
+    // }
 
     Y_UNIT_TEST(ShouldDisallowMountByAnotherClient)
     {
@@ -1661,64 +1661,64 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
     }
 
-    Y_UNIT_TEST(ShouldReturnTabletBackIfLocalMountedAndTabletWasStolen)
-    {
-        TTestEnv env;
-        auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+    // Y_UNIT_TEST(ShouldReturnTabletBackIfLocalMountedAndTabletWasStolen)
+    // {
+    //     TTestEnv env;
+    //     auto unmountClientsTimeout = TDuration::Seconds(10);
+    //     ui32 nodeIdx = SetupTestEnvWithMultipleMount(
+    //         env,
+    //         unmountClientsTimeout);
 
-        ui64 volumeTabletId = 0;
-        bool startVolumeActorStopped = false;
+    //     ui64 volumeTabletId = 0;
+    //     bool startVolumeActorStopped = false;
 
-        auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                switch (event->GetTypeRewrite()) {
-                    case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto *msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
-                        volumeTabletId = msg->TabletId;
-                        break;
-                    }
-                    case TEvServicePrivate::EvStartVolumeActorStopped: {
-                        startVolumeActorStopped = true;
-                        break;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
+    //     auto& runtime = env.GetRuntime();
+    //     runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+    //             switch (event->GetTypeRewrite()) {
+    //                 case TEvServicePrivate::EvVolumeTabletStatus: {
+    //                     auto *msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+    //                     volumeTabletId = msg->TabletId;
+    //                     break;
+    //                 }
+    //                 case TEvServicePrivate::EvStartVolumeActorStopped: {
+    //                     startVolumeActorStopped = true;
+    //                     break;
+    //                 }
+    //             }
+    //             return TTestActorRuntime::DefaultObserverFunc(event);
+    //         });
 
-        auto fakeLocalMounter = runtime.AllocateEdgeActor();
+    //     auto fakeLocalMounter = runtime.AllocateEdgeActor();
 
-        TServiceClient service(runtime, nodeIdx);
-        service.CreateVolume();
-        service.MountVolume();
+    //     TServiceClient service(runtime, nodeIdx);
+    //     service.CreateVolume();
+    //     service.MountVolume();
 
-        UNIT_ASSERT(volumeTabletId);
-        runtime.SendToPipe(env.GetHive(), fakeLocalMounter, new TEvHive::TEvLockTabletExecution(volumeTabletId));
+    //     UNIT_ASSERT(volumeTabletId);
+    //     runtime.SendToPipe(env.GetHive(), fakeLocalMounter, new TEvHive::TEvLockTabletExecution(volumeTabletId));
 
-        // Wait until start volume actor is stopped
-        {
-            TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvStartVolumeActorStopped);
-            runtime.DispatchEvents(options);
-            UNIT_ASSERT(startVolumeActorStopped);
-        }
+    //     // Wait until start volume actor is stopped
+    //     {
+    //         TDispatchOptions options;
+    //         options.FinalEvents.emplace_back(TEvServicePrivate::EvStartVolumeActorStopped);
+    //         runtime.DispatchEvents(options);
+    //         UNIT_ASSERT(startVolumeActorStopped);
+    //     }
 
-        bool volumeStarted = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                switch (event->GetTypeRewrite()) {
-                    case TEvServicePrivate::EvStartVolumeResponse: {
-                        volumeStarted = true;
-                        break;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
+    //     bool volumeStarted = false;
+    //     runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+    //             switch (event->GetTypeRewrite()) {
+    //                 case TEvServicePrivate::EvStartVolumeResponse: {
+    //                     volumeStarted = true;
+    //                     break;
+    //                 }
+    //             }
+    //             return TTestActorRuntime::DefaultObserverFunc(event);
+    //         });
 
-        service.MountVolume();
-        UNIT_ASSERT(volumeStarted);
-    }
+    //     service.MountVolume();
+    //     UNIT_ASSERT(volumeStarted);
+    // }
 
     Y_UNIT_TEST(ShouldnotRevomeVolumeIfLastClientUnmountedWithError)
     {

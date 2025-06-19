@@ -481,7 +481,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(MaxReadBlobErrorsBeforeSuicide,            ui32,      5               )\
     xxx(MaxWriteBlobErrorsBeforeSuicide,           ui32,      1               )\
-    xxx(RejectMountOnAddClientTimeout,             bool,      true            )\
+    xxx(RejectMountOnAddClientTimeout,             bool,      false           )\
     xxx(NonReplicatedVolumeNotificationTimeout,    TDuration, Seconds(30)     )\
     xxx(NonReplicatedSecureEraseTimeout,           TDuration, Minutes(10)     )\
     xxx(MaxDevicesToErasePerDeviceNameForDefaultPoolKind,   ui32,   100       )\

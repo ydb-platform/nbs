@@ -157,16 +157,16 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
         Request->Record.GetDiskId().Quote().c_str(),
         LastResponseError.GetMessage().Quote().c_str());
 
-    if (!TimeoutError) {
+    // if (!TimeoutError) {
         LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
             "%s KEKOKEFO",
             TMethod::Name);
 
         TimeoutError = true;
         SendRequest(ctx);
-        ctx.Schedule(Timeout, new TEvents::TEvWakeup(false));
+        // ctx.Schedule(Timeout, new TEvents::TEvWakeup(false));
         return;
-    }
+    // }
 
     ReplyErrorAndDie(
         ctx,
