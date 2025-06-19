@@ -13,7 +13,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestDiskServicePrepareZoneIDForExistingDiskCorrectZonerequested(
+func TestDiskServicePrepareZoneIDForExistingDisk(
 	t *testing.T,
 ) {
 	testCases := []struct {
