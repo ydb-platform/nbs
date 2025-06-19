@@ -750,8 +750,8 @@ void TCheckpointActor<TMethod>::HandleReleaseDiskResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Error occured when try to release shadow disk %s for clientId: %s."
-            " Error: %s",
+            "Failed to release shadow disk %s for client %s. Error: "
+            "%s",
             ShadowDiskId.Quote().c_str(),
             GetClientId(releaseSessionKind).c_str(),
             FormatError(record.GetError()).c_str());
