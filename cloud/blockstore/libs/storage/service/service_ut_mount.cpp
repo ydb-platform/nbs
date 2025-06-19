@@ -3025,7 +3025,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvUnlockTabletRequest: {
-                        return TTestActorRuntime::EEventAction::DROP;
+                        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(3000));
+                        break;
                     }
                     case TEvServicePrivate::EvMountRequestProcessed: {
                         if (!mountRequestProcessed) {
@@ -3049,10 +3050,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service.SendMountVolumeRequest();
         response = service.RecvMountVolumeResponse();
-        UNIT_ASSERT(FAILED(response->GetStatus()));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Failed to deliver AddClient request to volume",
-            response->GetErrorReason());
+        UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
     }
 
     Y_UNIT_TEST(ShouldShutdownVolumeAfterLockLostOnVolumeDeletionDuringMounting)

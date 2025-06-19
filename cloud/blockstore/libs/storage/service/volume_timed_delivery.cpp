@@ -115,6 +115,14 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleResponse(
 {
     auto* msg = ev->Get();
 
+    LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+        "%s %s request sent to volume %s is NOT??? rejected",
+        TMethod::Name,
+        Request->Record.GetHeaders().GetClientId().Quote().c_str(),
+        Request->Record.GetDiskId().Quote().c_str());
+
+    LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE, "error is " << FormatError(msg->Record.GetError()));
+
     if (msg->Record.GetError().GetCode() == E_REJECTED) {
         LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
             "%s %s request sent to volume %s is rejected",
@@ -139,7 +147,7 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
     const auto* msg = ev->Get();
 
     if (msg->Tag) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
             "Resend %s %s request to volume %s. Last error %s",
             TMethod::Name,
             Request->Record.GetHeaders().GetClientId().Quote().c_str(),
@@ -158,14 +166,10 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
         LastResponseError.GetMessage().Quote().c_str());
 
     // if (!TimeoutError) {
-        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-            "%s KEKOKEFO",
-            TMethod::Name);
-
-        TimeoutError = true;
-        SendRequest(ctx);
-        // ctx.Schedule(Timeout, new TEvents::TEvWakeup(false));
-        return;
+    //     TimeoutError = true;
+    //     SendRequest(ctx);
+    //     ctx.Schedule(Timeout, new TEvents::TEvWakeup(false));
+    //     return;
     // }
 
     ReplyErrorAndDie(
