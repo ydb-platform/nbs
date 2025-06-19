@@ -257,30 +257,14 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     auto& request = AcquireReleaseDiskRequests.front();
     auto clientRequest = request.ClientRequest;
 
-    Y_DEFER {
-        if (clientRequest) {
-            PendingClientRequests.pop_front();
-            ProcessNextPendingClientRequest(ctx);
-        }
-    };
-
     if (HasError(error)) {
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Can't acquire disk " << State->GetDiskId()
-        );
+            "Can't acquire disk " << State->GetDiskId());
+    }
 
-        if (clientRequest) {
-            auto response =
-                std::make_unique<TEvVolume::TEvAddClientResponse>(error);
-            response->Record.MutableVolume()->SetDiskId(clientRequest->DiskId);
-            response->Record.SetClientId(clientRequest->GetClientId());
-            response->Record.SetTabletId(TabletID());
-
-            NCloud::Reply(ctx, *clientRequest->RequestInfo, std::move(response));
-        }
-    } else if (clientRequest) {
+    if (clientRequest) {
         auto response = CreateAddClientResponse(
             error,
             TabletID(),
@@ -290,6 +274,11 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             *State);
 
         NCloud::Reply(ctx, *clientRequest->RequestInfo, std::move(response));
+    }
+
+    if (clientRequest) {
+        PendingClientRequests.pop_front();
+        ProcessNextPendingClientRequest(ctx);
     }
 
     AcquireReleaseDiskRequests.pop_front();
@@ -507,7 +496,7 @@ void TVolumeActor::CompleteAddClient(
 {
     const bool needToAcquireOrReleaseDevices =
         State->IsDiskRegistryMediaKind() &&
-        Config->GetAcquireNonReplicatedDevices();
+        Config->GetAcquireNonReplicatedDevices() && !HasError(args.Error);
 
     Y_DEFER
     {

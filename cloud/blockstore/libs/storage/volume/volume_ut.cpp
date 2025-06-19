@@ -2128,7 +2128,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volumeGeneration = 0;
 
-        volume.RemoveClient(writer.GetClientId());
+        volume.RemoveClient(reader.GetClientId());
         UNIT_ASSERT_VALUES_EQUAL(2, volumeGeneration);
     }
 

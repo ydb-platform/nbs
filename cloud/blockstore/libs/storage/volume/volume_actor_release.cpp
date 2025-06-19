@@ -95,7 +95,7 @@ void TVolumeActor::ReleaseDiskFromOldClients(
             TBlockStoreComponents::VOLUME,
             "%s Releasing devices from old client: %s",
             LogTitle.GetWithTime().c_str(),
-            clientId.c_str());
+            clientId.Quote().c_str());
 
         AddAcquireReleaseDiskRequest(
             ctx,

@@ -110,17 +110,16 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
             TBlockStoreComponents::VOLUME,
             "Can't release disk " << State->GetDiskId()
                                   << " due to error: " << FormatError(error));
-    } else if (clientRequest) {
-        // This shouldn't be release of replaced devices.
-        Y_DEBUG_ABORT_UNLESS(request.DevicesToRelease.empty());
     }
+    // This shouldn't be release of replaced devices.
+    Y_DEBUG_ABORT_UNLESS(!clientRequest || request.DevicesToRelease.empty());
 
     if (clientRequest) {
         NCloud::Reply(
             ctx,
             *clientRequest->RequestInfo,
             CreateReleaseResponse(
-                error,
+                error.GetCode() == E_NOT_FOUND ? NProto::TError() : error,
                 clientRequest->DiskId,
                 clientRequest->GetClientId(),
                 TabletID()));
@@ -234,8 +233,10 @@ void TVolumeActor::CompleteRemoveClient(
     const TActorContext& ctx,
     TTxVolume::TRemoveClient& args)
 {
-    const bool needToAcquireOrReleaseDevices = State->IsDiskRegistryMediaKind() &&
-                                Config->GetAcquireNonReplicatedDevices();
+    const bool needToAcquireOrReleaseDevices =
+        State->IsDiskRegistryMediaKind() &&
+        Config->GetAcquireNonReplicatedDevices() && !HasError(args.Error) &&
+        args.Error.GetCode() != S_ALREADY;
     Y_DEFER {
         if (!needToAcquireOrReleaseDevices) {
             PendingClientRequests.pop_front();
