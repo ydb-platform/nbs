@@ -154,6 +154,24 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
             UNIT_ASSERT_VALUES_EQUAL(EErrorKind::ErrorFatal, GetErrorKind(e));
         }
     }
+
+    Y_UNIT_TEST(ShouldCorrectlyInterpretErrorKindForSystemErrors)
+    {
+        constexpr std::array FatalSystemErrors = {EIO, ENODATA};
+
+        for (ui32 i = 0; i < 1000; i++) {
+            NProto::TError e = MakeError(MAKE_SYSTEM_ERROR(i));
+            if (FindPtr(FatalSystemErrors, i)) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    EErrorKind::ErrorFatal,
+                    GetErrorKind(e));
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    EErrorKind::ErrorRetriable,
+                    GetErrorKind(e));
+            }
+        }
+    }
 }
 
 }   // namespace NCloud
