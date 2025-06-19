@@ -77,6 +77,12 @@ struct IRequestStatsRegistry
         const TString& fileSystemId,
         const TString& clientId) = 0;
 
+    virtual void UpdateCloudAndFolder(
+        const TString& fileSystemId,
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) = 0;
+
     virtual void AddIncompleteRequest(const TIncompleteRequest& req) = 0;
 };
 

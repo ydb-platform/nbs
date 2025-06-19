@@ -565,7 +565,7 @@ public:
                         response.GetError());
                     // After the session is established, we patch RequestStats
                     // with newly known cloudId and folderId
-                    p->RequestStats = p->StatsRegistry->GetFileSystemStats(
+                    p->StatsRegistry->UpdateCloudAndFolder(
                         p->Config->GetFileSystemId(),
                         p->Config->GetClientId(),
                         response.GetFileStore().GetCloudId(),
