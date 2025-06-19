@@ -201,7 +201,7 @@ def test_nbd_reconnect():
         time.sleep(nbs_downtime)
         os.kill(env.nbs.pid, signal.SIGCONT)
 
-        proc.communicate(timeout=120)
+        proc.communicate(timeout = runtime * 2)
         assert proc.returncode == 0
 
     except subprocess.CalledProcessError as e:

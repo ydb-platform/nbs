@@ -26,9 +26,7 @@ struct TErrorHandlerMap
 
     bool Emplace(const TString& socket, IErrorHandlerPtr&& handler) override
     {
-        return Handlers.emplace(
-            socket,
-            std::forward<IErrorHandlerPtr&&>(handler)).second;
+        return Handlers.emplace(socket, handler).second;
     }
 
     void Erase(const TString& socket) override
