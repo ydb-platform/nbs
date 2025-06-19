@@ -46,13 +46,13 @@ struct TEndpointReaper
 {
     TFuture<void> Future;
 
-    TEndpointReaper(THashMap<TString, TEndpointFuture>& endpoints)
+    explicit TEndpointReaper(THashMap<TString, TEndpointFuture>& endpoints)
     {
         TVector<TEndpointFuture> start;
         for (auto& [_, endpoint]: endpoints) {
             start.push_back(std::move(endpoint));
         }
-        Future = WaitAll(start).Subscribe([=](auto& f) {
+        Future = WaitAll(start).Subscribe([start, this](auto& f) {
             Y_UNUSED(f);
             TVector<TFuture<void>> stop;
             for (auto& endpoint: start) {
@@ -60,7 +60,7 @@ struct TEndpointReaper
                     stop.push_back(endpoint.GetValue()->Stop());
                 }
             }
-            Future = WaitAll(stop).Apply([=](auto& f) {
+            Future = WaitAll(stop).Apply([this](auto& f) {
                 Y_UNUSED(f);
                 delete this;
             });
