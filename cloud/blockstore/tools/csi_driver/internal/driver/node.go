@@ -3,7 +3,7 @@ package driver
 //lint:file-ignore ST1003 protobuf generates names that break golang naming convention
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1038,26 +1038,56 @@ func (s *nodeService) nodeStageFileStoreStartEndpoint(
 	return nil
 }
 
+func loggedError(err error) error {
+	log.Printf("%v", err)
+	return err
+}
+
 func runMountHelper(helperCmd string, helperCmdArgs []string, localFsId string, externalFsId string) error {
 	cmd := exec.Command(helperCmd, helperCmdArgs...)
 	cmd.Env = append(cmd.Environ(),
 		fmt.Sprintf("LOCAL_FS_ID=%s", localFsId),
 		fmt.Sprintf("EXTERNAL_FS_ID=%s", externalFsId))
 
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	log.Printf("MountHelper: Running cmd: %v", cmd.Args)
-	if err := cmd.Run(); err != nil {
-		log.Printf("MountHelper: Command failed: %v", err)
-		log.Printf("MountHelper: Stderr: %s", stderrBuf.String())
-		log.Printf("MountHelper: Stdout: %s", stdoutBuf.String())
-		return err
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return loggedError(fmt.Errorf("MountHelper: failed to create stdout pipe: %w", err))
 	}
 
-	log.Printf("MountHelper: Stdout: %s", stdoutBuf.String())
-	log.Printf("MountHelper: Stderr: %s", stderrBuf.String())
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return loggedError(fmt.Errorf("MountHelper: failed to create stderr pipe: %w", err))
+	}
+
+	log.Printf("MountHelper: Running cmd: %v", cmd.Args)
+
+	if err := cmd.Start(); err != nil {
+		return loggedError(fmt.Errorf("MountHelper: failed to start command: %w", err))
+	}
+
+	go func() {
+		scanner := bufio.NewScanner(stdoutPipe)
+		for scanner.Scan() {
+			log.Printf("MountHelper Stdout: %s", scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			log.Printf("MountHelper Stdout Scanner error: %v", err)
+		}
+	}()
+
+	go func() {
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			log.Printf("MountHelper Stderr: %s", scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			log.Printf("MountHelper Stderr Scanner error: %v", err)
+		}
+	}()
+
+	if err := cmd.Wait(); err != nil {
+		return loggedError(fmt.Errorf("MountHelper command failed: %w", err))
+	}
 
 	return nil
 }
