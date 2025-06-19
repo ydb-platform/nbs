@@ -21,6 +21,10 @@ CLIENT_METHODS = [
     "create_checkpoint",
     "destroy_checkpoint",
     "describe_filestore_model",
+    "create_session",
+    "create_node",
+    "list_nodes",
+    "unlink_node",
     "execute_action",
 ]
 
