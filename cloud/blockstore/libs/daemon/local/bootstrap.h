@@ -29,7 +29,6 @@ protected:
     IStartable* GetClientPercentiles() override  { return nullptr; }
     IStartable* GetStatsUploader() override      { return nullptr; }
     IStartable* GetYdbStorage() override         { return nullptr; }
-    IStartable* GetTraceSerializer() override    { return nullptr; }
     IStartable* GetLogbrokerService() override   { return nullptr; }
     IStartable* GetNotifyService() override      { return nullptr; }
     IStartable* GetStatsFetcher() override       { return nullptr; }
@@ -37,6 +36,10 @@ protected:
     IStartable* GetComputeClient() override      { return nullptr; }
     IStartable* GetKmsClient() override          { return nullptr; }
     IStartable* GetRootKmsClient() override      { return nullptr; }
+    ITraceSerializerPtr GetTraceSerializer() override
+    {
+        return nullptr;
+    }
 
     void InitSpdk() override;
     void InitRdmaClient() override;

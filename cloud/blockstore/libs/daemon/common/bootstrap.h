@@ -109,7 +109,7 @@ protected:
     virtual IStartable* GetClientPercentiles() = 0;
     virtual IStartable* GetStatsUploader() = 0;
     virtual IStartable* GetYdbStorage() = 0;
-    virtual IStartable* GetTraceSerializer() = 0;
+    virtual ITraceSerializerPtr GetTraceSerializer() = 0;
     virtual IStartable* GetLogbrokerService() = 0;
     virtual IStartable* GetNotifyService() = 0;
     virtual IStartable* GetStatsFetcher() = 0;
