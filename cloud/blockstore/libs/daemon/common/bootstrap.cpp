@@ -374,6 +374,8 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("SocketEndpointListener initialized");
 
+    NbdErrorHandlerMap = NBD::CreateErrorHandlerMapStub();
+
     if (Configs->ServerConfig->GetNbdEnabled()) {
         NbdServer = NBD::CreateServer(
             Logging,
@@ -383,8 +385,6 @@ void TBootstrapBase::Init()
 
         if (Configs->ServerConfig->GetNbdNetlink()) {
             NbdErrorHandlerMap = NBD::CreateErrorHandlerMap();
-        } else {
-            NbdErrorHandlerMap = NBD::CreateErrorHandlerMapStub();
         }
 
         auto nbdEndpointListener = CreateNbdEndpointListener(
