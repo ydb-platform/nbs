@@ -187,7 +187,7 @@ func (s *service) prepareZoneIDForExistingDisk(
 	if diskMeta.ZoneID != diskID.ZoneId &&
 		!s.cellSelector.IsCellOfZone(diskMeta.ZoneID, diskID.ZoneId) {
 		return "", errors.NewInvalidArgumentError(
-			"provided zone id %v does not match with an actual zone id %v",
+			"provided zone ID %v does not match with an actual zone ID %v",
 			diskID.ZoneId,
 			diskMeta.ZoneID,
 		)
@@ -574,13 +574,18 @@ func (s *service) AssignDisk(
 		)
 	}
 
+	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	if err != nil {
+		return "", err
+	}
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.AssignDisk",
 		"",
 		&protos.AssignDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: req.DiskId.ZoneId,
+				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
 			},
 			InstanceId: req.InstanceId,
@@ -602,13 +607,18 @@ func (s *service) UnassignDisk(
 		)
 	}
 
+	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	if err != nil {
+		return "", err
+	}
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.UnassignDisk",
 		"",
 		&protos.UnassignDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: req.DiskId.ZoneId,
+				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
 			},
 		},
