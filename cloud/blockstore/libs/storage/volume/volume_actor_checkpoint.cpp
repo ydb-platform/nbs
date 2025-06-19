@@ -140,6 +140,24 @@ NProto::ECheckpointStatus GetCheckpointStatus(const TActiveCheckpointInfo& check
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString GetClientId(EReleaseSessionKind releaseSessionKind)
+{
+    TString clientId;
+
+    switch (releaseSessionKind) {
+        case EReleaseSessionKind::AnyReader:
+            clientId = AnyReaderClientId;
+            break;
+        case EReleaseSessionKind::AnyWriter:
+            clientId = AnyWriterClientId;
+            break;
+    }
+
+    return clientId;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TMethod>
 class TCheckpointActor final
     : public TActorBootstrapped<TCheckpointActor<TMethod>>
@@ -445,16 +463,7 @@ std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
 TCheckpointActor<TMethod>::MakeReleaseDiskRequest(
     EReleaseSessionKind releaseSessionKind) const
 {
-    TString clientId;
-
-    switch (releaseSessionKind) {
-        case EReleaseSessionKind::AnyReader:
-            clientId = AnyReaderClientId;
-            break;
-        case EReleaseSessionKind::AnyWriter:
-            clientId = AnyWriterClientId;
-            break;
-    }
+    TString clientId = GetClientId(releaseSessionKind);
 
     auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
     request->Record.SetDiskId(ShadowDiskId);
@@ -738,6 +747,15 @@ void TCheckpointActor<TMethod>::HandleReleaseDiskResponse(
         static_cast<EReleaseSessionKind>(ev->Cookie);
 
     if (record.HasError()) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "Error occured when try to release shadow disk %s for clientId: %s."
+            " Error: %s",
+            ShadowDiskId.Quote().c_str(),
+            GetClientId(releaseSessionKind).c_str(),
+            FormatError(record.GetError()).c_str());
+
         if (GetErrorKind(record.GetError()) == EErrorKind::ErrorRetriable) {
             ctx.ExecutorThread.Schedule(
                 ReleaseShadowDiskRetryTimeout,
