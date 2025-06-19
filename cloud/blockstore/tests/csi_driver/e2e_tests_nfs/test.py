@@ -57,12 +57,12 @@ def test_volume_lifecycle_local_fs():
         fs_mount_cmd="/bin/bash",
         fs_mount_args=[
             "-c",
-            "echo hello world; echo LOCAL_FS_ID=$LOCAL_FS_ID; echo EXTERNAL_FS_ID=$EXTERNAL_FS_ID",
+            "echo hello world; echo LOCAL_FS_ID=$LOCAL_FS_ID; echo EXTERNAL_FS_ID=$EXTERNAL_FS_ID; for i in `seq 5`; do echo $i; ls /bla; sleep 1; done",
         ],
         fs_umount_cmd="/bin/bash",
         fs_umount_args=[
             "-c",
-            "echo goodbye world; echo LOCAL_FS_ID=$LOCAL_FS_ID; echo EXTERNAL_FS_ID=$EXTERNAL_FS_ID",
+            "echo goodbye world; echo LOCAL_FS_ID=$LOCAL_FS_ID; echo EXTERNAL_FS_ID=$EXTERNAL_FS_ID; for i in `seq 5`; do echo $i; ls /lala; sleep 1; done",
         ],
     )
     pod_names = ["example-pod-1", "example-pod-2"]
