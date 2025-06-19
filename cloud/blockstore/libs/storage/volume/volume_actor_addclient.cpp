@@ -274,9 +274,7 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             *State);
 
         NCloud::Reply(ctx, *clientRequest->RequestInfo, std::move(response));
-    }
 
-    if (clientRequest) {
         PendingClientRequests.pop_front();
         ProcessNextPendingClientRequest(ctx);
     }
