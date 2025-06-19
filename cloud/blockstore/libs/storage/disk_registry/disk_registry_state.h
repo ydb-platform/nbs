@@ -882,7 +882,8 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
-    TVector<TString> GetPoolNames() const;
+    TVector<TString> GetPoolNames(
+        std::optional<NProto::EDevicePoolKind> kind = std::nullopt) const;
 
     const NProto::TDeviceConfig* FindDevice(const TDeviceId& uuid) const;
 
