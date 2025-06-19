@@ -40,7 +40,8 @@ private:
 
     TActorId VolumeProxy;
 
-    NProto::TError LastError;
+    bool TimeoutError;
+    NProto::TError LastResponseError;
     TDuration CurrentBackoff;
 
 public:
@@ -55,6 +56,7 @@ public:
         , Timeout(timeout)
         , BackoffIncrement(backoffIncrement)
         , VolumeProxy(volumeProxy)
+        , TimeoutError(false)
     {}
 
     void Bootstrap(const TActorContext& ctx);
@@ -93,7 +95,7 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::SendRequest(const TActorContext& c
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->Record = Request->Record;
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
         "Sending %s %s to volume %s",
         TMethod::Name,
         Request->Record.GetHeaders().GetClientId().Quote().c_str(),
@@ -120,7 +122,7 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleResponse(
             Request->Record.GetHeaders().GetClientId().Quote().c_str(),
             Request->Record.GetDiskId().Quote().c_str());
 
-        LastError = msg->Record.GetError();
+        LastResponseError = msg->Record.GetError();
         CurrentBackoff += BackoffIncrement;
         ctx.Schedule(CurrentBackoff, new TEvents::TEvWakeup(true));
         return;
@@ -142,18 +144,29 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
             TMethod::Name,
             Request->Record.GetHeaders().GetClientId().Quote().c_str(),
             Request->Record.GetDiskId().Quote().c_str(),
-            LastError.GetMessage().Quote().c_str());
+            LastResponseError.GetMessage().Quote().c_str());
 
         SendRequest(ctx);
         return;
     }
 
     LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-        "%s %s request sent to volume %s timed out. Last error %s",
+        "%s %s request sent to volume %s timed out. Last error %s %s",
         TMethod::Name,
         Request->Record.GetHeaders().GetClientId().Quote().c_str(),
         Request->Record.GetDiskId().Quote().c_str(),
-        LastError.GetMessage().Quote().c_str());
+        LastResponseError.GetMessage().Quote().c_str());
+
+    if (!TimeoutError) {
+        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+            "%s KEKOKEFO",
+            TMethod::Name);
+
+        TimeoutError = true;
+        SendRequest(ctx);
+        ctx.Schedule(Timeout, new TEvents::TEvWakeup(false));
+        return;
+    }
 
     ReplyErrorAndDie(
         ctx,
