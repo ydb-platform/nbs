@@ -10,7 +10,7 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 // static
-auto TWriteBackCache::CalculateDataPartsToRead(
+auto TWriteBackCache::TImpl::CalculateDataPartsToRead(
     const TDeque<TWriteDataEntry*>& entries,
     ui64 startingFromOffset,
     ui64 length) -> TVector<TWriteDataEntryPart>
@@ -121,6 +121,53 @@ auto TWriteBackCache::CalculateDataPartsToRead(
             std::pop_heap(heap.begin(), heap.end(), heapComparator);
             heap.pop_back();
         }
+    }
+
+    return res;
+}
+
+// static
+auto TWriteBackCache::TImpl::InvertDataParts(
+    const TVector<TWriteDataEntryPart>& parts,
+    ui64 startingFromOffset,
+    ui64 length) -> TVector<TWriteDataEntryPart>
+{
+    if (parts.empty()) {
+        return { {
+            .Offset = startingFromOffset,
+            .Length = length
+        } };
+    }
+
+    const ui64 maxOffset = startingFromOffset + length;
+
+    TVector<TWriteDataEntryPart> res(Reserve(parts.size() + 1));
+
+    if (parts.front().Offset > startingFromOffset) {
+        res.push_back({
+            .Offset = startingFromOffset,
+            .Length = Min(parts.front().Offset, maxOffset) - startingFromOffset,
+        });
+    }
+
+    for (size_t i = 1; i < parts.size(); i++) {
+        if (parts[i - 1].End() >= maxOffset) {
+            break;
+        }
+        if (parts[i - 1].End() == parts[i].Offset) {
+            continue;
+        }
+        res.push_back({
+            .Offset = parts[i - 1].End(),
+            .Length = Min(parts[i].Offset, maxOffset) - parts[i - 1].End()
+        });
+    }
+
+    if (parts.back().End() < maxOffset) {
+        res.push_back({
+            .Offset = parts.back().End(),
+            .Length = maxOffset - parts.back().End()
+        });
     }
 
     return res;

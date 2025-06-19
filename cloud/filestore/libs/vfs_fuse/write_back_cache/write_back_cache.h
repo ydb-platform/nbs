@@ -17,9 +17,7 @@ namespace NCloud::NFileStore::NFuse {
 class TWriteBackCache final
 {
 private:
-    friend class TImpl;
     class TImpl;
-
     std::shared_ptr<TImpl> Impl;
 
 public:
@@ -50,15 +48,6 @@ public:
 private:
     // only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
-
-    enum class EWriteDataEntryStatus;
-    struct TWriteDataEntry;
-    struct TWriteDataEntryPart;
-
-    static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TDeque<TWriteDataEntry*>& entries,
-        ui64 startingFromOffset,
-        ui64 length);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

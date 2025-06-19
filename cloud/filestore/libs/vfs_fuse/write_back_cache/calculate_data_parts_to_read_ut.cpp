@@ -108,8 +108,8 @@ IOutputStream& operator<<(
 
 struct TCalculateDataPartsToReadTestBootstrap
 {
-    using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
-    using TWriteDataEntryPart = TWriteBackCache::TWriteDataEntryPart;
+    using TWriteDataEntry = TWriteBackCache::TImpl::TWriteDataEntry;
+    using TWriteDataEntryPart = TWriteBackCache::TImpl::TWriteDataEntryPart;
 
     ILoggingServicePtr Logging;
     TLog Log;
@@ -128,7 +128,7 @@ struct TCalculateDataPartsToReadTestBootstrap
         ui64 startingFromOffset,
         ui64 length)
     {
-        return TWriteBackCache::CalculateDataPartsToRead(
+        return TWriteBackCache::TImpl::CalculateDataPartsToRead(
             entries,
             startingFromOffset,
             length);
@@ -198,9 +198,9 @@ IOutputStream& operator<<(
     const TWriteDataEntry& e)
 {
     out << "{"
-        << "Handle: " << e.Request->GetHandle() << ", "
-        << "Offset: " << e.Request->GetOffset() << ", "
-        << "Length: " << e.Request->GetBuffer().Size()
+        << "Handle: " << e.GetRequest()->GetHandle() << ", "
+        << "Offset: " << e.GetRequest()->GetOffset() << ", "
+        << "Length: " << e.GetRequest()->GetBuffer().Size()
         << "}";
     return out;
 }
@@ -238,7 +238,8 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
-            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
+            auto entry =
+                TWriteDataEntry::CreatePendingRequest(std::move(request));
             entries.PushBack(entry.release());
         }
 
@@ -291,7 +292,8 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
-            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
+            auto entry =
+                TWriteDataEntry::CreatePendingRequest(std::move(request));
             entries.PushBack(entry.release());
         }
 
