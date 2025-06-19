@@ -63,6 +63,7 @@ IEndpointManagerPtr CreateEndpointManager(
     IEndpointStoragePtr endpointStorage,
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
     NBD::IDeviceFactoryPtr nbdDeviceFactory,
+    NBD::IErrorHandlerMapPtr errorHandlerMap,
     TEndpointManagerOptions options);
 
 bool AreSameStartEndpointRequests(

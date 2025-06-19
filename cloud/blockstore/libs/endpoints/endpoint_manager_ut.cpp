@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints_grpc/socket_endpoint_listener.h>
+#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/server/client_storage_factory.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -370,6 +371,7 @@ struct TBootstrap
     IEndpointEventProxyPtr EndpointEventHandler = CreateEndpointEventProxy();
     TEndpointManagerOptions Options;
     IEndpointManagerPtr EndpointManager;
+    NBD::IErrorHandlerMapPtr NbdErrorHandlerMap = NBD::CreateErrorHandlerMap();
 
     TBootstrap() = default;
 
@@ -557,6 +559,7 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
         bootstrap.EndpointStorage,
         bootstrap.EndpointListeners,
         bootstrap.NbdDeviceFactory,
+        bootstrap.NbdErrorHandlerMap,
         bootstrap.Options);
 
     return bootstrap.EndpointManager;
