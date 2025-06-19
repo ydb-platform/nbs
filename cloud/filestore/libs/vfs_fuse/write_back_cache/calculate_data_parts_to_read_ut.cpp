@@ -198,9 +198,9 @@ IOutputStream& operator<<(
     const TWriteDataEntry& e)
 {
     out << "{"
-        << "Handle: " << e.GetRequest()->GetHandle() << ", "
-        << "Offset: " << e.GetRequest()->GetOffset() << ", "
-        << "Length: " << e.GetRequest()->GetBuffer().Size()
+        << "Handle: " << e.GetHandle() << ", "
+        << "Offset: " << e.Begin() << ", "
+        << "Length: " << e.GetBuffer().Size()
         << "}";
     return out;
 }

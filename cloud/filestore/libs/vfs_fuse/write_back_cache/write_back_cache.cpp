@@ -119,6 +119,7 @@ TFuture<NProto::TReadDataResponse> TWriteBackCache::TImpl::ReadData(
 {
     TString buffer(request->GetLength(), 0);
     TVector<TWriteDataEntryPart> parts;
+    TPendingOperations pendingOperations;
 
     with_lock (Lock) {
         parts = CalculateCachedDataPartsToRead(
@@ -126,107 +127,121 @@ TFuture<NProto::TReadDataResponse> TWriteBackCache::TImpl::ReadData(
             request->GetOffset(),
             request->GetLength());
 
-        for (const auto& part: parts)  {
-            ReadDataPart(part, request->GetOffset(), &buffer);
+        for (const auto& part: parts) {
+            part.Source->IncrementRefCount();
         }
-
-        if (!parts.empty() &&
-            parts.front().Offset == request->GetOffset() &&
-            parts.back().End() ==
-                request->GetOffset() + request->GetLength()
-        ) {
-            bool sufficient = true;
-
-            for (size_t i = 1; i < parts.size(); i++) {
-                Y_DEBUG_ABORT_UNLESS(parts[i-1].End() <= parts[i].Offset);
-
-                if (parts[i-1].End() != parts[i].Offset) {
-                    sufficient = false;
-                    break;
-                }
-            }
-
-            if (sufficient) {
-                // serve request from cache
-                NProto::TReadDataResponse response;
-                response.SetBuffer(std::move(buffer));
-                return MakeFuture(std::move(response));
-            }
-        }
-
-        // cache is not sufficient to serve the request - read all the data
-        // and combine the result with cached parts
-        return Session->ReadData(std::move(callContext), request).Apply(
-            [handle = request->GetHandle(),
-             startingFromOffset = request->GetOffset(),
-             length = request->GetLength(),
-             buffer = std::move(buffer),
-             parts = std::move(parts)] (auto future) mutable
-            {
-                NProto::TReadDataResponse response = future.ExtractValue();
-
-                if (HasError(response.GetError())) {
-                    return response;
-                }
-
-                if (response.GetBuffer().empty()) {
-                    *response.MutableBuffer() = std::move(buffer);
-                    return response;
-                }
-
-                char* responseBufferData = response.MutableBuffer()->begin() +
-                                           response.GetBufferOffset();
-
-                auto responseBufferLength =
-                    response.GetBuffer().length() - response.GetBufferOffset();
-
-                Y_ABORT_UNLESS(
-                    responseBufferLength <= length,
-                    "response buffer length %lu is expected to be <= than %lu",
-                    responseBufferLength,
-                    length);
-
-                // Determine if it is better to apply cached data parts on top
-                // of the ReadData response or copy non-cached data from the
-                // response to the buffer with cached data parts
-                bool useResponseBuffer = responseBufferLength == length;
-                if (useResponseBuffer) {
-                    size_t sumPartsSize = 0;
-                    for (const auto& part: parts) {
-                        sumPartsSize += part.Length;
-                    }
-                    if (sumPartsSize > responseBufferLength / 2) {
-                        useResponseBuffer = false;
-                    }
-                }
-
-                useResponseBuffer = false;
-
-                if (useResponseBuffer) {
-                    // be careful and don't touch |part.Source| here as it may
-                    // be already deleted
-                    for (const auto& part: parts) {
-                        ui64 offset = part.Offset - startingFromOffset;
-                        const char* from = buffer.data() + offset;
-                        char *to = responseBufferData + offset;
-                        MemCopy(to, from, part.Length);
-                    }
-                } else {
-                    // Note that responseBufferLength may be < length
-                    parts = InvertDataParts(parts, startingFromOffset, responseBufferLength);
-                    for (const auto& part: parts) {
-                        ui64 offset = part.Offset - startingFromOffset;
-                        const char* from = responseBufferData + offset;
-                        char *to = buffer.begin() + offset;
-                        MemCopy(to, from, part.Length);
-                    }
-                    response.MutableBuffer()->swap(buffer);
-                    response.ClearBufferOffset();
-                }
-
-                return response;
-            });
     }
+
+    for (const auto& part: parts)  {
+        ReadDataPart(part, request->GetOffset(), &buffer);
+    }
+
+    with_lock (Lock) {
+        for (const auto& part: parts) {
+            part.Source->DecrementRefCount();
+        }
+        ClearFinishedEntries(pendingOperations);
+    }
+    StartPendingOperations(pendingOperations);
+
+    if (!parts.empty() && parts.front().Offset == request->GetOffset() &&
+        parts.back().End() == request->GetOffset() + request->GetLength())
+    {
+        bool sufficient = true;
+
+        for (size_t i = 1; i < parts.size(); i++) {
+            Y_DEBUG_ABORT_UNLESS(parts[i - 1].End() <= parts[i].Offset);
+
+            if (parts[i - 1].End() != parts[i].Offset) {
+                sufficient = false;
+                break;
+            }
+        }
+
+        if (sufficient) {
+            // serve request from cache
+            NProto::TReadDataResponse response;
+            response.SetBuffer(std::move(buffer));
+            return MakeFuture(std::move(response));
+        }
+    }
+
+    // cache is not sufficient to serve the request - read all the data
+    // and combine the result with cached parts
+    return Session->ReadData(std::move(callContext), request).Apply(
+        [handle = request->GetHandle(),
+            startingFromOffset = request->GetOffset(),
+            length = request->GetLength(),
+            buffer = std::move(buffer),
+            parts = std::move(parts)] (auto future) mutable
+        {
+            NProto::TReadDataResponse response = future.ExtractValue();
+
+            if (HasError(response.GetError())) {
+                return response;
+            }
+
+            if (response.GetBuffer().empty()) {
+                *response.MutableBuffer() = std::move(buffer);
+                return response;
+            }
+
+            char* responseBufferData =
+                response.MutableBuffer()->begin() + response.GetBufferOffset();
+
+            auto responseBufferLength =
+                response.GetBuffer().length() - response.GetBufferOffset();
+
+            Y_ABORT_UNLESS(
+                responseBufferLength <= length,
+                "response buffer length %lu is expected to be <= than %lu",
+                responseBufferLength,
+                length);
+
+            // Determine if it is better to apply cached data parts on top
+            // of the ReadData response or copy non-cached data from the
+            // response to the buffer with cached data parts
+            bool useResponseBuffer = responseBufferLength == length;
+            if (useResponseBuffer) {
+                size_t sumPartsSize = 0;
+                for (const auto& part: parts) {
+                    sumPartsSize += part.Length;
+                }
+                if (sumPartsSize > responseBufferLength / 2) {
+                    useResponseBuffer = false;
+                }
+            }
+
+            useResponseBuffer = false;
+
+            if (useResponseBuffer) {
+                // be careful and don't touch |part.Source| here as it may
+                // be already deleted
+                for (const auto& part: parts) {
+                    ui64 offset = part.Offset - startingFromOffset;
+                    const char* from = buffer.data() + offset;
+                    char *to = responseBufferData + offset;
+                    MemCopy(to, from, part.Length);
+                }
+            } else {
+                // Note that responseBufferLength may be < length
+                parts = InvertDataParts(
+                    parts,
+                    startingFromOffset,
+                    responseBufferLength);
+
+                for (const auto& part: parts) {
+                    ui64 offset = part.Offset - startingFromOffset;
+                    const char* from = responseBufferData + offset;
+                    char *to = buffer.begin() + offset;
+                    MemCopy(to, from, part.Length);
+                }
+                response.MutableBuffer()->swap(buffer);
+                response.ClearBufferOffset();
+            }
+
+            return response;
+        });
 }
 
 // should be protected by |Lock|
@@ -353,12 +368,31 @@ void TWriteBackCache::TImpl::OnEntriesFlushed(
         entry->Finish(pendingOperations);
     }
 
-    while (!CachedEntries.Empty() &&
-            CachedEntries.Front()->GetStatus() ==
-                EWriteDataEntryStatus::Finished)
+    ClearFinishedEntries(pendingOperations);
+
+    if (handleEntry.Empty()) {
+        EntriesByHandle.erase(handle);
+    }
+
+    if (handleEntry.ShouldFlush()) {
+        RequestFlush(handle, pendingOperations);
+    }
+}
+
+void TWriteBackCache::TImpl::ClearFinishedEntries(
+    TPendingOperations& pendingOperations)
+{
+    bool hasClearedEntries = false;
+
+    while (!CachedEntries.Empty() && CachedEntries.Front()->CanBeCleared())
     {
         CachedEntries.PopFront();
         CachedEntriesPersistentQueue.PopFront();
+        hasClearedEntries = true;
+    }
+
+    if (!hasClearedEntries) {
+        return;
     }
 
     bool isWriteDataEntriesPersistentQueueFull = false;
@@ -379,19 +413,11 @@ void TWriteBackCache::TImpl::OnEntriesFlushed(
         PendingEntries.PopFront();
         CachedEntries.PushFront(entry);
 
-        HandlesWithNewCachedEntries.insert(handle);
+        HandlesWithNewCachedEntries.insert(entry->GetHandle());
 
         if (handleEntry.ShouldFlush()) {
             RequestFlush(entry->GetHandle(), pendingOperations);
         }
-    }
-
-    if (handleEntry.ShouldFlush()) {
-        RequestFlush(handle, pendingOperations);
-    }
-
-    if (handleEntry.Empty()) {
-        EntriesByHandle.erase(handle);
     }
 
     if (isWriteDataEntriesPersistentQueueFull) {

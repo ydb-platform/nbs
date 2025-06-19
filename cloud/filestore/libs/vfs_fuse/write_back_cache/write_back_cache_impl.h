@@ -108,6 +108,8 @@ private:
         size_t entriesCount,
         TPendingOperations& pendingOperations);
 
+    void ClearFinishedEntries(TPendingOperations& pendingOperations);
+
     TVector<std::shared_ptr<NProto::TWriteDataRequest>>
     MakeWriteDataRequestsForFlush(
         ui64 handle,
@@ -149,6 +151,7 @@ private:
     NThreading::TPromise<NProto::TWriteDataResponse> Promise;
     NThreading::TPromise<void> FinishedPromise;
     EWriteDataEntryStatus Status = EWriteDataEntryStatus::Invalid;
+    mutable int RefCount = 0;
 
 public:
     EWriteDataEntryStatus GetStatus() const
@@ -179,6 +182,21 @@ public:
     ui64 End() const
     {
         return Request->GetOffset() + Buffer.size();
+    }
+
+    bool CanBeCleared() const
+    {
+        return Status == EWriteDataEntryStatus::Finished && RefCount == 0;
+    }
+
+    void IncrementRefCount() const
+    {
+        RefCount++;
+    }
+
+    void DecrementRefCount() const
+    {
+        Y_ABORT_UNLESS(--RefCount >= 0);
     }
 
     static std::unique_ptr<TWriteDataEntry> CreatePendingRequest(
