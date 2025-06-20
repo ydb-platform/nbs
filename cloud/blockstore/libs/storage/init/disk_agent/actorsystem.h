@@ -12,10 +12,10 @@
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/public.h>
 
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
-
 #include <contrib/ydb/library/actors/core/defs.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -45,6 +45,7 @@ struct TDiskAgentActorSystemArgs
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     NRdma::IServerPtr RdmaServer;
     NNvme::INvmeManagerPtr NvmeManager;
+    NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -62,7 +62,6 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     auto serverCounters = rootGroup->GetSubgroup("component", "server");
 
     CpuWait = serverCounters->GetCounter("CpuWait", false);
-    CpuWaitFailure = serverCounters->GetCounter("CpuWaitFailure", false);
 
     auto serviceCounters = rootGroup->GetSubgroup("component", "service");
     TotalFileSystemCount = serviceCounters->GetCounter("FileSystemCount", false);

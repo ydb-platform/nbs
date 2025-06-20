@@ -2,17 +2,10 @@
 
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 
 namespace NCloud::NFileStore::NStorage {
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-constexpr ui32 CpuLackPercentsMultiplier = 100;
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -70,35 +63,27 @@ void TStorageServiceActor::HandleUpdateStats(
         auto now = ctx.Now();
 
         auto interval = (now - LastCpuWaitQuery).MicroSeconds();
-        if (auto [cpuWait, error] = StatsFetcher->GetCpuWait();
-            !HasError(error))
-        {
-            *CpuWaitFailure = 0;
-            auto cpuWaitValue = cpuWait.MicroSeconds();
-            auto cpuLack = CpuLackPercentsMultiplier * cpuWaitValue / interval;
-
-            LOG_DEBUG_S(
+        auto [cpuWait, error] = StatsFetcher->GetCpuWait();
+        if (HasError(error)) {
+        auto errorMessage =
+            ReportCpuWaitCounterReadError(error.GetMessage());
+            LOG_WARN_S(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "CpuWait stats: lack = " << cpuLack
-                                         << "; interval = " << interval
-                                         << "; wait = " << cpuWaitValue);
+                "Failed to get CpuWait stats: " << errorMessage);
+        }
 
-            *CpuWait = cpuLack;
-            LastCpuWaitQuery = now;
+        auto cpuLack = 100 * cpuWait.MicroSeconds();
+        cpuLack /= interval;
+        *CpuWait = cpuLack;
 
-            if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
-                LOG_WARN_S(
-                    ctx,
-                    TFileStoreComponents::SERVICE,
-                    "Cpu wait is " << cpuLack);
-            }
-        } else {
-            *CpuWaitFailure = 1;
-            LOG_TRACE_S(
+        LastCpuWaitQuery = now;
+
+        if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
+            LOG_WARN_S(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Failed to get CpuWait stats: " << error);
+                "Cpu wait is " << cpuLack);
         }
     }
 
