@@ -229,7 +229,10 @@ STFUNC(TGetCapacityActor::StateGetDiskRegistryCapacity)
             HandleGetDiskRegistyCapacity);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
@@ -244,7 +247,10 @@ STFUNC(TGetCapacityActor::StateGetYDBCapacity)
             HandleGetYDBCapacity);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
             break;
     }
 }
