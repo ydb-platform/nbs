@@ -3,6 +3,7 @@
 #include "config.h"
 
 #include <util/generic/string.h>
+#include <util/stream/printf.h>
 #include <util/string/builder.h>
 #include <util/system/hostname.h>
 
@@ -142,26 +143,23 @@ TString GetMonitoringNBSOverviewToTVUrl(const TDiagnosticsConfig& config)
 TString
 GetQueries(ui32 groupId, const TString& storagePool, const TString& channelKind)
 {
-    constexpr TStringBuf QueryPattern =
-        R"(q.%u.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
-        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="%s"})&q.%u.name=%s)";
-
     auto handleClasses = GetHandleClasses(channelKind);
 
     TStringBuilder queries;
+    TStringOutput stream(queries);
 
     char queryName = 'A';
     for (ui32 queryIdx = 0; queryIdx < handleClasses.size(); ++queryIdx) {
-        queries << Sprintf(
-                       QueryPattern.data(),
-                       queryIdx,
-                       storagePool.c_str(),
-                       groupId,
-                       handleClasses[queryIdx].data(),
-                       queryIdx,
-                       TString(1, queryName).data())
-                       .c_str()
-                << "&";
+        Printf(
+            stream,
+            R"(q.%u.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+            R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="%s"})&q.%u.name=%c&)",
+            queryIdx,
+            storagePool.c_str(),
+            groupId,
+            handleClasses[queryIdx].data(),
+            queryIdx,
+            queryName);
         ++queryName;
     }
 
