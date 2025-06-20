@@ -834,9 +834,9 @@ message TUnlinkNodeInShardRequest
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ListNodeRefs request/response
+// ReadNodeRefs request/response
 
-message TListNodeRefsRequest
+message TReadNodeRefsRequest
 {
     // FileSystem identifier.
     string FileSystemId = 1;
@@ -850,7 +850,7 @@ message TListNodeRefsRequest
 }
 
 
-message TListNodeRefsResponse
+message TReadNodeRefsResponse
 {
     // List of node refs.
     repeated TNodeRef NodeRefs = 1;

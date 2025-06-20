@@ -6,9 +6,9 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::ValidateTx_ListNodeRefs(
+bool TIndexTabletActor::ValidateTx_ReadNodeRefs(
     const TActorContext& ctx,
-    TTxIndexTablet::TListNodeRefs& args)
+    TTxIndexTablet::TReadNodeRefs& args)
 {
     LOG_DEBUG(
         ctx,
@@ -21,10 +21,10 @@ bool TIndexTabletActor::ValidateTx_ListNodeRefs(
     return true;
 }
 
-bool TIndexTabletActor::PrepareTx_ListNodeRefs(
+bool TIndexTabletActor::PrepareTx_ReadNodeRefs(
     const TActorContext& ctx,
     IIndexTabletDatabase& db,
-    TTxIndexTablet::TListNodeRefs& args)
+    TTxIndexTablet::TReadNodeRefs& args)
 {
     bool ready = db.ReadNodeRefs(
         args.NodeId,
@@ -49,20 +49,20 @@ bool TIndexTabletActor::PrepareTx_ListNodeRefs(
     return ready;
 }
 
-void TIndexTabletActor::CompleteTx_ListNodeRefs(
+void TIndexTabletActor::CompleteTx_ReadNodeRefs(
     const TActorContext& ctx,
-    TTxIndexTablet::TListNodeRefs& args)
+    TTxIndexTablet::TReadNodeRefs& args)
 {
     RemoveTransaction(*args.RequestInfo);
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s ListNodeRefs iteration completed, next nodeId: %lu, next cookie: "
+        "%s ReadNodeRefs iteration completed, next nodeId: %lu, next cookie: "
         "%s",
         LogTag.c_str(),
         args.NextNodeId,
         args.NextCookie.c_str());
-    auto response = std::make_unique<TEvIndexTablet::TEvListNodeRefsResponse>();
+    auto response = std::make_unique<TEvIndexTablet::TEvReadNodeRefsResponse>();
     response->Record.SetNextNodeId(args.NextNodeId);
     response->Record.SetNextCookie(args.NextCookie);
     for (const auto& ref : args.Refs) {
@@ -79,8 +79,8 @@ void TIndexTabletActor::CompleteTx_ListNodeRefs(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleListNodeRefs(
-    const TEvIndexTablet::TEvListNodeRefsRequest::TPtr& ev,
+void TIndexTabletActor::HandleReadNodeRefs(
+    const TEvIndexTablet::TEvReadNodeRefsRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -88,7 +88,7 @@ void TIndexTabletActor::HandleListNodeRefs(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s ListNodeRefs iteration started (nodeId: %lu, name: %s, "
+        "%s ReadNodeRefs iteration started (nodeId: %lu, name: %s, "
         "maxNodeRefs: %lu)",
         LogTag.c_str(),
         msg->Record.GetNodeId(),
@@ -99,9 +99,9 @@ void TIndexTabletActor::HandleListNodeRefs(
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TListNodeRefsMethod>(*requestInfo);
+    AddTransaction<TEvIndexTablet::TReadNodeRefsMethod>(*requestInfo);
 
-    ExecuteTx<TListNodeRefs>(
+    ExecuteTx<TReadNodeRefs>(
         ctx,
         std::move(requestInfo),
         msg->Record);

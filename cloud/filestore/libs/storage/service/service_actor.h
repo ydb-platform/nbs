@@ -232,7 +232,7 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    NActors::IActorPtr CreateListNodeRefsActionActor(
+    NActors::IActorPtr CreateReadNodeRefsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

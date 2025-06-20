@@ -2125,7 +2125,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         UNIT_ASSERT_VALUES_EQUAL("W2R2W3", observedOrder);
     }
 
-    Y_UNIT_TEST(ShouldReturnDataFromListNodeRefs)
+    Y_UNIT_TEST(ShouldReturnDataFromReadNodeRefs)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2152,12 +2152,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             tablet,
             TCreateNodeArgs::File(id2, "test5"));
 
-        auto response = tablet.ListNodeRefs(0, "", 1);
+        auto response = tablet.ReadNodeRefs(0, "", 1);
         UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetNodeRefs().size());
         UNIT_ASSERT_VALUES_EQUAL(RootNodeId, response->Record.GetNextNodeId());
         UNIT_ASSERT_VALUES_EQUAL("test2", response->Record.GetNextCookie());
 
-        response = tablet.ListNodeRefs(response->Record.GetNextNodeId(),
+        response = tablet.ReadNodeRefs(response->Record.GetNextNodeId(),
                                             response->Record.GetNextCookie(), 2);
         UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetNodeRefs().size());
         UNIT_ASSERT_VALUES_EQUAL(id1, response->Record.GetNextNodeId());

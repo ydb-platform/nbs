@@ -105,8 +105,8 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateGetFileSystemTopologyActionActor
         },
         {
-            "listnoderefs",
-            &TStorageServiceActor::CreateListNodeRefsActionActor
+            "readnoderefs",
+            &TStorageServiceActor::CreateReadNodeRefsActionActor
         },
     };
 

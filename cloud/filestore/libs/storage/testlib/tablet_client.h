@@ -507,8 +507,8 @@ public:
         return request;
     }
 
-    auto CreateListNodeRefsRequest(ui64 node, TString cookie, ui32 limit){
-        auto request = std::make_unique<TEvIndexTablet::TEvListNodeRefsRequest>();
+    auto CreateReadNodeRefsRequest(ui64 node, TString cookie, ui32 limit){
+        auto request = std::make_unique<TEvIndexTablet::TEvReadNodeRefsRequest>();
         request->Record.SetNodeId(node);
         request->Record.SetCookie(std::move(cookie));
         request->Record.SetLimit(limit);
