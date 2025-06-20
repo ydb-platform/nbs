@@ -320,7 +320,34 @@ void TStorageServiceActor::HandleCreateNode(
         msg->Record.SetFileSystemId(shardId);
     }
 
-    if (msg->Record.HasLink()) {
+    if (filestore.GetFeatures().GetParentlessFilesOnly()) {
+        if (msg->Record.HasFile()) {
+            // If the filestore supports parentless files, we should create a
+            // file without a parent directory. Meaning that the file should be
+            // created directly in one of the shards if the filestore is
+            // sharded.
+            if (const auto& shardId = session->SelectShard()) {
+                msg->Record.SetFileSystemId(shardId);
+                msg->Record.SetNodeId(RootNodeId);
+
+                msg->Record.SetName(CreateGuidAsString());
+                msg->Record.ClearShardFileSystemId();
+            }
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Creating parentless file %s in filestore %s",
+                msg->Record.GetName().c_str(),
+                msg->Record.GetFileSystemId().c_str());
+        } else {
+            return NCloud::Reply(
+                ctx,
+                *ev,
+                std::make_unique<TEvService::TEvCreateNodeResponse>(
+                    ErrorNotSupported(
+                        "Parentless filestore only supports creating files")));
+        }
+    } else if (msg->Record.HasLink()) {
         auto shardNo = ExtractShardNo(msg->Record.GetLink().GetTargetNode());
 
         auto [shardId, error] = SelectShard(

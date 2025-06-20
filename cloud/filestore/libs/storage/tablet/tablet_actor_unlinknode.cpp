@@ -27,6 +27,16 @@ NProto::TError ValidateRequest(const NProto::TUnlinkNodeRequest& request)
     return {};
 }
 
+NProto::TError ValidateRequestOnlyNodeId(
+    const NProto::TUnlinkNodeRequest& request)
+{
+    if (request.GetNodeId() == InvalidNodeId) {
+        return ErrorInvalidArgument();
+    }
+
+    return {};
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TUnlinkNodeInShardActor final
@@ -282,7 +292,11 @@ void TIndexTabletActor::HandleUnlinkNode(
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
     if (!BehaveAsShard(msg->Record.GetHeaders())) {
-        auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(ev, ctx, ValidateRequest);
+        auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(
+            ev,
+            ctx,
+            Config->GetParentlessFilesOnly() ? ValidateRequestOnlyNodeId
+                                             : ValidateRequest);
         if (!session) {
             return;
         }
@@ -350,21 +364,37 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
 
     // TODO: AccessCheck
 
-    // validate target node exists
-    if (!ReadNodeRef(db, args.ParentNodeId, args.CommitId, args.Name, args.ChildRef)) {
+    ui64 childNodeId = InvalidNodeId;
+    // if parentless mode is enabled, we will not find the target node in
+    // the parent node, so we will not read the child ref
+    if (!Config->GetParentlessFilesOnly()) {
+        // validate target node exists
+        if (!ReadNodeRef(
+                db,
+                args.ParentNodeId,
+                args.CommitId,
+                args.Name,
+                args.ChildRef))
+        {
+            return false;   // not ready
+        }
+
+        if (!args.ChildRef) {
+            args.Error = ErrorInvalidTarget(args.ParentNodeId, args.Name);
+            return true;
+        }
+        childNodeId = args.ChildRef->ChildNodeId;
+    } else {
+        // In a parentless mode we can unlink a node by its ID passed in the
+        // ParentNodeId field of the request.
+        childNodeId = args.ParentNodeId;
+    }
+
+    if (!ReadNode(db, childNodeId, args.CommitId, args.ChildNode)) {
         return false;   // not ready
     }
 
-    if (!args.ChildRef) {
-        args.Error = ErrorInvalidTarget(args.ParentNodeId, args.Name);
-        return true;
-    }
-
-    if (!ReadNode(db, args.ChildRef->ChildNodeId, args.CommitId, args.ChildNode)) {
-        return false;   // not ready
-    }
-
-    if (args.ChildRef->IsExternal()) {
+    if (args.ChildRef && args.ChildRef->IsExternal()) {
         return true;
     }
 
@@ -377,10 +407,12 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         return true;
     }
 
-    if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
+    if (args.ChildNode &&
+        args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE)
+    {
         TVector<IIndexTabletDatabase::TNodeRef> refs;
         // 1 entry is enough to prevent deletion
-        if (!ReadNodeRefs(db, args.ChildRef->ChildNodeId, args.CommitId, {}, refs, 1)) {
+        if (!ReadNodeRefs(db, childNodeId, args.CommitId, {}, refs, 1)) {
             return false;
         }
 
@@ -417,7 +449,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         return RebootTabletOnCommitOverflow(ctx, "UnlinkNode");
     }
 
-    if (args.ChildRef->IsExternal()) {
+    if (args.ChildRef && args.ChildRef->IsExternal()) {
         // This external node can refer both to a file and a directory. In case
         // of a file the request is not supposed to fail: we can unlink the node
         // in the leader and then unlink the external node in the shard.
@@ -458,8 +490,9 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             args.ParentNodeId,
             args.Name,
             *args.ChildNode,
-            args.ChildRef->MinCommitId,
-            args.CommitId);
+            args.ChildNode->MinCommitId,
+            args.CommitId,
+            /* disregardNodeRef */ Config->GetParentlessFilesOnly());
 
         if (HasError(e)) {
             args.Error = std::move(e);
@@ -504,7 +537,9 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         InvalidateNodeCaches(args.ChildNode->NodeId);
     }
 
-    if (!HasError(args.Error) && !args.ChildRef) {
+    if (!HasError(args.Error) && !args.ChildRef &&
+        !Config->GetParentlessFilesOnly())
+    {
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "UnlinkNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
@@ -516,7 +551,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     // forwarded to the shard, then the nodeRef is not unlocked here as it
     // is possible that the shard will reject the request. In this case the
     // nodeRef will be unlocked afterwards
-    if (HasError(args.Error) || !args.ChildRef->IsExternal() ||
+    if (HasError(args.Error) ||
+        (args.ChildRef && !args.ChildRef.GetOrElse({}).IsExternal()) ||
         !args.Request.GetUnlinkDirectory() ||
         !GetFileSystem().GetDirectoryCreationInShardsEnabled())
     {
@@ -525,7 +561,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     }
 
     if (!HasError(args.Error)) {
-        if (args.ChildRef->IsExternal()) {
+        if (args.ChildRef && args.ChildRef->IsExternal()) {
             LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon UnlinkNode: %s, %s",
                 LogTag.c_str(),
@@ -553,7 +589,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         {
             auto* unlinked = sessionEvent.AddNodeUnlinked();
             unlinked->SetParentNodeId(args.ParentNodeId);
-            unlinked->SetChildNodeId(args.ChildRef->ChildNodeId);
+            unlinked->SetChildNodeId(args.ChildNode->NodeId);
             unlinked->SetName(args.Name);
         }
         NotifySessionEvent(ctx, sessionEvent);

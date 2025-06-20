@@ -465,7 +465,8 @@ public:
         const TString& name,
         const IIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
-        ui64 maxCommitId);
+        ui64 maxCommitId,
+        bool disregardNodeRef = false);
 
     void UnlinkExternalNode(
         TIndexTabletDatabase& db,
