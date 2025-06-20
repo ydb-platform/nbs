@@ -8,12 +8,16 @@ from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, 
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, \
     wait_for_nbs_server, get_free_socket_path
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 import yatest.common as yatest_common
 
 
 PID_FILE_NAME = "local_null_nbs_server_recipe.pid"
-
+ERR_LOG_FILE_NAMES_FILE = "local_null_nbs_server_recipe.err_log_files"
 
 def start(argv):
     server = TServerAppConfig()
@@ -49,6 +53,8 @@ def start(argv):
         nbs_binary_path=nbs_binary_path)
     nbs.start()
 
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs.stderr_file_name)
+
     set_env("LOCAL_NULL_SECURE_NBS_SERVER_PORT", str(nbs.nbs_secure_port))
     set_env("LOCAL_NULL_INSECURE_NBS_SERVER_PORT", str(nbs.nbs_port))
     set_env("LOCAL_NULL_MONITORING_PORT", str(nbs.mon_port))
@@ -67,6 +73,10 @@ def stop(argv):
             os.kill(pid, signal.SIGTERM)
 
     kill(PID_FILE_NAME)
+
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError("Errors found in recipe log files: {}".format(errors))
 
 
 if __name__ == "__main__":

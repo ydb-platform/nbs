@@ -24,6 +24,7 @@ class SshToGuest(object):
             "-o", "StrictHostKeyChecking=no",
             "-o", "UserKnownHostsFile=" + os.devnull,
             "-o", "ConnectTimeout=10",
+            "-o", "IdentitiesOnly=yes",
             "-o", "ServerAliveInterval=10",
             "-o", "ServerAliveCountMax=10",
             "-i", self.key,
