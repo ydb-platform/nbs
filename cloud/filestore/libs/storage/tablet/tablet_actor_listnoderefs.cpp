@@ -13,7 +13,7 @@ bool TIndexTabletActor::ValidateTx_ReadNodeRefs(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s ListingNodeRefs (StartNodeId: %lu, StartName: %s, Limit: %lu)",
+        "%s ReadNodeRefs (StartNodeId: %lu, StartName: %s, Limit: %lu)",
         LogTag.c_str(),
         args.NodeId,
         args.Cookie.c_str(),
@@ -37,7 +37,7 @@ bool TIndexTabletActor::PrepareTx_ReadNodeRefs(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s ListingNodeRefs (nodeId: %lu, name: %s, maxNodeRefs: %lu), read "
+        "%s ReadNodeRefs (nodeId: %lu, name: %s, maxNodeRefs: %lu), read "
         "%lu nodeRefs: %s",
         LogTag.c_str(),
         args.NodeId,
@@ -65,6 +65,7 @@ void TIndexTabletActor::CompleteTx_ReadNodeRefs(
     auto response = std::make_unique<TEvIndexTablet::TEvReadNodeRefsResponse>();
     response->Record.SetNextNodeId(args.NextNodeId);
     response->Record.SetNextCookie(args.NextCookie);
+    response->Record.MutableNodeRefs()->Reserve(args.Refs.size());
     for (const auto& ref : args.Refs) {
         auto* nodeRef = response->Record.AddNodeRefs();
         nodeRef->SetNodeId(ref.NodeId);
@@ -84,17 +85,6 @@ void TIndexTabletActor::HandleReadNodeRefs(
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s ReadNodeRefs iteration started (nodeId: %lu, name: %s, "
-        "maxNodeRefs: %lu)",
-        LogTag.c_str(),
-        msg->Record.GetNodeId(),
-        msg->Record.GetCookie().c_str(),
-        msg->Record.GetLimit());
-
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
