@@ -82,6 +82,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LoadNodes,                          __VA_ARGS__)                       \
                                                                                \
     xxx(ReadData,                           __VA_ARGS__)                       \
+                                                                               \
     xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 

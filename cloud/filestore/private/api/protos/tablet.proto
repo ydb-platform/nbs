@@ -852,12 +852,13 @@ message TReadNodeRefsRequest
 
 message TReadNodeRefsResponse
 {
+    NCloud.NProto.TError Error = 1;
     // List of node refs.
-    repeated TNodeRef NodeRefs = 1;
+    repeated TNodeRef NodeRefs = 2;
     // Parent node ID to start the next request from.
-    uint64 NextNodeId = 2;
+    uint64 NextNodeId = 3;
     // File name to start the next request from.
-    string NextCookie = 3;
+    string NextCookie = 4;
 }
 
 message TNodeRef

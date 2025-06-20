@@ -120,8 +120,6 @@ IActorPtr TStorageServiceActor::CreateGetFileSystemTopologyActionActor(
         std::move(input));
 }
 
-}   // namespace NCloud::NFileStore::NStorage
-
 ////////////////////////////////////////////////////////////////////////////////
 // ReadNodeRefs
 
@@ -136,3 +134,5 @@ IActorPtr TStorageServiceActor::CreateReadNodeRefsActionActor(
         std::move(requestInfo),
         std::move(input));
 }
+
+}   // namespace NCloud::NFileStore::NStorage
