@@ -3022,6 +3022,31 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TServiceClient service1(runtime, nodeIdx1);
         TServiceClient service2(runtime, nodeIdx2);
 
+        TVector<TActorId> volumeActorIds;
+        ui64 volumeDemotedByStateStorageCount = 0;
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvServicePrivate::EvVolumeTabletStatus: {
+                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        volumeActorIds.push_back(msg->VolumeActor);
+                        break;
+                    }
+                    case TEvTablet::EvTabletDead: {
+                        auto* msg = event->Get<TEvTablet::TEvTabletDead>();
+                        if (msg->Reason == TEvTablet::TEvTabletDead::ReasonDemotedByStateStorage
+                            // Ignore events that were sent to the volume.
+                            && Find(volumeActorIds.begin(), volumeActorIds.end(), event->Recipient) ==
+                            volumeActorIds.end())
+                        {
+                            ++volumeDemotedByStateStorageCount;
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
         service1.CreateVolume();
         service1.MountVolume(
             DefaultDiskId,
@@ -3051,22 +3076,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             0   // fillGeneration
         );
 
-        ui64 lockLostCount = 0;
-
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                switch (event->GetTypeRewrite()) {
-                    case TEvHiveProxy::EvTabletLockLost: {
-                        ++lockLostCount;
-                        break;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
-
         // If tablet on node with outdated mount does not stop then it will
         // compete with other mount.
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(1000));
-        UNIT_ASSERT_LE_C(lockLostCount, 1, lockLostCount);
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(volumeDemotedByStateStorageCount, 1);
     }
 
     Y_UNIT_TEST(ShouldShutdownVolumeAfterLockLostOnVolumeDeletionDuringMounting)
