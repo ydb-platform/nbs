@@ -165,12 +165,13 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
         Request->Record.GetDiskId().Quote().c_str(),
         LastResponseError.GetMessage().Quote().c_str());
 
-    // if (!TimeoutError) {
-    //     TimeoutError = true;
-    //     SendRequest(ctx);
-    //     ctx.Schedule(Timeout, new TEvents::TEvWakeup(false));
-    //     return;
-    // }
+    if (!TimeoutError) {
+        TimeoutError = true;
+        SendRequest(ctx);
+        return;
+        // ctx.Schedule(Timeout, new TEvents::TEvWakeup(false));
+        // return;
+    }
 
     ReplyErrorAndDie(
         ctx,

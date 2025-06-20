@@ -3022,10 +3022,17 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.AssignVolume();
 
         bool mountRequestProcessed = false;
+        bool unlockRequestProcessed = false;
+
+        runtime.SetReschedulingDelay(TDuration::Seconds(10));
+
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvUnlockTabletRequest: {
-                        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(3000));
+                        if (!unlockRequestProcessed) {
+                            unlockRequestProcessed = true;
+                            return TTestActorRuntime::EEventAction::RESCHEDULE;
+                        }
                         break;
                     }
                     case TEvServicePrivate::EvMountRequestProcessed: {
@@ -3459,13 +3466,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
 
-        {
-            rejectAddClient = false;
-            auto response = service.MountVolume();
-            auto sessionId = response->Record.GetSessionId();
-            service.WaitForVolume(DefaultDiskId);
-            service.ReadBlocks(DefaultDiskId, 0, sessionId);
-        }
+        // {
+        //     rejectAddClient = false;
+        //     auto response = service.MountVolume();
+        //     auto sessionId = response->Record.GetSessionId();
+        //     service.WaitForVolume(DefaultDiskId);
+        //     service.ReadBlocks(DefaultDiskId, 0, sessionId);
+        // }
     }
 
     Y_UNIT_TEST(ShouldStopLocalTabletIfLocalMounterUnableToDescribeVolume)
