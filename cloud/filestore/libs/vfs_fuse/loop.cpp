@@ -563,9 +563,9 @@ public:
                         p->Log,
                         *callContext,
                         response.GetError());
-                    // After the session is established, we patch RequestStats
-                    // with newly known cloudId and folderId
-                    p->RequestStats = p->StatsRegistry->GetFileSystemStats(
+                    // After the session is established, we update existing
+                    // TFileStats with newly known cloudId and folderId
+                    p->StatsRegistry->UpdateCloudAndFolder(
                         p->Config->GetFileSystemId(),
                         p->Config->GetClientId(),
                         response.GetFileStore().GetCloudId(),
