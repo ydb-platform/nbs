@@ -5272,6 +5272,292 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT(seenDeallocateCheckpointEvent);
 
     }
+
+    Y_UNIT_TEST(ShouldShadowDiskReleaseDevicesAfterDeletingCheckpoint)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        volume.WaitReady();
+
+        volume.CreateCheckpoint("c1");
+
+        constexpr auto ReleaseForAnyReader = 1;
+        constexpr auto ReleaseForAnyWriter = 2;
+
+        bool seenReleaseShadowDiskForAnyReader = false;
+        bool seenReleaseShadowDiskForAnyWriter = false;
+
+        auto observerReleaseShadowDiskRequest =
+            [&](TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& event)
+        {
+            switch (event->Cookie) {
+                case ReleaseForAnyReader:
+                    seenReleaseShadowDiskForAnyReader = true;
+                    break;
+                case ReleaseForAnyWriter:
+                    seenReleaseShadowDiskForAnyWriter = true;
+                    break;
+            }
+        };
+        auto _ = runtime->AddObserver<TEvDiskRegistry::TEvReleaseDiskRequest>(
+            observerReleaseShadowDiskRequest);
+
+        volume.DeleteCheckpoint("c1");
+
+        // check that we saw release requests for any-reader and any-writer
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyReader);
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyWriter);
+    }
+
+    Y_UNIT_TEST(ShouldShadowDiskReleaseDevicesAfterDeletingTwoCheckpoints)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        volume.WaitReady();
+
+        // create two checkpoints
+        volume.CreateCheckpoint("c1");
+        volume.CreateCheckpoint("c2");
+
+        constexpr auto ReleaseForAnyReader = 1;
+        constexpr auto ReleaseForAnyWriter = 2;
+
+        bool seenReleaseShadowDiskForAnyReader = false;
+        bool seenReleaseShadowDiskForAnyWriter = false;
+
+        auto observerReleaseShadowDiskRequest =
+            [&](TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& event)
+        {
+            switch (event->Cookie) {
+                case ReleaseForAnyReader:
+                    seenReleaseShadowDiskForAnyReader = true;
+                    break;
+                case ReleaseForAnyWriter:
+                    seenReleaseShadowDiskForAnyWriter = true;
+                    break;
+            }
+        };
+        auto _ = runtime->AddObserver<TEvDiskRegistry::TEvReleaseDiskRequest>(
+            observerReleaseShadowDiskRequest);
+
+        // delete first checkpoint
+        volume.DeleteCheckpoint("c1");
+
+        // check that we saw release requests for any-reader and any-writer for
+        // first checkpoint
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyReader);
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyWriter);
+
+        seenReleaseShadowDiskForAnyReader = false;
+        seenReleaseShadowDiskForAnyWriter = false;
+
+        // delete second checkpoint
+        volume.DeleteCheckpoint("c2");
+
+        // check that we saw release requests for any-reader and any-writer for
+        // second checkpoint
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyReader);
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyWriter);
+    }
+
+    Y_UNIT_TEST(ShouldShadowDiskReleaseRequestRetryAfterRetriableError)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        constexpr auto ReleaseForAnyReader = 1;
+        constexpr auto ReleaseForAnyWriter = 2;
+
+        bool seenReleaseShadowDiskForAnyReader = false;
+        bool seenReleaseShadowDiskForAnyWriter = false;
+
+        bool seenReleaseShadowDiskRetryForAnyReader = false;
+        bool seenReleaseShadowDiskRetryForAnyWriter = false;
+
+        bool returnErrorForAnyReader = false;
+        bool returnErrorForAnyWriter = false;
+
+        auto observerReleaseShadowDiskRequest =
+            [&](TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& event)
+        {
+            switch (event->Cookie) {
+                case ReleaseForAnyReader:
+                    if (!returnErrorForAnyReader) {
+                        seenReleaseShadowDiskForAnyReader = true;
+                    } else {
+                        seenReleaseShadowDiskRetryForAnyReader = true;
+                    }
+                    break;
+                case ReleaseForAnyWriter:
+                    if (!returnErrorForAnyWriter) {
+                        seenReleaseShadowDiskForAnyWriter = true;
+                    } else {
+                        seenReleaseShadowDiskRetryForAnyWriter = true;
+                    }
+                    break;
+            }
+        };
+        auto handleObserverReleaseRequest =
+            runtime->AddObserver<TEvDiskRegistry::TEvReleaseDiskRequest>(
+                observerReleaseShadowDiskRequest);
+
+        auto releaseDiskResponseObserver =
+            [&](TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& event)
+        {
+            // Simulate response with error.
+            if (event->Cookie == ReleaseForAnyReader &&
+                !returnErrorForAnyReader)
+            {
+                returnErrorForAnyReader = true;
+                event->Get()->Record.MutableError()->SetCode(E_REJECTED);
+            }
+
+            if (event->Cookie == ReleaseForAnyWriter &&
+                !returnErrorForAnyWriter)
+            {
+                returnErrorForAnyWriter = true;
+                event->Get()->Record.MutableError()->SetCode(E_REJECTED);
+            }
+        };
+        auto handleReleaseDiskResponseObserver =
+            runtime->AddObserver<TEvDiskRegistry::TEvReleaseDiskResponse>(
+                releaseDiskResponseObserver);
+
+        volume.WaitReady();
+        volume.CreateCheckpoint("c1");
+
+        volume.DeleteCheckpoint("c1");
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // check that we simulated error
+        UNIT_ASSERT(returnErrorForAnyReader);
+        UNIT_ASSERT(returnErrorForAnyWriter);
+
+        // check that we saw original request for any-reader and any-writer
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyReader);
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyWriter);
+
+        // check that we saw retry request for any-reader and any-writer
+        UNIT_ASSERT(seenReleaseShadowDiskRetryForAnyReader);
+        UNIT_ASSERT(seenReleaseShadowDiskRetryForAnyWriter);
+    }
+
+    Y_UNIT_TEST(
+        ShouldShadowDiskReleaseDevicesAfterDeletingCheckpointWhenExternalDrainTimeout)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        volume.WaitReady();
+
+        volume.CreateCheckpoint("c1");
+
+        bool seenDrainDoneEvent = false;
+        auto externalDrainDoneFilter =
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvExternalDrainDone)
+            {
+                seenDrainDoneEvent = true;
+                // Drop EvExternalDrainDone event.
+                return true;
+            }
+
+            return false;
+        };
+        runtime->SetEventFilter(externalDrainDoneFilter);
+
+        constexpr auto ReleaseForAnyReader = 1;
+        constexpr auto ReleaseForAnyWriter = 2;
+
+        bool seenReleaseShadowDiskForAnyReader = false;
+        bool seenReleaseShadowDiskForAnyWriter = false;
+
+        auto observerReleaseShadowDiskRequest =
+            [&](TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& event)
+        {
+            UNIT_ASSERT(seenDrainDoneEvent);
+            switch (event->Cookie) {
+                case ReleaseForAnyReader:
+                    seenReleaseShadowDiskForAnyReader = true;
+                    break;
+                case ReleaseForAnyWriter:
+                    seenReleaseShadowDiskForAnyWriter = true;
+                    break;
+            }
+        };
+        auto _ = runtime->AddObserver<TEvDiskRegistry::TEvReleaseDiskRequest>(
+            observerReleaseShadowDiskRequest);
+
+        volume.SendDeleteCheckpointDataRequest("c1");
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT(seenDrainDoneEvent);
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(30));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        auto response = volume.RecvDeleteCheckpointDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        // check that we saw release requests for any-reader and any-writer
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyReader);
+        UNIT_ASSERT(seenReleaseShadowDiskForAnyWriter);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

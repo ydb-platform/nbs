@@ -65,6 +65,7 @@ namespace NCloud::NBlockStore {
     xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
     xxx(MirroredDiskResyncChecksumMismatch)                                    \
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
+    xxx(ReleaseShadowDiskError)                                                \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \

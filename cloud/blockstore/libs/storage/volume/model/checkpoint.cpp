@@ -211,8 +211,9 @@ bool TCheckpointStore::NeedShadowActor(const TString& checkpointId) const
     if (const TCheckpointRequest* checkpointRequest =
             CheckpointRequests.FindPtr(CheckpointRequestInProgress))
     {
-        if (checkpointRequest->ReqType == ECheckpointRequestType::Delete ||
-            checkpointRequest->ReqType == ECheckpointRequestType::DeleteData)
+        if (checkpointRequest->CheckpointId == checkpointId &&
+            (checkpointRequest->ReqType == ECheckpointRequestType::Delete ||
+             checkpointRequest->ReqType == ECheckpointRequestType::DeleteData))
         {
             return false;
         }
