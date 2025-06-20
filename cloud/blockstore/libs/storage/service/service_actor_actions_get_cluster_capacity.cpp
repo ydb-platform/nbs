@@ -63,7 +63,7 @@ private:
     STFUNC(StateGetDiskRegistryCapacity);
     STFUNC(StateGetYDBCapacity);
 
-    void HandleDiskRegistyCapacity(
+    void HandleGetDiskRegistyCapacity(
         const TEvDiskRegistry::TEvGetClusterCapacityResponse::TPtr& ev,
         const TActorContext& ctx);
 
@@ -129,7 +129,7 @@ void TGetCapacityActor::HandleEmptyList(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetCapacityActor::HandleDiskRegistyCapacity(
+void TGetCapacityActor::HandleGetDiskRegistyCapacity(
     const TEvDiskRegistry::TEvGetClusterCapacityResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -226,7 +226,7 @@ STFUNC(TGetCapacityActor::StateGetDiskRegistryCapacity)
     switch (ev->GetTypeRewrite()) {
         HFunc(
             TEvDiskRegistry::TEvGetClusterCapacityResponse,
-            HandleDiskRegistyCapacity);
+            HandleGetDiskRegistyCapacity);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
