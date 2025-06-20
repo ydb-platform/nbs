@@ -375,6 +375,11 @@ ui64 TFileRingBuffer::MaximalEntrySize() const
     return Impl->MaximalEntrySize();
 }
 
+ui64 TFileRingBuffer::Size() const
+{
+    return Impl->Size();
+}
+
 bool TFileRingBuffer::Empty() const
 {
     return Impl->Empty();
