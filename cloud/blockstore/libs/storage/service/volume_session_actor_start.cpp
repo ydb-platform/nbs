@@ -861,7 +861,7 @@ void TStartVolumeActor::SendVolumeTabletDeadErrorAndScheduleReboot(
             // Avoid unnecessary delays
             delay = false;
             StartShutdown(ctx, MakeError(E_REJECTED, "Tablet is dead"));
-            break;
+            return;
         case TEvTablet::TEvTabletDead::ReasonBootRace:
             // Avoid unnecessary delays
             delay = false;
