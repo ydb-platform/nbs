@@ -13,4 +13,6 @@ type CellSelector interface {
 		ctx context.Context,
 		req *disk_manager.CreateDiskRequest,
 	) string
+
+	IsCellOfZone(cellID string, zoneID string) bool
 }

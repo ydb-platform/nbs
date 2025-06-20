@@ -45,6 +45,10 @@ func (s *cellSelector) SelectCell(
 	return cells[0]
 }
 
+func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {
+	return slices.Contains(s.getCells(zoneID), cellID)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *cellSelector) getCells(zoneID string) []string {

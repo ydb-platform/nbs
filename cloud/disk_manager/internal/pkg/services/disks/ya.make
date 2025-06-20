@@ -23,6 +23,7 @@ GO_TEST_SRCS(
     create_overlay_disk_task_test.go
     delete_disk_task_test.go
     migrate_disk_task_test.go
+    service_test.go
 )
 
 END()
