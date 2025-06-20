@@ -94,10 +94,6 @@ private:
         ui64 startingFromOffset,
         TString* out);
 
-    bool TryAddEntryToPersistentQueue(
-        TWriteDataEntry* entry,
-        TPendingOperations& pendingOperations);
-
     void RequestFlush(ui64 handle, TPendingOperations& pendingOperations);
     void RequestFlushAll(TPendingOperations& pendingOperations);
 
@@ -145,12 +141,17 @@ private:
     // The idea is to deduplicate memory and to reference request buffer
     // directly in the cache if the request is cached.
     std::shared_ptr<NProto::TWriteDataRequest> Request;
-    TString RequestBuffer;
-    TStringBuf Buffer;
+    mutable TString RequestBuffer;
+
+    mutable TStringBuf Buffer;
+    char* CachePtr = nullptr;
 
     NThreading::TPromise<NProto::TWriteDataResponse> Promise;
     NThreading::TPromise<void> FinishedPromise;
     EWriteDataEntryStatus Status = EWriteDataEntryStatus::Invalid;
+
+    // Positive value prevents entry in the Finished state from being
+    // evicted from the CachedEntriesPersistentQueue
     mutable int RefCount = 0;
 
 public:
@@ -184,19 +185,15 @@ public:
         return Request->GetOffset() + Buffer.size();
     }
 
+    bool IsCached() const
+    {
+        return Status == EWriteDataEntryStatus::Cached ||
+               Status == EWriteDataEntryStatus::CachedFlushRequested;
+    }
+
     bool CanBeCleared() const
     {
         return Status == EWriteDataEntryStatus::Finished && RefCount == 0;
-    }
-
-    void IncrementRefCount() const
-    {
-        RefCount++;
-    }
-
-    void DecrementRefCount() const
-    {
-        Y_ABORT_UNLESS(--RefCount >= 0);
     }
 
     static std::unique_ptr<TWriteDataEntry> CreatePendingRequest(
@@ -205,8 +202,14 @@ public:
     static std::unique_ptr<TWriteDataEntry> DeserializeCachedRequest(
         TStringBuf serializedRequest);
 
+    void IncrementRefCount() const;
+    void DecrementRefCount() const;
+
     size_t GetSerializedSize() const;
-    void MoveToCache(char* data, TPendingOperations& pendingOperations);
+    void LinkWithCache(char* cachePtr, TPendingOperations& pendingOperations);
+    void SerializeToCache();
+    void CompleteMovingToCache(TPendingOperations& pendingOperations);
+
     void Finish(TPendingOperations& pendingOperations);
 
     bool FlushRequested() const;
@@ -214,6 +217,10 @@ public:
 
     NThreading::TFuture<NProto::TWriteDataResponse> GetFuture();
     NThreading::TFuture<void> GetFinishedFuture();
+
+private:
+    // only for testing purposes
+    friend struct TCalculateDataPartsToReadTestBootstrap;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -295,6 +302,7 @@ struct TWriteBackCache::TImpl::TPendingOperations
     TVector<TFlushOperation*> FlushOperations;
     TVector<NThreading::TPromise<NProto::TWriteDataResponse>> PromisesToSet;
     TVector<NThreading::TPromise<void>> FinishedPromisesToSet;
+    TVector<TWriteDataEntry*> EntriesMovingToCache;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

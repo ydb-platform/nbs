@@ -27,6 +27,9 @@ auto TWriteBackCache::TImpl::CalculateDataPartsToRead(
 
     for (size_t i = 0; i < entries.size(); i++) {
         const auto* entry = entries[i];
+        if (!entry->IsCached()) {
+            continue;
+        }
 
         auto pointBegin = entry->Begin();
         auto pointEnd = entry->End();

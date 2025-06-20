@@ -12,7 +12,6 @@
 #include <util/generic/intrlist.h>
 #include <util/generic/vector.h>
 #include <util/stream/mem.h>
-#include <util/system/mutex.h>
 
 #include <algorithm>
 
@@ -120,35 +119,24 @@ TFuture<NProto::TReadDataResponse> TWriteBackCache::TImpl::ReadData(
     TString buffer(request->GetLength(), 0);
     TVector<TWriteDataEntryPart> parts;
     TPendingOperations pendingOperations;
+    TFuture<NProto::TReadDataResponse> readDataFuture;
 
-    with_lock (Lock) {
-        parts = CalculateCachedDataPartsToRead(
-            request->GetHandle(),
-            request->GetOffset(),
-            request->GetLength());
+    auto guard = Guard(Lock);
 
-        for (const auto& part: parts) {
-            part.Source->IncrementRefCount();
-        }
+    parts = CalculateCachedDataPartsToRead(
+        request->GetHandle(),
+        request->GetOffset(),
+        request->GetLength());
+
+    for (const auto& part: parts) {
+        part.Source->IncrementRefCount();
     }
 
-    for (const auto& part: parts)  {
-        ReadDataPart(part, request->GetOffset(), &buffer);
-    }
-
-    with_lock (Lock) {
-        for (const auto& part: parts) {
-            part.Source->DecrementRefCount();
-        }
-        ClearFinishedEntries(pendingOperations);
-    }
-    StartPendingOperations(pendingOperations);
+    bool sufficient = true;
 
     if (!parts.empty() && parts.front().Offset == request->GetOffset() &&
         parts.back().End() == request->GetOffset() + request->GetLength())
     {
-        bool sufficient = true;
-
         for (size_t i = 1; i < parts.size(); i++) {
             Y_DEBUG_ABORT_UNLESS(parts[i - 1].End() <= parts[i].Offset);
 
@@ -157,23 +145,46 @@ TFuture<NProto::TReadDataResponse> TWriteBackCache::TImpl::ReadData(
                 break;
             }
         }
+    } else {
+        sufficient = false;
+    }
 
-        if (sufficient) {
-            // serve request from cache
-            NProto::TReadDataResponse response;
-            response.SetBuffer(std::move(buffer));
-            return MakeFuture(std::move(response));
+    if (!sufficient) {
+        readDataFuture = Session->ReadData(std::move(callContext), request);
+    }
+
+    {
+        auto unguard = Unguard(guard);
+
+        for (const auto& part: parts) {
+            ReadDataPart(part, request->GetOffset(), &buffer);
         }
+    }
+
+    for (const auto& part: parts) {
+        part.Source->DecrementRefCount();
+    }
+    ClearFinishedEntries(pendingOperations);
+
+    guard.Release();
+
+    StartPendingOperations(pendingOperations);
+
+    if (sufficient) {
+        // serve request from cache
+        NProto::TReadDataResponse response;
+        response.SetBuffer(std::move(buffer));
+        return MakeFuture(std::move(response));
     }
 
     // cache is not sufficient to serve the request - read all the data
     // and combine the result with cached parts
-    return Session->ReadData(std::move(callContext), request).Apply(
+    return readDataFuture.Apply(
         [handle = request->GetHandle(),
-            startingFromOffset = request->GetOffset(),
-            length = request->GetLength(),
-            buffer = std::move(buffer),
-            parts = std::move(parts)] (auto future) mutable
+         startingFromOffset = request->GetOffset(),
+         length = request->GetLength(),
+         buffer = std::move(buffer),
+         parts = std::move(parts)](auto future) mutable
         {
             NProto::TReadDataResponse response = future.ExtractValue();
 
@@ -220,7 +231,7 @@ TFuture<NProto::TReadDataResponse> TWriteBackCache::TImpl::ReadData(
                 for (const auto& part: parts) {
                     ui64 offset = part.Offset - startingFromOffset;
                     const char* from = buffer.data() + offset;
-                    char *to = responseBufferData + offset;
+                    char* to = responseBufferData + offset;
                     MemCopy(to, from, part.Length);
                 }
             } else {
@@ -233,7 +244,7 @@ TFuture<NProto::TReadDataResponse> TWriteBackCache::TImpl::ReadData(
                 for (const auto& part: parts) {
                     ui64 offset = part.Offset - startingFromOffset;
                     const char* from = responseBufferData + offset;
-                    char *to = buffer.begin() + offset;
+                    char* to = buffer.begin() + offset;
                     MemCopy(to, from, part.Length);
                 }
                 response.MutableBuffer()->swap(buffer);
@@ -242,25 +253,6 @@ TFuture<NProto::TReadDataResponse> TWriteBackCache::TImpl::ReadData(
 
             return response;
         });
-}
-
-// should be protected by |Lock|
-bool TWriteBackCache::TImpl::TryAddEntryToPersistentQueue(
-    TWriteDataEntry* entry,
-    TPendingOperations& pendingOperations)
-{
-    if (entry->GetBuffer().size() >= Max<ui32>()) {
-        return false;
-    }
-
-    auto size = entry->GetSerializedSize();
-    char* ptr = CachedEntriesPersistentQueue.AllocateBack(size);
-    if (!ptr) {
-        return false;
-    }
-
-    entry->MoveToCache(ptr, pendingOperations);
-    return true;
 }
 
 TFuture<NProto::TWriteDataResponse> TWriteBackCache::TImpl::WriteData(
@@ -272,17 +264,29 @@ TFuture<NProto::TWriteDataResponse> TWriteBackCache::TImpl::WriteData(
     }
 
     auto entry = TWriteDataEntry::CreatePendingRequest(std::move(request));
+    auto serializedSize = entry->GetSerializedSize();
+
+    Y_ABORT_UNLESS(
+        serializedSize <= CachedEntriesPersistentQueue.MaximalEntrySize(),
+        "Serialized request size %lu is expected to be <= %lu",
+        serializedSize,
+        CachedEntriesPersistentQueue.MaximalEntrySize());
+
     auto future = entry->GetFuture();
 
     TPendingOperations pendingOperations;
+    {
+        auto guard = Guard(Lock);
 
-    with_lock (Lock) {
         auto& handleEntry = EntriesByHandle[entry->GetHandle()];
-        if (handleEntry.PendingEntries.empty() &&
-            TryAddEntryToPersistentQueue(entry.get(), pendingOperations))
-        {
+        char* cachePtr =
+            handleEntry.PendingEntries.empty()
+                ? CachedEntriesPersistentQueue.AllocateBack(serializedSize)
+                : nullptr;
+
+        if (cachePtr) {
+            entry->LinkWithCache(cachePtr, pendingOperations);
             handleEntry.CachedEntries.emplace_back(entry.get());
-            HandlesWithNewCachedEntries.insert(entry->GetHandle());
             CachedEntries.PushBack(entry.release());
         } else {
             handleEntry.PendingEntries.emplace_back(entry.get());
@@ -330,10 +334,26 @@ void TWriteBackCache::TImpl::RequestFlushAll(TPendingOperations& pendingOperatio
 }
 
 // should be executed outside |Lock|
+// TODO(nasonov): research possibity to execute asynchonously
 void TWriteBackCache::TImpl::StartPendingOperations(
     TPendingOperations& pendingOperations)
 {
-    // TODO(nasonov): execute asynchronously
+    if (!pendingOperations.EntriesMovingToCache.empty()) {
+        for (auto* entry: pendingOperations.EntriesMovingToCache) {
+            entry->SerializeToCache();
+        }
+        with_lock(Lock) {
+            for (auto* entry: pendingOperations.EntriesMovingToCache) {
+                entry->CompleteMovingToCache(pendingOperations);
+                auto& handleEntry = EntriesByHandle[entry->GetHandle()];
+                if (handleEntry.ShouldFlush()) {
+                    RequestFlush(entry->GetHandle(), pendingOperations);
+                }
+                HandlesWithNewCachedEntries.insert(entry->GetHandle());
+            }
+        }
+    }
+
     for (auto* flushState: pendingOperations.FlushOperations) {
         flushState->Start(this);
     }
@@ -399,11 +419,15 @@ void TWriteBackCache::TImpl::ClearFinishedEntries(
 
     while (!PendingEntries.Empty()) {
         auto* entry = PendingEntries.Front();
+        auto* cachePtr = CachedEntriesPersistentQueue.AllocateBack(
+            entry->GetSerializedSize());
 
-        if (!TryAddEntryToPersistentQueue(entry, pendingOperations)) {
+        if (!cachePtr) {
             isWriteDataEntriesPersistentQueueFull = true;
             break;
         }
+
+        entry->LinkWithCache(cachePtr, pendingOperations);
 
         auto handleEntry = EntriesByHandle[entry->GetHandle()];
 
@@ -414,10 +438,6 @@ void TWriteBackCache::TImpl::ClearFinishedEntries(
         CachedEntries.PushFront(entry);
 
         HandlesWithNewCachedEntries.insert(entry->GetHandle());
-
-        if (handleEntry.ShouldFlush()) {
-            RequestFlush(entry->GetHandle(), pendingOperations);
-        }
     }
 
     if (isWriteDataEntriesPersistentQueueFull) {
@@ -551,6 +571,12 @@ TWriteBackCache::TImpl::TWriteDataEntry::DeserializeCachedRequest(
     mi.Skip(bufferSize);
 
     auto res = std::make_unique<TWriteDataEntry>();
+    if (bufferSize == 0) {
+        // This may happen when space was reserved in the cache but the
+        // request wasn't copied into it
+        return res;
+    }
+
     auto parsedRequest = std::make_shared<NProto::TWriteDataRequest>();
     if (parsedRequest->ParseFromArray(mi.Buf(), static_cast<int>(mi.Avail()))) {
         res->Status = EWriteDataEntryStatus::Cached;
@@ -562,15 +588,67 @@ TWriteBackCache::TImpl::TWriteDataEntry::DeserializeCachedRequest(
     return res;
 }
 
+// should be protected by |Lock|
+void TWriteBackCache::TImpl::TWriteDataEntry::IncrementRefCount() const
+{
+    RefCount++;
+}
+
+// should be protected by |Lock|
+void TWriteBackCache::TImpl::TWriteDataEntry::DecrementRefCount() const
+{
+    Y_ABORT_UNLESS(--RefCount >= 0);
+    if (RefCount == 0 && CachePtr != nullptr && !RequestBuffer.Empty()) {
+        Buffer = { CachePtr + sizeof(ui32), RequestBuffer.Size() };
+        RequestBuffer.clear();
+    }
+}
+
 size_t TWriteBackCache::TImpl::TWriteDataEntry::GetSerializedSize() const
 {
     return Request->ByteSizeLong() + sizeof(ui32) + Buffer.size();
 }
 
-void TWriteBackCache::TImpl::TWriteDataEntry::MoveToCache(
-    char* data,
-    TWriteBackCache::TImpl::TPendingOperations& pendingOperations)
+// should be protected by |Lock|
+void TWriteBackCache::TImpl::TWriteDataEntry::LinkWithCache(
+    char* cachePtr,
+    TPendingOperations& pendingOperations)
 {
+    Y_ABORT_UNLESS(CachePtr == nullptr);
+
+    CachePtr = cachePtr;
+
+    ui32 bufferSize = 0;
+    TMemoryOutput mo(cachePtr, sizeof(bufferSize));
+    mo.Write(&bufferSize, sizeof(bufferSize));
+
+    pendingOperations.EntriesMovingToCache.push_back(this);
+
+    IncrementRefCount();
+}
+
+void TWriteBackCache::TImpl::TWriteDataEntry::SerializeToCache()
+{
+    Y_ABORT_UNLESS(CachePtr != nullptr);
+    Y_ABORT_UNLESS(Buffer.size() <= Max<ui32>());
+
+    ui32 bufferSize = static_cast<ui32>(Buffer.size());
+    auto serializedSize = GetSerializedSize();
+
+    TMemoryOutput mo(CachePtr, serializedSize);
+    mo.Write(&bufferSize, sizeof(bufferSize));
+    mo.Write(Buffer);
+
+    Y_ABORT_UNLESS(
+        Request->SerializeToArray(mo.Buf(), static_cast<int>(mo.Avail())));
+}
+
+// should be protected by |Lock|
+void TWriteBackCache::TImpl::TWriteDataEntry::CompleteMovingToCache(
+    TPendingOperations& pendingOperations)
+{
+    Y_ABORT_UNLESS(CachePtr != nullptr);
+
     switch (Status) {
         case EWriteDataEntryStatus::Pending:
             Status = EWriteDataEntryStatus::Cached;
@@ -582,25 +660,14 @@ void TWriteBackCache::TImpl::TWriteDataEntry::MoveToCache(
             Y_ABORT();
     }
 
-    Y_ABORT_UNLESS(Buffer.size() < Max<ui32>());
-
-    ui32 bufferSize = static_cast<ui32>(Buffer.size());
-    auto serializedSize = GetSerializedSize();
-
-    TMemoryOutput mo(data, serializedSize);
-    mo.Write(&bufferSize, sizeof(bufferSize));
-    // TODO(nasonov): copy Buffer to cache outside lock
-    mo.Write(Buffer);
-
-    Y_ABORT_UNLESS(
-        Request->SerializeToArray(mo.Buf(), static_cast<int>(mo.Avail())));
-
-    Buffer = TStringBuf(data + sizeof(ui32), bufferSize);
+    Buffer = TStringBuf(CachePtr + sizeof(ui32), Buffer.size());
     RequestBuffer.clear();
 
     if (Promise.Initialized()) {
         pendingOperations.PromisesToSet.push_back(std::move(Promise));
     }
+
+    DecrementRefCount();
 }
 
 void TWriteBackCache::TImpl::TWriteDataEntry::Finish(

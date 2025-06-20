@@ -277,6 +277,13 @@ public:
         SkipSlackSpace();
     }
 
+    ui64 MaximalEntrySize() const
+    {
+        return Min(
+            Header()->Capacity & ~(sizeof(ui32) - 1),
+            static_cast<ui64>(Max<ui32>()));
+    }
+
     ui64 Size() const
     {
         return Count;
@@ -363,9 +370,9 @@ void TFileRingBuffer::PopFront()
     Impl->PopFront();
 }
 
-ui64 TFileRingBuffer::Size() const
+ui64 TFileRingBuffer::MaximalEntrySize() const
 {
-    return Impl->Size();
+    return Impl->MaximalEntrySize();
 }
 
 bool TFileRingBuffer::Empty() const

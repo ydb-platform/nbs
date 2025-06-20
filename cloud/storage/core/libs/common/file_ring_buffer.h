@@ -37,6 +37,7 @@ public:
     TStringBuf Front() const;
     TStringBuf Back() const;
     void PopFront();
+    ui64 MaximalEntrySize() const;
     ui64 Size() const;
     bool Empty() const;
     TVector<TBrokenFileEntry> Validate() const;

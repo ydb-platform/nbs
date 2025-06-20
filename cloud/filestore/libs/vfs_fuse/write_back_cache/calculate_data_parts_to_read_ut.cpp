@@ -110,6 +110,7 @@ struct TCalculateDataPartsToReadTestBootstrap
 {
     using TWriteDataEntry = TWriteBackCache::TImpl::TWriteDataEntry;
     using TWriteDataEntryPart = TWriteBackCache::TImpl::TWriteDataEntryPart;
+    using EWriteDataEntryStatus = TWriteBackCache::TImpl::EWriteDataEntryStatus;
 
     ILoggingServicePtr Logging;
     TLog Log;
@@ -185,11 +186,17 @@ struct TCalculateDataPartsToReadTestBootstrap
 
         return res;
     }
+
+    static void SetCached(TWriteDataEntry* entry) {
+        entry->Status = EWriteDataEntryStatus::Cached;
+    }
 };
 
 using TWriteDataEntry = TCalculateDataPartsToReadTestBootstrap::TWriteDataEntry;
 using TWriteDataEntryPart =
     TCalculateDataPartsToReadTestBootstrap::TWriteDataEntryPart;
+using EWriteDataEntryStatus =
+    TCalculateDataPartsToReadTestBootstrap::EWriteDataEntryStatus;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -240,6 +247,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
 
             auto entry =
                 TWriteDataEntry::CreatePendingRequest(std::move(request));
+            TCalculateDataPartsToReadTestBootstrap::SetCached(entry.get());
             entries.PushBack(entry.release());
         }
 
@@ -294,6 +302,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
 
             auto entry =
                 TWriteDataEntry::CreatePendingRequest(std::move(request));
+            TCalculateDataPartsToReadTestBootstrap::SetCached(entry.get());
             entries.PushBack(entry.release());
         }
 
