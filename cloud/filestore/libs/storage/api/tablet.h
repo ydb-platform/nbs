@@ -27,7 +27,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GenerateBlobIds,            __VA_ARGS__)                               \
     xxx(AddData,                    __VA_ARGS__)                               \
     xxx(ForcedOperation,            __VA_ARGS__)                               \
-    xxx(ReadNodeRefs,              __VA_ARGS__)                                \
     xxx(ConfigureShards,            __VA_ARGS__)                               \
     xxx(ConfigureAsShard,           __VA_ARGS__)                               \
     xxx(GetStorageConfig,           __VA_ARGS__)                               \
@@ -40,6 +39,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
     xxx(RestartTablet,              __VA_ARGS__)                               \
     xxx(RenameNodeInDestination,    __VA_ARGS__)                               \
+                                                                               \
+    xxx(ReadNodeRefs,              __VA_ARGS__)                                \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
