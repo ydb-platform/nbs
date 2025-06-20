@@ -746,7 +746,7 @@ void TCheckpointActor<TMethod>::HandleReleaseDiskResponse(
     const auto releaseSessionKind =
         static_cast<EReleaseSessionKind>(ev->Cookie);
 
-    if (record.HasError()) {
+    if (HasError(record)) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
