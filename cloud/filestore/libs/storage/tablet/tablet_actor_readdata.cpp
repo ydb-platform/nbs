@@ -704,19 +704,31 @@ bool TIndexTabletActor::ValidateTx_ReadData(
         return false;
     }
 
-    auto* handle = FindHandle(args.Handle);
-    if (!handle || handle->Session != session) {
-        args.Error = ErrorInvalidHandle(args.Handle);
-        return false;
+    if (Config->GetAllowHandlelessIO()) {
+        if (args.ExplicitNodeId == InvalidNodeId) {
+            // handleless read
+            args.Error = ErrorInvalidArgument();
+            return true;
+        }
+        args.NodeId = args.ExplicitNodeId;
+        args.CommitId = GetCurrentCommitId();
+    } else {
+        auto* handle = FindHandle(args.Handle);
+        if (!handle || handle->Session != session) {
+            args.Error = ErrorInvalidHandle(args.Handle);
+            return false;
+        }
+
+        if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_READ))
+        {
+            args.Error = ErrorInvalidHandle(args.Handle);
+            return false;
+        }
+
+        args.NodeId = handle->GetNodeId();
+        args.CommitId = handle->GetCommitId();
     }
 
-    if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_READ)) {
-        args.Error = ErrorInvalidHandle(args.Handle);
-        return false;
-    }
-
-    args.NodeId = handle->GetNodeId();
-    args.CommitId = handle->GetCommitId();
     if (args.DescribeOnly) {
         // initializing args.ReadAheadRange in an ugly way since TMaybe doesn't
         // support classes which don't have an assignment operator

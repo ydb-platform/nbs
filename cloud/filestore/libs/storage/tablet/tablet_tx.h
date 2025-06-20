@@ -1549,6 +1549,9 @@ struct TTxIndexTablet
         const TByteRange AlignedByteRange;
         /*const*/ IBlockBufferPtr Buffer;
         const bool DescribeOnly;
+        // Used when we want to read data from a specific node, not the node
+        // inferred from the handle.
+        ui64 ExplicitNodeId = InvalidNodeId;
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
@@ -1575,6 +1578,7 @@ struct TTxIndexTablet
             , AlignedByteRange(alignedByteRange)
             , Buffer(std::move(buffer))
             , DescribeOnly(describeOnly)
+            , ExplicitNodeId(request.GetNodeId())
             , Blocks(AlignedByteRange.BlockCount())
             , Bytes(AlignedByteRange.BlockCount())
         {
@@ -1612,6 +1616,10 @@ struct TTxIndexTablet
         const ui64 Handle;
         const TByteRange ByteRange;
         /*const*/ IBlockBufferPtr Buffer;
+        // Used when we want to write data to a specific node, not the node
+        // inferred from the handle.
+        ui64 ExplicitNodeId = InvalidNodeId;
+
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
@@ -1629,6 +1637,7 @@ struct TTxIndexTablet
             , Handle(request.GetHandle())
             , ByteRange(byteRange)
             , Buffer(std::move(buffer))
+            , ExplicitNodeId(request.GetNodeId())
         {}
 
         void Clear()
@@ -1659,6 +1668,9 @@ struct TTxIndexTablet
         TVector<NKikimr::TLogoBlobID> BlobIds;
         TVector<TBlockBytesMeta> UnalignedDataParts;
         ui64 CommitId;
+        // Used when we want to access a specific node, not the node
+        // inferred from the handle.
+        ui64 ExplicitNodeId = InvalidNodeId;
 
         ui64 NodeId = InvalidNodeId;
         TMaybe<IIndexTabletDatabase::TNode> Node;
@@ -1677,6 +1689,7 @@ struct TTxIndexTablet
             , BlobIds(std::move(blobIds))
             , UnalignedDataParts(std::move(unalignedDataParts))
             , CommitId(commitId)
+            , ExplicitNodeId(request.GetNodeId())
         {}
 
         void Clear()

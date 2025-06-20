@@ -98,7 +98,11 @@ void TIndexTabletActor::HandleWriteData(
 
     auto validator = [&](const NProto::TWriteDataRequest& request)
     {
-        return ValidateWriteRequest(ctx, request, range);
+        return ValidateWriteRequest(
+            ctx,
+            request,
+            range,
+            !Config->GetAllowHandlelessIO());
     };
 
     if (!AcceptRequest<TEvService::TWriteDataMethod>(ev, ctx, validator)) {
@@ -172,18 +176,28 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         return true;
     }
 
-    auto* handle = FindHandle(args.Handle);
-    if (!handle || handle->Session != session) {
-        args.Error = ErrorInvalidHandle(args.Handle);
-        return true;
-    }
+    if (Config->GetAllowHandlelessIO()) {
+        if (args.ExplicitNodeId == InvalidNodeId) {
+            // handleless read
+            args.Error = ErrorInvalidArgument();
+            return true;
+        }
+        args.NodeId = args.ExplicitNodeId;
+    } else {
+        auto* handle = FindHandle(args.Handle);
+        if (!handle || handle->Session != session) {
+            args.Error = ErrorInvalidHandle(args.Handle);
+            return true;
+        }
 
-    if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
-        args.Error = ErrorInvalidHandle(args.Handle);
-        return true;
-    }
+        if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE))
+        {
+            args.Error = ErrorInvalidHandle(args.Handle);
+            return true;
+        }
 
-    args.NodeId = handle->GetNodeId();
+        args.NodeId = handle->GetNodeId();
+    }
     args.CommitId = GetCurrentCommitId();
 
     LOG_TRACE(ctx, TFileStoreComponents::TABLET,

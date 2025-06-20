@@ -340,16 +340,19 @@ template <typename TRequest>
 NProto::TError TIndexTabletActor::ValidateWriteRequest(
     const TActorContext& ctx,
     const TRequest& request,
-    const TByteRange& range)
+    const TByteRange& range,
+    bool validateHandle)
 {
     auto error = ValidateRange(range, Config->GetMaxFileBlocks());
     if (HasError(error)) {
         return error;
     }
 
-    auto* handle = FindHandle(request.GetHandle());
-    if (!handle || handle->GetSessionId() != GetSessionId(request)) {
-        return ErrorInvalidHandle(request.GetHandle());
+    if (validateHandle) {
+        auto* handle = FindHandle(request.GetHandle());
+        if (!handle || handle->GetSessionId() != GetSessionId(request)) {
+            return ErrorInvalidHandle(request.GetHandle());
+        }
     }
 
     TString message;
@@ -406,19 +409,22 @@ template NProto::TError
 TIndexTabletActor::ValidateWriteRequest<NProto::TWriteDataRequest>(
     const TActorContext& ctx,
     const NProto::TWriteDataRequest& request,
-    const TByteRange& range);
+    const TByteRange& range,
+    bool validateHandle);
 
 template NProto::TError
 TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TGenerateBlobIdsRequest>(
     const TActorContext& ctx,
     const NProtoPrivate::TGenerateBlobIdsRequest& request,
-    const TByteRange& range);
+    const TByteRange& range,
+    bool validateHandle);
 
 template NProto::TError
 TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TAddDataRequest>(
     const TActorContext& ctx,
     const NProtoPrivate::TAddDataRequest& request,
-    const TByteRange& range);
+    const TByteRange& range,
+    bool validateHandle);
 
 ////////////////////////////////////////////////////////////////////////////////
 

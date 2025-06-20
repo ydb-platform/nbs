@@ -688,7 +688,8 @@ private:
     NProto::TError ValidateWriteRequest(
         const NActors::TActorContext& ctx,
         const TRequest& request,
-        const TByteRange& range);
+        const TByteRange& range,
+        bool validateHandle = true);
 
     NProto::TError IsDataOperationAllowed() const;
 
