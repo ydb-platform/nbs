@@ -273,17 +273,20 @@ private:
         ui64 MountSeqNumber;
         TClientRequestPtr ClientRequest;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
+        const bool ForceTabletRestart = false;
 
         TAcquireReleaseDiskRequest(
                 TString clientId,
                 NProto::EVolumeAccessMode accessMode,
                 ui64 mountSeqNumber,
-                TClientRequestPtr clientRequest)
+                TClientRequestPtr clientRequest,
+                bool forceTabletRestart)
             : IsAcquire(true)
             , ClientId(std::move(clientId))
             , AccessMode(accessMode)
             , MountSeqNumber(mountSeqNumber)
             , ClientRequest(std::move(clientRequest))
+            , ForceTabletRestart(forceTabletRestart)
         {
         }
 
@@ -534,6 +537,10 @@ private:
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
+
+    void AddAcquireReleaseDiskRequest(
+        const NActors::TActorContext& ctx,
+        TAcquireReleaseDiskRequest request);
     void ProcessNextAcquireReleaseDiskRequest(const NActors::TActorContext& ctx);
     void OnClientListUpdate(const NActors::TActorContext& ctx);
 
@@ -803,6 +810,10 @@ private:
     void ReleaseReplacedDevices(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TDeviceConfig>& replacedDevices);
+
+    void ReleaseDiskFromOldClients(
+        const NActors::TActorContext& ctx,
+        const TVector<TString>& removedClients);
 
     void ScheduleAcquireDiskIfNeeded(const NActors::TActorContext& ctx);
 

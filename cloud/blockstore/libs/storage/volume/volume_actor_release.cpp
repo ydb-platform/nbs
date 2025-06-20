@@ -85,4 +85,22 @@ void TVolumeActor::ReleaseReplacedDevices(
     }
 }
 
+void TVolumeActor::ReleaseDiskFromOldClients(
+    const NActors::TActorContext& ctx,
+    const TVector<TString>& removedClients)
+{
+    for (const auto& clientId: removedClients) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Releasing devices from old client: %s",
+            LogTitle.GetWithTime().c_str(),
+            clientId.Quote().c_str());
+
+        AddAcquireReleaseDiskRequest(
+            ctx,
+            {clientId, nullptr, TVector<NProto::TDeviceConfig>{}});
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
