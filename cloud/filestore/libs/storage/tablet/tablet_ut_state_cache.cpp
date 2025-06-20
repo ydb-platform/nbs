@@ -360,6 +360,11 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
             }};
         state.UpdateState({request3});
 
+        UNIT_ASSERT(!state.ReadNodeRef(
+            requests[0].NodeRefsKey.NodeId,
+            requests[0].NodeRefsRow.CommitId,
+            requests[0].NodeRefsKey.Name,
+            ref));
         ReadAndCheckNodeRef(state, request3);
         ReadAndCheckNodeRef(state, requests[1]);
         ReadAndCheckNodeRef(state, requests[2]);
