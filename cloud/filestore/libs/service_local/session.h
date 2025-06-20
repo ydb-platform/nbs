@@ -164,7 +164,7 @@ public:
             } catch (...) {
                 STORAGE_ERROR(
                     "Failed to open Handle, HandleId=" << it->HandleId <<
-                    ", NodeId" << it->NodeId <<
+                    ", NodeId=" << it->NodeId <<
                     ", Exception=" << CurrentExceptionMessage());
                 HandleTable->DeleteRecord(it.GetIndex());
                 continue;
