@@ -623,11 +623,9 @@ TClientEndpoint::TClientEndpoint(
 
 TClientEndpoint::~TClientEndpoint()
 {
-    // Free resources if endpoint wasn't properly stopped. We don't need to
-    // detach it, because if we got there, poller is also getting destroyed
-    if (!StopResult.HasValue()) {
+    // release any leftover resources if endpoint hasn't been properly stopped
+    if (CompletionQueue) {
         DestroyQP();
-        Connection.reset();
     }
 
     RDMA_INFO("stop endpoint");
@@ -1883,8 +1881,6 @@ void TClient::Start() noexcept
 
 void TClient::Stop() noexcept
 {
-    RDMA_DEBUG("stop client");
-
     if (ConnectionPoller) {
         ConnectionPoller->Stop();
         ConnectionPoller.reset();
@@ -1894,6 +1890,8 @@ void TClient::Stop() noexcept
         poller->Stop();
     }
     CompletionPollers.clear();
+
+    RDMA_DEBUG("stop client");
 }
 
 // implements IClient
@@ -1993,7 +1991,7 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
 
 void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
 {
-    RDMA_INFO(endpoint->Log, "detach pollers and close connection");
+    RDMA_INFO(endpoint->Log, "detach endpoint and close connection");
 
     ConnectionPoller->Detach(endpoint);
     endpoint->Poller->Detach(endpoint);
