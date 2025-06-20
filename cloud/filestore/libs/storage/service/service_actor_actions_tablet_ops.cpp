@@ -121,3 +121,18 @@ IActorPtr TStorageServiceActor::CreateGetFileSystemTopologyActionActor(
 }
 
 }   // namespace NCloud::NFileStore::NStorage
+
+////////////////////////////////////////////////////////////////////////////////
+// ListNodeRefs
+
+IActorPtr TStorageServiceActor::CreateListNodeRefsActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TListNodeRefsActionActor = TTabletActionActor<
+        TEvIndexTablet::TEvListNodeRefsRequest,
+        TEvIndexTablet::TEvListNodeRefsResponse>;
+    return std::make_unique<TListNodeRefsActionActor>(
+        std::move(requestInfo),
+        std::move(input));
+}

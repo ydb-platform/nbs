@@ -31,7 +31,6 @@ SRCS(
     service_actor_getsessionevents.cpp
     service_actor_list.cpp
     service_actor_listnodes.cpp
-    service_actor_actions_list_noderefs.cpp
     service_actor_monitoring.cpp
     service_actor_monitoring_search.cpp
     service_actor_ping.cpp
