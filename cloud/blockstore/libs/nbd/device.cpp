@@ -39,7 +39,8 @@ class TDevice final
 private:
     const ILoggingServicePtr Logging;
     const TNetworkAddress ConnectAddress;
-    const TString DeviceName;
+    TString DevicePath;
+    const TString DevicePrefix;
     const ui64 BlockCount;
     const ui32 BlockSize;
     const TDuration Timeout;
@@ -55,13 +56,15 @@ public:
     TDevice(
             ILoggingServicePtr logging,
             const TNetworkAddress& connectAddress,
-            TString deviceName,
+            TString devicePath,
+            TString devicePrefix,
             ui64 blockCount,
             ui32 blockSize,
             TDuration timeout)
         : Logging(std::move(logging))
         , ConnectAddress(connectAddress)
-        , DeviceName(std::move(deviceName))
+        , DevicePath(std::move(devicePath))
+        , DevicePrefix(std::move(devicePrefix))
         , BlockCount(blockCount)
         , BlockSize(blockSize)
         , Timeout(timeout)
@@ -76,6 +79,20 @@ public:
 
     NThreading::TFuture<NProto::TError> Start() override
     {
+        if (!DevicePath) {
+            DevicePath = FindFreeNbdDevice().replace(
+                0,
+                DEFAULT_DEVICE_PREFIX.size(),
+                DevicePrefix);
+
+            if (DevicePath == DevicePrefix) {
+                return NThreading::MakeFuture(MakeError(
+                    E_FAIL,
+                    TStringBuilder()
+                        << "unable to find free nbd device with prefix "
+                        << DevicePrefix.Quote()));
+            }
+        }
         try {
             ConnectSocket();
             ConnectDevice();
@@ -133,6 +150,11 @@ public:
         return NThreading::MakeFuture(MakeError(S_OK));
     }
 
+    TString GetPath() const override
+    {
+        return DevicePath;
+    }
+
 private:
     void* ThreadProc() override
     {
@@ -181,10 +203,10 @@ void TDevice::ConnectDevice()
 {
     STORAGE_DEBUG("Connect device");
 
-    TFileHandle device(DeviceName, OpenExisting | RdWr);
+    TFileHandle device(DevicePath, OpenExisting | RdWr);
 
     if (!device.IsOpen()) {
-         ythrow TFileError() << "cannot open device with name " << DeviceName;
+         ythrow TFileError() << "cannot open " << DevicePath;
     }
 
     ioctl(device, NBD_CLEAR_SOCK);
@@ -284,6 +306,11 @@ public:
         Y_UNUSED(deviceSizeInBytes);
         return NThreading::MakeFuture(MakeError(S_OK));
     }
+
+    TString GetPath() const override
+    {
+        return "";
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -303,14 +330,31 @@ public:
 
     IDevicePtr Create(
         const TNetworkAddress& connectAddress,
-        TString deviceName,
+        TString devicePath,
         ui64 blockCount,
         ui32 blockSize) override
     {
         return std::make_shared<TDevice>(
             Logging,
             connectAddress,
-            std::move(deviceName),
+            std::move(devicePath),
+            "",
+            blockCount,
+            blockSize,
+            Timeout);
+    }
+
+    IDevicePtr CreateFree(
+        const TNetworkAddress& connectAddress,
+        TString devicePrefix,
+        ui64 blockCount,
+        ui32 blockSize) override
+    {
+        return std::make_shared<TDevice>(
+            Logging,
+            connectAddress,
+            "",
+            std::move(devicePrefix),
             blockCount,
             blockSize,
             Timeout);
@@ -324,13 +368,14 @@ public:
 IDevicePtr CreateDevice(
     ILoggingServicePtr logging,
     const TNetworkAddress& connectAddress,
-    TString deviceName,
+    TString devicePath,
     TDuration timeout)
 {
     return std::make_shared<TDevice>(
         std::move(logging),
         connectAddress,
-        std::move(deviceName),
+        std::move(devicePath),
+        "",
         0, // blockCount
         0, // blockSize
         timeout);

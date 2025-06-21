@@ -51,7 +51,8 @@ struct TOptions
     TString ListenAddress;
     TString ListenUnixSocketPath;
 
-    TString ConnectDevice;
+    bool ConnectDevice = false;
+    TString ConnectDevicePath;
 
     bool Netlink = false;
     bool Disconnect = false;

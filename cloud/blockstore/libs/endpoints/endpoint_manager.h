@@ -46,6 +46,7 @@ struct TEndpointManagerOptions
     NProto::TClientConfig ClientConfig;
     TString NbdSocketSuffix;
     TString NbdDevicePrefix = "/dev/nbd";
+    bool AutomaticNbdDeviceManagement = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

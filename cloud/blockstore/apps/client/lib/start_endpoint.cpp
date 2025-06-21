@@ -185,7 +185,7 @@ public:
             .SetFlag(&Persistent);
 
         Opts.AddLongOption("nbd-device", "nbd device file which nbd-client connected to")
-            .RequiredArgument("STR")
+            .OptionalArgument("STR")
             .StoreResult(&NbdDeviceFile);
 
         Opts.AddLongOption("cgroup", "cgroup to place into")
@@ -236,7 +236,11 @@ protected:
                     EncryptionKeyPath,
                     EncryptionKeyHash));
             request->SetPersistent(Persistent);
-            request->SetNbdDeviceFile(NbdDeviceFile);
+            if (NbdDeviceFile) {
+                request->SetNbdDeviceFile(NbdDeviceFile);
+            } else {
+                request->SetUseFreeNbdDeviceFile(true);
+            }
             request->MutableClientCGroups()->Assign(CGroups.begin(), CGroups.end());
         }
 

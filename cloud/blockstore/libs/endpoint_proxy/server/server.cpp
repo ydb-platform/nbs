@@ -59,9 +59,6 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr auto NBD_CONNECTION_TIMEOUT = TDuration::Days(1);
-constexpr auto NBD_RECONFIGURE_CONNECTED = true;
-constexpr auto NBD_DELETE_DEVICE = false;
-
 constexpr auto MAX_RECONNECT_DELAY = TDuration::Minutes(10);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1003,8 +1000,7 @@ struct TServer: IEndpointProxyServer
                 *ep.ListenAddress,
                 ep.NbdDevicePath,
                 Config.NbdRequestTimeout,
-                NBD_CONNECTION_TIMEOUT,
-                NBD_RECONFIGURE_CONNECTED);
+                NBD_CONNECTION_TIMEOUT);
         } else {
             // The only case we want kernel to retry requests is when the socket
             // is dead due to nbd server restart. And since we can't configure
@@ -1057,7 +1053,7 @@ struct TServer: IEndpointProxyServer
     bool DoProcessAlarm(TEndpoint& ep, const TString& tag)
     {
         if (ep.NbdDevice) {
-            auto err = ep.NbdDevice->Stop(NBD_DELETE_DEVICE).GetValueSync();
+            auto err = ep.NbdDevice->Stop(false).GetValueSync();
             if (HasError(err)) {
                 STORAGE_ERROR(
                     tag << "Failed to stop NBD device: " << err.GetCode());

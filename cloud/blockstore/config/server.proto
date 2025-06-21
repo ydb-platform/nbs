@@ -229,6 +229,9 @@ message TServerConfig
     // each with a size up to MaxZeroBlocksSubRequestSize.
     // Max value for MaxZeroBlocksSubRequestSize is 2 GiB
     optional uint32 MaxZeroBlocksSubRequestSize = 122;
+
+    // Ask system to provide free nbd device
+    optional bool AutomaticNbdDeviceManagement = 123;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
