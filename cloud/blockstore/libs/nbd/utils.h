@@ -15,6 +15,7 @@ namespace NCloud::NBlockStore::NBD {
 
 constexpr auto MOUNT_INFO_FILE = "/proc/self/mountinfo";
 constexpr auto SYS_BLOCK_DIR = "/sys/block/";
+const TString DEFAULT_DEVICE_PREFIX = "/dev/nbd";
 
 ////////////////////////////////////////////////////////////////////////////////
 

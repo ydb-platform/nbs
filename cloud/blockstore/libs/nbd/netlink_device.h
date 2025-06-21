@@ -9,15 +9,20 @@ namespace NCloud::NBlockStore::NBD {
 IDevicePtr CreateNetlinkDevice(
     ILoggingServicePtr logging,
     TNetworkAddress connectAddress,
-    TString deviceName,
+    TString devicePath,
     TDuration requestTimeout,
-    TDuration connectionTimeout,
-    bool reconfigure);
+    TDuration connectionTimeout);
+
+IDevicePtr CreateFreeNetlinkDevice(
+    ILoggingServicePtr logging,
+    TNetworkAddress connectAddress,
+    TString devicePrefix,
+    TDuration requestTimeout,
+    TDuration connectionTimeout);
 
 IDeviceFactoryPtr CreateNetlinkDeviceFactory(
     ILoggingServicePtr logging,
     TDuration requestTimeout,
-    TDuration connectionTimeout,
-    bool reconfigure);
+    TDuration connectionTimeout);
 
 }   // namespace NCloud::NBlockStore::NBD

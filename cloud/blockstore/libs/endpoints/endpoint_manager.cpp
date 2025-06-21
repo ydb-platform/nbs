@@ -441,12 +441,14 @@ private:
         std::weak_ptr<TEndpointManager> Manager;
         std::weak_ptr<TEndpoint> Endpoint;
 
-        TErrorHandler(
-                std::weak_ptr<TEndpointManager> manager,
-                std::weak_ptr<TEndpoint> endpoint)
+        TErrorHandler(std::weak_ptr<TEndpointManager> manager)
             : Manager(std::move(manager))
-            , Endpoint(std::move(endpoint))
         {}
+
+        void SetEndpoint(std::weak_ptr<TEndpoint> endpoint)
+        {
+            Endpoint = std::move(endpoint);
+        }
 
         void ProcessException(std::exception_ptr e) override
         {
@@ -470,6 +472,8 @@ private:
     const THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
     const NBD::IDeviceFactoryPtr NbdDeviceFactory;
     const TString NbdSocketSuffix;
+    const TString NbdDevicePrefix;
+    const bool AutomaticNbdDeviceManagement;
 
     TDeviceManager NbdDeviceManager;
     NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
@@ -521,6 +525,8 @@ public:
         , EndpointListeners(std::move(listeners))
         , NbdDeviceFactory(std::move(nbdDeviceFactory))
         , NbdSocketSuffix(options.NbdSocketSuffix)
+        , NbdDevicePrefix(options.NbdDevicePrefix)
+        , AutomaticNbdDeviceManagement(options.AutomaticNbdDeviceManagement)
         , NbdDeviceManager(options.NbdDevicePrefix)
         , NbdErrorHandlerMap(std::move(nbdErrorHandlerMap))
     {
@@ -891,15 +897,13 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         return TErrorResponse(error);
     }
 
-    auto endpoint = std::make_shared<TEndpoint>();
-
     // additional NBD socket will be opened for gRPC endpoints
+    auto errorHandler = std::make_shared<TErrorHandler>(weak_from_this());
+
     if (request->GetIpcType() == NProto::IPC_NBD ||
         request->GetIpcType() == NProto::IPC_GRPC && NbdSocketSuffix.size())
     {
-        NbdErrorHandlerMap->Emplace(
-            socketPath,
-            std::make_shared<TErrorHandler>(weak_from_this(), endpoint));
+        NbdErrorHandlerMap->Emplace(socketPath, errorHandler);
     }
 
     error = OpenAllEndpointSockets(*request, sessionInfo);
@@ -935,10 +939,13 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         }
     }
 
-    endpoint->Request = request;
-    endpoint->Device = device;
-    endpoint->Volume = sessionInfo.Volume;
-    endpoint->Session = sessionInfo.Session;
+    auto endpoint = std::make_shared<TEndpoint>(
+        request,
+        device,
+        sessionInfo.Volume,
+        sessionInfo.Session);
+
+    errorHandler->SetEndpoint(endpoint);
 
     if (auto c = ServerStats->GetEndpointCounter(request->GetIpcType())) {
         c->Inc();
@@ -1641,12 +1648,12 @@ TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
                 "Forbidden 'FreeNbdDeviceFile' flag in restoring endpoints");
         }
 
-        auto nbdDevice = NbdDeviceManager.GetFreeDevice();
-        request->SetUseFreeNbdDeviceFile(false);
-        request->SetNbdDeviceFile(nbdDevice);
-    }
-
-    if (!request->HasNbdDeviceFile() || !request->GetNbdDeviceFile()) {
+        if (!AutomaticNbdDeviceManagement) {
+            auto nbdDevice = NbdDeviceManager.GetFreeDevice();
+            request->SetUseFreeNbdDeviceFile(false);
+            request->SetNbdDeviceFile(nbdDevice);
+        }
+    } else if (!request->HasNbdDeviceFile() || !request->GetNbdDeviceFile()) {
         return NBD::CreateDeviceStub();
     }
 
@@ -1656,25 +1663,46 @@ TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
                 "Only persistent endpoints can connect to nbd device");
         }
 
-        const auto& nbdDevice = request->GetNbdDeviceFile();
-        auto error = NbdDeviceManager.AcquireDevice(nbdDevice);
-        if (HasError(error)) {
-            return error;
+        if (!AutomaticNbdDeviceManagement) {
+            const auto& nbdDevice = request->GetNbdDeviceFile();
+            auto error = NbdDeviceManager.AcquireDevice(nbdDevice);
+            if (HasError(error)) {
+                return error;
+            }
         }
     }
 
     NBD::IDevicePtr device;
     try {
         TNetworkAddress address(TUnixSocketPath(request->GetUnixSocketPath()));
-        device = NbdDeviceFactory->Create(
-            address,
-            request->GetNbdDeviceFile(),
-            volume.GetBlocksCount(),
-            volume.GetBlockSize());
+
+        if (request->HasUseFreeNbdDeviceFile() &&
+            request->GetUseFreeNbdDeviceFile())
+        {
+            device = NbdDeviceFactory->CreateFree(
+                address,
+                NbdDevicePrefix,
+                volume.GetBlocksCount(),
+                volume.GetBlockSize());
+        } else {
+            device = NbdDeviceFactory->Create(
+                address,
+                request->GetNbdDeviceFile(),
+                volume.GetBlocksCount(),
+                volume.GetBlockSize());
+        }
+
         auto startFuture = device->Start();
         const auto& startError = Executor->WaitFor(startFuture);
         if (HasError(startError)) {
             return startError;
+        }
+
+        if (request->HasUseFreeNbdDeviceFile() &&
+            request->GetUseFreeNbdDeviceFile())
+        {
+            request->SetUseFreeNbdDeviceFile(false);
+            request->SetNbdDeviceFile(device->GetPath());
         }
     } catch (...) {
         ReleaseNbdDevice(request->GetNbdDeviceFile(), restoring);
@@ -1733,14 +1761,17 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
 
         if (request->HasNbdDeviceFile() && request->GetNbdDeviceFile()) {
             const auto& nbdDevice = request->GetNbdDeviceFile();
-            auto error = NbdDeviceManager.AcquireDevice(nbdDevice);
 
-            if (HasError(error)) {
-                ReportEndpointRestoringError();
-                STORAGE_ERROR("Failed to acquire nbd device"
-                    << ", endpoint: " << request->GetUnixSocketPath().Quote()
-                    << ", error: " << FormatError(error));
-                continue;
+            if (!AutomaticNbdDeviceManagement) {
+                auto error = NbdDeviceManager.AcquireDevice(nbdDevice);
+
+                if (HasError(error)) {
+                    ReportEndpointRestoringError();
+                    STORAGE_ERROR("Failed to acquire nbd device"
+                        << ", endpoint: " << request->GetUnixSocketPath().Quote()
+                        << ", error: " << FormatError(error));
+                    continue;
+                }
             }
         }
 
@@ -1814,7 +1845,9 @@ void TEndpointManager::ReleaseNbdDevice(const TString& device, bool restoring)
         return;
     }
 
-    NbdDeviceManager.ReleaseDevice(device);
+    if (!AutomaticNbdDeviceManagement) {
+        NbdDeviceManager.ReleaseDevice(device);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
