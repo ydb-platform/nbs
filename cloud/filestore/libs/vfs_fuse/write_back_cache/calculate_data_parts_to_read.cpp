@@ -1,5 +1,6 @@
-#include "write_back_cache.h"
+#include "write_back_cache_impl.h"
 
+#include <util/generic/deque.h>
 #include <util/generic/vector.h>
 
 #include <algorithm>
@@ -9,8 +10,8 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 // static
-auto TWriteBackCache::CalculateDataPartsToRead(
-    const TVector<TWriteDataEntry*>& entries,
+auto TWriteBackCache::TImpl::CalculateDataPartsToRead(
+    const TDeque<TWriteDataEntry*>& entries,
     ui64 startingFromOffset,
     ui64 length) -> TVector<TWriteDataEntryPart>
 {
@@ -26,8 +27,11 @@ auto TWriteBackCache::CalculateDataPartsToRead(
 
     for (size_t i = 0; i < entries.size(); i++) {
         const auto* entry = entries[i];
+        if (!entry->IsCached()) {
+            continue;
+        }
 
-        auto pointBegin = entry->Offset;
+        auto pointBegin = entry->Begin();
         auto pointEnd = entry->End();
         if (length != 0) {
             // intersect with [startingFromOffset, length)
@@ -66,8 +70,8 @@ auto TWriteBackCache::CalculateDataPartsToRead(
         const auto partLength = currOffset - lastOffset;
         const auto& top = heap.front();
 
-        Y_DEBUG_ABORT_UNLESS(lastOffset >= top.Entry->Offset);
-        const auto offsetInSource = lastOffset - top.Entry->Offset;
+        Y_DEBUG_ABORT_UNLESS(lastOffset >= top.Entry->Begin());
+        const auto offsetInSource = lastOffset - top.Entry->Begin();
 
         if (!res.empty() &&
             res.back().Source == top.Entry &&
@@ -120,6 +124,53 @@ auto TWriteBackCache::CalculateDataPartsToRead(
             std::pop_heap(heap.begin(), heap.end(), heapComparator);
             heap.pop_back();
         }
+    }
+
+    return res;
+}
+
+// static
+auto TWriteBackCache::TImpl::InvertDataParts(
+    const TVector<TWriteDataEntryPart>& parts,
+    ui64 startingFromOffset,
+    ui64 length) -> TVector<TWriteDataEntryPart>
+{
+    if (parts.empty()) {
+        return { {
+            .Offset = startingFromOffset,
+            .Length = length
+        } };
+    }
+
+    const ui64 maxOffset = startingFromOffset + length;
+
+    TVector<TWriteDataEntryPart> res(Reserve(parts.size() + 1));
+
+    if (parts.front().Offset > startingFromOffset) {
+        res.push_back({
+            .Offset = startingFromOffset,
+            .Length = Min(parts.front().Offset, maxOffset) - startingFromOffset,
+        });
+    }
+
+    for (size_t i = 1; i < parts.size(); i++) {
+        if (parts[i - 1].End() >= maxOffset) {
+            break;
+        }
+        if (parts[i - 1].End() == parts[i].Offset) {
+            continue;
+        }
+        res.push_back({
+            .Offset = parts[i - 1].End(),
+            .Length = Min(parts[i].Offset, maxOffset) - parts[i - 1].End()
+        });
+    }
+
+    if (parts.back().End() < maxOffset) {
+        res.push_back({
+            .Offset = parts.back().End(),
+            .Length = maxOffset - parts.back().End()
+        });
     }
 
     return res;

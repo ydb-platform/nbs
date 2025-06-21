@@ -1,4 +1,4 @@
-#include "write_back_cache.h"
+#include "write_back_cache_impl.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -108,8 +108,9 @@ IOutputStream& operator<<(
 
 struct TCalculateDataPartsToReadTestBootstrap
 {
-    using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
-    using TWriteDataEntryPart = TWriteBackCache::TWriteDataEntryPart;
+    using TWriteDataEntry = TWriteBackCache::TImpl::TWriteDataEntry;
+    using TWriteDataEntryPart = TWriteBackCache::TImpl::TWriteDataEntryPart;
+    using EWriteDataEntryStatus = TWriteBackCache::TImpl::EWriteDataEntryStatus;
 
     ILoggingServicePtr Logging;
     TLog Log;
@@ -124,18 +125,18 @@ struct TCalculateDataPartsToReadTestBootstrap
     ~TCalculateDataPartsToReadTestBootstrap() = default;
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TVector<TWriteDataEntry*>& entries,
+        const TDeque<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
         ui64 length)
     {
-        return TWriteBackCache::CalculateDataPartsToRead(
+        return TWriteBackCache::TImpl::CalculateDataPartsToRead(
             entries,
             startingFromOffset,
             length);
     }
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToReadReferenceImpl(
-        const TVector<TWriteDataEntry*>& entries,
+        const TDeque<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
         ui64 length)
     {
@@ -145,7 +146,7 @@ struct TCalculateDataPartsToReadTestBootstrap
         for (ui64 offset = startingFromOffset; offset != endOffset; offset++) {
             TWriteDataEntry* lastEntry = nullptr;
             for (auto* entry: entries) {
-                if (entry->Offset <= offset && offset < entry->End()) {
+                if (entry->Begin() <= offset && offset < entry->End()) {
                     lastEntry = entry;
                 }
             }
@@ -153,7 +154,7 @@ struct TCalculateDataPartsToReadTestBootstrap
             if (lastEntry != nullptr) {
                 parts.emplace_back(
                     lastEntry,
-                    offset - lastEntry->Offset,
+                    offset - lastEntry->Begin(),
                     offset,
                     1);
             }
@@ -185,11 +186,17 @@ struct TCalculateDataPartsToReadTestBootstrap
 
         return res;
     }
+
+    static void SetCached(TWriteDataEntry* entry) {
+        entry->Status = EWriteDataEntryStatus::Cached;
+    }
 };
 
 using TWriteDataEntry = TCalculateDataPartsToReadTestBootstrap::TWriteDataEntry;
 using TWriteDataEntryPart =
     TCalculateDataPartsToReadTestBootstrap::TWriteDataEntryPart;
+using EWriteDataEntryStatus =
+    TCalculateDataPartsToReadTestBootstrap::EWriteDataEntryStatus;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -198,9 +205,9 @@ IOutputStream& operator<<(
     const TWriteDataEntry& e)
 {
     out << "{"
-        << "Handle: " << e.Handle << ", "
-        << "Offset: " << e.Offset << ", "
-        << "Length: " << e.Length
+        << "Handle: " << e.GetHandle() << ", "
+        << "Offset: " << e.Begin() << ", "
+        << "Length: " << e.GetBuffer().Size()
         << "}";
     return out;
 }
@@ -233,17 +240,18 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length < MaxLength);
 
-            auto entry = std::make_unique<TWriteDataEntry>(
-                e.Handle,
-                e.Offset,
-                e.Length,
-                TStringBuf(),
-                TString(),
-                NProto::THeaders());
+            auto request = std::make_shared<NProto::TWriteDataRequest>();
+            request->SetHandle(e.Handle);
+            request->SetOffset(e.Offset);
+            request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
+
+            auto entry =
+                TWriteDataEntry::CreatePendingRequest(std::move(request));
+            TCalculateDataPartsToReadTestBootstrap::SetCached(entry.get());
             entries.PushBack(entry.release());
         }
 
-        TVector<TWriteDataEntry*> entryPtrs;
+        TDeque<TWriteDataEntry*> entryPtrs;
         for (auto& entry: entries) {
             entryPtrs.push_back(&entry);
         }
@@ -287,17 +295,18 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
 
-            auto entry = std::make_unique<TWriteDataEntry>(
-                e.Handle,
-                e.Offset,
-                e.Length,
-                TStringBuf(),
-                TString(),
-                NProto::THeaders());
+            auto request = std::make_shared<NProto::TWriteDataRequest>();
+            request->SetHandle(e.Handle);
+            request->SetOffset(e.Offset);
+            request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
+
+            auto entry =
+                TWriteDataEntry::CreatePendingRequest(std::move(request));
+            TCalculateDataPartsToReadTestBootstrap::SetCached(entry.get());
             entries.PushBack(entry.release());
         }
 
-        TVector<TWriteDataEntry*> entryPtrs;
+        TDeque<TWriteDataEntry*> entryPtrs;
         for (auto& entry: entries) {
             entryPtrs.push_back(&entry);
         }
