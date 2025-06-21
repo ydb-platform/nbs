@@ -236,6 +236,9 @@ message TServerConfig
     // PTEs will be flushed after the guest reads/writes 8 512-byte blocks or
     // 1 4KiB block.
     optional uint64 VhostPteFlushByteThreshold = 123;
+
+    // Ask system to provide a free nbd device
+    optional bool AutomaticNbdDeviceManagement = 124;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

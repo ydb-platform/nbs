@@ -39,7 +39,8 @@ def init(
         nbd_request_timeout=None,
         nbd_reconnect_delay=None,
         proxy_restart_events=None,
-        max_zero_blocks_sub_request_size=None
+        max_zero_blocks_sub_request_size=None,
+        nbds_max=4,
 ):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
@@ -66,6 +67,7 @@ def init(
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
     server_config_patch.VhostEnabled = False
     server_config_patch.NbdDevicePrefix = "/dev/nbd"
+    server_config_patch.AutomaticNbdDeviceManagement = True
     server = TServerAppConfig()
     server.ServerConfig.CopyFrom(server_config_patch)
     server.ServerConfig.ThreadsCount = thread_count()
@@ -73,7 +75,7 @@ def init(
     if max_zero_blocks_sub_request_size:
         server.ServerConfig.MaxZeroBlocksSubRequestSize = max_zero_blocks_sub_request_size
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-    subprocess.check_call(["modprobe", "nbd"], timeout=20)
+    subprocess.check_call(["modprobe", "nbd", "nbds_max=4"], timeout=20)
     if stored_endpoints_path:
         stored_endpoints_path.mkdir(exist_ok=True)
     env = LocalLoadTest(
@@ -136,6 +138,80 @@ def log_called_process_error(exc):
         exc.stdout,
         exc_info=exc,
     )
+
+
+@pytest.mark.parametrize('with_netlink', [True, False])
+def test_free_device_allocation(with_netlink):
+    disk = "disk"
+    block_size = 4096
+    blocks_count = 1024
+    socket = "/tmp/sock"
+    nbds_max = 4
+
+    env, run = init(
+        with_netlink=with_netlink,
+        with_endpoint_proxy=False,
+        nbds_max=nbds_max)
+
+    def createvolume(disk, socket):
+        return run(
+            "createvolume",
+            "--disk-id",
+            disk,
+            "--blocks-count",
+            str(blocks_count),
+            "--block-size",
+            str(block_size),
+        ).returncode
+
+    def startendpoint(disk, socket):
+        return run(
+            "startendpoint",
+            "--disk-id",
+            disk,
+            "--socket",
+            socket,
+            "--ipc-type",
+            "nbd",
+            "--persistent",
+            "--nbd-device"
+        ).returncode
+
+    try:
+        for i in range(0, nbds_max):
+            assert createvolume(disk + str(i), socket + str(i)) == 0
+            assert startendpoint(disk + str(i), socket + str(i)) == 0
+
+        if with_netlink:
+            # netlink implementation can allocate new devices on the fly,
+            # so we should be able to go beyond configured limit
+            assert createvolume(disk + str(nbds_max), socket + str(nbds_max)) == 0
+            assert startendpoint(disk + str(nbds_max), socket + str(nbds_max)) == 0
+        else:
+            # ioctl implementation won't be able to find free device
+            assert createvolume(disk + str(nbds_max), socket + str(nbds_max)) != 0
+            assert startendpoint(disk + str(nbds_max), socket + str(nbds_max)) != 0
+
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+
+    finally:
+        for i in range(0, nbds_max + 1):
+            run(
+                "stopendpoint",
+                "--socket",
+                socket + str(i),
+            )
+
+            result = run(
+                "destroyvolume",
+                "--disk-id",
+                disk + str(i),
+                input=disk+str(i),
+            )
+
+        cleanup_after_test(env)
 
 
 def test_nbd_reconnect():

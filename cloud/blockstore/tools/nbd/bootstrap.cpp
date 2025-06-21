@@ -19,6 +19,7 @@
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
+#include <cloud/blockstore/libs/nbd/utils.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -292,16 +293,28 @@ void TBootstrap::Start()
     }
 
     if (Options->ConnectDevice) {
-#if defined(_linux_)
         if (Options->Netlink) {
+            if (Options->ConnectDevicePath.empty()) {
+                NbdDevice = CreateFreeNetlinkDevice(
+                    Logging,
+                    listenAddress,
+                    DEV_DIR,
+                    Options->RequestTimeout,
+                    Options->ConnectionTimeout);
+                );
+            }
             NbdDevice = CreateNetlinkDevice(
                 Logging,
                 listenAddress,
-                Options->ConnectDevice,
+                Options->ConnectDevicePath,
                 Options->RequestTimeout,
-                Options->ConnectionTimeout,
-                Options->Reconfigure);
+                Options->ConnectionTimeout);
         } else {
+            if (Options->ConnectDevicePath.empty()) {
+                auto device = FindFreeNbdDevice();
+                Y_ENSURE(device, "unable to find free nbd device");
+                Options->ConnectDevicePath = "/dev/" + device;
+            }
             // The only case we want kernel to retry requests is when the socket
             // is dead due to nbd server restart. And since we can't configure
             // ioctl device to use a new socket, request timeout effectively
@@ -309,24 +322,20 @@ void TBootstrap::Start()
             NbdDevice = CreateDevice(
                 Logging,
                 listenAddress,
-                Options->ConnectDevice,
+                Options->ConnectDevicePath,
                 Options->ConnectionTimeout);
         }
-        auto future = NbdDevice->Start();
-        const auto& status = future.GetValue();
+        auto status = NbdDevice->Start().GetValueSync();
         if (HasError(status)) {
             ythrow yexception() << status.GetMessage();
         }
-#else
-        ythrow yexception() << "unsupported platform";
-#endif
     }
 }
 
 void TBootstrap::Stop()
 {
     if (NbdDevice) {
-        NbdDevice->Stop(Options->Disconnect);
+        NbdDevice->Stop(true);
     }
 
     switch (Options->DeviceMode) {
