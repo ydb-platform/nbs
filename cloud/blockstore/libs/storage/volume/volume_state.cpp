@@ -120,7 +120,6 @@ TVolumeState::TVolumeState(
         TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
         TFollowerDisks followerDisks,
-        TLeaderDisks leaderDisks,
         bool startPartitionsNeeded)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -135,7 +134,6 @@ TVolumeState::TVolumeState(
     , CheckpointStore(std::move(checkpointRequests), Config->GetDiskId())
     , StartPartitionsNeeded(startPartitionsNeeded)
     , FollowerDisks(std::move(followerDisks))
-    , LeaderDisks(std::move(leaderDisks))
 {
     Reset();
 
@@ -928,45 +926,10 @@ TVolumeState::GetDevicesForAcquireOrRelease() const
     return resultDevices;
 }
 
-TCreateFollowerRequestInfo& TVolumeState::AccessCreateFollowerRequestInfo(
-    const TLeaderFollowerLink& link)
-{
-    for (auto& requestInfo: CreateFollowerRequests) {
-        if (requestInfo.Link.Match(link)) {
-            return requestInfo;
-        }
-    }
-
-    CreateFollowerRequests.push_back(TCreateFollowerRequestInfo{.Link = link});
-    return CreateFollowerRequests.back();
-}
-
-void TVolumeState::DeleteCreateFollowerRequestInfo(
-    const TLeaderFollowerLink& link)
-{
-    EraseIf(
-        CreateFollowerRequests,
-        [&](const TCreateFollowerRequestInfo& requestInfo)
-        { return requestInfo.Link.Match(link); });
-}
-
-std::optional<TFollowerDiskInfo> TVolumeState::FindFollower(
-    const TLeaderFollowerLink& link) const
-{
-    for (const auto& follower: FollowerDisks) {
-        if (follower.Link.Match(link)) {
-            return follower;
-        }
-    }
-    return std::nullopt;
-}
-
 void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
 {
-    Y_DEBUG_ABORT_UNLESS(follower.Link.LinkUUID);
-
     for (auto& followerInfo: FollowerDisks) {
-        if (followerInfo.Link.Match(follower.Link)) {
+        if (followerInfo.LinkUUID == follower.LinkUUID) {
             followerInfo = std::move(follower);
             return;
         }
@@ -974,51 +937,34 @@ void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
     FollowerDisks.push_back(std::move(follower));
 }
 
-void TVolumeState::RemoveFollower(const TLeaderFollowerLink& link)
+void TVolumeState::RemoveFollower(const TString& linkUUID)
 {
     EraseIf(
         FollowerDisks,
         [&](const TFollowerDiskInfo& follower)
-        { return follower.Link.Match(link); });
+        { return follower.LinkUUID == linkUUID; });
 }
 
-const TFollowerDisks& TVolumeState::GetAllFollowers() const
+std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerByUuid(
+    const TString& linkUUID) const
 {
-    return FollowerDisks;
-}
-
-std::optional<TLeaderDiskInfo> TVolumeState::FindLeader(
-    const TLeaderFollowerLink& link) const
-{
-    for (const auto& leader: LeaderDisks) {
-        if (leader.Link.Match(link)) {
-            return leader;
+    for (const auto& follower: FollowerDisks) {
+        if (follower.LinkUUID == linkUUID) {
+            return follower;
         }
     }
     return std::nullopt;
 }
 
-void TVolumeState::AddOrUpdateLeader(TLeaderDiskInfo leader)
+std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerByDiskId(
+    const TString& diskId) const
 {
-    for (auto& leaderInfo: LeaderDisks) {
-        if (leaderInfo.Link.Match(leader.Link)) {
-            leaderInfo = std::move(leader);
-            return;
+    for (const auto& follower: FollowerDisks) {
+        if (follower.FollowerDiskId == diskId) {
+            return follower;
         }
     }
-    LeaderDisks.push_back(std::move(leader));
-}
-
-void TVolumeState::RemoveLeader(const TLeaderFollowerLink& link)
-{
-    EraseIf(
-        LeaderDisks,
-        [&](const TLeaderDiskInfo& leader) { return leader.Link.Match(link); });
-}
-
-const TLeaderDisks& TVolumeState::GetAllLeaders() const
-{
-    return LeaderDisks;
+    return std::nullopt;
 }
 
 void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)

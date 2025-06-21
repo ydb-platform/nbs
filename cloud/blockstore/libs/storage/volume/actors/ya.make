@@ -1,11 +1,7 @@
 LIBRARY()
 
-GENERATE_ENUM_SERIALIZATION(propagate_to_follower.h)
-
 SRCS(
-    create_volume_link_actor.cpp
     forward_write_and_mark_used.cpp
-    propagate_to_follower.cpp
     read_disk_registry_based_overlay.cpp
     release_devices_actor.cpp
     shadow_disk_actor.cpp

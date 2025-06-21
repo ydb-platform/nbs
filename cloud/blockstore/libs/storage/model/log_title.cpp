@@ -122,11 +122,6 @@ TString TLogTitle::GetWithTime() const
     return Get(EDetails::WithTime);
 }
 
-TString TLogTitle::GetBrief() const
-{
-    return Get(EDetails::Brief);
-}
-
 void TLogTitle::SetDiskId(TString diskId)
 {
     DiskId = std::move(diskId);

@@ -453,11 +453,9 @@ void TTestEnv::SetupLogging()
         TBlockStoreComponents::END,
         GetComponentName);
 
-    for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END;
-         ++i)
-    {
-        Runtime.SetLogPriority(i, NLog::PRI_INFO);
-    }
+    // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+    //     Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+    // }
 
     // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     // Runtime.SetLogPriority(NKikimrServices::WILSON, NLog::PRI_DEBUG);
