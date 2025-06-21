@@ -340,7 +340,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         drProxyId,
         nodeIdx);
 
-    auto volumeProxy = CreateVolumeProxy(storageConfig, TraceSerializer);
+    auto volumeProxy = CreateVolumeProxy(storageConfig, TraceSerializer, false);
     auto volumeProxyId = Runtime.Register(
         volumeProxy.release(),
         nodeIdx,

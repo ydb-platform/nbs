@@ -7,14 +7,15 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/lwtrace/shuttle.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -72,17 +73,25 @@ class TVolumeProxyActor final
         ui64 TabletId = 0;
         ui32 Generation = 0;
         NProto::TError Error;
-        TString Path;
 
         TDeque<IEventHandlePtr> Requests;
         TInstant LastActivity;
         ui64 RequestsInflight = 0;
         bool ActivityCheckScheduled = false;
 
-        TConnection(ui64 id, TString diskId)
+        TLogTitle LogTitle;
+
+        TConnection(ui64 id, TString diskId, bool temporaryServer)
             : Id(id)
             , DiskId(std::move(diskId))
+            , LogTitle(DiskId, temporaryServer, GetCycleCount())
         {}
+
+        void AdvanceGeneration()
+        {
+            ++Generation;
+            LogTitle.SetGeneration(Generation);
+        }
     };
 
     struct TActiveRequest
@@ -109,6 +118,7 @@ class TVolumeProxyActor final
 private:
     const TStorageConfigPtr Config;
     const ITraceSerializerPtr TraceSerializer;
+    const bool TemporaryServer = false;
 
     ui64 ConnectionId = 0;
     THashMap<TString, TConnection> Connections;
@@ -137,7 +147,8 @@ private:
 public:
     TVolumeProxyActor(
         TStorageConfigPtr config,
-        ITraceSerializerPtr traceSerializer);
+        ITraceSerializerPtr traceSerializer,
+        bool temporaryServer);
 
 private:
     TConnection& CreateConnection(const TString& diskId);
@@ -148,28 +159,20 @@ private:
         ui64 tabletId,
         const TString& path);
 
-    void DestroyConnection(
-        const TActorContext& ctx,
-        TConnection& conn,
-        const NProto::TError& error);
+    void OnConnectError(TConnection& conn, NProto::TError error);
 
-    void OnConnectionError(
-        const TActorContext& ctx,
-        TConnection& conn,
-        const NProto::TError& error);
+    void OnDisconnect(const TActorContext& ctx, TConnection& conn);
 
-    void ProcessPendingRequests(
-        const TActorContext& ctx,
-        TConnection& conn);
+    void ProcessPendingRequests(TConnection& conn);
 
-    void CancelActiveRequests(
-        const TActorContext& ctx,
-        TConnection& conn);
+    void CancelActiveRequests(const TActorContext& ctx, TConnection& conn);
 
-    void PostponeRequest(
-        const TActorContext& ctx,
-        TConnection& conn,
-        IEventHandlePtr ev);
+    void PostponeRequest(TConnection& conn, IEventHandlePtr ev);
+
+    void SetDisconnectTs(const TString& diskId, TInstant disconnectTs);
+
+    TConnection* GetConnectionByTabletId(ui64 tabletId);
+    TConnection* GetConnectionById(ui64 id);
 
     template <typename TMethod>
     void ForwardRequest(
@@ -177,9 +180,7 @@ private:
         TConnection& conn,
         const typename TMethod::TRequest::TPtr& ev);
 
-    void DescribeVolume(
-        const TActorContext& ctx,
-        TConnection& conn);
+    void DescribeVolume(const TActorContext& ctx, TConnection& conn);
 
 private:
     void ScheduleConnectionShutdown(
@@ -234,10 +235,12 @@ private:
 
 TVolumeProxyActor::TVolumeProxyActor(
         TStorageConfigPtr config,
-        ITraceSerializerPtr traceSerializer)
+        ITraceSerializerPtr traceSerializer,
+        bool temporaryServer)
     : TActor(&TThis::StateWork)
     , Config(std::move(config))
     , TraceSerializer(std::move(traceSerializer))
+    , TemporaryServer(temporaryServer)
     , ClientCache(CreateTabletPipeClientCache(*Config))
 {
 }
@@ -251,7 +254,9 @@ TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
 
     ui64 connectionId = ++ConnectionId;
 
-    auto ins = Connections.emplace(diskId, TConnection(connectionId, diskId));
+    auto ins = Connections.emplace(
+        diskId,
+        TConnection(connectionId, diskId, TemporaryServer));
     Y_ABORT_UNLESS(ins.second);
 
     ConnectionById[connectionId] = &ins.first->second;
@@ -264,58 +269,56 @@ void TVolumeProxyActor::StartConnection(
     ui64 tabletId,
     const TString& path)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME_PROXY,
-        "Volume with diskId %s and path %s resolved: %lu",
-        conn.DiskId.Quote().data(),
-        path.Quote().data(),
-        tabletId);
+    conn.LogTitle.SetTabletId(tabletId);
+    conn.AdvanceGeneration();
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME_PROXY,
+        "%s TabletID for volume with path %s resolved",
+        conn.LogTitle.GetWithTime().c_str(),
+        path.Quote().data());
 
     ConnectionByTablet[tabletId] = &conn;
 
     conn.State = STARTED;
     conn.TabletId = tabletId;
-    conn.Path = path;
-    ++conn.Generation;
 
-    ProcessPendingRequests(ctx, conn);
+    ProcessPendingRequests(conn);
 }
 
-void TVolumeProxyActor::DestroyConnection(
-    const TActorContext& ctx,
+void TVolumeProxyActor::OnConnectError(
     TConnection& conn,
-    const NProto::TError& error)
+    NProto::TError error)
 {
     conn.State = STOPPED;
-    conn.Error = error;
+    conn.Error = std::move(error);
 
-    ProcessPendingRequests(ctx, conn);
+    ProcessPendingRequests(conn);
 
     ConnectionById.erase(conn.Id);
     ConnectionByTablet.erase(conn.TabletId);
     Connections.erase(conn.DiskId);
 }
 
-void TVolumeProxyActor::OnConnectionError(
+void TVolumeProxyActor::OnDisconnect(
     const TActorContext& ctx,
-    TConnection& conn,
-    const NProto::TError& error)
+    TConnection& conn)
 {
-    LOG_WARN(ctx, TBlockStoreComponents::VOLUME_PROXY,
-        "Connection to volume with diskId %s and path %s failed: %s",
-        conn.DiskId.Quote().data(),
-        conn.Path.Quote().data(),
-        FormatError(error).data());
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME_PROXY,
+        "%s Connection to volume failed",
+        conn.LogTitle.GetWithTime().c_str());
 
     // will wait for tablet to recover
     conn.State = FAILED;
 
     CancelActiveRequests(ctx, conn);
-    ProcessPendingRequests(ctx, conn);
+    ProcessPendingRequests(conn);
 }
 
-void TVolumeProxyActor::ProcessPendingRequests(
-    const TActorContext&,
-    TConnection& conn)
+void TVolumeProxyActor::ProcessPendingRequests(TConnection& conn)
 {
     auto requests = std::move(conn.Requests);
 
@@ -344,13 +347,36 @@ void TVolumeProxyActor::CancelActiveRequests(
 }
 
 void TVolumeProxyActor::PostponeRequest(
-    const TActorContext& ctx,
     TConnection& conn,
     IEventHandlePtr ev)
 {
-    Y_UNUSED(ctx);
-
     conn.Requests.emplace_back(std::move(ev));
+}
+
+void TVolumeProxyActor::SetDisconnectTs(
+    const TString& diskId,
+    TInstant disconnectTs)
+{
+    if (auto* baseTablet = BaseDiskIdToTabletId.FindPtr(diskId)) {
+        if (!disconnectTs) {
+            baseTablet->DisconnectTs = disconnectTs;
+        } else if (!baseTablet->DisconnectTs) {
+            baseTablet->DisconnectTs = disconnectTs;
+        }
+    }
+}
+
+TVolumeProxyActor::TConnection* TVolumeProxyActor::GetConnectionByTabletId(
+    ui64 tabletId)
+{
+    auto it = ConnectionByTablet.find(tabletId);
+    return it == ConnectionByTablet.end() ? nullptr : it->second;
+}
+
+TVolumeProxyActor::TConnection* TVolumeProxyActor::GetConnectionById(ui64 id)
+{
+    auto it = ConnectionById.find(id);
+    return it == ConnectionById.end() ? nullptr : it->second;
 }
 
 template <typename TMethod>
@@ -363,9 +389,11 @@ void TVolumeProxyActor::ForwardRequest(
 
     auto clientId = ClientCache->Prepare(ctx, conn.TabletId);
 
-    LOG_TRACE(ctx, TBlockStoreComponents::VOLUME_PROXY,
-        "Forward request to volume: %lu (remote: %s)",
-        conn.TabletId,
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::VOLUME_PROXY,
+        "%s Forward request to volume (remote: %s)",
+        conn.LogTitle.GetWithTime().c_str(),
         ToString(clientId).data());
 
     ui64 requestId = ++RequestId;
@@ -406,9 +434,11 @@ void TVolumeProxyActor::DescribeVolume(
     const TActorContext& ctx,
     TConnection& conn)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME_PROXY,
-        "Query volume for diskId: %s",
-        conn.DiskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME_PROXY,
+        "%s Query describe volume",
+        conn.LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -438,12 +468,12 @@ void TVolumeProxyActor::HandleWakeup(
 {
     const auto* msg = ev->Get();
 
-    auto it = ConnectionById.find(msg->Tag);
-    if (it == ConnectionById.end()) {
+    TConnection* conn = GetConnectionById(msg->Tag);
+    if (!conn) {
         // connection is already closed, nothing to do
         return;
     }
-    TConnection* conn = it->second;
+
     conn->ActivityCheckScheduled = false;
     auto now = ctx.Now();
 
@@ -451,10 +481,12 @@ void TVolumeProxyActor::HandleWakeup(
         !conn->RequestsInflight &&
         conn->LastActivity < now - PipeInactivityTimeout)
     {
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME_PROXY,
-            "Remove connection to tablet %lu for disk %s",
-            conn->TabletId,
-            conn->DiskId.Quote().data());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME_PROXY,
+            "%s Remove connection",
+            conn->LogTitle.GetWithTime().c_str());
+
         ClientCache->Shutdown(ctx, conn->TabletId);
         ConnectionById.erase(conn->Id);
         ConnectionByTablet.erase(conn->TabletId);
@@ -474,42 +506,39 @@ void TVolumeProxyActor::HandleConnect(
 {
     const auto* msg = ev->Get();
 
-    auto it = ConnectionByTablet.find(msg->TabletId);
-    if (it == ConnectionByTablet.end()) {
+    TConnection* conn = GetConnectionByTabletId(msg->TabletId);
+    if (!conn) {
         return;
     }
-
-    TConnection* conn = it->second;
-    Y_ABORT_UNLESS(conn);
 
     if (!ClientCache->OnConnect(ev)) {
         auto error = MakeKikimrError(msg->Status, "Could not connect");
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME_PROXY,
-            "Cannot connect to tablet %lu: %s",
-            msg->TabletId,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME_PROXY,
+            "%s Cannot connect to tablet: %s",
+            conn->LogTitle.GetWithTime().c_str(),
             FormatError(error).data());
 
-        if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
-            it != BaseDiskIdToTabletId.end() && !it->second.DisconnectTs)
-        {
-            it->second.DisconnectTs = ctx.Now();
-        }
+        SetDisconnectTs(conn->DiskId, ctx.Now());
 
         CancelActiveRequests(ctx, *conn);
-        DestroyConnection(ctx, *conn, error);
+        OnConnectError(*conn, std::move(error));
         return;
     }
 
-    if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
-        it != BaseDiskIdToTabletId.end())
-    {
-        it->second.DisconnectTs = {};
-    }
+    SetDisconnectTs(conn->DiskId, {});
 
     if (conn->State == FAILED) {
         // Tablet recovered
         conn->State = STARTED;
-        ++conn->Generation;
+        conn->AdvanceGeneration();
+
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME_PROXY,
+            "%s Tablet connection recovered",
+            conn->LogTitle.GetWithTime().c_str());
     }
 }
 
@@ -519,18 +548,14 @@ void TVolumeProxyActor::HandleDisconnect(
 {
     const auto* msg = ev->Get();
 
-    auto it = ConnectionByTablet.find(msg->TabletId);
-    if (it == ConnectionByTablet.end()) {
+    TConnection* conn = GetConnectionByTabletId(msg->TabletId);
+    if (!conn) {
         return;
     }
 
-    TConnection* conn = it->second;
-    Y_ABORT_UNLESS(conn);
-
     ClientCache->OnDisconnect(ev);
 
-    auto error = MakeError(E_REJECTED, "Connection broken");
-    OnConnectionError(ctx, *conn, error);
+    OnDisconnect(ctx, *conn);
 }
 
 void TVolumeProxyActor::HandleDescribeResponse(
@@ -539,22 +564,21 @@ void TVolumeProxyActor::HandleDescribeResponse(
 {
     const auto* msg = ev->Get();
 
-    auto it = ConnectionById.find(ev->Cookie);
-    if (it == ConnectionById.end()) {
+    TConnection* conn = GetConnectionById(ev->Cookie);
+    if (!conn) {
         return;
     }
 
-    TConnection* conn = it->second;
-    Y_ABORT_UNLESS(conn);
-
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME_PROXY,
-            "Could not resolve path for volume %s: %s",
-            conn->DiskId.Quote().data(),
-            FormatError(error).data());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME_PROXY,
+            "%s Could not resolve path for volume. Error: %s",
+            conn->LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
 
-        DestroyConnection(ctx, *conn, error);
+        OnConnectError(*conn, error);
         return;
     }
 
@@ -566,11 +590,7 @@ void TVolumeProxyActor::HandleDescribeResponse(
         volumeDescr.GetVolumeTabletId(),
         msg->Path);
 
-    if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
-        it != BaseDiskIdToTabletId.end())
-    {
-        it->second.DisconnectTs = {};
-    }
+    SetDisconnectTs(conn->DiskId, {});
 }
 
 template <typename TMethod>
@@ -602,16 +622,18 @@ void TVolumeProxyActor::HandleRequest(
         case INITIAL:
         case FAILED:
         {
-            auto itr = BaseDiskIdToTabletId.find(diskId);
-            if (itr != BaseDiskIdToTabletId.end()) {
-                auto deadline =
-                    itr->second.DisconnectTs + Config->GetVolumeProxyCacheRetryDuration();
-                if (!itr->second.DisconnectTs || deadline > ctx.Now()) {
-                    PostponeRequest(ctx, conn, IEventHandlePtr(ev.Release()));
+            if (auto* baseDisk = BaseDiskIdToTabletId.FindPtr(diskId)) {
+                // For base disks, we make a timeout between connections.
+                const auto deadline =
+                    baseDisk->DisconnectTs +
+                    Config->GetVolumeProxyCacheRetryDuration();
+                const bool cooldownPassed = !baseDisk->DisconnectTs || deadline > ctx.Now();
+                if (cooldownPassed) {
+                    PostponeRequest(conn, IEventHandlePtr(ev.Release()));
                     StartConnection(
                         ctx,
                         conn,
-                        itr->second.TabletId,
+                        baseDisk->TabletId,
                         "PartitionConfig");
                     break;
                 }
@@ -619,17 +641,17 @@ void TVolumeProxyActor::HandleRequest(
 
             conn.State = RESOLVING;
             DescribeVolume(ctx, conn);
-
-            // pass-through
-        }
-        case RESOLVING:
-            PostponeRequest(ctx, conn, IEventHandlePtr(ev.Release()));
+            PostponeRequest(conn, IEventHandlePtr(ev.Release()));
             break;
-
-        case STARTED:
+        }
+        case RESOLVING:{
+            PostponeRequest(conn, IEventHandlePtr(ev.Release()));
+            break;
+        }
+        case STARTED: {
             ForwardRequest<TMethod>(ctx, conn, ev);
             break;
-
+        }
         case STOPPED: {
             auto response = std::make_unique<typename TMethod::TResponse>(
                 conn.Error);
@@ -697,7 +719,7 @@ void TVolumeProxyActor::HandleResponse(
             it->second.Request->Cookie);
     }
 
-    auto* conn = ConnectionById[it->second.ConnectionId];
+    auto* conn = GetConnectionById(it->second.ConnectionId);
     Y_ABORT_UNLESS(conn);
 
     conn->LastActivity = ctx.Now();
@@ -844,11 +866,13 @@ STFUNC(TVolumeProxyActor::StateWork)
 
 IActorPtr CreateVolumeProxy(
     TStorageConfigPtr config,
-    ITraceSerializerPtr traceSerializer)
+    ITraceSerializerPtr traceSerializer,
+    bool temporaryServer)
 {
     return std::make_unique<TVolumeProxyActor>(
         std::move(config),
-        std::move(traceSerializer));
+        std::move(traceSerializer),
+        temporaryServer);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
