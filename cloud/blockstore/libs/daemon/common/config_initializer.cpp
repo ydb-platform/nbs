@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/server/config.h>
+#include <cloud/blockstore/libs/sharding/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
@@ -111,6 +112,18 @@ void TConfigInitializerCommon::InitRdmaConfig()
 
     RdmaConfig =
         std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
+}
+
+void TConfigInitializerCommon::InitShardingConfig()
+{
+    NProto::TShardingConfig shardingConfig;
+
+    if (Options->ShardingConfig) {
+        ParseProtoTextFromFileRobust(Options->ShardingConfig, shardingConfig);
+    }
+
+    ShardingConfig =
+        std::make_shared<NSharding::TShardingConfig>(std::move(shardingConfig));
 }
 
 void TConfigInitializerCommon::InitDiskRegistryProxyConfig()

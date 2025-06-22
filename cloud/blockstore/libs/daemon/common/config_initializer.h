@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
+#include <cloud/blockstore/libs/sharding/iface/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
@@ -36,6 +37,7 @@ struct TConfigInitializerCommon
     NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
     NClient::THostPerformanceProfile HostPerformanceProfile;
     NRdma::TRdmaConfigPtr RdmaConfig;
+    NSharding::TShardingConfigPtr ShardingConfig;
 
     TString Rack;
     TLog Log;
@@ -52,6 +54,7 @@ struct TConfigInitializerCommon
     void InitServerConfig();
     void InitSpdkEnvConfig();
     void InitRdmaConfig();
+    void InitShardingConfig();
 
     virtual bool GetUseNonreplicatedRdmaActor() const = 0;
     virtual TDuration GetInactiveClientsTimeout() const = 0;

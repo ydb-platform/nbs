@@ -4,15 +4,18 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/session.h>
+#include <cloud/blockstore/libs/client_rdma/rdma_client.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
+#include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/sharding/iface/sharding.h>
 #include <cloud/blockstore/libs/validation/validation.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -20,9 +23,13 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <cloud/blockstore/libs/rdma/iface/client.h>
+
 #include <util/generic/hash.h>
+#include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
+#include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -159,6 +166,7 @@ private:
     const IServerStatsPtr ServerStats;
     const TString ClientId;
     const TDuration RequestTimeout;
+    const ui32 BlockSize;
 
 public:
     TStorageDataClient(
@@ -166,12 +174,14 @@ public:
             IBlockStorePtr service,
             IServerStatsPtr serverStats,
             TString clientId,
-            TDuration requestTimeout)
+            TDuration requestTimeout,
+            ui32 blockSize)
         : Storage(std::move(storage))
         , Service(std::move(service))
         , ServerStats(std::move(serverStats))
         , ClientId(std::move(clientId))
         , RequestTimeout(requestTimeout)
+        , BlockSize(blockSize)
     {}
 
     void Start() override
@@ -190,14 +200,15 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
+        SetupBlockSize(*request);                                              \
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);       \
         return Storage->name(std::move(callContext), std::move(request));      \
     }                                                                          \
 // BLOCKSTORE_IMPLEMENT_METHOD
 
-    BLOCKSTORE_IMPLEMENT_METHOD(ZeroBlocks)
     BLOCKSTORE_IMPLEMENT_METHOD(ReadBlocksLocal)
     BLOCKSTORE_IMPLEMENT_METHOD(WriteBlocksLocal)
+    BLOCKSTORE_IMPLEMENT_METHOD(ZeroBlocks)
 
 #undef BLOCKSTORE_IMPLEMENT_METHOD
 
@@ -280,6 +291,17 @@ private:
             headers.SetRequestId(callContext.RequestId);
         }
     }
+
+    template <typename TRequest>
+    void SetupBlockSize(TRequest& request)
+    {
+        if constexpr (HasBlockSize<TRequest>) {
+            request.BlockSize = BlockSize;
+        }
+        if constexpr (HasProtoBlockSize<TRequest>) {
+            request.SetBlockSize(BlockSize);
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -297,16 +319,21 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IServerStatsPtr ServerStats;
     const IBlockStorePtr Service;
+    const NSharding::IShardingManagerPtr ShardingManager;
     const IStorageProviderPtr StorageProvider;
+    const NRdma::IClientPtr RdmaClient;
     const IThrottlerProviderPtr ThrottlerProvider;
     const IEncryptionClientFactoryPtr EncryptionClientFactory;
     const TExecutorPtr Executor;
     const TSessionManagerOptions Options;
+    const TServerAppConfigPtr Config;
 
     TLog Log;
 
     TMutex EndpointLock;
     THashMap<TString, TEndpointPtr> Endpoints;
+
+    IBlockStorePtr ClientEndpoint;
 
 public:
     TSessionManager(
@@ -318,11 +345,14 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             IBlockStorePtr service,
+            NSharding::IShardingManagerPtr shardingManager,
             IStorageProviderPtr storageProvider,
+            NRdma::IClientPtr rdmaClient,
             IThrottlerProviderPtr throttlerProvider,
             IEncryptionClientFactoryPtr encryptionClientFactory,
             TExecutorPtr executor,
-            TSessionManagerOptions options)
+            TSessionManagerOptions options,
+            TServerAppConfigPtr config)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
@@ -331,11 +361,14 @@ public:
         , VolumeStats(std::move(volumeStats))
         , ServerStats(std::move(serverStats))
         , Service(std::move(service))
+        , ShardingManager(std::move(shardingManager))
         , StorageProvider(std::move(storageProvider))
+        , RdmaClient(std::move(rdmaClient))
         , ThrottlerProvider(std::move(throttlerProvider))
         , EncryptionClientFactory(std::move(encryptionClientFactory))
         , Executor(std::move(executor))
         , Options(std::move(options))
+        , Config(std::move(config))
     {
         Log = Logging->CreateLog("BLOCKSTORE_SERVER");
     }
@@ -395,10 +428,16 @@ private:
 
     TResultOrError<TEndpointPtr> CreateEndpoint(
         const NProto::TStartEndpointRequest& request,
-        const NProto::TVolume& volume);
+        const NProto::TVolume& volume,
+        const TString& suId);
 
     TClientAppConfigPtr CreateClientConfig(
         const NProto::TStartEndpointRequest& request);
+
+    TClientAppConfigPtr CreateClientConfig(
+        const NProto::TStartEndpointRequest& request,
+        TString host,
+        ui32 port);
 
     static TSessionConfig CreateSessionConfig(
         const NProto::TStartEndpointRequest& request);
@@ -410,7 +449,7 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::CreateSession(
     TCallContextPtr callContext,
     const NProto::TStartEndpointRequest& request)
 {
-    return Executor->Execute([=, this] () mutable {
+    return Executor->Execute([=] () mutable {
         return CreateSessionImpl(std::move(callContext), request);
     });
 }
@@ -427,8 +466,9 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
         return TErrorResponse(describeResponse.GetError());
     }
     const auto& volume = describeResponse.GetVolume();
+    const auto& suId = describeResponse.GetShardId();
 
-    auto result = CreateEndpoint(request, volume);
+    auto result = CreateEndpoint(request, volume, suId);
     if (HasError(result)) {
         return TErrorResponse(result.GetError());
     }
@@ -460,6 +500,16 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers)
 {
+    auto multiShardFuture = ShardingManager->DescribeVolume(
+        diskId,
+        headers,
+        Service,
+        Options.DefaultClientConfig);
+
+    if (multiShardFuture.has_value()) {
+        return Executor->WaitFor(multiShardFuture.value());
+    }
+
     auto describeRequest = std::make_shared<NProto::TDescribeVolumeRequest>();
     describeRequest->MutableHeaders()->CopyFrom(headers);
     describeRequest->SetDiskId(diskId);
@@ -476,7 +526,7 @@ TFuture<NProto::TError> TSessionManager::RemoveSession(
     const TString& socketPath,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=, this] () mutable {
+    return Executor->Execute([=] () mutable {
         return RemoveSessionImpl(std::move(callContext), socketPath, headers);
     });
 }
@@ -514,7 +564,7 @@ TFuture<NProto::TError> TSessionManager::AlterSession(
     ui64 mountSeqNumber,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=, this] () mutable {
+    return Executor->Execute([=] () mutable {
         return AlterSessionImpl(
             std::move(callContext),
             socketPath,
@@ -560,7 +610,7 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::GetSession(
     const TString& socketPath,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=, this] () mutable {
+    return Executor->Execute([=] () mutable {
         return GetSessionImpl(
             std::move(callContext),
             socketPath,
@@ -623,29 +673,50 @@ TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
 
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     const NProto::TStartEndpointRequest& request,
-    const NProto::TVolume& volume)
+    const NProto::TVolume& volume,
+    const TString& shardId)
 {
     const auto clientId = request.GetClientId();
     auto accessMode = request.GetVolumeAccessMode();
 
-    auto future = StorageProvider->CreateStorage(volume, clientId, accessMode)
-        .Apply([] (const auto& f) {
-            auto storage = f.GetValue();
-            // TODO: StorageProvider should return TResultOrError<IStoragePtr>
-            return TResultOrError(std::move(storage));
-        });
-
-    const auto& storageResult = Executor->WaitFor(future);
-    auto storage = storageResult.GetResult();
+    auto service = Service;
+    IStoragePtr storage;
 
     auto clientConfig = CreateClientConfig(request);
 
+    if (!shardId.empty()) {
+        auto result = ShardingManager->GetShardEndpoint(
+            shardId,
+            clientConfig);
+        if (HasError(result.GetError())) {
+            return result.GetError();
+        }
+
+        service = result.GetResult().GetService();
+        storage = result.GetResult().GetStorage();
+    } else {
+        auto future = StorageProvider->CreateStorage(volume, clientId, accessMode)
+            .Apply([] (const auto& f) {
+                auto storage = f.GetValue();
+                // TODO: StorageProvider should return TResultOrError<IStoragePtr>
+                return TResultOrError(std::move(storage));
+            });
+
+        const auto& storageResult = Executor->WaitFor(future);
+        storage = storageResult.GetResult();
+
+        clientConfig = CreateClientConfig(request);
+
+        service = Service;
+    }
+
     IBlockStorePtr client = std::make_shared<TStorageDataClient>(
         std::move(storage),
-        Service,
+        std::move(service),
         ServerStats,
         clientId,
-        clientConfig->GetRequestTimeout());
+        clientConfig->GetRequestTimeout(),
+        volume.GetBlockSize());
 
     if (Options.TemporaryServer) {
         client = CreateErrorTransformService(
@@ -729,6 +800,34 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
 }
 
 TClientAppConfigPtr TSessionManager::CreateClientConfig(
+    const NProto::TStartEndpointRequest& request,
+    TString host,
+    ui32 port)
+{
+    NProto::TClientAppConfig clientAppConfig;
+    auto& config = *clientAppConfig.MutableClientConfig();
+
+    config = Options.DefaultClientConfig;
+    config.SetClientId(request.GetClientId());
+    config.SetInstanceId(request.GetInstanceId());
+    config.SetHost(host);
+    config.SetPort(port);
+
+    if (request.GetRequestTimeout()) {
+        config.SetRequestTimeout(request.GetRequestTimeout());
+    }
+    if (request.GetRetryTimeout()) {
+        config.SetRetryTimeout(request.GetRetryTimeout());
+    }
+    if (request.GetRetryTimeoutIncrement()) {
+        config.SetRetryTimeoutIncrement(request.GetRetryTimeoutIncrement());
+    }
+
+    return std::make_shared<TClientAppConfig>(std::move(clientAppConfig));
+}
+
+
+TClientAppConfigPtr TSessionManager::CreateClientConfig(
     const NProto::TStartEndpointRequest& request)
 {
     NProto::TClientAppConfig clientAppConfig;
@@ -769,10 +868,13 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
+    NSharding::IShardingManagerPtr shardingManager,
     IStorageProviderPtr storageProvider,
+    NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,
     TExecutorPtr executor,
-    TSessionManagerOptions options)
+    TSessionManagerOptions options,
+    TServerAppConfigPtr config)
 {
     auto throttlerProvider = CreateThrottlerProvider(
         options.HostProfile,
@@ -792,11 +894,14 @@ ISessionManagerPtr CreateSessionManager(
         std::move(volumeStats),
         std::move(serverStats),
         std::move(service),
+        std::move(shardingManager),
         std::move(storageProvider),
+        std::move(rdmaClient),
         std::move(throttlerProvider),
         std::move(encryptionClientFactory),
         std::move(executor),
-        std::move(options));
+        std::move(options),
+        std::move(config));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

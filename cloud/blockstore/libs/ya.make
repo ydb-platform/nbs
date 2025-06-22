@@ -30,7 +30,9 @@ RECURSE(
     service
     service_kikimr
     service_local
+    service_rdma
     service_throttling
+    sharding
     spdk
     storage
     storage/init
