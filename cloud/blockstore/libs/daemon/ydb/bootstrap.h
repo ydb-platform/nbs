@@ -120,7 +120,7 @@ protected:
     IStartable* GetClientPercentiles() override;
     IStartable* GetStatsUploader() override;
     IStartable* GetYdbStorage() override;
-    IStartable* GetTraceSerializer() override;
+    ITraceSerializerPtr GetTraceSerializer() override;
     IStartable* GetLogbrokerService() override;
     IStartable* GetNotifyService() override;
     IStartable* GetStatsFetcher() override;
@@ -136,6 +136,7 @@ protected:
     void InitRdmaServer() override;
     void InitKikimrService() override;
     void InitAuthService() override;
+    void InitRdmaRequestServer() override;
 
     void WarmupBSGroupConnections() override;
 
