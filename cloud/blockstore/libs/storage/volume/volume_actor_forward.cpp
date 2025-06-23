@@ -638,17 +638,18 @@ void TVolumeActor::ForwardRequest(
 
     bool isTraced = false;
 
-    if (ev->Recipient != ev->GetRecipientRewrite() &&
-        TraceSerializer->IsTraced(msg->CallContext->LWOrbit))
+    if (ev->Recipient != ev->GetRecipientRewrite())
     {
-        isTraced = true;
-        now = msg->Record.GetHeaders().GetInternal().GetTraceTs();
-    } else if (TraceSerializer->HandleTraceRequest(
-                   msg->Record.GetHeaders().GetInternal().GetTrace(),
-                   msg->CallContext->LWOrbit))
-    {
-        isTraced = true;
-        msg->Record.MutableHeaders()->MutableInternal()->SetTraceTs(now);
+        if (TraceSerializer->IsTraced(msg->CallContext->LWOrbit)) {
+            isTraced = true;
+            now = msg->Record.GetHeaders().GetInternal().GetTraceTs();
+        } else if (TraceSerializer->HandleTraceRequest(
+            msg->Record.GetHeaders().GetInternal().GetTrace(),
+            msg->CallContext->LWOrbit))
+        {
+            isTraced = true;
+            msg->Record.MutableHeaders()->MutableInternal()->SetTraceTs(now);
+        }
     }
 
     LWTRACK(
