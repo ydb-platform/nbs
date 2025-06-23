@@ -130,6 +130,8 @@ protected:
 
     void WarmupBSGroupConnections() override;
 
+    void SetupShardingManager() override;
+
 private:
     void InitConfigs();
 };

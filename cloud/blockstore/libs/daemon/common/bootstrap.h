@@ -127,6 +127,8 @@ protected:
 
     virtual void WarmupBSGroupConnections() = 0;
 
+    virtual void SetupShardingManager() = 0;
+
     void InitLWTrace();
     void InitProfileLog();
 
