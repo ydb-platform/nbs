@@ -82,7 +82,7 @@ protected:
     ITaskQueuePtr RdmaThreadPool;
     NNvme::INvmeManagerPtr NvmeManager;
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
-    NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;    
+    NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
     NRdma::IServerPtr RdmaRequestServer;
     IStartablePtr RdmaTarget;
 
@@ -133,6 +133,9 @@ protected:
     virtual void WarmupBSGroupConnections() = 0;
 
     void InitLWTrace(const TString& serviceNameForExporter);
+
+    virtual void SetupShardingManager() = 0;
+
     void InitProfileLog();
 
 private:
