@@ -79,7 +79,7 @@ NProto::TError CreateAndLockFile(
     return {};
 }
 
-NProto::TError UnlockAndDelete(
+NProto::TError UnlockAndDeleteFile(
     const TString& dir,
     THolder<TFileLock>& fileLock)
 {
@@ -672,7 +672,7 @@ public:
 
                     // We need to cleanup HandleOpsQueue file and directories
                     if (p->HandleOpsQueueInitialized) {
-                        auto error = UnlockAndDelete(
+                        auto error = UnlockAndDeleteFile(
                             TFsPath(p->Config->GetHandleOpsQueuePath()) /
                                 p->Config->GetFileSystemId() / p->SessionId,
                             p->HandleOpsQueueFileLock);
@@ -684,7 +684,7 @@ public:
 
                     // We need to cleanup WriteBackCache file and directories
                     if (p->WriteBackCacheInitialized) {
-                        auto error = UnlockAndDelete(
+                        auto error = UnlockAndDeleteFile(
                             TFsPath(p->Config->GetWriteBackCachePath()) /
                                 p->Config->GetFileSystemId() / p->SessionId,
                             p->WriteBackCacheFileLock);
