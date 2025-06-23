@@ -16,6 +16,7 @@ from contrib.ydb.tests.library.common.types import Erasure
 from contrib.ydb.tests.library.harness.daemon import Daemon
 from contrib.ydb.tests.library.harness.util import LogLevels
 from contrib.ydb.tests.library.harness.kikimr_port_allocator import KikimrFixedPortAllocator, KikimrFixedNodePortAllocator
+from library.python import resource
 from library.python.testing.recipe import set_env
 
 
@@ -35,12 +36,22 @@ class EmptyArguments(object):
         self.dont_use_log_files = False
         self.enabled_feature_flags = []
         self.enabled_grpc_services = []
+        self.dynamic_storage_pools = None
 
 
 def ensure_path_exists(path):
     if not os.path.isdir(path):
         os.makedirs(path)
     return path
+
+
+def dynamic_storage_pools(args):
+    dynamic_storage_pools = resource.find('dynamic_storage_pools')
+    if dynamic_storage_pools is not None:
+        return json.loads(dynamic_storage_pools)
+    if args.dynamic_storage_pools is None:
+        return None
+    return json.loads(args.dynamic_storage_pools)
 
 
 def parse_erasure(args):
@@ -306,6 +317,13 @@ def deploy(arguments):
     if enable_tls():
         optionals.update({'grpc_tls_data_path': grpc_tls_data_path(arguments)})
         optionals.update({'grpc_ssl_enable': enable_tls()})
+    if dynamic_storage_pools(arguments):
+        optionals.update({'dynamic_storage_pools': dynamic_storage_pools(arguments)})
+    if os.getenv("YDB_STATIC_PDISK_SIZE"):
+        optionals.update({'static_pdisk_size': int(os.getenv("YDB_STATIC_PDISK_SIZE"))})
+    if os.getenv("YDB_DYNAMIC_PDISK_SIZE"):
+        optionals.update({'dynamic_pdisk_size': int(os.getenv("YDB_DYNAMIC_PDISK_SIZE"))})
+
     pdisk_store_path = arguments.ydb_working_dir if arguments.ydb_working_dir else None
 
     enable_feature_flags = arguments.enabled_feature_flags.copy()  # type: typing.List[str]
@@ -315,8 +333,8 @@ def deploy(arguments):
             enable_feature_flags.append(flag_name)
 
     configuration = KikimrConfigGenerator(
-        parse_erasure(arguments),
-        arguments.ydb_binary_path,
+        erasure=parse_erasure(arguments),
+        binary_path=arguments.ydb_binary_path,
         output_path=recipe.generate_data_path(),
         pdisk_store_path=pdisk_store_path,
         domain_name='local',

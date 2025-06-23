@@ -1,0 +1,12 @@
+[
+  {
+    "name": "dynamic_storage_pool:1",
+    "kind": "rot",
+    "pdisk_user_kind": 0
+  },
+  {
+    "name": "dynamic_storage_pool:2",
+    "kind": "ssd",
+    "pdisk_user_kind": 0
+  }
+]

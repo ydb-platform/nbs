@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import logging
 
@@ -12,51 +13,36 @@ from cloud.blockstore.tests.python.lib.nbs_runner import \
 from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import \
-    kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import \
-    KikimrConfigGenerator
 
 import yatest.common as yatest_common
 
-from subprocess import call, check_output, run
+from contrib.ydb.core.protos import config_pb2
+from library.python import resource
+from google.protobuf.text_format import Parse
 
-PDISK_SIZE = 32 * 1024 * 1024 * 1024
-STORAGE_POOL = [
-    dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
-    dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0),
-]
+from subprocess import call, check_output, run
 
 DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_BLOCK_COUNT = 4096
 
 
-def kikimr_start():
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
-
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_path=kikimr_binary_path,
-        use_in_memory_pdisks=True,
-        static_pdisk_size=PDISK_SIZE,
-        dynamic_pdisk_size=PDISK_SIZE,
-        dynamic_pdisks=[],
-        dynamic_storage_pools=STORAGE_POOL)
-
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
-
-    return kikimr_cluster, configurator
-
-
-def nbs_server_start(kikimr_cluster, configurator, storage):
+def nbs_server_start(storage):
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
     server_app_config.ServerConfig.StrictContractValidation = False
     server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    with open(os.getenv('YDB_RECIPE_METAFILE'), 'r') as f:
+        ydb_meta = json.loads(f.read())
+
+    app_config = config_pb2.TAppConfig()
+
+    Parse(resource.resfs_read('contrib/ydb/tests/library/harness/resources/default_domains.txt'), app_config.DomainsConfig)
+
+    kikimr_port = list(ydb_meta['nodes'].values())[0]['grpc_port']
+
+    dynamic_storage_pools = json.loads(resource.find('dynamic_storage_pools'))
 
     storage.SchemeShardDir = "/Root/nbs"
     storage.ThrottlingEnabled = False
@@ -68,14 +54,14 @@ def nbs_server_start(kikimr_cluster, configurator, storage):
 
     nbs = LocalNbs(
         kikimr_port,
-        configurator.domains_txt,
+        app_config.DomainsConfig,
         server_app_config=server_app_config,
         contract_validation=False,
         storage_config_patches=[storage],
         tracking_enabled=False,
         enable_access_service=False,
         enable_tls=False,
-        dynamic_storage_pools=STORAGE_POOL)
+        dynamic_storage_pools=dynamic_storage_pools)
 
     nbs.start()
 
@@ -188,14 +174,11 @@ def compaction_test(compaction_threshold,
         yatest_common.binary_path(
             "cloud/blockstore/apps/client/blockstore-client")
 
-    kikimr_cluster, configurator = \
-        kikimr_start()
-
     storage = TStorageServiceConfig()
     storage.CompactionMergedBlobThresholdHDD = compaction_threshold
 
-    nbs, server_app_config, storage = \
-        nbs_server_start(kikimr_cluster, configurator, storage)
+    nbs, _, storage = \
+        nbs_server_start(storage)
 
     result = call([
         nbs_client_binary_path, "CreateVolume",
@@ -230,7 +213,6 @@ def compaction_test(compaction_threshold,
                written_data)
 
     nbs.stop()
-    kikimr_cluster.stop()
 
 
 def test_compaction():
