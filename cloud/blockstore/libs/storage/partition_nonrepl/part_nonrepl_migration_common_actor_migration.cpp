@@ -104,7 +104,9 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
                              << range << ", diskId: " << DiskId);
     }
 
-    if (Config->GetUseDirectCopyRange()) {
+    if (DirectCopyPolicy == EDirectCopyPolicy::CanUse &&
+        Config->GetUseDirectCopyRange())
+    {
         NCloud::Register<TDirectCopyRangeActor>(
             ctx,
             CreateRequestInfo(
