@@ -159,7 +159,7 @@ private:
         ui64 tabletId,
         const TString& path);
 
-    void OnConnectError(TConnection& conn, NProto::TError error);
+    void DestroyConnection(TConnection& conn, NProto::TError error);
 
     void OnDisconnect(const TActorContext& ctx, TConnection& conn);
 
@@ -287,13 +287,14 @@ void TVolumeProxyActor::StartConnection(
     ProcessPendingRequests(conn);
 }
 
-void TVolumeProxyActor::OnConnectError(
+void TVolumeProxyActor::DestroyConnection(
     TConnection& conn,
     NProto::TError error)
 {
     conn.State = STOPPED;
     conn.Error = std::move(error);
 
+    // Cancel all pending requests.
     ProcessPendingRequests(conn);
 
     ConnectionById.erase(conn.Id);
@@ -523,7 +524,7 @@ void TVolumeProxyActor::HandleConnect(
         SetDisconnectTs(conn->DiskId, ctx.Now());
 
         CancelActiveRequests(ctx, *conn);
-        OnConnectError(*conn, std::move(error));
+        DestroyConnection(*conn, std::move(error));
         return;
     }
 
@@ -578,7 +579,7 @@ void TVolumeProxyActor::HandleDescribeResponse(
             conn->LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
-        OnConnectError(*conn, error);
+        DestroyConnection(*conn, error);
         return;
     }
 

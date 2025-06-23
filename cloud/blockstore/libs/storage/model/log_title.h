@@ -24,7 +24,7 @@ public:
         Partition,
         Session,
         Client,
-        Proxy,
+        VolumeProxy,
     };
 
 private:

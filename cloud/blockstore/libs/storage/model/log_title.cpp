@@ -69,7 +69,7 @@ TLogTitle::TLogTitle(
 }
 
 TLogTitle::TLogTitle(TString diskId, bool temporaryServer, ui64 startTime)
-    : Type(EType::Proxy)
+    : Type(EType::VolumeProxy)
     , StartTime(startTime)
     , TemporaryServer(temporaryServer)
     , DiskId(std::move(diskId))
@@ -168,7 +168,7 @@ void TLogTitle::Rebuild()
             RebuildForClient();
             break;
         }
-        case EType::Proxy: {
+        case EType::VolumeProxy: {
             RebuildForProxy();
             break;
         }
