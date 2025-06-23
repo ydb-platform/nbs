@@ -153,24 +153,24 @@ def test_free_device_allocation(with_netlink):
         with_endpoint_proxy=False,
         nbds_max=nbds_max)
 
-    def createvolume(disk, socket):
+    def createvolume(i):
         return run(
             "createvolume",
             "--disk-id",
-            disk,
+            disk + str(i),
             "--blocks-count",
             str(blocks_count),
             "--block-size",
-            str(block_size),
+            str(block_size)
         ).returncode
 
-    def startendpoint(disk, socket):
+    def startendpoint(i):
         return run(
             "startendpoint",
             "--disk-id",
-            disk,
+            disk + str(i),
             "--socket",
-            socket,
+            socket + str(i),
             "--ipc-type",
             "nbd",
             "--persistent",
@@ -179,18 +179,18 @@ def test_free_device_allocation(with_netlink):
 
     try:
         for i in range(0, nbds_max):
-            assert createvolume(disk + str(i), socket + str(i)) == 0
-            assert startendpoint(disk + str(i), socket + str(i)) == 0
+            assert createvolume(i) == 0
+            assert startendpoint(i) == 0
 
         if with_netlink:
             # netlink implementation can allocate new devices on the fly,
             # so we should be able to go beyond configured limit
-            assert createvolume(disk + str(nbds_max), socket + str(nbds_max)) == 0
-            assert startendpoint(disk + str(nbds_max), socket + str(nbds_max)) == 0
+            assert createvolume(nbds_max) == 0
+            assert startendpoint(nbds_max) == 0
         else:
             # ioctl implementation won't be able to find free device
-            assert createvolume(disk + str(nbds_max), socket + str(nbds_max)) != 0
-            assert startendpoint(disk + str(nbds_max), socket + str(nbds_max)) != 0
+            assert createvolume(nbds_max) == 0
+            assert startendpoint(nbds_max) != 0
 
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
@@ -204,7 +204,7 @@ def test_free_device_allocation(with_netlink):
                 socket + str(i),
             )
 
-            result = run(
+            run(
                 "destroyvolume",
                 "--disk-id",
                 disk + str(i),
