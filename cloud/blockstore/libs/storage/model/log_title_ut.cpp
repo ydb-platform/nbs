@@ -167,7 +167,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             temporayLogTitle.Get(TLogTitle::EDetails::Brief));
     }
 
-    Y_UNIT_TEST(GetForProxy)
+    Y_UNIT_TEST(GetForVolumeProxy)
     {
         TLogTitle logTitle("disk1", false, GetCycleCount());
 

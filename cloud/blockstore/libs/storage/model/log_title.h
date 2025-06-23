@@ -92,7 +92,7 @@ private:
     void RebuildForPartition();
     void RebuildForSession();
     void RebuildForClient();
-    void RebuildForProxy();
+    void RebuildForVolumeProxy();
     TString GetPartitionPrefix() const;
 };
 

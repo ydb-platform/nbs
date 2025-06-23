@@ -169,7 +169,7 @@ void TLogTitle::Rebuild()
             break;
         }
         case EType::VolumeProxy: {
-            RebuildForProxy();
+            RebuildForVolumeProxy();
             break;
         }
     }
@@ -264,7 +264,7 @@ void TLogTitle::RebuildForClient()
     CachedPrefix = builder;
 }
 
-void TLogTitle::RebuildForProxy()
+void TLogTitle::RebuildForVolumeProxy()
 {
     auto builder = TStringBuilder();
 
