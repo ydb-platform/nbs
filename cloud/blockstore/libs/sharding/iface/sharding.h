@@ -50,4 +50,6 @@ IShardingManagerPtr CreateShardingManager(
     IServerStatsPtr serverStats,
     NRdma::IClientPtr rdmaClient);
 
+IShardingManagerPtr CreateShardingManagerStub();
+
 }   // namespace NCloud::NBlockStore::NSharding

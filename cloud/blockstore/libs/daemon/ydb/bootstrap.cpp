@@ -40,6 +40,7 @@
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
+#include <cloud/blockstore/libs/sharding/iface/sharding.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -849,6 +850,19 @@ void TBootstrapYdb::InitRdmaRequestServer()
         Logging,
         Monitoring,
         std::move(rdmaConfig));
+}
+
+void TBootstrapYdb::SetupShardingManager()
+{
+    ShardingManager = CreateShardingManager(
+        Configs->ShardingConfig,
+        Timer,
+        Scheduler,
+        Logging,
+        Monitoring,
+        GetTraceSerializer(),
+        ServerStats,
+        RdmaClient);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

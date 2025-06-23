@@ -36,10 +36,7 @@ protected:
     IStartable* GetComputeClient() override      { return nullptr; }
     IStartable* GetKmsClient() override          { return nullptr; }
     IStartable* GetRootKmsClient() override      { return nullptr; }
-    ITraceSerializerPtr GetTraceSerializer() override
-    {
-        return nullptr;
-    }
+    ITraceSerializerPtr GetTraceSerializer() override;
 
     void InitSpdk() override;
     void InitRdmaClient() override;
@@ -50,6 +47,8 @@ protected:
     void WarmupBSGroupConnections() override;
 
     void InitRdmaRequestServer() override;
+
+    void SetupShardingManager() override;
 };
 
 }   // namespace NCloud::NBlockStore::NServer
