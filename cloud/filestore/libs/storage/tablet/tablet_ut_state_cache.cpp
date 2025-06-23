@@ -203,7 +203,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
     const TVector<ui64> rootNodeIds = {1, 2, 3, 4};
     const TVector<ui64> childNodeIds = {1001, 1002, 1003, 1004};
 
-    namespace {
+namespace {
 
     void CheckNodeRef(
         const TInMemoryIndexState::TWriteNodeRefsRequest& request,
@@ -233,7 +233,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         CheckNodeRef(request, *ref);
     }
 
-    void FillStatesRequests(
+    void FillStateRequests(
         TVector<TInMemoryIndexState::TIndexStateRequest>& stateRequests,
         const TVector<TInMemoryIndexState::TWriteNodeRefsRequest>& requests)
     {
@@ -243,7 +243,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         }
     }
 
-    } // namespace
+} // namespace
 
     //
     // NodeRefs
@@ -263,7 +263,9 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
                 .CommitId = commitId2,
                 .ChildId = childNodeIds[0],
                 .ShardId = shardIds[0],
-                .ShardNodeName = shardNodeNames[0]}};
+                .ShardNodeName = shardNodeNames[0]
+            }
+        };
         state.UpdateState({request});
 
         ReadAndCheckNodeRef(state, request);
@@ -300,30 +302,37 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         state.Reset(0, 0, 3);
 
         const TVector<TInMemoryIndexState::TWriteNodeRefsRequest> requests = {
-            {.NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
-             .NodeRefsRow = {
-                .CommitId = commitId1,
-                .ChildId = childNodeIds[0],
-                .ShardId = shardIds[0],
-                .ShardNodeName = shardNodeNames[0],
-             }},
-            {.NodeRefsKey = {rootNodeIds[0], nodeNames[1]},
-             .NodeRefsRow = {
-                .CommitId = commitId1,
-                .ChildId = childNodeIds[1],
-                .ShardId = shardIds[1],
-                .ShardNodeName = shardNodeNames[1],
-             }},
-            {.NodeRefsKey = {rootNodeIds[2], nodeNames[2]},
-             .NodeRefsRow = {
-                 .CommitId = commitId1,
-                 .ChildId = childNodeIds[2],
-                 .ShardId = shardIds[2],
-                 .ShardNodeName = shardNodeNames[2],
-             }}};
+            {
+                .NodeRefsKey = {rootNodeIds[0], nodeNames[0]},
+                .NodeRefsRow = {
+                    .CommitId = commitId1,
+                    .ChildId = childNodeIds[0],
+                    .ShardId = shardIds[0],
+                    .ShardNodeName = shardNodeNames[0],
+                }
+            },
+            {
+                .NodeRefsKey = {rootNodeIds[0], nodeNames[1]},
+                .NodeRefsRow = {
+                    .CommitId = commitId1,
+                    .ChildId = childNodeIds[1],
+                    .ShardId = shardIds[1],
+                    .ShardNodeName = shardNodeNames[1],
+                }
+            },
+            {
+                .NodeRefsKey = {rootNodeIds[2], nodeNames[2]},
+                .NodeRefsRow = {
+                    .CommitId = commitId1,
+                    .ChildId = childNodeIds[2],
+                    .ShardId = shardIds[2],
+                    .ShardNodeName = shardNodeNames[2],
+                }
+            }
+        };
 
         TVector<TInMemoryIndexState::TIndexStateRequest> stateRequests;
-        FillStatesRequests(stateRequests, requests);
+        FillStateRequests(stateRequests, requests);
 
         state.UpdateState(stateRequests);
         state.MarkNodeRefsLoadComplete();
@@ -357,7 +366,8 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
                 .ChildId = childNodeIds[3],
                 .ShardId = shardIds[3],
                 .ShardNodeName = shardNodeNames[3],
-            }};
+            }
+        };
         state.UpdateState({request3});
 
         UNIT_ASSERT(!state.ReadNodeRef(
@@ -386,7 +396,8 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
                 .ChildId = childNodeIds[0],
                 .ShardId = shardIds[1],
                 .ShardNodeName = shardNodeNames[2],
-            }};
+            }
+        };
         state.UpdateState({request4});
 
         ReadAndCheckNodeRef(state, request4);
@@ -403,7 +414,8 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
                 .CommitId = commitId1,
                 .ChildId = childNodeIds[0],
                 .ShardId = shardIds[0],
-                .ShardNodeName = shardNodeNames[0]}};
+                .ShardNodeName = shardNodeNames[0]}
+        };
 
         state.UpdateState({request});
         state.MarkNodeRefsLoadComplete();

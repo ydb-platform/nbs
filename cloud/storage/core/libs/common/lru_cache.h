@@ -13,7 +13,7 @@ namespace NCloud {
 namespace {
 
 template<typename T>
-concept has_reserve = requires(T t) {
+concept HasReserve = requires(T t) {
     { t.reserve(42) } -> std::same_as<void>;
 };
 
@@ -22,15 +22,15 @@ concept has_reserve = requires(T t) {
 // A simple wrapper around THashMap that also evicts the least recently used
 // elements when the capacity is reached. It keeps track of the order in which
 // keys are accessed
-template <typename TKey, typename TValue, typename THashFnc = THash<TKey>, 
-    typename TBase = THashMap<TKey, TValue, THashFnc, TEqualTo<TKey>, TStlAllocator>>
-class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFnc, TBase>>
+template<typename TKey, typename TValue, typename THashFunc = THash<TKey>, 
+    typename TBase = THashMap<TKey, TValue, THashFunc, TEqualTo<TKey>, TStlAllocator>>
+class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFunc, TBase>>
 {
     using TOrderList = TList<TKey, TStlAllocator>;
     using TOrderPositions = THashMap<
         TKey,
         typename TOrderList::iterator,
-        THashFnc,
+        THashFunc,
         TEqualTo<TKey>,
         TStlAllocator>;
 
@@ -80,14 +80,14 @@ public:
     {
         Capacity = capacity;
         CleanupIfNeeded();
-        if constexpr (has_reserve<TBase>) {
+        if constexpr (HasReserve<TBase>) {
             Base.reserve(Capacity);
         }
         OrderPositions.reserve(Capacity);
     }
 
-    // Bumps the key to the front of the order list, used upon any access
-    void UpdateOrder(const TKey& key)
+    // Movesd the key to the front of the order list; used upon any access
+    void TouchKey(const TKey& key)
     {
         auto it = OrderPositions.find(key);
         if (it != OrderPositions.end()) {
@@ -113,7 +113,7 @@ public:
     {
         auto result = Base.find(key);
         if (result != Base.end()) {
-            UpdateOrder(key);
+            TouchKey(key);
         }
         return result;
     }
@@ -138,21 +138,21 @@ public:
         return Base.lower_bound(key);
     }
 
-    template <typename... Args>
+    template<typename... Args>
     std::pair<iterator, bool> emplace(Args&&... args)
     {
         if (Capacity == 0) {
             return {Base.end(), false};
         }
         auto result = Base.emplace(std::forward<Args>(args)...);
-        UpdateOrder(result.first->first);
+        TouchKey(result.first->first);
         CleanupIfNeeded();
         return result;
     }
 
     TValue& at(const TKey& key) {
         auto& result = Base.at(key);
-        UpdateOrder(key);
+        TouchKey(key);
         return result;
     }
 

@@ -342,7 +342,7 @@ public:
     void UpdateState(const TVector<TIndexStateRequest>& nodeUpdates);
 };
 
-}   // namespace NCloud::NFileStore::NStorage
+} // namespace NCloud::NFileStore::NStorage
 
 ////////////////////////////////////////////////////////////////////////////////
 

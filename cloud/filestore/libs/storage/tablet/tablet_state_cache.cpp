@@ -268,7 +268,7 @@ bool TInMemoryIndexState::ReadNodeRefs(
 
     ui32 bytes = 0;
     while (it != NodeRefs.end() && it->first.NodeId == nodeId) {
-        NodeRefs.UpdateOrder(it->first);
+        NodeRefs.TouchKey(it->first);
 
         ui64 minCommitId = it->second.CommitId;
         ui64 maxCommitId = InvalidCommitId;
@@ -467,4 +467,4 @@ void TInMemoryIndexState::UpdateState(
     }
 }
 
-}   // namespace NCloud::NFileStore::NStorage
+} // namespace NCloud::NFileStore::NStorage
