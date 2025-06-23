@@ -483,7 +483,7 @@ class Client(_SafeClient):
             UnixSocketPath=unix_socket_path,
         )
         if client_id is not None:
-            request.ClientId = client_id
+            request.Headers.ClientId = client_id
         if disk_id is not None:
             request.DiskId = disk_id
 
@@ -509,7 +509,7 @@ class Client(_SafeClient):
             UnixSocketPath=unix_socket_path,
         )
         if client_id is not None:
-            request.ClientId = client_id
+            request.Headers.ClientId = client_id
         if disk_id is not None:
             request.DiskId = disk_id
         self._impl.stop_endpoint(

@@ -125,8 +125,6 @@ message TStopEndpointRequest
     string UnixSocketPath = 2;
 
     optional string DiskId = 3;
-
-    optional string ClientId = 4;
 }
 
 message TStopEndpointResponse

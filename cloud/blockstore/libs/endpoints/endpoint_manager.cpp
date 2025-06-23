@@ -161,12 +161,14 @@ bool CompareRequests(
     const NProto::TStopEndpointRequest& right)
 {
     Y_DEBUG_ABORT_UNLESS(3 == GetFieldCount<NProto::TStopEndpointRequest>());
-    return left.GetUnixSocketPath() == right.GetUnixSocketPath() &&
-           (!left.HasDiskId() && !right.HasDiskId() ||
-            left.HasDiskId() && right.HasDiskId() && left.HasHeaders() &&
-                right.HasHeaders() && left.GetDiskId() == right.GetDiskId() &&
-                left.GetHeaders().GetClientId() ==
-                    right.GetHeaders().GetClientId());
+    auto doTie = [](const NProto::TStopEndpointRequest& r)
+    {
+        return std::tie(
+            r.GetUnixSocketPath(),
+            r.GetDiskId(),
+            r.GetHeaders().GetClientId());
+    };
+    return doTie(left) == doTie(right);
 }
 
 bool CompareRequests(
@@ -1109,6 +1111,7 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     RemoveProcessingSocket(socketPath);
     return response;
 }
+
 NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStopEndpointRequest> request)
