@@ -3331,6 +3331,62 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_EQUAL(writtenDevices, expectedDevices);
     }
 
+    Y_UNIT_TEST(ShouldHandleUndelviryForMultiAgentWriteRequests)
+    {
+        TTestRuntime runtime;
+
+        size_t undeliveredWriteRequestCount = 0;
+        auto simulateUndelivery =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                    using TRequest = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
+                    const auto& record = event->Get<TRequest>()->Record;
+                    if (record.GetBlocks().GetBuffers().size() != 5) {
+                        break;
+                    }
+
+                    if (!record.GetReplicationTargets().empty()) {
+                        auto sendTo = event->Sender;
+                        runtime.Send(
+                            new IEventHandle(
+                                sendTo,
+                                sendTo,
+                                event->ReleaseBase().Release(),
+                                0,
+                                event->Cookie,
+                                nullptr),
+                            0);
+                        ++undeliveredWriteRequestCount;
+                    }
+
+                    break;
+                }
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(simulateUndelivery);
+
+        NProto::TStorageServiceConfig config;
+        config.SetMultiAgentWriteEnabled(true);
+        TTestEnv env(runtime, std::move(config));
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        client.SendWriteBlocksRequest(TBlockRange64::WithLength(10, 5), 1);
+        auto response = client.RecvWriteBlocksResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, undeliveredWriteRequestCount);
+    }
+
     Y_UNIT_TEST(ShouldHandleInvalidSessionForMultiWriteRequests)
     {
         TTestRuntime runtime;
