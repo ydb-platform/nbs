@@ -238,6 +238,11 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("Service initialized");
 
+    auto traceSerializer = GetTraceSerializer();
+    if (!traceSerializer) {
+        traceSerializer = CreateTraceSerializerStub();
+    }
+
     if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
         InitRdmaRequestServer();
         if (RdmaRequestServer) {
@@ -245,6 +250,7 @@ void TBootstrapBase::Init()
                 std::make_shared<TBlockstoreServerRdmaTargetConfig>(
                     Configs->RdmaConfig->GetBlockstoreServerTarget()),
                 Logging,
+                traceSerializer,
                 RdmaRequestServer,
                 Service);
             STORAGE_INFO("RDMA Target initialized");
@@ -373,18 +379,13 @@ void TBootstrapBase::Init()
     auto& config = *clientAppConfig.MutableClientConfig();
     config.SetNoClientId(true);
 
-    auto traceSerializer = GetTraceSerializer();
-    if (!traceSerializer) {
-        traceSerializer = CreateTraceSerializerStub();
-    }
-
     ShardingManager = CreateShardingManager(
         Configs->ShardingConfig,
         Timer,
         Scheduler,
         Logging,
         Monitoring,
-        GetTraceSerializer(),
+        traceSerializer,
         ServerStats,
         RdmaClient);
 
