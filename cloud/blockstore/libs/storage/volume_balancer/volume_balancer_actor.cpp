@@ -186,7 +186,7 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
     BalancerPreempted = serviceCounters->GetCounter("BalancerPreempted", false);
     InitiallyPreempted = serviceCounters->GetCounter("InitiallyPreempted", false);
 
-    CpuWait = serverCounters->GetCounter("CpuWait", false);
+    CpuWaitCounter = serverCounters->GetCounter("CpuWait", false);
 
     ctx.Schedule(Timeout, new TEvents::TEvWakeup);
 }
@@ -245,9 +245,6 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
     if (State) {
         const auto *msg = ev->Get();
 
-        auto now = ctx.Now();
-
-        auto interval = (now - LastCpuWaitQuery).MicroSeconds();
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
         if (HasError(error)) {
             auto errorMessage =
@@ -258,11 +255,13 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
                     "Failed to get CpuWait stats: " << errorMessage);
         }
 
+        auto now = ctx.Now();
+        auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
         auto cpuLack = CpuLackPercentsMultiplier * cpuWait.MicroSeconds();
-        cpuLack /= interval;
-        *CpuWait = cpuLack;
+        cpuLack /= intervalUs;
+        *CpuWaitCounter = cpuLack;
 
-        LastCpuWaitQuery = now;
+        LastCpuWaitTs = now;
 
         if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
             LOG_WARN_S(ctx, TBlockStoreComponents::VOLUME_BALANCER,

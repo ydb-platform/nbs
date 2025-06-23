@@ -21,6 +21,8 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
+#include <util/datetime/base.h>
+
 namespace NCloud::NFileStore::NProto {
     class TProfileLogRequestInfo;
 }   // namespace NCloud::NFileStore::NProto
@@ -44,7 +46,7 @@ private:
     IRequestStatsRegistryPtr StatsRegistry;
     THashMap<ui64, TInFlightRequest> InFlightRequests;
 
-    NMonitoring::TDynamicCounters::TCounterPtr CpuWait;
+    NMonitoring::TDynamicCounters::TCounterPtr CpuWaitCounter;
 
     NMonitoring::TDynamicCounters::TCounterPtr TotalFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr TotalTabletCount;
@@ -55,7 +57,7 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr SsdFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr SsdTabletCount;
 
-    TInstant LastCpuWaitQuery;
+    TInstant LastCpuWaitTs;
 
 public:
     TStorageServiceActor(

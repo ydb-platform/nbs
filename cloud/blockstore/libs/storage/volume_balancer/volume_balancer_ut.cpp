@@ -481,6 +481,7 @@ auto SetupCriticalEvents(IMonitoringServicePtr monitoring)
 
     return serverGroup;
 }
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -7,6 +7,8 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <util/datetime/base.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -18,9 +20,9 @@ private:
     const TStorageConfigPtr StorageConfig;
     const NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 
-    NMonitoring::TDynamicCounters::TCounterPtr CpuWait;
+    NMonitoring::TDynamicCounters::TCounterPtr CpuWaitCounter;
 
-    TInstant LastCpuWaitQuery;
+    TInstant LastCpuWaitTs;
 
 public:
     TStatsFetcherActor(

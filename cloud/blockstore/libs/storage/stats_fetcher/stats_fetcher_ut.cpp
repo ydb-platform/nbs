@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
@@ -21,11 +22,11 @@ namespace {
 
 struct TStatsFetcherMock: public NCloud::NStorage::IStatsFetcher
 {
-    TResultOrError<TDuration> Value = TDuration::Zero();
+    TResultOrError<TDuration> CpuWaitValue = TDuration::Zero();
 
     void SetCpuWaitValue(TResultOrError<TDuration> value)
     {
-        Value = std::move(value);
+        CpuWaitValue = std::move(value);
     }
 
     void Start() override
@@ -36,23 +37,21 @@ struct TStatsFetcherMock: public NCloud::NStorage::IStatsFetcher
 
     TResultOrError<TDuration> GetCpuWait() override
     {
-        return Value;
+        return CpuWaitValue;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStatsFetcherActorTestEnv
+struct TBootstrap
 {
-private:
-    TTestEnv TestEnv;
+    TTestEnv Env;
     TActorId Sender;
 
-public:
-    std::shared_ptr<TStorageConfig> StorageConfig;
+    TStorageConfigPtr StorageConfig;
     std::shared_ptr<TStatsFetcherMock> Fetcher;
 
-    TStatsFetcherActorTestEnv()
+    TBootstrap()
     {
         NProto::TStorageServiceConfig configProto;
         StorageConfig = std::make_shared<TStorageConfig>(
@@ -60,78 +59,52 @@ public:
             std::make_shared<NFeatures::TFeaturesConfig>());
 
         Fetcher = std::make_shared<TStatsFetcherMock>();
-    }
 
-    TTestActorRuntime& GetRuntime()
-    {
-        return TestEnv.GetRuntime();
-    }
-
-    TActorId Register(IActorPtr actor)
-    {
-        auto actorId = TestEnv.GetRuntime().Register(actor.release());
-        TestEnv.GetRuntime().EnableScheduleForActor(actorId);
-
-        return actorId;
-    }
-
-    void AdjustTime()
-    {
-        TestEnv.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
-        TestEnv.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        NActors::IActorPtr actor =
+            CreateStatsFetcherActor(StorageConfig, Fetcher);
+        Sender = Env.GetRuntime().Register(actor.release());
+        Env.GetRuntime().EnableScheduleForActor(Sender);
     }
 
     void AdjustTime(TDuration interval)
     {
-        TestEnv.GetRuntime().AdvanceCurrentTime(interval);
-        TestEnv.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        Env.GetRuntime().AdvanceCurrentTime(interval);
+        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
     }
 
     void Send(const TActorId& recipient, IEventBasePtr event)
     {
-        TestEnv.GetRuntime().Send(
+        Env.GetRuntime().Send(
             new IEventHandle(recipient, Sender, event.release()));
-    }
-
-    void DispatchEvents()
-    {
-        TestEnv.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration());
     }
 
     void DispatchEvents(TDuration timeout)
     {
-        TestEnv.GetRuntime().DispatchEvents(TDispatchOptions(), timeout);
+        Env.GetRuntime().DispatchEvents(TDispatchOptions(), timeout);
     }
 
     void SendWakeUpEvent(TActorId receiver)
     {
         Send(receiver, std::make_unique<TEvents::TEvWakeup>());
     }
-};
 
-TString RunState(
-    TStatsFetcherActorTestEnv& testEnv,
-    TActorId actorId,
-    TResultOrError<double> cpuWait,
-    TDuration runFor)
-{
-    auto now = testEnv.GetRuntime().GetCurrentTime();
-    while (testEnv.GetRuntime().GetCurrentTime() - now < runFor) {
-        testEnv.AdjustTime();
+    void MockCpuWaitAndRun(TResultOrError<TDuration> cpuWait, TDuration runFor)
+    {
+        auto now = Env.GetRuntime().GetCurrentTime();
+        while (Env.GetRuntime().GetCurrentTime() - now < runFor) {
+            AdjustTime(TDuration::Seconds(15));
 
-        testEnv.Fetcher->SetCpuWaitValue(
-            HasError(cpuWait)
-                ? TResultOrError<TDuration>(cpuWait.GetError())
-                : TResultOrError<TDuration>(
-                      cpuWait.GetResult() * TDuration::Seconds(15)));
+            Fetcher->SetCpuWaitValue(
+                HasError(cpuWait)
+                    ? TResultOrError<TDuration>(cpuWait.GetError())
+                    : TResultOrError<TDuration>(cpuWait.GetResult()));
 
-        testEnv.SendWakeUpEvent(actorId);
+            SendWakeUpEvent(Sender);
 
-        testEnv.DispatchEvents(TDuration::Seconds(1));
+            DispatchEvents(TDuration::Seconds(1));
+        }
     }
-
-    return {};
-}
+};
 
 auto SetupCriticalEvents(IMonitoringServicePtr monitoring)
 {
@@ -154,16 +127,15 @@ Y_UNIT_TEST_SUITE(TStatsFetcherActorTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto serverGroup = SetupCriticalEvents(monitoring);
 
-        TStatsFetcherActorTestEnv testEnv;
+        TBootstrap testEnv;
 
-        auto statsFetcherActorID = testEnv.Register(
-            CreateStatsFetcherActor(testEnv.StorageConfig, testEnv.Fetcher));
+        testEnv.DispatchEvents(TDuration());
 
-        testEnv.DispatchEvents();
+        testEnv.MockCpuWaitAndRun(
+            TResultOrError<TDuration>(TDuration::Seconds(9)),
+            TDuration::Seconds(15));
 
-        RunState(testEnv, statsFetcherActorID, .9, TDuration::Seconds(15));
-
-        auto counters = testEnv.GetRuntime()
+        auto counters = testEnv.Env.GetRuntime()
                             .GetAppData(0)
                             .Counters->GetSubgroup("counters", "blockstore")
                             ->GetSubgroup("component", "server");
@@ -183,20 +155,15 @@ Y_UNIT_TEST_SUITE(TStatsFetcherActorTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto serverGroup = SetupCriticalEvents(monitoring);
 
-        TStatsFetcherActorTestEnv testEnv;
+        TBootstrap testEnv;
 
-        auto statsFetcherActorID = testEnv.Register(
-            CreateStatsFetcherActor(testEnv.StorageConfig, testEnv.Fetcher));
+        testEnv.DispatchEvents(TDuration());
 
-        testEnv.DispatchEvents();
-
-        RunState(
-            testEnv,
-            statsFetcherActorID,
+        testEnv.MockCpuWaitAndRun(
             MakeError(E_INVALID_STATE),
             TDuration::Seconds(15));
 
-        auto counters = testEnv.GetRuntime()
+        auto counters = testEnv.Env.GetRuntime()
                             .GetAppData(0)
                             .Counters->GetSubgroup("counters", "blockstore")
                             ->GetSubgroup("component", "server");

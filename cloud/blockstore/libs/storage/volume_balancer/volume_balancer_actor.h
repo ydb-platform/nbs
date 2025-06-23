@@ -14,9 +14,10 @@
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/mon.h>
+
+#include <util/datetime/base.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -39,11 +40,11 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr BalancerPreempted;
     NMonitoring::TDynamicCounters::TCounterPtr InitiallyPreempted;
 
-    NMonitoring::TDynamicCounters::TCounterPtr CpuWait;
+    NMonitoring::TDynamicCounters::TCounterPtr CpuWaitCounter;
 
     std::unique_ptr<TVolumeBalancerState> State;
 
-    TInstant LastCpuWaitQuery;
+    TInstant LastCpuWaitTs;
 
 public:
     TVolumeBalancerActor(

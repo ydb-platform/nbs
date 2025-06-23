@@ -16,15 +16,15 @@ using namespace NKikimr;
 
 namespace {
 
-constexpr TDuration Timeout = TDuration::Seconds(15);
+constexpr TDuration FetchStatsPeriod = TDuration::Seconds(15);
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TStatsFetcherActor::TStatsFetcherActor(
-    TStorageConfigPtr storageConfig,
-    NCloud::NStorage::IStatsFetcherPtr statsFetcher)
+        TStorageConfigPtr storageConfig,
+        NCloud::NStorage::IStatsFetcherPtr statsFetcher)
     : StorageConfig(std::move(storageConfig))
     , StatsFetcher(std::move(statsFetcher))
 {}
@@ -34,7 +34,7 @@ void TStatsFetcherActor::Bootstrap(const TActorContext& ctx)
     RegisterCounters(ctx);
     Become(&TThis::StateWork);
 
-    ctx.Schedule(Timeout, new TEvents::TEvWakeup);
+    ctx.Schedule(FetchStatsPeriod, new TEvents::TEvWakeup);
 }
 
 void TStatsFetcherActor::RegisterCounters(const TActorContext& ctx)
@@ -43,7 +43,7 @@ void TStatsFetcherActor::RegisterCounters(const TActorContext& ctx)
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
     auto serverCounters = rootGroup->GetSubgroup("component", "server");
 
-    CpuWait = serverCounters->GetCounter("CpuWait", false);
+    CpuWaitCounter = serverCounters->GetCounter("CpuWait", false);
 }
 
 void TStatsFetcherActor::HandleWakeup(
@@ -52,9 +52,6 @@ void TStatsFetcherActor::HandleWakeup(
 {
     Y_UNUSED(ev);
 
-    auto now = ctx.Now();
-
-    auto interval = (now - LastCpuWaitQuery).MicroSeconds();
     auto [cpuWait, error] = StatsFetcher->GetCpuWait();
     if (HasError(error)) {
         auto errorMessage = ReportCpuWaitCounterReadError(error.GetMessage());
@@ -64,11 +61,13 @@ void TStatsFetcherActor::HandleWakeup(
             "Failed to get CpuWait stats: " << errorMessage);
     }
 
+    auto now = ctx.Now();
+    auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
     auto cpuLack = 100 * cpuWait.MicroSeconds();
-    cpuLack /= interval;
-    *CpuWait = cpuLack;
+    cpuLack /= intervalUs;
+    *CpuWaitCounter = cpuLack;
 
-    LastCpuWaitQuery = now;
+    LastCpuWaitTs = now;
 
     if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
         LOG_WARN_S(
@@ -77,7 +76,7 @@ void TStatsFetcherActor::HandleWakeup(
             "Cpu wait is " << cpuLack);
     }
 
-    ctx.Schedule(Timeout, new TEvents::TEvWakeup());
+    ctx.Schedule(FetchStatsPeriod, new TEvents::TEvWakeup());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

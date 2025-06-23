@@ -60,9 +60,6 @@ void TStorageServiceActor::HandleUpdateStats(
     }
 
     if (StatsFetcher) {
-        auto now = ctx.Now();
-
-        auto interval = (now - LastCpuWaitQuery).MicroSeconds();
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
         if (HasError(error)) {
         auto errorMessage =
@@ -73,11 +70,13 @@ void TStorageServiceActor::HandleUpdateStats(
                 "Failed to get CpuWait stats: " << errorMessage);
         }
 
+        auto now = ctx.Now();
+        auto interval = (now - LastCpuWaitTs).MicroSeconds();
         auto cpuLack = 100 * cpuWait.MicroSeconds();
         cpuLack /= interval;
-        *CpuWait = cpuLack;
+        *CpuWaitCounter = cpuLack;
 
-        LastCpuWaitQuery = now;
+        LastCpuWaitTs = now;
 
         if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
             LOG_WARN_S(
