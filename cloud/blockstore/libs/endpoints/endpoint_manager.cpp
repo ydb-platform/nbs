@@ -160,8 +160,13 @@ bool CompareRequests(
     const NProto::TStopEndpointRequest& left,
     const NProto::TStopEndpointRequest& right)
 {
-    Y_DEBUG_ABORT_UNLESS(2 == GetFieldCount<NProto::TStopEndpointRequest>());
-    return left.GetUnixSocketPath() == right.GetUnixSocketPath();
+    Y_DEBUG_ABORT_UNLESS(3 == GetFieldCount<NProto::TStopEndpointRequest>());
+    return left.GetUnixSocketPath() == right.GetUnixSocketPath() &&
+           (!left.HasDiskId() && !right.HasDiskId() ||
+            left.HasDiskId() && right.HasDiskId() && left.HasHeaders() &&
+                right.HasHeaders() && left.GetDiskId() == right.GetDiskId() &&
+                left.GetHeaders().GetClientId() ==
+                    right.GetHeaders().GetClientId());
 }
 
 bool CompareRequests(
@@ -1108,13 +1113,16 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStopEndpointRequest> request)
 {
-    Y_ABORT_UNLESS(request->HasDiskId() && request->HasClientId());
+    Y_ABORT_UNLESS(
+        request->HasDiskId() && request->HasHeaders() &&
+        request->GetHeaders().GetClientId());
     const auto& socketPath = request->GetUnixSocketPath();
 
     auto removeClientRequest =
         std::make_shared<NProto::TRemoveVolumeClientRequest>();
     removeClientRequest->SetDiskId(request->GetDiskId());
-    removeClientRequest->MutableHeaders()->SetClientId(request->GetClientId());
+    removeClientRequest->MutableHeaders()->SetClientId(
+        request->GetHeaders().GetClientId());
 
     auto removeClientFuture =
         Service->RemoveVolumeClient(ctx, std::move(removeClientRequest));
@@ -1146,7 +1154,9 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it == Endpoints.end()) {
-        if (request->HasDiskId() && request->HasClientId()) {
+        if (request->HasDiskId() && request->HasHeaders() &&
+            request->GetHeaders().GetClientId())
+        {
             return StopEndpointFallback(ctx, request);
         }
 
