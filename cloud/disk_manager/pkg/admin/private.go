@@ -702,6 +702,127 @@ func newGetCheckpointSizeCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type finishExternalFilesystemCreation struct {
+	config                     *client_config.ClientConfig
+	filesystemID               string
+	externalStorageClusterName string
+}
+
+func (c *finishExternalFilesystemCreation) run() error {
+	ctx := newContext(c.config)
+
+	client, err := internal_client.NewPrivateClientForCLI(ctx, c.config)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer client.Close()
+
+	return client.FinishExternalFilesystemCreation(
+		getRequestContext(ctx),
+		&api.FinishExternalFilesystemCreationRequest{
+			FilesystemId:               c.filesystemID,
+			ExternalStorageClusterName: c.externalStorageClusterName,
+		},
+	)
+}
+
+func newFinishExternalFilesystemCreation(
+	config *client_config.ClientConfig,
+) *cobra.Command {
+
+	c := &finishExternalFilesystemCreation{
+		config: config,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "finish-external-filesystem-creation",
+		Aliases: []string{"finish_external_filesystem_creation"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.filesystemID,
+		"filesystem-id",
+		"",
+		"filesystem ID to operate on; required",
+	)
+	if err := cmd.MarkFlagRequired("filesystem-id"); err != nil {
+		log.Fatalf("Error setting flag filesystem-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(
+		&c.externalStorageClusterName,
+		"external-storage-cluster-name",
+		"",
+		"external storage cluster name where filesystem's data is located; required",
+	)
+	if err := cmd.MarkFlagRequired("external-storage-cluster-name"); err != nil {
+		log.Fatalf(
+			"Error setting flag external-storage-cluster-name as required: %v",
+			err,
+		)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type finishExternalFilesystemDeletion struct {
+	config       *client_config.ClientConfig
+	filesystemID string
+}
+
+func (c *finishExternalFilesystemDeletion) run() error {
+	ctx := newContext(c.config)
+
+	client, err := internal_client.NewPrivateClientForCLI(ctx, c.config)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer client.Close()
+
+	return client.FinishExternalFilesystemDeletion(
+		getRequestContext(ctx),
+		&api.FinishExternalFilesystemDeletionRequest{
+			FilesystemId: c.filesystemID,
+		},
+	)
+}
+
+func newFinishExternalFilesystemDeletion(
+	config *client_config.ClientConfig,
+) *cobra.Command {
+
+	c := &finishExternalFilesystemDeletion{
+		config: config,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "finish-external-filesystem-deletion",
+		Aliases: []string{"finish_external_filesystem_deletion"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.filesystemID,
+		"filesystem-id",
+		"",
+		"filesystem ID to operate on; required",
+	)
+	if err := cmd.MarkFlagRequired("filesystem-id"); err != nil {
+		log.Fatalf("Error setting flag filesystem-id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newPrivateCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -721,6 +842,8 @@ func newPrivateCmd(
 		newDeletePoolCmd(clientConfig),
 		newGetAliveNodesCmd(clientConfig),
 		newGetCheckpointSizeCmd(clientConfig, serverConfig),
+		newFinishExternalFilesystemCreation(clientConfig),
+		newFinishExternalFilesystemDeletion(clientConfig),
 	)
 
 	return cmd
