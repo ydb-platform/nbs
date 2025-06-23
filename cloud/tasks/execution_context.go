@@ -351,6 +351,7 @@ func (c *executionContext) setCancelled(ctx context.Context) error {
 
 func (c *executionContext) ping(ctx context.Context) error {
 	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
+		taskState.RunningInflightFor += time.Since(taskState.ModifiedAt)
 		return taskState
 	})
 }
