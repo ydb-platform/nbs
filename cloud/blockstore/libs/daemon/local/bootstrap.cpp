@@ -3,6 +3,9 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/blockstore/libs/sharding/iface/sharding.h>
+
 namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,6 +53,21 @@ void TBootstrapLocal::InitAuthService()
 void TBootstrapLocal::WarmupBSGroupConnections()
 {
     // do nothing
+}
+
+void TBootstrapLocal::InitRdmaRequestServer()
+{
+    // do nothing
+}
+
+ITraceSerializerPtr TBootstrapLocal::GetTraceSerializer()
+{
+    return CreateTraceSerializerStub();
+}
+
+void TBootstrapLocal::SetupShardingManager()
+{
+    ShardingManager = NSharding::CreateShardingManagerStub();
 }
 
 TProgramShouldContinue& TBootstrapLocal::GetShouldContinue()

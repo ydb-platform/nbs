@@ -932,4 +932,17 @@ void TBootstrapYdb::InitRdmaRequestServer()
         std::move(rdmaConfig));
 }
 
+void TBootstrapYdb::SetupShardingManager()
+{
+    ShardingManager = CreateShardingManager(
+        Configs->ShardingConfig,
+        Timer,
+        Scheduler,
+        Logging,
+        Monitoring,
+        GetTraceSerializer(),
+        ServerStats,
+        RdmaClient);
+}
+
 }   // namespace NCloud::NBlockStore::NServer

@@ -813,19 +813,8 @@ TClientAppConfigPtr TSessionManager::CreateClientConfig(
     config.SetHost(host);
     config.SetPort(port);
 
-    if (request.GetRequestTimeout()) {
-        config.SetRequestTimeout(request.GetRequestTimeout());
-    }
-    if (request.GetRetryTimeout()) {
-        config.SetRetryTimeout(request.GetRetryTimeout());
-    }
-    if (request.GetRetryTimeoutIncrement()) {
-        config.SetRetryTimeoutIncrement(request.GetRetryTimeoutIncrement());
-    }
-
     return std::make_shared<TClientAppConfig>(std::move(clientAppConfig));
 }
-
 
 TClientAppConfigPtr TSessionManager::CreateClientConfig(
     const NProto::TStartEndpointRequest& request)
