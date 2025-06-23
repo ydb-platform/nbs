@@ -5,6 +5,7 @@
 #include "fuse.h"
 #include "handle_ops_queue.h"
 #include "log.h"
+#include "util/system/file_lock.h"
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -53,6 +54,47 @@ namespace {
 
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
+
+
+NProto::TError CreateAndLockFile(
+    const TString& dir,
+    const TStringBuf& fileName,
+    THolder<TFileLock>& fileLock)
+{
+    if (!NFs::MakeDirectoryRecursive(dir)) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "Failed to create directories, path: " << dir);
+    }
+    auto filePath = TFsPath(dir) / fileName;
+    filePath.Touch();
+    fileLock = MakeHolder<TFileLock>(filePath);
+    if (!fileLock->TryAcquire()) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "Failed to lock file, path: %s " << filePath);
+    }
+    return {};
+}
+
+NProto::TError UnlockAndDelete(
+    const TString& dir,
+    THolder<TFileLock>& fileLock)
+{
+    fileLock->Release();
+
+    try {
+        NFs::RemoveRecursive(dir);
+    } catch (const TSystemError& err) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "Failed to remove dir"
+                             << ", reason: " << err.AsStrBuf());
+    }
+    return {};
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -516,6 +558,9 @@ private:
     IFileSystemPtr FileSystem;
     TFileSystemConfigPtr FileSystemConfig;
 
+    THolder<TFileLock> HandleOpsQueueFileLock;
+    THolder<TFileLock> WriteBackCacheFileLock;
+
     bool HandleOpsQueueInitialized = false;
     bool WriteBackCacheInitialized = false;
 
@@ -627,33 +672,25 @@ public:
 
                     // We need to cleanup HandleOpsQueue file and directories
                     if (p->HandleOpsQueueInitialized) {
-                        auto fsPath =
+                        auto error = UnlockAndDelete(
                             TFsPath(p->Config->GetHandleOpsQueuePath()) /
-                            p->Config->GetFileSystemId();
-                        TString sessionDir = fsPath / p->SessionId;
-                        try {
-                            NFs::RemoveRecursive(sessionDir);
-                        } catch (const TSystemError& err) {
+                                p->Config->GetFileSystemId() / p->SessionId,
+                            p->HandleOpsQueueFileLock);
+                        if (HasError(error)) {
                             ReportHandleOpsQueueCreatingOrDeletingError(
-                                TStringBuilder()
-                                << "Failed to remove session's HandleOpsQueue"
-                                << ", reason: " << err.AsStrBuf());
+                                error.GetMessage());
                         }
                     }
 
                     // We need to cleanup WriteBackCache file and directories
                     if (p->WriteBackCacheInitialized) {
-                        auto fsPath =
+                        auto error = UnlockAndDelete(
                             TFsPath(p->Config->GetWriteBackCachePath()) /
-                            p->Config->GetFileSystemId();
-                        TString sessionDir = fsPath / p->SessionId;
-                        try {
-                            NFs::RemoveRecursive(sessionDir);
-                        } catch (const TSystemError& err) {
+                                p->Config->GetFileSystemId() / p->SessionId,
+                            p->WriteBackCacheFileLock);
+                        if (HasError(error)) {
                             ReportWriteBackCacheCreatingOrDeletingError(
-                                TStringBuilder()
-                                << "Failed to remove session's WriteBackCache"
-                                << ", reason: " << err.AsStrBuf());
+                                error.GetMessage());
                         }
                     }
 
@@ -824,47 +861,49 @@ private:
 
             THandleOpsQueuePtr handleOpsQueue;
             if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
-                TString path =
-                    TFsPath(Config->GetHandleOpsQueuePath()) /
+                auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
                     FileSystemConfig->GetFileSystemId() /
                     SessionId;
-                if (!NFs::MakeDirectoryRecursive(path)) {
-                    TString msg = TStringBuilder()
-                                  << "Failed to create directories for "
-                                     "HandleOpsQueue, path: "
-                                  << path;
-                    ReportHandleOpsQueueCreatingOrDeletingError(msg);
-                    return MakeError(E_FAIL, msg);
+                auto error = CreateAndLockFile(
+                    path,
+                    HandleOpsQueueFileName,
+                    HandleOpsQueueFileLock);
+
+                if (HasError(error)) {
+                    ReportHandleOpsQueueCreatingOrDeletingError(
+                        error.GetMessage());
+                    return error;
                 }
-                auto file = TFsPath(path) / HandleOpsQueueFileName;
-                file.Touch();
+
                 handleOpsQueue = CreateHandleOpsQueue(
-                    file.GetPath(),
+                    path / HandleOpsQueueFileName,
                     Config->GetHandleOpsQueueSize());
                 HandleOpsQueueInitialized = true;
             }
 
             TWriteBackCache writeBackCache;
             if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                TString path =
+                auto path =
                     TFsPath(Config->GetWriteBackCachePath()) /
                     FileSystemConfig->GetFileSystemId() /
                     SessionId;
-                if (!NFs::MakeDirectoryRecursive(path)) {
-                    TString msg = TStringBuilder()
-                                  << "Failed to create directories for "
-                                     "WriteBackCache, path: "
-                                  << path;
-                    ReportWriteBackCacheCreatingOrDeletingError(msg);
-                    return MakeError(E_FAIL, msg);
+
+                auto error = CreateAndLockFile(
+                    path,
+                    WriteBackCacheFileName,
+                    WriteBackCacheFileLock);
+
+                if (HasError(error)) {
+                    ReportWriteBackCacheCreatingOrDeletingError(
+                        error.GetMessage());
+                    return error;
                 }
-                auto file = TFsPath(path) / WriteBackCacheFileName;
-                file.Touch();
+
                 writeBackCache = TWriteBackCache(
                     Session,
                     Scheduler,
                     Timer,
-                    file.GetPath(),
+                    path / WriteBackCacheFileName,
                     Config->GetWriteBackCacheCapacity(),
                     Config->GetWriteBackCacheAutomaticFlushPeriod());
                 WriteBackCacheInitialized = true;
