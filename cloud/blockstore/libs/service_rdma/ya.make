@@ -7,8 +7,9 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/service
-
     cloud/blockstore/libs/storage/protos
+
+    library/cpp/lwtrace
 )
 
 END()
