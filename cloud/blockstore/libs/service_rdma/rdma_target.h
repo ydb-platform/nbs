@@ -44,6 +44,7 @@ using TBlockstoreServerRdmaTargetConfigPtr =
 IStartablePtr CreateBlockstoreServerRdmaTarget(
     TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
     ILoggingServicePtr logging,
+    ITraceSerializerPtr traceSerializer,
     NRdma::IServerPtr server,
     IBlockStorePtr service);
 

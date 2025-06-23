@@ -59,6 +59,10 @@
         GROUPS("NBSRequest"),                                                  \
         TYPES(ui64),                                                           \
         NAMES("requestId"))                                                    \
+    PROBE(RequestReceived_Sharding,                                            \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(),                                                               \
+        NAMES())                                                               \
 // BLOCKSTORE_RDMA_PROVIDER
 
 LWTRACE_DECLARE_PROVIDER(BLOCKSTORE_RDMA_PROVIDER)

@@ -3,14 +3,17 @@
 #include "rdma_protocol.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/list.h>
@@ -19,6 +22,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NThreading;
 using namespace NMonitoring;
+
+LWTRACE_USING(BLOCKSTORE_RDMA_PROVIDER);
 
 namespace {
 
@@ -80,6 +85,7 @@ class TRequestHandler final
     , public std::enable_shared_from_this<TRequestHandler>
 {
     IBlockStorePtr Service;
+    ITraceSerializerPtr TraceSerializer;
     ITaskQueuePtr TaskQueue;
 
     TLog Log;
@@ -89,8 +95,12 @@ class TRequestHandler final
         TBlockStoreServerProtocol::Serializer();
 
 public:
-    TRequestHandler(IBlockStorePtr service, ITaskQueuePtr taskQueue)
+    TRequestHandler(
+            IBlockStorePtr service,
+            ITraceSerializerPtr traceSerializer,
+            ITaskQueuePtr taskQueue)
         : Service(std::move(service))
+        , TraceSerializer(std::move(traceSerializer))
         , TaskQueue(std::move(taskQueue))
     {}
 
@@ -171,6 +181,16 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        if (TraceSerializer->HandleTraceRequest(
+                request.GetHeaders().GetInternal().GetTrace(),
+                callContext->LWOrbit))
+        {
+            request.MutableHeaders()->MutableInternal()->SetTraceTs(
+                GetCycleCount());
+        }
+
+        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
         Y_ENSURE_RETURN(request.GetBlockSize() != 0, "empty BlockSize");
 
@@ -241,6 +261,16 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        if (TraceSerializer->HandleTraceRequest(
+                request.GetHeaders().GetInternal().GetTrace(),
+                callContext->LWOrbit))
+        {
+            request.MutableHeaders()->MutableInternal()->SetTraceTs(
+                GetCycleCount());
+        }
+
+        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+
         Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
         auto [sglist, error] = SgListNormalize({ requestData.data(), requestData.length() }, request.GetBlockSize());
         Y_ENSURE_RETURN(error.GetCode() == 0, "cannot create sgList");
@@ -286,6 +316,16 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        if (TraceSerializer->HandleTraceRequest(
+                request.GetHeaders().GetInternal().GetTrace(),
+                callContext->LWOrbit))
+        {
+            request.MutableHeaders()->MutableInternal()->SetTraceTs(
+                GetCycleCount());
+        }
+
+        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
         auto req = std::make_shared<NProto::TZeroBlocksRequest>(std::move(request));
@@ -320,6 +360,7 @@ class TRdmaTarget final: public IStartable
     const TBlockstoreServerRdmaTargetConfigPtr Config;
 
     ILoggingServicePtr Logging;
+    ITraceSerializerPtr TraceSerializer;
     NRdma::IServerPtr Server;
     ITaskQueuePtr TaskQueue;
 
@@ -331,16 +372,20 @@ public:
     TRdmaTarget(
             TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
             ILoggingServicePtr logging,
+            ITraceSerializerPtr traceSerializer,
             NRdma::IServerPtr server,
             ITaskQueuePtr taskQueue,
             IBlockStorePtr service)
         : Config(std::move(rdmaTargetConfig))
         , Logging(std::move(logging))
+        , TraceSerializer(std::move(traceSerializer))
         , Server(std::move(server))
         , TaskQueue(std::move(taskQueue))
     {
-        Handler =
-            std::make_shared<TRequestHandler>(std::move(service), TaskQueue);
+        Handler = std::make_shared<TRequestHandler>(
+            std::move(service),
+            TraceSerializer,
+            TaskQueue);
     }
 
     void Start() override
@@ -370,6 +415,7 @@ public:
 IStartablePtr CreateBlockstoreServerRdmaTarget(
     TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
     ILoggingServicePtr logging,
+    ITraceSerializerPtr traceSerializer,
     NRdma::IServerPtr server,
     IBlockStorePtr service)
 {
@@ -379,6 +425,7 @@ IStartablePtr CreateBlockstoreServerRdmaTarget(
     return std::make_shared<TRdmaTarget>(
         std::move(rdmaTargetConfig),
         std::move(logging),
+        std::move(traceSerializer),
         std::move(server),
         std::move(threadPool),
         std::move(service));
