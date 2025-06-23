@@ -469,6 +469,7 @@ private:
     const IEndpointStoragePtr EndpointStorage;
     const THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
     const NBD::IDeviceFactoryPtr NbdDeviceFactory;
+    const IBlockStorePtr Service;
     const TString NbdSocketSuffix;
 
     TDeviceManager NbdDeviceManager;
@@ -511,6 +512,7 @@ public:
             THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
             NBD::IDeviceFactoryPtr nbdDeviceFactory,
             NBD::IErrorHandlerMapPtr nbdErrorHandlerMap,
+            IBlockStorePtr service,
             TEndpointManagerOptions options)
         : Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
@@ -520,6 +522,7 @@ public:
         , EndpointStorage(std::move(endpointStorage))
         , EndpointListeners(std::move(listeners))
         , NbdDeviceFactory(std::move(nbdDeviceFactory))
+        , Service(std::move(service))
         , NbdSocketSuffix(options.NbdSocketSuffix)
         , NbdDeviceManager(options.NbdDevicePrefix)
         , NbdErrorHandlerMap(std::move(nbdErrorHandlerMap))
@@ -641,6 +644,10 @@ private:
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TStartEndpointRequest> request,
         bool restoring);
+
+    NProto::TStopEndpointResponse StopEndpointFallback(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TStopEndpointRequest> request);
 
     NProto::TStopEndpointResponse StopEndpointImpl(
         TCallContextPtr ctx,
@@ -1097,6 +1104,39 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     RemoveProcessingSocket(socketPath);
     return response;
 }
+NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TStopEndpointRequest> request)
+{
+    Y_ABORT_UNLESS(request->HasDiskId() && request->HasClientId());
+    const auto& socketPath = request->GetUnixSocketPath();
+
+    auto removeClientRequest =
+        std::make_shared<NProto::TRemoveVolumeClientRequest>();
+    removeClientRequest->SetDiskId(request->GetDiskId());
+    removeClientRequest->MutableHeaders()->SetClientId(request->GetClientId());
+
+    auto removeClientFuture =
+        Service->RemoveVolumeClient(ctx, std::move(removeClientRequest));
+    const auto& removeClientResponse = Executor->WaitFor(removeClientFuture);
+
+    if (HasError(removeClientResponse)) {
+        return TErrorResponse(removeClientResponse.GetError());
+    }
+
+    if (NFs::Exists(request->GetUnixSocketPath())) {
+        bool deleted = NFs::Remove(request->GetUnixSocketPath());
+        if (!deleted) {
+            return TErrorResponse(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Can't delete socket " << socketPath.Quote() << ": "
+                    << LastSystemErrorText(LastSystemError()));
+        }
+    }
+
+    return {};
+}
 
 NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
     TCallContextPtr ctx,
@@ -1106,6 +1146,10 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it == Endpoints.end()) {
+        if (request->HasDiskId() && request->HasClientId()) {
+            return StopEndpointFallback(ctx, request);
+        }
+
         return TErrorResponse(S_FALSE, TStringBuilder()
             << "endpoint " << socketPath.Quote()
             << " hasn't been started yet");
@@ -1846,6 +1890,7 @@ IEndpointManagerPtr CreateEndpointManager(
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
     NBD::IDeviceFactoryPtr nbdDeviceFactory,
     NBD::IErrorHandlerMapPtr nbdErrorHandlerMap,
+    IBlockStorePtr service,
     TEndpointManagerOptions options)
 {
     auto manager = std::make_shared<TEndpointManager>(
@@ -1861,6 +1906,7 @@ IEndpointManagerPtr CreateEndpointManager(
         std::move(listeners),
         std::move(nbdDeviceFactory),
         std::move(nbdErrorHandlerMap),
+        std::move(service),
         std::move(options));
     eventProxy->Register(manager);
     return manager;

@@ -472,6 +472,8 @@ class Client(_SafeClient):
     def stop_endpoint_async(
             self,
             unix_socket_path: str,
+            client_id: str | None = None,
+            disk_id: str | None = None,
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
             trace_id: str | None = None,
@@ -480,6 +482,11 @@ class Client(_SafeClient):
         request = protos.TStopEndpointRequest(
             UnixSocketPath=unix_socket_path,
         )
+        if client_id is not None:
+            request.ClientId = client_id
+        if disk_id is not None:
+            request.DiskId = disk_id
+
         return self._impl.stop_endpoint_async(
             request,
             idempotence_id,
@@ -491,6 +498,8 @@ class Client(_SafeClient):
     def stop_endpoint(
             self,
             unix_socket_path: str,
+            client_id: str | None = None,
+            disk_id: str | None = None,
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
             trace_id: str | None = None,
@@ -499,6 +508,10 @@ class Client(_SafeClient):
         request = protos.TStopEndpointRequest(
             UnixSocketPath=unix_socket_path,
         )
+        if client_id is not None:
+            request.ClientId = client_id
+        if disk_id is not None:
+            request.DiskId = disk_id
         self._impl.stop_endpoint(
             request,
             idempotence_id,

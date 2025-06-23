@@ -785,3 +785,21 @@ message TDestroyVolumeLinkResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Remove volume client
+
+message TRemoveVolumeClientRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Id of disk to remove client.
+    string DiskId = 2;
+}
+
+message TRemoveVolumeClientResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
