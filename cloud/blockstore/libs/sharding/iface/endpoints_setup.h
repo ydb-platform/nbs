@@ -19,7 +19,7 @@ struct TShardHostConfig;
 struct IHostEndpointsSetupProvider
 {
     using TGrpcResult = NClient::IMultiClientEndpointPtr;
-    using TRdmaResult = IBlockStorePtr;
+    using TRdmaResult = TResultOrError<IBlockStorePtr>;
 
     using TSetupGrpcEndpointFuture = NThreading::TFuture<TGrpcResult>;
     using TSetupRdmaEndpointFuture = NThreading::TFuture<TRdmaResult>;

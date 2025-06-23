@@ -99,24 +99,16 @@ TFuture<void> THostEndpointsManager::Start()
     future.Subscribe([=] (const auto& f) mutable {
         Y_UNUSED(f);
         if (auto self = weak.lock(); self) {
-            decltype(THostEndpointsManager::SetupRdmaIfNeeded()) optFuture;
+            bool needRdmaSetup = false;;
             with_lock(self->StateLock) {
                 self->GrpcState = EState::ACTIVE;
                 self->GrpcHostEndpoint = f.GetValue();
-                optFuture = self->SetupRdmaIfNeeded();
+                needRdmaSetup = self->SetupRdmaIfNeeded();
             }
-            if (optFuture.has_value()) {
-                optFuture->Subscribe([=] (const auto& f) {
+            if (needRdmaSetup) {
+                self->RdmaFuture.Subscribe([=] (const auto& f) {
                     if (auto self = weak.lock(); self) {
-                        with_lock(self->StateLock) {
-                            auto blockstorePtr = f.GetValue();
-                            if (blockstorePtr == nullptr) {
-                                self->RdmaState = EState::INACTIVE;
-                            } else {
-                                self->RdmaState = EState::ACTIVE;
-                            }
-                            self->RdmaHostEndpoint = blockstorePtr;
-                        }
+                        self->HandleRdmaSetupResult(f.GetValue());
                     }
                 });
             }
@@ -126,16 +118,42 @@ TFuture<void> THostEndpointsManager::Start()
     return StartPromise.GetFuture();
 }
 
-THostEndpointsManager::TOptionalRdmaFuture THostEndpointsManager::SetupRdmaIfNeeded()
+void THostEndpointsManager::HandleRdmaSetupResult(
+    const IHostEndpointsSetupProvider::TRdmaResult& result)
+{
+    if (HasError(result.GetError())) {
+        RdmaState = EState::INACTIVE;
+        with_lock(StateLock) {
+            SetupRdmaIfNeeded();
+        }
+
+        auto weak = weak_from_this();
+        RdmaFuture.Subscribe([weak=std::move(weak)] (const auto& f) {
+            if (auto self = weak.lock(); self) {
+                with_lock(self->StateLock) {
+                    self->HandleRdmaSetupResult(f.GetValue());
+                }
+            }
+        });
+    } else {
+        with_lock(StateLock) {
+            RdmaState = EState::ACTIVE;
+            RdmaHostEndpoint = result.GetResult();
+        }
+    }
+}
+
+bool THostEndpointsManager::SetupRdmaIfNeeded()
 {
     if (Config.GetTransport() != NProto::RDMA) {
-        return {};
+        return false;
     }
     RdmaState = EState::ACTIVATING;
-    return Args.EndpointsSetup->SetupHostRdmaEndpoint(
+    RdmaFuture = Args.EndpointsSetup->SetupHostRdmaEndpoint(
         Args,
         Config,
         GrpcHostEndpoint);
+    return true;
 }
 
 TFuture<void> THostEndpointsManager::Stop()
