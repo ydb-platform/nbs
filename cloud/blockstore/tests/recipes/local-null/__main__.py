@@ -19,6 +19,7 @@ import yatest.common as yatest_common
 PID_FILE_NAME = "local_null_nbs_server_recipe.pid"
 ERR_LOG_FILE_NAMES_FILE = "local_null_nbs_server_recipe.err_log_files"
 
+
 def start(argv):
     server = TServerAppConfig()
     server.NullServiceConfig.CopyFrom(TNullServiceConfig())

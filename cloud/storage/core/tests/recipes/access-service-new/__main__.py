@@ -16,6 +16,7 @@ from cloud.storage.core.tests.common import (
 logger = logging.getLogger(__name__)
 ERR_LOG_FILE_NAMES_FILE = "access_service_new_recipe.err_log_files"
 
+
 def parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument("--encryption", action=argparse.BooleanOptionalAction)
