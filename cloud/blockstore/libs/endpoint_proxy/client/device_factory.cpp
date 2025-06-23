@@ -65,7 +65,7 @@ struct TProxyDevice: NBD::IDevice
         if (!DevicePath) {
             DevicePath = NBD::FindFreeNbdDevice().replace(
                 0,
-                NBD::DEFAULT_DEVICE_PREFIX.size(),
+                NBD::DEVICE_PREFIX.size(),
                 DevicePrefix);
 
             if (DevicePath == DevicePrefix) {

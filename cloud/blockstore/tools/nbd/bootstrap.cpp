@@ -294,27 +294,22 @@ void TBootstrap::Start()
 
     if (Options->ConnectDevice) {
         if (Options->Netlink) {
-            if (Options->ConnectDevicePath.empty()) {
+            if (Options->ConnectDevicePath) {
+                NbdDevice = CreateNetlinkDevice(
+                    Logging,
+                    listenAddress,
+                    Options->ConnectDevicePath,
+                    Options->RequestTimeout,
+                    Options->ConnectionTimeout);
+            } else {
                 NbdDevice = CreateFreeNetlinkDevice(
                     Logging,
                     listenAddress,
-                    DEV_DIR,
+                    DEVICE_PREFIX,
                     Options->RequestTimeout,
                     Options->ConnectionTimeout);
-                );
             }
-            NbdDevice = CreateNetlinkDevice(
-                Logging,
-                listenAddress,
-                Options->ConnectDevicePath,
-                Options->RequestTimeout,
-                Options->ConnectionTimeout);
-        } else {
-            if (Options->ConnectDevicePath.empty()) {
-                auto device = FindFreeNbdDevice();
-                Y_ENSURE(device, "unable to find free nbd device");
-                Options->ConnectDevicePath = "/dev/" + device;
-            }
+        } else if (Options->ConnectDevicePath) {
             // The only case we want kernel to retry requests is when the socket
             // is dead due to nbd server restart. And since we can't configure
             // ioctl device to use a new socket, request timeout effectively
@@ -323,6 +318,12 @@ void TBootstrap::Start()
                 Logging,
                 listenAddress,
                 Options->ConnectDevicePath,
+                Options->ConnectionTimeout);
+        } else {
+            NbdDevice = CreateFreeDevice(
+                Logging,
+                listenAddress,
+                DEVICE_PREFIX,
                 Options->ConnectionTimeout);
         }
         auto status = NbdDevice->Start().GetValueSync();

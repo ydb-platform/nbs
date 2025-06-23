@@ -63,6 +63,12 @@ IDevicePtr CreateDevice(
     TString devicePath,
     TDuration timeout);
 
+IDevicePtr CreateFreeDevice(
+    ILoggingServicePtr logging,
+    const TNetworkAddress& connectAddress,
+    TString devicePrefix,
+    TDuration timeout);
+
 IDevicePtr CreateDeviceStub();
 
 IDeviceFactoryPtr CreateDeviceFactory(

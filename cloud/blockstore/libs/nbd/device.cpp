@@ -82,7 +82,7 @@ public:
         if (!DevicePath) {
             DevicePath = FindFreeNbdDevice().replace(
                 0,
-                DEFAULT_DEVICE_PREFIX.size(),
+                DEVICE_PREFIX.size(),
                 DevicePrefix);
 
             if (DevicePath == DevicePrefix) {
@@ -376,6 +376,22 @@ IDevicePtr CreateDevice(
         connectAddress,
         std::move(devicePath),
         "",
+        0, // blockCount
+        0, // blockSize
+        timeout);
+}
+
+IDevicePtr CreateFreeDevice(
+    ILoggingServicePtr logging,
+    const TNetworkAddress& connectAddress,
+    TString devicePrefix,
+    TDuration timeout)
+{
+    return std::make_shared<TDevice>(
+        std::move(logging),
+        connectAddress,
+        "",
+        std::move(devicePrefix),
         0, // blockCount
         0, // blockSize
         timeout);
