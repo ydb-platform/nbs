@@ -26,6 +26,7 @@
 #include <cloud/blockstore/libs/validation/validation.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -462,6 +463,7 @@ IBlockStorePtr TBootstrap::CreateEndpointDataClient(
                 rdmaClient,
                 std::move(dataEndpoint),
                 CreateTraceSerializerStub(),
+                CreateTaskQueueStub(),
                 CreateRdmaEndpointConfig(*ClientConfig));
             break;
         }
