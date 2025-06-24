@@ -128,7 +128,11 @@ func matchesState(
 		if actual.ID == mockPingerTaskId {
 			// ping takes nearly 200µs (0.2ms) to complete
 			statusTimeThreshold := time.Millisecond
-			ok = assert.Less(t, actual.RunningInflightFor-expected.RunningInflightFor, statusTimeThreshold) && ok
+			diff := actual.RunningInflightFor - expected.RunningInflightFor
+			if diff < 0 {
+				diff = -diff
+			}
+			ok = assert.Less(t, diff, statusTimeThreshold) && ok
 		}
 
 		actual.RunningInflightFor = expected.RunningInflightFor
