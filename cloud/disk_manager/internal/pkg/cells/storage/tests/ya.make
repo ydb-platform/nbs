@@ -1,6 +1,7 @@
-GO_TEST_FOR(cloud/disk_manager/internal/pkgcells/storage)
+GO_TEST_FOR(cloud/disk_manager/internal/pkg/cells/storage)
 
-INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)
+SET_APPEND(RECIPE_ARGS --ydb-only)
+INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 SIZE(MEDIUM)
 
