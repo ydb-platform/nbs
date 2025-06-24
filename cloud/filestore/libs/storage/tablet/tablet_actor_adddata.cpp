@@ -64,7 +64,6 @@ bool TIndexTabletActor::PrepareTx_AddData(
 
     if (Config->GetAllowHandlelessIO()) {
         if (args.ExplicitNodeId == InvalidNodeId) {
-            // handleless write
             args.Error = ErrorInvalidArgument();
             return true;
         }
