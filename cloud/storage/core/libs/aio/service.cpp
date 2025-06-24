@@ -10,9 +10,10 @@
 #include <util/system/file.h>
 #include <util/system/thread.h>
 
-#include <atomic>
-
 #include <libaio.h>
+#include <sys/eventfd.h>
+
+#include <atomic>
 
 namespace NCloud {
 
@@ -125,7 +126,7 @@ private:
     TAsyncIOContext IOContext;
 
     TThread PollerThread;
-    std::atomic_flag ShouldStop = {};
+    std::atomic_flag ShouldStop = false;
 
 public:
     explicit TAIOService(size_t maxEvents)
@@ -142,9 +143,23 @@ public:
 
     void Stop() override
     {
-        if (!ShouldStop.test_and_set()) {
-            PollerThread.Join();
+        if (ShouldStop.test_and_set()) {
+            return;
         }
+
+        // unblock the poller thread that may be blocked on io_getevents by
+        // initiating a read operation
+
+        TFileHandle file {eventfd(1, EFD_NONBLOCK)};
+
+        TFileIOCompletion cb {
+            .Func = [](auto...) {}
+        };
+
+        ui64 value = 0;
+        AsyncRead(file, 0, {std::bit_cast<char*>(&value), sizeof(value)}, &cb);
+
+        PollerThread.Join();
     }
 
     // IFileIOService
