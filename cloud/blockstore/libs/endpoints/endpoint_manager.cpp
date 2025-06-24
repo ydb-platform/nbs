@@ -160,8 +160,15 @@ bool CompareRequests(
     const NProto::TStopEndpointRequest& left,
     const NProto::TStopEndpointRequest& right)
 {
-    Y_DEBUG_ABORT_UNLESS(2 == GetFieldCount<NProto::TStopEndpointRequest>());
-    return left.GetUnixSocketPath() == right.GetUnixSocketPath();
+    Y_DEBUG_ABORT_UNLESS(3 == GetFieldCount<NProto::TStopEndpointRequest>());
+    auto doTie = [](const NProto::TStopEndpointRequest& r)
+    {
+        return std::tie(
+            r.GetUnixSocketPath(),
+            r.GetDiskId(),
+            r.GetHeaders().GetClientId());
+    };
+    return doTie(left) == doTie(right);
 }
 
 bool CompareRequests(
@@ -469,6 +476,7 @@ private:
     const IEndpointStoragePtr EndpointStorage;
     const THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
     const NBD::IDeviceFactoryPtr NbdDeviceFactory;
+    const IBlockStorePtr Service;
     const TString NbdSocketSuffix;
 
     TDeviceManager NbdDeviceManager;
@@ -511,6 +519,7 @@ public:
             THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
             NBD::IDeviceFactoryPtr nbdDeviceFactory,
             NBD::IErrorHandlerMapPtr nbdErrorHandlerMap,
+            IBlockStorePtr service,
             TEndpointManagerOptions options)
         : Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
@@ -520,6 +529,7 @@ public:
         , EndpointStorage(std::move(endpointStorage))
         , EndpointListeners(std::move(listeners))
         , NbdDeviceFactory(std::move(nbdDeviceFactory))
+        , Service(std::move(service))
         , NbdSocketSuffix(options.NbdSocketSuffix)
         , NbdDeviceManager(options.NbdDevicePrefix)
         , NbdErrorHandlerMap(std::move(nbdErrorHandlerMap))
@@ -641,6 +651,10 @@ private:
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TStartEndpointRequest> request,
         bool restoring);
+
+    NProto::TStopEndpointResponse StopEndpointFallback(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TStopEndpointRequest> request);
 
     NProto::TStopEndpointResponse StopEndpointImpl(
         TCallContextPtr ctx,
@@ -1098,6 +1112,35 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     return response;
 }
 
+NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TStopEndpointRequest> request)
+{
+    Y_ABORT_UNLESS(request->GetDiskId() && request->GetHeaders().GetClientId());
+    const auto& socketPath = request->GetUnixSocketPath();
+
+    auto removeClientRequest =
+        std::make_shared<NProto::TRemoveVolumeClientRequest>();
+    removeClientRequest->SetDiskId(request->GetDiskId());
+    removeClientRequest->MutableHeaders()->SetClientId(
+        request->GetHeaders().GetClientId());
+
+    auto removeClientFuture =
+        Service->RemoveVolumeClient(ctx, std::move(removeClientRequest));
+    const auto& removeClientResponse = Executor->WaitFor(removeClientFuture);
+
+    if (HasError(removeClientResponse)) {
+        return TErrorResponse(removeClientResponse.GetError());
+    }
+
+    // The vhost server deletes socket files when an endpoint starts or stops.
+    // We don't have a vhost server here, so we need to delete the socket file
+    // manually. Compute assumes we should do this.
+    TFsPath(socketPath).DeleteIfExists();
+
+    return {};
+}
+
 NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStopEndpointRequest> request)
@@ -1106,6 +1149,10 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it == Endpoints.end()) {
+        if (request->GetDiskId() && request->GetHeaders().GetClientId()) {
+            return StopEndpointFallback(ctx, request);
+        }
+
         return TErrorResponse(S_FALSE, TStringBuilder()
             << "endpoint " << socketPath.Quote()
             << " hasn't been started yet");
@@ -1846,6 +1893,7 @@ IEndpointManagerPtr CreateEndpointManager(
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
     NBD::IDeviceFactoryPtr nbdDeviceFactory,
     NBD::IErrorHandlerMapPtr nbdErrorHandlerMap,
+    IBlockStorePtr service,
     TEndpointManagerOptions options)
 {
     auto manager = std::make_shared<TEndpointManager>(
@@ -1861,6 +1909,7 @@ IEndpointManagerPtr CreateEndpointManager(
         std::move(listeners),
         std::move(nbdDeviceFactory),
         std::move(nbdErrorHandlerMap),
+        std::move(service),
         std::move(options));
     eventProxy->Register(manager);
     return manager;

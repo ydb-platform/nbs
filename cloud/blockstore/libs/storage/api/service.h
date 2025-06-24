@@ -310,8 +310,8 @@ struct TEvService
         EvDescribePlacementGroupRequest = EvBegin + 69,
         EvDescribePlacementGroupResponse = EvBegin + 70,
 
-        // EvBegin + 71, unused (see NBS-2410)
-        // EvBegin + 72, unused (see NBS-2410)
+        EvRemoveVolumeClientRequest = EvBegin + 71,
+        EvRemoveVolumeClientResponse = EvBegin + 72,
 
         EvCmsActionRequest = EvBegin + 73,
         EvCmsActionResponse = EvBegin + 74,

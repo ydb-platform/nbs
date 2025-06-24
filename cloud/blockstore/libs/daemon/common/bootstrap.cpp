@@ -592,6 +592,7 @@ void TBootstrapBase::Init()
         std::move(endpointListeners),
         std::move(nbdDeviceFactory),
         NbdErrorHandlerMap,
+        Service,
         std::move(endpointManagerOptions));
 
     STORAGE_INFO("EndpointManager initialized");

@@ -267,10 +267,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            {{ ipcType, listener }},
-            nullptr,    // nbdDeviceFactory
+            {{ipcType, listener}},
+            nullptr,   // nbdDeviceFactory
             NBD::CreateErrorHandlerMapStub(),
-            {}          // options
+            nullptr,   // service
+            {}         // options
         );
         endpointManager->RestoreEndpoints().Wait(5s);
 
@@ -352,10 +353,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             sessionManager,
             endpointStorage,
-            {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
-            nullptr,    // nbdDeviceFactory
+            {{NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>()}},
+            nullptr,   // nbdDeviceFactory
             NBD::CreateErrorHandlerMapStub(),
-            {}          // options
+            nullptr,   // service
+            {}         // options
         );
         endpointManager->RestoreEndpoints().Wait(5s);
 
@@ -556,10 +558,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            {{ NProto::IPC_GRPC, listener }},
-            nullptr,    // nbdDeviceFactory
+            {{NProto::IPC_GRPC, listener}},
+            nullptr,   // nbdDeviceFactory
             NBD::CreateErrorHandlerMapStub(),
-            {}          // options
+            nullptr,   // service
+            {}         // options
         );
 
         endpointManager->RestoreEndpoints().Wait();
@@ -598,10 +601,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            {},         // listeners
-            nullptr,    // nbdDeviceFactory
+            {},        // listeners
+            nullptr,   // nbdDeviceFactory
             NBD::CreateErrorHandlerMapStub(),
-            {}          // options
+            nullptr,   // service
+            {}         // options
         );
 
         endpointManager->RestoreEndpoints().Wait();
@@ -636,10 +640,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            {},         // listeners
-            nullptr,    // nbdDeviceFactory
+            {},        // listeners
+            nullptr,   // nbdDeviceFactory
             NBD::CreateErrorHandlerMapStub(),
-            {}          // options
+            nullptr,   // service
+            {}         // options
         );
 
         endpointManager->RestoreEndpoints().Wait();
@@ -696,10 +701,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            {{ NProto::IPC_GRPC, listener }},
-            nullptr,    // nbdDeviceFactory
+            {{NProto::IPC_GRPC, listener}},
+            nullptr,   // nbdDeviceFactory
             NBD::CreateErrorHandlerMapStub(),
-            {}          // options
+            nullptr,   // service
+            {}         // options
         );
 
         auto restoreFuture = endpointManager->RestoreEndpoints();
@@ -769,10 +775,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
-            nullptr,    // nbdDeviceFactory
+            {{NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>()}},
+            nullptr,   // nbdDeviceFactory
             NBD::CreateErrorHandlerMapStub(),
-            {}          // options
+            nullptr,   // service
+            {}         // options
         );
         endpointManager->RestoreEndpoints().Wait(5s);
 
@@ -930,10 +937,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            {{ NProto::IPC_GRPC, listener }},
-            nullptr,    // nbdDeviceFactory
+            {{NProto::IPC_GRPC, listener}},
+            nullptr,   // nbdDeviceFactory
             NBD::CreateErrorHandlerMapStub(),
-            {}          // options
+            nullptr,   // service
+            {}         // options
         );
         endpointManager->RestoreEndpoints().Wait(5s);
 
@@ -1042,10 +1050,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            {{ NProto::IPC_GRPC, listener }},
-            nullptr,    // nbdDeviceFactory
+            {{NProto::IPC_GRPC, listener}},
+            nullptr,   // nbdDeviceFactory
             NBD::CreateErrorHandlerMapStub(),
-            {}          // options
+            nullptr,   // service
+            {}         // options
         );
 
         endpointManager->Start();
