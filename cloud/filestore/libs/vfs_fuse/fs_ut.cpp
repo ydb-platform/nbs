@@ -208,14 +208,17 @@ struct TBootstrap
         }
 
         auto future = Loop->StartAsync();
-        return future.Apply([=](const auto& f) {
-            const auto& error = f.GetValue();
-            if (HasError(error)) {
-                return MakeFuture<NProto::TError>(error);
-            }
-            Fuse->Init();
-            return MakeFuture<NProto::TError>();
-        });
+        return future.Apply(
+            [=](const auto& f)
+            {
+                const auto& error = f.GetValue();
+                if (HasError(error)) {
+                    return MakeFuture<NProto::TError>(error);
+                }
+
+                Fuse->Init();
+                return MakeFuture<NProto::TError>();
+            });
     }
 
     void Stop()
@@ -1858,7 +1861,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
-        features.SetServerWriteBackCacheEnabled(true);
         TBootstrap bootstrap1(
             CreateWallClockTimer(),
             CreateScheduler(),

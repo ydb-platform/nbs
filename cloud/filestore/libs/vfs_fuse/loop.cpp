@@ -55,7 +55,6 @@ namespace {
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
 
-
 NProto::TError CreateAndLockFile(
     const TString& dir,
     const TStringBuf& fileName,
@@ -64,17 +63,16 @@ NProto::TError CreateAndLockFile(
     if (!NFs::MakeDirectoryRecursive(dir)) {
         return MakeError(
             E_FAIL,
-            TStringBuilder()
-                << "Failed to create directories, path: " << dir);
+            TStringBuilder() << "Failed to create directories, path: " << dir);
     }
+
     auto filePath = TFsPath(dir) / fileName;
     filePath.Touch();
     fileLock = MakeHolder<TFileLock>(filePath);
     if (!fileLock->TryAcquire()) {
         return MakeError(
             E_FAIL,
-            TStringBuilder()
-                << "Failed to lock file, path: %s " << filePath);
+            TStringBuilder() << "Failed to lock file, path: %s " << filePath);
     }
     return {};
 }
