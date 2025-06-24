@@ -3,6 +3,8 @@ import logging
 import os
 import tempfile
 
+from pathlib import Path
+
 import pytest
 import time
 
@@ -445,9 +447,15 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
 
     client.stop_endpoint(
         unix_socket_path=socket.name,
+    )
+
+    client.stop_endpoint(
+        unix_socket_path=socket.name,
         client_id=f"{socket.name}-id",
         disk_id=test_disk_id,
     )
+
+    assert not Path(socket.name).exists()
 
     another_socket = tempfile.NamedTemporaryFile()
     client.start_endpoint(
@@ -464,3 +472,5 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
         client_id=f"{another_socket.name}-id-1",
         disk_id=test_disk_id,
     )
+
+    assert not Path(another_socket.name).exists()
