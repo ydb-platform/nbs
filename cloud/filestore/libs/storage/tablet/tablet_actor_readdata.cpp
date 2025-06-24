@@ -708,7 +708,7 @@ bool TIndexTabletActor::ValidateTx_ReadData(
         if (args.ExplicitNodeId == InvalidNodeId) {
             // handleless read
             args.Error = ErrorInvalidArgument();
-            return true;
+            return false;
         }
         args.NodeId = args.ExplicitNodeId;
         args.CommitId = GetCurrentCommitId();
@@ -770,7 +770,13 @@ bool TIndexTabletActor::PrepareTx_ReadData(
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
         ready = false;
     } else {
-        TABLET_VERIFY(args.Node);
+        // it is possible to explicitly pass a nodeId that is non-existentin
+        // the parentless mode. This should not lead to a TABLET_VERIFY
+        TABLET_VERIFY(args.Node || Config->GetAllowHandlelessIO());
+        if (!args.Node) {
+            args.Error = ErrorInvalidArgument();
+            return true;
+        }
         // TODO: access check
     }
 

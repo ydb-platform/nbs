@@ -3532,6 +3532,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 data.size());
             UNIT_ASSERT_VALUES_EQUAL(data, response->Record.GetBuffer());
         }
+        {
+            // Invalid node id should be rejected
+            auto invalidNodeId = nodeId + 1000;
+            auto data = GenerateValidateData(1_MB);
+            for (auto id: {invalidNodeId, InvalidNodeId}) {
+                const auto writeResponse = service.AssertWriteDataFailed(
+                    headers,
+                    fs,
+                    id,
+                    InvalidHandle,
+                    0,
+                    data);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_FS_INVAL,
+                    writeResponse->GetError().GetCode(),
+                    writeResponse->GetErrorReason());
+
+                const auto readResponse = service.AssertReadDataFailed(
+                    headers,
+                    fs,
+                    id,
+                    InvalidHandle,
+                    0,
+                    data.size());
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_FS_INVAL,
+                    readResponse->GetError().GetCode(),
+                    readResponse->GetErrorReason());
+            }
+        }
     }
 }
 

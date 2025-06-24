@@ -20,6 +20,8 @@ namespace NCloud::NFileStore::NStorage {
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 TString GenerateValidateData(ui32 size, ui32 seed = 0)
 {
     TString data(size, 0);
@@ -7325,6 +7327,43 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             data,
             tablet.ReadData(InvalidHandle, 123, 128_KB + 1, id)
                 ->Record.GetBuffer());
+
+        // Invalid node id should be rejected
+        auto invalidNodeId = id + 1000;
+        {
+            auto response = tablet.AssertWriteDataFailed(
+                InvalidHandle,
+                0,
+                128_KB,
+                data.c_str());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_INVAL,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+            response = tablet.AssertWriteDataFailed(
+                InvalidHandle,
+                123,
+                128_KB + 1,
+                data.c_str(),
+                invalidNodeId);
+        }
+        {
+            auto response =
+                tablet.AssertReadDataFailed(InvalidHandle, 0, 128_KB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_INVAL,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+            response = tablet.AssertReadDataFailed(
+                InvalidHandle,
+                123,
+                128_KB + 1,
+                invalidNodeId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_INVAL,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
     }
 }
 

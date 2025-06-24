@@ -64,7 +64,7 @@ bool TIndexTabletActor::PrepareTx_AddData(
 
     if (Config->GetAllowHandlelessIO()) {
         if (args.ExplicitNodeId == InvalidNodeId) {
-            // handleless read
+            // handleless write
             args.Error = ErrorInvalidArgument();
             return true;
         }
@@ -107,7 +107,11 @@ bool TIndexTabletActor::PrepareTx_AddData(
 
     // TODO: access check
     // TODO: replace VERIFY with a check + critical event
-    TABLET_VERIFY(args.Node);
+    TABLET_VERIFY(args.Node || Config->GetAllowHandlelessIO());
+    if (!args.Node) {
+        args.Error = ErrorInvalidArgument();
+        return true;
+    }
     if (!HasSpaceLeft(args.Node->Attrs, args.ByteRange.End())) {
         args.Error = ErrorNoSpaceLeft();
         return true;
