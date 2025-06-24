@@ -609,7 +609,7 @@ message TStorageConfig
 
     // If this flag is enabled all the files will be created without parents.
     // Meaning that the NodeRefs table will be empty for these files.
-    // Non of these files will be observable using the ListNodes request
+    // None of these files will be observable using the ListNodes request
     // and the only way to access them is to use the node's NodeId
     //
     // This alters the default behavior:

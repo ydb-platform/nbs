@@ -143,7 +143,7 @@ NProto::TError TIndexTabletState::UnlinkNode(
     const IIndexTabletDatabase::TNode& node,
     ui64 minCommitId,
     ui64 maxCommitId,
-    bool disregardNodeRef)
+    bool removeNodeRef)
 {
     if (node.Attrs.GetLinks() > 1 || HasOpenHandles(node.NodeId)) {
         auto attrs = CopyAttrs(node.Attrs, E_CM_CMTIME | E_CM_UNREF);
@@ -165,7 +165,7 @@ NProto::TError TIndexTabletState::UnlinkNode(
             return e;
         }
     }
-    if (disregardNodeRef) {
+    if (!removeNodeRef) {
         // do not remove node ref
         return {};
     }
