@@ -67,3 +67,23 @@ func TestDiskServiceCellsCreateDiskFromSnapshot(t *testing.T) {
 		})
 	}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestDiskServiceCellsResizeDisk(t *testing.T) {
+	for _, testCase := range cellsTestCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testDiskServiceResizeDiskWithZoneID(t, testCase.zoneID)
+		})
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestDiskServiceCellsAlterDisk(t *testing.T) {
+	for _, testCase := range cellsTestCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testDiskServiceAlterDiskWithZoneID(t, testCase.zoneID)
+		})
+	}
+}
