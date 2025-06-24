@@ -1539,6 +1539,35 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.StatPartition();
     }
 
+    Y_UNIT_TEST(ShouldDieIfBootingTakesTooMuchTime)
+    {
+
+        NProto::TStorageServiceConfig config;
+        config.SetBootPartitionsTimeout(TDuration::Seconds(10).MilliSeconds());
+        auto runtime = PrepareTestActorRuntime(std::move(config));
+
+        runtime->SetEventFilter(
+            [](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvTablet::EvRestored) {
+                    return true;
+                }
+                return false;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.SendWaitReadyRequest();
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+
+        // Wait for partition to die
+        auto options = TDispatchOptions();
+        options.FinalEvents.emplace_back(TEvents::TEvPoisonPill::EventType);
+        runtime->DispatchEvents(options);
+    }
+
     Y_UNIT_TEST(ShouldRecoverStateOnReboot)
     {
         auto runtime = PrepareTestActorRuntime();

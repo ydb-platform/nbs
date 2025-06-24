@@ -91,6 +91,8 @@ class TPartitionActor final
         {}
     };
 
+    static constexpr ui64 BootWakeupEventTag = 1;
+
 private:
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
@@ -571,6 +573,10 @@ private:
     void FinalizeGetChangedBlocks(
         const NActors::TActorContext& ctx,
         TEvPartitionPrivate::TOperationCompleted operation);
+
+    void HandleWakeUpOnBoot(
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);

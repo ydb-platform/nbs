@@ -101,6 +101,8 @@ class TPartitionActor final
         {}
     };
 
+    static constexpr ui64 BootWakeupEventTag = 1;
+
 private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
@@ -679,6 +681,10 @@ private:
     void LoadNextCompactionMapChunk(const NActors::TActorContext& ctx);
     void HandleLoadCompactionMapChunk(
         const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleWakeUpOnBoot(
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     THashSet<ui32> GetRangeIndices(
