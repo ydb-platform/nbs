@@ -125,6 +125,7 @@ def init(
 
 
 def cleanup_after_test(env: LocalLoadTest):
+    subprocess.call(["rmmod", "nbd"], timeout=20)
     if env is None:
         return
     env.tear_down()
