@@ -1116,9 +1116,7 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStopEndpointRequest> request)
 {
-    Y_ABORT_UNLESS(
-        request->HasDiskId() && request->HasHeaders() &&
-        request->GetHeaders().GetClientId());
+    Y_ABORT_UNLESS(request->GetDiskId() && request->GetHeaders().GetClientId());
     const auto& socketPath = request->GetUnixSocketPath();
 
     auto removeClientRequest =
@@ -1135,8 +1133,8 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
         return TErrorResponse(removeClientResponse.GetError());
     }
 
-    if (NFs::Exists(request->GetUnixSocketPath())) {
-        bool deleted = NFs::Remove(request->GetUnixSocketPath());
+    if (NFs::Exists(socketPath)) {
+        bool deleted = NFs::Remove(socketPath);
         if (!deleted) {
             return TErrorResponse(
                 E_REJECTED,
@@ -1157,9 +1155,7 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it == Endpoints.end()) {
-        if (request->HasDiskId() && request->HasHeaders() &&
-            request->GetHeaders().GetClientId())
-        {
+        if (request->GetDiskId() && request->GetHeaders().GetClientId()) {
             return StopEndpointFallback(ctx, request);
         }
 
