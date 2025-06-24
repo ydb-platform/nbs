@@ -106,14 +106,14 @@ func matchesState(
 	t *testing.T,
 	expected storage.TaskState,
 ) func(storage.TaskState) bool {
+	threshold := 5 * time.Millisecond
 
 	modifiedAtLowBound := time.Now()
 	return func(actual storage.TaskState) bool {
 		ok := true
 
 		if expected.ModifiedAt.After(time.Time{}) {
-			modifiedAtThreshold := 5 * time.Millisecond
-			assert.WithinDuration(t, actual.ModifiedAt, expected.ModifiedAt, modifiedAtThreshold)
+			assert.WithinDuration(t, actual.ModifiedAt, expected.ModifiedAt, threshold)
 		} else {
 			modifiedAtHighBound := time.Now()
 			duration := modifiedAtHighBound.Sub(modifiedAtLowBound) / 2
@@ -126,13 +126,12 @@ func matchesState(
 		actual.ErrorMessage = ""
 
 		if actual.ID == mockPingerTaskId {
-			// ping takes nearly 200µs (0.2ms) to complete
-			statusTimeThreshold := time.Millisecond
+			// ping takes <1ms to complete
 			diff := actual.RunningInflightFor - expected.RunningInflightFor
 			if diff < 0 {
 				diff = -diff
 			}
-			ok = assert.Less(t, diff, statusTimeThreshold) && ok
+			ok = assert.Less(t, diff, threshold) && ok
 		}
 
 		actual.RunningInflightFor = expected.RunningInflightFor
@@ -1306,6 +1305,47 @@ func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
 	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Run(func(args mock.Arguments) {
 		cancel()
 	}).Return(state, context.Canceled).Once()
+
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
+	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
+}
+
+func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
+	pingPeriod := 100 * time.Millisecond
+	pingTimeout := 100 * time.Second
+	pingsCount := 5
+	ctx, cancel := context.WithCancel(newContext())
+	taskStorage := mocks.NewStorageMock()
+	task := NewTaskMock()
+	callback := &mockCallback{}
+
+	execCtx := newExecutionContext(
+		task,
+		taskStorage,
+		storage.TaskState{
+			ID:                 mockPingerTaskId,
+			ModifiedAt:         time.Now(),
+			RunningInflightFor: 42 * time.Second,
+		},
+		time.Hour,
+		2,
+	)
+
+	for i := 0; i < pingsCount; i++ {
+		state := storage.TaskState{
+			ID:                 mockPingerTaskId,
+			ModifiedAt:         time.Now().Add(time.Duration(i) * pingPeriod),
+			RunningInflightFor: 42*time.Second + time.Duration(i)*pingPeriod,
+		}
+		taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state)).Return(state, nil).Once()
+	}
+
+	go func() {
+		// Cancel runner loop on second iteration.
+		// TODO: This is bad.
+		<-time.After(time.Duration(pingsCount-1)*pingPeriod + pingPeriod/2)
+		cancel()
+	}()
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
