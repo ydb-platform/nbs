@@ -20,6 +20,9 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const mockTaskId = "taskId"
+const mockPingerTaskId = "pingerTaskId"
+
 type mockCallback struct {
 	mock.Mock
 }
@@ -108,20 +111,42 @@ func matchesState(
 	return func(actual storage.TaskState) bool {
 		ok := true
 
-		modifiedAtHighBound := time.Now()
-		duration := modifiedAtHighBound.Sub(modifiedAtLowBound) / 2
-		pivot := modifiedAtLowBound.Add(duration)
-		ok = assert.WithinDuration(t, pivot, time.Time(actual.ModifiedAt), duration) && ok
-
-		var zeroTime time.Time
-		actual.ModifiedAt = zeroTime
+		if expected.ModifiedAt.After(time.Time{}) {
+			modifiedAtThreshold := 5 * time.Millisecond
+			assert.WithinDuration(t, actual.ModifiedAt, expected.ModifiedAt, modifiedAtThreshold)
+		} else {
+			modifiedAtHighBound := time.Now()
+			duration := modifiedAtHighBound.Sub(modifiedAtLowBound) / 2
+			pivot := modifiedAtLowBound.Add(duration)
+			ok = assert.WithinDuration(t, pivot, time.Time(actual.ModifiedAt), duration) && ok
+		}
 
 		ok = assert.Contains(t, actual.ErrorMessage, expected.ErrorMessage) && ok
 		expected.ErrorMessage = ""
 		actual.ErrorMessage = ""
 
+		if actual.ID == mockPingerTaskId {
+			// ping takes nearly 200µs (0.2ms) to complete
+			statusTimeThreshold := time.Millisecond
+			ok = assert.Less(t, actual.RunningInflightFor-expected.RunningInflightFor, statusTimeThreshold) && ok
+		}
+
+		actual.RunningInflightFor = expected.RunningInflightFor
+		actual.ModifiedAt = expected.ModifiedAt
 		ok = assert.Equal(t, expected, actual) && ok
+
 		return ok
+	}
+}
+
+func matchesStateArguments(
+	t *testing.T,
+	expected storage.TaskState,
+) func(mock.Arguments) {
+	callback := matchesState(t, expected)
+	return func(a mock.Arguments) {
+		state := a[1].(storage.TaskState)
+		assert.True(t, callback(state))
 	}
 }
 
@@ -136,7 +161,7 @@ func TestExecutionContextSaveState(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:      "taskId",
+			ID:      mockTaskId,
 			Request: []byte{1, 2, 3},
 		},
 		time.Hour,
@@ -144,7 +169,7 @@ func TestExecutionContextSaveState(t *testing.T) {
 	)
 
 	state := storage.TaskState{
-		ID:      "taskId",
+		ID:      mockTaskId,
 		Request: []byte{1, 2, 3},
 		State:   []byte{2, 3, 4},
 	}
@@ -165,7 +190,7 @@ func TestExecutionContextSaveStateFailOnError(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:      "taskId",
+			ID:      mockTaskId,
 			Request: []byte{1, 2, 3},
 		},
 		time.Hour,
@@ -173,7 +198,7 @@ func TestExecutionContextSaveStateFailOnError(t *testing.T) {
 	)
 
 	state := storage.TaskState{
-		ID:      "taskId",
+		ID:      mockTaskId,
 		Request: []byte{1, 2, 3},
 		State:   []byte{2, 3, 4},
 	}
@@ -193,7 +218,7 @@ func TestExecutionContextGetTaskType(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:       "taskId",
+			ID:       mockTaskId,
 			TaskType: "taskType",
 		},
 		time.Hour,
@@ -211,13 +236,13 @@ func TestExecutionContextGetTaskID(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID: "taskId",
+			ID: mockTaskId,
 		},
 		time.Hour,
 		2,
 	)
 
-	require.Equal(t, "taskId", execCtx.GetTaskID())
+	require.Equal(t, mockTaskId, execCtx.GetTaskID())
 }
 
 func TestExecutionContextAddTaskDependency(t *testing.T) {
@@ -257,7 +282,7 @@ func TestExecutionContextHasEvent(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Events: []int64{1},
 		},
 		time.Hour,
@@ -277,7 +302,7 @@ func TestExecutionContextHasEventWithEmptyEvents(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID: "taskId",
+			ID: mockTaskId,
 		},
 		time.Hour,
 		2,
@@ -321,7 +346,7 @@ func TestExecutionContextShouldNotBeHangingByDefault(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:        "taskId",
+			ID:        mockTaskId,
 			CreatedAt: time.Now(),
 		},
 		time.Hour, // hangingTaskTimeout
@@ -342,7 +367,7 @@ func TestRunnerForRun(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:      "taskId",
+			ID:      mockTaskId,
 			Status:  storage.TaskStatusReadyToRun,
 			Request: []byte{1, 2, 3},
 		},
@@ -351,7 +376,7 @@ func TestRunnerForRun(t *testing.T) {
 	)
 
 	state := storage.TaskState{
-		ID:      "taskId",
+		ID:      mockTaskId,
 		Status:  storage.TaskStatusFinished,
 		Request: []byte{1, 2, 3},
 		State:   []byte{2, 3, 4},
@@ -376,7 +401,7 @@ func TestRunnerForRunCtxCancelled(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusReadyToRun,
 		},
 		time.Hour,
@@ -403,7 +428,7 @@ func TestRunnerForRunGotAbortedError(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:      "taskId",
+			ID:      mockTaskId,
 			Status:  storage.TaskStatusRunning,
 			Request: []byte{1, 2, 3},
 			State:   []byte{2, 3, 4},
@@ -417,7 +442,7 @@ func TestRunnerForRunGotAbortedError(t *testing.T) {
 	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {}).Return(err)
 
 	state := storage.TaskState{
-		ID:      "taskId",
+		ID:      mockTaskId,
 		Status:  storage.TaskStatusRunning,
 		Request: []byte{1, 2, 3},
 	}
@@ -442,7 +467,7 @@ func TestRunnerForRunGotPanic(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusRunning,
 		},
 		time.Hour,
@@ -454,7 +479,7 @@ func TestRunnerForRunGotPanic(t *testing.T) {
 	}).Return(nil)
 
 	state := storage.TaskState{
-		ID:         "taskId",
+		ID:         mockTaskId,
 		Status:     storage.TaskStatusRunning,
 		PanicCount: 1,
 	}
@@ -478,7 +503,7 @@ func TestRunnerForRunPanicCountExceeded(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:         "taskId",
+			ID:         mockTaskId,
 			Status:     storage.TaskStatusRunning,
 			PanicCount: 1,
 		},
@@ -491,7 +516,7 @@ func TestRunnerForRunPanicCountExceeded(t *testing.T) {
 	}).Return(nil)
 
 	state := storage.TaskState{
-		ID:           "taskId",
+		ID:           mockTaskId,
 		Status:       storage.TaskStatusReadyToCancel,
 		ErrorCode:    grpc_codes.Unknown,
 		ErrorMessage: "panic: test panic",
@@ -518,7 +543,7 @@ func TestRunnerForRunGotRetriableError(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:                  "taskId",
+			ID:                  mockTaskId,
 			Status:              storage.TaskStatusRunning,
 			RetriableErrorCount: 0,
 		},
@@ -531,7 +556,7 @@ func TestRunnerForRunGotRetriableError(t *testing.T) {
 	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {}).Return(err)
 
 	state := storage.TaskState{
-		ID:                  "taskId",
+		ID:                  mockTaskId,
 		Status:              storage.TaskStatusRunning,
 		RetriableErrorCount: 1,
 	}
@@ -558,7 +583,7 @@ func TestRunnerForRunRetriableErrorCountExceeded(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:                  "taskId",
+			ID:                  mockTaskId,
 			Status:              storage.TaskStatusRunning,
 			RetriableErrorCount: 1,
 		},
@@ -571,7 +596,7 @@ func TestRunnerForRunRetriableErrorCountExceeded(t *testing.T) {
 	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {}).Return(err)
 
 	state := storage.TaskState{
-		ID:                  "taskId",
+		ID:                  mockTaskId,
 		Status:              storage.TaskStatusReadyToCancel,
 		ErrorCode:           grpc_codes.Unknown,
 		ErrorMessage:        err.Error(),
@@ -601,7 +626,7 @@ func TestRunnerForRunIgnoreRetryLimit(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:                  "taskId",
+			ID:                  mockTaskId,
 			Status:              storage.TaskStatusRunning,
 			RetriableErrorCount: 1,
 		},
@@ -614,7 +639,7 @@ func TestRunnerForRunIgnoreRetryLimit(t *testing.T) {
 	}).Return(err)
 
 	state := storage.TaskState{
-		ID:                  "taskId",
+		ID:                  mockTaskId,
 		Status:              storage.TaskStatusRunning,
 		RetriableErrorCount: 2,
 	}
@@ -641,7 +666,7 @@ func TestRunnerForRunGotNonRetriableError1(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusReadyToRun,
 		},
 		time.Hour,
@@ -653,7 +678,7 @@ func TestRunnerForRunGotNonRetriableError1(t *testing.T) {
 	task.On("Run", mock.Anything, execCtx).Return(failure)
 
 	state := storage.TaskState{
-		ID:           "taskId",
+		ID:           mockTaskId,
 		Status:       storage.TaskStatusReadyToCancel,
 		ErrorCode:    grpc_codes.Unknown,
 		ErrorMessage: failure.Error(),
@@ -678,7 +703,7 @@ func TestRunnerForRunGotNonRetriableError2(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusReadyToRun,
 		},
 		time.Hour,
@@ -690,7 +715,7 @@ func TestRunnerForRunGotNonRetriableError2(t *testing.T) {
 	task.On("Run", mock.Anything, execCtx).Return(failure)
 
 	state := storage.TaskState{
-		ID:           "taskId",
+		ID:           mockTaskId,
 		Status:       storage.TaskStatusReadyToCancel,
 		ErrorCode:    grpc_codes.Unknown,
 		ErrorMessage: failure.Error(),
@@ -715,7 +740,7 @@ func TestRunnerForRunGotNonCancellableError(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusReadyToRun,
 		},
 		time.Hour,
@@ -726,7 +751,7 @@ func TestRunnerForRunGotNonCancellableError(t *testing.T) {
 	task.On("Run", mock.Anything, execCtx).Return(failure)
 
 	state := storage.TaskState{
-		ID:           "taskId",
+		ID:           mockTaskId,
 		Status:       storage.TaskStatusCancelled,
 		ErrorCode:    grpc_codes.Unknown,
 		ErrorMessage: failure.Error(),
@@ -751,7 +776,7 @@ func TestRunnerForRunWrongGeneration(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusReadyToRun,
 		},
 		time.Hour,
@@ -779,7 +804,7 @@ func TestRunnerForRunWrongGenerationWrappedIntoRetriableError(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:                  "taskId",
+			ID:                  mockTaskId,
 			Status:              storage.TaskStatusReadyToRun,
 			RetriableErrorCount: 0,
 		},
@@ -811,7 +836,7 @@ func TestRunnerForRunInterruptExecution(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusReadyToRun,
 		},
 		time.Hour,
@@ -839,7 +864,7 @@ func TestRunnerForRunInterruptExecutionWrappedIntoRetriableError(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:                  "taskId",
+			ID:                  mockTaskId,
 			Status:              storage.TaskStatusReadyToRun,
 			RetriableErrorCount: 0,
 		},
@@ -871,7 +896,7 @@ func TestRunnerForRunFailWithError(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusReadyToRun,
 		},
 		time.Hour,
@@ -880,7 +905,7 @@ func TestRunnerForRunFailWithError(t *testing.T) {
 
 	task.On("Run", mock.Anything, execCtx).Return(assert.AnError)
 	state := storage.TaskState{
-		ID:           "taskId",
+		ID:           mockTaskId,
 		Status:       storage.TaskStatusReadyToCancel,
 		ErrorCode:    grpc_codes.Unknown,
 		ErrorMessage: assert.AnError.Error(),
@@ -905,7 +930,7 @@ func TestRunnerForCancel(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:      "taskId",
+			ID:      mockTaskId,
 			Status:  storage.TaskStatusReadyToCancel,
 			Request: []byte{1, 2, 3},
 		},
@@ -914,7 +939,7 @@ func TestRunnerForCancel(t *testing.T) {
 	)
 
 	state := storage.TaskState{
-		ID:      "taskId",
+		ID:      mockTaskId,
 		Status:  storage.TaskStatusCancelled,
 		Request: []byte{1, 2, 3},
 		State:   []byte{2, 3, 4},
@@ -939,7 +964,7 @@ func TestRunnerForCancelCtxCancelled(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusReadyToCancel,
 		},
 		time.Hour,
@@ -966,7 +991,7 @@ func TestRunnerForCancelWrongGeneration(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusReadyToCancel,
 		},
 		time.Hour,
@@ -994,7 +1019,7 @@ func TestRunnerForCancelFailWithError(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:     "taskId",
+			ID:     mockTaskId,
 			Status: storage.TaskStatusReadyToCancel,
 		},
 		time.Hour,
@@ -1020,7 +1045,7 @@ func TestRunnerForCancelGotNonRetriableError(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:      "taskId",
+			ID:      mockTaskId,
 			Status:  storage.TaskStatusReadyToCancel,
 			Request: []byte{1, 2, 3},
 		},
@@ -1031,7 +1056,7 @@ func TestRunnerForCancelGotNonRetriableError(t *testing.T) {
 	err := errors.NewNonRetriableError(assert.AnError)
 
 	state := storage.TaskState{
-		ID:      "taskId",
+		ID:      mockTaskId,
 		Status:  storage.TaskStatusCancelled,
 		Request: []byte{1, 2, 3},
 		State:   []byte{2, 3, 4},
@@ -1057,7 +1082,7 @@ func TestRunnerForCancelGotNonCancellableError(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:      "taskId",
+			ID:      mockTaskId,
 			Status:  storage.TaskStatusReadyToCancel,
 			Request: []byte{1, 2, 3},
 		},
@@ -1068,7 +1093,7 @@ func TestRunnerForCancelGotNonCancellableError(t *testing.T) {
 	err := errors.NewNonCancellableError(assert.AnError)
 
 	state := storage.TaskState{
-		ID:      "taskId",
+		ID:      mockTaskId,
 		Status:  storage.TaskStatusCancelled,
 		Request: []byte{1, 2, 3},
 		State:   []byte{2, 3, 4},
@@ -1097,14 +1122,17 @@ func TestTaskPingerOnce(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID: "taskId",
+			ID:         mockPingerTaskId,
+			ModifiedAt: time.Now(),
 		},
 		time.Hour,
 		2,
 	)
 
 	state := storage.TaskState{
-		ID: "taskId",
+		ID:                 mockPingerTaskId,
+		ModifiedAt:         time.Now(),
+		RunningInflightFor: 0,
 	}
 	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
 
@@ -1131,14 +1159,17 @@ func TestTaskPingerImmediateFailure(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID: "taskId",
+			ID:         mockPingerTaskId,
+			ModifiedAt: time.Now(),
 		},
 		time.Hour,
 		2,
 	)
 
 	state := storage.TaskState{
-		ID: "taskId",
+		ID:                 mockPingerTaskId,
+		ModifiedAt:         time.Now(),
+		RunningInflightFor: 0,
 	}
 	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, assert.AnError)
 	callback.On("Run")
@@ -1166,16 +1197,26 @@ func TestTaskPingerTwice(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID: "taskId",
+			ID:         mockPingerTaskId,
+			ModifiedAt: time.Now(),
 		},
 		time.Hour,
 		2,
 	)
 
-	state := storage.TaskState{
-		ID: "taskId",
+	state1 := storage.TaskState{
+		ID:                 mockPingerTaskId,
+		ModifiedAt:         time.Now(),
+		RunningInflightFor: 0,
 	}
-	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, nil).Twice()
+	taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state1)).Return(state1, nil).Once()
+
+	state2 := storage.TaskState{
+		ID:                 mockPingerTaskId,
+		ModifiedAt:         time.Now().Add(pingPeriod),
+		RunningInflightFor: pingPeriod,
+	}
+	taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state2)).Return(state2, nil).Once()
 
 	go func() {
 		// Cancel runner loop on second iteration.
@@ -1200,17 +1241,27 @@ func TestTaskPingerFailureOnSecondIteration(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID: "taskId",
+			ID:         mockPingerTaskId,
+			ModifiedAt: time.Now(),
 		},
 		time.Hour,
 		2,
 	)
 
-	state := storage.TaskState{
-		ID: "taskId",
+	state1 := storage.TaskState{
+		ID:                 mockPingerTaskId,
+		ModifiedAt:         time.Now(),
+		RunningInflightFor: 0,
 	}
-	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, nil).Once()
-	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, assert.AnError).Once()
+	taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state1)).Return(state1, nil).Once()
+
+	state2 := storage.TaskState{
+		ID:                 mockPingerTaskId,
+		ModifiedAt:         time.Now().Add(pingPeriod),
+		RunningInflightFor: pingPeriod,
+	}
+	taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state2)).Return(state2, assert.AnError).Once()
+
 	callback.On("Run")
 
 	go func() {
@@ -1236,14 +1287,17 @@ func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID: "taskId",
+			ID:         mockPingerTaskId,
+			ModifiedAt: time.Now(),
 		},
 		time.Hour,
 		2,
 	)
 
 	state := storage.TaskState{
-		ID: "taskId",
+		ID:                 mockPingerTaskId,
+		ModifiedAt:         time.Now(),
+		RunningInflightFor: 0,
 	}
 	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Run(func(args mock.Arguments) {
 		cancel()
@@ -1267,12 +1321,12 @@ func TestTryExecutingTask(t *testing.T) {
 	require.NoError(t, err)
 
 	taskInfo := storage.TaskInfo{
-		ID:           "taskId",
+		ID:           mockTaskId,
 		GenerationID: 2,
 	}
 
 	state := storage.TaskState{
-		ID:           "taskId",
+		ID:           mockTaskId,
 		TaskType:     "task",
 		Request:      []byte{1, 2, 3},
 		State:        []byte{2, 3, 4},
@@ -1316,12 +1370,12 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 	require.NoError(t, err)
 
 	taskInfo := storage.TaskInfo{
-		ID:           "taskId",
+		ID:           mockTaskId,
 		GenerationID: 2,
 	}
 
 	state := storage.TaskState{
-		ID:           "taskId",
+		ID:           mockTaskId,
 		TaskType:     "task",
 		Request:      []byte{1, 2, 3},
 		State:        []byte{2, 3, 4},
@@ -1370,7 +1424,7 @@ func TestRunnerLoopReceiveTaskFailure(t *testing.T) {
 	runner := &mockRunner{}
 	handle := taskHandle{
 		task: storage.TaskInfo{
-			ID: "taskId",
+			ID: mockTaskId,
 		},
 		onClose: func() {},
 	}
@@ -1387,7 +1441,7 @@ func TestRunnerLoopSucceeds(t *testing.T) {
 	runner := &mockRunner{}
 	handle := taskHandle{
 		task: storage.TaskInfo{
-			ID: "taskId",
+			ID: mockTaskId,
 		},
 		onClose: func() {},
 	}
