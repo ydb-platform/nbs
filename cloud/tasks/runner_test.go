@@ -20,8 +20,10 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const mockTaskId = "taskId"
-const mockPingerTaskId = "pingerTaskId"
+const (
+	mockTaskId       = "taskId"
+	mockPingerTaskId = "pingerTaskId"
+)
 
 type mockCallback struct {
 	mock.Mock
@@ -113,7 +115,7 @@ func matchesState(
 		ok := true
 
 		if expected.ModifiedAt.After(time.Time{}) {
-			assert.WithinDuration(t, actual.ModifiedAt, expected.ModifiedAt, threshold)
+			ok = assert.WithinDuration(t, actual.ModifiedAt, expected.ModifiedAt, threshold) && ok
 		} else {
 			modifiedAtHighBound := time.Now()
 			duration := modifiedAtHighBound.Sub(modifiedAtLowBound) / 2
