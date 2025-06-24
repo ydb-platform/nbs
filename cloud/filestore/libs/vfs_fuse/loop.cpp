@@ -859,10 +859,11 @@ private:
 
             THandleOpsQueuePtr handleOpsQueue;
             if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
-                if (!Config->GetHandleOpsQueuePath().Empty()) {
+                if (Config->GetHandleOpsQueuePath()) {
                     auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
                         FileSystemConfig->GetFileSystemId() /
                         SessionId;
+
                     auto error = CreateAndLockFile(
                         path,
                         HandleOpsQueueFileName,
@@ -892,9 +893,8 @@ private:
 
             TWriteBackCache writeBackCache;
             if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                if (!Config->GetWriteBackCachePath().Empty()) {
-                    auto path =
-                        TFsPath(Config->GetWriteBackCachePath()) /
+                if (Config->GetWriteBackCachePath()) {
+                    auto path = TFsPath(Config->GetWriteBackCachePath()) /
                         FileSystemConfig->GetFileSystemId() /
                         SessionId;
 
@@ -918,13 +918,14 @@ private:
                         Config->GetWriteBackCacheAutomaticFlushPeriod());
                     WriteBackCacheInitialized = true;
                 } else {
-                    TString msg = "Error initializing WriteBackCache: "
+                    TString msg =
+                        "Error initializing WriteBackCache: "
                         "WriteBackCachePath is not set";
-                    STORAGE_WARN("[f:%s][c:%s] %s",
+                    STORAGE_WARN(
+                        "[f:%s][c:%s] %s",
                         Config->GetFileSystemId().Quote().c_str(),
                         Config->GetClientId().Quote().c_str(),
-                        msg.c_str()
-                    );
+                        msg.c_str());
                     ReportWriteBackCacheCreatingOrDeletingError(msg);
                 }
             }

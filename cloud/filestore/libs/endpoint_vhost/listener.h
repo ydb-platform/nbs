@@ -25,7 +25,7 @@ struct THandleOpsQueueConfig
 struct TWriteBackCacheConfig
 {
     TString PathPrefix;
-    ui64 Capacity;
+    ui64 Capacity = 0;
     TDuration AutomaticFlushPeriod;
 };
 
