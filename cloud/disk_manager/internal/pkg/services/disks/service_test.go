@@ -13,7 +13,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestDiskServicePrepareZoneIDForExistingDisk(
+func TestDiskServicegetZoneIDForExistingDisk(
 	t *testing.T,
 ) {
 	testCases := []struct {
@@ -78,7 +78,7 @@ func TestDiskServicePrepareZoneIDForExistingDisk(
 				resourceStorage: storage,
 			}
 
-			zoneID, err := diskService.prepareZoneIDForExistingDisk(
+			zoneID, err := diskService.getZoneIDForExistingDisk(
 				ctx,
 				&disk_manager.DiskId{
 					DiskId: "disk",

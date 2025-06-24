@@ -167,7 +167,7 @@ type service struct {
 	cellSelector    cells.CellSelector
 }
 
-func (s *service) prepareZoneIDForExistingDisk(
+func (s *service) getZoneIDForExistingDisk(
 	ctx context.Context,
 	diskID *disk_manager.DiskId,
 ) (string, error) {
@@ -511,7 +511,7 @@ func (s *service) ResizeDisk(
 		)
 	}
 
-	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return "", err
 	}
@@ -542,7 +542,7 @@ func (s *service) AlterDisk(
 		)
 	}
 
-	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return "", err
 	}
@@ -715,7 +715,7 @@ func (s *service) StatDisk(
 		)
 	}
 
-	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
 	}
@@ -753,7 +753,7 @@ func (s *service) MigrateDisk(
 		)
 	}
 
-	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return "", err
 	}
@@ -832,7 +832,7 @@ func (s *service) DescribeDisk(
 		)
 	}
 
-	zoneID, err := s.prepareZoneIDForExistingDisk(ctx, req.DiskId)
+	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
 	}
