@@ -1343,7 +1343,7 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 	}
 
 	go func() {
-		// Cancel runner loop on second iteration.
+		// Cancel runner loop after all iterations.
 		// TODO: This is bad.
 		<-time.After(time.Duration(pingsCount-1)*pingPeriod + pingPeriod/2)
 		cancel()
