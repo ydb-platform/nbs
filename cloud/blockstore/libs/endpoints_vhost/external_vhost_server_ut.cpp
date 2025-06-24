@@ -263,15 +263,16 @@ public:
     IEndpointListenerPtr CreateEndpointListener(bool isAlignedDataEnabled)
     {
         return CreateExternalVhostEndpointListener(
-            Logging,
-            ServerStats,
-            Executor,
-            LocalAgentId,
-            S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR,
-            TDuration::Seconds(30),
-            isAlignedDataEnabled,
-            CreateFallbackListener(),
-            CreateExternalEndpointFactory());
+            {.Logging = Logging,
+             .ServerStats = ServerStats,
+             .Executor = Executor,
+             .LocalAgentId = LocalAgentId,
+             .SocketAccessMode = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR,
+             .VhostServerTimeoutAfterParentExit = TDuration::Seconds(30),
+             .IsAlignedDataEnabled = isAlignedDataEnabled,
+             .LocalSSDBlockSizeLimitEnabled = true,
+             .FallbackListener = CreateFallbackListener(),
+             .Factory = CreateExternalEndpointFactory()});
     }
 
     NProto::TStartEndpointRequest CreateDefaultStartEndpointRequest()
