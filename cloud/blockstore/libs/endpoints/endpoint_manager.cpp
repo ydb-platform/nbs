@@ -1133,16 +1133,10 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
         return TErrorResponse(removeClientResponse.GetError());
     }
 
-    if (NFs::Exists(socketPath)) {
-        bool deleted = NFs::Remove(socketPath);
-        if (!deleted) {
-            return TErrorResponse(
-                E_REJECTED,
-                TStringBuilder()
-                    << "Can't delete socket " << socketPath.Quote() << ": "
-                    << LastSystemErrorText(LastSystemError()));
-        }
-    }
+    // The vhost server deletes socket files when an endpoint starts or stops.
+    // We don't have a vhost server here, so we need to delete the socket file
+    // manually. "Compute" assumes we should do this.
+    TFsPath(socketPath).DeleteIfExists();
 
     return {};
 }
