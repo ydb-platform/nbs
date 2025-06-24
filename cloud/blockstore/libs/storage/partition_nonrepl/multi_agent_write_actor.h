@@ -25,12 +25,12 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 // disk. It should process all errors from replicas into E_REJECTED. Because
 // sooner or later the disk agent will return to work, or the replica will be
 // replaced.
-// First, to all the replicas, send a TEvGetDeviceForRangeRequest. To
-// determinate, it is possible to write directly. If there are multiple replicas
-// available for multi-agent writing, the TEvMultiAgentWriteRequest will be sent
-// to one agent selected through a round-robin process.
-// An ordinal write will be sent to the replicas that are unable to perform
-// multi-agent writes.
+// Firstly, to determine if it is possible to write directly, it sends a
+// TEvGetDeviceForRangeRequest to all the replicas. If there are multiple
+// replicas available for multi-agent writing, the TEvMultiAgentWriteRequest
+// will be sent to one agent selected through a round-robin process. An ordinary
+// write will be sent to the replicas that are unable to perform multi-agent
+// writes.
 
 template <typename TMethod>
 class TMultiAgentWriteActor final
@@ -188,7 +188,7 @@ void TMultiAgentWriteActor<TMethod>::SendWriteRequest(
         { return replica.ReadyForMultiAgentWrite; });
 
     if (readyForMultiagentWrite < 2) {
-        // Only one partition can perform direct disk-agent write.
+        // At most one partition can perform direct disk-agent write.
         // Let's fallback to TMirrorRequestActor<> actor.
         Fallback(ctx);
         return;
