@@ -40,15 +40,17 @@ struct THostEndpointsManager
     EState RdmaState = EState::INACTIVE;
 
     TAdaptiveLock StateLock;
-    EState State;
+    EState State = EState::INACTIVE;
 
     NThreading::TPromise<void> StartPromise = NThreading::NewPromise<void>();
     NThreading::TPromise<void> StopPromise = NThreading::NewPromise<void>();
 
+    IHostEndpointsSetupProvider::TSetupRdmaEndpointFuture RdmaFuture;
+
     THostEndpointsManager(
             TShardHostConfig config,
             TShardingArguments args)
-        : IHostEndpointsManager(config)
+        : IHostEndpointsManager(std::move(config))
         , Args(std::move(args))
     {}
 
@@ -68,10 +70,10 @@ struct THostEndpointsManager
     bool IsReady(NProto::EShardDataTransport transport) const;
 
 private:
-    using TOptionalRdmaFuture =
-        std::optional<IHostEndpointsSetupProvider::TSetupRdmaEndpointFuture>;
+    bool SetupRdmaIfNeeded();
 
-    TOptionalRdmaFuture SetupRdmaIfNeeded();
+    void HandleRdmaSetupResult(
+        const IHostEndpointsSetupProvider::TRdmaResult& result);
 
     [[nodiscard]] THostEndpoint CreateGrpcEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig);

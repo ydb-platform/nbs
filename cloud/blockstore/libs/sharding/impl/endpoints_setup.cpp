@@ -34,21 +34,13 @@ auto THostEndpointsSetupProvider::SetupHostRdmaEndpoint(
         .Port = config.GetRdmaPort(),
     };
 
-    auto future = CreateRdmaEndpointClientAsync(
+    return CreateRdmaEndpointClientAsync(
         args.Logging,
         args.RdmaClient,
         std::move(client),
         args.TraceSerializer,
         args.Workers,
         rdmaEndpoint);
-
-    return future.Apply([=] (const auto& future) {
-        const auto& result = future.GetValue();
-        if (HasError(result.GetError())) {
-            return IBlockStorePtr{nullptr};
-        }
-        return result.GetResult();
-    });
 }
 
 IHostEndpointsSetupProviderPtr CreateHostEndpointsSetupProvider()
