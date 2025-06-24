@@ -726,7 +726,7 @@ func (c *finishExternalFilesystemCreation) run() error {
 	)
 }
 
-func newFinishExternalFilesystemCreation(
+func newFinishExternalFilesystemCreationCmd(
 	config *client_config.ClientConfig,
 ) *cobra.Command {
 
@@ -792,7 +792,7 @@ func (c *finishExternalFilesystemDeletion) run() error {
 	)
 }
 
-func newFinishExternalFilesystemDeletion(
+func newFinishExternalFilesystemDeletionCmd(
 	config *client_config.ClientConfig,
 ) *cobra.Command {
 
@@ -842,8 +842,8 @@ func newPrivateCmd(
 		newDeletePoolCmd(clientConfig),
 		newGetAliveNodesCmd(clientConfig),
 		newGetCheckpointSizeCmd(clientConfig, serverConfig),
-		newFinishExternalFilesystemCreation(clientConfig),
-		newFinishExternalFilesystemDeletion(clientConfig),
+		newFinishExternalFilesystemCreationCmd(clientConfig),
+		newFinishExternalFilesystemDeletionCmd(clientConfig),
 	)
 
 	return cmd
