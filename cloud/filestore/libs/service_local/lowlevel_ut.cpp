@@ -82,6 +82,7 @@ Y_UNIT_TEST_SUITE(TLowlevelTest)
             }
         }
 
+        auto savedEntryNames = entryNames;
         auto checkListDirResult =
             [&](NLowLevel::TListDirResult& res, size_t expectedEntriesCount)
         {
@@ -106,6 +107,12 @@ Y_UNIT_TEST_SUITE(TLowlevelTest)
 
         res = NLowLevel::ListDirAt(rootNode, res.DirOffset, 2, false);
         checkListDirResult(res, 0);
+
+        // with limit 0 all nodes should be read
+        entryNames = savedEntryNames;
+        res = NLowLevel::ListDirAt(rootNode, 0, 0, false);
+        checkListDirResult(res, 10);
+
     }
 };
 

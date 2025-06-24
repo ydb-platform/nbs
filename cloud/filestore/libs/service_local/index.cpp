@@ -90,11 +90,11 @@ TString TIndexNode::ReadLink() const
     return NLowLevel::ReadLink(NodeFd);
 }
 
-TVector<std::pair<TString, TFileStat>> TIndexNode::List(bool ignoreErrors)
+TVector<NLowLevel::TDirEntry> TIndexNode::List(bool ignoreErrors)
 {
     auto res = NLowLevel::ListDirAt(
         NodeFd,
-        0,   // start at begining of dir
+        0,   // start at beginning of dir
         0,   // don't limit number of entries
         ignoreErrors);
 

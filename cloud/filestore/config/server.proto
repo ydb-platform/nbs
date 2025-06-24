@@ -124,8 +124,8 @@ message TLocalServiceConfig
     // Trust guest kernel to check user permissions for fuse operations
     optional bool GuestOnlyPermissionsCheckEnabled = 21;
 
-    // Max entries each list nodes will return
-    optional uint32 MaxEntriesPerListNodes = 22;
+    // Max entries each ListNodes will return
+    optional uint32 MaxResponseEntries = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

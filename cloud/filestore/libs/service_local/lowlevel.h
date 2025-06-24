@@ -105,10 +105,12 @@ struct TOpenOrCreateResult
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TDirEntry = std::pair<TString, TFileStat>;
+
 struct TListDirResult
 {
-    TVector<std::pair<TString, TFileStat>> DirEntries;
-    uint64_t DirOffset;
+    TVector<TDirEntry> DirEntries;
+    uint64_t DirOffset = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -52,7 +52,7 @@ public:
 
     bool GetGuestOnlyPermissionsCheckEnabled() const;
 
-    ui32 GetMaxEntriesPerListNodes() const;
+    ui32 GetMaxResponseEntries() const;
 };
 
 }   // namespace NCloud::NFileStore

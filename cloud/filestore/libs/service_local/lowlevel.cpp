@@ -353,11 +353,17 @@ TListDirResult ListDirAt(
         }
     }
 
-    res.DirOffset = telldir(dir);
-
     Y_ENSURE_EX(errno == 0, TServiceError(GetSystemErrorCode())
         << "failed to list: "
         << LastSystemErrorText());
+
+    long loc = telldir(dir);
+
+    Y_ENSURE_EX(loc != -1, TServiceError(GetSystemErrorCode())
+        << "failed to telldir: "
+        << LastSystemErrorText());
+
+    res.DirOffset = loc;
 
     return res;
 }

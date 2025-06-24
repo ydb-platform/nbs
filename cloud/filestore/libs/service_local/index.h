@@ -67,7 +67,7 @@ public:
     TIndexNodePtr CreateSymlink(const TString& name, const TString& target);
     TIndexNodePtr CreateSocket(const TString& name, int flags);
 
-    TVector<std::pair<TString, TFileStat>> List(bool ignoreErrors = false);
+    TVector<NLowLevel::TDirEntry> List(bool ignoreErrors = false);
     NLowLevel::TListDirResult
     List(uint64_t offset, size_t entriesLimit, bool ignoreErrors = false);
 
