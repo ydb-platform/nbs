@@ -22,12 +22,22 @@ struct THandleOpsQueueConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteBackCacheConfig
+{
+    TString PathPrefix;
+    ui64 Capacity;
+    TDuration AutomaticFlushPeriod;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IEndpointListenerPtr CreateEndpointListener(
     ILoggingServicePtr logging,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     IFileStoreEndpointsPtr filestoreEndpoints,
     NVFS::IFileSystemLoopFactoryPtr loopFactory,
-    THandleOpsQueueConfig handleOpsQueueConfig);
+    THandleOpsQueueConfig handleOpsQueueConfig,
+    TWriteBackCacheConfig writeBackCacheConfig);
 
 }   // namespace NCloud::NFileStore::NVhost

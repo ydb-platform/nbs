@@ -859,52 +859,74 @@ private:
 
             THandleOpsQueuePtr handleOpsQueue;
             if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
-                auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
-                    FileSystemConfig->GetFileSystemId() /
-                    SessionId;
-                auto error = CreateAndLockFile(
-                    path,
-                    HandleOpsQueueFileName,
-                    HandleOpsQueueFileLock);
+                if (!Config->GetHandleOpsQueuePath().Empty()) {
+                    auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
+                        FileSystemConfig->GetFileSystemId() /
+                        SessionId;
+                    auto error = CreateAndLockFile(
+                        path,
+                        HandleOpsQueueFileName,
+                        HandleOpsQueueFileLock);
 
-                if (HasError(error)) {
-                    ReportHandleOpsQueueCreatingOrDeletingError(
-                        error.GetMessage());
-                    return error;
+                    if (HasError(error)) {
+                        ReportHandleOpsQueueCreatingOrDeletingError(
+                            error.GetMessage());
+                        return error;
+                    }
+
+                    handleOpsQueue = CreateHandleOpsQueue(
+                        path / HandleOpsQueueFileName,
+                        Config->GetHandleOpsQueueSize());
+                    HandleOpsQueueInitialized = true;
+                } else {
+                    TString msg = "Error initializing HandleOpsQueue: "
+                        "HandleOpsQueuePath is not set";
+                    STORAGE_WARN("[f:%s][c:%s] %s",
+                        Config->GetFileSystemId().Quote().c_str(),
+                        Config->GetClientId().Quote().c_str(),
+                        msg.c_str()
+                    );
+                    ReportHandleOpsQueueCreatingOrDeletingError(msg);
                 }
-
-                handleOpsQueue = CreateHandleOpsQueue(
-                    path / HandleOpsQueueFileName,
-                    Config->GetHandleOpsQueueSize());
-                HandleOpsQueueInitialized = true;
             }
 
             TWriteBackCache writeBackCache;
             if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                auto path =
-                    TFsPath(Config->GetWriteBackCachePath()) /
-                    FileSystemConfig->GetFileSystemId() /
-                    SessionId;
+                if (!Config->GetWriteBackCachePath().Empty()) {
+                    auto path =
+                        TFsPath(Config->GetWriteBackCachePath()) /
+                        FileSystemConfig->GetFileSystemId() /
+                        SessionId;
 
-                auto error = CreateAndLockFile(
-                    path,
-                    WriteBackCacheFileName,
-                    WriteBackCacheFileLock);
+                    auto error = CreateAndLockFile(
+                        path,
+                        WriteBackCacheFileName,
+                        WriteBackCacheFileLock);
 
-                if (HasError(error)) {
-                    ReportWriteBackCacheCreatingOrDeletingError(
-                        error.GetMessage());
-                    return error;
+                    if (HasError(error)) {
+                        ReportWriteBackCacheCreatingOrDeletingError(
+                            error.GetMessage());
+                        return error;
+                    }
+
+                    writeBackCache = TWriteBackCache(
+                        Session,
+                        Scheduler,
+                        Timer,
+                        path / WriteBackCacheFileName,
+                        Config->GetWriteBackCacheCapacity(),
+                        Config->GetWriteBackCacheAutomaticFlushPeriod());
+                    WriteBackCacheInitialized = true;
+                } else {
+                    TString msg = "Error initializing WriteBackCache: "
+                        "WriteBackCachePath is not set";
+                    STORAGE_WARN("[f:%s][c:%s] %s",
+                        Config->GetFileSystemId().Quote().c_str(),
+                        Config->GetClientId().Quote().c_str(),
+                        msg.c_str()
+                    );
+                    ReportWriteBackCacheCreatingOrDeletingError(msg);
                 }
-
-                writeBackCache = TWriteBackCache(
-                    Session,
-                    Scheduler,
-                    Timer,
-                    path / WriteBackCacheFileName,
-                    Config->GetWriteBackCacheCapacity(),
-                    Config->GetWriteBackCacheAutomaticFlushPeriod());
-                WriteBackCacheInitialized = true;
             }
 
             FileSystem = CreateFileSystem(
