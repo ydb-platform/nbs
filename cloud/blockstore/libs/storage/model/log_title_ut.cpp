@@ -146,7 +146,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             "[vc:12345 d:disk1 s:session-1 c:client-1 pg:?]",
             logTitle.Get(TLogTitle::EDetails::Brief));
 
-        logTitle.SetPipeGeneration(1);
+        logTitle.SetGeneration(1);
         UNIT_ASSERT_STRINGS_EQUAL(
             "[vc:12345 d:disk1 s:session-1 c:client-1 pg:1]",
             logTitle.Get(TLogTitle::EDetails::Brief));
@@ -164,6 +164,30 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             GetCycleCount());
         UNIT_ASSERT_STRINGS_EQUAL(
             "[~vc:12345 d:disk1 s:session-1 c:client-1 pg:?]",
+            temporayLogTitle.Get(TLogTitle::EDetails::Brief));
+    }
+
+    Y_UNIT_TEST(GetForVolumeProxy)
+    {
+        TLogTitle logTitle("disk1", false, GetCycleCount());
+
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[vp:? d:disk1 pg:0]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        logTitle.SetTabletId(12345);
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[vp:12345 d:disk1 pg:0]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        logTitle.SetGeneration(5);
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[vp:12345 d:disk1 pg:5]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        TLogTitle temporayLogTitle("disk1", true, GetCycleCount());
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[~vp:? d:disk1 pg:0]",
             temporayLogTitle.Get(TLogTitle::EDetails::Brief));
     }
 
