@@ -189,14 +189,13 @@ void TMultiAgentWriteActor<TMethod>::SendWriteRequest(
 
     if (readyForMultiagentWrite < 2) {
         // At most one partition can perform direct disk-agent write.
-        // Let's fallback to TMirrorRequestActor<> actor.
-        Fallback(ctx);
-        return;
+        // Let's fallback to ordinary request for all replicas.
+        for (auto& replica: ReplicasDiscovery) {
+            replica.ReadyForMultiAgentWrite = false;
+        }
     }
 
-    if (readyForMultiagentWrite != ReplicasDiscovery.size()) {
-        SendOrdinaryWriteRequests(ctx);
-    }
+    SendOrdinaryWriteRequests(ctx);
     SendMultiagentWriteRequest(ctx);
 }
 
@@ -204,10 +203,9 @@ template <typename TMethod>
 void TMultiAgentWriteActor<TMethod>::SendMultiagentWriteRequest(
     const NActors::TActorContext& ctx)
 {
-    EraseIf(
-        ReplicasDiscovery,
-        [](const TReplicaDiscovery& replica)
-        { return !replica.ReadyForMultiAgentWrite; });
+    if (ReplicasDiscovery.empty()) {
+        return;
+    }
 
     // Select disk-agent that will do the job.
     const size_t executeOnReplica = RoundRobinSeed % ReplicasDiscovery.size();
@@ -291,6 +289,11 @@ void TMultiAgentWriteActor<TMethod>::SendOrdinaryWriteRequests(
         ctx.Send(std::move(event));
         ++RemainResponseCount;
     }
+
+    EraseIf(
+        ReplicasDiscovery,
+        [](const TReplicaDiscovery& replica)
+        { return !replica.ReadyForMultiAgentWrite; });
 }
 
 template <typename TMethod>
