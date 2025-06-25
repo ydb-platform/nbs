@@ -389,9 +389,8 @@ void TVolumeActor::HandleGracefulShutdown(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] GracefulShutdown request was sent to "
-            "non-DR based disk",
-            TabletID());
+            "%s GracefulShutdown request was sent to non-DR based disk",
+            LogTitle.GetWithTime().c_str());
 
         NCloud::Reply(
             ctx,
@@ -404,8 +403,8 @@ void TVolumeActor::HandleGracefulShutdown(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Stop Partition before volume destruction",
-        TabletID());
+        "%s Stop Partition before volume destruction",
+        LogTitle.GetWithTime().c_str());
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
@@ -488,8 +487,8 @@ void TVolumeActor::StopDiskRegistryBasedPartition(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Send poison pill to partition %s",
-            TabletID(),
+            "%s Send poison pill to partition %s",
+            LogTitle.GetWithTime().c_str(),
             actorId.ToString().c_str());
 
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId, requestId);
@@ -518,7 +517,6 @@ void TVolumeActor::OnDiskRegistryBasedPartitionStopped(
         }
     }
 
-    size_t removed = 0;
     while (WaitForPartitionDestroy) {
         auto& callback = WaitForPartitionDestroy.front();
         if (!callback.Destroyed) {
@@ -528,7 +526,6 @@ void TVolumeActor::OnDiskRegistryBasedPartitionStopped(
             std::invoke(std::move(callback.PoisonCallback), ctx, error);
         }
         WaitForPartitionDestroy.pop_front();
-        ++removed;
     }
 
     TVector<TString> stillWait;
@@ -543,10 +540,8 @@ void TVolumeActor::OnDiskRegistryBasedPartitionStopped(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Partitions removed from the wait list: count=%lu. Still wait "
-        "[%s]",
-        TabletID(),
-        removed,
+        "%s Partition stoped. Still wait [%s]",
+        LogTitle.GetWithTime().c_str(),
         JoinSeq(", ", stillWait).c_str());
 }
 
@@ -556,9 +551,11 @@ void TVolumeActor::HandleRdmaUnavailable(
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Rdma unavailable, restarting without rdma",
-        TabletID());
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Rdma unavailable, restarting without rdma",
+        LogTitle.GetWithTime().c_str());
 
     StopPartitions(ctx, {});
     State->SetRdmaUnavailable();
@@ -592,9 +589,11 @@ void TVolumeActor::HandleBootExternalResponse(
     auto* part = State->GetPartition(partTabletId);
 
     if (!part || !part->RequestingBootExternal || part->Bootstrapper) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Received unexpected external boot info for part %lu",
-            TabletID(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Received unexpected external boot info for part %lu",
+            LogTitle.GetWithTime().c_str(),
             partTabletId);
         return;
     }
@@ -603,9 +602,11 @@ void TVolumeActor::HandleBootExternalResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] BootExternalRequest for part %lu failed: %s",
-            TabletID(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s BootExternalRequest for part %lu failed: %s",
+            LogTitle.GetWithTime().c_str(),
             partTabletId,
             FormatError(error).data());
 
@@ -621,17 +622,22 @@ void TVolumeActor::HandleBootExternalResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Received external boot info for part %lu",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Received external boot info for part %lu",
+        LogTitle.GetWithTime().c_str(),
         partTabletId);
 
     if (msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition &&
         msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition2) {
         // Partitions use specific tablet factory
-        LOG_ERROR_S(ctx, TBlockStoreComponents::VOLUME,
-            "[" << TabletID() << "] Unexpected part " << partTabletId
-            << " with type " << msg->StorageInfo->TabletType);
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            LogTitle.GetWithTime()
+                << " Unexpected part " << partTabletId << " with type "
+                << msg->StorageInfo->TabletType);
         part->SetFailed(
             TStringBuilder()
                 << "Unexpected tablet type: "
@@ -669,6 +675,7 @@ void TVolumeActor::HandleBootExternalResponse(
     auto partitionIndex = part->PartitionIndex;
     auto siblingCount = State->GetPartitions().size();
     auto selfId = SelfId();
+    auto volumeTabletId = TabletID();
 
     auto factory = [=](
                        const TActorId& owner,
@@ -690,7 +697,8 @@ void TVolumeActor::HandleBootExternalResponse(
                        storageAccessMode,
                        partitionIndex,
                        siblingCount,
-                       selfId)
+                       selfId,
+                       volumeTabletId)
                 .release();
         } else {
             return NPartition2::CreatePartitionTablet(
@@ -703,7 +711,8 @@ void TVolumeActor::HandleBootExternalResponse(
                        std::move(partitionConfig),
                        storageAccessMode,
                        siblingCount,
-                       selfId)
+                       selfId,
+                       volumeTabletId)
                 .release();
         }
     };

@@ -43,17 +43,13 @@ void LogError(const TString& message)
 
 }   // namespace
 
-EWellKnownResultCodes OverlapStatusToResult(
-    EOverlapStatus overlapStatus,
-    bool rejectCompleteOverlapped)
+EWellKnownResultCodes OverlapStatusToResult(EOverlapStatus overlapStatus)
 {
     switch (overlapStatus) {
         case EOverlapStatus::NotOverlapped:
             return S_OK;
         case EOverlapStatus::Partial:
-            return E_REJECTED;
         case EOverlapStatus::Complete:
-            return rejectCompleteOverlapped ? E_REJECTED : S_ALREADY;
         case EOverlapStatus::Unknown:
             return E_REJECTED;
             break;

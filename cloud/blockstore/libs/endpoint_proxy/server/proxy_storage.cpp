@@ -36,7 +36,7 @@ public:
     ui64 RequestStarted(
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        ui32 requestBytes) override
+        ui64 requestBytes) override
     {
         Y_UNUSED(mediaKind);
 
@@ -54,7 +54,7 @@ public:
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         TDuration postponedTime,
-        ui32 requestBytes,
+        ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,

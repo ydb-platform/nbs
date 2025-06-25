@@ -66,14 +66,14 @@ public:
 
     ui64 RequestStarted(
         TRequestType requestType,
-        ui32 requestBytes);
+        ui64 requestBytes);
 
     //TODO: rollback commit after NBS-4239 is fixed
     TDuration RequestCompleted(
         TRequestType requestType,
         ui64 requestStarted,
         TDuration postponedTime,
-        ui32 requestBytes,
+        ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
@@ -115,14 +115,14 @@ public:
 private:
     void RequestStartedImpl(
         TRequestType requestType,
-        ui32 requestBytes);
+        ui64 requestBytes);
 
     void RequestCompletedImpl(
         TRequestType requestType,
         TDuration requestTime,
         TDuration requestCompletionTime,
         TDuration postponedTime,
-        ui32 requestBytes,
+        ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,

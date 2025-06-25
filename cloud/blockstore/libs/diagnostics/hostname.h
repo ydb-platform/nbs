@@ -32,7 +32,7 @@ TString GetMonitoringVolumeUrl(
     const TDiagnosticsConfig& config,
     const TString& diskId);
 
-TString GetMonitoringPartitionUrl(const TDiagnosticsConfig& config);
+TString GetMonitoringVolumeUrlWithoutDiskId(const TDiagnosticsConfig& config);
 
 TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,

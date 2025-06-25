@@ -120,6 +120,12 @@ message TLocalServiceConfig
 
     // Don't populate node cache on ListNodes
     optional bool DontPopulateNodeCacheWhenListingNodes = 20;
+
+    // Trust guest kernel to check user permissions for fuse operations
+    optional bool GuestOnlyPermissionsCheckEnabled = 21;
+
+    // Max entries each ListNodes will return
+    optional uint32 MaxResponseEntries = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

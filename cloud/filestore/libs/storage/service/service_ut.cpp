@@ -2071,7 +2071,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ->FindSubgroup("component", "service_fs")
             ->FindSubgroup("host", "cluster")
             ->FindSubgroup("filesystem", fs)
-            ->FindSubgroup("client", "client");
+            ->FindSubgroup("client", "client")
+            ->FindSubgroup("cloud", "test_cloud")
+            ->FindSubgroup("folder", "test_folder");
         {
             auto subgroup = counters->FindSubgroup("request", "DescribeData");
             UNIT_ASSERT(subgroup);
@@ -2456,7 +2458,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ->FindSubgroup("component", "service_fs")
             ->FindSubgroup("host", "cluster")
             ->FindSubgroup("filesystem", fs)
-            ->FindSubgroup("client", "client");
+            ->FindSubgroup("client", "client")
+            ->FindSubgroup("cloud", "test_cloud")
+            ->FindSubgroup("folder", "test_folder");
         {
             auto subgroup = counters->FindSubgroup("request", "GenerateBlobIds");
             UNIT_ASSERT(subgroup);
@@ -3290,7 +3294,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ->FindSubgroup("component", "service_fs")
             ->FindSubgroup("host", "cluster")
             ->FindSubgroup("filesystem", fs)
-            ->FindSubgroup("client", "client");
+            ->FindSubgroup("client", "client")
+            ->FindSubgroup("cloud", "test_cloud")
+            ->FindSubgroup("folder", "test_folder");
         {
             auto subgroup = counters->FindSubgroup("request", "GenerateBlobIds");
             UNIT_ASSERT(subgroup);

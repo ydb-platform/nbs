@@ -29,7 +29,7 @@ struct TMetricRequest
     ui64 StartIndex = 0;
     NCloud::NProto::EStorageMediaKind MediaKind
         = NCloud::NProto::STORAGE_MEDIA_HDD;
-    ui32 RequestBytes = 0;
+    ui64 RequestBytes = 0;
     TInstant RequestTimestamp;
     bool Unaligned = false;
 
@@ -69,7 +69,7 @@ struct IServerStats
         TString clientId,
         TString diskId,
         ui64 startIndex,
-        ui32 requestBytes,
+        ui64 requestBytes,
         bool unaligned) = 0;
 
     virtual void RequestStarted(

@@ -316,6 +316,7 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::QueryAgentsInfo:
         case EBlockStoreRequest::CreateVolumeLink:
         case EBlockStoreRequest::DestroyVolumeLink:
+        case EBlockStoreRequest::RemoveVolumeClient:
             return true;
         case EBlockStoreRequest::MAX:
             Y_DEBUG_ABORT_UNLESS(false);

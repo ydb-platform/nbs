@@ -1283,13 +1283,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         {
-            // requestId from past (previous generation) with full overlap should return S_ALREADY.
+            // requestId from past (previous generation) with full overlap should return E_REJECTED.
             auto requestId = TCompositeId::FromGeneration(1);
-            writeRequest(requestId.Advance(), 1024, 10, S_ALREADY);
-            writeRequest(requestId.Advance(), 2048, 10, S_ALREADY);
+            writeRequest(requestId.Advance(), 1024, 10, E_REJECTED);
+            writeRequest(requestId.Advance(), 2048, 10, E_REJECTED);
 
-            zeroRequest(requestId.Advance(), 1024, 8, S_ALREADY);
-            zeroRequest(requestId.Advance(), 2048, 8, S_ALREADY);
+            zeroRequest(requestId.Advance(), 1024, 8, E_REJECTED);
+            zeroRequest(requestId.Advance(), 2048, 8, E_REJECTED);
 
             // partial overlapped request should return E_REJECTED.
             writeRequest(requestId.Advance(), 1000, 30, E_REJECTED);
@@ -1469,7 +1469,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             // Get reponse for delayed write request
             auto response =
                 diskAgent.RecvWriteDeviceBlocksResponse(TDuration::Seconds(1));
-            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
         {
             // Get reponse for delayed zero request

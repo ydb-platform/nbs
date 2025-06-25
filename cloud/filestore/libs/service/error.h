@@ -22,6 +22,7 @@ NProto::TError ErrorInvalidNodeType(ui64 nodeId);
 NProto::TError ErrorInvalidParent(ui64 nodeId);
 NProto::TError ErrorInvalidTarget(ui64 nodeId, const TString& name = {});
 NProto::TError ErrorAlreadyExists(const TString& path);
+NProto::TError ErrorFailedToApplyCredentials(const TString& path);
 
 //
 // Directories.

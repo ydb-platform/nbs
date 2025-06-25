@@ -165,7 +165,8 @@ void DumpMonitoringVolumeLink(
 
 void DumpMonitoringPartitionLink(
     IOutputStream& out,
-    const TDiagnosticsConfig& config);
+    const TDiagnosticsConfig& config,
+    const TString& diskId);
 
 void DumpBlockContent(IOutputStream& out, const TString& data);
 void DumpDataHash(IOutputStream& out, const TString& data);

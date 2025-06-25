@@ -696,10 +696,10 @@ static_assert(
     sizeof(TVolumeSelfCumulativeCounters::TCounter) *
         std::size(TVolumeSelfCumulativeCounters::AllCounters));
 
-struct TVolumeSelfRequestCounters
+struct TVolumeThrottlerDelayCounters
 {
     using TCounter = TMemberWithMeta<THistogram<TRequestUsTimeBuckets>>;
-    using TMeta = TMemberMeta<TCounter TVolumeSelfRequestCounters::*>;
+    using TMeta = TMemberMeta<TCounter TVolumeThrottlerDelayCounters::*>;
 
     EHistogramCounterOptions HistCounterOptions;
 
@@ -709,24 +709,54 @@ struct TVolumeSelfRequestCounters
     TCounter ZeroBlocks{EPublishingPolicy::All, HistCounterOptions};
     TCounter DescribeBlocks{EPublishingPolicy::All, HistCounterOptions};
 
-    explicit TVolumeSelfRequestCounters(
+    explicit TVolumeThrottlerDelayCounters(
             EHistogramCounterOptions histCounterOptions)
         : HistCounterOptions(histCounterOptions)
     {}
 
     static constexpr TMeta AllCounters[] = {
-        MakeMeta<&TVolumeSelfRequestCounters::ReadBlocks>(),
-        MakeMeta<&TVolumeSelfRequestCounters::WriteBlocks>(),
-        MakeMeta<&TVolumeSelfRequestCounters::ZeroBlocks>(),
-        MakeMeta<&TVolumeSelfRequestCounters::DescribeBlocks>(),
+        MakeMeta<&TVolumeThrottlerDelayCounters::ReadBlocks>(),
+        MakeMeta<&TVolumeThrottlerDelayCounters::WriteBlocks>(),
+        MakeMeta<&TVolumeThrottlerDelayCounters::ZeroBlocks>(),
+        MakeMeta<&TVolumeThrottlerDelayCounters::DescribeBlocks>(),
     };
 };
 static_assert(
-    sizeof(TVolumeSelfRequestCounters) ==
+    sizeof(TVolumeThrottlerDelayCounters) ==
     // cannot use sizeof(EHistogramCounterOptions) because of alignment
-    (offsetof(TVolumeSelfRequestCounters, ReadBlocks) +
-     sizeof(TVolumeSelfRequestCounters::TCounter) *
-         std::size(TVolumeSelfRequestCounters::AllCounters)));
+    (offsetof(TVolumeThrottlerDelayCounters, ReadBlocks) +
+     sizeof(TVolumeThrottlerDelayCounters::TCounter) *
+         std::size(TVolumeThrottlerDelayCounters::AllCounters)));
+
+struct TVolumeIngestTimeCounters
+{
+    using TCounter = TMemberWithMeta<THistogram<TRequestUsTimeBuckets>>;
+    using TMeta = TMemberMeta<TCounter TVolumeIngestTimeCounters::*>;
+
+    EHistogramCounterOptions HistCounterOptions;
+
+    // Common
+    TCounter ReadBlocks{EPublishingPolicy::All, HistCounterOptions};
+    TCounter WriteBlocks{EPublishingPolicy::All, HistCounterOptions};
+    TCounter ZeroBlocks{EPublishingPolicy::All, HistCounterOptions};
+
+    explicit TVolumeIngestTimeCounters(
+            EHistogramCounterOptions histCounterOptions)
+        : HistCounterOptions(histCounterOptions)
+    {}
+
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TVolumeIngestTimeCounters::ReadBlocks>(),
+        MakeMeta<&TVolumeIngestTimeCounters::WriteBlocks>(),
+        MakeMeta<&TVolumeIngestTimeCounters::ZeroBlocks>(),
+    };
+};
+static_assert(
+    sizeof(TVolumeIngestTimeCounters) ==
+    // cannot use sizeof(EHistogramCounterOptions) because of alignment
+    (offsetof(TVolumeIngestTimeCounters, ReadBlocks) +
+     sizeof(TVolumeIngestTimeCounters::TCounter) *
+         std::size(TVolumeIngestTimeCounters::AllCounters)));
 
 struct TTransportCounters
 {
@@ -800,14 +830,16 @@ struct TVolumeSelfCounters
 {
     TVolumeSelfSimpleCounters Simple;
     TVolumeSelfCumulativeCounters Cumulative;
-    TVolumeSelfRequestCounters RequestCounters;
+    TVolumeThrottlerDelayCounters ThrottlerDelayRequestCounters;
+    TVolumeIngestTimeCounters IngestTimeRequestCounters;
 
     EPublishingPolicy Policy;
 
     TVolumeSelfCounters(
             EPublishingPolicy policy,
             EHistogramCounterOptions histCounterOptions)
-        : RequestCounters(histCounterOptions)
+        : ThrottlerDelayRequestCounters(histCounterOptions)
+        , IngestTimeRequestCounters(histCounterOptions)
         , Policy(policy)
     {}
 

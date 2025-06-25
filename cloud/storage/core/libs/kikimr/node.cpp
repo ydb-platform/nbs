@@ -428,13 +428,18 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     const auto& hostName = FQDNHostName();
     const auto& hostAddress = GetNetworkAddress(hostName);
 
+    auto port = options.UseNodeBrokerSsl && options.NodeBrokerSecurePort
+        ? options.NodeBrokerSecurePort
+        : options.NodeBrokerPort;
+
     TVector<TString> addrs;
     if (options.NodeBrokerAddress) {
-        addrs.push_back(options.NodeBrokerAddress);
+        if (port != 0 && !options.NodeBrokerAddress.Contains(':')) {
+            addrs.push_back(Join(":", options.NodeBrokerAddress, port));
+        } else {
+            addrs.push_back(options.NodeBrokerAddress);
+        }
     } else {
-        auto port = options.UseNodeBrokerSsl && options.NodeBrokerSecurePort
-            ? options.NodeBrokerSecurePort
-            : options.NodeBrokerPort;
         if (port) {
             for (const auto& node: nsConfig.GetNode()) {
                 addrs.emplace_back(Join(":", node.GetHost(), port));

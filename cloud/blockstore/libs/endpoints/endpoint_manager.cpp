@@ -11,12 +11,15 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/nbd/device.h>
+#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -38,6 +41,11 @@ using namespace NClient;
 using namespace NThreading;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr auto MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
+constexpr auto MAX_RECONNECT_DELAY = TDuration::Minutes(10);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -152,8 +160,15 @@ bool CompareRequests(
     const NProto::TStopEndpointRequest& left,
     const NProto::TStopEndpointRequest& right)
 {
-    Y_DEBUG_ABORT_UNLESS(2 == GetFieldCount<NProto::TStopEndpointRequest>());
-    return left.GetUnixSocketPath() == right.GetUnixSocketPath();
+    Y_DEBUG_ABORT_UNLESS(3 == GetFieldCount<NProto::TStopEndpointRequest>());
+    auto doTie = [](const NProto::TStopEndpointRequest& r)
+    {
+        return std::tie(
+            r.GetUnixSocketPath(),
+            r.GetDiskId(),
+            r.GetHeaders().GetClientId());
+    };
+    return doTie(left) == doTie(right);
 }
 
 bool CompareRequests(
@@ -396,6 +411,8 @@ struct TEndpoint
     std::shared_ptr<NProto::TStartEndpointRequest> Request;
     NBD::IDevicePtr Device;
     NProto::TVolume Volume;
+    std::weak_ptr<NClient::ISession> Session;
+    ui64 Generation = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -406,16 +423,64 @@ class TEndpointManager final
     , public std::enable_shared_from_this<TEndpointManager>
 {
 private:
+    struct TErrorHandler;
+
+    struct TExceptionContext
+    {
+        std::weak_ptr<TEndpoint> Endpoint;
+        ui64 Generation;
+        TBackoffDelayProvider BackoffProvider;
+
+        TExceptionContext(std::weak_ptr<TEndpoint> endpoint)
+            : Endpoint(std::move(endpoint))
+            , BackoffProvider(MIN_RECONNECT_DELAY, MAX_RECONNECT_DELAY)
+        {
+            if (auto endpoint = Endpoint.lock()) {
+                Generation = endpoint->Generation;
+            }
+        }
+    };
+
+    struct TErrorHandler
+        : NBD::IErrorHandler
+        , std::enable_shared_from_this<TErrorHandler>
+    {
+        std::weak_ptr<TEndpointManager> Manager;
+        std::weak_ptr<TEndpoint> Endpoint;
+
+        TErrorHandler(
+                std::weak_ptr<TEndpointManager> manager,
+                std::weak_ptr<TEndpoint> endpoint)
+            : Manager(std::move(manager))
+            , Endpoint(std::move(endpoint))
+        {}
+
+        void ProcessException(std::exception_ptr e) override
+        {
+            Y_UNUSED(e);
+
+            if (auto manager = Manager.lock()) {
+                manager->ProcessException(
+                    std::make_shared<TExceptionContext>(Endpoint));
+            }
+        }
+    };
+
+    ////////////////////////////////////////////////////////////////////////////
+
     const ILoggingServicePtr Logging;
     const IServerStatsPtr ServerStats;
+    const ISchedulerPtr Scheduler;
     const TExecutorPtr Executor;
     const ISessionManagerPtr SessionManager;
     const IEndpointStoragePtr EndpointStorage;
     const THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
     const NBD::IDeviceFactoryPtr NbdDeviceFactory;
+    const IBlockStorePtr Service;
     const TString NbdSocketSuffix;
 
     TDeviceManager NbdDeviceManager;
+    NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
     TLog Log;
 
     using TRequestStateVariant = std::variant<
@@ -426,7 +491,7 @@ private:
     >;
     THashMap<TString, TRequestStateVariant> ProcessingSockets;
 
-    THashMap<TString, TEndpoint> Endpoints;
+    THashMap<TString, std::shared_ptr<TEndpoint>> Endpoints;
 
     NClient::IMetricClientPtr RestoringClient;
     TSet<TString> RestoringEndpoints;
@@ -453,16 +518,21 @@ public:
             IEndpointStoragePtr endpointStorage,
             THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
             NBD::IDeviceFactoryPtr nbdDeviceFactory,
+            NBD::IErrorHandlerMapPtr nbdErrorHandlerMap,
+            IBlockStorePtr service,
             TEndpointManagerOptions options)
         : Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
+        , Scheduler(std::move(scheduler))
         , Executor(std::move(executor))
         , SessionManager(std::move(sessionManager))
         , EndpointStorage(std::move(endpointStorage))
         , EndpointListeners(std::move(listeners))
         , NbdDeviceFactory(std::move(nbdDeviceFactory))
+        , Service(std::move(service))
         , NbdSocketSuffix(options.NbdSocketSuffix)
         , NbdDeviceManager(options.NbdDevicePrefix)
+        , NbdErrorHandlerMap(std::move(nbdErrorHandlerMap))
     {
         Log = Logging->CreateLog("BLOCKSTORE_SERVER");
 
@@ -479,7 +549,7 @@ public:
             std::move(retryPolicy),
             Logging,
             std::move(timer),
-            std::move(scheduler),
+            Scheduler,
             std::move(requestStats),
             std::move(volumeStats));
 
@@ -556,7 +626,15 @@ public:
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TStartEndpointRequest> request);
 
+    void ProcessException(std::shared_ptr<TExceptionContext> context);
+
 private:
+    void ProcessException(
+        std::shared_ptr<TExceptionContext> context,
+        TString prefix);
+
+    void DoProcessException(std::shared_ptr<TExceptionContext> context);
+
     bool IsEndpointRestoring(const TString& socket)
     {
         switch (AtomicGet(RestoringStage)) {
@@ -573,6 +651,10 @@ private:
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TStartEndpointRequest> request,
         bool restoring);
+
+    NProto::TStopEndpointResponse StopEndpointFallback(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TStopEndpointRequest> request);
 
     NProto::TStopEndpointResponse StopEndpointImpl(
         TCallContextPtr ctx,
@@ -790,7 +872,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it != Endpoints.end()) {
-        const auto& endpoint = it->second;
+        const auto& endpoint = *it->second;
 
         if (!NFs::Exists(socketPath)) {
             // restart listener endpoint to recreate the socket
@@ -823,9 +905,21 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         return TErrorResponse(error);
     }
 
+    auto endpoint = std::make_shared<TEndpoint>();
+
+    // additional NBD socket will be opened for gRPC endpoints
+    if (request->GetIpcType() == NProto::IPC_NBD ||
+        request->GetIpcType() == NProto::IPC_GRPC && NbdSocketSuffix.size())
+    {
+        NbdErrorHandlerMap->Emplace(
+            socketPath,
+            std::make_shared<TErrorHandler>(weak_from_this(), endpoint));
+    }
+
     error = OpenAllEndpointSockets(*request, sessionInfo);
     if (HasError(error)) {
         RemoveSession(std::move(ctx), *request);
+        NbdErrorHandlerMap->Erase(socketPath);
         return TErrorResponse(error);
     }
 
@@ -833,6 +927,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
     error = deviceOrError.GetError();
     if (HasError(error)) {
         CloseAllEndpointSockets(*request);
+        NbdErrorHandlerMap->Erase(socketPath);
         RemoveSession(std::move(ctx), *request);
         return TErrorResponse(error);
     }
@@ -848,16 +943,16 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
             }
             ReleaseNbdDevice(request->GetNbdDeviceFile(), restoring);
             CloseAllEndpointSockets(*request);
+            NbdErrorHandlerMap->Erase(socketPath);
             RemoveSession(std::move(ctx), *request);
             return TErrorResponse(error);
         }
     }
 
-    TEndpoint endpoint = {
-        .Request = request,
-        .Device = device,
-        .Volume = sessionInfo.Volume,
-    };
+    endpoint->Request = request;
+    endpoint->Device = device;
+    endpoint->Volume = sessionInfo.Volume;
+    endpoint->Session = sessionInfo.Session;
 
     if (auto c = ServerStats->GetEndpointCounter(request->GetIpcType())) {
         c->Inc();
@@ -951,6 +1046,7 @@ NProto::TError TEndpointManager::AlterEndpoint(
     return Executor->WaitFor(alterFuture);
 }
 
+// FIXME: doesn't restart additional NBD socket opened for gPRC endpoints
 NProto::TError TEndpointManager::RestartListenerEndpoint(
     TCallContextPtr ctx,
     const NProto::TStartEndpointRequest& request)
@@ -1016,6 +1112,35 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     return response;
 }
 
+NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TStopEndpointRequest> request)
+{
+    Y_ABORT_UNLESS(request->GetDiskId() && request->GetHeaders().GetClientId());
+    const auto& socketPath = request->GetUnixSocketPath();
+
+    auto removeClientRequest =
+        std::make_shared<NProto::TRemoveVolumeClientRequest>();
+    removeClientRequest->SetDiskId(request->GetDiskId());
+    removeClientRequest->MutableHeaders()->SetClientId(
+        request->GetHeaders().GetClientId());
+
+    auto removeClientFuture =
+        Service->RemoveVolumeClient(ctx, std::move(removeClientRequest));
+    const auto& removeClientResponse = Executor->WaitFor(removeClientFuture);
+
+    if (HasError(removeClientResponse)) {
+        return TErrorResponse(removeClientResponse.GetError());
+    }
+
+    // The vhost server deletes socket files when an endpoint starts or stops.
+    // We don't have a vhost server here, so we need to delete the socket file
+    // manually. Compute assumes we should do this.
+    TFsPath(socketPath).DeleteIfExists();
+
+    return {};
+}
+
 NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStopEndpointRequest> request)
@@ -1024,6 +1149,10 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it == Endpoints.end()) {
+        if (request->GetDiskId() && request->GetHeaders().GetClientId()) {
+            return StopEndpointFallback(ctx, request);
+        }
+
         return TErrorResponse(S_FALSE, TStringBuilder()
             << "endpoint " << socketPath.Quote()
             << " hasn't been started yet");
@@ -1031,17 +1160,22 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
 
     auto endpoint = std::move(it->second);
     Endpoints.erase(it);
-    if (auto c = ServerStats->GetEndpointCounter(endpoint.Request->GetIpcType())) {
+    if (auto c =
+            ServerStats->GetEndpointCounter(endpoint->Request->GetIpcType()))
+    {
         c->Dec();
     }
 
-    auto stopFuture = endpoint.Device->Stop(true);
-    const auto& stopError = Executor->WaitFor(stopFuture);
-    if (HasError(stopError)) {
-        return TErrorResponse(stopError);
+    if (endpoint->Device) { // could have been already stopped by an error handler
+        auto stopFuture = endpoint->Device->Stop(true);
+        const auto& stopError = Executor->WaitFor(stopFuture);
+        if (HasError(stopError)) {
+            return TErrorResponse(stopError);
+        }
     }
-    ReleaseNbdDevice(endpoint.Request->GetNbdDeviceFile(), false);
-    CloseAllEndpointSockets(*endpoint.Request);
+    NbdErrorHandlerMap->Erase(socketPath);
+    ReleaseNbdDevice(endpoint->Request->GetNbdDeviceFile(), false);
+    CloseAllEndpointSockets(*endpoint->Request);
     RemoveSession(std::move(ctx), *request);
 
     if (auto error = EndpointStorage->RemoveEndpoint(socketPath);
@@ -1066,7 +1200,7 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
     responseEndpoints.Reserve(Endpoints.size());
 
     for (const auto& [_, endpoint]: Endpoints) {
-        responseEndpoints.Add()->CopyFrom(*endpoint.Request);
+        responseEndpoints.Add()->CopyFrom(*endpoint->Request);
     }
 
     response.SetEndpointsWereRestored(
@@ -1202,7 +1336,7 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
             << "endpoint " << socketPath.Quote() << " not started");
     }
 
-    auto ipcType = it->second.Request->GetIpcType();
+    auto ipcType = it->second->Request->GetIpcType();
     auto listenerIt = EndpointListeners.find(ipcType);
     STORAGE_VERIFY(
         listenerIt != EndpointListeners.end(),
@@ -1217,7 +1351,7 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         return TErrorResponse(getSessionError);
     }
 
-    auto error = it->second.Device->Resize(
+    auto error = it->second->Device->Resize(
         sessionInfo.Volume.GetBlocksCount() *
         sessionInfo.Volume.GetBlockSize()).GetValueSync();
     if (HasError(error)) {
@@ -1228,6 +1362,126 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
     return TErrorResponse(refreshError);
 }
 
+void TEndpointManager::ProcessException(
+    std::shared_ptr<TExceptionContext> context)
+{
+    auto endpoint = context->Endpoint.lock();
+    if (!endpoint) {
+        STORAGE_WARN("endpoint is down");
+        return;
+    }
+
+    auto prefix = TStringBuilder()
+        << "[socket=" << endpoint->Request->GetUnixSocketPath()
+        << " device=" << endpoint->Request->GetNbdDeviceFile() << "] ";
+
+    ProcessException(std::move(context), std::move(prefix));
+}
+
+void TEndpointManager::ProcessException(
+    std::shared_ptr<TExceptionContext> context,
+    TString prefix)
+{
+    auto deadline =
+        TInstant::Now() + context->BackoffProvider.GetDelayAndIncrease();
+
+    auto func = [weakSelf = weak_from_this(), context = std::move(context)]() {
+        if (auto self = weakSelf.lock()) {
+            self->DoProcessException(std::move(context));
+        }
+    };
+
+    STORAGE_INFO(prefix << "schedule restart at " << deadline);
+    Scheduler->Schedule(Executor.get(), deadline, std::move(func));
+}
+
+void TEndpointManager::DoProcessException(
+    std::shared_ptr<TExceptionContext> context)
+{
+    auto endpoint = context->Endpoint.lock();
+    if (!endpoint) {
+        STORAGE_WARN("endpoint is down, cancel restart");
+        return;
+    }
+
+    auto prefix = TStringBuilder()
+        << "[socket=" << endpoint->Request->GetUnixSocketPath()
+        << " device=" << endpoint->Request->GetNbdDeviceFile() << "] ";
+
+    auto state = ProcessingSockets.find(endpoint->Request->GetUnixSocketPath());
+    if (state != ProcessingSockets.end() &&
+        std::holds_alternative<TRequestState<TStopEndpointMethod>>(state->second))
+    {
+        STORAGE_WARN(prefix << "endpoint is stopping, cancel restart");
+        return;
+    }
+
+    auto session = endpoint->Session.lock();
+    if (!session) {
+        STORAGE_WARN(prefix << "session is down, cancel restart");
+        return;
+    }
+
+    if (endpoint->Generation != context->Generation) {
+        STORAGE_WARN(prefix << "generation mismatch, cancel restart");
+        return;
+    }
+    endpoint->Generation++;
+
+    STORAGE_INFO(prefix << "restart endpoint");
+
+    bool hasDevice =
+        endpoint->Request->HasNbdDeviceFile() &&
+        endpoint->Request->GetNbdDeviceFile() &&
+        endpoint->Request->GetPersistent();
+
+    if (hasDevice && endpoint->Device) {
+        STORAGE_INFO(prefix << "stop device");
+        auto future = endpoint->Device->Stop(false);
+        auto error = Executor->WaitFor(future);
+        if (HasError(error)) {
+            STORAGE_ERROR(
+                prefix << "failed to stop device: " << error.GetMessage());
+        }
+        endpoint->Device.reset();
+    }
+
+    STORAGE_INFO(prefix << "close socket");
+    CloseAllEndpointSockets(*endpoint->Request);
+
+    STORAGE_INFO(prefix << "open socket");
+    auto error = OpenAllEndpointSockets(
+        *endpoint->Request,
+        TSessionInfo(endpoint->Volume, session));
+    if (HasError(error)) {
+        STORAGE_ERROR(
+            prefix << "failed to open socket: " << error.GetMessage());
+        context->Generation++;
+        ProcessException(std::move(context), std::move(prefix));
+        return;
+    }
+
+    if (hasDevice) {
+        STORAGE_INFO(prefix << "start device");
+        auto device = NbdDeviceFactory->Create(
+            TNetworkAddress(TUnixSocketPath(endpoint->Request->GetUnixSocketPath())),
+            endpoint->Request->GetNbdDeviceFile(),
+            endpoint->Volume.GetBlocksCount(),
+            endpoint->Volume.GetBlockSize());
+        auto startDeviceFuture = device->Start();
+        error = Executor->WaitFor(startDeviceFuture);
+        if (HasError(error)) {
+            STORAGE_ERROR(
+                prefix << "failed to start device: " << error.GetMessage());
+            context->Generation++;
+            ProcessException(std::move(context), std::move(prefix));
+            return;
+        }
+        endpoint->Device.swap(device);
+    }
+}
+
+// opens secondary NBD socket for gRPC endpoints
 NProto::TError TEndpointManager::OpenAllEndpointSockets(
     const NProto::TStartEndpointRequest& request,
     const TSessionInfo& sessionInfo)
@@ -1277,6 +1531,7 @@ NProto::TError TEndpointManager::OpenEndpointSocket(
     return Executor->WaitFor(future);
 }
 
+// closes additional NBD socket opened for gRPC endpoints
 void TEndpointManager::CloseAllEndpointSockets(
     const NProto::TStartEndpointRequest& request)
 {
@@ -1337,8 +1592,8 @@ NProto::TError TEndpointManager::DoSwitchEndpoint(
 
     auto it = FindIf(Endpoints, [&] (auto& v) {
         const auto& [_, endpoint] = v;
-        return endpoint.Request->GetDiskId() == diskId
-            && endpoint.Request->GetIpcType() == NProto::IPC_VHOST;
+        return endpoint->Request->GetDiskId() == diskId
+            && endpoint->Request->GetIpcType() == NProto::IPC_VHOST;
     });
 
     if (it == Endpoints.end()) {
@@ -1376,7 +1631,7 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
             << "endpoint " << socketPath.Quote() << " not started");
     }
 
-    auto startRequest = it->second.Request;
+    auto startRequest = it->second->Request;
     auto listenerIt = EndpointListeners.find(startRequest->GetIpcType());
     STORAGE_VERIFY(
         listenerIt != EndpointListeners.end(),
@@ -1609,7 +1864,6 @@ void TEndpointManager::ReleaseNbdDevice(const TString& device, bool restoring)
     NbdDeviceManager.ReleaseDevice(device);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TFuture<NProto::TStartEndpointResponse> TRestoringClient::StartEndpoint(
@@ -1638,6 +1892,8 @@ IEndpointManagerPtr CreateEndpointManager(
     IEndpointStoragePtr endpointStorage,
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
     NBD::IDeviceFactoryPtr nbdDeviceFactory,
+    NBD::IErrorHandlerMapPtr nbdErrorHandlerMap,
+    IBlockStorePtr service,
     TEndpointManagerOptions options)
 {
     auto manager = std::make_shared<TEndpointManager>(
@@ -1652,6 +1908,8 @@ IEndpointManagerPtr CreateEndpointManager(
         std::move(endpointStorage),
         std::move(listeners),
         std::move(nbdDeviceFactory),
+        std::move(nbdErrorHandlerMap),
+        std::move(service),
         std::move(options));
     eventProxy->Register(manager);
     return manager;

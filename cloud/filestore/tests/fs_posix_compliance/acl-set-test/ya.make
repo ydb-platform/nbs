@@ -18,6 +18,9 @@ SET(QEMU_INVOKE_TEST NO)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
+
+SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img)
+DEPENDS(cloud/storage/core/tools/testing/qemu/image-noble)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
 
 END()

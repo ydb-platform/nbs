@@ -15,6 +15,7 @@ SRCS(
     checkpoint.cpp
     cleanup_queue.cpp
     commit_queue.cpp
+    compaction_map_load_state.cpp
     fresh_blob.cpp
     garbage_queue.cpp
     mixed_index_cache.cpp

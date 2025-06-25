@@ -190,10 +190,10 @@ message TServerConfig
     // Use netlink interface to setup nbd device
     optional bool NbdNetlink = 111;
 
-    // NBD request timeout in seconds, only makes sense if using netlink
+    // NBD request timeout in milliseconds, applied only in netlink mode
     optional uint32 NbdRequestTimeout = 112;
 
-    // NBD connection timeout in seconds
+    // NBD connection timeout in milliseconds
     optional uint32 NbdConnectionTimeout = 113;
 
     // Endpoint Proxy unix socket path. Triggers proxy device factory usage

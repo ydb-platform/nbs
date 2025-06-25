@@ -322,41 +322,47 @@ void TPartitionActor::AddForcedCompaction(
 
 void TPartitionActor::EnqueueForcedCompaction(const TActorContext& ctx)
 {
-    if (State && State->IsLoadStateFinished()) {
-        if (State->GetForcedCompactionState().IsRunning ||
-            PendingForcedCompactionRequests.empty())
-        {
-            return;
-        }
-
-        auto& compactInfo = PendingForcedCompactionRequests.front();
-
-        State->StartForcedCompaction(
-            compactInfo.OperationId,
-            compactInfo.RangesToCompact.size());
-
-        const bool batchCompactionEnabledForCloud =
-            Config->IsBatchCompactionFeatureEnabled(
-                PartitionConfig.GetCloudId(),
-                PartitionConfig.GetFolderId(),
-                PartitionConfig.GetDiskId());
-        const bool batchCompactionEnabled =
-            Config->GetBatchCompactionEnabled() ||
-            batchCompactionEnabledForCloud;
-
-        auto actorId = NCloud::Register<TForcedCompactionActor>(
-            ctx,
-            SelfId(),
-            std::move(compactInfo.RangesToCompact),
-            Config->GetCompactionRetryTimeout(),
-            batchCompactionEnabled
-                ? Config->GetForcedCompactionRangeCountPerRun()
-                : 1);
-
-        PendingForcedCompactionRequests.pop_front();
-
-        Actors.Insert(actorId);
+    if (!State || !State->IsLoadStateFinished()) {
+        return;
     }
+
+    if (CompactionMapLoadState) {
+        return;
+    }
+
+    if (State->GetForcedCompactionState().IsRunning ||
+        PendingForcedCompactionRequests.empty())
+    {
+        return;
+    }
+
+    auto& compactInfo = PendingForcedCompactionRequests.front();
+
+    State->StartForcedCompaction(
+        compactInfo.OperationId,
+        compactInfo.RangesToCompact.size());
+
+    const bool batchCompactionEnabledForCloud =
+        Config->IsBatchCompactionFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
+    const bool batchCompactionEnabled =
+        Config->GetBatchCompactionEnabled() ||
+        batchCompactionEnabledForCloud;
+
+    auto actorId = NCloud::Register<TForcedCompactionActor>(
+        ctx,
+        SelfId(),
+        std::move(compactInfo.RangesToCompact),
+        Config->GetCompactionRetryTimeout(),
+        batchCompactionEnabled
+            ? Config->GetForcedCompactionRangeCountPerRun()
+            : 1);
+
+    PendingForcedCompactionRequests.pop_front();
+
+    Actors.Insert(actorId);
 }
 
 bool TPartitionActor::GetCompletedForcedCompactionRanges(

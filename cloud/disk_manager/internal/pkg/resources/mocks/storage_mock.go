@@ -276,6 +276,16 @@ func (s *StorageMock) CreateFilesystem(
 	return args.Get(0).(*resources.FilesystemMeta), args.Error(1)
 }
 
+func (s *StorageMock) SetExternalFilesystemStorageClusterName(
+	ctx context.Context,
+	filesystemID string,
+	clusterName string,
+) error {
+
+	args := s.Called(ctx, filesystemID, clusterName)
+	return args.Error(0)
+}
+
 func (s *StorageMock) FilesystemCreated(
 	ctx context.Context,
 	filesystem resources.FilesystemMeta,

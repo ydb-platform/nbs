@@ -125,6 +125,8 @@ func TestDeleteExternalFilesystemTaskRun(t *testing.T) {
 		mock.Anything,
 	).Return(mock.Anything, nil)
 
+	execCtx.On("SaveState", mock.Anything).Return(nil)
+
 	storage.On(
 		"DeleteFilesystem",
 		ctx,

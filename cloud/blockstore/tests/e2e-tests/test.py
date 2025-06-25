@@ -48,8 +48,12 @@ def init(
         server_config_patch.EndpointProxySocketPath = ep_socket
     elif with_netlink:
         server_config_patch.NbdNetlink = True
-        server_config_patch.NbdRequestTimeout = 120
-        server_config_patch.NbdConnectionTimeout = 120
+        if nbd_request_timeout:
+            server_config_patch.NbdRequestTimeout = nbd_request_timeout * 1000
+        else:
+            server_config_patch.NbdRequestTimeout = 10 * 1000       # 10 seconds
+        logging.info("nbd_request_timeout: %d" % server_config_patch.NbdRequestTimeout)
+        server_config_patch.NbdConnectionTimeout = 10 * 60 * 1000   # 10 minutes
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
     endpoints_dir.mkdir(exist_ok=True)
     server_config_patch.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
@@ -132,6 +136,93 @@ def log_called_process_error(exc):
         exc.stdout,
         exc_info=exc,
     )
+
+
+def test_nbd_reconnect():
+    disk_id = "disk0"
+    block_size = 4096
+    blocks_count = 1024
+    nbd_device = "/dev/nbd0"
+    socket = "/tmp/nbd.sock"
+    request_timeout = 2
+    runtime = request_timeout * 2
+    nbs_downtime = request_timeout + 2
+    iodepth = 1024
+
+    env, run = init(
+        with_netlink=True,
+        with_endpoint_proxy=False,
+        nbd_request_timeout=request_timeout)
+
+    try:
+        result = run(
+            "createvolume",
+            "--disk-id",
+            disk_id,
+            "--blocks-count",
+            str(blocks_count),
+            "--block-size",
+            str(block_size),
+        )
+        assert result.returncode == 0
+
+        result = run(
+            "startendpoint",
+            "--disk-id",
+            disk_id,
+            "--socket",
+            socket,
+            "--ipc-type",
+            "nbd",
+            "--persistent",
+            "--nbd-device",
+            nbd_device
+        )
+        assert result.returncode == 0
+
+        proc = subprocess.Popen(
+            [
+                "fio",
+                "--name=fio",
+                "--ioengine=libaio",
+                "--direct=1",
+                "--time_based=1",
+                "--rw=randrw",
+                "--rwmixread=50",
+                "--filename=" + nbd_device,
+                "--runtime=" + str(runtime),
+                "--blocksize=" + str(block_size),
+                "--iodepth=" + str(iodepth),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+
+        os.kill(env.nbs.pid, signal.SIGSTOP)
+        time.sleep(nbs_downtime)
+        os.kill(env.nbs.pid, signal.SIGCONT)
+
+        proc.communicate(timeout=60)
+        assert proc.returncode == 0
+
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+
+    finally:
+        run(
+            "stopendpoint",
+            "--socket",
+            socket,
+        )
+
+        result = run(
+            "destroyvolume",
+            "--disk-id",
+            disk_id,
+            input=disk_id,
+        )
+
+        cleanup_after_test(env)
 
 
 def test_multiple_errors():

@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
+
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -512,7 +513,7 @@ NProto::TError ValidateCreateVolumeRequest(
         return MakeError(
             E_ARGUMENT,
             TStringBuilder() << "disk size for media kind "
-                << static_cast<int>(mediaKind)
+                << MediaKindToString(mediaKind)
                 << " should be <= " << maxBlocks << " blocks");
     }
 

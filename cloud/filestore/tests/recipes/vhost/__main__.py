@@ -67,6 +67,14 @@ def start(argv):
     config.VhostServiceConfig.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
     config.VhostServiceConfig.EndpointStorageDir = endpoint_storage_dir
 
+    handle_ops_queue_path = common.work_path() + "/handleopsqueue-" + uid
+    pathlib.Path(handle_ops_queue_path).mkdir(parents=True, exist_ok=True)
+    config.VhostServiceConfig.HandleOpsQueuePath = handle_ops_queue_path
+
+    write_back_cache_path = common.work_path() + "/writebackcache-" + uid
+    pathlib.Path(write_back_cache_path).mkdir(parents=True, exist_ok=True)
+    config.VhostServiceConfig.WriteBackCachePath = write_back_cache_path
+
     service_type = args.service or "local"
     kikimr_port = 0
     domain = None

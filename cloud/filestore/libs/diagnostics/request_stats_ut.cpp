@@ -24,6 +24,28 @@ namespace
 
 const TString METRIC_COMPONENT = "test";
 const TString METRIC_FS_COMPONENT = METRIC_COMPONENT + "_fs";
+const TString CLOUD = "test_cloud";
+const TString FOLDER = "test_folder";
+const TString FS = "test_filesystem";
+const TString CLIENT = "test_client";
+
+template <typename TCountersType>
+auto GetFsCounters(
+    const TCountersType& counters,
+    const TString& fs,
+    const TString& client,
+    const TString& cloud,
+    const TString& folder)
+{
+    auto fsCounters = counters->FindSubgroup("filesystem", fs);
+    UNIT_ASSERT(fsCounters);
+    fsCounters = fsCounters->FindSubgroup("client", client);
+    UNIT_ASSERT(fsCounters);
+    fsCounters = fsCounters->FindSubgroup("cloud", cloud);
+    UNIT_ASSERT(fsCounters);
+    fsCounters = fsCounters->FindSubgroup("folder", folder);
+    return fsCounters;
+}
 
 struct TBootstrap
 {
@@ -59,32 +81,27 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         UNIT_ASSERT(componentCounters->FindSubgroup("type", "ssd"));
         UNIT_ASSERT(componentCounters->FindSubgroup("type", "hdd"));
 
-        auto fsComponentCounters = bootstrap.Counters
+        auto counters = bootstrap.Counters
             ->FindSubgroup("component", METRIC_FS_COMPONENT);
-        UNIT_ASSERT(fsComponentCounters);
-        fsComponentCounters = fsComponentCounters->FindSubgroup("host", "cluster");
-        UNIT_ASSERT(fsComponentCounters);
+        UNIT_ASSERT(counters);
+        counters = counters->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(counters);
 
-        const TString fs = "test";
-        const TString client = "client";
-        auto stats = bootstrap.Registry->GetFileSystemStats(
-            fs,
-            client);
+        auto stats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         {
-            auto fsCounters = fsComponentCounters
-                ->FindSubgroup("filesystem", fs);
+            auto fsCounters = counters->FindSubgroup("filesystem", FS);
             UNIT_ASSERT(fsCounters);
 
-            auto clientCounters = fsCounters->FindSubgroup("client", client);
+            auto clientCounters = fsCounters->FindSubgroup("client", CLIENT);
             UNIT_ASSERT(clientCounters);
         }
 
-        bootstrap.Registry->Unregister(fs, client);
+        bootstrap.Registry->Unregister(FS, CLIENT);
         {
-            auto fsCounters = fsComponentCounters
-                ->FindSubgroup("filesystem", fs);
+            auto fsCounters = counters->FindSubgroup("filesystem", FS);
             UNIT_ASSERT(fsCounters);
-            UNIT_ASSERT(!fsCounters->FindSubgroup("client", client));
+            UNIT_ASSERT(!fsCounters->FindSubgroup("client", CLIENT));
         }
     }
 
@@ -96,14 +113,14 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             ->FindSubgroup("component", METRIC_COMPONENT);
         auto ssdCounters = componentCounters->FindSubgroup("type", "ssd");
 
-        const TString fs = "test";
-        const TString client = "client";
-        UNIT_ASSERT(bootstrap.Registry->GetFileSystemStats(fs, client));
-        bootstrap.Registry->SetFileSystemMediaKind(fs, client, NProto::STORAGE_MEDIA_SSD);
+
+        UNIT_ASSERT(
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER));
+        bootstrap.Registry->SetFileSystemMediaKind(FS, CLIENT, NProto::STORAGE_MEDIA_SSD);
 
         auto stats = bootstrap.Registry->GetRequestStats();
 
-        auto context = MakeIntrusive<TCallContext>(fs, ui64(1));
+        auto context = MakeIntrusive<TCallContext>(FS, ui64(1));
         context->RequestType = EFileStoreRequest::CreateHandle;
         stats->RequestStarted(*context);
         stats->RequestCompleted(*context, {});
@@ -118,22 +135,19 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     Y_UNIT_TEST(ShouldUnregisterMaxPredictedPostponeTimeViaFs)
     {
         const TString COUNTER = "MaxPredictedPostponeTime";
-        const TString FS = "test";
-        const TString CLIENT = "client";
 
         TBootstrap bootstrap;
 
-        auto fsCounters = bootstrap.Counters
+        auto counters = bootstrap.Counters
             ->FindSubgroup("component", METRIC_FS_COMPONENT);
-        UNIT_ASSERT(fsCounters);
-        fsCounters = fsCounters->FindSubgroup("host", "cluster");
-        UNIT_ASSERT(fsCounters);
+        UNIT_ASSERT(counters);
+        counters = counters->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(counters);
 
-        auto stats = bootstrap.Registry->GetFileSystemStats(FS, CLIENT);
+        auto stats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(stats);
-        fsCounters = fsCounters->FindSubgroup("filesystem", FS);
-        UNIT_ASSERT(fsCounters);
-        fsCounters = fsCounters->FindSubgroup("client", CLIENT);
+        auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(fsCounters);
 
         {
@@ -153,22 +167,20 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     Y_UNIT_TEST(ShouldReportReportMaxPredictedPostponeTimeForDataRequestsViaFs)
     {
         const TString COUNTER = "MaxPredictedPostponeTime";
-        const TString FS = "test";
-        const TString CLIENT = "client";
+
 
         TBootstrap bootstrap;
 
-        auto fsCounters = bootstrap.Counters
+        auto counters = bootstrap.Counters
             ->FindSubgroup("component", METRIC_FS_COMPONENT);
-        UNIT_ASSERT(fsCounters);
-        fsCounters = fsCounters->FindSubgroup("host", "cluster");
-        UNIT_ASSERT(fsCounters);
+        UNIT_ASSERT(counters);
+        counters = counters->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(counters);
 
-        auto stats = bootstrap.Registry->GetFileSystemStats(FS, CLIENT);
+        auto stats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(stats);
-        fsCounters = fsCounters->FindSubgroup("filesystem", FS);
-        UNIT_ASSERT(fsCounters);
-        fsCounters = fsCounters->FindSubgroup("client", CLIENT);
+        auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(fsCounters);
 
         auto predictedCounter = fsCounters->FindCounter(COUNTER);
@@ -405,28 +417,28 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         const TString COUNTER = "MaxPredictedPostponeTime";
         const TString FS_1 = "test_1";
         const TString FS_2 = "test_2";
-        const TString CLIENT = "client";
 
         TBootstrap bootstrap;
 
-        auto fsCountersFirst = bootstrap.Counters
+        auto counters = bootstrap.Counters
             ->FindSubgroup("component", METRIC_FS_COMPONENT);
-        UNIT_ASSERT(fsCountersFirst);
-        fsCountersFirst = fsCountersFirst->FindSubgroup("host", "cluster");
-        UNIT_ASSERT(fsCountersFirst);
+        UNIT_ASSERT(counters);
+        counters = counters->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(counters);
 
-        auto statsFirst = bootstrap.Registry->GetFileSystemStats(FS_1, CLIENT);
+        auto statsFirst =
+            bootstrap.Registry->GetFileSystemStats(FS_1, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(statsFirst);
-        auto statsSecond = bootstrap.Registry->GetFileSystemStats(FS_2, CLIENT);
+        auto statsSecond =
+            bootstrap.Registry->GetFileSystemStats(FS_2, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(statsSecond);
-        auto fsCountersSecond = fsCountersFirst->FindSubgroup("filesystem", FS_2);
-        UNIT_ASSERT(fsCountersSecond);
-        fsCountersSecond = fsCountersSecond->FindSubgroup("client", CLIENT);
-        UNIT_ASSERT(fsCountersSecond);
-        fsCountersFirst = fsCountersFirst->FindSubgroup("filesystem", FS_1);
+
+        auto fsCountersFirst =
+            GetFsCounters(counters, FS_1, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(fsCountersFirst);
-        fsCountersFirst = fsCountersFirst->FindSubgroup("client", CLIENT);
-        UNIT_ASSERT(fsCountersFirst);
+        auto fsCountersSecond =
+            GetFsCounters(counters, FS_2, CLIENT, CLOUD, FOLDER);
+        UNIT_ASSERT(fsCountersSecond);
 
         auto predictedCounterFirst = fsCountersFirst->FindCounter(COUNTER);
         UNIT_ASSERT(predictedCounterFirst);
@@ -564,22 +576,21 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     Y_UNIT_TEST(ShouldNotReportReportMaxPredictedPostponeTimeForNotDataRequestsViaFs)
     {
         const TString COUNTER = "MaxPredictedPostponeTime";
-        const TString FS = "test";
-        const TString CLIENT = "client";
+
 
         TBootstrap bootstrap;
 
-        auto fsCounters = bootstrap.Counters
+        auto counters = bootstrap.Counters
             ->FindSubgroup("component", METRIC_FS_COMPONENT);
-        UNIT_ASSERT(fsCounters);
-        fsCounters = fsCounters->FindSubgroup("host", "cluster");
-        UNIT_ASSERT(fsCounters);
+        UNIT_ASSERT(counters);
+        counters = counters->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(counters);
 
-        auto stats = bootstrap.Registry->GetFileSystemStats(FS, CLIENT);
+        auto stats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(stats);
-        fsCounters = fsCounters->FindSubgroup("filesystem", FS);
-        UNIT_ASSERT(fsCounters);
-        fsCounters = fsCounters->FindSubgroup("client", CLIENT);
+
+        auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(fsCounters);
 
         auto predictedCounter = fsCounters->FindCounter(COUNTER);
@@ -711,12 +722,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             ->FindSubgroup("component", METRIC_COMPONENT);
         auto ssdCounters = componentCounters->FindSubgroup("type", "ssd");
 
-        const TString fs = "test";
-        const TString client = "client";
-        auto stats = bootstrap.Registry->GetFileSystemStats(fs, client);
-        bootstrap.Registry->SetFileSystemMediaKind(fs, client, NProto::STORAGE_MEDIA_SSD);
 
-        auto context = MakeIntrusive<TCallContext>(fs, ui64(1));
+        auto stats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
+        bootstrap.Registry->SetFileSystemMediaKind(FS, CLIENT, NProto::STORAGE_MEDIA_SSD);
+
+        auto context = MakeIntrusive<TCallContext>(FS, ui64(1));
         context->RequestType = EFileStoreRequest::CreateHandle;
         stats->RequestStarted(*context);
         stats->RequestCompleted(*context, {});
@@ -739,59 +750,57 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             ->FindSubgroup("host", "cluster");
         UNIT_ASSERT(fsComponentCounters);
 
-        const TString fs = "test";
-        const TString client = "client";
-        auto firstStats = bootstrap.Registry->GetFileSystemStats(fs, client);
-        auto secondStats = bootstrap.Registry->GetFileSystemStats(fs, client);
+
+        auto firstStats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
+        auto secondStats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
 
         {
-            auto counters = fsComponentCounters->FindSubgroup("filesystem", fs);
+            auto counters = fsComponentCounters->FindSubgroup("filesystem", FS);
             UNIT_ASSERT(counters);
 
-            counters = counters->FindSubgroup("client", client);
+            counters = counters->FindSubgroup("client", CLIENT);
             UNIT_ASSERT(counters);
         }
 
-        bootstrap.Registry->Unregister(fs, client);
+        bootstrap.Registry->Unregister(FS, CLIENT);
 
         {
-            auto counters = fsComponentCounters->FindSubgroup("filesystem", fs);
+            auto counters = fsComponentCounters->FindSubgroup("filesystem", FS);
             UNIT_ASSERT(counters);
 
-            counters = counters->FindSubgroup("client", client);
+            counters = counters->FindSubgroup("client", CLIENT);
             UNIT_ASSERT(counters);
         }
 
-        bootstrap.Registry->Unregister(fs, client);
+        bootstrap.Registry->Unregister(FS, CLIENT);
 
         {
-            auto counters = fsComponentCounters->FindSubgroup("filesystem", fs);
+            auto counters = fsComponentCounters->FindSubgroup("filesystem", FS);
             UNIT_ASSERT(counters);
 
-            counters = counters->FindSubgroup("client", client);
+            counters = counters->FindSubgroup("client", CLIENT);
             UNIT_ASSERT(!counters);
         }
     }
 
     Y_UNIT_TEST(ShouldNotReportZeroCounters)
     {
-        const TString FS = "test";
-        const TString CLIENT = "client";
+
 
         TBootstrap bootstrap;
 
-        auto fsCounters = bootstrap.Counters
+        auto counters = bootstrap.Counters
             ->FindSubgroup("component", METRIC_FS_COMPONENT);
-        UNIT_ASSERT(fsCounters);
-        fsCounters = fsCounters->FindSubgroup("host", "cluster");
-        UNIT_ASSERT(fsCounters);
+        UNIT_ASSERT(counters);
+        counters = counters->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(counters);
 
-        auto stats = bootstrap.Registry->GetFileSystemStats(FS, CLIENT);
+        auto stats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
         UNIT_ASSERT(stats);
-        fsCounters = fsCounters->FindSubgroup("filesystem", FS);
-        UNIT_ASSERT(fsCounters);
-        fsCounters = fsCounters->FindSubgroup("client", CLIENT);
-        UNIT_ASSERT(fsCounters);
+        auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
 
         // non lazy-init request
         auto readData = fsCounters->FindSubgroup("request", "ReadData");
@@ -845,6 +854,106 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             // and now we successfully registered an error
             UNIT_ASSERT_VALUES_EQUAL(1, createHandleErrors->Val());
             UNIT_ASSERT_VALUES_EQUAL(1, createHandleCount->Val());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportCloudAndFolder)
+    {
+        TBootstrap bootstrap;
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        UNIT_ASSERT(counters);
+        counters = counters->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(counters);
+
+
+        auto stats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
+
+        {
+            auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
+            UNIT_ASSERT(fsCounters);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldMoveFilestatsToNewCloudAndFolder)
+    {
+        TBootstrap bootstrap;
+
+        auto rootCounters = bootstrap.Counters
+            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        UNIT_ASSERT(rootCounters);
+        rootCounters = rootCounters->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(rootCounters);
+
+
+        const TString oldCloud = "";
+        const TString oldFolder = "";
+        const TString newCloud = CLOUD;
+        const TString newFolder = FOLDER;
+        auto stats =
+            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, "", "");
+
+        // emulating first CreateSession request in vfs loop (it is performed
+        // with empty cloud and folder)
+        auto context = MakeIntrusive<TCallContext>(FS, ui64(1));
+        context->RequestType = EFileStoreRequest::CreateSession;
+        stats->RequestStarted(*context);
+        stats->RequestCompleted(*context, {});
+
+        {
+            auto fsCounters =
+                GetFsCounters(rootCounters, FS, CLIENT, oldCloud, oldCloud);
+            UNIT_ASSERT(fsCounters);
+
+            auto maxPredictedPostponeTimeCounter =
+                fsCounters->FindCounter("MaxPredictedPostponeTime");
+            UNIT_ASSERT(maxPredictedPostponeTimeCounter);
+            UNIT_ASSERT_EQUAL(maxPredictedPostponeTimeCounter->Val(), 0);
+
+            auto requestsCounters =
+                fsCounters->GetSubgroup("request", "CreateSession");
+            UNIT_ASSERT(requestsCounters);
+
+            auto createSessionCounter = requestsCounters->GetCounter("Count");
+            UNIT_ASSERT(createSessionCounter);
+            UNIT_ASSERT_EQUAL(createSessionCounter->Val(), 1);
+        }
+
+        // emulating assigning new cloud and folder (after session is created)
+        // counters should migrate to new cloud and folder subgroup
+        stats = bootstrap.Registry
+                    ->GetFileSystemStats(FS, CLIENT, newCloud, newFolder);
+
+        {
+            auto fsCounters = rootCounters->FindSubgroup("filesystem", FS);
+            UNIT_ASSERT(fsCounters);
+
+            fsCounters = fsCounters->FindSubgroup("client", CLIENT);
+            UNIT_ASSERT(fsCounters);
+
+            auto emptyCounters = fsCounters->FindSubgroup("cloud", oldCloud);
+            UNIT_ASSERT(!emptyCounters);
+
+            fsCounters = fsCounters->FindSubgroup("cloud", newCloud);
+            UNIT_ASSERT(fsCounters);
+
+            fsCounters = fsCounters->FindSubgroup("folder", newFolder);
+            UNIT_ASSERT(fsCounters);
+
+            auto maxPredictedPostponeTimeCounter =
+                fsCounters->FindCounter("MaxPredictedPostponeTime");
+            UNIT_ASSERT(maxPredictedPostponeTimeCounter);
+            UNIT_ASSERT_EQUAL(maxPredictedPostponeTimeCounter->Val(), 0);
+
+            auto requestsCounters =
+                fsCounters->GetSubgroup("request", "CreateSession");
+            UNIT_ASSERT(requestsCounters);
+
+            auto createSessionCounter = requestsCounters->GetCounter("Count");
+            UNIT_ASSERT(createSessionCounter);
+            UNIT_ASSERT_EQUAL(createSessionCounter->Val(), 1);
         }
     }
 }

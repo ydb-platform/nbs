@@ -4,16 +4,19 @@ import (
 	"context"
 	"math"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
+	filesystem_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -303,6 +306,145 @@ func (s *privateService) GetAliveNodes(
 		})
 	}
 	return &api.GetAliveNodesResponse{Nodes: nodes}, nil
+}
+
+func (s *privateService) FinishExternalFilesystemCreation(
+	ctx context.Context,
+	req *api.FinishExternalFilesystemCreationRequest,
+) (*empty.Empty, error) {
+
+	if len(req.FilesystemId) == 0 {
+		return nil, errors.NewInvalidArgumentError(
+			"filesystem ID is empty",
+		)
+	}
+
+	if len(req.ExternalStorageClusterName) == 0 {
+		return nil, errors.NewInvalidArgumentError(
+			"external storage cluster name is empty",
+		)
+	}
+
+	filesystemMeta, err := s.resourceStorage.GetFilesystemMeta(
+		ctx,
+		req.FilesystemId,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	creationTask, err := s.taskStorage.GetTask(ctx, filesystemMeta.CreateTaskID)
+	if err != nil {
+		return nil, err
+	}
+
+	creationTaskStateProto := &filesystem_protos.CreateFilesystemTaskState{}
+	err = proto.Unmarshal(creationTask.State, creationTaskStateProto)
+	if err != nil {
+		return nil, err
+	}
+
+	externalFilesystemTaskID :=
+		creationTaskStateProto.GetCreateExternalFilesystemTaskID()
+
+	if len(externalFilesystemTaskID) == 0 {
+		return nil, task_errors.NewNonRetriableErrorf(
+			"external filesystem creation task ID is empty",
+		)
+	}
+
+	externalFilesystemTask, err := s.taskStorage.GetTask(
+		ctx,
+		externalFilesystemTaskID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if externalFilesystemTask.TaskType != "filesystem.CreateExternalFilesystem" {
+		return nil, task_errors.NewNonRetriableErrorf(
+			"expected filesystem.CreateExternalFilesystem task type, got %v",
+			externalFilesystemTask.TaskType,
+		)
+	}
+
+	err = s.resourceStorage.SetExternalFilesystemStorageClusterName(
+		ctx,
+		req.FilesystemId,
+		req.ExternalStorageClusterName,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.taskStorage.ForceFinishTask(ctx, externalFilesystemTaskID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &empty.Empty{}, nil
+}
+
+func (s *privateService) FinishExternalFilesystemDeletion(
+	ctx context.Context,
+	req *api.FinishExternalFilesystemDeletionRequest,
+) (*empty.Empty, error) {
+
+	if len(req.FilesystemId) == 0 {
+		return nil, errors.NewInvalidArgumentError(
+			"filesystem ID is empty",
+		)
+	}
+
+	filesystemMeta, err := s.resourceStorage.GetFilesystemMeta(
+		ctx,
+		req.FilesystemId,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	deletionTask, err := s.taskStorage.GetTask(ctx, filesystemMeta.DeleteTaskID)
+	if err != nil {
+		return nil, err
+	}
+
+	deletionTaskStateProto := &filesystem_protos.DeleteFilesystemTaskState{}
+	err = proto.Unmarshal(deletionTask.State, deletionTaskStateProto)
+	if err != nil {
+		return nil, err
+	}
+
+	externalFilesystemTaskID :=
+		deletionTaskStateProto.GetDeleteExternalFilesystemTaskID()
+
+	if len(externalFilesystemTaskID) == 0 {
+		return nil, task_errors.NewNonRetriableErrorf(
+			"external filesystem deletion task ID is empty",
+		)
+	}
+
+	externalFilesystemTask, err := s.taskStorage.GetTask(
+		ctx,
+		externalFilesystemTaskID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if externalFilesystemTask.TaskType != "filesystem.DeleteExternalFilesystem" {
+		return nil, task_errors.NewNonRetriableErrorf(
+			"expected filesystem.DeleteExternalFilesystem task type, got %v",
+			externalFilesystemTask.TaskType,
+		)
+	}
+
+	err = s.taskStorage.ForceFinishTask(ctx, externalFilesystemTaskID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &empty.Empty{}, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

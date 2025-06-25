@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/volume/volume.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/common/format.h>
 
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/mind/local.h>
@@ -212,15 +213,19 @@ void TStartVolumeActor::LockTablet(const TActorContext& ctx)
     }
 
     if (PendingRequest == EPendingRequest::LOCK) {
-        LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Tablet is already being locked",
-            VolumeTabletId);
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Tablet is already being locked",
+            LogTitle.GetWithTime().c_str());
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Acquiring tablet lock",
-        VolumeTabletId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Acquiring tablet lock",
+        LogTitle.GetWithTime().c_str());
 
     PendingRequest = EPendingRequest::LOCK;
 
@@ -242,18 +247,22 @@ void TStartVolumeActor::HandleLockTabletResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Failed to acquire tablet lock: %s",
-            VolumeTabletId,
-            FormatError(error).data());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Failed to acquire tablet lock: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
 
         StartShutdown(ctx, error);
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Successfully acquired tablet lock",
-        VolumeTabletId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Successfully acquired tablet lock",
+        LogTitle.GetWithTime().c_str());
 
     VolumeTabletLocked = true;
 
@@ -285,14 +294,19 @@ void TStartVolumeActor::HandleTabletLockLost(
 
     const auto* msg = ev->Get();
 
-    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Tablet lock has been lost with error: %s",
-        VolumeTabletId,
-        FormatError(msg->Error).data());
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Tablet lock has been lost with error: %s",
+        LogTitle.GetWithTime().c_str(),
+        FormatError(msg->Error).c_str());
 
     if (!Config->GetDoNotStopVolumeTabletOnLockLost()) {
-        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Stop volume tablet on lock lost", VolumeTabletId);
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Stop volume tablet on lock lost",
+            LogTitle.GetWithTime().c_str());
 
         auto error = MakeError(E_REJECTED, "Tablet lock has been lost");
         StartShutdown(ctx, error);
@@ -305,9 +319,11 @@ void TStartVolumeActor::HandleTabletLockLost(
 
 void TStartVolumeActor::DescribeVolume(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending describe request for volume: %s",
-        DiskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending describe request for volume",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -324,23 +340,29 @@ void TStartVolumeActor::HandleDescribeVolumeResponse(
     if (msg->GetStatus() ==
         MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
     {
-        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Volume %s is destroyed",
-            VolumeTabletId,
-            DiskId.Quote().data());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume is destroyed",
+            LogTitle.GetWithTime().c_str());
 
         StartShutdown(ctx);
         return;
-    } else if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
+    }
+
+    if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
         auto volumeTabletId = msg->
             PathDescription.
             GetBlockStoreVolumeDescription().
             GetVolumeTabletId();
 
         if (volumeTabletId != VolumeTabletId) {
-            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-                "Volume %s tablet was changed",
-                DiskId.Quote().data());
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "%s Volume TabletId was changed to %lu",
+                LogTitle.GetWithTime().c_str(),
+                volumeTabletId);
 
             StartShutdown(ctx);
             return;
@@ -375,15 +397,19 @@ void TStartVolumeActor::UnlockTablet(const TActorContext& ctx)
     Y_ABORT_UNLESS(VolumeTabletLocked);
 
     if (PendingRequest == EPendingRequest::UNLOCK) {
-        LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Tablet is already being unlocked",
-            VolumeTabletId);
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Tablet is already being unlocked",
+            LogTitle.GetWithTime().c_str());
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Releasing tablet lock",
-        VolumeTabletId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Releasing tablet lock",
+        LogTitle.GetWithTime().c_str());
 
     PendingRequest = EPendingRequest::UNLOCK;
 
@@ -404,9 +430,11 @@ void TStartVolumeActor::HandleUnlockTabletResponse(
         PendingRequest = EPendingRequest::NONE;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Tablet lock has been released",
-        VolumeTabletId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Tablet lock has been released",
+        LogTitle.GetWithTime().c_str());
 
     VolumeTabletLocked = false;
 
@@ -432,10 +460,12 @@ void TStartVolumeActor::ScheduleReboot(const TActorContext& ctx, bool delay)
         RebootSleepDuration = TDuration::Zero();
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Sleeping for %s before rebooting tablet",
-        VolumeTabletId,
-        ToString(RebootSleepDuration).data());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sleeping for %s before rebooting tablet",
+        LogTitle.GetWithTime().c_str(),
+        FormatDuration(RebootSleepDuration).c_str());
 
     PendingRequest = EPendingRequest::WAKEUP;
 
@@ -448,8 +478,11 @@ void TStartVolumeActor::ScheduleReboot(const TActorContext& ctx, bool delay)
 void TStartVolumeActor::BootExternal(const TActorContext& ctx)
 {
     if (PendingRequest == EPendingRequest::BOOT_EXTERNAL) {
-        LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] External boot is already requested for tablet");
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s External boot is already requested for tablet",
+            LogTitle.GetWithTime().c_str());
         return;
     }
 
@@ -480,18 +513,22 @@ void TStartVolumeActor::HandleBootExternalResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] External boot request failed: %s",
-            VolumeTabletId,
-            FormatError(error).data());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s External boot request failed: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
 
         ScheduleReboot(ctx);
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Successfully confirmed external boot with generation %u",
-        VolumeTabletId,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Successfully confirmed external boot with generation %u",
+        LogTitle.GetWithTime().c_str(),
         msg->SuggestedGeneration);
 
     if (msg->SuggestedGeneration > VolumeGeneration) {
@@ -521,9 +558,11 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
     Y_ABORT_UNLESS(!VolumeUserActor);
 
     if (PendingRequest == EPendingRequest::START) {
-        LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Tablet is already being started",
-            VolumeTabletId);
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Tablet is already being started",
+            LogTitle.GetWithTime().c_str());
         return;
     }
 
@@ -600,9 +639,11 @@ void TStartVolumeActor::HandleTabletRestored(
     if (ev->Sender != VolumeSysActor) {
         // This message is from an unexpected boot attempt
         // Ignore and kill the wrong system tablet
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Unexpected TEvRestored from %s (expected %s)",
-            VolumeTabletId,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Unexpected TEvRestored from %s (expected %s)",
+            LogTitle.GetWithTime().c_str(),
             ToString(ev->Sender).data(),
             ToString(VolumeSysActor).data());
 
@@ -614,9 +655,11 @@ void TStartVolumeActor::HandleTabletRestored(
         PendingRequest = EPendingRequest::NONE;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Tablet restored (gen: %u, system: %s, user: %s)",
-        VolumeTabletId,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Tablet restored (gen: %u, system: %s, user: %s)",
+        LogTitle.GetWithTime().c_str(),
         VolumeGeneration,
         ToString(VolumeSysActor).data(),
         ToString(VolumeUserActor).data());
@@ -651,11 +694,13 @@ void TStartVolumeActor::HandleTabletDead(
     if (ev->Sender != VolumeSysActor) {
         // This message is from an unexpected boot attempt
         // Ignore and kill the wrong system tablet
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Unexpected TEvTabletDead from %s (expected %s)",
-            VolumeTabletId,
-            ToString(ev->Sender).data(),
-            ToString(VolumeSysActor).data());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Unexpected TEvTabletDead from %s (expected %s)",
+            LogTitle.GetWithTime().c_str(),
+            ToString(ev->Sender).c_str(),
+            ToString(VolumeSysActor).c_str());
 
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, ev->Sender);
         return;
@@ -666,9 +711,11 @@ void TStartVolumeActor::HandleTabletDead(
     }
 
     if (PendingRequest == EPendingRequest::START) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Tablet boot failed during actor starting",
-            VolumeTabletId);
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Tablet boot failed during actor starting",
+            LogTitle.GetWithTime().c_str());
 
         PendingRequest = EPendingRequest::NONE;
     }
@@ -693,9 +740,11 @@ void TStartVolumeActor::StopTablet(const TActorContext& ctx)
 {
     Y_ABORT_UNLESS(VolumeSysActor);
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Sending PoisonPill to %s",
-        VolumeTabletId,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending PoisonPill to %s",
+        LogTitle.GetWithTime().c_str(),
         ToString(VolumeSysActor).data());
 
     PendingRequest = EPendingRequest::STOP;
@@ -708,9 +757,11 @@ void TStartVolumeActor::StopTablet(const TActorContext& ctx)
 
 void TStartVolumeActor::WaitReady(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Sending WaitReady to %s",
-        VolumeTabletId,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending WaitReady to %s",
+        LogTitle.GetWithTime().c_str(),
         ToString(VolumeUserActor).data());
 
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
@@ -728,21 +779,25 @@ void TStartVolumeActor::HandleWaitReadyResponse(
     const auto* msg = ev->Get();
 
     if (PendingRequest != EPendingRequest::READY) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Start volume %s actor: ignoring wait ready response, "
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Start volume actor, ignoring wait ready response, "
             "was not pending it, pending request is %s",
-            DiskId.Quote().data(),
-            FormatPendingRequest().data());
+            LogTitle.GetWithTime().c_str(),
+            FormatPendingRequest().c_str());
         return;
     }
 
     if (ev->Sender != VolumeUserActor) {
         // Ignore unexpected response
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Unexpected TEvWaitReadyResponse from %s (expected %s)",
-            VolumeTabletId,
-            ToString(ev->Sender).data(),
-            ToString(VolumeUserActor).data());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Unexpected TEvWaitReadyResponse from %s (expected %s)",
+            LogTitle.GetWithTime().c_str(),
+            ToString(ev->Sender).c_str(),
+            ToString(VolumeUserActor).c_str());
         return;
     }
 
@@ -755,19 +810,23 @@ void TStartVolumeActor::HandleWaitReadyResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] WaitReady request failed: %s",
-            VolumeTabletId,
-            FormatError(error).data());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s WaitReady request failed: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
 
         StartShutdown(ctx, error);
         return;
     }
 
     // Notify service about tablet status
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Received WaitReady response",
-        VolumeTabletId);
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Received WaitReady response",
+        LogTitle.GetWithTime().c_str());
 
     const auto& volume = msg->Record.GetVolume();
     Y_ABORT_UNLESS(volume.GetDiskId() == DiskId);
@@ -844,10 +903,12 @@ void TStartVolumeActor::SendVolumeTabletDeadErrorAndScheduleReboot(
 
     auto error = MakeError(E_REJECTED, TEvTablet::TEvTabletDead::Str(VolumeTabletDeadReason));
 
-    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Tablet failed: %s",
-        VolumeTabletId,
-        FormatError(error).data());
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Tablet failed: %s",
+        LogTitle.GetWithTime().c_str(),
+        FormatError(error).c_str());
 
     NCloud::Send<TEvServicePrivate::TEvVolumeTabletStatus>(
         ctx,
@@ -928,11 +989,13 @@ void TStartVolumeActor::HandleWakeup(
     Y_UNUSED(ev);
 
     if (PendingRequest != EPendingRequest::WAKEUP) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Start volume %s actor: ignoring wakeup, was not pending it, "
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Start volume actor: ignoring wakeup, was not pending it, "
             "pending request is %s",
-            DiskId.Quote().data(),
-            FormatPendingRequest().data());
+            LogTitle.GetWithTime().c_str(),
+            FormatPendingRequest().c_str());
         return;
     }
 
@@ -993,9 +1056,11 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
     const auto& diskId = VolumeInfo->DiskId;
 
     if (!StartVolumeActor) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Starting volume %s locally",
-            diskId.Quote().data());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Starting volume locally",
+            LogTitle.GetWithTime().c_str());
 
         CurrentRequest = START_REQUEST;
         StartVolumeActor = NCloud::Register<TStartVolumeActor>(
@@ -1017,8 +1082,12 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
         auto response = std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
             MakeError(E_REJECTED, TStringBuilder()
                 << "Volume " << diskId << " is being stopped"));
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            FormatError(response->GetError()));
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(response->GetError()).c_str());
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -1039,24 +1108,25 @@ void TVolumeSessionActor::HandleVolumeTabletStatus(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const auto& diskId = VolumeInfo->DiskId;
 
     if (!msg->VolumeActor) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Volume %s failed: %s",
-            VolumeInfo->TabletId,
-            diskId.Quote().data(),
-            ToString(msg->Error).data());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume start failed: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->Error).c_str());
 
         VolumeInfo->VolumeActor = {};
         VolumeInfo->SetFailed(msg->Error);
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Volume %s started",
-        msg->TabletId,
-        diskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Volume started",
+        LogTitle.GetWithTime().c_str());
 
     VolumeInfo->SetStarted(msg->TabletId, msg->VolumeInfo, msg->VolumeActor);
 

@@ -27,9 +27,51 @@ TLogTitle::TLogTitle(
         ui32 partitionCount)
     : Type(EType::Partition)
     , StartTime(startTime)
-    , TabletId(tabletId)
     , PartitionIndex(partitionIndex)
     , PartitionCount(partitionCount)
+    , TabletId(tabletId)
+    , DiskId(std::move(diskId))
+{
+    Rebuild();
+}
+
+TLogTitle::TLogTitle(
+        EType type,
+        TString sessionId,
+        TString diskId,
+        bool temporaryServer,
+        ui64 startTime)
+    : Type(type)
+    , SessionId(std::move(sessionId))
+    , StartTime(startTime)
+    , TemporaryServer(temporaryServer)
+    , DiskId(std::move(diskId))
+{
+    Rebuild();
+}
+
+TLogTitle::TLogTitle(
+        ui64 tabletId,
+        TString sessionId,
+        TString clientId,
+        TString diskId,
+        bool temporaryServer,
+        ui64 startTime)
+    : Type(EType::Client)
+    , SessionId(std::move(sessionId))
+    , ClientId(std::move(clientId))
+    , StartTime(startTime)
+    , TemporaryServer(temporaryServer)
+    , TabletId(tabletId)
+    , DiskId(std::move(diskId))
+{
+    Rebuild();
+}
+
+TLogTitle::TLogTitle(TString diskId, bool temporaryServer, ui64 startTime)
+    : Type(EType::VolumeProxy)
+    , StartTime(startTime)
+    , TemporaryServer(temporaryServer)
     , DiskId(std::move(diskId))
 {
     Rebuild();
@@ -51,6 +93,16 @@ TString TLogTitle::GetPartitionPrefix(
     builder << tabletId;
 
     return builder;
+}
+
+TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
+{
+    TStringBuilder childPrefix;
+    childPrefix << CachedPrefix;
+    const auto duration = CyclesToDurationSafe(startTime - StartTime);
+    childPrefix << " t:" << FormatDuration(duration);
+
+    return TChildLogTitle(childPrefix, startTime);
 }
 
 TString TLogTitle::Get(EDetails details) const
@@ -91,6 +143,12 @@ void TLogTitle::SetGeneration(ui32 generation)
     Rebuild();
 }
 
+void TLogTitle::SetTabletId(ui64 tabletId)
+{
+    TabletId = tabletId;
+    Rebuild();
+}
+
 void TLogTitle::Rebuild()
 {
     switch (Type) {
@@ -100,6 +158,18 @@ void TLogTitle::Rebuild()
         }
         case EType::Partition: {
             RebuildForPartition();
+            break;
+        }
+        case EType::Session: {
+            RebuildForSession();
+            break;
+        }
+        case EType::Client: {
+            RebuildForClient();
+            break;
+        }
+        case EType::VolumeProxy: {
+            RebuildForVolumeProxy();
             break;
         }
     }
@@ -133,6 +203,83 @@ void TLogTitle::RebuildForPartition()
         builder << " g:?";
     }
     builder << " d:" << (DiskId.empty() ? "???" : DiskId);
+
+    CachedPrefix = builder;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TChildLogTitle::TChildLogTitle(TString cachedPrefix, ui64 startTime)
+    : CachedPrefix(std::move(cachedPrefix))
+    , StartTime(startTime)
+{}
+
+TString TChildLogTitle::GetWithTime() const
+{
+    const auto duration = CyclesToDurationSafe(GetCycleCount() - StartTime);
+    TStringBuilder builder;
+    builder << CachedPrefix << " + " << FormatDuration(duration) << "]";
+    return builder;
+}
+
+void TLogTitle::RebuildForSession()
+{
+    auto builder = TStringBuilder();
+
+    builder << "[";
+    if (TemporaryServer) {
+        builder << "~";
+    }
+    builder << "vs:";
+    if (TabletId) {
+        builder << TabletId;
+    } else {
+        builder << "?";
+    }
+    builder << " d:" << DiskId;
+    builder << " s:" << SessionId;
+
+    CachedPrefix = builder;
+}
+
+void TLogTitle::RebuildForClient()
+{
+    auto builder = TStringBuilder();
+
+    builder << "[";
+    if (TemporaryServer) {
+        builder << "~";
+    }
+    builder << "vc:" << TabletId;
+    builder << " d:" << DiskId;
+    builder << " s:" << SessionId;
+    builder << " c:" << ClientId;
+
+    builder << " pg:";
+    if (Generation) {
+        builder << Generation;
+    } else {
+        builder << "?";
+    }
+    CachedPrefix = builder;
+}
+
+void TLogTitle::RebuildForVolumeProxy()
+{
+    auto builder = TStringBuilder();
+
+    builder << "[";
+    if (TemporaryServer) {
+        builder << "~";
+    }
+    builder << "vp:";
+    if (TabletId) {
+        builder << TabletId;
+    } else {
+        builder << "?";
+    }
+    builder << " d:" << DiskId;
+    builder << " pg:" << Generation;
 
     CachedPrefix = builder;
 }

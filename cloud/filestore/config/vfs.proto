@@ -42,7 +42,7 @@ message TVFSConfig
     // (and a subdirectory with session id as name) if not present.
     optional string HandleOpsQueuePath = 13;
 
-    // Max HandleOpsQueue size in bytes.
+    // Max HandleOpsQueue size in bytes per session.
     optional uint32 HandleOpsQueueSize = 14;
 
     // Path to the directory where WriteBackCache is stored for all
@@ -50,7 +50,9 @@ message TVFSConfig
     // (and a subdirectory with session id as name) if not present.
     optional string WriteBackCachePath = 15;
 
-    // Max WriteBackCache size in bytes.
-    optional uint32 WriteBackCacheSize = 16;
+    // Max WriteBackCache capacity in bytes per session.
+    optional uint64 WriteBackCacheCapacity = 16;
 
+    // WriteBackCache automatic flush period (in milliseconds).
+    optional uint32 WriteBackCacheAutomaticFlushPeriod = 17;
 }

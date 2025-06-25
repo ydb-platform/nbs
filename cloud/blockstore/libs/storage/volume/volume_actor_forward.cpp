@@ -100,6 +100,37 @@ void CopySgListIntoRequestBuffers(T& t)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
+void TVolumeActor::UpdateIngestTimeStats(
+    const typename TMethod::TRequest::TPtr& ev,
+    TInstant now)
+{
+    if constexpr (!IsReadOrWriteMethod<TMethod>) {
+        return;
+    }
+
+    const auto& headers = ev->Get()->Record.GetHeaders();
+    if (headers.GetRetryNumber() > 0) {
+        return;
+    }
+
+    const auto ingestTime =
+        now - TInstant::MicroSeconds(headers.GetTimestamp());
+
+    if constexpr (IsReadMethod<TMethod>) {
+        VolumeSelfCounters->IngestTimeRequestCounters.ReadBlocks.Increment(
+            ingestTime.MicroSeconds());
+    } else if constexpr (IsExactlyWriteMethod<TMethod>) {
+        VolumeSelfCounters->IngestTimeRequestCounters.WriteBlocks.Increment(
+            ingestTime.MicroSeconds());
+    } else if constexpr (IsZeroMethod<TMethod>) {
+        VolumeSelfCounters->IngestTimeRequestCounters.ZeroBlocks.Increment(
+            ingestTime.MicroSeconds());
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
 bool TVolumeActor::HandleMultipartitionVolumeRequest(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
@@ -490,12 +521,10 @@ bool TVolumeActor::ReplyToOriginalRequest(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Disk: %s, Generation: %u. The first successful %s "
-            "request was started at %s finished at %s. The very first request "
-            "was started at %s. Failed requests: %lu",
-            TabletID(),
-            State->GetDiskId().Quote().c_str(),
-            Executor()->Generation(),
+            "%s The first successful %s request was started at %s finished at "
+            "%s. The very first request was started at %s. Failed requests: "
+            "%lu",
+            LogTitle.GetWithTime().c_str(),
             ToString(firstSuccess->RequestType).c_str(),
             FormatDuration(firstSuccess->SuccessfulRequestStartTime).c_str(),
             FormatDuration(firstSuccess->SuccessfulRequestFinishTime).c_str(),
@@ -626,6 +655,8 @@ void TVolumeActor::ForwardRequest(
         msg->CallContext->LWOrbit,
         TMethod::Name,
         msg->CallContext->RequestId);
+
+    UpdateIngestTimeStats<TMethod>(ev, ctx.Now());
 
     auto replyError = [&] (NProto::TError error)
     {

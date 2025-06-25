@@ -240,7 +240,6 @@ private:
     bool MaskUnusedBlocks = false;
     bool UseRdma = false;
     bool UseFastPath = false;
-    bool UseRdmaForThisVolume = false;
     bool RdmaUnavailable = false;
     TDuration MaxTimedOutDeviceStateDuration;
     bool UseIntermediateWriteBuffer = false;
@@ -712,11 +711,6 @@ public:
     bool GetUseRdma() const
     {
         return UseRdma && !RdmaUnavailable;
-    }
-
-    bool GetUseRdmaForThisVolume() const
-    {
-        return UseRdmaForThisVolume;
     }
 
     bool GetUseFastPath() const

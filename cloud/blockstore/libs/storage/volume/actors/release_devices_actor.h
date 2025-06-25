@@ -15,6 +15,10 @@ namespace NCloud::NBlockStore::NStorage {
 class TReleaseDevicesActor final
     : public NActors::TActorBootstrapped<TReleaseDevicesActor>
 {
+    using TAgentId = TString;
+
+    using TNodeId = ui32;
+
 private:
     const TActorId Owner;
     const TString DiskId;
@@ -24,7 +28,7 @@ private:
     const bool MuteIOErrors;
 
     TVector<NProto::TDeviceConfig> Devices;
-    int PendingRequests = 0;
+    THashMap<TNodeId, TAgentId> PendingAgents;
 
 public:
     TReleaseDevicesActor(
@@ -44,9 +48,11 @@ private:
 
     TString LogTargets() const;
 
+    TString LogPendingAgents() const;
+
     void OnReleaseResponse(
         const NActors::TActorContext& ctx,
-        ui64 cookie,
+        TNodeId nodeId,
         NProto::TError error);
 
 private:

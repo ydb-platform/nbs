@@ -123,16 +123,20 @@ void TVolumeActor::UpdateDelayCounter(
     }
     switch (opType) {
         case TVolumeThrottlingPolicy::EOpType::Read:
-            VolumeSelfCounters->RequestCounters.ReadBlocks.Increment(time.MicroSeconds());
+            VolumeSelfCounters->ThrottlerDelayRequestCounters.ReadBlocks
+                .Increment(time.MicroSeconds());
             return;
         case TVolumeThrottlingPolicy::EOpType::Write:
-            VolumeSelfCounters->RequestCounters.WriteBlocks.Increment(time.MicroSeconds());
+            VolumeSelfCounters->ThrottlerDelayRequestCounters.WriteBlocks
+                .Increment(time.MicroSeconds());
             return;
         case TVolumeThrottlingPolicy::EOpType::Zero:
-            VolumeSelfCounters->RequestCounters.ZeroBlocks.Increment(time.MicroSeconds());
+            VolumeSelfCounters->ThrottlerDelayRequestCounters.ZeroBlocks
+                .Increment(time.MicroSeconds());
             return;
         case TVolumeThrottlingPolicy::EOpType::Describe:
-            VolumeSelfCounters->RequestCounters.DescribeBlocks.Increment(time.MicroSeconds());
+            VolumeSelfCounters->ThrottlerDelayRequestCounters.DescribeBlocks
+                .Increment(time.MicroSeconds());
             return;
         case TVolumeThrottlingPolicy::EOpType::Last:
         default:

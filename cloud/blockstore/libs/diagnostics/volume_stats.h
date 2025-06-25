@@ -40,13 +40,13 @@ struct IVolumeInfo
 
     virtual ui64 RequestStarted(
         EBlockStoreRequest requestType,
-        ui32 requestBytes) = 0;
+        ui64 requestBytes) = 0;
 
     virtual TDuration RequestCompleted(
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         TDuration postponedTime,
-        ui32 requestBytes,
+        ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,

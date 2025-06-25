@@ -26,30 +26,30 @@ class TUnmountRequestActor final
     : public TActorBootstrapped<TUnmountRequestActor>
 {
 private:
+    const TChildLogTitle LogTitle;
     const TStorageConfigPtr Config;
     const TRequestInfoPtr RequestInfo;
     const TString DiskId;
     const TString ClientId;
     const NProto::EVolumeMountMode MountMode;
     const NProto::EControlRequestSource Source;
+    const TActorId SessionActorId;
+    const TActorId VolumeProxy;
+    const ui64 TabletId;
 
     NProto::TError Error;
-
-    TActorId SessionActorId;
-    TActorId VolumeProxy;
-
-    ui64 TabletId = 0;
     bool DiskRecreated = false;
 
 public:
     TUnmountRequestActor(
+        TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TRequestInfoPtr requestInfo,
         TString diskId,
         TString clientId,
         NProto::EVolumeMountMode mountMode,
         NProto::EControlRequestSource source,
-        TActorId SessionActorId,
+        TActorId sessionActorId,
         TActorId volumeProxy,
         ui64 tabletId);
 
@@ -83,6 +83,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TUnmountRequestActor::TUnmountRequestActor(
+        TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TRequestInfoPtr requestInfo,
         TString diskId,
@@ -92,7 +93,8 @@ TUnmountRequestActor::TUnmountRequestActor(
         TActorId sessionActorId,
         TActorId volumeProxy,
         ui64 tabletId)
-    : Config(std::move(config))
+    : LogTitle(std::move(logTitle))
+    , Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))
@@ -112,9 +114,11 @@ void TUnmountRequestActor::Bootstrap(const TActorContext& ctx)
 
 void TUnmountRequestActor::DescribeVolume(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending describe request for volume: %s",
-        DiskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending describe request",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -128,10 +132,12 @@ void TUnmountRequestActor::RemoveClient(const TActorContext& ctx)
     request->Record.SetDiskId(DiskId);
     request->Record.MutableHeaders()->SetClientId(ClientId);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending remove client %s to volume %s",
-        ClientId.Quote().data(),
-        DiskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending remove client %s",
+        LogTitle.GetWithTime().c_str(),
+        ClientId.Quote().c_str());
 
     auto proxy = VolumeProxy ? VolumeProxy : MakeVolumeProxyServiceId();
 
@@ -177,10 +183,10 @@ void TUnmountRequestActor::HandleVolumeRemoveClientResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Failed to remove client %s from volume %s with error: %s",
-            ClientId.Quote().data(),
-            DiskId.Quote().data(),
-            FormatError(Error).data());
+            "%s Failed to remove client %s from volume with error: %s",
+            LogTitle.GetWithTime().c_str(),
+            ClientId.Quote().c_str(),
+            FormatError(Error).c_str());
 
         if (GetErrorKind(Error) == EErrorKind::ErrorRetriable) {
             // check if volume is not destroyed
@@ -208,9 +214,11 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
     if (msg->GetStatus() ==
         MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
     {
-        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s is already destroyed before unmount for client %s",
-            DiskId.Quote().data(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume is already destroyed before unmount for client %s",
+            LogTitle.GetWithTime().c_str(),
             ClientId.Quote().data());
 
         Error = MakeError(S_ALREADY, "Volume is already destroyed");
@@ -293,19 +301,23 @@ void TVolumeSessionActor::HandleUnmountVolume(
     const auto& clientId = GetClientId(*msg);
 
     if (MountRequestActor || UnmountRequestActor) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Queuing unmount volume %s by client %s request",
-            diskId.Quote().data(),
-            clientId.Quote().data());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Queuing unmount volume by client %s request",
+            LogTitle.GetWithTime().c_str(),
+            clientId.Quote().c_str());
 
         MountUnmountRequests.emplace(ev.Release());
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Unmounting volume: %s (client: %s)",
-        diskId.Quote().data(),
-        clientId.Quote().data());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Unmounting volume. Client: %s",
+        LogTitle.GetWithTime().c_str(),
+        clientId.Quote().c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -320,6 +332,7 @@ void TVolumeSessionActor::HandleUnmountVolume(
 
     UnmountRequestActor = NCloud::Register<TUnmountRequestActor>(
         ctx,
+        LogTitle.GetChild(GetCycleCount()),
         Config,
         std::move(requestInfo),
         diskId,
@@ -342,10 +355,12 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
     UnmountRequestActor = {};
 
     if (HasError(msg->GetError())) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Failed to unmount client %s from volume %s",
-            clientId.Quote().data(),
-            diskId.Quote().data());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Failed to unmount client %s",
+            LogTitle.GetWithTime().c_str(),
+            clientId.Quote().c_str());
 
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable
                 && msg->RequestSender == SelfId())
@@ -353,10 +368,12 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
             // this failed request was issued because of inactivity timeout
             // and it failed with retriable error -> retry it
 
-            LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-                "Retry unmounting volume: %s (client: %s)",
-                diskId.Quote().data(),
-                clientId.Quote().data());
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "Retry unmounting volume. Client: %s",
+                LogTitle.GetWithTime().c_str(),
+                clientId.Quote().c_str());
 
             auto requestInfo = CreateRequestInfo(
                 SelfId(),
@@ -371,6 +388,7 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
 
             UnmountRequestActor = NCloud::Register<TUnmountRequestActor>(
                 ctx,
+                LogTitle.GetChild(GetCycleCount()),
                 Config,
                 std::move(requestInfo),
                 diskId,
@@ -384,10 +402,12 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
             return;
         }
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Client %s is removed from volume %s",
-            clientId.Quote().data(),
-            diskId.Quote().data());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Client %s is removed",
+            LogTitle.GetWithTime().c_str(),
+            clientId.Quote().c_str());
 
         auto* clientInfo = VolumeInfo->GetClientInfo(clientId);
         if (clientInfo) {
@@ -406,9 +426,11 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
                     TraceSerializer,
                     EndpointEventHandler,
                     SelfId(),
+                    VolumeInfo->SessionId,
+                    clientId,
+                    TemporaryServer,
                     VolumeInfo->DiskId,
-                    TabletId
-                ));
+                    TabletId));
             VolumeInfo->VolumeClientActor = VolumeClient;
         }
 

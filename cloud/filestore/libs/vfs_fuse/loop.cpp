@@ -5,6 +5,7 @@
 #include "fuse.h"
 #include "handle_ops_queue.h"
 #include "log.h"
+#include "util/system/file_lock.h"
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -53,6 +54,45 @@ namespace {
 
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
+
+NProto::TError CreateAndLockFile(
+    const TString& dir,
+    const TStringBuf& fileName,
+    THolder<TFileLock>& fileLock)
+{
+    if (!NFs::MakeDirectoryRecursive(dir)) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "Failed to create directories, path: " << dir);
+    }
+
+    auto filePath = TFsPath(dir) / fileName;
+    filePath.Touch();
+    fileLock = MakeHolder<TFileLock>(filePath);
+    if (!fileLock->TryAcquire()) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "Failed to lock file, path: %s " << filePath);
+    }
+    return {};
+}
+
+NProto::TError UnlockAndDeleteFile(
+    const TString& dir,
+    THolder<TFileLock>& fileLock)
+{
+    fileLock->Release();
+
+    try {
+        NFs::RemoveRecursive(dir);
+    } catch (const TSystemError& err) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "Failed to remove dir"
+                             << ", reason: " << err.AsStrBuf());
+    }
+    return {};
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -516,6 +556,9 @@ private:
     IFileSystemPtr FileSystem;
     TFileSystemConfigPtr FileSystemConfig;
 
+    THolder<TFileLock> HandleOpsQueueFileLock;
+    THolder<TFileLock> WriteBackCacheFileLock;
+
     bool HandleOpsQueueInitialized = false;
     bool WriteBackCacheInitialized = false;
 
@@ -543,7 +586,9 @@ public:
     {
         RequestStats = StatsRegistry->GetFileSystemStats(
             Config->GetFileSystemId(),
-            Config->GetClientId());
+            Config->GetClientId(),
+            "", // folderId, empty until the session is created
+            ""); // cloudId
 
         auto callContext = MakeIntrusive<TCallContext>(
             Config->GetFileSystemId(),
@@ -561,6 +606,13 @@ public:
                         p->Log,
                         *callContext,
                         response.GetError());
+                    // After the session is established, we update existing
+                    // TFileStats with newly known cloudId and folderId
+                    p->StatsRegistry->UpdateCloudAndFolder(
+                        p->Config->GetFileSystemId(),
+                        p->Config->GetClientId(),
+                        response.GetFileStore().GetCloudId(),
+                        response.GetFileStore().GetFolderId());
 
                     return p->StartWithSessionState(future);
                 }
@@ -618,33 +670,25 @@ public:
 
                     // We need to cleanup HandleOpsQueue file and directories
                     if (p->HandleOpsQueueInitialized) {
-                        auto fsPath =
+                        auto error = UnlockAndDeleteFile(
                             TFsPath(p->Config->GetHandleOpsQueuePath()) /
-                            p->Config->GetFileSystemId();
-                        TString sessionDir = fsPath / p->SessionId;
-                        try {
-                            NFs::RemoveRecursive(sessionDir);
-                        } catch (const TSystemError& err) {
+                                p->Config->GetFileSystemId() / p->SessionId,
+                            p->HandleOpsQueueFileLock);
+                        if (HasError(error)) {
                             ReportHandleOpsQueueCreatingOrDeletingError(
-                                TStringBuilder()
-                                << "Failed to remove session's HandleOpsQueue"
-                                << ", reason: " << err.AsStrBuf());
+                                error.GetMessage());
                         }
                     }
 
                     // We need to cleanup WriteBackCache file and directories
                     if (p->WriteBackCacheInitialized) {
-                        auto fsPath =
+                        auto error = UnlockAndDeleteFile(
                             TFsPath(p->Config->GetWriteBackCachePath()) /
-                            p->Config->GetFileSystemId();
-                        TString sessionDir = fsPath / p->SessionId;
-                        try {
-                            NFs::RemoveRecursive(sessionDir);
-                        } catch (const TSystemError& err) {
+                                p->Config->GetFileSystemId() / p->SessionId,
+                            p->WriteBackCacheFileLock);
+                        if (HasError(error)) {
                             ReportWriteBackCacheCreatingOrDeletingError(
-                                TStringBuilder()
-                                << "Failed to remove session's WriteBackCache"
-                                << ", reason: " << err.AsStrBuf());
+                                error.GetMessage());
                         }
                     }
 
@@ -799,10 +843,10 @@ private:
                 Config->GetClientId(),
                 StorageMediaKind);
             StatsRegistry->RegisterUserStats(
-                filestore.GetCloudId(),
-                filestore.GetFolderId(),
                 Config->GetFileSystemId(),
-                Config->GetClientId());
+                Config->GetClientId(),
+                filestore.GetCloudId(),
+                filestore.GetFolderId());
 
             CompletionQueue = std::make_shared<TCompletionQueue>(
                 Config->GetFileSystemId(),
@@ -815,50 +859,75 @@ private:
 
             THandleOpsQueuePtr handleOpsQueue;
             if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
-                TString path =
-                    TFsPath(Config->GetHandleOpsQueuePath()) /
-                    FileSystemConfig->GetFileSystemId() /
-                    SessionId;
-                if (!NFs::MakeDirectoryRecursive(path)) {
-                    TString msg = TStringBuilder()
-                                  << "Failed to create directories for "
-                                     "HandleOpsQueue, path: "
-                                  << path;
+                if (Config->GetHandleOpsQueuePath()) {
+                    auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
+                        FileSystemConfig->GetFileSystemId() /
+                        SessionId;
+
+                    auto error = CreateAndLockFile(
+                        path,
+                        HandleOpsQueueFileName,
+                        HandleOpsQueueFileLock);
+
+                    if (HasError(error)) {
+                        ReportHandleOpsQueueCreatingOrDeletingError(
+                            error.GetMessage());
+                        return error;
+                    }
+
+                    handleOpsQueue = CreateHandleOpsQueue(
+                        path / HandleOpsQueueFileName,
+                        Config->GetHandleOpsQueueSize());
+                    HandleOpsQueueInitialized = true;
+                } else {
+                    TString msg = "Error initializing HandleOpsQueue: "
+                        "HandleOpsQueuePath is not set";
+                    STORAGE_WARN("[f:%s][c:%s] %s",
+                        Config->GetFileSystemId().Quote().c_str(),
+                        Config->GetClientId().Quote().c_str(),
+                        msg.c_str()
+                    );
                     ReportHandleOpsQueueCreatingOrDeletingError(msg);
-                    return MakeError(E_FAIL, msg);
                 }
-                auto file = TFsPath(path) / HandleOpsQueueFileName;
-                file.Touch();
-                handleOpsQueue = CreateHandleOpsQueue(
-                    file.GetPath(),
-                    Config->GetHandleOpsQueueSize());
-                HandleOpsQueueInitialized = true;
             }
 
-            TWriteBackCachePtr writeBackCache;
+            TWriteBackCache writeBackCache;
             if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                TString path =
-                    TFsPath(Config->GetWriteBackCachePath()) /
-                    FileSystemConfig->GetFileSystemId() /
-                    SessionId;
-                if (!NFs::MakeDirectoryRecursive(path)) {
-                    TString msg = TStringBuilder()
-                                  << "Failed to create directories for "
-                                     "WriteBackCache, path: "
-                                  << path;
+                if (Config->GetWriteBackCachePath()) {
+                    auto path = TFsPath(Config->GetWriteBackCachePath()) /
+                        FileSystemConfig->GetFileSystemId() /
+                        SessionId;
+
+                    auto error = CreateAndLockFile(
+                        path,
+                        WriteBackCacheFileName,
+                        WriteBackCacheFileLock);
+
+                    if (HasError(error)) {
+                        ReportWriteBackCacheCreatingOrDeletingError(
+                            error.GetMessage());
+                        return error;
+                    }
+
+                    writeBackCache = TWriteBackCache(
+                        Session,
+                        Scheduler,
+                        Timer,
+                        path / WriteBackCacheFileName,
+                        Config->GetWriteBackCacheCapacity(),
+                        Config->GetWriteBackCacheAutomaticFlushPeriod());
+                    WriteBackCacheInitialized = true;
+                } else {
+                    TString msg =
+                        "Error initializing WriteBackCache: "
+                        "WriteBackCachePath is not set";
+                    STORAGE_WARN(
+                        "[f:%s][c:%s] %s",
+                        Config->GetFileSystemId().Quote().c_str(),
+                        Config->GetClientId().Quote().c_str(),
+                        msg.c_str());
                     ReportWriteBackCacheCreatingOrDeletingError(msg);
-                    return MakeError(E_FAIL, msg);
                 }
-                auto file = TFsPath(path) / WriteBackCacheFileName;
-                file.Touch();
-                writeBackCache = CreateWriteBackCache(
-                    Session,
-                    Scheduler,
-                    Timer,
-                    TDuration(), // TODO(svartmetal): pass AutomaticFlushPeriod from config
-                    file.GetPath(),
-                    Config->GetWriteBackCacheSize());
-                WriteBackCacheInitialized = true;
             }
 
             FileSystem = CreateFileSystem(

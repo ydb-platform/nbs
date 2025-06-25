@@ -9,7 +9,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 
 service FilesystemService {
     // Returns operation with:
-    // response: google.protobuf.Empty
+    // response: CreateFilesystemResponse
     rpc Create(CreateFilesystemRequest) returns (Operation);
 
     // Returns operation with:
@@ -58,6 +58,10 @@ message CreateFilesystemRequest {
     int64 size = 5;
     FilesystemKind kind = 6;
     bool is_external = 7;
+}
+
+message CreateFilesystemResponse {
+    string external_storage_cluster_name = 1;
 }
 
 message DeleteFilesystemRequest {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
@@ -89,10 +90,29 @@ func (t *createFilesystemTask) Run(
 			return err
 		}
 
+		t.state.CreateExternalFilesystemTaskID = taskID
+
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+
 		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
 		if err != nil {
 			return err
 		}
+
+		filesystemMeta, err = t.storage.GetFilesystemMeta(
+			ctx,
+			t.request.Filesystem.FilesystemId,
+		)
+		if err != nil {
+			return err
+		}
+
+		// Expect that filesystemMeta contains actual external storage cluster
+		// name at the time of filesystem.CreateExternalFilesystem finishes
+		t.state.ExternalStorageClusterName = filesystemMeta.ExternalStorageClusterName
 	} else {
 		err = client.Create(
 			ctx,
@@ -181,5 +201,7 @@ func (t *createFilesystemTask) GetMetadata(
 }
 
 func (t *createFilesystemTask) GetResponse() proto.Message {
-	return &empty.Empty{}
+	return &disk_manager.CreateFilesystemResponse{
+		ExternalStorageClusterName: t.state.ExternalStorageClusterName,
+	}
 }

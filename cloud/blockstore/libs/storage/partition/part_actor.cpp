@@ -56,7 +56,8 @@ TPartitionActor::TPartitionActor(
         EStorageAccessMode storageAccessMode,
         ui32 partitionIndex,
         ui32 siblingCount,
-        const TActorId& volumeActorId)
+        const TActorId& volumeActorId,
+        ui64 volumeTabletId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
@@ -69,6 +70,7 @@ TPartitionActor::TPartitionActor(
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
+    , VolumeTabletId(volumeTabletId)
     , LogTitle(
           TabletID(),
           PartitionConfig.GetDiskId(),
@@ -881,6 +883,7 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
         HFunc(TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted, HandleLoadFreshBlobsCompleted);
         HFunc(TEvPartitionPrivate::TEvConfirmBlobsCompleted, HandleConfirmBlobsCompleted);
+        HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
 
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
 
@@ -934,6 +937,7 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvGetChangedBlocksCompleted, HandleGetChangedBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted, HandleAddConfirmedBlobsCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted, HandleDescribeBlocksCompleted);
+        HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 

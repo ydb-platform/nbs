@@ -56,7 +56,7 @@ public:
 
     ui64 RequestStarted(
         EBlockStoreRequest requestType,
-        ui32 requestBytes) override
+        ui64 requestBytes) override
     {
         Y_UNUSED(requestType);
         Y_UNUSED(requestBytes);
@@ -67,7 +67,7 @@ public:
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         TDuration postponedTime,
-        ui32 requestBytes,
+        ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,

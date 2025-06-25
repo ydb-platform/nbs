@@ -63,7 +63,8 @@ func newRebaseOverlayDiskCmd(config *client_config.ClientConfig) *cobra.Command 
 	}
 
 	cmd := &cobra.Command{
-		Use: "rebase_overlay_disk",
+		Use:     "rebase-overlay-disk",
+		Aliases: []string{"rebase_overlay_disk"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -149,7 +150,8 @@ func newReleaseBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "release_base_disk",
+		Use:     "release-base-disk",
+		Aliases: []string{"release_base_disk"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -225,7 +227,8 @@ func newRetireBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "retire_base_disk",
+		Use:     "retire-base-disk",
+		Aliases: []string{"retire_base_disk"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -306,7 +309,8 @@ func newRetireBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "retire_base_disks",
+		Use:     "retire-base-disks",
+		Aliases: []string{"retire_base_disks"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -390,7 +394,8 @@ func newOptimizeBaseDisksCmd(config *client_config.ClientConfig) *cobra.Command 
 	}
 
 	cmd := &cobra.Command{
-		Use: "optimize_base_disks",
+		Use:     "optimize-base-disks",
+		Aliases: []string{"optimize_base_disks"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -449,7 +454,8 @@ func newConfigurePoolCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "configure_pool",
+		Use:     "configure-pool",
+		Aliases: []string{"configure_pool"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -534,7 +540,8 @@ func newDeletePoolCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "delete_pool",
+		Use:     "delete-pool",
+		Aliases: []string{"delete_pool"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -599,7 +606,8 @@ func newGetAliveNodesCmd(config *client_config.ClientConfig) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use: "get_alive_nodes",
+		Use:     "get-alive-nodes",
+		Aliases: []string{"get_alive_nodes"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -667,7 +675,8 @@ func newGetCheckpointSizeCmd(
 	}
 
 	cmd := &cobra.Command{
-		Use: "get-checkpoint-size",
+		Use:     "get-checkpoint-size",
+		Aliases: []string{"get_checkpoint_size"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -686,6 +695,127 @@ func newGetCheckpointSizeCmd(
 	cmd.Flags().StringVar(&c.checkpointID, "checkpoint-id", "", "checkpoint id")
 	if err := cmd.MarkFlagRequired("checkpoint-id"); err != nil {
 		log.Fatalf("Error setting flag checkpoint-id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type finishExternalFilesystemCreation struct {
+	config                     *client_config.ClientConfig
+	filesystemID               string
+	externalStorageClusterName string
+}
+
+func (c *finishExternalFilesystemCreation) run() error {
+	ctx := newContext(c.config)
+
+	client, err := internal_client.NewPrivateClientForCLI(ctx, c.config)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer client.Close()
+
+	return client.FinishExternalFilesystemCreation(
+		getRequestContext(ctx),
+		&api.FinishExternalFilesystemCreationRequest{
+			FilesystemId:               c.filesystemID,
+			ExternalStorageClusterName: c.externalStorageClusterName,
+		},
+	)
+}
+
+func newFinishExternalFilesystemCreationCmd(
+	config *client_config.ClientConfig,
+) *cobra.Command {
+
+	c := &finishExternalFilesystemCreation{
+		config: config,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "finish-external-filesystem-creation",
+		Aliases: []string{"finish_external_filesystem_creation"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.filesystemID,
+		"filesystem-id",
+		"",
+		"filesystem ID to operate on; required",
+	)
+	if err := cmd.MarkFlagRequired("filesystem-id"); err != nil {
+		log.Fatalf("Error setting flag filesystem-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(
+		&c.externalStorageClusterName,
+		"external-storage-cluster-name",
+		"",
+		"external storage cluster name where filesystem's data is located; required",
+	)
+	if err := cmd.MarkFlagRequired("external-storage-cluster-name"); err != nil {
+		log.Fatalf(
+			"Error setting flag external-storage-cluster-name as required: %v",
+			err,
+		)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type finishExternalFilesystemDeletion struct {
+	config       *client_config.ClientConfig
+	filesystemID string
+}
+
+func (c *finishExternalFilesystemDeletion) run() error {
+	ctx := newContext(c.config)
+
+	client, err := internal_client.NewPrivateClientForCLI(ctx, c.config)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer client.Close()
+
+	return client.FinishExternalFilesystemDeletion(
+		getRequestContext(ctx),
+		&api.FinishExternalFilesystemDeletionRequest{
+			FilesystemId: c.filesystemID,
+		},
+	)
+}
+
+func newFinishExternalFilesystemDeletionCmd(
+	config *client_config.ClientConfig,
+) *cobra.Command {
+
+	c := &finishExternalFilesystemDeletion{
+		config: config,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "finish-external-filesystem-deletion",
+		Aliases: []string{"finish_external_filesystem_deletion"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.filesystemID,
+		"filesystem-id",
+		"",
+		"filesystem ID to operate on; required",
+	)
+	if err := cmd.MarkFlagRequired("filesystem-id"); err != nil {
+		log.Fatalf("Error setting flag filesystem-id as required: %v", err)
 	}
 
 	return cmd
@@ -712,6 +842,8 @@ func newPrivateCmd(
 		newDeletePoolCmd(clientConfig),
 		newGetAliveNodesCmd(clientConfig),
 		newGetCheckpointSizeCmd(clientConfig, serverConfig),
+		newFinishExternalFilesystemCreationCmd(clientConfig),
+		newFinishExternalFilesystemDeletionCmd(clientConfig),
 	)
 
 	return cmd

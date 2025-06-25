@@ -77,7 +77,8 @@ def start(argv):
             args.socket_prefix,
             os.getenv("NFS_VHOST_ENDPOINT_STORAGE_DIR", None),
             args.mount_seqno,
-            args.read_only)
+            args.read_only,
+            client_id=f"localhost@{i}")
 
         set_env(env_with_index("NFS_VHOST_SOCKET", i), socket)
 

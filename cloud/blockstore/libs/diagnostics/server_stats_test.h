@@ -46,7 +46,7 @@ public:
         TString clientId,
         TString diskId,
         ui64 startIndex,
-        ui32 requestBytes,
+        ui64 requestBytes,
         bool unaligned)> PrepareMetricRequestHandler
             = std::bind_front(&IServerStats::PrepareMetricRequest, Stub.get());
 
@@ -173,7 +173,7 @@ public:
         TString clientId,
         TString diskId,
         ui64 startIndex,
-        ui32 requestBytes,
+        ui64 requestBytes,
         bool unaligned) override
     {
         PrepareMetricRequestHandler(

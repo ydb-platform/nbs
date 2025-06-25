@@ -94,7 +94,7 @@ public:
         TString clientId,
         TString diskId,
         ui64 startIndex,
-        ui32 requestBytes,
+        ui64 requestBytes,
         bool unaligned) override;
 
     void RequestStarted(
@@ -277,7 +277,7 @@ void TServerStats::PrepareMetricRequest(
     TString clientId,
     TString diskId,
     ui64 startIndex,
-    ui32 requestBytes,
+    ui64 requestBytes,
     bool unaligned)
 {
     metricRequest.ClientId = std::move(clientId);
@@ -762,7 +762,7 @@ public:
         TString clientId,
         TString diskId,
         ui64 startIndex,
-        ui32 requestBytes,
+        ui64 requestBytes,
         bool unaligned) override
     {
         Y_UNUSED(metricRequest);

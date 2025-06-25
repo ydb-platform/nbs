@@ -17,6 +17,9 @@ NActors::IActorPtr CreateVolumeClient(
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     const NActors::TActorId& sessionActorId,
+    TString sessionId,
+    TString clientId,
+    bool temporaryServer,
     TString diskId,
     ui64 tabletId);
 

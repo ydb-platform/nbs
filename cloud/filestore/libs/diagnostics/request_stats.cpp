@@ -383,11 +383,6 @@ public:
         , MaxCalc(std::move(timer))
     {}
 
-    ~TPostponeTimePredictorStats()
-    {
-        RootCounters->RemoveCounter(COUNTER_LABEL.data());
-    }
-
     void SetupStats(TDuration predictedDelay)
     {
         MaxCalc.Add(predictedDelay.MicroSeconds());
@@ -396,6 +391,13 @@ public:
     void UpdateStats()
     {
         *Counter = MaxCalc.NextValue();
+    }
+
+    void Unregister()
+    {
+        if (RootCounters) {
+            RootCounters->RemoveCounter(COUNTER_LABEL.data());
+        }
     }
 };
 
@@ -413,6 +415,8 @@ class TFileSystemStats final
 private:
     const TString FileSystemId;
     const TString ClientId;
+    const TString CloudId;
+    const TString FolderId;
 
     TRequestCountersPtr Counters;
     IPostponeTimePredictorPtr Predictor;
@@ -427,6 +431,8 @@ public:
     TFileSystemStats(
             TString fileSystemId,
             TString clientId,
+            TString cloudId,
+            TString folderId,
             ITimerPtr timer,
             TDynamicCountersPtr counters,
             IPostponeTimePredictorPtr predictor,
@@ -436,6 +442,8 @@ public:
         : TRequestLogger{executionTimeThreshold, totalTimeThreshold}
         , FileSystemId{std::move(fileSystemId)}
         , ClientId{std::move(clientId)}
+        , CloudId{std::move(cloudId)}
+        , FolderId{std::move(folderId)}
         , Counters{MakeRequestCounters(
             timer,
             *counters,
@@ -537,9 +545,18 @@ public:
 
     void Reset() override
     {
+        PredictorStats.Unregister();
         for (auto& provider: IncompleteRequestProviders) {
             provider.reset();
         }
+    }
+
+    TString GetCloudId() const {
+        return CloudId;
+    }
+
+    TString GetFolderId() const {
+        return FolderId;
     }
 
 private:
@@ -717,21 +734,28 @@ public:
 
     IRequestStatsPtr GetFileSystemStats(
         const TString& fileSystemId,
-        const TString& clientId) override
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
     {
         std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
 
         TWriteGuard guard(Lock);
 
         auto it = StatsMap.find(key);
-        if (it == StatsMap.end()) {
+        if (it == StatsMap.end())
+        {
             auto counters = FsCounters
                 ->GetSubgroup("filesystem", fileSystemId)
-                ->GetSubgroup("client", clientId);
+                ->GetSubgroup("client", clientId)
+                ->GetSubgroup("cloud", cloudId)
+                ->GetSubgroup("folder", folderId);
 
             auto stats = CreateRequestStats(
                 fileSystemId,
                 clientId,
+                cloudId,
+                folderId,
                 std::move(counters),
                 Timer,
                 DiagnosticsConfig->GetPostponeTimePredictorInterval(),
@@ -742,6 +766,13 @@ public:
                 DiagnosticsConfig->GetHistogramCounterOptions());
             it = StatsMap.emplace(key, stats).first;
             stats->Subscribe(RequestStats->GetTotalCounters());
+        } else {
+            UpdateCloudAndFolderIfNecessary(
+                *it->second.Stats,
+                fileSystemId,
+                clientId,
+                cloudId,
+                folderId);
         }
 
         return it->second.Acquire();
@@ -763,10 +794,10 @@ public:
     }
 
     void RegisterUserStats(
-        const TString& cloudId,
-        const TString& folderId,
         const TString& fileSystemId,
-        const TString& clientId) override
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
     {
         std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
 
@@ -778,7 +809,9 @@ public:
 
             auto counters = FsCounters
                 ->GetSubgroup("filesystem", fileSystemId)
-                ->GetSubgroup("client", clientId);
+                ->GetSubgroup("client", clientId)
+                ->GetSubgroup("cloud", cloudId)
+                ->GetSubgroup("folder", folderId);
 
             NUserCounter::RegisterFilestore(
                 *UserCounters,
@@ -837,10 +870,35 @@ public:
         RequestStats->UpdateStats(updatePercentiles);
     }
 
+    void UpdateCloudAndFolder(
+        const TString& fileSystemId,
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
+    {
+        std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
+
+        TWriteGuard guard(Lock);
+
+        auto it = StatsMap.find(key);
+        if (it == StatsMap.end()) {
+            return;
+        }
+
+        UpdateCloudAndFolderIfNecessary(
+            *it->second.Stats,
+            fileSystemId,
+            clientId,
+            cloudId,
+            folderId);
+    }
+
 private:
     std::shared_ptr<TFileSystemStats> CreateRequestStats(
         TString fileSystemId,
         TString clientId,
+        TString cloudId,
+        TString folderId,
         TDynamicCountersPtr counters,
         ITimerPtr timer,
         TDuration delayWindowInterval,
@@ -859,12 +917,54 @@ private:
         return std::make_shared<TFileSystemStats>(
             std::move(fileSystemId),
             std::move(clientId),
+            std::move(cloudId),
+            std::move(folderId),
             std::move(timer),
             std::move(counters),
             std::move(predictor),
             executionTimeThreshold,
             totalTimeThreshold,
             histogramCounterOptions);
+    }
+
+    void UpdateCloudAndFolderIfNecessary(
+        const TFileSystemStats& stats,
+        const TString& fileSystemId,
+        const TString& clientId,
+        const TString& newCloudId,
+        const TString& newFolderId)
+    {
+        const auto& currentCloudId = stats.GetCloudId();
+        const auto& currentFolderId = stats.GetFolderId();
+
+        if ((!newCloudId || newCloudId == currentCloudId) &&
+            (!newFolderId || newFolderId == currentFolderId))
+        {
+            return;
+        }
+
+        auto fsCounters = FsCounters
+            ->GetSubgroup("filesystem", fileSystemId)
+            ->GetSubgroup("client", clientId)
+            ->GetSubgroup("cloud", currentCloudId)
+            ->GetSubgroup("folder", currentFolderId);
+
+        FsCounters->RemoveSubgroupChain({
+            {"filesystem", fileSystemId},
+            {"client", clientId}
+        });
+
+        // GetSubgroup is used to create all neccessary subgroups
+        FsCounters->GetSubgroup("filesystem", fileSystemId)
+            ->GetSubgroup("client", clientId)
+            ->GetSubgroup("cloud", newCloudId)
+            ->GetSubgroup("folder", newFolderId);
+
+        FsCounters
+            ->GetSubgroup("filesystem", fileSystemId)
+            ->GetSubgroup("client", clientId)
+            ->GetSubgroup("cloud", newCloudId)
+            ->ReplaceSubgroup("folder", newFolderId, fsCounters);
     }
 };
 
@@ -878,10 +978,14 @@ public:
 
     IRequestStatsPtr GetFileSystemStats(
         const TString& fileSystemId,
-        const TString& clientId) override
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
     {
         Y_UNUSED(fileSystemId);
         Y_UNUSED(clientId);
+        Y_UNUSED(cloudId);
+        Y_UNUSED(folderId);
 
         return std::make_shared<TRequestStatsStub>();
     }
@@ -897,15 +1001,15 @@ public:
     }
 
     void RegisterUserStats(
-        const TString& cloudId,
-        const TString& folderId,
         const TString& fileSystemId,
-        const TString& clientId) override
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
     {
-        Y_UNUSED(cloudId);
-        Y_UNUSED(folderId);
         Y_UNUSED(fileSystemId);
         Y_UNUSED(clientId);
+        Y_UNUSED(cloudId);
+        Y_UNUSED(folderId);
     }
 
     IRequestStatsPtr GetRequestStats() override
@@ -929,6 +1033,18 @@ public:
     void UpdateStats(bool updatePercentiles) override
     {
         Y_UNUSED(updatePercentiles);
+    }
+
+    void UpdateCloudAndFolder(
+        const TString& fileSystemId,
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
+    {
+        Y_UNUSED(fileSystemId);
+        Y_UNUSED(clientId);
+        Y_UNUSED(cloudId);
+        Y_UNUSED(folderId);
     }
 };
 

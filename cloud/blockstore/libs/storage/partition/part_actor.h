@@ -23,6 +23,7 @@
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
+#include <cloud/blockstore/libs/storage/partition/model/compaction_map_load_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
@@ -112,10 +113,12 @@ private:
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
     const NBlockCodecs::ICodec* BlobCodec;
+    const ui64 VolumeTabletId;
 
     TLogTitle LogTitle;
 
     std::unique_ptr<TPartitionState> State;
+    std::unique_ptr<TCompactionMapLoadState> CompactionMapLoadState;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -163,7 +166,8 @@ public:
         EStorageAccessMode storageAccessMode,
         ui32 partitionIndex,
         ui32 siblingCount,
-        const NActors::TActorId& volumeActorId);
+        const NActors::TActorId& volumeActorId,
+        ui64 volumeTabletId);
     ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;
@@ -671,6 +675,16 @@ private:
 
     void SetFirstGarbageCollectionCompleted();
     bool IsFirstGarbageCollectionCompleted() const;
+
+    void LoadNextCompactionMapChunk(const NActors::TActorContext& ctx);
+    void HandleLoadCompactionMapChunk(
+        const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    THashSet<ui32> GetRangeIndices(
+        const TVector<TAddFreshBlob>& freshBlobs,
+        const TVector<TAddMixedBlob>& mixedBlobs,
+        const TVector<TAddMergedBlob>& mergedBlobs) const;
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)

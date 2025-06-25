@@ -181,7 +181,7 @@ NYdbStats::TYdbStatsRow BuildStatsForUpload(
     BLOCKSTORE_PERCENTILE_COUNTER(DeleteGarbage);
 #undef BLOCKSTORE_PERCENTILE_COUNTER
 
-    auto& h = disk.YdbVolumeSelfCounters.RequestCounters;
+    auto& h = disk.YdbVolumeSelfCounters.ThrottlerDelayRequestCounters;
 
 #define BLOCKSTORE_PERCENTILE_COUNTER(counter)                                 \
     out.counter##ThrottlerDelay = CreatePercentileCounterField(                \

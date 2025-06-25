@@ -426,6 +426,11 @@ private:
         const NActors::TActorContext& ctx,
         const NKikimrTabletBase::TMetrics& tabletMetrics);
 
+    template <typename TMethod>
+    void UpdateIngestTimeStats(
+        const typename TMethod::TRequest::TPtr& ev,
+        TInstant now);
+
     void SendPartStatsToService(const NActors::TActorContext& ctx);
     void DoSendPartStatsToService(
         const NActors::TActorContext& ctx,

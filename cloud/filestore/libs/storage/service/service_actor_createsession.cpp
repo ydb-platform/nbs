@@ -866,7 +866,9 @@ void TStorageServiceActor::HandleSessionCreated(
 
             auto stats = StatsRegistry->GetFileSystemStats(
                 msg->FileStore.GetFileSystemId(),
-                msg->ClientId);
+                msg->ClientId,
+                msg->FileStore.GetCloudId(),
+                msg->FileStore.GetFolderId());
 
             const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
                 msg->FileStore.GetStorageMediaKind());

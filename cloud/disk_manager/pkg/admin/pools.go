@@ -39,7 +39,8 @@ func newConsistencyCheck(
 	}
 
 	cmd := &cobra.Command{
-		Use: "check_consistency",
+		Use:     "check-consistency",
+		Aliases: []string{"check_consistency"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return t.run()
 		},
@@ -78,7 +79,8 @@ func newBaseDisksConsistencyCheck(
 	}
 
 	cmd := &cobra.Command{
-		Use: "check_base_disks_consistency",
+		Use:     "check-base-disks-consistency",
+		Aliases: []string{"check_base_disks_consistency"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return t.run()
 		},
@@ -129,7 +131,8 @@ func newPoolsConsistencyCheck(
 	}
 
 	cmd := &cobra.Command{
-		Use: "check_pools_consistency",
+		Use:     "check-pools-consistency",
+		Aliases: []string{"check_pools_consistency"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return t.run()
 		},

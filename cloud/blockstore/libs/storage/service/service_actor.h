@@ -49,6 +49,7 @@ private:
     const NRdma::IClientPtr RdmaClient;
     const IVolumeStatsPtr VolumeStats;
     const IRootKmsKeyProviderPtr RootKmsKeyProvider;
+    const bool TemporaryServer;
 
     TSharedServiceCountersPtr SharedCounters;
 
@@ -76,7 +77,8 @@ public:
         NRdma::IClientPtr rdmaClient,
         IVolumeStatsPtr volumeStats,
         TManuallyPreemptedVolumesPtr preemptedVolumes,
-        IRootKmsKeyProviderPtr rootKmsKeyProvider);
+        IRootKmsKeyProviderPtr rootKmsKeyProvider,
+        bool temporaryServer);
     ~TServiceActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
@@ -446,7 +448,9 @@ NActors::IActorPtr CreateVolumeSessionActor(
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     NRdma::IClientPtr rdmaClient,
     std::shared_ptr<NKikimr::TTabletCountersBase> counters,
-    TSharedServiceCountersPtr sharedCounters);
+    TSharedServiceCountersPtr sharedCounters,
+    TString clientId,
+    bool temporaryServer);
 
 void RegisterAlterVolumeActor(
     const NActors::TActorId& sender,

@@ -68,7 +68,8 @@ type filesystemState struct {
 
 	status filesystemStatus
 
-	isExternal bool
+	isExternal                 bool
+	externalStorageClusterName string
 }
 
 func (s *filesystemState) toFilesystemMeta() *FilesystemMeta {
@@ -85,7 +86,9 @@ func (s *filesystemState) toFilesystemMeta() *FilesystemMeta {
 		CreatedAt:    s.createdAt,
 		CreatedBy:    s.createdBy,
 		DeleteTaskID: s.deleteTaskID,
-		IsExternal:   s.isExternal,
+
+		IsExternal:                 s.isExternal,
+		ExternalStorageClusterName: s.externalStorageClusterName,
 	}
 }
 
@@ -110,6 +113,10 @@ func (s *filesystemState) structValue() persistence.Value {
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 
 		persistence.StructFieldValue("is_external", persistence.BoolValue(s.isExternal)),
+		persistence.StructFieldValue(
+			"external_storage_cluster_name",
+			persistence.UTF8Value(s.externalStorageClusterName),
+		),
 	)
 }
 
@@ -132,6 +139,10 @@ func scanFilesystemState(res persistence.Result) (state filesystemState, err err
 		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
 		persistence.OptionalWithDefault("status", &state.status),
 		persistence.OptionalWithDefault("is_external", &state.isExternal),
+		persistence.OptionalWithDefault(
+			"external_storage_cluster_name",
+			&state.externalStorageClusterName,
+		),
 	)
 	return
 }
@@ -174,7 +185,8 @@ func filesystemStateStructTypeString() string {
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
 		status: Int64,
-		is_external: Bool>`
+		is_external: Bool,
+		external_storage_cluster_name: Utf8>`
 }
 
 func filesystemStateTableDescription() persistence.CreateTableDescription {
@@ -198,6 +210,10 @@ func filesystemStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 
 		persistence.WithColumn("is_external", persistence.Optional(persistence.TypeBool)),
+		persistence.WithColumn(
+			"external_storage_cluster_name",
+			persistence.Optional(persistence.TypeUTF8),
+		),
 
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -348,6 +364,74 @@ func (s *storageYDB) createFilesystem(
 	}
 
 	return state.toFilesystemMeta(), nil
+}
+
+func (s *storageYDB) setExternalFilesystemStorageClusterName(
+	ctx context.Context,
+	session *persistence.Session,
+	filesystemID string,
+	clusterName string,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from filesystems
+		where id = $id
+	`, s.filesystemsPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(filesystemID)),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	states, err := scanFilesystemStates(ctx, res)
+	if err != nil {
+		return err
+	}
+
+	if len(states) == 0 {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return err
+		}
+
+		return errors.NewNonRetriableErrorf(
+			"filesystem with id %v is not found",
+			filesystemID,
+		)
+	}
+
+	state := states[0]
+
+	state.externalStorageClusterName = clusterName
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $states as List<%v>;
+
+		upsert into filesystems
+		select *
+		from AS_TABLE($states)
+	`, s.filesystemsPath, filesystemStateStructTypeString()),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (s *storageYDB) filesystemCreated(
@@ -713,6 +797,25 @@ func (s *storageYDB) CreateFilesystem(
 		},
 	)
 	return created, err
+}
+
+func (s *storageYDB) SetExternalFilesystemStorageClusterName(
+	ctx context.Context,
+	filesystemID string,
+	clusterName string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.setExternalFilesystemStorageClusterName(
+				ctx,
+				session,
+				filesystemID,
+				clusterName,
+			)
+		},
+	)
 }
 
 func (s *storageYDB) FilesystemCreated(

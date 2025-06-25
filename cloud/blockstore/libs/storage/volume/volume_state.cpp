@@ -298,7 +298,6 @@ void TVolumeState::Reset()
             Meta.GetConfig().GetFolderId(),
             Meta.GetConfig().GetDiskId());
     UseFastPath = false;
-    UseRdmaForThisVolume = false;
     AcceptInvalidDiskAllocationResponse = false;
     UseIntermediateWriteBuffer = false;
 
@@ -346,7 +345,8 @@ void TVolumeState::Reset()
             MaskUnusedBlocks = true;
         } else if (tag == "use-rdma") {
             UseRdma = true;
-            UseRdmaForThisVolume = true;
+        } else if (tag == "disable-rdma") {
+            UseRdma = false;
         } else if (tag == "max-timed-out-device-state-duration") {
             TDuration::TryParse(value, MaxTimedOutDeviceStateDuration);
         } else if (tag == "use-fastpath") {
