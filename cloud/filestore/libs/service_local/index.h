@@ -67,9 +67,9 @@ public:
     TIndexNodePtr CreateSymlink(const TString& name, const TString& target);
     TIndexNodePtr CreateSocket(const TString& name, int flags);
 
-    TVector<NLowLevel::TDirEntry> List(bool ignoreErrors = false);
+    TVector<NLowLevel::TDirEntry> List(bool ignoreErrors);
     NLowLevel::TListDirResult
-    List(uint64_t offset, size_t entriesLimit, bool ignoreErrors = false);
+    List(uint64_t offset, size_t entriesLimit, bool ignoreErrors);
 
     void Rename(
         const TString& name,

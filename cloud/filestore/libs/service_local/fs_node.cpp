@@ -207,14 +207,18 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
     }
 
     uint64_t offset = 0;
-    auto& cookie = request.GetCookie();
+    const auto& cookie = request.GetCookie();
     if (cookie) {
         if (!TryFromString(cookie, offset)) {
             return TErrorResponse(ErrorInvalidArgument());
         }
     }
 
-    auto listRes = parent->List(offset, Config->GetMaxResponseEntries());
+    auto listRes = parent->List(
+        offset,
+        Config->GetMaxResponseEntries(),
+        false   // don't ignore errors
+    );
     auto& entries = listRes.DirEntries;
 
     NProto::TListNodesResponse response;
