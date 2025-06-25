@@ -728,6 +728,15 @@ void TPartitionActor::HandleWakeUpOnBoot(
         return;
     }
 
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[TabletId: %lu, DiskId: %s] Tablet booting takes too "
+        "long, sending "
+        "poison pill",
+        TabletID(),
+        PartitionConfig.GetDiskId());
+
     Suicide(ctx);
 }
 
