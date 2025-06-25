@@ -33,6 +33,7 @@ message TFileStoreFeatures
     bool ServerWriteBackCacheEnabled = 18;
     bool DirectoryCreationInShardsEnabled = 19;
     bool GuestKeepCacheAllowed = 20;
+    bool HasXAttrs = 21;
 }
 
 message TFileStore
