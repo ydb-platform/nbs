@@ -555,7 +555,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TBlockRange64::MakeClosedInterval(5000, 5120));
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_INVALID_STATE,
+                E_REJECTED,
                 response->GetStatus(),
                 response->GetErrorReason());
         }
@@ -650,7 +650,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 )));
             auto response = client.RecvReadBlocksLocalResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_INVALID_STATE,
+                E_REJECTED,
                 response->GetStatus(),
                 response->GetErrorReason());
         }
@@ -929,7 +929,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         {
             client.SendReadBlocksRequest(range1, 4);
             auto response = client.RecvReadBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
             UNIT_ASSERT_STRING_CONTAINS(
                 response->GetErrorReason(),
                 "incorrect ReplicaIndex");
@@ -2379,7 +2379,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         {
             client.SendReadBlocksRequest(range, 0, 4);
             auto response = client.RecvReadBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
             UNIT_ASSERT_STRING_CONTAINS(
                 response->GetErrorReason(),
                 "has incorrect replica count");
