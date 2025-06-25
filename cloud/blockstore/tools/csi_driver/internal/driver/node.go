@@ -1903,16 +1903,8 @@ func (s *nodeService) NodeExpandVolume(
 			"New blocks count is less than current blocks count value")
 	}
 
-	podId, err := s.parsePodId(req.VolumePath)
-	if err != nil {
-		return nil, err
-	}
-
-	endpointDirOld := s.getEndpointDir(podId, diskId)
-	unixSocketPathOld := filepath.Join(endpointDirOld, nbsSocketName)
-
-	endpointDirNew := s.getEndpointDir("", diskId)
-	unixSocketPathNew := filepath.Join(endpointDirNew, nbsSocketName)
+	endpointDir := s.getEndpointDir("", diskId)
+	unixSocketPath := filepath.Join(endpointDir, nbsSocketName)
 
 	listEndpointsResp, err := s.nbsClient.ListEndpoints(
 		ctx, &nbsapi.TListEndpointsRequest{},
@@ -1923,19 +1915,9 @@ func (s *nodeService) NodeExpandVolume(
 	}
 
 	nbdDevicePath := ""
-	unixSocketPath := ""
 	for _, endpoint := range listEndpointsResp.Endpoints {
-		// Fallback to previous implementation for already mounted volumes
-		// Must be removed after migration of all endpoints to the new format
-		if endpoint.UnixSocketPath == unixSocketPathOld {
+		if endpoint.UnixSocketPath == unixSocketPath {
 			nbdDevicePath = endpoint.GetNbdDeviceFile()
-			unixSocketPath = unixSocketPathOld
-			break
-		}
-
-		if endpoint.UnixSocketPath == unixSocketPathNew {
-			nbdDevicePath = endpoint.GetNbdDeviceFile()
-			unixSocketPath = unixSocketPathNew
 			break
 		}
 	}
