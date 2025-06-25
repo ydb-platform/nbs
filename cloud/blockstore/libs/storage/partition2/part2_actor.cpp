@@ -735,7 +735,7 @@ void TPartitionActor::HandleWakeUpOnBoot(
         "long, sending "
         "poison pill",
         TabletID(),
-        PartitionConfig.GetDiskId());
+        PartitionConfig.GetDiskId().c_str());
 
     Suicide(ctx);
 }
