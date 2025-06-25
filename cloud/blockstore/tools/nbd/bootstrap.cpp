@@ -305,7 +305,7 @@ void TBootstrap::Start()
                 NbdDevice = CreateFreeNetlinkDevice(
                     Logging,
                     listenAddress,
-                    DEVICE_PREFIX,
+                    TString(DEVICE_PREFIX),
                     Options->RequestTimeout,
                     Options->ConnectionTimeout);
             }
@@ -323,7 +323,7 @@ void TBootstrap::Start()
             NbdDevice = CreateFreeDevice(
                 Logging,
                 listenAddress,
-                DEVICE_PREFIX,
+                TString(DEVICE_PREFIX),
                 Options->ConnectionTimeout);
         }
         auto status = NbdDevice->Start().GetValueSync();
