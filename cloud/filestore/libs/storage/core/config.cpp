@@ -275,6 +275,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(LoadConfigsFromCmsRetryMaxDelay,   TDuration,  TDuration::Seconds(512))\
     xxx(LoadConfigsFromCmsTotalTimeout,    TDuration,  TDuration::Hours(1)    )\
                                                                                \
+    xxx(ParentlessFilesOnly,               bool,       false                  )\
     xxx(AllowHandlelessIO,                 bool,       false                  )\
 // FILESTORE_STORAGE_CONFIG
 

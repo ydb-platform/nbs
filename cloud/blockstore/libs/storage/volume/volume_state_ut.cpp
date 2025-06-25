@@ -95,7 +95,6 @@ TVolumeState CreateVolumeState(
         {},   // mountHistory
         std::move(checkpointRequests),
         {},     // followers
-        {},     // leaders
         false   // startPartitionsNeeded
     );
 }
@@ -117,7 +116,6 @@ TVolumeState CreateVolumeState(
         TCachedVolumeMountHistory{VolumeHistoryCacheSize, {}},
         std::move(checkpointRequests),
         {},     // followers
-        {},     // leaders
         false   // startPartitionsNeeded
     );
 }
@@ -141,7 +139,6 @@ TVolumeState CreateVolumeState(
             std::move(history)},
         {},     // checkpointRequests
         {},     // followers
-        {},     // leaders
         false   // startPartitionsNeeded
     };
 }
@@ -1913,7 +1910,6 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 {},     // mountHistory
                 {},     // checkpointRequests
                 {},     // followers
-                {},     // leaders
                 false   // startPartitionsNeeded
             };
         };
@@ -1988,36 +1984,22 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
     {
         auto volumeState = CreateVolumeState();
 
-        // Add link uuid1 for volO -> vol1
-        volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
-            .Link =
-                TLeaderFollowerLink{
-                    .LinkUUID = "uuid1",
-                    .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
-                    .FollowerDiskId = "vol1",
-                    .FollowerShardId = "su1"},
-            .State = TFollowerDiskInfo::EState::None,
-            .MediaKind = NProto::STORAGE_MEDIA_SSD});
+        volumeState.AddOrUpdateFollower(
+            TFollowerDiskInfo{.LinkUUID = "x", .FollowerDiskId = "vol1"});
 
         const auto& followers = volumeState.GetAllFollowers();
         UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
-        UNIT_ASSERT_VALUES_EQUAL("uuid1", followers[0].Link.LinkUUID);
-        UNIT_ASSERT_VALUES_EQUAL("vol1", followers[0].Link.FollowerDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("x", followers[0].LinkUUID);
+        UNIT_ASSERT_VALUES_EQUAL("vol1", followers[0].FollowerDiskId);
         UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::None, followers[0].State);
-        UNIT_ASSERT_EQUAL(std::nullopt, followers[0].MigratedBytes);
+        UNIT_ASSERT_EQUAL(
+            std::nullopt,
+            followers[0].MigratedBytes);
 
-        // Update link uuid1
         volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
-            .Link =
-                TLeaderFollowerLink{
-                    .LinkUUID = "uuid1",
-                    .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
-                    .FollowerDiskId = "vol1",
-                    .FollowerShardId = "su1"},
+            .LinkUUID = "x",
+            .FollowerDiskId = "vol1",
             .State = TFollowerDiskInfo::EState::Preparing,
-            .MediaKind = NProto::STORAGE_MEDIA_SSD,
             .MigratedBytes = 100});
         UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
         UNIT_ASSERT_EQUAL(
@@ -2025,33 +2007,19 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             followers[0].State);
         UNIT_ASSERT_VALUES_EQUAL(100, *followers[0].MigratedBytes);
 
-        // Add link uuid2 volO -> vol2
         volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
-            .Link =
-                TLeaderFollowerLink{
-                    .LinkUUID = "uuid2",
-                    .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
-                    .FollowerDiskId = "vol2",
-                    .FollowerShardId = "su1"},
-            .State = TFollowerDiskInfo::EState::None,
-            .MediaKind = NProto::STORAGE_MEDIA_SSD});
+            .LinkUUID = "y",
+            .FollowerDiskId = "vol2"});
         UNIT_ASSERT_VALUES_EQUAL(2, followers.size());
-        UNIT_ASSERT_VALUES_EQUAL("uuid2", followers[1].Link.LinkUUID);
-        UNIT_ASSERT_VALUES_EQUAL("vol2", followers[1].Link.FollowerDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("y", followers[1].LinkUUID);
+        UNIT_ASSERT_VALUES_EQUAL("vol2", followers[1].FollowerDiskId);
 
-        // Remove link uuid1 by linkUUID
-        volumeState.RemoveFollower(TLeaderFollowerLink{.LinkUUID = "uuid1"});
+        volumeState.RemoveFollower("x");
         UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
-        UNIT_ASSERT_VALUES_EQUAL("uuid2", followers[0].Link.LinkUUID);
+        UNIT_ASSERT_VALUES_EQUAL("y", followers[0].LinkUUID);
+        UNIT_ASSERT_VALUES_EQUAL("vol2", followers[0].FollowerDiskId);
 
-        // Remove link uuid2 by leader and follower diskID
-        volumeState.RemoveFollower(TLeaderFollowerLink{
-            .LinkUUID = "",
-            .LeaderDiskId = "vol0",
-            .LeaderShardId = "su0",
-            .FollowerDiskId = "vol2",
-            .FollowerShardId = "su1"});
+        volumeState.RemoveFollower("y");
         UNIT_ASSERT_VALUES_EQUAL(0, followers.size());
     }
 

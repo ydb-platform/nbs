@@ -297,8 +297,10 @@ TFileSystemStat StatFs(const TFileHandle& handle)
     return GetFileSystemStat(fs);
 }
 
-TVector<std::pair<TString, TFileStat>> ListDirAt(
+TListDirResult ListDirAt(
     const TFileHandle& handle,
+    uint64_t offset,
+    size_t entriesLimit,
     bool ignoreErrors)
 {
     auto fd = openat(Fd(handle), ".", O_RDONLY);
@@ -320,7 +322,11 @@ TVector<std::pair<TString, TFileStat>> ListDirAt(
         }
     };
 
-    TVector<std::pair<TString, TFileStat>> results;
+    if (offset) {
+        seekdir(dir, offset);
+    }
+
+    TListDirResult res;
 
     errno = 0;
     while (auto* entry = readdir(dir)) {
@@ -332,14 +338,18 @@ TVector<std::pair<TString, TFileStat>> ListDirAt(
         if (ignoreErrors) {
             try {
                 auto stat = StatAt(handle, name);
-                results.emplace_back(std::move(name), stat);
+                res.DirEntries.emplace_back(std::move(name), stat);
             } catch (const TServiceError& err) {
                 errno = 0;
                 continue;
             }
         } else {
             auto stat = StatAt(handle, name);
-            results.emplace_back(std::move(name), stat);
+            res.DirEntries.emplace_back(std::move(name), stat);
+        }
+
+        if (entriesLimit && --entriesLimit == 0) {
+            break;
         }
     }
 
@@ -347,7 +357,15 @@ TVector<std::pair<TString, TFileStat>> ListDirAt(
         << "failed to list: "
         << LastSystemErrorText());
 
-    return results;
+    long loc = telldir(dir);
+
+    Y_ENSURE_EX(loc != -1, TServiceError(GetSystemErrorCode())
+        << "failed to telldir: "
+        << LastSystemErrorText());
+
+    res.DirOffset = loc;
+
+    return res;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -261,3 +261,94 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 
 	testcommon.CheckConsistency(t, ctx)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func testDiskServiceResizeDiskWithZoneID(t *testing.T, zoneID string) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: zoneID,
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.ResizeDisk(reqCtx, &disk_manager.ResizeDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			ZoneId: zoneID,
+			DiskId: diskID,
+		},
+		Size: 40960,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func testDiskServiceAlterDiskWithZoneID(t *testing.T, zoneID string) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: zoneID,
+			DiskId: diskID,
+		},
+		CloudId:  "cloud",
+		FolderId: "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.AlterDisk(reqCtx, &disk_manager.AlterDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			ZoneId: zoneID,
+			DiskId: diskID,
+		},
+		CloudId:  "newCloud",
+		FolderId: "newFolder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}

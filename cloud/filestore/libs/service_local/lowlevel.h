@@ -105,6 +105,16 @@ struct TOpenOrCreateResult
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TDirEntry = std::pair<TString, TFileStat>;
+
+struct TListDirResult
+{
+    TVector<TDirEntry> DirEntries;
+    uint64_t DirOffset = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TFileHandle Open(const TString& path, int flags, int mode);
 TFileHandle Open(const TFileHandle& handle, int flags, int mode);
 TFileHandle OpenAt(
@@ -144,8 +154,10 @@ TFileStat Stat(const TFileHandle& handle);
 TFileStat StatAt(const TFileHandle& handle, const TString& name);
 TFileSystemStat StatFs(const TFileHandle& handle);
 
-TVector<std::pair<TString, TFileStat>> ListDirAt(
+TListDirResult ListDirAt(
     const TFileHandle& handle,
+    uint64_t offset,
+    size_t entriesLimit,
     bool ignoreErrors);
 
 //

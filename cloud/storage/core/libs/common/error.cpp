@@ -77,6 +77,7 @@ EErrorKind GetErrorKind(const NProto::TError& e)
     if (FACILITY_FROM_CODE(code) == FACILITY_SYSTEM) {
         switch (STATUS_FROM_CODE(code)) {
             case EIO:
+            case ENODATA:
                 return EErrorKind::ErrorFatal;
             default:
                 // system/network errors should be retriable

@@ -328,6 +328,7 @@ public:
     [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMaxDelay() const;
     [[nodiscard]] TDuration GetLoadConfigsFromCmsTotalTimeout() const;
 
+    bool GetParentlessFilesOnly() const;
     bool GetAllowHandlelessIO() const;
 };
 

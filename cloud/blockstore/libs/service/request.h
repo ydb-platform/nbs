@@ -106,6 +106,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(QueryAgentsInfo,                    __VA_ARGS__)                       \
     xxx(CreateVolumeLink,                   __VA_ARGS__)                       \
     xxx(DestroyVolumeLink,                  __VA_ARGS__)                       \
+    xxx(RemoveVolumeClient,                 __VA_ARGS__)                       \
 // BLOCKSTORE_GRPC_STORAGE_SERVICE
 
 #define BLOCKSTORE_ENDPOINT_SERVICE(xxx, ...)                                  \

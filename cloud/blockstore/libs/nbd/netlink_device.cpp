@@ -348,8 +348,13 @@ void TNetlinkDevice::Disconnect()
 void TNetlinkDevice::DoConnect(bool connected)
 {
     try {
-        if (connected && !Reconfigure) {
-            throw TServiceError(E_FAIL) << "device is already in use";
+        if (connected) {
+            if (!Reconfigure) {
+                throw TServiceError(E_FAIL) << "device is already in use";
+            }
+            STORAGE_INFO("reconfigure " << DeviceName);
+        } else {
+            STORAGE_INFO("connect " << DeviceName);
         }
         const auto& info = Handler->GetExportInfo();
         NNetlink::TNetlinkSocket socket;

@@ -15,6 +15,7 @@ RECURSE(
     protos_ydb
     service
     ss_proxy
+    stats_fetcher
     stats_service
     undelivered
     volume

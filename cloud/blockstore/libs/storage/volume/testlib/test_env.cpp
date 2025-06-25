@@ -581,38 +581,39 @@ TVolumeClient::CreateGracefulShutdownRequest()
 
 std::unique_ptr<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>
 TVolumeClient::CreateLinkLeaderVolumeToFollowerRequest(
-    const TLeaderFollowerLink& link)
+    const TString& leaderDiskId,
+    const TString& followerDiskId)
 {
     auto result =
         std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>();
-    result->Record.SetDiskId(link.LeaderDiskId);
-    result->Record.SetFollowerDiskId(link.FollowerDiskId);
-    result->Record.SetLeaderShardId(link.LeaderShardId);
-    result->Record.SetFollowerShardId(link.FollowerShardId);
-
+    result->Record.SetDiskId(leaderDiskId);
+    result->Record.SetFollowerDiskId(followerDiskId);
     return result;
 }
 
 std::unique_ptr<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>
 TVolumeClient::CreateUnlinkLeaderVolumeFromFollowerRequest(
-    const TLeaderFollowerLink& link)
+    const TString& leaderDiskId,
+    const TString& followerDiskId)
 {
     auto result =
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>();
-    result->Record.SetDiskId(link.LeaderDiskId);
-    result->Record.SetFollowerDiskId(link.FollowerDiskId);
-    result->Record.SetLeaderShardId(link.LeaderShardId);
-    result->Record.SetFollowerShardId(link.FollowerShardId);
+    result->Record.SetDiskId(leaderDiskId);
+    result->Record.SetFollowerDiskId(followerDiskId);
     return result;
 }
 
 std::unique_ptr<TEvVolumePrivate::TEvUpdateFollowerStateRequest>
 TVolumeClient::CreateUpdateFollowerStateRequest(
-    TFollowerDiskInfo followerDiskInfo)
+    TString followerUuid,
+    TEvVolumePrivate::TUpdateFollowerStateRequest::EReason reason,
+    std::optional<ui64> migratedBytes)
 {
     auto result =
         std::make_unique<TEvVolumePrivate::TEvUpdateFollowerStateRequest>(
-            std::move(followerDiskInfo));
+            std::move(followerUuid),
+            reason,
+            migratedBytes);
     return result;
 }
 

@@ -51,6 +51,8 @@ public:
     bool GetDontPopulateNodeCacheWhenListingNodes() const;
 
     bool GetGuestOnlyPermissionsCheckEnabled() const;
+
+    ui32 GetMaxResponseEntries() const;
 };
 
 }   // namespace NCloud::NFileStore

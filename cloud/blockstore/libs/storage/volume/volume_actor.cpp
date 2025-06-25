@@ -1049,12 +1049,6 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateRequest,
             HandleUpdateFollowerState);
-        HFunc(
-            TEvVolumePrivate::TEvCreateLinkFinished,
-            HandleCreateLinkFinished);
-        HFunc(
-            TEvVolumePrivate::TEvLinkOnFollowerDestroyed,
-            HandleLinkOnFollowerDestroyed);
 
         HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
@@ -1108,17 +1102,14 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
 
         IgnoreFunc(TEvVolumePrivate::TEvUpdateShadowDiskStateRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateFollowerStateRequest);
 
         IgnoreFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse);
 
         IgnoreFunc(TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse);
 
-        IgnoreFunc(TEvVolumePrivate::TEvCreateLinkFinished);
-        IgnoreFunc(TEvVolumePrivate::TEvLinkOnFollowerDestroyed);
-        IgnoreFunc(TEvVolumePrivate::TEvUpdateFollowerStateRequest);
         IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
-        IgnoreFunc(TEvVolume::TEvUpdateLinkOnFollowerResponse);
 
         default:
             if (!RejectRequests(ev)) {

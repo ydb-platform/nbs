@@ -291,7 +291,7 @@ void TVolumeClientActor::HandleRequest(
     if (!PipeClient) {
         PipeClient = ctx.Register(CreateClient(SelfId(), TabletId, ClientConfig));
         ++Generation;
-        LogTitle.SetPipeGeneration(Generation);
+        LogTitle.SetGeneration(Generation);
     }
 
     LOG_TRACE(

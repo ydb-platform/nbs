@@ -372,7 +372,6 @@ void TVolumeActor::CompleteUpdateConfig(
             TCachedVolumeMountHistory{},   // history
             {},                            // checkpoint requests
             {},                            // follower disks
-            {},                            // leader disks
             false                          // StartPartitionsNeeded
             ));
 

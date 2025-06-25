@@ -14,6 +14,7 @@ namespace NCloud::NBlockStore::NServer {
 
 using namespace NMonitoring;
 using namespace NThreading;
+using namespace NBD;
 
 namespace {
 
@@ -28,6 +29,7 @@ private:
     const IServerStatsPtr ServerStats;
     const NProto::TChecksumFlags ChecksumFlags;
     const ui32 MaxZeroBlocksSubRequestSize;
+    const IErrorHandlerMapPtr ErrorHandlerMap;
 
 public:
     TNbdEndpointListener(
@@ -35,12 +37,14 @@ public:
             ILoggingServicePtr logging,
             IServerStatsPtr serverStats,
             NProto::TChecksumFlags checksumFlags,
-            ui32 maxZeroBlocksSubRequestSize)
+            ui32 maxZeroBlocksSubRequestSize,
+            IErrorHandlerMapPtr errorHandlerMap)
         : Server(std::move(server))
         , Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
         , ChecksumFlags(std::move(checksumFlags))
         , MaxZeroBlocksSubRequestSize(maxZeroBlocksSubRequestSize)
+        , ErrorHandlerMap(errorHandlerMap)
     {}
 
     TFuture<NProto::TError> StartEndpoint(
@@ -67,7 +71,7 @@ public:
             Logging,
             std::move(session),
             ServerStats,
-            NBD::CreateErrorHandlerStub(),
+            ErrorHandlerMap->Get(request.GetUnixSocketPath()),
             options);
 
         auto address = TNetworkAddress(
@@ -124,14 +128,16 @@ IEndpointListenerPtr CreateNbdEndpointListener(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     NProto::TChecksumFlags checksumFlags,
-    ui32 maxZeroBlocksSubRequestSize)
+    ui32 maxZeroBlocksSubRequestSize,
+    const IErrorHandlerMapPtr errorHandlerMap)
 {
     return std::make_shared<TNbdEndpointListener>(
         std::move(server),
         std::move(logging),
         std::move(serverStats),
         std::move(checksumFlags),
-        maxZeroBlocksSubRequestSize);
+        maxZeroBlocksSubRequestSize,
+        std::move(errorHandlerMap));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

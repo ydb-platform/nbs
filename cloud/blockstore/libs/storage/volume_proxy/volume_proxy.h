@@ -12,6 +12,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 NActors::IActorPtr CreateVolumeProxy(
     TStorageConfigPtr config,
-    ITraceSerializerPtr traceSerializer);
+    ITraceSerializerPtr traceSerialize,
+    bool temporaryServer);
 
 }   // namespace NCloud::NBlockStore::NStorage
