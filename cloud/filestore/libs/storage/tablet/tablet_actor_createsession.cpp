@@ -57,6 +57,8 @@ void FillFeatures(
     features->SetServerWriteBackCacheEnabled(
         config.GetServerWriteBackCacheEnabled());
 
+    features->SetParentlessFilesOnly(config.GetParentlessFilesOnly());
+
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
 }

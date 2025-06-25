@@ -398,7 +398,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewName,
                 *args.NewChildNode,
                 args.NewChildRef->MinCommitId,
-                args.CommitId);
+                args.CommitId,
+                /* removeNodeRef */ true);
 
             if (HasError(e)) {
                 const auto nodeId = args.NewChildNode->NodeId;
