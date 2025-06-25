@@ -91,7 +91,11 @@ public:
               std::move(session),
               std::move(filesystemId),
               std::move(headers))
-    {}
+    {
+        if (!Session) {
+            ythrow yexception() << "Session not created. Missing FileSystemId?";
+        }
+    }
 
     TNodeLocal NodeIdMapped(const TNodeLog id)
     {

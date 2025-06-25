@@ -151,6 +151,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::Ping:
         case EFileStoreRequest::DescribeData:
         case EFileStoreRequest::AddData:
+        case EFileStoreRequest::GetNodeXAttr:
             return {};
 
         default:

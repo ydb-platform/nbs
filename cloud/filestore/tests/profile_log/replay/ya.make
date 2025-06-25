@@ -15,6 +15,10 @@ PEERDIR(
 
 TEST_SRCS(
     test.py
+    test_grpc.py
 )
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/mount.inc)
 
 END()
