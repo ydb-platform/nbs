@@ -349,7 +349,16 @@ void TBootstrapVhost::InitEndpoints()
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
             .MaxQueueSize = Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
-        });
+        },
+        TWriteBackCacheConfig{
+            .PathPrefix = Configs->VhostServiceConfig->GetWriteBackCachePath(),
+            .Capacity =
+                Configs->VhostServiceConfig->GetWriteBackCacheCapacity(),
+            .AutomaticFlushPeriod =
+                Configs->VhostServiceConfig
+                    ->GetWriteBackCacheAutomaticFlushPeriod()
+        }
+    );
 
     EndpointManager = CreateEndpointManager(
         Logging,

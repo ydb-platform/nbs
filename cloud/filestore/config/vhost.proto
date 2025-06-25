@@ -44,8 +44,19 @@ message TVhostServiceConfig
     // and a subdirectory with the sessionId if not present.
     optional string HandleOpsQueuePath = 10;
 
-    // Max HandleOpsQueue size in bytes.
+    // Max HandleOpsQueue size in bytes per session.
     optional uint32 HandleOpsQueueSize = 11;
+
+    // Path to the directory where WriteBackCache is stored for all
+    // sessions. Will create a directory with filesystem id as name
+    // (and a subdirectory with session id as name) if not present.
+    optional string WriteBackCachePath = 12;
+
+    // Max WriteBackCache capacity in bytes per session.
+    optional uint64 WriteBackCacheCapacity = 13;
+
+    // WriteBackCache automatic flush period (in milliseconds).
+    optional uint32 WriteBackCacheAutomaticFlushPeriod = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
