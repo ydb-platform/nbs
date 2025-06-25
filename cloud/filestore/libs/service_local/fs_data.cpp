@@ -41,7 +41,8 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
 
     NLowLevel::UnixCredentialsGuard credGuard(
         request.GetUid(),
-        request.GetGid());
+        request.GetGid(),
+        Config->GetGuestOnlyPermissionsCheckEnabled());
     TFileHandle handle;
     TFileStat stat;
     ui64 nodeId;

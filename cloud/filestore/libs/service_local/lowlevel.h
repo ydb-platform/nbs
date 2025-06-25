@@ -20,7 +20,7 @@ private:
     bool IsRestoreNeeded = false;
 
 public:
-    UnixCredentialsGuard(uid_t uid, gid_t gid);
+    UnixCredentialsGuard(uid_t uid, gid_t gid, bool trustUserCredentials);
     ~UnixCredentialsGuard();
 };
 

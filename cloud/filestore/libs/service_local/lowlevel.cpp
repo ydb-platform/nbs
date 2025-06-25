@@ -1,8 +1,9 @@
 #include "lowlevel.h"
 
 #include <cloud/filestore/libs/service/error.h>
-
 #include <cloud/storage/core/libs/common/error.h>
+
+#include <contrib/libs/libcap/include/sys/capability.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/map.h>
@@ -106,6 +107,30 @@ timespec ToTimeSpec(TInstant ts)
 FHANDLE Fd(const TFileHandle& handle)
 {
     return handle;
+}
+
+bool RestoreCapability(cap_value_t val)
+{
+    auto caps = cap_get_proc();
+    if (caps == NULL) {
+        return false;
+    }
+
+    Y_DEFER {
+        cap_free(caps);
+    };
+
+    auto ret = cap_set_flag(caps, CAP_EFFECTIVE, 1, &val, CAP_SET);
+    if (ret == -1) {
+        return false;
+    }
+
+    ret = cap_set_proc(caps);
+    if (ret == -1) {
+        return false;
+    }
+
+    return true;
 }
 
 }   // namespace
@@ -627,7 +652,10 @@ bool Flock(const TFileHandle& handle, int operation)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-UnixCredentialsGuard::UnixCredentialsGuard(uid_t uid, gid_t gid)
+UnixCredentialsGuard::UnixCredentialsGuard(
+    uid_t uid,
+    gid_t gid,
+    bool trustUserCredentials)
 {
     OriginalUid = geteuid();
     if (OriginalUid != 0) {
@@ -656,6 +684,11 @@ UnixCredentialsGuard::UnixCredentialsGuard(uid_t uid, gid_t gid)
     }
 
     IsRestoreNeeded = true;
+
+    if (trustUserCredentials) {
+        // Bypass file read, write, and execute permission checks.
+        RestoreCapability(CAP_DAC_OVERRIDE);
+    }
 }
 
 UnixCredentialsGuard::~UnixCredentialsGuard()
