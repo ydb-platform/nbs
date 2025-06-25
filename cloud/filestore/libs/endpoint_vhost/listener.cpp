@@ -66,6 +66,7 @@ private:
     const IFileStoreEndpointsPtr FileStoreEndpoints;
     const IFileSystemLoopFactoryPtr LoopFactory;
     const THandleOpsQueueConfig HandleOpsQueueConfig;
+    const TWriteBackCacheConfig WriteBackCacheConfig;
 
     TLog Log;
 
@@ -76,13 +77,15 @@ public:
             ISchedulerPtr scheduler,
             IFileStoreEndpointsPtr filestoreEndpoints,
             IFileSystemLoopFactoryPtr loopFactory,
-            THandleOpsQueueConfig handleOpsQueueConfig)
+            THandleOpsQueueConfig handleOpsQueueConfig,
+            TWriteBackCacheConfig writeBackCacheConfig)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , FileStoreEndpoints(std::move(filestoreEndpoints))
         , LoopFactory(std::move(loopFactory))
         , HandleOpsQueueConfig(std::move(handleOpsQueueConfig))
+        , WriteBackCacheConfig(std::move(writeBackCacheConfig))
     {
         Log = Logging->CreateLog("NFS_VHOST");
     }
@@ -122,6 +125,10 @@ public:
         }
         protoConfig.SetHandleOpsQueuePath(HandleOpsQueueConfig.PathPrefix);
         protoConfig.SetHandleOpsQueueSize(HandleOpsQueueConfig.MaxQueueSize);
+        protoConfig.SetWriteBackCachePath(WriteBackCacheConfig.PathPrefix);
+        protoConfig.SetWriteBackCacheCapacity(WriteBackCacheConfig.Capacity);
+        protoConfig.SetWriteBackCacheAutomaticFlushPeriod(
+            WriteBackCacheConfig.AutomaticFlushPeriod.MilliSeconds());
 
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));
         auto Loop = LoopFactory->Create(
@@ -142,7 +149,8 @@ IEndpointListenerPtr CreateEndpointListener(
     ISchedulerPtr scheduler,
     IFileStoreEndpointsPtr filestoreEndpoints,
     IFileSystemLoopFactoryPtr loopFactory,
-    THandleOpsQueueConfig handleOpsQueueConfig)
+    THandleOpsQueueConfig handleOpsQueueConfig,
+    TWriteBackCacheConfig writeBackCacheConfig)
 {
     return std::make_shared<TEndpointListener>(
         std::move(logging),
@@ -150,7 +158,8 @@ IEndpointListenerPtr CreateEndpointListener(
         std::move(scheduler),
         std::move(filestoreEndpoints),
         std::move(loopFactory),
-        std::move(handleOpsQueueConfig));
+        std::move(handleOpsQueueConfig),
+        std::move(writeBackCacheConfig));
 }
 
 }   // namespace NCloud::NFileStore::NVhost
