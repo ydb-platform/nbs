@@ -282,6 +282,10 @@ class Qemu:
 
         return cmd
 
+    @property
+    def daemon(self):
+        return self.qemu_bin
+
     def start(self):
         if self.qemu_bin is not None:
             return self.qemu_bin.daemon.process.pid

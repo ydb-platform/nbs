@@ -40,6 +40,10 @@ class AccessService:
             service_name="access_service",
         )
 
+    @property
+    def daemon(self):
+        return self.__daemon
+
     def start(self):
         try:
             logger.debug("Running access_service with cwd: " + self.__cwd)

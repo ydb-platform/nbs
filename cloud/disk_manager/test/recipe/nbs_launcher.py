@@ -150,6 +150,10 @@ class NbsLauncher:
             kms_config=kms_config,
             features_config_patch=features_config_patch)
 
+    @property
+    def nbs(self):
+        return self.__nbs
+
     def start(self):
         self.__nbs.start()
         wait_for_nbs_server(self.__nbs.nbs_port)

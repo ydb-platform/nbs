@@ -12,11 +12,16 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_n
 
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 import yatest.common as yatest_common
 
 
 PID_FILE_NAME = "local_kikimr_nbs_server_recipe.pid"
+ERR_LOG_FILE_NAMES_FILE = "local_kikimr_nbs_server_recipe.err_log_files"
 
 
 def start(argv):
@@ -98,6 +103,8 @@ def start(argv):
 
     nbs.start()
 
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs.stderr_file_name)
+
     set_env("LOCAL_KIKIMR_KIKIMR_ROOT", configurator.domain_name)
     set_env("LOCAL_KIKIMR_KIKIMR_SERVER_PORT", str(kikimr_port))
     set_env("LOCAL_KIKIMR_SECURE_NBS_SERVER_PORT", str(nbs.nbs_secure_port))
@@ -113,6 +120,9 @@ def stop(argv):
     with open(PID_FILE_NAME) as f:
         pid = int(f.read())
         os.kill(pid, signal.SIGTERM)
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError("Errors during recipe execution:\n" + "\n".join(errors))
 
 
 if __name__ == "__main__":

@@ -13,6 +13,8 @@ DATA(
 
 PEERDIR(
     cloud/storage/core/tools/testing/access_service_new/lib
+    cloud/storage/core/tests/common
+
     contrib/ydb/tests/library
     library/python/testing/recipe
 )

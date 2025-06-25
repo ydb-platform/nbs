@@ -26,6 +26,10 @@ class VirtioFsServer:
         self.socket_path = socket_path
         self.fspath = fspath
 
+    @property
+    def daemon(self):
+        return self.virtiofs_server
+
     def start(self, output_path, tag):
         cmd = [self.virtiofs_server_binary, "--socket-path={}".format(self.socket_path), "-o", "source={}".format(self.fspath)]
 

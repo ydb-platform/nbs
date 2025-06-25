@@ -31,6 +31,8 @@ class GuestClient:
             "-o",
             "ConnectTimeout=10",
             "-o",
+            "IdentitiesOnly=yes",
+            "-o",
             "ServerAliveInterval=10",
             "-o",
             "ServerAliveCountMax=10",
