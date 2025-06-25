@@ -172,7 +172,7 @@ struct TTestDeviceFactory
     : public NBD::IDeviceFactory
 {
     TVector<TString> Devices;
-    ui64 Index;
+    ui64 Index = 0;
 
     NBD::IDevicePtr Create(
         const TNetworkAddress& connectAddress,
