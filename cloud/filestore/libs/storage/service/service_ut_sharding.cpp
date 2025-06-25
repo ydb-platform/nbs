@@ -4463,6 +4463,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // triggering background shard stats collection
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions{
+                .FinalEvents = {TDispatchOptions::TFinalEventCondition(
+                    TEvIndexTablet::EvGetStorageStatsResponse,
+                    2)}});
 
         {
             using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;

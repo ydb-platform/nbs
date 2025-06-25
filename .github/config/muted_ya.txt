@@ -1,3 +1,2 @@
 cloud/filestore/tests/fio_index/mount-kikimr-test *
 cloud/filestore/tests/fio_index/mount-local-test *
-cloud/filestore/libs/storage/service/ut TStorageServiceShardingTest.ShouldAggregateFileSystemMetricsInBackgroundWithDirectoriesInShardsWithShardIdSelectionInLeader
