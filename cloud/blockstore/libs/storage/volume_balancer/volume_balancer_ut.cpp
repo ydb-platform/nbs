@@ -1,5 +1,3 @@
-#include <cloud/blockstore/libs/storage/testlib/test_env.h>
-
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -7,8 +5,11 @@
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer.h>
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 
@@ -83,12 +84,6 @@ public:
         return *this;
     }
 
-    TVolumeBalancerConfigBuilder& WithCpuLackThreshold(ui64 cpuLack)
-    {
-        StorageConfig.SetCpuLackThreshold(cpuLack);
-        return *this;
-    }
-
     TVolumeBalancerConfigBuilder& WithInitialPullDelay(TDuration delay)
     {
         StorageConfig.SetInitialPullDelay(delay.MilliSeconds());
@@ -103,8 +98,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVolumeStatsTestMock final
-    : public IVolumeStats
+struct TVolumeStatsTestMock final: public IVolumeStats
 {
     TVolumePerfStatuses PerfStats;
 
@@ -119,9 +113,7 @@ struct TVolumeStatsTestMock final
         return true;
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId) override
+    void UnmountVolume(const TString& diskId, const TString& clientId) override
     {
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
@@ -160,8 +152,7 @@ struct TVolumeStatsTestMock final
     }
 
     void TrimVolumes() override
-    {
-    }
+    {}
 
     void UpdateStats(bool updateIntervalFinished) override
     {
@@ -191,7 +182,6 @@ struct TVolumeStatsTestMock final
     }
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TStatsFetcherMock: public NCloud::NStorage::IStatsFetcher
@@ -204,22 +194,21 @@ struct TStatsFetcherMock: public NCloud::NStorage::IStatsFetcher
     }
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     TResultOrError<TDuration> GetCpuWait() override
     {
         return Value;
-    };
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using EChangeBindingOp = TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp;
+using EChangeBindingOp =
+    TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp;
 using EBalancerStatus = NPrivateProto::EBalancerOpStatus;
 
 class TVolumeBalancerTestEnv
@@ -272,7 +261,8 @@ public:
 
     void Send(const TActorId& recipient, IEventBasePtr event)
     {
-        TestEnv.GetRuntime().Send(new IEventHandle(recipient, Sender, event.release()));
+        TestEnv.GetRuntime().Send(
+            new IEventHandle(recipient, Sender, event.release()));
     }
 
     void DispatchEvents()
@@ -287,14 +277,15 @@ public:
 
     THolder<TEvService::TEvChangeVolumeBindingRequest> GrabBindingRequest()
     {
-        return TestEnv.GetRuntime().
-            GrabEdgeEvent<TEvService::TEvChangeVolumeBindingRequest>(TDuration());
+        return TestEnv.GetRuntime()
+            .GrabEdgeEvent<TEvService::TEvChangeVolumeBindingRequest>(
+                TDuration());
     }
 
     THolder<TEvService::TEvGetVolumeStatsRequest> GrabVolumesStatsRequest()
     {
-        return TestEnv.GetRuntime().
-            GrabEdgeEvent<TEvService::TEvGetVolumeStatsRequest>(TDuration());
+        return TestEnv.GetRuntime()
+            .GrabEdgeEvent<TEvService::TEvGetVolumeStatsRequest>(TDuration());
     }
 
     void SendChangeVolumeBindingResponse(
@@ -304,7 +295,9 @@ public:
     {
         Send(
             receiver,
-            std::make_unique<TEvService::TEvChangeVolumeBindingResponse>(error, diskId));
+            std::make_unique<TEvService::TEvChangeVolumeBindingResponse>(
+                error,
+                diskId));
     }
 
     void SendVolumesStatsResponse(
@@ -312,18 +305,15 @@ public:
         const TString diskId,
         bool isLocal)
     {
-        auto stats = CreateVolumeStats(
-            diskId,
-            "",
-            "",
-            isLocal);
+        auto stats = CreateVolumeStats(diskId, "", "", isLocal);
 
         TVector<NProto::TVolumeBalancerDiskStats> volumes;
         volumes.push_back(std::move(stats));
 
         Send(
             receiver,
-            std::make_unique<TEvService::TEvGetVolumeStatsResponse>(std::move(volumes)));
+            std::make_unique<TEvService::TEvGetVolumeStatsResponse>(
+                std::move(volumes)));
     }
 
     void SendVolumesStatsResponse(
@@ -332,19 +322,15 @@ public:
         bool isLocal,
         NProto::EPreemptionSource source)
     {
-        auto stats = CreateVolumeStats(
-            diskId,
-            "",
-            "",
-            isLocal,
-            source);
+        auto stats = CreateVolumeStats(diskId, "", "", isLocal, source);
 
         TVector<NProto::TVolumeBalancerDiskStats> volumes;
         volumes.push_back(std::move(stats));
 
         Send(
             receiver,
-            std::make_unique<TEvService::TEvGetVolumeStatsResponse>(std::move(volumes)));
+            std::make_unique<TEvService::TEvGetVolumeStatsResponse>(
+                std::move(volumes)));
     }
 
     void SendVolumesStatsResponse(
@@ -353,20 +339,27 @@ public:
     {
         Send(
             receiver,
-            std::make_unique<TEvService::TEvGetVolumeStatsResponse>(std::move(volumes)));
+            std::make_unique<TEvService::TEvGetVolumeStatsResponse>(
+                std::move(volumes)));
     }
 
-    void SendConfigureVolumeBalancerRequest(TActorId receiver, EBalancerStatus status)
+    void SendConfigureVolumeBalancerRequest(
+        TActorId receiver,
+        EBalancerStatus status)
     {
-        auto request = std::make_unique<TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest>();
+        auto request = std::make_unique<
+            TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest>();
         request->Record.SetOpStatus(status);
         Send(receiver, std::move(request));
     }
 
-    THolder<TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse> GrabConfigureVolumeBalancerResponse()
+    THolder<TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse>
+    GrabConfigureVolumeBalancerResponse()
     {
-        return TestEnv.GetRuntime().
-            GrabEdgeEvent<TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse>(TDuration());
+        return TestEnv.GetRuntime()
+            .GrabEdgeEvent<
+                TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse>(
+                TDuration());
     }
 
     void AddVolumeToVolumesStatsResponse(
@@ -374,11 +367,7 @@ public:
         const TString diskId,
         bool isLocal)
     {
-        auto stats = CreateVolumeStats(
-            diskId,
-            "",
-            "",
-            isLocal);
+        auto stats = CreateVolumeStats(diskId, "", "", isLocal);
 
         volumes.push_back(std::move(stats));
     }
@@ -395,13 +384,17 @@ NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
         feature->SetName(featureName);
         if (blacklist) {
             for (const auto& c: list) {
-                *feature->MutableBlacklist()->MutableCloudIds()->Add() = c.first;
-                *feature->MutableBlacklist()->MutableFolderIds()->Add() = c.second;
+                *feature->MutableBlacklist()->MutableCloudIds()->Add() =
+                    c.first;
+                *feature->MutableBlacklist()->MutableFolderIds()->Add() =
+                    c.second;
             }
         } else {
             for (const auto& c: list) {
-                *feature->MutableWhitelist()->MutableCloudIds()->Add() = c.first;
-                *feature->MutableWhitelist()->MutableFolderIds()->Add() = c.second;
+                *feature->MutableWhitelist()->MutableCloudIds()->Add() =
+                    c.first;
+                *feature->MutableWhitelist()->MutableFolderIds()->Add() =
+                    c.second;
             }
         }
     }
@@ -420,10 +413,9 @@ IActorPtr CreateVolumeBalancerActor(
     volumeBalancerSwitch->EnableVolumeBalancer();
 
     return CreateVolumeBalancerActor(
-         std::make_shared<TStorageConfig>(
+        std::make_shared<TStorageConfig>(
             config.Build(),
-            CreateFeatureConfig("Balancer", {})
-        ),
+            CreateFeatureConfig("Balancer", {})),
         std::move(volumeStats),
         std::move(statsFetcher),
         std::move(volumeBalancerSwitch),
@@ -450,12 +442,8 @@ TString RunState(
 
         TVector<NProto::TVolumeBalancerDiskStats> stats;
         for (const auto& v: volumes) {
-            auto stat = CreateVolumeStats(
-                v.DiskId,
-                "",
-                "",
-                v.IsLocal,
-                v.Source);
+            auto stat =
+                CreateVolumeStats(v.DiskId, "", "", v.IsLocal, v.Source);
 
             stats.push_back(stat);
         }
@@ -483,7 +471,18 @@ TString RunState(
     return {};
 }
 
-} // namespace
+auto SetupCriticalEvents(IMonitoringServicePtr monitoring)
+{
+    auto rootGroup =
+        monitoring->GetCounters()->GetSubgroup("counters", "storage");
+
+    auto serverGroup = rootGroup->GetSubgroup("component", "server");
+    InitCriticalEventsCounter(serverGroup);
+
+    return serverGroup;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -509,10 +508,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -540,10 +536,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -574,17 +567,17 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
-        testEnv.SendChangeVolumeBindingResponse(volumeBindingActorID, "vol0", {});
+        testEnv.SendChangeVolumeBindingResponse(
+            volumeBindingActorID,
+            "vol0",
+            {});
 
         diskId = RunState(
             testEnv,
@@ -593,10 +586,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", false, NProto::EPreemptionSource::SOURCE_BALANCER},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             0.1,
             EChangeBindingOp::ACQUIRE_FROM_HIVE,
             TDuration::Seconds(15) + TDuration::Seconds(20));
@@ -627,10 +617,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -644,10 +631,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", false, NProto::EPreemptionSource::SOURCE_MANUAL},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             0.1,
             {},
             TDuration::Seconds(15) + TDuration::Seconds(20));
@@ -675,10 +659,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
             TDuration::Seconds(15));
@@ -699,10 +680,14 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        testEnv.SendConfigureVolumeBalancerRequest(volumeBindingActorID, EBalancerStatus::DISABLE);
+        testEnv.SendConfigureVolumeBalancerRequest(
+            volumeBindingActorID,
+            EBalancerStatus::DISABLE);
         auto response = testEnv.GrabConfigureVolumeBalancerResponse();
 
-        UNIT_ASSERT_VALUES_EQUAL(EBalancerStatus::ENABLE, response->Record.GetOpStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            EBalancerStatus::ENABLE,
+            response->Record.GetOpStatus());
 
         RunState(
             testEnv,
@@ -711,10 +696,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
             TDuration::Seconds(15));
@@ -722,6 +704,9 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
     Y_UNIT_TEST(ShouldSetCpuWaitCounter)
     {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverGroup = SetupCriticalEvents(monitoring);
+
         TVolumeBalancerTestEnv testEnv;
         TVolumeBalancerConfigBuilder config;
 
@@ -736,31 +721,33 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         auto diskId = RunState(
             testEnv,
             volumeBindingActorID,
-            {
-                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
-                {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
-            },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{.DiskId = "vol0",
+              .IsLocal = true,
+              .Source = NProto::EPreemptionSource::SOURCE_NONE},
+             {.DiskId = "vol1",
+              .IsLocal = true,
+              .Source = NProto::EPreemptionSource::SOURCE_NONE}},
+            {{"vol0", 10}, {"vol1", 1}},
             .9,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
-        auto counters = testEnv.GetRuntime().GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server");
+        auto counters = testEnv.GetRuntime()
+                            .GetAppData(0)
+                            .Counters->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
 
         auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
         UNIT_ASSERT_VALUES_UNEQUAL(0, cpuWaitCounter->Val());
         UNIT_ASSERT(cpuWaitCounter->Val() <= 90);
 
-        auto cpuWaitFailureCounter =
-            counters->GetCounter("CpuWaitFailure", false);
-        UNIT_ASSERT_VALUES_EQUAL(0, cpuWaitFailureCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            serverGroup
+                ->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)
+                ->Val());
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsNotActivated)
@@ -771,8 +758,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
             std::make_shared<TStorageConfig>(
                 config.Build(),
-                CreateFeatureConfig("Balancer", {})
-            ),
+                CreateFeatureConfig("Balancer", {})),
             testEnv.VolumeStats,
             testEnv.Fetcher,
             CreateVolumeBalancerSwitch(),
@@ -787,10 +773,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
             TDuration::Seconds(15));
@@ -809,9 +792,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        auto root = testEnv.GetRuntime().GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service");
+        auto root = testEnv.GetRuntime()
+                        .GetAppData(0)
+                        .Counters->GetSubgroup("counters", "blockstore")
+                        ->GetSubgroup("component", "service");
 
         auto manuallyPreempted = root->GetCounter("ManuallyPreempted", false);
         auto balancerPreempted = root->GetCounter("BalancerPreempted", false);
@@ -832,10 +816,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol8", true, NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT},
                 {"vol9", true, NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             .9,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -847,8 +828,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         UNIT_ASSERT_VALUES_EQUAL(4, initiallyPreempted->Val());
     }
 
-    Y_UNIT_TEST(ShouldSetCpuWaitFailure)
+    Y_UNIT_TEST(ShouldSetCpuWaitCounterReadError)
     {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverGroup = SetupCriticalEvents(monitoring);
+
         TVolumeBalancerTestEnv testEnv;
         TVolumeBalancerConfigBuilder config;
 
@@ -864,27 +848,31 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
-                {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {.DiskId = "vol0",
+                 .IsLocal = true,
+                 .Source = NProto::EPreemptionSource::SOURCE_NONE},
+                {.DiskId = "vol1",
+                 .IsLocal = true,
+                 .Source = NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {
-                {"vol0", 10},
-                {"vol1", 1}
-            },
+            {{"vol0", 10}, {"vol1", 1}},
             MakeError(E_INVALID_STATE),
             {},
             TDuration::Seconds(15));
 
-        auto counters = testEnv.GetRuntime().GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server");
+        auto counters = testEnv.GetRuntime()
+                            .GetAppData(0)
+                            .Counters->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
 
         auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
         UNIT_ASSERT_VALUES_EQUAL(0, cpuWaitCounter->Val());
 
-        auto cpuWaitFailureCounter =
-            counters->GetCounter("CpuWaitFailure", false);
-        UNIT_ASSERT_VALUES_EQUAL(1, cpuWaitFailureCounter->Val());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            0,
+            serverGroup
+                ->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)
+                ->Val());
     }
 }
 
