@@ -789,6 +789,12 @@ void TPartitionActor::HandleWakeUpOnBoot(
         return;
     }
 
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Tablet booting takes too long, sending poison pill",
+        LogTitle.GetWithTime().c_str());
+
     Suicide(ctx);
 }
 

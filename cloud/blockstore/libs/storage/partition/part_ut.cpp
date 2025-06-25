@@ -1541,16 +1541,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldDieIfBootingTakesTooMuchTime)
     {
-
         NProto::TStorageServiceConfig config;
         config.SetBootPartitionsTimeout(TDuration::Seconds(10).MilliSeconds());
         auto runtime = PrepareTestActorRuntime(std::move(config));
 
+        bool tabletWasKilled = false;
         runtime->SetEventFilter(
-            [](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
             {
                 if (ev->GetTypeRewrite() == TEvTablet::EvRestored) {
                     return true;
+                } else if (
+                    ev->GetTypeRewrite() == TEvents::TEvPoisonPill::EventType)
+                {
+                    tabletWasKilled = true;
                 }
                 return false;
             });
@@ -1565,7 +1569,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // Wait for partition to die
         auto options = TDispatchOptions();
         options.FinalEvents.emplace_back(TEvents::TEvPoisonPill::EventType);
-        runtime->DispatchEvents(options);
+        runtime->DispatchEvents(options, TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT(tabletWasKilled);
     }
 
     Y_UNIT_TEST(ShouldRecoverStateOnReboot)
