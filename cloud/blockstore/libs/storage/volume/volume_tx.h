@@ -43,10 +43,9 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ReadMetaHistory,                __VA_ARGS__)                           \
     xxx(AddLaggingAgent,                __VA_ARGS__)                           \
     xxx(RemoveLaggingAgent,             __VA_ARGS__)                           \
-    xxx(UpdateFollower,                 __VA_ARGS__)                           \
+    xxx(AddFollower,                    __VA_ARGS__)                           \
     xxx(RemoveFollower,                 __VA_ARGS__)                           \
-    xxx(UpdateLeader,                   __VA_ARGS__)                           \
-    xxx(RemoveLeader,                   __VA_ARGS__)                           \
+    xxx(UpdateFollower,                 __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,7 +90,6 @@ struct TTxVolume
         TMaybe<TVolumeDatabase::TThrottlerStateInfo> ThrottlerStateInfo;
         TMaybe<NProto::TStorageServiceConfig> StorageConfig;
         TFollowerDisks FollowerDisks;
-        TLeaderDisks LeaderDisks;
 
         explicit TLoadState(TInstant oldestLogEntry)
             : OldestLogEntry(oldestLogEntry)
@@ -114,7 +112,6 @@ struct TTxVolume
             ThrottlerStateInfo.Clear();
             StorageConfig.Clear();
             FollowerDisks.clear();
-            LeaderDisks.clear();
         }
     };
 
@@ -770,19 +767,20 @@ struct TTxVolume
     };
 
     //
-    // UpdateFollower
+    // AddFollower
     //
 
-    struct TUpdateFollower
+    struct TAddFollower
     {
         const TRequestInfoPtr RequestInfo;
-        const TFollowerDiskInfo FollowerInfo;
+        const TString FollowerDiskId;
+        TString LinkUUID;
 
-        TUpdateFollower(
+        TAddFollower(
                 TRequestInfoPtr requestInfo,
-                TFollowerDiskInfo followerInfo)
+                TString followerDiskId)
             : RequestInfo(std::move(requestInfo))
-            , FollowerInfo(std::move(followerInfo))
+            , FollowerDiskId(std::move(followerDiskId))
         {}
 
         void Clear()
@@ -798,11 +796,13 @@ struct TTxVolume
     struct TRemoveFollower
     {
         const TRequestInfoPtr RequestInfo;
-        const TLeaderFollowerLink Link;
+        const TString LinkUUID;
 
-        TRemoveFollower(TRequestInfoPtr requestInfo, TLeaderFollowerLink link)
+        TRemoveFollower(
+                TRequestInfoPtr requestInfo,
+                TString linkUUID)
             : RequestInfo(std::move(requestInfo))
-            , Link(std::move(link))
+            , LinkUUID(std::move(linkUUID))
         {}
 
         void Clear()
@@ -811,38 +811,21 @@ struct TTxVolume
         }
     };
 
+
     //
-    // UpdateLeader
+    // UpdateFollower
     //
 
-    struct TUpdateLeader
+    struct TUpdateFollower
     {
         const TRequestInfoPtr RequestInfo;
-        const TLeaderDiskInfo Leader;
+        const TFollowerDiskInfo FollowerInfo;
 
-        TUpdateLeader(TRequestInfoPtr requestInfo, TLeaderDiskInfo leader)
+        TUpdateFollower(
+                TRequestInfoPtr requestInfo,
+                TFollowerDiskInfo followerInfo)
             : RequestInfo(std::move(requestInfo))
-            , Leader(std::move(leader))
-        {}
-
-        void Clear()
-        {
-            // nothing to do
-        }
-    };
-
-    //
-    // RemoveLeader
-    //
-
-    struct TRemoveLeader
-    {
-        const TRequestInfoPtr RequestInfo;
-        const TLeaderFollowerLink Link;
-
-        TRemoveLeader(TRequestInfoPtr requestInfo, TLeaderFollowerLink link)
-            : RequestInfo(std::move(requestInfo))
-            , Link(std::move(link))
+            , FollowerInfo(std::move(followerInfo))
         {}
 
         void Clear()

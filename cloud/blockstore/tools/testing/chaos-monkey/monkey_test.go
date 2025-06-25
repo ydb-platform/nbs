@@ -404,6 +404,14 @@ func (n nbsService) DestroyVolumeLink(
 	panic("implement me")
 }
 
+func (n nbsService) RemoveVolumeClient(
+	ctx context.Context,
+	request *protos.TRemoveVolumeClientRequest,
+) (*protos.TRemoveVolumeClientResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type TestContext struct {

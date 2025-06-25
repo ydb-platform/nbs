@@ -28,6 +28,11 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
                                                                                \
     xxx(HandleOpsQueuePath,                         TString,    ""            )\
     xxx(HandleOpsQueueSize,                         ui32,       1_GB          )\
+    xxx(WriteBackCachePath,                         TString,    ""            )\
+    xxx(WriteBackCacheCapacity,                     ui64,       1_GB          )\
+    xxx(WriteBackCacheAutomaticFlushPeriod,                                    \
+        TDuration,                                                             \
+        TDuration::MilliSeconds(100)                                          )\
 // VHOST_SERVICE_CONFIG
 
 #define VHOST_SERVICE_DECLARE_CONFIG(name, type, value)                        \
@@ -44,6 +49,12 @@ template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
     return static_cast<TTarget>(value);
+}
+
+template <>
+TDuration ConvertValue<TDuration, ui32>(const ui32& value)
+{
+    return TDuration::MilliSeconds(value);
 }
 
 template <class TTarget, typename TSource>

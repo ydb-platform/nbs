@@ -560,6 +560,7 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
         bootstrap.EndpointListeners,
         bootstrap.NbdDeviceFactory,
         bootstrap.NbdErrorHandlerMap,
+        bootstrap.Service,
         bootstrap.Options);
 
     return bootstrap.EndpointManager;

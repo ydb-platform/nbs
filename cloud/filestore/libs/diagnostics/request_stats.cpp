@@ -551,11 +551,11 @@ public:
         }
     }
 
-    TString GetCloudId() {
+    TString GetCloudId() const {
         return CloudId;
     }
 
-    TString GetFolderId() {
+    TString GetFolderId() const {
         return FolderId;
     }
 
@@ -743,28 +743,7 @@ public:
         TWriteGuard guard(Lock);
 
         auto it = StatsMap.find(key);
-        bool shouldRecreateFsCounters = false;
-
-        if (it == StatsMap.end()) {
-            shouldRecreateFsCounters = true;
-        } else {
-            const auto& currentCloudId = it->second.Stats->GetCloudId();
-            const auto& currentFolderId = it->second.Stats->GetFolderId();
-            if (cloudId && cloudId != currentCloudId ||
-                folderId && folderId != currentFolderId)
-            {
-                shouldRecreateFsCounters = true;
-                MoveFileSystemStats(
-                    fileSystemId,
-                    clientId,
-                    currentCloudId,
-                    currentFolderId,
-                    cloudId,
-                    folderId);
-            }
-        }
-
-        if (shouldRecreateFsCounters)
+        if (it == StatsMap.end())
         {
             auto counters = FsCounters
                 ->GetSubgroup("filesystem", fileSystemId)
@@ -787,6 +766,13 @@ public:
                 DiagnosticsConfig->GetHistogramCounterOptions());
             it = StatsMap.emplace(key, stats).first;
             stats->Subscribe(RequestStats->GetTotalCounters());
+        } else {
+            UpdateCloudAndFolderIfNecessary(
+                *it->second.Stats,
+                fileSystemId,
+                clientId,
+                cloudId,
+                folderId);
         }
 
         return it->second.Acquire();
@@ -884,6 +870,29 @@ public:
         RequestStats->UpdateStats(updatePercentiles);
     }
 
+    void UpdateCloudAndFolder(
+        const TString& fileSystemId,
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
+    {
+        std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
+
+        TWriteGuard guard(Lock);
+
+        auto it = StatsMap.find(key);
+        if (it == StatsMap.end()) {
+            return;
+        }
+
+        UpdateCloudAndFolderIfNecessary(
+            *it->second.Stats,
+            fileSystemId,
+            clientId,
+            cloudId,
+            folderId);
+    }
+
 private:
     std::shared_ptr<TFileSystemStats> CreateRequestStats(
         TString fileSystemId,
@@ -918,14 +927,22 @@ private:
             histogramCounterOptions);
     }
 
-    void MoveFileSystemStats(
+    void UpdateCloudAndFolderIfNecessary(
+        const TFileSystemStats& stats,
         const TString& fileSystemId,
         const TString& clientId,
-        const TString& currentCloudId,
-        const TString& currentFolderId,
         const TString& newCloudId,
         const TString& newFolderId)
     {
+        const auto& currentCloudId = stats.GetCloudId();
+        const auto& currentFolderId = stats.GetFolderId();
+
+        if ((!newCloudId || newCloudId == currentCloudId) &&
+            (!newFolderId || newFolderId == currentFolderId))
+        {
+            return;
+        }
+
         auto fsCounters = FsCounters
             ->GetSubgroup("filesystem", fileSystemId)
             ->GetSubgroup("client", clientId)
@@ -1016,6 +1033,18 @@ public:
     void UpdateStats(bool updatePercentiles) override
     {
         Y_UNUSED(updatePercentiles);
+    }
+
+    void UpdateCloudAndFolder(
+        const TString& fileSystemId,
+        const TString& clientId,
+        const TString& cloudId,
+        const TString& folderId) override
+    {
+        Y_UNUSED(fileSystemId);
+        Y_UNUSED(clientId);
+        Y_UNUSED(cloudId);
+        Y_UNUSED(folderId);
     }
 };
 

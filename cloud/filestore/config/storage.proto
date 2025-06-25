@@ -606,4 +606,18 @@ message TStorageConfig
     optional uint32 LoadConfigsFromCmsRetryMinDelay = 431;
     optional uint32 LoadConfigsFromCmsRetryMaxDelay = 432;
     optional uint32 LoadConfigsFromCmsTotalTimeout = 433;
+
+    // If this flag is enabled all the files will be created without parents.
+    // Meaning that the NodeRefs table will be empty for these files.
+    // None of these files will be observable using the ListNodes request
+    // and the only way to access them is to use the node's NodeId
+    //
+    // This alters the default behavior:
+    // - CreateNode will not create a NodeRef for the file and this node will
+    //   be found only in the Nodes table of a shard (or in the main tablet if
+    //   there are no shards). This means that the passed filename will not be
+    //   used at all.
+    // - UnlinkNode will be possible to perform using only the file's NodeId
+    //   and it will not require the parent directory's NodeId.
+    optional bool ParentlessFilesOnly = 434;
 }

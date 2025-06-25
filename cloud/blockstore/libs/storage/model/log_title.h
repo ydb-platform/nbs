@@ -24,6 +24,7 @@ public:
         Partition,
         Session,
         Client,
+        VolumeProxy,
     };
 
 private:
@@ -36,8 +37,7 @@ private:
     const bool TemporaryServer = false;
 
     ui64 TabletId = 0;
-    ui64 Generation = 0;
-    ui32 PipeGeneration = 0;
+    ui32 Generation = 0;
     TString DiskId;
     TString CachedPrefix;
 
@@ -70,6 +70,9 @@ public:
         bool temporaryServer,
         ui64 startTime);
 
+    // Constructor for VolumeProxy
+    TLogTitle(TString diskId, bool temporaryServer, ui64 startTime);
+
     static TString
     GetPartitionPrefix(ui64 tabletId, ui32 partitionIndex, ui32 partitionCount);
 
@@ -78,12 +81,10 @@ public:
     [[nodiscard]] TString Get(EDetails details) const;
 
     [[nodiscard]] TString GetWithTime() const;
-    [[nodiscard]] TString GetBrief() const;
 
     void SetDiskId(TString diskId);
     void SetGeneration(ui32 generation);
     void SetTabletId(ui64 tabletId);
-    void SetPipeGeneration(ui32 pipeGeneration);
 
 private:
     void Rebuild();
@@ -91,6 +92,7 @@ private:
     void RebuildForPartition();
     void RebuildForSession();
     void RebuildForClient();
+    void RebuildForVolumeProxy();
     TString GetPartitionPrefix() const;
 };
 

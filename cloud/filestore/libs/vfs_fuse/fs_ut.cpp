@@ -60,6 +60,9 @@ namespace {
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 
 static const TString FileSystemId = "fs1";
+static const TString SessionId = CreateGuidAsString();
+
+static const TTempDir TempDir;
 
 TString CreateBuffer(size_t len, char fill = 0)
 {
@@ -86,8 +89,6 @@ struct TBootstrap
     TString SocketPath;
 
     TPromise<void> StopTriggered = NewPromise<void>();
-
-    const TTempDir TempDir;
 
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
@@ -124,7 +125,7 @@ struct TBootstrap
 
             UNIT_ASSERT(request->GetRestoreClientSession());
             NProto::TCreateSessionResponse result;
-            result.MutableSession()->SetSessionId(CreateGuidAsString());
+            result.MutableSession()->SetSessionId(SessionId);
             result.MutableFileStore()->MutableFeatures()->CopyFrom(
                 featuresConfig);
             result.MutableFileStore()->SetFileSystemId(FileSystemId);
@@ -183,14 +184,21 @@ struct TBootstrap
         Stop();
     }
 
-    void Start(bool sendInitRequest=true)
+    NProto::TError Start(bool sendInitRequest=true)
     {
-        StartAsync().Wait();
+        auto response = StartAsync();
+        UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
+        auto error = response.GetValueSync();
+
+        if (HasError(error)) {
+            return error;
+        }
 
         if (sendInitRequest) {
             auto init = Fuse->SendRequest<TInitRequest>();
             UNIT_ASSERT_NO_EXCEPTION(init.GetValueSync());
         }
+        return error;
     }
 
     TFuture<NProto::TError> StartAsync()
@@ -200,11 +208,17 @@ struct TBootstrap
         }
 
         auto future = Loop->StartAsync();
-        return future.Apply([=](const auto& f) {
-            Y_UNUSED(f);
-            Fuse->Init();
-            return MakeFuture<NProto::TError>();
-        });
+        return future.Apply(
+            [=](const auto& f)
+            {
+                const auto& error = f.GetValue();
+                if (HasError(error)) {
+                    return MakeFuture<NProto::TError>(error);
+                }
+
+                Fuse->Init();
+                return MakeFuture<NProto::TError>();
+            });
     }
 
     void Stop()
@@ -1840,6 +1854,40 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_EQUAL(2, handlerCalled);
     }
 
+    // We want to ensure that the same file cannot be reused for FileRingBuffers
+    // in different FileSystemLoop instances at the same time,
+    // because it may lead to file corruption.
+    Y_UNIT_TEST(ShouldFailStartWithSameSessionIdIfAsyncDestroyEnabled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
+        TBootstrap bootstrap1(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+        TBootstrap bootstrap2(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        auto error = bootstrap1.Start();
+        Y_DEFER {
+            bootstrap1.Stop();
+        };
+        UNIT_ASSERT(!HasError(error));
+
+        error = bootstrap2.Start();
+        UNIT_ASSERT(HasError(error));
+
+        auto handleOpsQueueError =
+            bootstrap2.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/HandleOpsQueueCreatingOrDeletingError",
+                    true);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*handleOpsQueueError));
+    }
+
     Y_UNIT_TEST(ShouldReadAndWriteWithServerWriteBackCacheEnabled)
     {
         NProto::TFileStoreFeatures features;
@@ -2168,6 +2216,41 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
             break;
         }
+    }
+
+    // We want to ensure that the same file cannot be reused for FileRingBuffers
+    // in different FileSystemLoop instances at the same time,
+    // because it may lead to file corruption.
+    Y_UNIT_TEST(ShouldFailStartWithSameSessionIdIfWriteBackCacheEnabled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+        TBootstrap bootstrap1(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+        TBootstrap bootstrap2(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        auto error = bootstrap1.Start();
+        Y_DEFER {
+            bootstrap1.Stop();
+        };
+        UNIT_ASSERT(!HasError(error));
+
+        error = bootstrap2.Start();
+        UNIT_ASSERT(HasError(error));
+
+        auto writeBackCacheError =
+            bootstrap2.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/"
+                    "WriteBackCacheCreatingOrDeletingError",
+                    true);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*writeBackCacheError));
     }
 }
 

@@ -176,7 +176,7 @@ protected:
         for (ui32 i = 0; i < pathLen; i++) {
             TString name = ToString(i);
 
-            auto nodes = node->List();
+            auto nodes = node->List(false /* don't ignore errors */);
             UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
 
             auto& [nodeName, nodeStat] = nodes[0];
