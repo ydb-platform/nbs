@@ -120,6 +120,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 
 	vhostQueuesCount := uint32(8) // explicit default value for unset behavior
+	retryTimeout := uint32(20000)
 	if backend == "nbs" {
 		if requestQueuesCountOpt != nil {
 			volumeContext[requestQueuesCountVolumeContextKey] = strconv.Itoa(int(*requestQueuesCountOpt))
@@ -142,6 +143,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 			DeviceName:       deviceName,
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
 			VhostQueuesCount: vhostQueuesCount,
+			RetryTimeout:     retryTimeout,
 			VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
@@ -399,6 +401,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 	}
 
 	vhostQueuesCount := uint32(8) // explicit default value for unset behavior
+	retryTimeout := uint32(20000)
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 	if backend == "nbs" {
 		if requestQueuesCountOpt != nil {
@@ -413,6 +416,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 			DeviceName:       deviceName,
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
 			VhostQueuesCount: vhostQueuesCount,
+			RetryTimeout:     retryTimeout,
 			VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
@@ -725,6 +729,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
 	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
 	localFsOverrides := make(ExternalFsOverrideMap)
+	retryTimeout := uint32(20000)
 
 	nodeService := newNodeService(
 		nodeId,
@@ -765,6 +770,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		DeviceName:       diskId,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
+		RetryTimeout:     retryTimeout,
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -883,6 +889,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
 	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
 	localFsOverrides := make(ExternalFsOverrideMap)
+	retryTimeout := uint32(20000)
 
 	nodeService := newNodeService(
 		nodeId,
@@ -933,6 +940,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		DeviceName:       diskId,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
+		RetryTimeout:     retryTimeout,
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -1234,6 +1242,7 @@ func TestGrpcTimeoutForIKubevirt(t *testing.T) {
 	nfsLocalClient := mocks.NewNfsEndpointClientMock()
 	nfsLocalFilestoreClient := mocks.NewNfsClientMock()
 	mounter := csimounter.NewMock()
+	retryTimeout := uint32(20000)
 
 	ctx := context.Background()
 	nodeId := "testNodeId"
@@ -1295,6 +1304,7 @@ func TestGrpcTimeoutForIKubevirt(t *testing.T) {
 		DeviceName:       deviceName,
 		IpcType:          nbs.EClientIpcType_IPC_VHOST,
 		VhostQueuesCount: 8,
+		RetryTimeout:     retryTimeout,
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -1339,6 +1349,7 @@ func TestGrpcTimeoutForInfrakuber(t *testing.T) {
 	stagingTargetPath := "testStagingTargetPath"
 	socketsDir := filepath.Join(tempDir, "sockets")
 	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
+	retryTimeout := uint32(20000)
 
 	nodeService := newNodeService(
 		nodeId,
@@ -1375,6 +1386,7 @@ func TestGrpcTimeoutForInfrakuber(t *testing.T) {
 		DeviceName:       diskId,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
+		RetryTimeout:     retryTimeout,
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,

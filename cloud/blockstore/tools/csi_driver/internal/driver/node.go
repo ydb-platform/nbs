@@ -53,6 +53,8 @@ const instanceIdKey = "instanceId"
 const defaultVhostQueuesCount = uint32(8)
 const maxQueuesCount = 65536
 
+const startEndpointRetryTimeoutMs = uint32(20000)
+
 const volumeOperationInProgress = "Another operation with volume %s is in progress"
 
 var vmModeCapabilities = []*csi.NodeServiceCapability{
@@ -598,6 +600,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
+		RetryTimeout:     startEndpointRetryTimeoutMs,
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -610,11 +613,6 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	})
 
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, false /* nbs */) {
-			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-			})
-		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -695,6 +693,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
+		RetryTimeout:     startEndpointRetryTimeoutMs,
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -707,11 +706,6 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	})
 
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, false /* nbs */) {
-			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-			})
-		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -934,6 +928,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
+		RetryTimeout:     startEndpointRetryTimeoutMs,
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -944,12 +939,6 @@ func (s *nodeService) startNbsEndpointForNBD(
 			HostType: &hostType,
 		},
 	})
-
-	if s.IsGrpcTimeoutError(err, false /* nbs */) {
-		s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-		})
-	}
 
 	return resp, err
 }
