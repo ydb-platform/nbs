@@ -24,7 +24,7 @@ private:
     const NKikimr::TTabletStorageInfoPtr TabletInfo;
     const ui64 TrimFreshLogToCommitId;
     const ui32 RecordGeneration;
-    const ui32 CollectCounter;
+    const ui32 PerGenerationCounter;
     const TVector<ui32> FreshChannels;
 
     ui32 RequestsInFlight = 0;
@@ -37,7 +37,7 @@ public:
         NKikimr::TTabletStorageInfoPtr tabletInfo,
         ui64 trimFreshLogToCommitId,
         ui32 recordGeneration,
-        ui32 collectCounter,
+        ui32 perGenerationCounter,
         TVector<ui32> freshChannels);
 
     void Bootstrap(const NActors::TActorContext& ctx);

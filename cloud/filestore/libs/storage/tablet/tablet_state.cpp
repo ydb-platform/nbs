@@ -102,7 +102,7 @@ void TIndexTabletState::LoadState(
     // https://github.com/ydb-platform/nbs/issues/1714
     // because of possible race in vdisks we should not start with 0
     LastStep = 1;
-    LastCollectCounter = 0;
+    LastCollectPerGenerationCounter = 0;
 
     TruncateBlocksThreshold = config.GetMaxBlocksPerTruncateTx();
     SessionHistoryEntryCount = config.GetSessionHistoryEntryCount();
