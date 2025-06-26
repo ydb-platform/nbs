@@ -16,7 +16,6 @@
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 namespace NCloud::NBlockStore::NStorage {
 namespace {
@@ -968,9 +967,9 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
             FormatError(msg->GetError()).c_str());
 
         const ui64 drainRequestId = TakeDrainRequestId(agentId);
-        ctx.ExecutorThread.Schedule(
+        ctx.Schedule(
             TDuration::Seconds(1),
-            new IEventHandle(
+            std::make_unique<IEventHandle>(
                 MirrorPartitionActorId,
                 SelfId(),
                 new NPartition::TEvPartition::TEvWaitForInFlightWritesRequest(),

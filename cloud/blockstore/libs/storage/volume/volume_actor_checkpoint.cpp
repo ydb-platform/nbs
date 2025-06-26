@@ -757,9 +757,9 @@ void TCheckpointActor<TMethod>::HandleReleaseDiskResponse(
             FormatError(record.GetError()).c_str());
 
         if (GetErrorKind(record.GetError()) == EErrorKind::ErrorRetriable) {
-            ctx.ExecutorThread.Schedule(
+            ctx.Schedule(
                 ReleaseShadowDiskRetryTimeout,
-                new IEventHandle(
+                std::make_unique<IEventHandle>(
                     MakeDiskRegistryProxyServiceId(),
                     TBase::SelfId(),
                     MakeReleaseDiskRequest(releaseSessionKind).release(),
