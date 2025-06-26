@@ -329,6 +329,7 @@ public:
     [[nodiscard]] TDuration GetLoadConfigsFromCmsTotalTimeout() const;
 
     bool GetParentlessFilesOnly() const;
+    bool GetAllowHandlelessIO() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
