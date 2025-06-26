@@ -126,7 +126,30 @@ TFuture<void> THostEndpointsManager::Start()
     return StartPromise.GetFuture();
 }
 
-THostEndpointsManager::TOptionalRdmaFuture THostEndpointsManager::SetupRdmaIfNeeded()
+void THostEndpointsManager::HandleRdmaSetupResult(
+    const IHostEndpointsSetupProvider::TRdmaResult& result)
+{
+    if (HasError(result.GetError())) {
+        RdmaState = EState::INACTIVE;
+        with_lock(StateLock) {
+            SetupRdmaIfNeeded();
+        }
+
+        auto weak = weak_from_this();
+        RdmaFuture.Subscribe([weak=std::move(weak)] (const auto& f) {
+            if (auto self = weak.lock(); self) {
+                self->HandleRdmaSetupResult(f.GetValue());
+            }
+        });
+    } else {
+        with_lock(StateLock) {
+            RdmaState = EState::ACTIVE;
+            RdmaHostEndpoint = result.GetResult();
+        }
+    }
+}
+
+bool THostEndpointsManager::SetupRdmaIfNeeded()
 {
     if (Config.GetTransport() != NProto::RDMA) {
         return {};

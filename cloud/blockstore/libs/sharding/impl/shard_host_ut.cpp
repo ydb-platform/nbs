@@ -31,8 +31,10 @@ struct TestHostEndpointsSetupProvider
     using IHostEndpointsSetupProvider::TSetupGrpcEndpointFuture;
     using IHostEndpointsSetupProvider::TSetupRdmaEndpointFuture;
 
-    TPromise<NClient::IMultiClientEndpointPtr> GrpcSetupPromise = NewPromise<NClient::IMultiClientEndpointPtr>();
-    TPromise<IBlockStorePtr> RdmaSetupPromise = NewPromise<IBlockStorePtr>();
+    TPromise<IHostEndpointsSetupProvider::TGrpcResult> GrpcSetupPromise =
+        NewPromise<IHostEndpointsSetupProvider::TGrpcResult>();
+    TPromise<IHostEndpointsSetupProvider::TRdmaResult> RdmaSetupPromise =
+        NewPromise<IHostEndpointsSetupProvider::TRdmaResult>();
 
     TSetupGrpcEndpointFuture SetupHostGrpcEndpoint(
         const TShardingArguments& args,
@@ -52,6 +54,9 @@ struct TestHostEndpointsSetupProvider
         Y_UNUSED(args);
         Y_UNUSED(config);
         Y_UNUSED(client);
+
+         RdmaSetupPromise =
+            NewPromise<IHostEndpointsSetupProvider::TRdmaResult>();
 
         return RdmaSetupPromise.GetFuture();
     }
@@ -132,7 +137,6 @@ struct TTestGrpcClient
         Y_UNUSED(isSecure);
         return {};
     }
-
 
     virtual IBlockStorePtr CreateDataEndpoint(
         const TString& socketPath) override
@@ -275,7 +279,99 @@ Y_UNIT_TEST_SUITE(THostEndpointsManagerTest)
 
         UNIT_ASSERT(!manager->IsReady(NProto::RDMA));
 
-        setup->RdmaSetupPromise.SetValue(std::make_shared<TTestBlockStore>());
+        setup->RdmaSetupPromise.SetValue(
+            IHostEndpointsSetupProvider::TRdmaResult(
+                std::make_shared<TTestBlockStore>()));
+
+        UNIT_ASSERT(manager->IsReady(NProto::RDMA));
+        UNIT_ASSERT(manager->IsReady(NProto::GRPC));
+
+        // check GRPC
+
+        {
+            auto clientConfig = std::make_shared<NClient::TClientAppConfig>();
+            auto response = manager->GetHostEndpoint(
+                clientConfig,
+                NProto::GRPC,
+                false);
+
+            UNIT_ASSERT_C(!HasError(response.GetError()), "should not fail");
+            auto endpoint = response.GetResult();
+            UNIT_ASSERT_C(
+                clientEndpoint == endpoint.GetService(),
+                "Services do not match");
+            UNIT_ASSERT_C(
+                nullptr != endpoint.GetStorage(),
+                "Storage should not be null");
+        }
+
+        // check RDMA
+
+        {
+            auto clientConfig = std::make_shared<NClient::TClientAppConfig>();
+            auto response = manager->GetHostEndpoint(
+                clientConfig,
+                NProto::RDMA,
+                false);
+
+            UNIT_ASSERT_C(!HasError(response.GetError()), "should not fail");
+            auto endpoint = response.GetResult();
+            UNIT_ASSERT_C(
+                clientEndpoint == endpoint.GetService(),
+                "Services do not match");
+            UNIT_ASSERT_C(
+                nullptr != endpoint.GetStorage(),
+                "Storage should not be null");
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRetryStartRdmaEndpoint)
+    {
+        NProto::TShardConfig shardCfg;
+        shardCfg.SetGrpcPort(1);
+        shardCfg.SetTransport(NProto::RDMA);
+        TShardConfig shard{shardCfg};
+
+        NProto::TShardHostConfig hostCfg;
+        hostCfg.SetFqdn("host");
+        TShardHostConfig hostConfig{hostCfg, shard};
+
+        auto setup = std::make_shared<TestHostEndpointsSetupProvider>();
+
+        TShardingArguments args;
+        args.EndpointsSetup = setup;
+
+        auto manager = std::make_shared<THostEndpointsManager>(
+            hostConfig,
+            args);
+
+        UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->GrpcHostEndpoint);
+        UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->RdmaHostEndpoint);
+
+        auto started = manager->Start();
+
+        auto grpcEndpoint = NClient::CreateMultiClientEndpoint(
+            std::make_shared<TTestGrpcClient>(),
+            "host",
+            9766,
+            false);
+
+        auto clientEndpoint = grpcEndpoint->CreateClientEndpoint("", "");
+
+        setup->GrpcSetupPromise.SetValue(grpcEndpoint);
+        UNIT_ASSERT_C(started.HasValue(), "started not set");
+
+        UNIT_ASSERT(!manager->IsReady(NProto::RDMA));
+
+        setup->RdmaSetupPromise.SetValue(
+            IHostEndpointsSetupProvider::TRdmaResult(MakeError(E_FAIL, "Error")));
+
+        UNIT_ASSERT(!manager->IsReady(NProto::RDMA));
+        UNIT_ASSERT(manager->IsReady(NProto::GRPC));
+
+        setup->RdmaSetupPromise.SetValue(
+            IHostEndpointsSetupProvider::TRdmaResult(
+                std::make_shared<TTestBlockStore>()));
 
         UNIT_ASSERT(manager->IsReady(NProto::RDMA));
         UNIT_ASSERT(manager->IsReady(NProto::GRPC));
