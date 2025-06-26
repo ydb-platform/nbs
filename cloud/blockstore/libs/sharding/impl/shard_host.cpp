@@ -130,9 +130,7 @@ void THostEndpointsManager::HandleRdmaSetupResult(
         auto weak = weak_from_this();
         RdmaFuture.Subscribe([weak=std::move(weak)] (const auto& f) {
             if (auto self = weak.lock(); self) {
-                with_lock(self->StateLock) {
-                    self->HandleRdmaSetupResult(f.GetValue());
-                }
+                self->HandleRdmaSetupResult(f.GetValue());
             }
         });
     } else {
