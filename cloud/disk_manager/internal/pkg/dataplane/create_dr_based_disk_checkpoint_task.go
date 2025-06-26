@@ -14,9 +14,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createDRBasedDiskCheckpointTask struct {
-	nbsFactory nbs_client.Factory
-	request    *protos.CreateDRBasedDiskCheckpointRequest
-	state      *protos.CreateDRBasedDiskCheckpointTaskState
+	nbsFactory               nbs_client.Factory
+	checkpointIterationLimit int32
+	request                  *protos.CreateDRBasedDiskCheckpointRequest
+	state                    *protos.CreateDRBasedDiskCheckpointTaskState
 }
 
 func (t *createDRBasedDiskCheckpointTask) Save() ([]byte, error) {
@@ -38,6 +39,12 @@ func (t *createDRBasedDiskCheckpointTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	if t.state.CheckpointIteration >= t.checkpointIterationLimit {
+		return errors.NewNonRetriableErrorf(
+			"Too many failed checkpoint iterations: %v",
+			t.state.CheckpointIteration)
+	}
 
 	disk := t.request.Disk
 
