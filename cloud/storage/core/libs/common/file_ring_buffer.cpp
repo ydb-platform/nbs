@@ -291,7 +291,7 @@ public:
 
         while (pos < Header()->WritePos && pos != INVALID_POS) {
             pos = VisitEntry(visitor, pos);
-            if (pos == 0 || pos > Header()->WritePos) {
+            if (!pos) {
                 // can happen if the buffer is corrupted
                 break;
             }
