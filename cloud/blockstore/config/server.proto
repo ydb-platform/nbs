@@ -239,6 +239,9 @@ message TServerConfig
 
     // Ask system to provide a free nbd device
     optional bool AutomaticNbdDeviceManagement = 124;
+
+    // Disables per-client throttlers.
+    optional bool DisableClientThrottlers = 125;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -123,6 +123,7 @@ public:
     bool DeprecatedGetRdmaClientEnabled() const;
     const NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
     bool GetUseFakeRdmaClient() const;
+    bool GetDisableClientThrottlers() const;
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
     TString GetEndpointStorageDir() const;
     TString GetVhostServerPath() const;
