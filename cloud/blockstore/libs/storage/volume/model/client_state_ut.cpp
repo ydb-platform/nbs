@@ -41,11 +41,12 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
     {
         auto initialMountMode = NProto::VOLUME_MOUNT_LOCAL;
         auto initialAccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
+        const ui64 mountFlags = 0;
 
         auto info = CreateVolumeClientInfo(
             initialAccessMode,
             initialMountMode,
-            0);
+            mountFlags);
 
         TVolumeClientState client {info};
 
@@ -54,10 +55,10 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             CreateActor(1, 1).NodeId(),
             initialAccessMode,
             initialMountMode,
-            false);
+            mountFlags);
         // should be false since pipe settings
         // correspond to client settings
-        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error.GetMessage());
+        UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
         UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
         UNIT_ASSERT_VALUES_EQUAL(1, client.GetPipes().size());
 
@@ -66,9 +67,9 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             CreateActor(1, 1).NodeId(),
             initialAccessMode,
             initialMountMode,
-            false);
+            mountFlags);
         // nothing changed
-        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error.GetMessage());
+        UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
         UNIT_ASSERT_VALUES_EQUAL(false, res.IsNew);
         UNIT_ASSERT_VALUES_EQUAL(1, client.GetPipes().size());
 
@@ -77,9 +78,9 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             CreateActor(1, 1).NodeId(),
             NProto::VOLUME_ACCESS_READ_ONLY,
             initialMountMode,
-            false);
-        // changed -> return true
-        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error.GetMessage());
+            mountFlags);
+        // changed AccessMode -> return true
+        UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
         UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
         UNIT_ASSERT_VALUES_EQUAL(1, client.GetPipes().size());
 
@@ -89,9 +90,9 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             CreateActor(2, 2).NodeId(),
             NProto::VOLUME_ACCESS_READ_WRITE,
             initialMountMode,
-            false);
+            mountFlags);
         // changed -> return true
-        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error.GetMessage());
+        UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
         UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
         UNIT_ASSERT_VALUES_EQUAL(2, client.GetPipes().size());
     }
@@ -100,6 +101,7 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
     {
         auto initialMountMode = NProto::VOLUME_MOUNT_REMOTE;
         auto initialAccessMode = NProto::VOLUME_ACCESS_READ_ONLY;
+        const ui64 mountFlags = 0;
 
         auto info = CreateVolumeClientInfo(
             initialAccessMode,
@@ -113,8 +115,8 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             CreateActor(1, 1).NodeId(),
             initialAccessMode,
             initialMountMode,
-            false);
-        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error.GetMessage());
+            mountFlags);
+        UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
         UNIT_ASSERT_VALUES_EQUAL(
             NProto::VOLUME_MOUNT_REMOTE,
             client.GetVolumeClientInfo().GetVolumeMountMode());
@@ -131,11 +133,10 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             CreateActor(2, 2).NodeId(),
             NProto::VOLUME_ACCESS_READ_WRITE,
             initialMountMode,
-            false);
-        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error.GetMessage());
+            mountFlags);
+        UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
         UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
         UNIT_ASSERT_VALUES_EQUAL(2, client.GetPipes().size());
-
         UNIT_ASSERT_VALUES_EQUAL(
             NProto::VOLUME_MOUNT_REMOTE,
             client.GetVolumeClientInfo().GetVolumeMountMode());
@@ -146,17 +147,16 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             0,
             client.GetVolumeClientInfo().GetMountFlags());
 
-        // add locals mouunt
+        // add local mount
         res = client.AddPipe(
             CreateActor(3, 3),
             CreateActor(3, 3).NodeId(),
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
-            false);
-        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error.GetMessage());
+            mountFlags);
+        UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
         UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
         UNIT_ASSERT_VALUES_EQUAL(3, client.GetPipes().size());
-
         UNIT_ASSERT_VALUES_EQUAL(
             NProto::VOLUME_MOUNT_LOCAL,
             client.GetVolumeClientInfo().GetVolumeMountMode());
@@ -170,7 +170,6 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
         // remove rw
         client.RemovePipe(CreateActor(2, 2), TInstant());
         UNIT_ASSERT_VALUES_EQUAL(2, client.GetPipes().size());
-
         UNIT_ASSERT_VALUES_EQUAL(
             NProto::VOLUME_MOUNT_LOCAL,
             client.GetVolumeClientInfo().GetVolumeMountMode());
@@ -181,9 +180,9 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             0,
             client.GetVolumeClientInfo().GetMountFlags());
 
+        // remove read-only
         client.RemovePipe(CreateActor(1, 1), TInstant());
         UNIT_ASSERT_VALUES_EQUAL(1, client.GetPipes().size());
-
         UNIT_ASSERT_VALUES_EQUAL(
             NProto::VOLUME_MOUNT_LOCAL,
             client.GetVolumeClientInfo().GetVolumeMountMode());
@@ -197,7 +196,6 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
         // remove local
         client.RemovePipe(CreateActor(3, 3), TInstant());
         UNIT_ASSERT_VALUES_EQUAL(0, client.GetPipes().size());
-
         UNIT_ASSERT_VALUES_EQUAL(
             NProto::VOLUME_MOUNT_REMOTE,
             client.GetVolumeClientInfo().GetVolumeMountMode());
@@ -213,108 +211,152 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
     {
         auto initialMountMode = NProto::VOLUME_MOUNT_REMOTE;
         auto initialAccessMode = NProto::VOLUME_ACCESS_READ_ONLY;
+        const ui64 mountFlags = 0;
 
-        auto info = CreateVolumeClientInfo(
-            initialAccessMode,
-            initialMountMode,
-            0);
+        auto info =
+            CreateVolumeClientInfo(initialAccessMode, initialMountMode, 0);
 
-        TVolumeClientState client {info};
+        TVolumeClientState client{info};
 
-        NProto::TError ans;
+        {
+            // When we have no pipes accessMode should be obtained from
+            // clientInfo for local and remote clients.
 
-        // when we have no pipes accessMode should be obtained from clientInfo
-        ans = client.CheckLocalRequest(1, true, "", "");
-        UNIT_ASSERT_C(FAILED(ans.GetCode()), "No Error returned");
+            NProto::TError ans;
+            ans = client.CheckLocalRequest(1, true, "", "");
+            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
 
-        ans = client.CheckLocalRequest(1, false, "", "");
-        UNIT_ASSERT_C(!FAILED(ans.GetCode()), "No Error returned");
+            ans = client.CheckLocalRequest(1, false, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
-        ans = client.CheckPipeRequest(CreateActor(1, 1), true, "", "");
-        UNIT_ASSERT_C(FAILED(ans.GetCode()), "No Error returned");
+            ans = client.CheckPipeRequest(CreateActor(1, 2), true, "", "");
+            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
 
-        ans = client.CheckPipeRequest(CreateActor(1, 1), false, "", "");
-        UNIT_ASSERT_C(!FAILED(ans.GetCode()), "No Error returned");
+            ans = client.CheckPipeRequest(CreateActor(1, 2), false, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
+        }
 
-        // accessMode should be updated upon AddPipe
-        auto res = client.AddPipe(
-            CreateActor(1, 1),
-            CreateActor(1, 1).NodeId(),
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL,
-            false);
-        // changed -> return true
-        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error.GetMessage());
-        UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
-        UNIT_ASSERT_VALUES_EQUAL(1, client.GetPipes().size());
+        {
+            // Add local pipe. AccessMode should be updated upon AddPipe.
+            auto res = client.AddPipe(
+                CreateActor(1, 1),
+                CreateActor(1, 1).NodeId(),
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                mountFlags);
+            // changed -> return true
+            UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
+            UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
+            UNIT_ASSERT_VALUES_EQUAL(1, client.GetPipes().size());
 
-        ans = client.CheckLocalRequest(1, true, "", "");
-        UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
+            // Local requests should be permitted.
+            NProto::TError ans;
+            ans = client.CheckLocalRequest(1, true, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
-        ans = client.CheckLocalRequest(1, false, "", "");
-        UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
+            ans = client.CheckLocalRequest(1, false, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
-        res = client.AddPipe(
-            CreateActor(2, 2),
-            CreateActor(2, 2).NodeId(),
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_REMOTE,
-            false);
+            // Remote requests should be declined.
+            ans = client.CheckPipeRequest(CreateActor(1, 2), true, "", "");
+            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
 
-        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error.GetMessage());
-        UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
-        UNIT_ASSERT_VALUES_EQUAL(2, client.GetPipes().size());
+            ans = client.CheckPipeRequest(CreateActor(1, 2), false, "", "");
+            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
+        }
 
-        ans = client.CheckPipeRequest(CreateActor(2, 2), true, "", "");
-        UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
+        {
+            // Add remote pipe.
+            auto res = client.AddPipe(
+                CreateActor(2, 2),
+                CreateActor(2, 2).NodeId(),
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_REMOTE,
+                mountFlags);
 
-        ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
-        UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
+            UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
+            UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
+            UNIT_ASSERT_VALUES_EQUAL(2, client.GetPipes().size());
 
-        ans = client.CheckLocalRequest(1, true, "", "");
-        UNIT_ASSERT_C(FAILED(ans.GetCode()), "No Error returned");
+            NProto::TError ans;
+            // Local requests should be initially permitted.
+            ans = client.CheckLocalRequest(1, true, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
-        ans = client.CheckLocalRequest(1, false, "", "");
-        UNIT_ASSERT_C(FAILED(ans.GetCode()), "No Error returned");
+            ans = client.CheckLocalRequest(1, false, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
-        // try to reactivate local pipe -> should fail
-        res = client.AddPipe(
-            CreateActor(1, 1),
-            CreateActor(1, 1).NodeId(),
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL,
-            false);
-        // changed -> return true
-        UNIT_ASSERT_C(FAILED(res.Error.GetCode()), "No Error returned");
+            // Remote requests should be permitted and deactivate local pipe.
+            ans = client.CheckPipeRequest(CreateActor(2, 2), true, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
-        res = client.AddPipe(
-            CreateActor(3, 3),
-            CreateActor(3, 3).NodeId(),
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL,
-            false);
-        // changed -> return true
-        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error.GetMessage());
-        UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
-        UNIT_ASSERT_VALUES_EQUAL(3, client.GetPipes().size());
+            ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
-        ans = client.CheckLocalRequest(3, true, "", "");
-        UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
+            // Local requests should be declined since local pipe is
+            // deactivated.
+            ans = client.CheckLocalRequest(1, true, "", "");
+            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
 
-        ans = client.CheckLocalRequest(3, false, "", "");
-        UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
+            ans = client.CheckLocalRequest(1, false, "", "");
+            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
+        }
 
-        ans = client.CheckPipeRequest(CreateActor(2, 2), true, "", "");
-        UNIT_ASSERT_C(FAILED(ans.GetCode()), "No Error returned");
+        {
+            // try to reactivate local pipe -> should fail
+            auto res = client.AddPipe(
+                CreateActor(1, 1),
+                CreateActor(1, 1).NodeId(),
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                mountFlags);
+            // changed -> return true
+            UNIT_ASSERT_C(HasError(res.Error), FormatError(res.Error));
+        }
 
-        ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
-        UNIT_ASSERT_C(FAILED(ans.GetCode()), "No Error returned");
+        {
+            // Create new local pipe should success
+            auto res = client.AddPipe(
+                CreateActor(3, 3),
+                CreateActor(3, 3).NodeId(),
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                mountFlags);
+            // changed -> return true
+            UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
+            UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
+            UNIT_ASSERT_VALUES_EQUAL(3, client.GetPipes().size());
+
+            NProto::TError ans;
+            // Remote requests should be permitted since local pipe not
+            // activated yet.
+            ans = client.CheckPipeRequest(CreateActor(2, 2), true, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
+
+            ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
+
+            // Local requests should be permitted.
+            ans = client.CheckLocalRequest(3, true, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
+
+            ans = client.CheckLocalRequest(3, false, "", "");
+            UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
+
+            // Remote requests should be declined since local pipe is activated.
+            ans = client.CheckPipeRequest(CreateActor(2, 2), true, "", "");
+            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
+
+            ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
+            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
+        }
     }
 
     Y_UNIT_TEST(ShouldPreserveAccessModeOnPipeDisconnect)
     {
         auto initialMountMode = NProto::VOLUME_MOUNT_LOCAL;
         auto initialAccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
+        const ui64 mountFlags = 0;
 
         auto info = CreateVolumeClientInfo(
             initialAccessMode,
@@ -325,26 +367,33 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
 
         NProto::TError ans;
 
+        // No pipes exist. Request OK.
         ans = client.CheckLocalRequest(1, true, "", "");
-        UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
+        UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
+        ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
+        UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
+        // Add and remove remote pipe without activation.
         client.AddPipe(
             CreateActor(3, 3),
             CreateActor(3, 3).NodeId(),
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
-            false);
-
+            mountFlags);
         client.RemovePipe(CreateActor(3, 3), TInstant());
 
+        // No pipes exist. Request OK.
         ans = client.CheckLocalRequest(1, true, "", "");
-        UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
+        UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
+        ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
+        UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
     }
 
     Y_UNIT_TEST(ShouldSelectNewActiveLocalPipeOnReconnect)
     {
         auto initialMountMode = NProto::VOLUME_MOUNT_LOCAL;
         auto initialAccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
+        const ui64 mountFlags = 0;
 
         auto info = CreateVolumeClientInfo(
             initialAccessMode,
@@ -358,14 +407,12 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
         ans = client.CheckLocalRequest(1, true, "", "");
         UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());
 
-        client.RemovePipe({}, TInstant());
-
         client.AddPipe(
             CreateActor(4, 4),
             CreateActor(4, 4).NodeId(),
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
-            false);
+            mountFlags);
 
         ans = client.CheckLocalRequest(4, true, "", "");
         UNIT_ASSERT_C(!FAILED(ans.GetCode()), ans.GetMessage());

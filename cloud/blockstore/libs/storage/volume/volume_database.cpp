@@ -198,7 +198,7 @@ bool TVolumeDatabase::ReadClients(THashMap<TString, TVolumeClientState>& infos)
 
     while (it.IsValid()) {
         auto info = it.GetValue<TTable::ClientInfo>();
-        infos[info.GetClientId()] = TVolumeClientState(info);
+        infos.emplace(info.GetClientId(), TVolumeClientState(info));
 
         if (!it.Next()) {
             return false;   // not ready

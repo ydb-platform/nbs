@@ -35,7 +35,7 @@ struct TAddPipeResult
 class TVolumeClientState
 {
 public:
-    enum class EPipeState: ui32
+    enum class EPipeState : ui32
     {
         WAIT_START,
         ACTIVE,
@@ -47,6 +47,7 @@ public:
         NProto::EVolumeMountMode MountMode = NProto::VOLUME_MOUNT_REMOTE;
         EPipeState State = EPipeState::WAIT_START;
         ui32 SenderNodeId = 0;
+        bool IsLocal = false;
     };
 
     using TPipes = THashMap<NActors::TActorId, TPipeInfo>;
@@ -54,27 +55,17 @@ public:
 private:
     NProto::TVolumeClientInfo VolumeClientInfo;
     TPipes Pipes;
-    TPipes::iterator LocalPipeInfo = Pipes.end();
+    TPipeInfo* ActivePipe = nullptr;
 
 public:
-    TVolumeClientState() = default;
-
-    TVolumeClientState(TString clientId, TString instanceId)
-    {
-        VolumeClientInfo.SetClientId(std::move(clientId));
-        VolumeClientInfo.SetInstanceId(std::move(instanceId));
-    }
-
-    TVolumeClientState(NProto::TVolumeClientInfo info)
+    explicit TVolumeClientState(NProto::TVolumeClientInfo info)
         : VolumeClientInfo(std::move(info))
     {}
 
     void SetLastActivityTimestamp(TInstant ts);
     void SetDisconnectTimestamp(TInstant ts);
 
-    void RemovePipe(
-        NActors::TActorId serverId,
-        TInstant ts);
+    void RemovePipe(NActors::TActorId serverId, TInstant ts);
 
     TAddPipeResult AddPipe(
         NActors::TActorId serverId,
@@ -108,12 +99,16 @@ public:
     bool IsPreempted(ui64 hostNodeId) const;
 
 private:
-    void UpdateClientInfo();
+    bool IsLocalPipeActive() const;
 
-    void ActivatePipe(TPipes::iterator it, bool isLocal);
+    void UpdateState();
 
-    NProto::TError GetWriteError(
-        NProto::EVolumeAccessMode accessMode,
+    void ActivatePipe(TPipeInfo* pipe, bool isLocal);
+
+    bool CanWrite() const;
+
+    NProto::TError CheckWritePermission(
+        bool isWrite,
         const TString& methodName,
         const TString& diskId) const;
 };
