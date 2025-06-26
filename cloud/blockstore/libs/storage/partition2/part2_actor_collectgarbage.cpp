@@ -39,7 +39,8 @@ private:
     const TTabletStorageInfoPtr TabletInfo;
     const ui64 LastGCCommitId;
     const ui64 CollectCommitId;
-    const ui32 CollectCounter;
+    const ui32 Generation;
+    const ui32 PerGenerationCounter;
 
     TVector<TPartialBlobId> NewBlobs;
     TVector<TPartialBlobId> GarbageBlobs;
@@ -58,7 +59,8 @@ public:
         TTabletStorageInfoPtr tabletInfo,
         ui64 lastGCCommitId,
         ui64 collectCommitId,
-        ui32 collectCounter,
+        ui32 generation,
+        ui32 perGenerationCounter,
         TVector<TPartialBlobId> newBlobs,
         TVector<TPartialBlobId> garbageBlobs,
         TVector<ui32> mixedAndMergedChannels,
@@ -98,7 +100,8 @@ TCollectGarbageActor::TCollectGarbageActor(
         TTabletStorageInfoPtr tabletInfo,
         ui64 lastGCCommitId,
         ui64 collectCommitId,
-        ui32 collectCounter,
+        ui32 generation,
+        ui32 perGenerationCounter,
         TVector<TPartialBlobId> newBlobs,
         TVector<TPartialBlobId> garbageBlobs,
         TVector<ui32> mixedAndMergedChannels,
@@ -108,7 +111,8 @@ TCollectGarbageActor::TCollectGarbageActor(
     , TabletInfo(std::move(tabletInfo))
     , LastGCCommitId(lastGCCommitId)
     , CollectCommitId(collectCommitId)
-    , CollectCounter(collectCounter)
+    , Generation(generation)
+    , PerGenerationCounter(perGenerationCounter)
     , NewBlobs(std::move(newBlobs))
     , GarbageBlobs(std::move(garbageBlobs))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
@@ -150,15 +154,15 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
         CleanupWholeHistory,
         LastGCCommitId,
         CollectCommitId,
-        CollectCounter);
+        PerGenerationCounter);
 
     auto collect = ParseCommitId(CollectCommitId);
     for (ui32 channel: MixedAndMergedChannels) {
         for (auto& kv: requests.GetRequests(channel)) {
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
                 TabletInfo->TabletID,               // tablet
-                collect.first,                      // record generation
-                CollectCounter,                     // per generation counter
+                Generation,                         // record generation
+                PerGenerationCounter,               // per generation counter
                 channel,                            // collect channel
                 true,                               // yes, collect
                 collect.first,                      // collect generation
@@ -309,7 +313,8 @@ private:
     const TActorId Tablet;
     const TTabletStorageInfoPtr TabletInfo;
     const ui64 CollectCommitId;
-    const ui32 CollectCounter;
+    const ui32 Generation;
+    const ui32 PerGenerationCounter;
 
     TVector<TPartialBlobId> KnownBlobIds;
 
@@ -324,7 +329,8 @@ public:
         const TActorId& tablet,
         TTabletStorageInfoPtr tabletInfo,
         ui64 collectCommitId,
-        ui32 collectCounter,
+        ui32 generation,
+        ui32 perGenerationCounter,
         TVector<TPartialBlobId> knownBlobIds,
         TVector<ui32> mixedAndMergedChannels);
 
@@ -356,14 +362,16 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
         const TActorId& tablet,
         TTabletStorageInfoPtr tabletInfo,
         ui64 collectCommitId,
-        ui32 collectCounter,
+        ui32 generation,
+        ui32 perGenerationCounter,
         TVector<TPartialBlobId> knownBlobIds,
         TVector<ui32> mixedAndMergedChannels)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , TabletInfo(std::move(tabletInfo))
     , CollectCommitId(collectCommitId)
-    , CollectCounter(collectCounter)
+    , Generation(generation)
+    , PerGenerationCounter(perGenerationCounter)
     , KnownBlobIds(std::move(knownBlobIds))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
 {
@@ -393,15 +401,14 @@ void TCollectGarbageHardActor::CollectGarbage(const TActorContext& ctx)
         KnownBlobIds,
         CollectCommitId);
 
-    auto collect = ParseCommitId(CollectCommitId);
     for (ui32 channel: MixedAndMergedChannels) {
         for (auto& kv: requests.GetRequests(channel)) {
             auto barrier = ParseCommitId(kv.second.CollectCommitId);
 
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
                 TabletInfo->TabletID,               // tablet
-                collect.first,                      // record generation
-                CollectCounter,                     // per generation counter
+                Generation,                         // record generation
+                PerGenerationCounter,               // per generation counter
                 channel,                            // collect channel
                 true,                               // yes, collect
                 barrier.first,                      // collect generation
@@ -663,6 +670,7 @@ void TPartitionActor::HandleCollectGarbage(
         Info(),
         State->GetLastCollectCommitId(),
         commitId,
+        Executor()->Generation(),
         collectCounter,
         std::move(newBlobs),
         std::move(garbageBlobs),
@@ -757,6 +765,7 @@ void TPartitionActor::CompleteCollectGarbage(
         SelfId(),
         Info(),
         args.CollectCommitId,
+        Executor()->Generation(),
         collectCounter,
         std::move(args.KnownBlobIds),
         std::move(mixedAndMergedChannels));
