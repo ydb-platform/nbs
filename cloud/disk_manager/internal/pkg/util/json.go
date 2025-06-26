@@ -147,7 +147,7 @@ type TaskStateJSON struct {
 	CloudID             string               `json:"cloud_id"`
 	FolderID            string               `json:"folder_id"`
 	EstimatedTime       time.Time            `json:"estimated_time"`
-	RunningInflightFor  time.Duration        `json:"running_inflight_for"`
+	InflightDuration    time.Duration        `json:"inflight_duration"`
 	PanicCount          uint64               `json:"panic_count"`
 }
 
