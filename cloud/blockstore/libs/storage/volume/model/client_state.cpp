@@ -211,6 +211,15 @@ NProto::TError TVolumeClientState::CheckPipeRequest(
 {
     // Don't check if there is not a single pipe.
     if (!Pipes.empty()) {
+        if (IsLocalPipeActive()) {
+            // When the local pipe is ACTIVE response with retriable error
+            // E_REJECTED because the local pipe may disconnect and then the
+            // request from remote pipe can be executed later.
+            return MakeError(
+                E_REJECTED,
+                TStringBuilder() << "Local mounter is active");
+        }
+
         TPipeInfo* pipe = Pipes.FindPtr(serverId);
         if (!pipe || pipe->State == EPipeState::DEACTIVATED) {
             return MakeError(

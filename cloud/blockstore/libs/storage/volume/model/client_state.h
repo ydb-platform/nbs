@@ -32,6 +32,20 @@ struct TAddPipeResult
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The TVolumeClientState helps to manage the access of a single client requests
+// through multiple pipes.
+// Only one pipe can be active at a time. When a new pipe is activated, the
+// previous active switched to the DEACTIVATED state. Requests received through
+// DEACTIVATED pipes are rejected with E_BS_INVALID_SESSION. State of new
+// created pipe is WAIT_START. Requests received through pipe checked with
+// CheckPipeRequest() or CheckLocalRequest(). First request from pipe with
+// WAIT_START state, permitted and change state of pipe to ACTIVE. Requests
+// received through pipe with the ACTIVE state are also allowed. The local pipes
+// has priority, when local pipe is active, requests received through the remote
+// pipe will be rejected with E_REJECT error and can not switch local pipe to
+// the DEACTIVATED state. Requests from the remote pipe will be rejected until
+// the local pipe is deleted.
+
 class TVolumeClientState
 {
 public:

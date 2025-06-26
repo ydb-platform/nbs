@@ -279,39 +279,36 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             UNIT_ASSERT_VALUES_EQUAL(2, client.GetPipes().size());
 
             NProto::TError ans;
-            // Local requests should be initially permitted.
+            // Local requests should be still permitted.
             ans = client.CheckLocalRequest(1, true, "", "");
             UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
             ans = client.CheckLocalRequest(1, false, "", "");
             UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
-            // Remote requests should be permitted and deactivate local pipe.
+            // Remote requests should be rejected since local pipe in active state.
+            ans = client.CheckPipeRequest(CreateActor(2, 2), true, "", "");
+            UNIT_ASSERT_VALUES_EQUAL_C(E_REJECTED, ans.GetCode(), FormatError(ans));
+
+            ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
+            UNIT_ASSERT_VALUES_EQUAL_C(E_REJECTED, ans.GetCode(), FormatError(ans));
+
+            // Remove local pipe.
+            client.RemovePipe(CreateActor(1, 1), TInstant());
+
+            // Local requests should now declined.
+            ans = client.CheckLocalRequest(1, true, "", "");
+            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
+
+            ans = client.CheckLocalRequest(1, false, "", "");
+            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
+
+            // Remote requests now permited and should activate remote pipe.
             ans = client.CheckPipeRequest(CreateActor(2, 2), true, "", "");
             UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
             ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
             UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
-
-            // Local requests should be declined since local pipe is
-            // deactivated.
-            ans = client.CheckLocalRequest(1, true, "", "");
-            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
-
-            ans = client.CheckLocalRequest(1, false, "", "");
-            UNIT_ASSERT_C(HasError(ans), FormatError(ans));
-        }
-
-        {
-            // try to reactivate local pipe -> should fail
-            auto res = client.AddPipe(
-                CreateActor(1, 1),
-                CreateActor(1, 1).NodeId(),
-                NProto::VOLUME_ACCESS_READ_WRITE,
-                NProto::VOLUME_MOUNT_LOCAL,
-                mountFlags);
-            // changed -> return true
-            UNIT_ASSERT_C(HasError(res.Error), FormatError(res.Error));
         }
 
         {
@@ -325,7 +322,7 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             // changed -> return true
             UNIT_ASSERT_C(!HasError(res.Error), FormatError(res.Error));
             UNIT_ASSERT_VALUES_EQUAL(true, res.IsNew);
-            UNIT_ASSERT_VALUES_EQUAL(3, client.GetPipes().size());
+            UNIT_ASSERT_VALUES_EQUAL(2, client.GetPipes().size());
 
             NProto::TError ans;
             // Remote requests should be permitted since local pipe not
@@ -349,6 +346,18 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
 
             ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
             UNIT_ASSERT_C(HasError(ans), FormatError(ans));
+        }
+
+        {
+            // try to reactivate remote pipe -> should fail
+            auto res = client.AddPipe(
+                CreateActor(2, 2),
+                CreateActor(2, 2).NodeId(),
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_REMOTE,
+                mountFlags);
+            // changed -> return true
+            UNIT_ASSERT_C(HasError(res.Error), FormatError(res.Error));
         }
     }
 
