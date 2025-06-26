@@ -13,6 +13,7 @@ from pathlib import Path
 import yatest.common as common
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.core.protos.config_pb2 import TLogConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.client_pb2 import TClientConfig, TClientAppConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
@@ -76,6 +77,8 @@ def init(
     subprocess.check_call(["modprobe", "nbd"], timeout=20)
     if stored_endpoints_path:
         stored_endpoints_path.mkdir(exist_ok=True)
+    log_config = TLogConfig()
+    log_config.Entry.add(Component=b"BLOCKSTORE_NBD", Level=7)
     env = LocalLoadTest(
         endpoint="",
         server_app_config=server,
@@ -86,7 +89,8 @@ def init(
         stored_endpoints_path=stored_endpoints_path,
         nbd_request_timeout=nbd_request_timeout,
         nbd_reconnect_delay=nbd_reconnect_delay,
-        proxy_restart_events=proxy_restart_events)
+        proxy_restart_events=proxy_restart_events,
+        log_config=log_config)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
@@ -98,7 +102,6 @@ def init(
     def run(*args, **kwargs):
         args = [BLOCKSTORE_CLIENT_PATH,
                 *args,
-                "--grpc-trace",
                 "--config",
                 str(client_config_path)]
         script_input = kwargs.get("input")
