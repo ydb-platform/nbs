@@ -16,6 +16,7 @@ jobs:
         export TMP_DIR=$(mktemp -d)
         export GITHUB_WORKSPACE=$(pwd)
         export GITHUB_REPOSITORY="ydb-platform/nbs"
+        export ACTIONS_TEST_DATA_VERSION=${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
 
         mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
         cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/ || exit
