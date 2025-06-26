@@ -59,6 +59,12 @@ TPartitionActor::TPartitionActor(
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
     , VolumeTabletId(volumeTabletId)
+    , LogTitle(
+          TabletID(),
+          PartitionConfig.GetDiskId(),
+          StartTime,
+          0,
+          siblingCount)
 {}
 
 TPartitionActor::~TPartitionActor()
@@ -731,11 +737,10 @@ void TPartitionActor::HandleWakeUpOnBoot(
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[TabletId: %lu, DiskId: %s] Tablet booting takes too "
+        "[%s] Tablet booting takes too "
         "long, sending "
         "poison pill",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+        LogTitle.GetWithTime().c_str());
 
     Suicide(ctx);
 }
