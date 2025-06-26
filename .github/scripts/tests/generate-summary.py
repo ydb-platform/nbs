@@ -121,7 +121,11 @@ class TestSummaryLine:
         self.counter = {s: 0 for s in TestStatus}
 
     def add(self, test: TestResult):
-        self.is_failed |= test.status in (TestStatus.ERROR, TestStatus.FAIL)
+        self.is_failed |= test.status in (
+            TestStatus.ERROR,
+            TestStatus.FAIL,
+            TestStatus.FAIL_BUILD,
+        )
         self.counter[test.status] += 1
         self.tests.append(test)
 

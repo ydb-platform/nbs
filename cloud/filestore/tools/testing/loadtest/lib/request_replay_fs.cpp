@@ -1044,8 +1044,8 @@ private:
                 MakeError(E_CANCELLED, "cancelled")});
         }
 
-        const auto res = NLowLevel::ListDirAt(dir, 0, 0, true);
-        const auto& dirs = res.DirEntries;
+        const auto dirs = NLowLevel::ListDirAt(dir, true);
+        
         if (logRequest.GetNodeInfo().GetSize() != dirs.size()) {
             STORAGE_DEBUG(
                 "Dir size differs %s log=%lu local=%zu",
