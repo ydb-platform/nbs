@@ -3,6 +3,7 @@
 #include "protocol.h"
 
 #include <cloud/blockstore/libs/rdma/iface/client.h>
+#include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -23,6 +24,8 @@
 namespace NCloud::NBlockStore::NClient {
 
 using namespace NThreading;
+
+LWTRACE_USING(BLOCKSTORE_RDMA_PROVIDER);
 
 namespace {
 
@@ -120,6 +123,7 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
+        LWTRACK(RequestPrepare1_ShardingClient, CallContext->LWOrbit);
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
@@ -128,22 +132,29 @@ public:
         TraceSerializer->BuildTraceRequest(
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
-        SendTime = GetCycleCount();
 
-        return NRdma::TProtoMessageSerializer::Serialize(
+        const size_t size = NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ReadBlocksRequest,
             flags,   // flags
             *Request);
+        LWTRACK(RequestPrepare2_ShardingClient, CallContext->LWOrbit);
+
+        SendTime = GetCycleCount();
+        return size;
     }
 
     void HandleResponse(TStringBuf buffer) override
     {
+        LWTRACK(ResponseReceived1_ShardingClient, CallContext->LWOrbit);
+
         auto resultOrError = Serializer->Parse(buffer);
         if (HasError(resultOrError)) {
             Response.SetValue(TErrorResponse(resultOrError.GetError()));
             return;
         }
+
+        LWTRACK(ResponseReceived2_ShardingClient, CallContext->LWOrbit);
 
         const auto& response = resultOrError.GetResult();
         Y_ENSURE(response.MsgId == TBlockStoreProtocol::ReadBlocksResponse);
@@ -164,6 +175,8 @@ public:
                 GetCycleCount());
             responseMsg.ClearTrace();
         }
+
+        LWTRACK(ResponseReceived3_ShardingClient, CallContext->LWOrbit);
 
         Response.SetValue(std::move(localResponse));
     }
@@ -246,6 +259,7 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
+        LWTRACK(RequestPrepare1_ShardingClient, CallContext->LWOrbit);
         auto guard = Request->Sglist.Acquire();
         Y_ENSURE(guard);
 
@@ -256,29 +270,32 @@ public:
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        if (TraceSerializer) {
-            TraceSerializer->BuildTraceRequest(
-                *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
-                CallContext->LWOrbit);
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
 
-            SendTime = GetCycleCount();
-        }
-
-        return NRdma::TProtoMessageSerializer::SerializeWithData(
+        const size_t size = NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
             TBlockStoreProtocol::WriteBlocksRequest,
             flags,
             *Request,
             sglist);
+        LWTRACK(RequestPrepare2_ShardingClient, CallContext->LWOrbit);
+
+        SendTime = GetCycleCount();
+        return size;
     }
 
     void HandleResponse(TStringBuf buffer) override
     {
+        LWTRACK(ResponseReceived1_ShardingClient, CallContext->LWOrbit);
         auto resultOrError = Serializer->Parse(buffer);
         if (HasError(resultOrError)) {
             Response.SetValue(TErrorResponse(resultOrError.GetError()));
             return;
         }
+
+        LWTRACK(ResponseReceived2_ShardingClient, CallContext->LWOrbit);
 
         const auto& response = resultOrError.GetResult();
         Y_ENSURE(response.MsgId == TBlockStoreProtocol::WriteBlocksResponse);
@@ -294,6 +311,8 @@ public:
                 GetCycleCount());
             responseMsg.ClearTrace();
         }
+
+        LWTRACK(ResponseReceived3_ShardingClient, CallContext->LWOrbit);
 
         Response.SetValue(std::move(responseMsg));
     }
@@ -354,6 +373,7 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer)
     {
+        LWTRACK(RequestPrepare1_ShardingClient, CallContext->LWOrbit);
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
@@ -362,22 +382,28 @@ public:
         TraceSerializer->BuildTraceRequest(
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
-        SendTime = GetCycleCount();
 
-        return NRdma::TProtoMessageSerializer::Serialize(
+        const size_t size = NRdma::TProtoMessageSerializer::Serialize(
             buffer,
             TBlockStoreProtocol::ZeroBlocksRequest,
             flags,   // flags
             *Request);
+        LWTRACK(RequestPrepare2_ShardingClient, CallContext->LWOrbit);
+
+        SendTime = GetCycleCount();
+        return size;
     }
 
     void HandleResponse(TStringBuf buffer) override
     {
+        LWTRACK(ResponseReceived1_ShardingClient, CallContext->LWOrbit);
         auto resultOrError = Serializer->Parse(buffer);
         if (HasError(resultOrError)) {
             Response.SetValue(TErrorResponse(resultOrError.GetError()));
             return;
         }
+
+        LWTRACK(ResponseReceived2_ShardingClient, CallContext->LWOrbit);
 
         const auto& response = resultOrError.GetResult();
         Y_ENSURE(response.MsgId == TBlockStoreProtocol::ZeroBlocksResponse);
@@ -385,12 +411,16 @@ public:
 
         auto& responseMsg = static_cast<TResponse&>(*response.Proto);
 
-        TraceSerializer->HandleTraceInfo(
-            responseMsg.GetTrace(),
-            CallContext->LWOrbit,
-            SendTime,
-            GetCycleCount());
-        responseMsg.ClearTrace();
+        if (CallContext->LWOrbit.HasShuttles()) {
+            TraceSerializer->HandleTraceInfo(
+                responseMsg.GetTrace(),
+                CallContext->LWOrbit,
+                SendTime,
+                GetCycleCount());
+            responseMsg.ClearTrace();
+        }
+
+        LWTRACK(ResponseReceived3_ShardingClient, CallContext->LWOrbit);
 
         Response.SetValue(std::move(responseMsg));
     }

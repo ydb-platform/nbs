@@ -150,6 +150,7 @@ class TVolumeActor final
         const ui64 ReceiveTime;
         TCancelRoutine* const CancelRoutine;
         const bool IsMultipartitionWriteOrZero;
+        const bool CrossShardRequest;
 
         TVolumeRequest(
                 const NActors::TActorId& caller,
@@ -158,7 +159,8 @@ class TVolumeActor final
                 TCallContextPtr forkedContext,
                 ui64 receiveTime,
                 TCancelRoutine cancelRoutine,
-                bool isMultipartitionWriteOrZero)
+                bool isMultipartitionWriteOrZero,
+                bool crossShardRequest)
             : Caller(caller)
             , CallerCookie(callerCookie)
             , CallContext(std::move(callContext))
@@ -166,6 +168,7 @@ class TVolumeActor final
             , ReceiveTime(receiveTime)
             , CancelRoutine(cancelRoutine)
             , IsMultipartitionWriteOrZero(isMultipartitionWriteOrZero)
+            , CrossShardRequest(crossShardRequest)
         {}
 
         void CancelRequest(
@@ -190,6 +193,7 @@ public:
         TEvService::EEvents EventType = TEvService::EvEnd;
         NActors::IEventHandlePtr Event;
         ui64 ReceiveTime = 0;
+        bool CrossShardRequest = false;
     };
 
 private:
@@ -734,8 +738,8 @@ private:
 
     void ReplyToDuplicateRequests(
         const NActors::TActorContext& ctx,
-        ui64 key,
-        ui32 resultCode);
+        ui64 volumeRequestId,
+        const NProto::TError& originalError);
 
     void HandleUpdateReadWriteClientInfo(
         const TEvVolumePrivate::TEvUpdateReadWriteClientInfo::TPtr& ev,
@@ -932,7 +936,8 @@ private:
     void FillResponse(
         typename TMethod::TResponse& response,
         TCallContext& callContext,
-        ui64 startTime);
+        ui64 startTime,
+        bool crossShardRequest);
 
     template <typename TMethod>
     typename TMethod::TRequest::TPtr WrapRequest(

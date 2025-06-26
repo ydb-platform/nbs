@@ -180,6 +180,11 @@ void TVolumeClientState::ActivatePipe(
 
     for (auto it = Pipes.begin(); it != Pipes.end(); ++it) {
         if (it != active && it->second.State == EPipeState::ACTIVE) {
+
+            if (it->second.MountMode == NProto::VOLUME_MOUNT_LOCAL && !isLocal) {
+                return;
+            }
+
             it->second.State = EPipeState::DEACTIVATED;
         }
     }

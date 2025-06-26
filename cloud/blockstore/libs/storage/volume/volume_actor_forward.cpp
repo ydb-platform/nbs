@@ -264,7 +264,8 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
             forkTraces ? msg->CallContext : nullptr,
             traceTime,
             &RejectVolumeRequest<TMethod>,
-            isMultipartitionWriteOrZero));
+            isMultipartitionWriteOrZero,
+            newEvent->Get()->Record.GetHeaders().GetCrossShardRequest()));
 
     if (isMultipartitionWriteOrZero) {
         ++MultipartitionWriteAndZeroRequestsInProgress;
@@ -356,7 +357,8 @@ template <typename TMethod>
 void TVolumeActor::FillResponse(
     typename TMethod::TResponse& response,
     TCallContext& callContext,
-    ui64 startTime)
+    ui64 startTime,
+    bool crossShardRequest)
 {
     LWTRACK(
         ResponseSent_Volume,
@@ -364,7 +366,7 @@ void TVolumeActor::FillResponse(
         TMethod::Name,
         callContext.RequestId);
 
-    if (TraceSerializer->IsTraced(callContext.LWOrbit)) {
+    if (!crossShardRequest && TraceSerializer->IsTraced(callContext.LWOrbit)) {
         TraceSerializer->BuildTraceInfo(
             *response.Record.MutableTrace(),
             callContext.LWOrbit,
@@ -471,12 +473,11 @@ bool TVolumeActor::ReplyToOriginalRequest(
     ui64 volumeRequestId,
     std::unique_ptr<typename TMethod::TResponse> response)
 {
-    const bool success = !HasError(response->Record.GetError());
     if constexpr (IsWriteMethod<TMethod>) {
         ReplyToDuplicateRequests(
             ctx,
             volumeRequestId,
-            response->Record.GetError().GetCode());
+            response->Record.GetError());
     }
 
     auto it = VolumeRequests.find(volumeRequestId);
@@ -484,6 +485,7 @@ bool TVolumeActor::ReplyToOriginalRequest(
         return false;
     }
 
+    const bool success = !HasError(response->Record.GetError());
     const TVolumeRequest& volumeRequest = it->second;
 
     if (volumeRequest.ForkedContext) {
@@ -494,7 +496,8 @@ bool TVolumeActor::ReplyToOriginalRequest(
     FillResponse<TMethod>(
         *response,
         *volumeRequest.CallContext,
-        volumeRequest.ReceiveTime);
+        volumeRequest.ReceiveTime,
+        volumeRequest.CrossShardRequest);
 
     // forward response to the caller
     auto event = std::make_unique<IEventHandle>(
@@ -540,7 +543,7 @@ bool TVolumeActor::ReplyToOriginalRequest(
 void TVolumeActor::ReplyToDuplicateRequests(
     const TActorContext& ctx,
     ui64 volumeRequestId,
-    ui32 resultCode)
+    const NProto::TError& originalError)
 {
     WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
 
@@ -550,7 +553,8 @@ void TVolumeActor::ReplyToDuplicateRequests(
     }
 
     NProto::TError error;
-    error.SetCode(resultCode);
+    error.SetCode(originalError.GetCode());
+    error.SetFlags(originalError.GetFlags());
     if (HasError(error)) {
         error.SetMessage(TStringBuilder()
             << "Duplicate request intersects with a failed inflight write or"
@@ -565,7 +569,8 @@ void TVolumeActor::ReplyToDuplicateRequests(
                 FillResponse<TEvService::TWriteBlocksMethod>(
                     *response,
                     *duplicateRequest.CallContext,
-                    duplicateRequest.ReceiveTime);
+                    duplicateRequest.ReceiveTime,
+                    duplicateRequest.CrossShardRequest);
 
                 NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
                 break;
@@ -576,7 +581,8 @@ void TVolumeActor::ReplyToDuplicateRequests(
                 FillResponse<TEvService::TWriteBlocksLocalMethod>(
                     *response,
                     *duplicateRequest.CallContext,
-                    duplicateRequest.ReceiveTime);
+                    duplicateRequest.ReceiveTime,
+                    duplicateRequest.CrossShardRequest);
                 NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
                 break;
             }
@@ -586,7 +592,8 @@ void TVolumeActor::ReplyToDuplicateRequests(
                 FillResponse<TEvService::TZeroBlocksMethod>(
                     *response,
                     *duplicateRequest.CallContext,
-                    duplicateRequest.ReceiveTime);
+                    duplicateRequest.ReceiveTime,
+                    duplicateRequest.CrossShardRequest);
                 NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
                 break;
             }
@@ -635,6 +642,8 @@ void TVolumeActor::ForwardRequest(
 
     auto* msg = ev->Get();
     auto now = GetCycleCount();
+    const bool crossShardRequest =
+        msg->Record.GetHeaders().GetCrossShardRequest();
 
     bool isTraced = false;
 
@@ -665,7 +674,11 @@ void TVolumeActor::ForwardRequest(
         auto response = std::make_unique<typename TMethod::TResponse>(
             std::move(error));
 
-        FillResponse<TMethod>(*response, *msg->CallContext, now);
+        FillResponse<TMethod>(
+            *response,
+            *msg->CallContext,
+            now,
+            crossShardRequest);
 
         NCloud::Reply(ctx, *ev, std::move(response));
     };
@@ -903,12 +916,14 @@ void TVolumeActor::ForwardRequest(
                 msg->CallContext->RequestId,
                 addResult.DuplicateRequestId);
 
-            DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId].push_back({
-                ev->Get()->CallContext,
-                static_cast<TEvService::EEvents>(TMethod::TRequest::EventType),
-                NActors::IEventHandlePtr(ev.Release()),
-                now
-            });
+            DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId]
+                .push_back(
+                    {msg->CallContext,
+                     static_cast<TEvService::EEvents>(
+                         TMethod::TRequest::EventType),
+                     NActors::IEventHandlePtr(ev.Release()),
+                     now,
+                     crossShardRequest});
             ++DuplicateRequestCount;
 
             LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,

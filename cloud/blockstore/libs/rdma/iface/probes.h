@@ -63,6 +63,43 @@
         GROUPS("NBSRequest"),                                                  \
         TYPES(),                                                               \
         NAMES())                                                               \
+    PROBE(RequestPrepare1_ShardingClient,                                            \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(),                                                               \
+        NAMES())                                                               \
+    PROBE(RequestPrepare2_ShardingClient,                                            \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(),                                                               \
+        NAMES())                                                               \
+    PROBE(RequestReceived_ShardingServer,                                            \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(),                                                               \
+        NAMES())                                                               \
+    PROBE(ResponseReceived_ShardingServer,                                           \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(),                                                               \
+        NAMES())                                                               \
+    PROBE(ResponseExtracted_ShardingServer,                                          \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(),                                                               \
+        NAMES())                                                               \
+    PROBE(ResponsePosted_ShardingServer,                                             \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(),                                                               \
+        NAMES())                                                               \
+    PROBE(ResponseReceived1_ShardingClient,                                     \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(),                                                               \
+        NAMES())                                                               \
+    PROBE(ResponseReceived2_ShardingClient,                                     \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(),                                                               \
+        NAMES())                                                               \
+    PROBE(ResponseReceived3_ShardingClient,                                     \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(),                                                               \
+        NAMES())                                                               \
+
 // BLOCKSTORE_RDMA_PROVIDER
 
 LWTRACE_DECLARE_PROVIDER(BLOCKSTORE_RDMA_PROVIDER)

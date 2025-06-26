@@ -80,6 +80,16 @@ struct TRequestDetails
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename T>
+T GetResponse(const NThreading::TFuture<T>& future)
+{
+    return SafeExecute<T>([&] {
+        return future.GetValue();
+    });
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Thread-safe. After Init() public method HandleRequest() can be called
 // from any thread.
 class TRequestHandler final
@@ -183,12 +193,14 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        request.MutableHeaders()->SetCrossShardRequest(true);
+
+        const ui64 startTime = GetCycleCount();
         if (TraceSerializer->HandleTraceRequest(
                 request.GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
         {
-            request.MutableHeaders()->MutableInternal()->SetTraceTs(
-                GetCycleCount());
+            request.MutableHeaders()->MutableInternal()->SetTraceTs(startTime);
         }
 
         LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
@@ -213,18 +225,23 @@ private:
         req->Sglist = guardedSgList;
 
         auto future = Service->ReadBlocksLocal(
-            std::move(callContext),
+            callContext,
             std::move(req));
 
         future.Subscribe(
             [=,
+             &future,
+             traceSerializer = TraceSerializer,
              buffer = std::move(buffer),
              guardedSgList = std::move(guardedSgList),
              blockSize = request.GetBlockSize(),
              taskQueue = TaskQueue,
-             endpoint = Endpoint](auto future) mutable
+             endpoint = Endpoint,
+             callContext = std::move(callContext)](const auto&) mutable
             {
+                LWTRACK(ResponseReceived_ShardingServer, callContext->LWOrbit);
                 auto response = ExtractResponse(future);
+                LWTRACK(ResponseExtracted_ShardingServer, callContext->LWOrbit);
 
                 taskQueue->ExecuteSimple(
                     [=,
@@ -238,30 +255,47 @@ private:
                             response.MutableTrace()->Clear();
                         }
 
-                        auto guard = guardedSgList.Acquire();
-                        Y_ENSURE(guard);
+                        LWTRACK(
+                            ResponsePosted_ShardingServer,
+                            callContext->LWOrbit);
 
-                        ui32 flags = 0;
-                        SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                        if (traceSerializer->IsTraced(callContext->LWOrbit)) {
+                            traceSerializer->BuildTraceInfo(
+                                *response.MutableTrace(),
+                                callContext->LWOrbit,
+                                startTime,
+                                GetCycleCount());
+                        }
 
-                        size_t responseBytes =
-                            SUCCEEDED(response.GetError().GetCode()) ?
-                                NRdma::TProtoMessageSerializer::SerializeWithData(
-                                    out,
-                                    TBlockStoreServerProtocol::
-                                        EvReadBlocksResponse,
-                                    flags,   // flags
-                                    response,
-                                    guard.Get()):
-                                NRdma::TProtoMessageSerializer::Serialize(
-                                    out,
-                                    TBlockStoreServerProtocol::
-                                        EvReadBlocksResponse,
-                                    flags,   // flags
-                                    response);
+                        if (SUCCEEDED(response.GetError().GetCode())) {
+                            auto guard = guardedSgList.Acquire();
+                            Y_ENSURE(guard);
 
-                        if (auto ep = endpoint.lock()) {
-                            ep->SendResponse(context, responseBytes);
+                            ui32 flags = 0;
+                            SetProtoFlag(
+                                flags,
+                                NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+
+                            size_t responseBytes =
+                                SUCCEEDED(response.GetError().GetCode())
+                                    ? NRdma::TProtoMessageSerializer::
+                                          SerializeWithData(
+                                              out,
+                                              TBlockStoreServerProtocol::
+                                                  EvReadBlocksResponse,
+                                              flags,   // flags
+                                              response,
+                                              guard.Get())
+                                    : NRdma::TProtoMessageSerializer::Serialize(
+                                          out,
+                                          TBlockStoreServerProtocol::
+                                              EvReadBlocksResponse,
+                                          flags,   // flags
+                                          response);
+
+                            if (auto ep = endpoint.lock()) {
+                                ep->SendResponse(context, responseBytes);
+                            }
                         }
                     });
             });
@@ -276,12 +310,14 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        request.MutableHeaders()->SetCrossShardRequest(true);
+
+        const ui64 startTime = GetCycleCount();
         if (TraceSerializer->HandleTraceRequest(
                 request.GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
         {
-            request.MutableHeaders()->MutableInternal()->SetTraceTs(
-                GetCycleCount());
+            request.MutableHeaders()->MutableInternal()->SetTraceTs(startTime);
         }
 
         LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
@@ -299,33 +335,57 @@ private:
         req->BlockSize = request.GetBlockSize();
         req->BlocksCount = requestData.length() / req->BlockSize;
 
-        auto future = Service->WriteBlocksLocal(
-            std::move(callContext),
-            std::move(req));
+        auto future = Service->WriteBlocksLocal(callContext, std::move(req));
 
-        future.Subscribe([=, taskQueue = TaskQueue, endpoint = Endpoint] (auto future) {
-            auto response = ExtractResponse(future);
+        future.Subscribe(
+            [=,
+             taskQueue = TaskQueue,
+             endpoint = Endpoint,
+             traceSerializer = TraceSerializer,
+             callContext = std::move(callContext)](
+                const TFuture<NProto::TWriteBlocksLocalResponse>& future)
+            {
+                LWTRACK(ResponseReceived_ShardingServer, callContext->LWOrbit);
+                auto response = GetResponse(future);
+                LWTRACK(ResponseExtracted_ShardingServer, callContext->LWOrbit);
 
-            taskQueue->ExecuteSimple([= , response = std::move(response)] () mutable {
-                if (response.ByteSizeLong() > MaxRealProtoSize) {
-                    // TODO: consider variable length proto size
-                    // or switch from lwtrace to open telemetry like
-                    // solution to avoid sending traces between nodes
-                    response.MutableTrace()->Clear();
-                }
+                taskQueue->ExecuteSimple(
+                    [=, response = std::move(response)]() mutable
+                    {
+                        if (response.ByteSizeLong() > MaxRealProtoSize) {
+                            // TODO: consider variable length proto size
+                            // or switch from lwtrace to open telemetry like
+                            // solution to avoid sending traces between nodes
+                            response.MutableTrace()->Clear();
+                        }
 
-                ui32 flags = 0;
-                SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-                size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                    out,
-                    TBlockStoreServerProtocol::EvWriteBlocksResponse,
-                    flags,   // flags
-                    response);
-                if (auto ep = endpoint.lock()) {
-                    ep->SendResponse(context, responseBytes);
-                }
+                        LWTRACK(
+                            ResponsePosted_ShardingServer,
+                            callContext->LWOrbit);
+                        if (traceSerializer->IsTraced(callContext->LWOrbit)) {
+                            traceSerializer->BuildTraceInfo(
+                                *response.MutableTrace(),
+                                callContext->LWOrbit,
+                                startTime,
+                                GetCycleCount());
+                        }
+
+                        ui32 flags = 0;
+                        SetProtoFlag(
+                            flags,
+                            NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                        size_t responseBytes =
+                            NRdma::TProtoMessageSerializer::Serialize(
+                                out,
+                                TBlockStoreServerProtocol::
+                                    EvWriteBlocksResponse,
+                                flags,   // flags
+                                response);
+                        if (auto ep = endpoint.lock()) {
+                            ep->SendResponse(context, responseBytes);
+                        }
+                    });
             });
-        });
 
         return {};
     }
@@ -349,34 +409,46 @@ private:
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
-        auto req = std::make_shared<NProto::TZeroBlocksRequest>(std::move(request));
+        auto req =
+            std::make_shared<NProto::TZeroBlocksRequest>(std::move(request));
 
-        auto future = Service->ZeroBlocks(
-            std::move(callContext),
-            std::move(req));
+        auto future =
+            Service->ZeroBlocks(std::move(callContext), std::move(req));
 
-        future.Subscribe([out = out, context = std::move(context), endpoint = Endpoint] (auto future) {
-            auto response = ExtractResponse(future);
+        future.Subscribe(
+            [&future,
+             out,
+             context,
+            //  startTime,
+             taskQueue = TaskQueue,
+             endpoint = Endpoint,
+             traceSerializer = TraceSerializer,
+             callContext = std::move(callContext)](const auto&) mutable
+            {
+                LWTRACK(ResponseReceived_ShardingServer, callContext->LWOrbit);
+                auto response = ExtractResponse(future);
+                LWTRACK(ResponseExtracted_ShardingServer, callContext->LWOrbit);
 
-            if (response.ByteSizeLong() > MaxRealProtoSize) {
-                // TODO: consider variable length proto size
-                // or switch from lwtrace to open telemetry like
-                // solution to avoid sending traces between nodes
-                response.MutableTrace()->Clear();
-            }
+                if (response.ByteSizeLong() > MaxRealProtoSize) {
+                    // TODO: consider variable length proto size
+                    // or switch from lwtrace to open telemetry like
+                    // solution to avoid sending traces between nodes
+                    response.MutableTrace()->Clear();
+                }
 
-            ui32 flags = 0;
-            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-            size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                out,
-                TBlockStoreServerProtocol::EvZeroBlocksResponse,
-                flags,   // flags
-                response);
+                ui32 flags = 0;
+                SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                size_t responseBytes =
+                    NRdma::TProtoMessageSerializer::Serialize(
+                        out,
+                        TBlockStoreServerProtocol::EvZeroBlocksResponse,
+                        flags,   // flags
+                        response);
 
-            if (auto ep = endpoint.lock()) {
-                ep->SendResponse(context, responseBytes);
-            }
-        });
+                if (auto ep = endpoint.lock()) {
+                    ep->SendResponse(context, responseBytes);
+                }
+            });
 
         return {};
     }
