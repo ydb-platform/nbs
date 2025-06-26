@@ -67,6 +67,8 @@ type Config struct {
 	NfsLocalEndpointSocket     string
 	MountOptions               string
 	UseDiscardForYDBBasedDisks bool
+	GrpcRequestTimeout         time.Duration
+	StartEndpointRetryTimeout  time.Duration
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,6 +93,7 @@ func createClients(cfg Config) (*driverClients, error) {
 		&nbsclient.GrpcClientOpts{
 			Endpoint: getEndpoint(cfg.NbsSocket, cfg.NbsHost, cfg.NbsPort),
 			ClientId: nbsClientID,
+			Timeout:  &cfg.GrpcRequestTimeout,
 		}, nbsclient.NewStderrLog(nbsclient.LOG_DEBUG),
 	)
 	if err != nil {
@@ -161,6 +164,12 @@ func NewDriver(cfg Config) (*Driver, error) {
 		return nil, err
 	}
 
+	if cfg.StartEndpointRetryTimeout >= cfg.GrpcRequestTimeout {
+		return nil,
+			fmt.Errorf("Invalid timeout values. StartEndpointRetryTimeout %q must be less than GrpcRequestTimeout %q",
+				cfg.StartEndpointRetryTimeout, cfg.GrpcRequestTimeout)
+	}
+
 	clients, err := createClients(cfg)
 	if err != nil {
 		return nil, err
@@ -224,7 +233,8 @@ func NewDriver(cfg Config) (*Driver, error) {
 			clients.nfsLocalFilestoreClient,
 			mounter.NewMounter(),
 			strings.Split(cfg.MountOptions, ","),
-			cfg.UseDiscardForYDBBasedDisks))
+			cfg.UseDiscardForYDBBasedDisks,
+			cfg.StartEndpointRetryTimeout))
 
 	return &Driver{
 		grpcServer: grpcServer,
