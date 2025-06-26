@@ -335,6 +335,8 @@ void TBootstrapBase::Init()
         = Configs->EndpointConfig->GetClientConfig();
     sessionManagerOptions.HostProfile = Configs->HostPerformanceProfile;
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
+    sessionManagerOptions.DisableClientThrottler =
+        Configs->ServerConfig->GetDisableClientThrottler();
 
     if (!KmsKeyProvider) {
         KmsKeyProvider = CreateKmsKeyProviderStub();

@@ -1,6 +1,9 @@
 #include "session_manager.h"
 
 #include <cloud/blockstore/libs/client/session.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/diagnostics/dumpable.h>
+#include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -8,6 +11,7 @@
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -23,6 +27,22 @@ namespace NCloud::NBlockStore::NServer {
 using namespace NThreading;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestDumpable
+    : public IDumpable
+{
+    void Dump(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    };
+
+    void DumpHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -292,6 +312,146 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
     Y_UNIT_TEST(ShouldNotTransformFatalErrorsForNotTemporaryServer)
     {
         ShouldTransformFatalErrorsForTemporaryServer(false);
+    }
+
+    void ShouldDisableClientThrottler(bool disableClientThrottler)
+    {
+        TString socketPath = "testSocket";
+        TString diskId = "testDiskId";
+        TString clientId = "testClientId";
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&](std::shared_ptr<NProto::TDescribeVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TDescribeVolumeResponse());
+        };
+        service->MountVolumeHandler =
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            response.SetInactiveClientsTimeout(100);
+            return MakeFuture(response);
+        };
+        service->UnmountVolumeHandler =
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TUnmountVolumeResponse());
+        };
+
+        auto executor = TExecutor::Create("TestService");
+        auto logging = CreateLoggingService("console");
+
+        TSessionManagerOptions options;
+        options.DisableClientThrottler = disableClientThrottler;
+        options.DisableDurableClient = true;
+
+        auto encryptionClientFactory = CreateEncryptionClientFactory(
+            logging,
+            CreateDefaultEncryptionKeyProvider());
+
+        auto volumeStats = CreateVolumeStats(
+            CreateMonitoringServiceStub(),
+            {},
+            EVolumeStatsType::EClientStats,
+            CreateWallClockTimer());
+
+        auto serverStats = CreateServerStats(
+            std::make_shared<TTestDumpable>(),
+            std::make_shared<TDiagnosticsConfig>(),
+            CreateMonitoringServiceStub(),
+            CreateProfileLogStub(),
+            CreateRequestStatsStub(),
+            // CreateServerRequestStats(
+            //     serverGroup,
+            //     Timer,
+            //     EHistogramCounterOption::ReportMultipleCounters),
+            volumeStats);
+
+        auto sessionManager = CreateSessionManager(
+            CreateWallClockTimer(),
+            CreateSchedulerStub(),
+            logging,
+            CreateMonitoringServiceStub(),
+            CreateRequestStatsStub(),
+            volumeStats,
+            serverStats,
+            service,
+            CreateDefaultStorageProvider(service),
+            encryptionClientFactory,
+            executor,
+            options);
+
+        executor->Start();
+        Y_DEFER
+        {
+            executor->Stop();
+        };
+
+        NProto::TStartEndpointRequest request;
+        request.SetUnixSocketPath(socketPath);
+        request.SetDiskId(diskId);
+        request.SetClientId(clientId);
+
+        // Set client profile to something that would normally trigger
+        // throttling
+        auto* clientProfile = request.MutableClientProfile();
+        clientProfile->SetCpuUnitCount(1);
+
+        auto* perfProfile =
+            request.MutableClientPerformanceProfile()->MutableHDDProfile();
+        perfProfile->SetMaxReadIops(1);
+        perfProfile->SetMaxWriteIops(1);
+        perfProfile->SetMaxReadBandwidth(1);
+        perfProfile->SetMaxWriteBandwidth(1);
+
+        auto future = sessionManager->CreateSession(
+            MakeIntrusive<TCallContext>(),
+            request);
+
+        auto sessionOrError = future.GetValue(TDuration::Seconds(3));
+        UNIT_ASSERT_C(!HasError(sessionOrError), sessionOrError.GetError());
+        auto session = sessionOrError.GetResult().Session;
+
+        TVector<TFuture<NProto::TReadBlocksLocalResponse>> futures;
+        const auto startTime = TInstant::Now();
+        for (int i = 0; i < 3; i++) {
+            auto readRequest =
+                std::make_shared<NProto::TReadBlocksLocalRequest>();
+            readRequest->SetDiskId(diskId);
+            readRequest->SetBlocksCount(1);
+            readRequest->SetStartIndex(i * 100);
+            *readRequest->MutableHeaders()->MutableClientId() = clientId;
+            futures.push_back(session->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                std::move(readRequest)));
+        }
+        WaitAll(futures).Wait();
+        const auto duration = TInstant::Now() - startTime;
+
+        if (disableClientThrottler) {
+            UNIT_ASSERT_C(
+                duration < TDuration::Seconds(1),
+                TStringBuilder() << "Requests took too long: " << duration);
+        } else {
+            UNIT_ASSERT_C(
+                duration > TDuration::Seconds(1),
+                TStringBuilder()
+                    << "Requests were not throttled: " << duration);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotThrottleWhenDisableClientThrottlerIsTrue)
+    {
+        ShouldDisableClientThrottler(true);
+    }
+
+    Y_UNIT_TEST(ShouldThrottleWhenDisableClientThrottlerIsFalse)
+    {
+        ShouldDisableClientThrottler(false);
     }
 }
 
