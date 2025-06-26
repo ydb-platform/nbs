@@ -29,8 +29,10 @@ struct THostInfo
 {
     TString Fqdn;
     NProto::EShardDataTransport Transport;
-    TPromise<NClient::IMultiClientEndpointPtr> GrpcSetupPromise = NewPromise<NClient::IMultiClientEndpointPtr>();
-    TPromise<IBlockStorePtr> RdmaSetupPromise = NewPromise<IBlockStorePtr>();
+    TPromise<IHostEndpointsSetupProvider::TGrpcResult> GrpcSetupPromise =
+        NewPromise<IHostEndpointsSetupProvider::TGrpcResult>();
+    TPromise<IHostEndpointsSetupProvider::TRdmaResult> RdmaSetupPromise =
+        NewPromise<IHostEndpointsSetupProvider::TRdmaResult>();
 };
 
 using THosts = THashMap<TString, THostInfo>;
