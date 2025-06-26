@@ -149,18 +149,20 @@ private:
         // nfs     AccessNode      0.002297s       S_OK    {mask=4, node_id=36}
 
         if (Spec.GetSkipRead()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_ACCESS_NODE,
-                Started,
-                MakeError(E_PRECONDITION_FAILED, "read disabled")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_ACCESS_NODE,
+                    Started,
+                    MakeError(E_PRECONDITION_FAILED, "read disabled")});
         }
 
         const auto nodeId = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
         if (nodeId == InvalidNodeId) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_ACCESS_NODE,
-                Started,
-                MakeError(E_NOT_FOUND, "node not found")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_ACCESS_NODE,
+                    Started,
+                    MakeError(E_NOT_FOUND, "node not found")});
         }
 
         auto request = CreateRequest<NProto::TAccessNodeRequest>();
@@ -191,10 +193,11 @@ private:
                             MakeError(E_INVALID_STATE, "cancelled")};
                     });
         const auto& response = future.GetValueSync();
-        return MakeFuture(TCompletedRequest{
-            NProto::ACTION_ACCESS_NODE,
-            Started,
-            response.Error});
+        return MakeFuture(
+            TCompletedRequest{
+                NProto::ACTION_ACCESS_NODE,
+                Started,
+                response.Error});
     }
 
     TCompletedRequest HandleAccessNode(
@@ -230,10 +233,11 @@ private:
         const auto nodeId =
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
         if (nodeId == InvalidNodeId) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_CREATE_HANDLE,
-                Started,
-                MakeError(E_NOT_FOUND, "node not found")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_CREATE_HANDLE,
+                    Started,
+                    MakeError(E_NOT_FOUND, "node not found")});
         }
         request->SetNodeId(nodeId);
         request->SetName(logRequest.GetNodeInfo().GetNodeName());
@@ -267,16 +271,18 @@ private:
                             return ptr->HandleCreateHandle(future, info);
                         }
 
-                        return MakeFuture(TCompletedRequest{
-                            NProto::ACTION_CREATE_HANDLE,
-                            info.Started,
-                            MakeError(E_INVALID_STATE, "cancelled")});
+                        return MakeFuture(
+                            TCompletedRequest{
+                                NProto::ACTION_CREATE_HANDLE,
+                                info.Started,
+                                MakeError(E_INVALID_STATE, "cancelled")});
                     });
         const auto& response = future.GetValueSync();
-        return MakeFuture(TCompletedRequest{
-            NProto::ACTION_CREATE_HANDLE,
-            Started,
-            response.Error});
+        return MakeFuture(
+            TCompletedRequest{
+                NProto::ACTION_CREATE_HANDLE,
+                Started,
+                response.Error});
     }
 
     TFuture<TCompletedRequest> HandleCreateHandle(
@@ -322,17 +328,19 @@ private:
                 {
                     // TODO(proller): return HandleResizeAfterCreateHandle(f,
                     // name, started);
-                    return MakeFuture(TCompletedRequest{
-                        NProto::ACTION_CREATE_HANDLE,
-                        info.Started,
-                        f.GetValue().GetError()});
+                    return MakeFuture(
+                        TCompletedRequest{
+                            NProto::ACTION_CREATE_HANDLE,
+                            info.Started,
+                            f.GetValue().GetError()});
                 });
         } catch (const TServiceError& e) {
             CompareResponse(info, e.GetCode());
-            return NThreading::MakeFuture(TCompletedRequest{
-                NProto::ACTION_CREATE_HANDLE,
-                info.Started,
-                MakeError(e.GetCode(), TString{e.GetMessage()})});
+            return NThreading::MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_CREATE_HANDLE,
+                    info.Started,
+                    MakeError(e.GetCode(), TString{e.GetMessage()})});
         }
     }
 
@@ -341,19 +349,21 @@ private:
         override
     {
         if (Spec.GetSkipRead()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_READ,
-                Started,
-                MakeError(E_PRECONDITION_FAILED, "read disabled")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_READ,
+                    Started,
+                    MakeError(E_PRECONDITION_FAILED, "read disabled")});
         }
 
         const auto handle =
             HandleIdMapped(logRequest.GetNodeInfo().GetHandle());
         if (handle == InvalidHandle) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_READ,
-                Started,
-                MakeError(E_NOT_FOUND, "handle not found")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_READ,
+                    Started,
+                    MakeError(E_NOT_FOUND, "handle not found")});
         }
 
         auto request = CreateRequest<NProto::TReadDataRequest>();
@@ -420,20 +430,22 @@ private:
         //{"TimestampMcs":1465489895000,"DurationMcs":2790,"RequestType":44,"Ranges":[{"NodeId":2,"Handle":20680158862113389,"Offset":13,"Bytes":12}]}
 
         if (Spec.GetSkipWrite()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_WRITE,
-                Started,
-                MakeError(E_PRECONDITION_FAILED, "write disabled")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_WRITE,
+                    Started,
+                    MakeError(E_PRECONDITION_FAILED, "write disabled")});
         }
 
         const auto handleLog = logRequest.GetRanges(0).GetHandle();
         const auto handleLocal = HandleIdMapped(handleLog);
 
         if (handleLocal == InvalidHandle) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_WRITE,
-                Started,
-                MakeError(E_NOT_FOUND, "handle not found")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_WRITE,
+                    Started,
+                    MakeError(E_NOT_FOUND, "handle not found")});
         }
         auto request = CreateRequest<NProto::TWriteDataRequest>();
         request->SetHandle(handleLocal);
@@ -510,19 +522,21 @@ private:
         // new_node_name=home, mode=509, node_id=12526, size=0}
 
         if (Spec.GetSkipWrite()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_CREATE_NODE,
-                Started,
-                MakeError(E_PRECONDITION_FAILED, "write disabled")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_CREATE_NODE,
+                    Started,
+                    MakeError(E_PRECONDITION_FAILED, "write disabled")});
         }
 
         const auto parentNode =
             NodeIdMapped(logRequest.GetNodeInfo().GetNewParentNodeId());
         if (parentNode == InvalidNodeId) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_CREATE_NODE,
-                Started,
-                MakeError(E_NOT_FOUND, "node not found")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_CREATE_NODE,
+                    Started,
+                    MakeError(E_NOT_FOUND, "node not found")});
         }
 
         auto request = CreateRequest<NProto::TCreateNodeRequest>();
@@ -553,10 +567,11 @@ private:
                     NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
 
                 if (node == InvalidNodeId) {
-                    return MakeFuture(TCompletedRequest{
-                        NProto::ACTION_CREATE_NODE,
-                        Started,
-                        MakeError(E_NOT_FOUND, "node not found")});
+                    return MakeFuture(
+                        TCompletedRequest{
+                            NProto::ACTION_CREATE_NODE,
+                            Started,
+                            MakeError(E_NOT_FOUND, "node not found")});
                 }
 
                 request->MutableLink()->SetTargetNode(node);
@@ -602,10 +617,11 @@ private:
                     });
 
         const auto& response = future.GetValueSync();
-        return MakeFuture(TCompletedRequest{
-            NProto::ACTION_CREATE_NODE,
-            Started,
-            response.Error});
+        return MakeFuture(
+            TCompletedRequest{
+                NProto::ACTION_CREATE_NODE,
+                Started,
+                response.Error});
     }
 
     TCompletedRequest HandleCreateNode(
@@ -643,22 +659,24 @@ private:
     {
         // {"TimestampMcs":895166000,"DurationMcs":2949,"RequestType":28,"NodeInfo":{"ParentNodeId":3,"NodeName":"HEAD.lock","NewParentNodeId":3,"NewNodeName":"HEAD"}}
         if (Spec.GetSkipRead()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_RENAME_NODE,
-                Started,
-                MakeError(E_PRECONDITION_FAILED, "read disabled")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_RENAME_NODE,
+                    Started,
+                    MakeError(E_PRECONDITION_FAILED, "read disabled")});
         }
 
         const auto node =
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
         if (node == InvalidNodeId) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_RENAME_NODE,
-                Started,
-                MakeError(
-                    E_NOT_FOUND,
-                    "Log node %d not found in mapping",
-                    logRequest.GetNodeInfo().GetParentNodeId())});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_RENAME_NODE,
+                    Started,
+                    MakeError(
+                        E_NOT_FOUND,
+                        "Log node %d not found in mapping",
+                        logRequest.GetNodeInfo().GetParentNodeId())});
         }
         auto request = CreateRequest<NProto::TRenameNodeRequest>();
         request->SetNodeId(node);
@@ -691,10 +709,11 @@ private:
                             MakeError(E_INVALID_STATE, "invalid ptr")};
                     });
         const auto& response = future.GetValueSync();
-        return MakeFuture(TCompletedRequest{
-            NProto::ACTION_RENAME_NODE,
-            Started,
-            response.Error});
+        return MakeFuture(
+            TCompletedRequest{
+                NProto::ACTION_RENAME_NODE,
+                Started,
+                response.Error});
     }
 
     TCompletedRequest HandleRenameNode(
@@ -725,10 +744,11 @@ private:
         // UnlinkNode   0.5s  S_OK    {parent_node_id=3, node_name=tfrgYZ1}
 
         if (Spec.GetSkipWrite()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_REMOVE_NODE,
-                Started,
-                MakeError(E_PRECONDITION_FAILED, "write disabled")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_REMOVE_NODE,
+                    Started,
+                    MakeError(E_PRECONDITION_FAILED, "write disabled")});
         }
 
         const auto name = logRequest.GetNodeInfo().GetNodeName();
@@ -737,10 +757,11 @@ private:
         const auto node =
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
         if (node == InvalidNodeId) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_REMOVE_NODE,
-                Started,
-                MakeError(E_NOT_FOUND, "parent node not found")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_REMOVE_NODE,
+                    Started,
+                    MakeError(E_NOT_FOUND, "parent node not found")});
         }
         request->SetNodeId(node);
         const auto self = weak_from_this();
@@ -804,10 +825,11 @@ private:
         const auto handle =
             HandleIdMapped(logRequest.GetNodeInfo().GetHandle());
         if (handle == InvalidHandle) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_DESTROY_HANDLE,
-                Started,
-                MakeError(E_NOT_FOUND, "handle not found")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_DESTROY_HANDLE,
+                    Started,
+                    MakeError(E_NOT_FOUND, "handle not found")});
         }
 
         with_lock (StateLock) {
@@ -873,10 +895,11 @@ private:
         override
     {
         if (Spec.GetSkipRead()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_GET_NODE_ATTR,
-                Started,
-                MakeError(E_PRECONDITION_FAILED, "disabled")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_GET_NODE_ATTR,
+                    Started,
+                    MakeError(E_PRECONDITION_FAILED, "disabled")});
         }
 
         // TODO(proller): by parent + name
@@ -888,20 +911,21 @@ private:
         const auto node =
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
         if (node == InvalidNodeId) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_GET_NODE_ATTR,
-                Started,
-                MakeError(
-                    E_NOT_FOUND,
-                    Sprintf(
-                        "Node %lu missing in mapping ",
-                        logRequest.GetNodeInfo().GetParentNodeId()))});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_GET_NODE_ATTR,
+                    Started,
+                    MakeError(
+                        E_NOT_FOUND,
+                        Sprintf(
+                            "Node %lu missing in mapping ",
+                            logRequest.GetNodeInfo().GetParentNodeId()))});
         }
 
         auto request = CreateRequest<NProto::TGetNodeAttrRequest>();
         request->SetNodeId(node);
         const auto name = logRequest.GetNodeInfo().GetNodeName();
-        request->SetName(logRequest.GetNodeInfo().GetNodeName());
+        request->SetName(name);
         request->SetFlags(logRequest.GetNodeInfo().GetFlags());
         const auto self = weak_from_this();
         return Session->GetNodeAttr(CreateCallContext(), std::move(request))
@@ -953,10 +977,11 @@ private:
         override
     {
         // TODO(proller):
-        return MakeFuture(TCompletedRequest{
-            NProto::ACTION_ACQUIRE_LOCK,
-            Started,
-            MakeError(E_NOT_IMPLEMENTED, "not implemented")});
+        return MakeFuture(
+            TCompletedRequest{
+                NProto::ACTION_ACQUIRE_LOCK,
+                Started,
+                MakeError(E_NOT_IMPLEMENTED, "not implemented")});
 
         TGuard<TMutex> guard(StateLock);
         if (Handles.empty()) {
@@ -971,10 +996,11 @@ private:
         }
 
         if (it == Handles.end()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_ACQUIRE_LOCK,
-                Started,
-                MakeError(E_CANCELLED, "cancelled")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_ACQUIRE_LOCK,
+                    Started,
+                    MakeError(E_CANCELLED, "cancelled")});
         }
 
         auto handle = it->first;
@@ -1047,10 +1073,11 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        return MakeFuture(TCompletedRequest{
-            NProto::ACTION_RELEASE_LOCK,
-            Started,
-            MakeError(E_NOT_IMPLEMENTED, "not implemented")});
+        return MakeFuture(
+            TCompletedRequest{
+                NProto::ACTION_RELEASE_LOCK,
+                Started,
+                MakeError(E_NOT_IMPLEMENTED, "not implemented")});
 
         TGuard<TMutex> guard(StateLock);
         if (Locks.empty()) {
@@ -1124,21 +1151,23 @@ private:
         // name=ListNodes data="TimestampMcs: 1729271080089294 DurationMcs:
         // 131 RequestType: 30 ErrorCode: 0 NodeInfo { NodeId: 33 Size: 0 }"
         if (Spec.GetSkipRead()) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_LIST_NODES,
-                Started,
-                MakeError(E_PRECONDITION_FAILED, "read disabled")});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_LIST_NODES,
+                    Started,
+                    MakeError(E_PRECONDITION_FAILED, "read disabled")});
         }
 
         const auto nodeId = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
         if (nodeId == InvalidNodeId) {
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_LIST_NODES,
-                Started,
-                MakeError(
-                    E_NOT_FOUND,
-                    "Log node %d not found in mapping",
-                    logRequest.GetNodeInfo().GetParentNodeId())});
+            return MakeFuture(
+                TCompletedRequest{
+                    NProto::ACTION_LIST_NODES,
+                    Started,
+                    MakeError(
+                        E_NOT_FOUND,
+                        "Log node %d not found in mapping",
+                        logRequest.GetNodeInfo().GetParentNodeId())});
         }
         auto request = CreateRequest<NProto::TListNodesRequest>();
         request->SetNodeId(nodeId);
@@ -1204,21 +1233,23 @@ private:
         constexpr auto CurrentAction = NProto::ACTION_FLUSH;
 
         if (Spec.GetSkipWrite()) {
-            return MakeFuture(TCompletedRequest{
-                CurrentAction,
-                Started,
-                MakeError(
-                    E_PRECONDITION_FAILED,
-                    "write disabled by SkipWrite")});
+            return MakeFuture(
+                TCompletedRequest{
+                    CurrentAction,
+                    Started,
+                    MakeError(
+                        E_PRECONDITION_FAILED,
+                        "write disabled by SkipWrite")});
         }
 
         const auto handle =
             HandleIdMapped(logRequest.GetNodeInfo().GetHandle());
         if (handle == InvalidHandle) {
-            return MakeFuture(TCompletedRequest{
-                CurrentAction,
-                Started,
-                MakeError(E_NOT_FOUND, "handle not found")});
+            return MakeFuture(
+                TCompletedRequest{
+                    CurrentAction,
+                    Started,
+                    MakeError(E_NOT_FOUND, "handle not found")});
         }
 
         auto request = CreateRequest<NProto::TFsyncRequest>();
