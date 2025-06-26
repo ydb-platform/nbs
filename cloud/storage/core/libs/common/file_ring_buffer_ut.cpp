@@ -285,7 +285,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
         m.Map(0, len);
         char* data = static_cast<char*>(m.Ptr());
-        data[24] = 'A';
+        data[44] = 'A';
 
         UNIT_ASSERT_VALUES_EQUAL(
             "data=vasya ecsum=3387363649 csum=3387363646",
