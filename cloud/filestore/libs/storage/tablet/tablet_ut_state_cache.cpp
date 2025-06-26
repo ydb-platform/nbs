@@ -243,7 +243,7 @@ namespace {
         }
     }
 
-} // namespace
+}   // namespace
 
     //
     // NodeRefs

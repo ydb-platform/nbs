@@ -17,7 +17,7 @@ concept HasReserve = requires(T t) {
     { t.reserve(42) } -> std::same_as<void>;
 };
 
-} // namespace
+}   // namespace
 
 // A simple wrapper around THashMap that also evicts the least recently used
 // elements when the capacity is reached. It keeps track of the order in which

@@ -467,4 +467,4 @@ void TInMemoryIndexState::UpdateState(
     }
 }
 
-} // namespace NCloud::NFileStore::NStorage
+}   // namespace NCloud::NFileStore::NStorage
