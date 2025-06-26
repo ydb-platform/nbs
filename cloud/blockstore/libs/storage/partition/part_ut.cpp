@@ -470,6 +470,11 @@ public:
             NKikimr::GetPipeConfigWithRetries());
     }
 
+    ui64 GetTabletId() const
+    {
+        return TabletId;
+    }
+
     void RebootTablet()
     {
         TVector<ui64> tablets = { TabletId };
@@ -8713,6 +8718,101 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT(FAILED(response->GetStatus()));
 
         UNIT_ASSERT(suicideHappened);
+    }
+
+    Y_UNIT_TEST(Kek)
+    {
+        auto config = DefaultConfig();
+        config.SetMaxIORequestsInFlight(10);
+        config.SetMaxWriteBlobErrorsBeforeSuicide(1000);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool writeBlobShouldFail = false;
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvPutResult: {
+                    auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                    Cerr << "TEvBlobStorage::EvPutResult " << msg->Id.TabletID() << " " << partition.GetTabletId() << Endl;
+                    if (writeBlobShouldFail) {
+                        msg->Status = NKikimrProto::ERROR;
+                        writeBlobShouldFail = false;
+                    }
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        // for (int i = 1; i < 100; i++) {
+        {
+            partition.SendWriteBlocksRequest(1, 1);
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+        // }
+
+        writeBlobShouldFail = true;
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1024), 1000);
+        partition.SendFlushRequest();
+        auto response = partition.RecvFlushResponse();
+        // partition.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1024), 1000);
+
+        // {
+        //     auto response = partition.RecvWriteBlocksResponse();
+        //     UNIT_ASSERT(FAILED(response->GetStatus()));
+        // }
+
+        // {
+        //     auto response = partition.RecvFlushResponse();
+        //     UNIT_ASSERT(FAILED(response->GetStatus()));
+        // }
+
+        // for (int i = 1; i < 100; i++) {
+        //     if (i % 2 == 0) {
+        //         writeBlobShouldFail = true;
+        //     }
+
+        //     Cerr << writeBlobShouldFail << Endl;
+        //     partition.SendWriteBlocksRequest(1, i);
+        //     auto response = partition.RecvWriteBlocksResponse();
+            // if (writeBlobShouldFail) {
+            //     UNIT_ASSERT(FAILED(response->GetStatus()));
+            // } else {
+            //     UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+            // }
+
+        //     writeBlobShouldFail = false;
+
+        //     if (i % 10 == 0) {
+        //         if ((i / 10) % 2 == 1) {
+        //             writeBlobShouldFail = true;
+        //         }
+
+        //         Cerr << "Flush!!!!" << Endl;
+
+        //         {
+        //             auto response = partition.StatPartition();
+        //             const auto& stats = response->Record.GetStats();
+        //             Cerr << "Fresh blocks " << stats.GetFreshBlocksCount() << " Mixed blocks " << stats.GetMixedBlocksCount() << " Mixed blobs " << stats.GetMixedBlobsCount() << Endl;
+        //         }
+
+        //         partition.Flush();
+
+        //         {
+        //             auto response = partition.StatPartition();
+        //             const auto& stats = response->Record.GetStats();
+        //             Cerr << "Fresh blocks " << stats.GetFreshBlocksCount() << " Mixed blocks " << stats.GetMixedBlocksCount() << " Mixed blobs " << stats.GetMixedBlobsCount() << Endl;
+        //         }
+
+        //         writeBlobShouldFail = false;
+        //     }
+        // }
+        // UNIT_ASSERT(false);
     }
 
     Y_UNIT_TEST(ShouldProcessMultipleRangesUponCompaction)

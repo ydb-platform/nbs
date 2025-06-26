@@ -1,5 +1,7 @@
 #include "barrier.h"
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <util/generic/ylimits.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
@@ -13,6 +15,7 @@ void TBarriers::AcquireBarrier(ui64 commitId)
 
 void TBarriers::AcquireBarrierN(ui64 commitId, ui32 refCount)
 {
+    Cerr << "AcquireBarrierN " << commitId << " " << refCount << Endl;
     auto it = Barriers.find(TBarrier(commitId, 0));
     if (it != Barriers.end()) {
         const_cast<TBarrier&>(*it).RefCount += refCount;
@@ -28,12 +31,28 @@ void TBarriers::ReleaseBarrier(ui64 commitId)
 
 void TBarriers::ReleaseBarrierN(ui64 commitId, ui32 refCount)
 {
+    Cerr << "ReleaseBarrierN " << commitId << " " << refCount << Endl;
     auto it = Barriers.find(TBarrier(commitId, 0));
+    Cerr << "prev ";
+    for (const auto& el : Barriers) {
+        Cerr << el.CommitId << ' ' << el.RefCount << Endl;
+    }
+    Cerr << Endl;
+
     Y_ABORT_UNLESS(it != Barriers.end());
     Y_ABORT_UNLESS(it->RefCount >= refCount);
+    Cerr << "refka " << const_cast<TBarrier&>(*it).RefCount - refCount << Endl;
     if ((const_cast<TBarrier&>(*it).RefCount -= refCount) == 0) {
+        Cerr << "here" << Endl;
         Barriers.erase(it);
     }
+
+    Cerr << "next ";
+    for (const auto& el : Barriers) {
+        Cerr << el.CommitId << ' ' << el.RefCount << Endl;
+    }
+    Cerr << Endl;
+
 }
 
 ui64 TBarriers::GetMinCommitId() const

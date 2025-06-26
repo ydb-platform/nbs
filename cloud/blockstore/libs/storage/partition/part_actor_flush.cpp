@@ -829,9 +829,12 @@ void TPartitionActor::HandleFlushCompleted(
 
     UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
+    Cerr << "GetCommitQueue" << Endl;
     State->GetCommitQueue().ReleaseBarrier(commitId);
+    Cerr << "GetGarbageQueue" << Endl;
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
+    Cerr << "GetTrimFreshLogBarriers" << Endl;
     for (const auto& i: msg->FlushedCommitIdsFromChannel) {
         State->GetTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
     }
