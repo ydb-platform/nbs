@@ -532,6 +532,8 @@ void TBootstrapBase::Init()
         .ClientConfig = Configs->EndpointConfig->GetClientConfig(),
         .NbdSocketSuffix = Configs->ServerConfig->GetNbdSocketSuffix(),
         .NbdDevicePrefix = Configs->ServerConfig->GetNbdDevicePrefix(),
+        .AutomaticNbdDeviceManagement =
+            Configs->ServerConfig->GetAutomaticNbdDeviceManagement(),
     };
 
     NBD::IDeviceFactoryPtr nbdDeviceFactory;
@@ -562,9 +564,7 @@ void TBootstrapBase::Init()
         nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
-            Configs->ServerConfig->GetNbdConnectionTimeout(),
-            true   // reconfigure
-        );
+            Configs->ServerConfig->GetNbdConnectionTimeout());
     }
 
     // The only case we want kernel to retry requests is when the socket is dead
