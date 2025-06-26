@@ -8,7 +8,9 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
+#include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/vhost-server/options.h>
+
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/thread.h>
@@ -740,6 +742,7 @@ class TExternalVhostEndpointListener final
     , public IEndpointListener
 {
 private:
+    const TServerAppConfigPtr ServerConfig;
     const ILoggingServicePtr Logging;
     const IServerStatsPtr ServerStats;
     const TExecutorPtr Executor;
@@ -757,25 +760,26 @@ private:
 
 public:
     TExternalVhostEndpointListener(
+            TServerAppConfigPtr serverConfig,
             ILoggingServicePtr logging,
             IServerStatsPtr serverStats,
             TExecutorPtr executor,
             TString localAgentId,
-            ui32 socketAccessMode,
-            TDuration vhostServerTimeoutAfterParentExit,
             bool isAlignedDataEnabled,
             IEndpointListenerPtr fallbackListener,
             TExternalEndpointFactory endpointFactory)
-        : Logging {std::move(logging)}
-        , ServerStats {std::move(serverStats)}
-        , Executor {std::move(executor)}
-        , LocalAgentId {std::move(localAgentId)}
-        , SocketAccessMode {socketAccessMode}
+        : ServerConfig{std::move(serverConfig)}
+        , Logging{std::move(logging)}
+        , ServerStats{std::move(serverStats)}
+        , Executor{std::move(executor)}
+        , LocalAgentId{std::move(localAgentId)}
+        , SocketAccessMode{ServerConfig->GetSocketAccessMode()}
         , IsAlignedDataEnabled(isAlignedDataEnabled)
-        , FallbackListener {std::move(fallbackListener)}
-        , EndpointFactory {std::move(endpointFactory)}
-        , VhostServerTimeoutAfterParentExit{vhostServerTimeoutAfterParentExit}
-        , Log {Logging->CreateLog("BLOCKSTORE_SERVER")}
+        , FallbackListener{std::move(fallbackListener)}
+        , EndpointFactory{std::move(endpointFactory)}
+        , VhostServerTimeoutAfterParentExit{ServerConfig
+                                                ->GetVhostServerTimeoutAfterParentExit()}
+        , Log{Logging->CreateLog("BLOCKSTORE_SERVER")}
     {
         FindRunningEndpoints();
     }
@@ -1066,6 +1070,13 @@ private:
             }
         }
 
+        if (ui64 vhostPteFlushByteThreshold =
+                ServerConfig->GetVhostPteFlushByteThreshold())
+        {
+            args.emplace_back("--vmpte-flush-threshold");
+            args.emplace_back(ToString(vhostPteFlushByteThreshold));
+        }
+
         for (const auto& device: volume.GetDevices()) {
             const ui64 size = device.GetBlockCount() * volume.GetBlockSize();
 
@@ -1227,13 +1238,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
+    TServerAppConfigPtr serverConfig,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
-    TString binaryPath,
     TString localAgentId,
-    ui32 socketAccessMode,
-    TDuration vhostServerTimeoutAfterParentExit,
     bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener)
 {
@@ -1252,42 +1261,39 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
                 .DiskId = diskId,
                 .ServerStats = serverStats
             },
-            binaryPath,
+            serverConfig->GetVhostServerPath(),
             std::move(args),
             std::move(cgroups)
         );
     };
 
     return std::make_shared<TExternalVhostEndpointListener>(
+        std::move(serverConfig),
         std::move(logging),
         std::move(serverStats),
         std::move(executor),
         std::move(localAgentId),
-        socketAccessMode,
-        vhostServerTimeoutAfterParentExit,
         isAlignedDataEnabled,
         std::move(fallbackListener),
         std::move(defaultFactory));
 }
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
+    TServerAppConfigPtr serverConfig,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
     TString localAgentId,
-    ui32 socketAccessMode,
-    TDuration vhostServerTimeoutAfterParentExit,
     bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory)
 {
     return std::make_shared<TExternalVhostEndpointListener>(
+        std::move(serverConfig),
         std::move(logging),
         std::move(serverStats),
         std::move(executor),
         std::move(localAgentId),
-        socketAccessMode,
-        vhostServerTimeoutAfterParentExit,
         isAlignedDataEnabled,
         std::move(fallbackListener),
         std::move(factory));

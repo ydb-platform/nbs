@@ -429,15 +429,13 @@ void TBootstrapBase::Init()
                 && !Configs->Options->TemporaryServer)
         {
             vhostEndpointListener = CreateExternalVhostEndpointListener(
+                Configs->ServerConfig,
                 Logging,
                 ServerStats,
                 Executor,
-                Configs->ServerConfig->GetVhostServerPath(),
                 Configs->Options->SkipDeviceLocalityValidation
                     ? TString {}
                     : FQDNHostName(),
-                Configs->ServerConfig->GetSocketAccessMode(),
-                Configs->ServerConfig->GetVhostServerTimeoutAfterParentExit(),
                 RdmaClient && RdmaClient->IsAlignedDataEnabled(),
                 std::move(vhostEndpointListener));
 

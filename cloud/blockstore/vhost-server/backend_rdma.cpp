@@ -252,7 +252,8 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
         .block_size = BlockSize,
         .num_queues = options.QueueCount,   // Max count of virtio queues
         .total_blocks = totalBytes / BlockSize,
-        .features = ReadOnly ? VHD_BDEV_F_READONLY : 0};
+        .features = ReadOnly ? VHD_BDEV_F_READONLY : 0,
+        .pte_flush_byte_threshold = options.PteFlushByteThreshold};
 
 }
 
