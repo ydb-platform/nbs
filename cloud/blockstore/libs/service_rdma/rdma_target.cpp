@@ -78,6 +78,16 @@ struct TRequestDetails
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename T>
+T GetResponse(const NThreading::TFuture<T>& future)
+{
+    return SafeExecute<T>([&] {
+        return future.GetValue();
+    });
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Thread-safe. After Init() public method HandleRequest() can be called
 // from any thread.
 class TRequestHandler final
@@ -181,15 +191,17 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        request.MutableHeaders()->SetCrossShardRequest(true);
+
+        const ui64 startTime = GetCycleCount();
         if (TraceSerializer->HandleTraceRequest(
                 request.GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
         {
-            request.MutableHeaders()->MutableInternal()->SetTraceTs(
-                GetCycleCount());
+            request.MutableHeaders()->MutableInternal()->SetTraceTs(startTime);
         }
 
-        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+        LWTRACK(RequestReceived_ShardingServer, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
         Y_ENSURE_RETURN(request.GetBlockSize() != 0, "empty BlockSize");
@@ -211,30 +223,48 @@ private:
         req->Sglist = guardedSgList;
 
         auto future = Service->ReadBlocksLocal(
-            std::move(callContext),
+            callContext,
             std::move(req));
 
         future.Subscribe(
             [=,
+             traceSerializer = TraceSerializer,
              buffer = std::move(buffer),
              guardedSgList = std::move(guardedSgList),
              blockSize = request.GetBlockSize(),
              taskQueue = TaskQueue,
-             endpoint = Endpoint](auto future)
+             endpoint = Endpoint,
+             callContext = std::move(callContext)](
+                const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
             {
-                auto response = ExtractResponse(future);
+                LWTRACK(ResponseReceived_ShardingServer, callContext->LWOrbit);
+                auto response = GetResponse(future);
+                LWTRACK(ResponseExtracted_ShardingServer, callContext->LWOrbit);
 
                 taskQueue->ExecuteSimple(
                     [=,
                      buffer = std::move(buffer),
                      guardedSgList = std::move(guardedSgList)]() mutable
                     {
+                        LWTRACK(
+                            ResponsePosted_ShardingServer,
+                            callContext->LWOrbit);
+                        if (traceSerializer->IsTraced(callContext->LWOrbit)) {
+                            traceSerializer->BuildTraceInfo(
+                                *response.MutableTrace(),
+                                callContext->LWOrbit,
+                                startTime,
+                                GetCycleCount());
+                        }
+
                         if (SUCCEEDED(response.GetError().GetCode())) {
                             auto guard = guardedSgList.Acquire();
                             Y_ENSURE(guard);
 
                             ui32 flags = 0;
-                            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                            SetProtoFlag(
+                                flags,
+                                NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
 
                             size_t responseBytes = NRdma::
                                 TProtoMessageSerializer::SerializeWithData(
@@ -261,15 +291,17 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        request.MutableHeaders()->SetCrossShardRequest(true);
+
+        const ui64 startTime = GetCycleCount();
         if (TraceSerializer->HandleTraceRequest(
                 request.GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
         {
-            request.MutableHeaders()->MutableInternal()->SetTraceTs(
-                GetCycleCount());
+            request.MutableHeaders()->MutableInternal()->SetTraceTs(startTime);
         }
 
-        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+        LWTRACK(RequestReceived_ShardingServer, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
         auto [sglist, error] = SgListNormalize({ requestData.data(), requestData.length() }, request.GetBlockSize());
@@ -285,26 +317,51 @@ private:
         req->BlocksCount = requestData.length() / req->BlockSize;
 
         auto future = Service->WriteBlocksLocal(
-            std::move(callContext),
+            callContext,
             std::move(req));
 
-        future.Subscribe([=, taskQueue = TaskQueue, endpoint = Endpoint] (auto future) {
-            auto response = ExtractResponse(future);
+        future.Subscribe(
+            [=,
+             taskQueue = TaskQueue,
+             endpoint = Endpoint,
+             traceSerializer = TraceSerializer,
+             callContext = std::move(callContext)](
+                const TFuture<NProto::TWriteBlocksLocalResponse>& future)
+            {
+                LWTRACK(ResponseReceived_ShardingServer, callContext->LWOrbit);
+                auto response = GetResponse(future);
+                LWTRACK(ResponseExtracted_ShardingServer, callContext->LWOrbit);
 
-            taskQueue->ExecuteSimple([= , response = std::move(response)] {
+                taskQueue->ExecuteSimple(
+                    [=, response = std::move(response)]() mutable
+                    {
+                        LWTRACK(
+                            ResponsePosted_ShardingServer,
+                            callContext->LWOrbit);
+                        if (traceSerializer->IsTraced(callContext->LWOrbit)) {
+                            traceSerializer->BuildTraceInfo(
+                                *response.MutableTrace(),
+                                callContext->LWOrbit,
+                                startTime,
+                                GetCycleCount());
+                        }
 
-                ui32 flags = 0;
-                SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-                size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                    out,
-                    TBlockStoreServerProtocol::EvWriteBlocksResponse,
-                    flags,   // flags
-                    response);
-                if (auto ep = endpoint.lock()) {
-                    ep->SendResponse(context, responseBytes);
-                }
+                        ui32 flags = 0;
+                        SetProtoFlag(
+                            flags,
+                            NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                        size_t responseBytes =
+                            NRdma::TProtoMessageSerializer::Serialize(
+                                out,
+                                TBlockStoreServerProtocol::
+                                    EvWriteBlocksResponse,
+                                flags,   // flags
+                                response);
+                        if (auto ep = endpoint.lock()) {
+                            ep->SendResponse(context, responseBytes);
+                        }
+                    });
             });
-        });
 
         return {};
     }
@@ -316,38 +373,70 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        request.MutableHeaders()->SetCrossShardRequest(true);
+
+        const ui64 startTime = GetCycleCount();
         if (TraceSerializer->HandleTraceRequest(
                 request.GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
         {
-            request.MutableHeaders()->MutableInternal()->SetTraceTs(
-                GetCycleCount());
+            request.MutableHeaders()->MutableInternal()->SetTraceTs(startTime);
         }
 
-        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+        LWTRACK(RequestReceived_ShardingServer, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
-        auto req = std::make_shared<NProto::TZeroBlocksRequest>(std::move(request));
+        auto req =
+            std::make_shared<NProto::TZeroBlocksRequest>(std::move(request));
 
-        auto future = Service->ZeroBlocks(
-            std::move(callContext),
-            std::move(req));
+        TFuture<NProto::TZeroBlocksResponse> future =
+            Service->ZeroBlocks(callContext, std::move(req));
 
-        future.Subscribe([out = out, context = std::move(context), endpoint = Endpoint] (auto future) {
-            auto response = ExtractResponse(future);
-            ui32 flags = 0;
-            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-            size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                out,
-                TBlockStoreServerProtocol::EvZeroBlocksResponse,
-                flags,   // flags
-                response);
+        future.Subscribe(
+            [out,
+             context,
+             startTime,
+             taskQueue = TaskQueue,
+             endpoint = Endpoint,
+             traceSerializer = TraceSerializer,
+             callContext = std::move(callContext)](
+                const TFuture<NProto::TZeroBlocksResponse>& future) mutable
+            {
+                LWTRACK(ResponseReceived_ShardingServer, callContext->LWOrbit);
+                auto response = GetResponse(future);
+                LWTRACK(ResponseExtracted_ShardingServer, callContext->LWOrbit);
 
-            if (auto ep = endpoint.lock()) {
-                ep->SendResponse(context, responseBytes);
-            }
-        });
+                taskQueue->ExecuteSimple(
+                    [=, response = std::move(response)]() mutable
+                    {
+                        LWTRACK(
+                            ResponsePosted_ShardingServer,
+                            callContext->LWOrbit);
+                        if (traceSerializer->IsTraced(callContext->LWOrbit)) {
+                            traceSerializer->BuildTraceInfo(
+                                *response.MutableTrace(),
+                                callContext->LWOrbit,
+                                startTime,
+                                GetCycleCount());
+                        }
+
+                        ui32 flags = 0;
+                        SetProtoFlag(
+                            flags,
+                            NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                        size_t responseBytes =
+                            NRdma::TProtoMessageSerializer::Serialize(
+                                out,
+                                TBlockStoreServerProtocol::EvZeroBlocksResponse,
+                                flags,   // flags
+                                response);
+
+                        if (auto ep = endpoint.lock()) {
+                            ep->SendResponse(context, responseBytes);
+                        }
+                    });
+            });
 
         return {};
     }
