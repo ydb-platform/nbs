@@ -72,6 +72,8 @@ private:
     TPipeInfo* ActivePipe = nullptr;
 
 public:
+    TVolumeClientState() = default;
+
     explicit TVolumeClientState(NProto::TVolumeClientInfo info)
         : VolumeClientInfo(std::move(info))
     {}
