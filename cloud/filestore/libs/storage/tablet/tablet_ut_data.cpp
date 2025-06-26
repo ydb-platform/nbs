@@ -18,6 +18,21 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString GenerateValidateData(ui32 size, ui32 seed = 0)
+{
+    TString data(size, 0);
+    for (ui32 i = 0; i < size; ++i) {
+        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
+    }
+    return data;
+}
+
+}   // namespace
+
 using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -7267,6 +7282,87 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
+        }
+    }
+
+    TABLET_TEST(ShouldPerformHandlelessIO)
+    {
+        NProto::TStorageConfig storageConfig;
+        // If the storage config is set to allow handleless IO, it should
+        // allow writing and reading data without creating a handle. Thus, no
+        // checks for handle O_READ or O_WRITE flags is performed.
+        storageConfig.SetAllowHandlelessIO(true);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto data = GenerateValidateData(16);
+        tablet.WriteData(InvalidHandle, 0, data.size(), data.c_str(), id);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            data,
+            tablet.ReadData(InvalidHandle, 0, 128_KB, id)->Record.GetBuffer());
+
+        data = GenerateValidateData(128_KB);
+        tablet.WriteData(InvalidHandle, 0, data.size(), data.c_str(), id);
+        UNIT_ASSERT_VALUES_EQUAL(
+            data,
+            tablet.ReadData(InvalidHandle, 0, 128_KB, id)->Record.GetBuffer());
+
+        data = GenerateValidateData(128_KB + 1);
+        tablet.WriteData(InvalidHandle, 123, data.size(), data.c_str(), id);
+        UNIT_ASSERT_VALUES_EQUAL(
+            data,
+            tablet.ReadData(InvalidHandle, 123, 128_KB + 1, id)
+                ->Record.GetBuffer());
+
+        // Invalid node id should be rejected
+        auto invalidNodeId = id + 1000;
+        {
+            auto response = tablet.AssertWriteDataFailed(
+                InvalidHandle,
+                0,
+                128_KB,
+                data.c_str());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_INVAL,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+            response = tablet.AssertWriteDataFailed(
+                InvalidHandle,
+                123,
+                128_KB + 1,
+                data.c_str(),
+                invalidNodeId);
+        }
+        {
+            auto response =
+                tablet.AssertReadDataFailed(InvalidHandle, 0, 128_KB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_INVAL,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+            response = tablet.AssertReadDataFailed(
+                InvalidHandle,
+                123,
+                128_KB + 1,
+                invalidNodeId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_INVAL,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
         }
     }
 }

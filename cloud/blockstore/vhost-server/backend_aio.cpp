@@ -296,7 +296,8 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
         .block_size = BlockSize,
         .num_queues = options.QueueCount,   // Max count of virtio queues
         .total_blocks = totalBytes / BlockSize,
-        .features = options.ReadOnly ? VHD_BDEV_F_READONLY : 0};
+        .features = options.ReadOnly ? VHD_BDEV_F_READONLY : 0,
+        .pte_flush_byte_threshold = options.PteFlushByteThreshold};
 }
 
 void TAioBackend::Start()

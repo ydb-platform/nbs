@@ -4,10 +4,11 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
+#include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/vhost/public.h>
-#include <cloud/storage/core/libs/coroutine/public.h>
 
-#include <cloud/storage/core/protos/error.pb.h>
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/coroutine/public.h>
 
 #include <library/cpp/threading/future/fwd.h>
 
@@ -34,23 +35,20 @@ using TExternalEndpointFactory = std::function<IExternalEndpointPtr (
 ////////////////////////////////////////////////////////////////////////////////
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
+    TServerAppConfigPtr serverConfig,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
-    TString binaryPath,
     TString localAgentId,
-    ui32 socketAccessMode,
-    TDuration vhostServerTimeoutAfterParentExit,
     bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener);
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
+    TServerAppConfigPtr serverConfig,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
     TString localAgentId,
-    ui32 socketAccessMode,
-    TDuration vhostServerTimeoutAfterParentExit,
     bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory);

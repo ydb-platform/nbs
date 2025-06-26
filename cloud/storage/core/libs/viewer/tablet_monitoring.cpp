@@ -73,8 +73,10 @@ void DumpChannel(
                     << latestEntry->GroupID
                     << "'>Status</a>";
             }
-            const auto groupUrl =
-                getGroupUrl(latestEntry->GroupID, channel.StoragePool);
+            const auto groupUrl = getGroupUrl(
+                latestEntry->GroupID,
+                channel.StoragePool,
+                channelInfo.DataKind);
             if (groupUrl) {
                 TABLED()
                 {

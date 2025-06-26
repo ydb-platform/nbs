@@ -139,6 +139,8 @@ public:
     NProto::TChecksumFlags GetChecksumFlags() const;
     bool GetVhostDiscardEnabled() const;
     ui32 GetMaxZeroBlocksSubRequestSize() const;
+    ui64 GetVhostPteFlushByteThreshold() const;
+    bool GetAutomaticNbdDeviceManagement() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

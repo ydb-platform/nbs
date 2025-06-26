@@ -23,5 +23,6 @@ constexpr TStringBuf AnyWriterClientId = "any-writer";
 constexpr TStringBuf ShadowDiskClientId = "shadow-disk-client";
 constexpr TStringBuf CheckRangeClientId = "check-range";
 constexpr TStringBuf CopyVolumeClientId = "copy-volume-client";
+constexpr TStringBuf AnyReaderClientId = "any-reader";
 
 }   // namespace NCloud::NBlockStore::NStorage

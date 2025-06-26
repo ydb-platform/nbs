@@ -57,6 +57,13 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSyncPath(
         }
     }
 
+    if (replicas.empty()) {
+        // Something went critically wrong, mirror actor should be able to
+        // handle this.
+        ForwardRequestWithNondeliveryTracking(ctx, MirrorActorId, *ev);
+        return;
+    }
+
     ProcessReadRequestFastPath(ev, std::move(replicas), range, ctx);
 }
 

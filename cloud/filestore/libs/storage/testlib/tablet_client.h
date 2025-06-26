@@ -601,30 +601,53 @@ public:
         return request;
     }
 
-    auto CreateWriteDataRequest(ui64 handle, ui64 offset, ui64 len, char fill)
+    auto CreateWriteDataRequest(
+        ui64 handle,
+        ui64 offset,
+        ui64 len,
+        char fill,
+        ui64 node = InvalidNodeId)
     {
         auto request = CreateSessionRequest<TEvService::TEvWriteDataRequest>();
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         request->Record.SetBuffer(CreateBuffer(len, fill));
+        if (node != InvalidNodeId) {
+            request->Record.SetNodeId(node);
+        }
         return request;
     }
 
-    auto CreateWriteDataRequest(ui64 handle, ui64 offset, ui64 len, const char* data)
+    auto CreateWriteDataRequest(
+        ui64 handle,
+        ui64 offset,
+        ui64 len,
+        const char* data,
+        ui64 node = InvalidNodeId)
     {
         auto request = CreateSessionRequest<TEvService::TEvWriteDataRequest>();
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         request->Record.MutableBuffer()->assign(data, len);
+        if (node != InvalidNodeId) {
+            request->Record.SetNodeId(node);
+        }
         return request;
     }
 
-    auto CreateReadDataRequest(ui64 handle, ui64 offset, ui64 len)
+    auto CreateReadDataRequest(
+        ui64 handle,
+        ui64 offset,
+        ui64 len,
+        ui64 node = InvalidNodeId)
     {
         auto request = CreateSessionRequest<TEvService::TEvReadDataRequest>();
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         request->Record.SetLength(len);
+        if (node != InvalidNodeId) {
+            request->Record.SetNodeId(node);
+        }
         return request;
     }
 

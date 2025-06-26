@@ -5,6 +5,7 @@
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
 #include <cloud/blockstore/libs/nbd/device.h>
+#include <cloud/blockstore/libs/nbd/utils.h>
 
 #include <util/string/builder.h>
 
@@ -37,7 +38,8 @@ struct TProxyDevice: NBD::IDevice
     const TProxyDeviceFactoryConfig Config;
     const IEndpointProxyClientPtr Client;
     const TString AddressString;
-    const TString DeviceName;
+    TString DevicePath;
+    const TString DevicePrefix;
     const ui64 BlockCount;
     const ui32 BlockSize;
 
@@ -45,22 +47,38 @@ struct TProxyDevice: NBD::IDevice
             TProxyDeviceFactoryConfig config,
             IEndpointProxyClientPtr client,
             const TNetworkAddress& connectAddress,
-            TString deviceName,
+            TString devicePath,
+            TString devicePrefix,
             ui64 blockCount,
             ui32 blockSize)
         : Config(config)
         , Client(std::move(client))
         , AddressString(Addr2String(connectAddress))
-        , DeviceName(std::move(deviceName))
+        , DevicePath(std::move(devicePath))
+        , DevicePrefix(std::move(devicePrefix))
         , BlockCount(blockCount)
         , BlockSize(blockSize)
     {}
 
     NThreading::TFuture<NProto::TError> Start() override
     {
+        if (!DevicePath) {
+            DevicePath = NBD::FindFreeNbdDevice().replace(
+                0,
+                NBD::DEVICE_PREFIX.size(),
+                DevicePrefix);
+
+            if (DevicePath == DevicePrefix) {
+                return NThreading::MakeFuture(MakeError(
+                    E_FAIL,
+                    TStringBuilder()
+                        << "unable to find free nbd device with prefix "
+                        << DevicePrefix.Quote()));
+            }
+        }
         auto request = std::make_shared<NProto::TStartProxyEndpointRequest>();
         request->SetUnixSocketPath(AddressString);
-        request->SetNbdDevice(DeviceName);
+        request->SetNbdDevice(DevicePath);
         if (Config.DefaultSectorSize) {
             request->SetBlocksCount(
                 BlockCount * BlockSize / Config.DefaultSectorSize);
@@ -99,6 +117,11 @@ struct TProxyDevice: NBD::IDevice
         return Client->ResizeProxyDevice(std::move(request))
             .Apply([](const auto& f) { return f.GetValue().GetError(); });
     }
+
+    TString GetPath() const override
+    {
+        return DevicePath;
+    }
 };
 
 struct TProxyFactory: NBD::IDeviceFactory
@@ -115,7 +138,7 @@ struct TProxyFactory: NBD::IDeviceFactory
 
     NBD::IDevicePtr Create(
         const TNetworkAddress& connectAddress,
-        TString deviceName,
+        TString devicePath,
         ui64 blockCount,
         ui32 blockSize) override
     {
@@ -123,7 +146,24 @@ struct TProxyFactory: NBD::IDeviceFactory
             Config,
             Client,
             connectAddress,
-            std::move(deviceName),
+            std::move(devicePath),
+            "",
+            blockCount,
+            blockSize);
+    }
+
+    NBD::IDevicePtr CreateFree(
+        const TNetworkAddress& connectAddress,
+        TString devicePrefix,
+        ui64 blockCount,
+        ui32 blockSize) override
+    {
+        return std::make_shared<TProxyDevice>(
+            Config,
+            Client,
+            connectAddress,
+            "",
+            std::move(devicePrefix),
             blockCount,
             blockSize);
     }

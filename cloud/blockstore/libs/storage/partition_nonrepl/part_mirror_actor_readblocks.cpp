@@ -555,13 +555,14 @@ void TMirrorPartitionActor::ReadBlocks(
         blockRange,
         TMethod::Name);
 
-    bool tryToSplitRequest =
+    const bool shouldTryToSplitRequest =
         error.GetCode() == E_INVALID_STATE && !replicaIndex;
-    if (HasError(error) && !tryToSplitRequest) {
+    ProcessMirrorActorError(error);
+    if (HasError(error) && !shouldTryToSplitRequest) {
         NCloud::Reply(ctx, *ev, std::make_unique<TResponse>(std::move(error)));
         return;
     }
-    if (tryToSplitRequest) {
+    if (shouldTryToSplitRequest) {
         auto splitError = SplitReadBlocks<TMethod>(ev, ctx);
 
         if (HasError(splitError)) {
