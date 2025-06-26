@@ -369,6 +369,7 @@ DataplaneConfig: <
     CollectSnapshotsTaskScheduleInterval: "2s"
     SnapshotCollectionInflightLimit: 10
     ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
+    CheckpointIterationLimit: 2
 {migration_config}
 >
 """

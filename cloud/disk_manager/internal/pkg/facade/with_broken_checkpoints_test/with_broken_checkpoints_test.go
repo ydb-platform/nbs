@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
@@ -146,6 +147,25 @@ func getProgress(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func disableDevicesOfShadowDisk(
+	t *testing.T,
+	ctx context.Context,
+	diskRegistryStateBackup *nbs.DiskRegistryStateBackup,
+	shadowDisk *nbs.DiskRegistryBasedDisk,
+	nbsClient nbs.TestingClient,
+) {
+
+	deviceUUIDs := shadowDisk.DeviceUUIDs
+	require.Equal(t, 1, len(deviceUUIDs))
+	agentID := diskRegistryStateBackup.GetAgentIDByDeviceUUID(deviceUUIDs[0])
+	require.NotEmpty(t, agentID)
+
+	err := nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
+	require.NoError(t, err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func testCreateSnapshotOrImageFromDiskWithFailedShadowDisk(
 	t *testing.T,
 	diskKind disk_manager.DiskKind,
@@ -218,13 +238,12 @@ func testCreateSnapshotOrImageFromDiskWithFailedShadowDisk(
 			continue
 		}
 
-		deviceUUIDs := shadowDisk.DeviceUUIDs
-		require.Equal(t, 1, len(deviceUUIDs))
-		agentID := diskRegistryStateBackup.GetAgentIDByDeviceUUID(deviceUUIDs[0])
-		require.NotEmpty(t, agentID)
-
-		err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
-		require.NoError(t, err)
+		disableDevicesOfShadowDisk(
+			t,
+			ctx,
+			diskRegistryStateBackup,
+			shadowDisk,
+			nbsClient)
 		break
 	}
 
@@ -363,4 +382,115 @@ func TestImageServiceCreateImageFromDiskWithFailedShadowDiskAndOperationCancel(
 		true, // WithCancel
 		true, // isImage
 	)
+}
+
+func TestCheckpointCreationFailsIfCheckpointIterationLimitExceeded(
+	t *testing.T,
+) {
+
+	diskKind := disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED
+	diskSize := uint64(262144 * 4096)
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name() + "1"
+	diskBlockSize := 4096
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: diskKind,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		BlockSize: int64(diskBlockSize),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	_, err = nbsClient.FillDisk(ctx, diskID, diskSize)
+	require.NoError(t, err)
+
+	// Retries of broken checkpoints creation is incapsulated in dataplane task,
+	// so it not necessary to check both image and snapshot creation.
+	isImage := true
+	imageID := t.Name()
+	operation = startCreateSnapshotOrImageFromDiskOperation(
+		t,
+		ctx,
+		client,
+		diskID,
+		imageID,
+		isImage,
+	)
+
+	var firstShadowDiskID string
+
+	// Breaking the first checkpoint.
+	for {
+		diskRegistryStateBackup, err := nbsClient.BackupDiskRegistryState(ctx)
+		require.NoError(t, err)
+		shadowDisk := diskRegistryStateBackup.GetShadowDisk(diskID)
+
+		if shadowDisk == nil {
+			// The first shadow disk is not created yet. Waiting.
+			continue
+		}
+
+		firstShadowDiskID = shadowDisk.DiskID
+
+		disableDevicesOfShadowDisk(
+			t,
+			ctx,
+			diskRegistryStateBackup,
+			shadowDisk,
+			nbsClient)
+		break
+	}
+
+	// Breaking the second checkpoint.
+	for {
+		diskRegistryStateBackup, err := nbsClient.BackupDiskRegistryState(ctx)
+		require.NoError(t, err)
+		shadowDisk := diskRegistryStateBackup.GetShadowDisk(diskID)
+
+		if shadowDisk == nil || shadowDisk.DiskID == firstShadowDiskID {
+			// The second shadow disk is not created yet. Waiting.
+			continue
+		}
+
+		disableDevicesOfShadowDisk(
+			t,
+			ctx,
+			diskRegistryStateBackup,
+			shadowDisk,
+			nbsClient)
+		break
+	}
+
+	response := makeBlankResponse(isImage)
+	err = internal_client.WaitResponse(
+		ctx,
+		client,
+		operation.Id,
+		response,
+	)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "Non retriable error")
+	require.ErrorContains(t, err, "Too many failed checkpoint iterations: 2")
+
+	// Should wait here because second checkpoint is deleted on imageID creation
+	// operation cancel (and exact time of this event is unknown).
+	testcommon.WaitForNoCheckpointsExist(t, ctx, diskID)
 }
