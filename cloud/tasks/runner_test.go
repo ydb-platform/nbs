@@ -1316,6 +1316,8 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
 	pingTimeout := 100 * time.Second
 	pingsCount := 5
+	initialRunningInflightFor := 42 * time.Second
+
 	ctx, cancel := context.WithCancel(newContext())
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
@@ -1327,7 +1329,7 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 		storage.TaskState{
 			ID:                 pingerTaskId,
 			ModifiedAt:         time.Now(),
-			RunningInflightFor: 42 * time.Second,
+			RunningInflightFor: initialRunningInflightFor,
 		},
 		time.Hour,
 		2,
@@ -1337,7 +1339,7 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 		state := storage.TaskState{
 			ID:                 pingerTaskId,
 			ModifiedAt:         time.Now().Add(time.Duration(i) * pingPeriod),
-			RunningInflightFor: 42*time.Second + time.Duration(i)*pingPeriod,
+			RunningInflightFor: initialRunningInflightFor + time.Duration(i)*pingPeriod,
 		}
 		taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state)).Return(state, nil).Once()
 	}
