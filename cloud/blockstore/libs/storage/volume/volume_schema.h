@@ -279,36 +279,36 @@ struct TVolumeSchema
         {
         };
 
-        struct CreatedAt: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
-        {
-        };
-
-        struct LeaderDiskId
-            : public Column<3, NKikimr::NScheme::NTypeIds::String>
-        {
-        };
-
-        struct LeaderShardId
-            : public Column<4, NKikimr::NScheme::NTypeIds::String>
-        {
-        };
-
         struct FollowerDiskId
-            : public Column<5, NKikimr::NScheme::NTypeIds::String>
+            : public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
         struct FollowerShardId
-            : public Column<6, NKikimr::NScheme::NTypeIds::String>
+            : public Column<3, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct State: public Column<7, NKikimr::NScheme::NTypeIds::Uint32>
+        struct State: public Column<4, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
         struct MigratedBytes
-            : public Column<8, NKikimr::NScheme::NTypeIds::Uint64>
+            : public Column<5, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct CreatedAt: public Column<6, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct LeaderDiskId
+            : public Column<7, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct LeaderShardId
+            : public Column<8, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
@@ -324,13 +324,13 @@ struct TVolumeSchema
         using TKey = TableKey<Uuid>;
         using TColumns = TableColumns<
             Uuid,
-            CreatedAt,
-            LeaderDiskId,
-            LeaderShardId,
             FollowerDiskId,
             FollowerShardId,
             State,
             MigratedBytes,
+            CreatedAt,
+            LeaderDiskId,
+            LeaderShardId,
             MediaKind,
             ErrorMessage>;
     };
@@ -397,8 +397,7 @@ struct TVolumeSchema
         MetaHistory,
         VolumeParams,
         FollowerDisks,
-        LeaderDisks
-    >;
+        LeaderDisks>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
