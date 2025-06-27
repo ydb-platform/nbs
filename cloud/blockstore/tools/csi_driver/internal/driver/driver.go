@@ -164,6 +164,12 @@ func NewDriver(cfg Config) (*Driver, error) {
 		return nil, err
 	}
 
+	// Ensure StartEndpointRetryTimeout is set to a value less than
+	// GrpcRequestTimeout to prevent issues with dangling endpoints.
+	// StartEndpoint may return GRPC_DEADLINE_ERROR however the
+	// blockstore-server queues the request and may eventually start the
+	// endpoint. As NodeStageVolume fails, Kubernetes will not call
+	// NodeUnstageVolume.
 	if cfg.StartEndpointRetryTimeout >= cfg.GrpcRequestTimeout {
 		return nil,
 			fmt.Errorf("Invalid timeout values. StartEndpointRetryTimeout %q must be less than GrpcRequestTimeout %q",
