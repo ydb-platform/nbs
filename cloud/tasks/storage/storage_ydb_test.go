@@ -4798,3 +4798,50 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusReadyToRun)
 }
+
+func TestStallingDurationUpdatesOnStalkerRun(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+	createdAt := time.Now().Truncate(time.Microsecond) // YDB truncates time up to 1 microsecond
+	taskDuration := time.Minute
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": "task1"},
+	).On("Add", int64(1)).Once()
+
+	taskID, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         TaskStatusRunning,
+		State:          []byte{},
+		Dependencies:   NewStringSet(),
+		LastRunner:     "runner_42",
+	})
+	require.NoError(t, err)
+	metricsRegistry.AssertAllExpectations(t)
+
+	taskState, err := storage.LockTaskToRun(ctx, TaskInfo{
+		ID:           taskID,
+		GenerationID: 0,
+	}, createdAt.Add(taskDuration), "host", "runner_43")
+	require.NoError(t, err)
+	require.EqualValues(t, taskDuration, taskState.StallingDuration)
+}
