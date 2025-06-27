@@ -2832,6 +2832,7 @@ func TestStorageYDBLockTaskToRun(t *testing.T) {
 	}, createdAt.Add(taskDuration), "host", "runner_43")
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 1)
+	require.EqualValues(t, taskState.StallingDuration, time.Duration(0))
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -2978,6 +2979,7 @@ func TestStorageYDBLockTaskToCancel(t *testing.T) {
 	}, createdAt.Add(taskDuration), "host", "runner_43")
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 1)
+	require.EqualValues(t, taskState.StallingDuration, time.Duration(0))
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -4799,7 +4801,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 	require.Equal(t, task.Status, TaskStatusReadyToRun)
 }
 
-func TestStallingDurationUpdatesOnStalkerRun(t *testing.T) {
+func TestStallingDurationAccumulatesOnStalkerRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -4816,6 +4818,8 @@ func TestStallingDurationUpdatesOnStalkerRun(t *testing.T) {
 	require.NoError(t, err)
 	createdAt := time.Now().Truncate(time.Microsecond) // YDB truncates time up to 1 microsecond
 	taskDuration := time.Minute
+	stallingDuration := 42 * time.Second
+	locksCount := 5
 
 	metricsRegistry.GetCounter(
 		"created",
@@ -4823,25 +4827,80 @@ func TestStallingDurationUpdatesOnStalkerRun(t *testing.T) {
 	).On("Add", int64(1)).Once()
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     createdAt,
-		GenerationID:   0,
-		Status:         TaskStatusRunning,
-		State:          []byte{},
-		Dependencies:   NewStringSet(),
-		LastRunner:     "runner_42",
+		IdempotencyKey:   getIdempotencyKeyForTest(t),
+		TaskType:         "task1",
+		Description:      "Some task",
+		CreatedAt:        createdAt,
+		CreatedBy:        "some_user",
+		ModifiedAt:       createdAt,
+		GenerationID:     0,
+		Status:           TaskStatusRunning,
+		State:            []byte{},
+		Dependencies:     NewStringSet(),
+		LastRunner:       "runner_42",
+		StallingDuration: stallingDuration,
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
 
-	taskState, err := storage.LockTaskToRun(ctx, TaskInfo{
-		ID:           taskID,
-		GenerationID: 0,
-	}, createdAt.Add(taskDuration), "host", "runner_43")
+	for i := 0; i < locksCount; i++ {
+		taskState, err := storage.LockTaskToRun(ctx, TaskInfo{
+			ID:           taskID,
+			GenerationID: uint64(i),
+		}, createdAt.Add(time.Duration(i+1)*taskDuration), "host", "runner_43")
+		require.NoError(t, err)
+		require.EqualValues(t, stallingDuration+time.Duration(i+1)*taskDuration, taskState.StallingDuration)
+	}
+}
+
+func TestStallingDurationAccumulatesOnStalkerCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
 	require.NoError(t, err)
-	require.EqualValues(t, taskDuration, taskState.StallingDuration)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+	createdAt := time.Now().Truncate(time.Microsecond) // YDB truncates time up to 1 microsecond
+	taskDuration := time.Minute
+	stallingDuration := 42 * time.Second
+	locksCount := 5
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": "task1"},
+	).On("Add", int64(1)).Once()
+
+	taskID, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey:   getIdempotencyKeyForTest(t),
+		TaskType:         "task1",
+		Description:      "Some task",
+		CreatedAt:        createdAt,
+		CreatedBy:        "some_user",
+		ModifiedAt:       createdAt,
+		GenerationID:     0,
+		Status:           TaskStatusCancelling,
+		State:            []byte{},
+		Dependencies:     NewStringSet(),
+		LastRunner:       "runner_42",
+		StallingDuration: stallingDuration,
+	})
+	require.NoError(t, err)
+	metricsRegistry.AssertAllExpectations(t)
+
+	for i := 0; i < locksCount; i++ {
+		taskState, err := storage.LockTaskToCancel(ctx, TaskInfo{
+			ID:           taskID,
+			GenerationID: uint64(i),
+		}, createdAt.Add(time.Duration(i+1)*taskDuration), "host", "runner_43")
+		require.NoError(t, err)
+		require.EqualValues(t, stallingDuration+time.Duration(i+1)*taskDuration, taskState.StallingDuration)
+	}
 }
