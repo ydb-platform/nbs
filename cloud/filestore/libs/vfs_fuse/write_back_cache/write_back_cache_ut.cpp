@@ -193,6 +193,9 @@ struct TBootstrap
         };
 
         Session->WriteDataHandler = [&] (auto, auto request) {
+            std::unique_lock lock1(UnflushedDataMutex);
+            std::unique_lock lock2(FlushedDataMutex);
+
             SessionWriteDataHandlerCalled++;
 
             const auto handle = request->GetHandle();
@@ -211,9 +214,6 @@ struct TBootstrap
             Y_DEFER {
                 InFlightWriteRequestTracker[handle].Remove(offset, length);
             };
-
-            std::unique_lock lock1(UnflushedDataMutex);
-            std::unique_lock lock2(FlushedDataMutex);
 
             STORAGE_INFO("Flushing " << request->GetBuffer().Quote()
                 << " to @" << request->GetHandle()
