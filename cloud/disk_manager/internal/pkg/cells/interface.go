@@ -15,4 +15,6 @@ type CellSelector interface {
 	) string
 
 	IsCellOfZone(cellID string, zoneID string) bool
+
+	GetCells(zoneID string) []string
 }

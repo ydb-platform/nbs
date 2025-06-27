@@ -1965,3 +1965,14 @@ func TestAlterPlacementGroupMembershipFailureBecauseOfTooManyDisksInGroup(t *tes
 	err = client.DeletePlacementGroup(ctx, groupID)
 	require.NoError(t, err)
 }
+
+func TestQueryAvailableStorage(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	// Local disks and disk agents are not available in test environment,
+	// ensure no errors occur.
+	infos, err := client.QueryAvailableStorage(ctx, []string{"agent"})
+	require.NoError(t, err)
+	require.Empty(t, infos)
+}

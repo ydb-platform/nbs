@@ -32,3 +32,8 @@ func (s *CellSelectorMock) IsCellOfZone(cellID string, zoneID string) bool {
 	args := s.Called(cellID, zoneID)
 	return args.Bool(0)
 }
+
+func (s *CellSelectorMock) GetCells(zoneID string) []string {
+	args := s.Called(zoneID)
+	return args.Get(0).([]string)
+}

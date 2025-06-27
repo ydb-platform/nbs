@@ -121,6 +121,12 @@ type DiskContentInfo struct {
 	BlockCrc32s []uint32
 }
 
+type AvailableStorageInfo struct {
+	AgentID    string
+	ChunkSize  uint64
+	ChunkCount uint32
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type Client interface {
@@ -312,6 +318,11 @@ type Client interface {
 		diskID string,
 		fillGeneration uint64,
 	) error
+
+	QueryAvailableStorage(
+		ctx context.Context,
+		agenstIDs []string,
+	) ([]AvailableStorageInfo, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
