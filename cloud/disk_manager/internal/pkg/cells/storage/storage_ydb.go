@@ -80,7 +80,6 @@ func (s *storageYDB) addClusterCapacities(ctx context.Context,
 	if err != nil {
 		return err
 	}
-
 	defer tx.Rollback(ctx)
 
 	var values []persistence.Value
@@ -109,7 +108,6 @@ func (s *storageYDB) addClusterCapacities(ctx context.Context,
 	`, s.tablesPath, clusterCapacityStateStructTypeString()),
 		persistence.ValueParam("$capacities", persistence.ListValue(values...)),
 	)
-
 	if err != nil {
 		return err
 	}
@@ -148,7 +146,6 @@ func (s *storageYDB) getRecentClusterCapacities(
 		),
 		persistence.ValueParam("$zone_id", persistence.UTF8Value(zone_id)),
 	)
-
 	if err != nil {
 		return nil, err
 	}
