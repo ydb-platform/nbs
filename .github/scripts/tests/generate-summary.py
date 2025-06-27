@@ -19,6 +19,7 @@ class TestStatus(Enum):
     ERROR = 2
     SKIP = 3
     MUTE = 4
+    FAIL_BUILD = 5
 
     def __lt__(self, other):
         return self.value < other.value
@@ -38,6 +39,7 @@ class TestResult:
         return {
             TestStatus.PASS: "PASS",
             TestStatus.FAIL: "FAIL",
+            TestStatus.FAIL_BUILD: "FAIL BUILD",
             TestStatus.ERROR: "ERROR",
             TestStatus.SKIP: "SKIP",
             TestStatus.MUTE: "MUTE",
@@ -70,6 +72,8 @@ class TestResult:
             if text is not None and "Killed by timeout" in text:
                 print(f"{classname}, {name} is_timed_out  = True")
                 is_timed_out = True
+            if text is not None and "skipped due to a failed build" in text:
+                status = TestStatus.FAIL_BUILD
         elif testcase.find("error") is not None:
             status = TestStatus.ERROR
         elif get_property_value(testcase, "mute") is not None:
@@ -117,7 +121,11 @@ class TestSummaryLine:
         self.counter = {s: 0 for s in TestStatus}
 
     def add(self, test: TestResult):
-        self.is_failed |= test.status in (TestStatus.ERROR, TestStatus.FAIL)
+        self.is_failed |= test.status in (
+            TestStatus.ERROR,
+            TestStatus.FAIL,
+            TestStatus.FAIL_BUILD,
+        )
         self.counter[test.status] += 1
         self.tests.append(test)
 
@@ -140,6 +148,10 @@ class TestSummaryLine:
     @property
     def failed(self):
         return self.counter[TestStatus.FAIL]
+
+    @property
+    def failed_build(self):
+        return self.counter[TestStatus.FAIL_BUILD]
 
     @property
     def skipped(self):
@@ -178,7 +190,15 @@ class TestSummary:
             else f'<sup>[?]({footnote_url} "All mute rules are defined here")</sup>'
         )
 
-        columns = ["TESTS", "PASSED", "ERRORS", "FAILED", "SKIPPED", f"MUTED{footnote}"]
+        columns = [
+            "TESTS",
+            "PASSED",
+            "ERRORS",
+            "FAILED",
+            "FAILED BUILD",
+            "SKIPPED",
+            f"MUTED{footnote}",
+        ]
 
         need_first_column = len(self.lines) > 1
 
@@ -205,6 +225,7 @@ class TestSummary:
                     render_pm(line.passed, f"{report_url}#PASS", 0),
                     render_pm(line.errors, f"{report_url}#ERROR", 0),
                     render_pm(line.failed, f"{report_url}#FAIL", 0),
+                    render_pm(line.failed_build, f"{report_url}#FAIL_BUILD", 0),
                     render_pm(line.skipped, f"{report_url}#SKIP", 0),
                     render_pm(line.muted, f"{report_url}#MUTE", 0),
                 ]
@@ -257,6 +278,7 @@ def render_testlist_html(rows, fn, summary_url):
     status_order = [
         TestStatus.ERROR,
         TestStatus.FAIL,
+        TestStatus.FAIL_BUILD,
         TestStatus.SKIP,
         TestStatus.MUTE,
         TestStatus.PASS,

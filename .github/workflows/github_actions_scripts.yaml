@@ -11,11 +11,12 @@ jobs:
     - name: README
       run: |
         echo "This is a test of the GA scripts"
-        cat <<EOF > README.md
+        cat << 'EOF' > README.md
         To update the test data, run the following commands:
         export TMP_DIR=$(mktemp -d)
         export GITHUB_WORKSPACE=$(pwd)
         export GITHUB_REPOSITORY="ydb-platform/nbs"
+        export ACTIONS_TEST_DATA_VERSION=${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
 
         mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
         cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/ || exit
@@ -48,6 +49,7 @@ jobs:
         tar zcvf cloud-v${NEW_VERSION}.tar.gz cloud/ MD5SUMS fail-checker  junit.xml summary_env ya-test.html muted_ya.txt
 
         Upload resulting cloud-v${NEW_VERSION}.tar.gz to the storage.ai.nebius.cloud bucket github-actions-test-data
+        aws s3 cp cloud-v${NEW_VERSION}.tar.gz s3://github-actions-test-data/cloud-v${NEW_VERSION}.tar.gz
         Bump version in https://github.com/ydb-platform/nbs/settings/variables/actions
         EOF
         cat README.md
