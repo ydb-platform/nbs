@@ -2117,7 +2117,6 @@ func (s *storageYDB) resumeTask(
 
 	state.Status = TaskStatusReadyToRun
 	state.GenerationID++
-	state.WaitingDuration += now.Sub(state.ChangedStateAt)
 	state.ModifiedAt = now
 	state.ChangedStateAt = now
 
