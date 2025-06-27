@@ -395,12 +395,12 @@ runs:
       if: ${{ !cancelled() }}
       run: |
         echo "::group::dump-vm-artifacts"
-        # shellcheck disable=SC2024
         sudo mkdir -p "$LOG_DIR/system_logs"
+        # shellcheck disable=SC2024
         sudo dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || true
         sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
         sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
-        sudo chown -R github:github "$LOG_DIR/system_logs/ || true
+        sudo chown -R github:github "$LOG_DIR/system_logs/" || true
         sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/"
         echo "::endgroup::"
 
