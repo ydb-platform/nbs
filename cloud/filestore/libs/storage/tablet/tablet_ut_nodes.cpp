@@ -2162,7 +2162,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetNodeRefs().size());
         UNIT_ASSERT_VALUES_EQUAL(id1, response->Record.GetNextNodeId());
         UNIT_ASSERT_VALUES_EQUAL("test4", response->Record.GetNextCookie());
-        // Check that we
         response = tablet.ReadNodeRefs(
             response->Record.GetNextNodeId(),
             response->Record.GetNextCookie(),

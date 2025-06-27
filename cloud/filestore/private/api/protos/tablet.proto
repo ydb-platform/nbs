@@ -857,7 +857,7 @@ message TReadNodeRefsResponse
     repeated TNodeRef NodeRefs = 2;
     // Parent node ID to start the next request from.
     uint64 NextNodeId = 3;
-    // File name to start the next request from.
+    // Optional cookie passed by server to continue listing.
     string NextCookie = 4;
 }
 
@@ -873,6 +873,6 @@ message TNodeRef
     uint64 ChildId = 4;
     // ID of a shard.
     string ShardId = 5;
-    // node FQDN the shard is located on.
+    // Node ID within the shard.
     string ShardNodeName = 6;
 }
