@@ -18,7 +18,6 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 func makeDefaultConfig() *cells_config.CellsConfig {
-
 	return &cells_config.CellsConfig{}
 }
 

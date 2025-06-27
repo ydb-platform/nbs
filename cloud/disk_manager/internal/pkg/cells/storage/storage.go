@@ -83,7 +83,7 @@ func clusterCapacityStateTableDescription() persistence.CreateTableDescription {
 
 		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
 
-		persistence.WithPrimaryKeyColumn("created_at", "cell_id"),
+		persistence.WithPrimaryKeyColumn("created_at", "cell_id", "kind"),
 	)
 }
 
