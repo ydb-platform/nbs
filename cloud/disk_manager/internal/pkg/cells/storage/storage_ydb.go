@@ -84,6 +84,7 @@ func (s *storageYDB) addClusterCapacities(ctx context.Context,
 	defer tx.Rollback(ctx)
 
 	var values []persistence.Value
+	createdAt := time.Now()
 
 	for _, capacity := range capacities {
 		capacityState := &clusterCapacityState{
@@ -92,7 +93,7 @@ func (s *storageYDB) addClusterCapacities(ctx context.Context,
 			Kind:       common.DiskKindToString(capacity.Kind),
 			TotalBytes: capacity.TotalBytes,
 			FreeBytes:  capacity.FreeBytes,
-			CreatedAt:  time.Now(),
+			CreatedAt:  createdAt,
 		}
 
 		values = append(values, capacityState.structValue())

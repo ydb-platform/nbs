@@ -88,7 +88,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		FreeBytes:  1024,
 	}
 
-	capacity2 := ClusterCapacity{
+	cellCapacity1 := ClusterCapacity{
 		ZoneID:     "zone-a",
 		CellID:     "zone-a-shard1",
 		Kind:       types.DiskKind_DISK_KIND_HDD,
@@ -96,7 +96,15 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		FreeBytes:  1024,
 	}
 
-	capacity3 := ClusterCapacity{
+	cellCapacitySsd1 := ClusterCapacity{
+		ZoneID:     "zone-a",
+		CellID:     "zone-a-shard1",
+		Kind:       types.DiskKind_DISK_KIND_SSD,
+		TotalBytes: 1024,
+		FreeBytes:  1024,
+	}
+
+	capacity2 := ClusterCapacity{
 		ZoneID:     "zone-a",
 		CellID:     "zone-a",
 		Kind:       types.DiskKind_DISK_KIND_HDD,
@@ -104,7 +112,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		FreeBytes:  2048,
 	}
 
-	capacity4 := ClusterCapacity{
+	cellCapacity2 := ClusterCapacity{
 		ZoneID:     "zone-a",
 		CellID:     "zone-a-shard1",
 		Kind:       types.DiskKind_DISK_KIND_HDD,
@@ -112,9 +120,18 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		FreeBytes:  2048,
 	}
 
+	cellCapacitySsd2 := ClusterCapacity{
+		ZoneID:     "zone-a",
+		CellID:     "zone-a-shard1",
+		Kind:       types.DiskKind_DISK_KIND_SSD,
+		TotalBytes: 2048,
+		FreeBytes:  2048,
+	}
+
 	err = storage.AddClusterCapacities(ctx, []ClusterCapacity{
 		capacity1,
-		capacity2,
+		cellCapacity1,
+		cellCapacitySsd1,
 	})
 	require.NoError(t, err)
 
@@ -124,9 +141,20 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{capacity1, capacity2}, capacities)
+	require.ElementsMatch(t, []ClusterCapacity{
+		capacity1,
+		cellCapacity1,
+	}, capacities)
 
-	err = storage.AddClusterCapacities(ctx, []ClusterCapacity{capacity3})
+	capacities, err = storage.GetRecentClusterCapacities(
+		ctx,
+		"zone-a",
+		types.DiskKind_DISK_KIND_SSD,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []ClusterCapacity{cellCapacitySsd1}, capacities)
+
+	err = storage.AddClusterCapacities(ctx, []ClusterCapacity{capacity2})
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
@@ -135,9 +163,15 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{capacity2, capacity3}, capacities)
+	require.ElementsMatch(t, []ClusterCapacity{
+		capacity2,
+		cellCapacity1,
+	}, capacities)
 
-	err = storage.AddClusterCapacities(ctx, []ClusterCapacity{capacity4})
+	err = storage.AddClusterCapacities(ctx, []ClusterCapacity{
+		cellCapacity2,
+		cellCapacitySsd2,
+	})
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
@@ -146,5 +180,16 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{capacity3, capacity4}, capacities)
+	require.ElementsMatch(t, []ClusterCapacity{
+		capacity2,
+		cellCapacity2,
+	}, capacities)
+
+	capacities, err = storage.GetRecentClusterCapacities(
+		ctx,
+		"zone-a",
+		types.DiskKind_DISK_KIND_SSD,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []ClusterCapacity{cellCapacitySsd2}, capacities)
 }
