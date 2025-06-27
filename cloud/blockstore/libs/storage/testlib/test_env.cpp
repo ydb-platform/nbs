@@ -453,21 +453,22 @@ void TTestEnv::SetupLogging()
         TBlockStoreComponents::END,
         GetComponentName);
 
-    // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-    //     Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
-    // }
+    for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+        Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+    }
 
     // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     // Runtime.SetLogPriority(NKikimrServices::WILSON, NLog::PRI_DEBUG);
     // Runtime.SetLogPriority(NKikimrServices::FLAT_TX_SCHEMESHARD, NLog::PRI_DEBUG);
-    // Runtime.SetLogPriority(NKikimrServices::BS_CONTROLLER, NLog::PRI_DEBUG);
+    Runtime.SetLogPriority(NKikimrServices::BS_CONTROLLER, NLog::PRI_DEBUG);
     // Runtime.SetLogPriority(NKikimrServices::HIVE, NLog::PRI_TRACE);
     // Runtime.SetLogPriority(NKikimrServices::LOCAL, NLog::PRI_DEBUG);
     // Runtime.SetLogPriority(NKikimrServices::TX_MEDIATOR, NLog::PRI_DEBUG);
     // Runtime.SetLogPriority(NKikimrServices::TX_COORDINATOR, NLog::PRI_DEBUG);
     // Runtime.SetLogPriority(NKikimrServices::TX_PROXY, NLog::PRI_DEBUG);
     // Runtime.SetLogPriority(NKikimrServices::TX_PROXY_SCHEME_CACHE, NLog::PRI_DEBUG);
-    Runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
+    Runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_INFO);
+    Runtime.SetLogPriority(NKikimrServices::TABLET_MAIN, NLog::PRI_DEBUG);
 }
 
 void TTestEnv::SetupDomain(TAppPrepare& app)
