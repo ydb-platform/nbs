@@ -222,6 +222,7 @@ type TaskState struct {
 	LastRunner          string
 	ZoneID              string
 	EstimatedTime       time.Time
+	WaitingDuration     time.Duration
 	PanicCount          uint64
 	Events              []int64
 
