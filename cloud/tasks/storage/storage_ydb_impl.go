@@ -1316,14 +1316,21 @@ func (s *storageYDB) prepareDependantsToWakeup(
 
 		if len(newState.Dependencies.Vals()) == 0 {
 			// Return from "sleeping" state because dependencies are resolved.
+
+			if newState.Status == TaskStatusWaitingToRun || newState.Status == TaskStatusWaitingToCancel {
+				now := time.Now()
+				newState.WaitingDuration += now.Sub(newState.ChangedStateAt)
+				newState.ModifiedAt = now
+				newState.ChangedStateAt = now
+				newState.GenerationID++
+			}
+
 			switch newState.Status {
 			case TaskStatusWaitingToRun:
 				newState.Status = TaskStatusReadyToRun
-				newState.GenerationID++
 
 			case TaskStatusWaitingToCancel:
 				newState.Status = TaskStatusReadyToCancel
-				newState.GenerationID++
 			}
 		}
 
