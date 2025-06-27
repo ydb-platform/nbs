@@ -34,4 +34,8 @@ message DataplaneConfig {
     optional string ProxyOverlayDiskIdPrefix = 16 [default = "proxy-"];
     optional snapshot.SnapshotConfig MigrationDstSnapshotConfig = 17;
     optional uint32 MigratingSnapshotsInflightLimit = 18 [default = 10];
+
+    // Needed for snapshot/image creation from disk registry based disks.
+    // Limits the number of attemps of checkpoint creation.
+    optional uint32 CheckpointIterationLimit = 19 [default = 10];
 }
