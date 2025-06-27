@@ -37,5 +37,8 @@ using IMetricClientPtr = std::shared_ptr<IMetricClient>;
 struct IMetricDataClient;
 using IMetricDataClientPtr = std::shared_ptr<IMetricDataClient>;
 
+struct IMultiClientEndpoint;
+using IMultiClientEndpointPtr = std::shared_ptr<IMultiClientEndpoint>;
+
 }   // namespace NClient
 }   // namespace NCloud::NBlockStore

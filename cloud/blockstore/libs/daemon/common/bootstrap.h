@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
+#include <cloud/blockstore/libs/sharding/iface/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/vhost/public.h>
@@ -57,6 +58,7 @@ protected:
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
+    NSharding::IShardingManagerPtr ShardingManager;
     ISocketEndpointListenerPtr GrpcEndpointListener;
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;
@@ -78,7 +80,9 @@ protected:
     ITaskQueuePtr RdmaThreadPool;
     NNvme::INvmeManagerPtr NvmeManager;
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
-    NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
+    NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;    
+    NRdma::IServerPtr RdmaRequestServer;
+    IStartablePtr RdmaTarget;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;
@@ -106,7 +110,7 @@ protected:
     virtual IStartable* GetClientPercentiles() = 0;
     virtual IStartable* GetStatsUploader() = 0;
     virtual IStartable* GetYdbStorage() = 0;
-    virtual IStartable* GetTraceSerializer() = 0;
+    virtual ITraceSerializerPtr GetTraceSerializer() = 0;
     virtual IStartable* GetLogbrokerService() = 0;
     virtual IStartable* GetNotifyService() = 0;
     virtual IStartable* GetStatsFetcher() = 0;
@@ -120,12 +124,14 @@ protected:
     virtual void InitRdmaServer() = 0;
     virtual void InitKikimrService() = 0;
     virtual void InitAuthService() = 0;
+    virtual void InitRdmaRequestServer() = 0;
 
     virtual void WarmupBSGroupConnections() = 0;
 
+    virtual void SetupShardingManager() = 0;
+
     void InitLWTrace();
     void InitProfileLog();
-    void InitLogs();
 
 private:
     void InitLocalService();

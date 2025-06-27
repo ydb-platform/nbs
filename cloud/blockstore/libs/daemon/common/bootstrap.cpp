@@ -42,15 +42,17 @@
 #include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
 #include <cloud/blockstore/libs/nbd/device.h>
+#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
-#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service_rdma/rdma_target.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
@@ -67,6 +69,7 @@
 #include <cloud/blockstore/libs/service_throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_tracker.h>
 #include <cloud/blockstore/libs/service_throttling/throttling.h>
+#include <cloud/blockstore/libs/sharding/iface/sharding.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
@@ -91,6 +94,7 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
@@ -144,7 +148,7 @@ NBD::TServerConfig CreateNbdServerConfig(const TServerAppConfig& config)
         .LimiterEnabled = config.GetNbdLimiterEnabled(),
         .MaxInFlightBytesPerThread = config.GetMaxInFlightBytesPerThread(),
         .SocketAccessMode = config.GetSocketAccessMode(),
-        .Affinity = config.GetNbdAffinity()
+        .Affinity = config.GetNbdAffinity(),
     };
 }
 
@@ -203,7 +207,10 @@ void TBootstrapBase::ParseOptions(int argc, char** argv)
 
 void TBootstrapBase::Init()
 {
-    InitLogs();
+    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
+    Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
+    SetCriticalEventsLog(Log);
+    Configs->Log = Log;
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 
     Timer = CreateWallClockTimer();
@@ -231,6 +238,20 @@ void TBootstrapBase::Init()
     }
 
     STORAGE_INFO("Service initialized");
+
+    if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
+        InitRdmaRequestServer();
+        if (RdmaRequestServer) {
+            RdmaTarget = CreateBlockstoreServerRdmaTarget(
+                std::make_shared<TBlockstoreServerRdmaTargetConfig>(
+                    Configs->RdmaConfig->GetBlockstoreServerTarget()),
+                Logging,
+                GetTraceSerializer(),
+                RdmaRequestServer,
+                Service);
+            STORAGE_INFO("RDMA Target initialized");
+        }
+    }
 
     GrpcLog = Logging->CreateLog("GRPC");
     GrpcLoggerInit(
@@ -324,7 +345,9 @@ void TBootstrapBase::Init()
     }
 
     storageProviders.push_back(CreateDefaultStorageProvider(Service));
-    StorageProvider = CreateMultiStorageProvider(std::move(storageProviders));
+
+    StorageProvider = CreateMultiStorageProvider(
+        std::move(storageProviders));
 
     STORAGE_INFO("StorageProvider initialized");
 
@@ -348,6 +371,8 @@ void TBootstrapBase::Init()
         Logging,
         CreateEncryptionKeyProvider(KmsKeyProvider, RootKmsKeyProvider));
 
+    SetupShardingManager();
+
     auto sessionManager = CreateSessionManager(
         Timer,
         Scheduler,
@@ -357,10 +382,14 @@ void TBootstrapBase::Init()
         VolumeStats,
         ServerStats,
         Service,
+        ShardingManager,
         StorageProvider,
+        RdmaClient,
         encryptionClientFactory,
         Executor,
-        sessionManagerOptions);
+        sessionManagerOptions,
+        Configs->ServerConfig
+    );
 
     STORAGE_INFO("SessionManager initialized");
 
@@ -555,8 +584,7 @@ void TBootstrapBase::Init()
         const ui32 defaultSectorSize = 4_KB;
 
         nbdDeviceFactory = NClient::CreateProxyDeviceFactory(
-            {defaultSectorSize,
-             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize()},
+            {defaultSectorSize},
             EndpointProxyClient);
     }
 
@@ -705,17 +733,6 @@ void TBootstrapBase::InitProfileLog()
     }
 }
 
-void TBootstrapBase::InitLogs()
-{
-    TLogSettings logSettings;
-    logSettings.BackendFileName = Configs->GetLogBackendFileName();
-
-    BootstrapLogging = CreateLoggingService("console", logSettings);
-    Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
-    SetCriticalEventsLog(Log);
-    Configs->Log = Log;
-}
-
 void TBootstrapBase::InitDbgConfigs()
 {
     Configs->InitServerConfig();
@@ -729,11 +746,11 @@ void TBootstrapBase::InitDbgConfigs()
     Configs->InitDiagnosticsConfig();
     Configs->InitDiscoveryConfig();
     Configs->InitSpdkEnvConfig();
+    Configs->InitShardingConfig();
 
     TLogSettings logSettings;
     logSettings.FiltrationLevel =
         static_cast<ELogPriority>(Configs->GetLogDefaultLevel());
-    logSettings.BackendFileName = Configs->GetLogBackendFileName();
 
     Logging = CreateLoggingService("console", logSettings);
 
@@ -911,6 +928,9 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(ServerStatsUpdater);
     START_COMMON_COMPONENT(BackgroundThreadPool);
     START_COMMON_COMPONENT(RdmaClient);
+    START_COMMON_COMPONENT(RdmaRequestServer);
+    START_COMMON_COMPONENT(RdmaTarget);
+    START_COMMON_COMPONENT(ShardingManager);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -963,7 +983,9 @@ void TBootstrapBase::Stop()
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
-
+    STOP_COMMON_COMPONENT(ShardingManager);
+    STOP_COMMON_COMPONENT(RdmaRequestServer);
+    STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);
