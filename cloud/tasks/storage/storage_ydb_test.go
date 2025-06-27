@@ -4722,8 +4722,9 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 		map[string]string{"type": "task1"},
 	).On("Add", int64(1)).Once()
 
-	createdAt := time.Now()
-	modifiedAt := createdAt.Add(time.Hour)
+	initialWaitingDuration := 42 * time.Minute
+	taskDuration := time.Hour
+	createdAt := time.Now().Add(-taskDuration)
 
 	depID1, err := storage.CreateTask(ctx, TaskState{
 		IdempotencyKey: getIdempotencyKeyForTest(t),
@@ -4731,7 +4732,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 		Description:    "Some task",
 		CreatedAt:      createdAt,
 		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
+		ModifiedAt:     createdAt,
 		GenerationID:   42,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
@@ -4745,7 +4746,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 		Description:    "Some task",
 		CreatedAt:      createdAt,
 		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
+		ModifiedAt:     createdAt,
 		GenerationID:   42,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
@@ -4754,16 +4755,17 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 	require.NoError(t, err)
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
-		GenerationID:   42,
-		Status:         TaskStatusReadyToRun,
-		State:          []byte{1, 2, 3},
-		Dependencies:   NewStringSet(depID1, depID2),
+		IdempotencyKey:  getIdempotencyKeyForTest(t),
+		TaskType:        "task1",
+		Description:     "Some task",
+		CreatedAt:       createdAt,
+		CreatedBy:       "some_user",
+		ModifiedAt:      createdAt,
+		GenerationID:    42,
+		Status:          TaskStatusReadyToRun,
+		State:           []byte{1, 2, 3},
+		Dependencies:    NewStringSet(depID1, depID2),
+		WaitingDuration: initialWaitingDuration,
 	})
 	require.NoError(t, err)
 
@@ -4773,6 +4775,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 	task, err := storage.GetTask(ctx, taskID)
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusWaitingToRun)
+	require.Equal(t, task.WaitingDuration, initialWaitingDuration)
 
 	// Force finish first dependency and make sure task still sleeping
 	err = storage.ForceFinishTask(ctx, depID1)
@@ -4781,20 +4784,31 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 	task, err = storage.GetTask(ctx, depID1)
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusFinished)
+	require.Equal(t, task.WaitingDuration, time.Duration(0))
 
 	task, err = storage.GetTask(ctx, taskID)
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusWaitingToRun)
+	require.Equal(t, task.WaitingDuration, initialWaitingDuration)
 
-	// Force finish first dependency and make sure task ready to run
+	// Force finish second dependency and make sure task ready to run
 	err = storage.ForceFinishTask(ctx, depID2)
 	require.NoError(t, err)
 
 	task, err = storage.GetTask(ctx, depID2)
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusFinished)
+	require.Equal(t, task.WaitingDuration, time.Duration(0))
 
 	task, err = storage.GetTask(ctx, taskID)
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusReadyToRun)
+
+	// Make sure that WaitingDuration is almost correct
+	diff := (initialWaitingDuration + taskDuration) - task.WaitingDuration
+	if diff < 0 {
+		diff = -diff
+	}
+	threshold := 5 * time.Second
+	require.Less(t, diff, threshold)
 }

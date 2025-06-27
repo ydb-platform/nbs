@@ -1319,9 +1319,9 @@ func (s *storageYDB) prepareDependantsToWakeup(
 
 			if newState.Status == TaskStatusWaitingToRun || newState.Status == TaskStatusWaitingToCancel {
 				now := time.Now()
+				newState.WaitingDuration += now.Sub(newState.ChangedStateAt)
 				newState.ModifiedAt = now
 				newState.ChangedStateAt = now
-				newState.WaitingDuration += now.Sub(newState.ChangedStateAt)
 				newState.GenerationID++
 			}
 
