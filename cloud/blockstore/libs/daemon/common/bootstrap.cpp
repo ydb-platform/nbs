@@ -46,6 +46,8 @@
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/opentelemetry/iface/trace_service_client.h>
+#include <cloud/blockstore/libs/opentelemetry/impl/trace_reader.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -124,6 +126,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString TraceLoggerId = "st_trace_logger";
+const TString TraceExporterId = "st_trace_exporter";
 const TString SlowRequestsFilterId = "st_slow_requests_filter";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -823,10 +826,12 @@ void TBootstrapBase::InitLWTrace()
         diagnosticsConfig->GetTracesSyslogIdentifier()
     );
 
-    if (auto samplingRate = diagnosticsConfig->GetSamplingRate()) {
+    auto regularSamplingRate = diagnosticsConfig->GetSamplingRate();
+
+    if (auto regularSamplingRate = diagnosticsConfig->GetSamplingRate()) {
         NLWTrace::TQuery query = ProbabilisticQuery(
             desc,
-            samplingRate,
+            regularSamplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(TraceLoggerId, query);
         TraceReaders.push_back(CreateTraceLogger(
@@ -834,6 +839,22 @@ void TBootstrapBase::InitLWTrace()
             traceLog,
             "BLOCKSTORE_TRACE"
         ));
+    }
+
+    if (regularSamplingRate &&
+        Configs->TraceServiceClientConfig.GetServiceName())
+    {
+        NLWTrace::TQuery query = ProbabilisticQuery(
+            desc,
+            regularSamplingRate,
+            diagnosticsConfig->GetLWTraceShuttleCount());
+        lwManager.New(TraceExporterId, query);
+        TraceReaders.push_back(CreateTraceExporter(
+            TraceExporterId,
+            traceLog,
+            "BLOCKSTORE_TRACE",
+            GetTraceServiceClient(),
+            Configs->TraceServiceClientConfig.GetServiceName()));
     }
 
     if (auto samplingRate = diagnosticsConfig->GetSlowRequestSamplingRate()) {
@@ -912,6 +933,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(ServerStatsUpdater);
     START_COMMON_COMPONENT(BackgroundThreadPool);
     START_COMMON_COMPONENT(RdmaClient);
+    START_COMMON_COMPONENT(GetTraceServiceClient());
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -965,6 +987,7 @@ void TBootstrapBase::Stop()
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
 
+    STOP_COMMON_COMPONENT(GetTraceServiceClient());
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);

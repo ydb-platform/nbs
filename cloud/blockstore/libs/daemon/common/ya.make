@@ -34,6 +34,8 @@ PEERDIR(
     cloud/blockstore/libs/throttling
     cloud/blockstore/libs/validation
     cloud/blockstore/libs/vhost
+    cloud/blockstore/libs/opentelemetry/iface
+    cloud/blockstore/libs/opentelemetry/impl
 
     cloud/storage/core/libs/aio
     cloud/storage/core/libs/common

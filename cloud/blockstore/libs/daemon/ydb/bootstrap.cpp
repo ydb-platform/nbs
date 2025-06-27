@@ -302,6 +302,11 @@ IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get();
 IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
 IStartable* TBootstrapYdb::GetRootKmsClient()      { return RootKmsClient.get(); }
 
+ITraceServiceClientPtr TBootstrapYdb::GetTraceServiceClient()
+{
+    return TraceServiceClient;
+}
+
 void TBootstrapYdb::InitConfigs()
 {
     Configs->InitKikimrConfig();
@@ -321,6 +326,7 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitKmsClientConfig();
     Configs->InitRootKmsConfig();
     Configs->InitComputeClientConfig();
+    Configs->InitTraceServiceClientConfig();
 }
 
 void TBootstrapYdb::InitSpdk()
@@ -785,6 +791,12 @@ void TBootstrapYdb::InitKikimrService()
         auto isSpareNode = serverGroup->GetCounter("IsSpareNode", false);
         *isSpareNode = 1;
     }
+
+    TraceServiceClient = ServerModuleFactories->TraceServiceClientFactory(
+        Configs->TraceServiceClientConfig.GetClientConfig(),
+        logging);
+
+    STORAGE_INFO("Trace service client initialized");
 
     auto& probes = NLwTraceMonPage::ProbeRegistry();
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_STORAGE_PROVIDER));

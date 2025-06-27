@@ -10,6 +10,7 @@ PEERDIR(
     cloud/blockstore/libs/daemon/ydb
     cloud/blockstore/libs/kms/iface
     cloud/blockstore/libs/kms/impl
+    cloud/blockstore/libs/opentelemetry/impl
     cloud/blockstore/libs/logbroker/iface
     cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/root_kms/impl

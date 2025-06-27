@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/kms/iface/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/opentelemetry/iface/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
@@ -54,6 +55,11 @@ struct TServerModuleFactories
         const NProto::TRootKmsConfig& config,
         ILoggingServicePtr logging)> RootKmsClientFactory;
 
+    std::function<ITraceServiceClientPtr(
+        const NProto::TGrpcClientConfig& config,
+        ILoggingServicePtr logging)>
+        TraceServiceClientFactory;
+
     std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
 
     std::function<NRdma::IServerPtr(
@@ -92,6 +98,7 @@ private:
     IComputeClientPtr ComputeClient;
     IKmsClientPtr KmsClient;
     IRootKmsClientPtr RootKmsClient;
+    ITraceServiceClientPtr TraceServiceClient;
     std::function<void(TLog& log)> SpdkLogInitializer;
 
 public:
@@ -120,6 +127,8 @@ protected:
     IStartable* GetComputeClient() override;
     IStartable* GetKmsClient() override;
     IStartable* GetRootKmsClient() override;
+
+    ITraceServiceClientPtr GetTraceServiceClient() override;
 
     void InitSpdk() override;
     void InitRdmaClient() override;
