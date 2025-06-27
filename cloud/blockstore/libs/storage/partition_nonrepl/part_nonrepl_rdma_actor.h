@@ -29,6 +29,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using NThreading::TFuture;
+using TEndpointFuture = TFuture<NRdma::IClientEndpointPtr>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TDeviceReadRequestContext: public TDeviceRequestRdmaContext
 {
     const ui64 StartIndexOffset = 0;
@@ -45,6 +50,32 @@ struct TDeviceReadRequestContext: public TDeviceRequestRdmaContext
         , BlockCount(blockCount)
         , RequestIndex(requestIndex)
     {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TEndpointReaper
+{
+    TFuture<void> Wait;
+
+    explicit TEndpointReaper(THashMap<TString, TEndpointFuture>& endpoints)
+    {
+        TVector<TEndpointFuture> start;
+        for (auto& [_, endpoint]: endpoints) {
+            start.push_back(std::move(endpoint));
+        }
+        Wait = WaitAll(start).Subscribe([start, this](auto...) {
+            TVector<TFuture<void>> stop;
+            for (auto& endpoint: start) {
+                if (endpoint.HasValue()) {
+                    stop.push_back(endpoint.GetValue()->Stop());
+                }
+            }
+            Wait = WaitAll(stop).Subscribe([this](auto...) {
+                delete this;
+            });
+        });
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -88,7 +119,6 @@ private:
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
 
-    using TEndpointFuture = NThreading::TFuture<NRdma::IClientEndpointPtr>;
     THashMap<TString, TEndpointFuture> AgentId2EndpointFuture;
     THashMap<TString, NRdma::IClientEndpointPtr> AgentId2Endpoint;
 
