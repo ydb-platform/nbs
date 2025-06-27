@@ -394,6 +394,25 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack(data3));
         UNIT_ASSERT(rb.PushBack(data4));
     }
+
+    Y_UNIT_TEST(ShouldNotAccessMemoryOutsideMappedBuffer)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 32;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+        m.Map(0, len + 40); // len + sizeof(THeader)
+        char* data = static_cast<char*>(m.Ptr());
+        data[len + 40] = 'A';
+
+        UNIT_ASSERT(rb.PushBack("01234567"));
+        UNIT_ASSERT(rb.PushBack("89abcde"));
+        rb.PopFront();
+        UNIT_ASSERT(rb.PushBack("01"));
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL("01", rb.Front());
+    }
 }
 
 }   // namespace NCloud
