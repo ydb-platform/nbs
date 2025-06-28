@@ -223,3 +223,19 @@ def test_publish_volume_must_fail_after_fs_error():
         raise
     finally:
         csi.cleanup_after_test(env, volume_name, access_type, [pod_id])
+
+
+def test_stage_twice_with_different_parameters():
+    env, run = csi.init(vm_mode=True)
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        access_type = "mount"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name, access_type, vhost_request_queues_count=4)
+        env.csi.stage_volume(volume_name, access_type, vhost_request_queues_count=8)
+    except subprocess.CalledProcessError as e:
+        csi.log_called_process_error(e)
+        raise
+    finally:
+        csi.cleanup_after_test(env, volume_name, access_type)

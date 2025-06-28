@@ -140,6 +140,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 				},
 			},
 			nil)
+		nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			UnixSocketPath:   nbsSocketPath,
 			DiskId:           diskId,
@@ -413,6 +414,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 			volumeContext[requestQueuesCountVolumeContextKey] = strconv.Itoa(int(*requestQueuesCountOpt))
 			vhostQueuesCount = virtioBlkVhostQueuesCount(*requestQueuesCountOpt)
 		}
+		nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			UnixSocketPath:   nbsSocketPath,
 			DiskId:           diskId,
@@ -767,6 +769,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	volumeContext := map[string]string{}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
+	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
 		DiskId:           diskId,
@@ -937,6 +940,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
+	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
 		DiskId:           diskId,
@@ -1304,6 +1308,7 @@ func TestGrpcTimeoutForIKubevirt(t *testing.T) {
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 	grpcError := nbsclient.ClientError{Code: nbsclient.E_GRPC_DEADLINE_EXCEEDED}
 	startEndpointError := fmt.Errorf("%w", grpcError)
+	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   nbsSocketPath,
 		DiskId:           diskId,
@@ -1386,6 +1391,7 @@ func TestGrpcTimeoutForInfrakuber(t *testing.T) {
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 	grpcError := nbsclient.ClientError{Code: nbsclient.E_GRPC_DEADLINE_EXCEEDED}
 	startEndpointError := fmt.Errorf("%w", grpcError)
+	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
 		DiskId:           diskId,

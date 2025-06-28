@@ -258,7 +258,7 @@ func getTargetPath(podId string, volumeId string, accessType string) string {
 }
 
 func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
-	var volumeId, stagingTargetPath, accessType string
+	var volumeId, stagingTargetPath, accessType, vhostRequestQueuesCount string
 	backend := BackendValue("nbs")
 	cmd := cobra.Command{
 		Use:   "stagevolume",
@@ -275,8 +275,9 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 			}
 
 			volumeContext := map[string]string{
-				"instanceId": "example-instance-id",
-				"backend":    string(backend),
+				"instanceId":         "example-instance-id",
+				"backend":            string(backend),
+				"requestQueuesCount": vhostRequestQueuesCount,
 			}
 
 			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -320,6 +321,13 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 		"backend",
 		"Specify backend to use [nfs, nbs]",
 	)
+	cmd.Flags().StringVar(
+		&vhostRequestQueuesCount,
+		"vhost-request-queues-count",
+		"8",
+		"Specify vhost request queues count",
+	)
+
 	err := cmd.MarkFlagRequired("volume-id")
 	if err != nil {
 		log.Fatal(err)
