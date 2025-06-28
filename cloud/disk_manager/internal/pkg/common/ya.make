@@ -5,6 +5,7 @@ SRCS(
     channel_with_cancellation.go
     channel_with_inflight_queue.go
     cond.go
+    disk_kinds.go
     inflight_queue.go
     progress_saver.go
     util.go
