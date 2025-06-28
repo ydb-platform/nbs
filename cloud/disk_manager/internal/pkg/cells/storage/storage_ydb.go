@@ -69,6 +69,23 @@ func (s *storageYDB) GetRecentClusterCapacities(
 	return capacities, err
 }
 
+func (s *storageYDB) ClearOldClusterCapacities(
+	ctx context.Context,
+	createdBefore time.Time,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) (err error) {
+			return s.clearOldClusterCapacities(
+				ctx,
+				session,
+				createdBefore,
+			)
+		},
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *storageYDB) addClusterCapacities(ctx context.Context,
@@ -152,4 +169,32 @@ func (s *storageYDB) getRecentClusterCapacities(
 	defer res.Close()
 
 	return scanClusterCapacities(ctx, res)
+}
+
+func (s *storageYDB) clearOldClusterCapacities(
+	ctx context.Context,
+	session *persistence.Session,
+	createdBefore time.Time,
+) error {
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $created_before as Timestamp;
+
+		delete from cluster_capacity
+		where created_at < $created_before
+	`, s.tablesPath),
+		persistence.ValueParam("$created_before", persistence.TimestampValue(createdBefore)),
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

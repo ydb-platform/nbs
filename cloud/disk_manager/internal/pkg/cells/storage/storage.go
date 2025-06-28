@@ -141,6 +141,11 @@ type Storage interface {
 		zone_id string,
 		kind types.DiskKind,
 	) ([]ClusterCapacity, error)
+
+	ClearOldClusterCapacities(
+		ctx context.Context,
+		createdBefore time.Time,
+	) error
 }
 
 ////////////////////////////////////////////////////////////////////////////////

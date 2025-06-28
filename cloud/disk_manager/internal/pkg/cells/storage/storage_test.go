@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
@@ -192,4 +193,56 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []ClusterCapacity{cellCapacitySsd2}, capacities)
+}
+
+func TestClearOldClusterCapacities(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	createdBefore := time.Now()
+
+	err = storage.ClearOldClusterCapacities(ctx, createdBefore)
+	require.NoError(t, err)
+
+	capacity := ClusterCapacity{
+		ZoneID:     "zone-a",
+		CellID:     "zone-a",
+		Kind:       types.DiskKind_DISK_KIND_HDD,
+		TotalBytes: 1024,
+		FreeBytes:  1024,
+	}
+
+	err = storage.AddClusterCapacities(ctx, []ClusterCapacity{capacity})
+	require.NoError(t, err)
+
+	err = storage.ClearOldClusterCapacities(ctx, createdBefore)
+	require.NoError(t, err)
+
+	capacities, err := storage.GetRecentClusterCapacities(
+		ctx,
+		"zone-a",
+		types.DiskKind_DISK_KIND_HDD,
+	)
+	require.NoError(t, err)
+	require.Len(t, capacities, 1)
+	require.Equal(t, capacity, capacities[0])
+
+	createdBefore = time.Now()
+
+	err = storage.ClearOldClusterCapacities(ctx, createdBefore)
+	require.NoError(t, err)
+
+	capacities, err = storage.GetRecentClusterCapacities(
+		ctx,
+		"zone-a",
+		types.DiskKind_DISK_KIND_HDD,
+	)
+	require.NoError(t, err)
+	require.Empty(t, capacities)
 }
