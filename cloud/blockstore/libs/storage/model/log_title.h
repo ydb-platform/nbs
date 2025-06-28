@@ -81,6 +81,7 @@ public:
     [[nodiscard]] TString Get(EDetails details) const;
 
     [[nodiscard]] TString GetWithTime() const;
+    [[nodiscard]] TString GetBrief() const;
 
     void SetDiskId(TString diskId);
     void SetGeneration(ui32 generation);

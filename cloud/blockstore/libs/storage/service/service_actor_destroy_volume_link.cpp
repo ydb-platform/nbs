@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
-#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -24,8 +23,6 @@ private:
     const TString LeaderDiskId;
     const TString FollowerDiskId;
 
-    NProto::TVolume LeaderVolume;
-
 public:
     TDestroyVolumeLinkActor(
         TRequestInfoPtr requestInfo,
@@ -36,16 +33,16 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void DescribeVolume(const TActorContext& ctx);
     void RemoveLink(const NActors::TActorContext& ctx);
-
-    void HandleDescribeVolumeResponse(
-        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
-        const TActorContext& ctx);
+    void RemoveLinkOnFollower(const NActors::TActorContext& ctx);
 
     void HandleUnlinkLeaderVolumeFromFollowerResponse(
         const TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse::TPtr& ev,
         const TActorContext& ctx);
+
+    void HandleLinkRemovedOnFollower(
+        const TEvVolume::TEvUpdateLinkOnFollowerResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -70,18 +67,9 @@ TDestroyVolumeLinkActor::TDestroyVolumeLinkActor(
 
 void TDestroyVolumeLinkActor::Bootstrap(const TActorContext& ctx)
 {
-    DescribeVolume(ctx);
-}
-
-void TDestroyVolumeLinkActor::DescribeVolume(const TActorContext& ctx)
-{
     Become(&TThis::StateWork);
 
-    NCloud::Send(
-        ctx,
-        MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(LeaderDiskId),
-        0);
+    RemoveLink(ctx);
 }
 
 void TDestroyVolumeLinkActor::RemoveLink(const NActors::TActorContext& ctx)
@@ -92,50 +80,67 @@ void TDestroyVolumeLinkActor::RemoveLink(const NActors::TActorContext& ctx)
     request->Record.SetDiskId(LeaderDiskId);
     request->Record.SetFollowerDiskId(FollowerDiskId);
 
-    NCloud::Send(
-        ctx,
-        MakeVolumeProxyServiceId(),
-        std::move(request),
-        RequestInfo->Cookie);
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
 
-void TDestroyVolumeLinkActor::HandleDescribeVolumeResponse(
-    const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TDestroyVolumeLinkActor::RemoveLinkOnFollower(
+    const NActors::TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto request =
+        std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+    request->Record.SetDiskId(FollowerDiskId);
+    request->Record.SetFollowerShardId({});
+    request->Record.SetLeaderDiskId(LeaderDiskId);
+    request->Record.SetLeaderShardId({});
+    request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
 
-    const auto& error = msg->GetError();
-    if (FAILED(error.GetCode())) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::SERVICE,
-            "Volume %s: describe failed: %s",
-            LeaderDiskId.Quote().data(),
-            FormatError(error).data());
-
-        ReplyAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvDestroyVolumeLinkResponse>(error));
-        return;
-    }
-
-    const auto& pathDescription = msg->PathDescription;
-    const auto& volumeDescription =
-        pathDescription.GetBlockStoreVolumeDescription();
-    const auto& volumeConfig = volumeDescription.GetVolumeConfig();
-
-    VolumeConfigToVolume(volumeConfig, LeaderVolume);
-    LeaderVolume.SetTokenVersion(volumeDescription.GetTokenVersion());
-
-    RemoveLink(ctx);
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
 
 void TDestroyVolumeLinkActor::HandleUnlinkLeaderVolumeFromFollowerResponse(
     const TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    const auto* message = ev->Get();
+    const auto& error = message->GetError();
+
+    if (FAILED(error.GetCode())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Remove link on leader %s failed: %s",
+            LeaderDiskId.Quote().data(),
+            FormatError(error).data());
+
+        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
+            // Leader disk not found. Try to remove on follower.
+            RemoveLinkOnFollower(ctx);
+            return;
+        }
+    }
+
+    ReplyAndDie(
+        ctx,
+        std::make_unique<TEvService::TEvDestroyVolumeLinkResponse>(
+            message->GetError()));
+}
+
+void TDestroyVolumeLinkActor::HandleLinkRemovedOnFollower(
+    const TEvVolume::TEvUpdateLinkOnFollowerResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
     auto* message = ev->Get();
+    const auto& error = message->GetError();
+
+    if (FAILED(error.GetCode())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Remove link on follower %s failed: %s",
+            FollowerDiskId.Quote().data(),
+            FormatError(error).data());
+    }
+
     ReplyAndDie(
         ctx,
         std::make_unique<TEvService::TEvDestroyVolumeLinkResponse>(
@@ -156,12 +161,12 @@ STFUNC(TDestroyVolumeLinkActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvSSProxy::TEvDescribeVolumeResponse,
-            HandleDescribeVolumeResponse);
-
-        HFunc(
             TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse,
             HandleUnlinkLeaderVolumeFromFollowerResponse);
+
+        HFunc(
+            TEvVolume::TEvUpdateLinkOnFollowerResponse,
+            HandleLinkRemovedOnFollower);
 
         default:
             HandleUnexpectedEvent(

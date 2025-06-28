@@ -246,6 +246,119 @@ void RenderCheckpointInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void RenderFollowers(IOutputStream& out, const TFollowerDisks& followers)
+{
+    HTML (out) {
+        TAG(TH3) {
+            out << "Followers:";
+        }
+        DIV_CLASS ("row") {
+            TABLE_SORTABLE_CLASS ("table table-bordered") {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "Time";
+                        }
+                        TABLEH () {
+                            out << "UUID";
+                        }
+                        TABLEH () {
+                            out << "Follower";
+                        }
+                        TABLEH () {
+                            out << "State";
+                        }
+                        TABLEH () {
+                            out << "Migrated blocks";
+                        }
+                    }
+                }
+                for (const auto& follower: followers) {
+                    TABLER () {
+                        TABLED () {
+                            out << follower.CreatedAt;
+                        }
+                        TABLED () {
+                            out << follower.Link.LinkUUID;
+                        }
+                        TABLED () {
+                            out << follower.Link.FollowerDiskIdForPrint();
+                            if (follower.MediaKind) {
+                                out << "<br>(";
+                                if (follower.MediaKind) {
+                                    out << NProto::EStorageMediaKind_Name(
+                                        *follower.MediaKind);
+                                } else {
+                                    out << "unknown";
+                                }
+                                out << ")";
+                            }
+                        }
+                        TABLED () {
+                            out << ToString(follower.State) << " "
+                                << follower.ErrorMessage;
+                        }
+                        TABLED () {
+                            if (follower.MigratedBytes) {
+                                out << FormatByteSize(*follower.MigratedBytes);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void RenderLeaders(IOutputStream& out, const TLeaderDisks& leaders)
+{
+    HTML (out) {
+        TAG(TH3) {
+            out << "Leaders:";
+        }
+
+        DIV_CLASS ("row") {
+            TABLE_SORTABLE_CLASS ("table table-bordered") {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "Time";
+                        }
+                        TABLEH () {
+                            out << "UUID";
+                        }
+                        TABLEH () {
+                            out << "Leader";
+                        }
+                        TABLEH () {
+                            out << "State";
+                        }
+                    }
+                }
+                for (const auto& leader: leaders) {
+                    TABLER () {
+                        TABLED () {
+                            out << leader.CreatedAt;
+                        }
+                        TABLED () {
+                            out << leader.Link.LinkUUID;
+                        }
+                        TABLED () {
+                            out << leader.Link.LeaderDiskIdForPrint();
+                        }
+                        TABLED () {
+                            out << ToString(leader.State) << " "
+                                << leader.ErrorMessage;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void BuildVolumeRemoveClientButton(
     IOutputStream& out,
     ui64 id,
@@ -1055,48 +1168,8 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
 
 void TVolumeActor::RenderLinks(IOutputStream& out) const
 {
-    using namespace NMonitoringUtils;
-
-    HTML (out) {
-        DIV_CLASS ("row") {
-            TABLE_SORTABLE_CLASS ("table table-bordered") {
-                TABLEHEAD () {
-                    TABLER () {
-                        TABLEH () {
-                            out << "UUID";
-                        }
-                        TABLEH () {
-                            out << "Follower";
-                        }
-                        TABLEH () {
-                            out << "State";
-                        }
-                        TABLEH () {
-                            out << "Migrated blocks";
-                        }
-                    }
-                }
-                for (const auto& follower: State->GetAllFollowers()) {
-                    TABLER () {
-                        TABLED () {
-                            out << follower.LinkUUID;
-                        }
-                        TABLED () {
-                            out << follower.GetDiskIdForPrint();
-                        }
-                        TABLED () {
-                            out << ToString(follower.State);
-                        }
-                        TABLED () {
-                            if (follower.MigratedBytes) {
-                                out << FormatByteSize(*follower.MigratedBytes);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    RenderFollowers(out, State->GetAllFollowers());
+    RenderLeaders(out, State->GetAllLeaders());
 }
 
 void TVolumeActor::RenderLatency(IOutputStream& out) const {
