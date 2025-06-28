@@ -39,6 +39,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
     xxx(RestartTablet,              __VA_ARGS__)                               \
     xxx(RenameNodeInDestination,    __VA_ARGS__)                               \
+                                                                               \
+    xxx(ReadNodeRefs,              __VA_ARGS__)                                \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -124,6 +126,9 @@ struct TEvIndexTablet
 
         EvRenameNodeInDestinationRequest = EvBegin + 47,
         EvRenameNodeInDestinationResponse,
+
+        EvReadNodeRefsRequest = EvBegin + 49,
+        EvReadNodeRefsResponse,
 
         EvEnd
     };
