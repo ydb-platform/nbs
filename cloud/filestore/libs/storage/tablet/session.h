@@ -84,7 +84,7 @@ class TSessionHandleStats
 {
 private:
     THashMap<ui64, TPerNodeHandleStats> Stats;
-    TLRUCache<ui64, TPerNodeHandleStats> OffloadedStats;
+    ::TLRUCache<ui64, TPerNodeHandleStats> OffloadedStats;
 
 public:
     explicit TSessionHandleStats(const size_t offloadedStatsCapacity)

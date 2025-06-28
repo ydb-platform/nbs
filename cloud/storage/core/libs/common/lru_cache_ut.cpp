@@ -133,6 +133,46 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_VALUES_EQUAL("value3", hashMap.find("key3")->second);
         UNIT_ASSERT_VALUES_EQUAL(2, hashMap.size());
     }
+
+    Y_UNIT_TEST(ShouldUseOrderedMap)
+    {
+        NCloud::TLRUCache<
+            TString,
+            TString,
+            THash<TString>,
+            TMap<TString, TString, TLess<TString>, TStlAllocator>>
+        hashMap(TDefaultAllocator::Instance());
+
+        hashMap.SetCapacity(5);
+        TVector<std::pair<TString, TString>> keyValues = {
+            {"key6", "val6"},
+            {"key5", "val5"},
+            {"key3", "val3"},
+            {"key2", "val2"},
+            {"key1", "val1"}
+        };
+
+        for (const auto& keyValue: keyValues) {
+            hashMap.emplace(keyValue.first, keyValue.second);
+        }
+
+        // check order
+        int pos = keyValues.size() - 1;
+        for (auto it = hashMap.begin(); it != hashMap.end(); ++it) {
+            UNIT_ASSERT_VALUES_EQUAL(it->first, keyValues[pos].first);
+            UNIT_ASSERT_VALUES_EQUAL(it->second, keyValues[pos].second);
+            pos--;
+        }
+
+        // check lower_bound
+        auto it = hashMap.lower_bound(keyValues[3].first);
+        UNIT_ASSERT_VALUES_EQUAL(it->first, keyValues[3].first);
+        UNIT_ASSERT_VALUES_EQUAL(it->second, keyValues[3].second);
+
+        it = hashMap.lower_bound("key4");
+        UNIT_ASSERT_VALUES_EQUAL(it->first, keyValues[1].first);
+        UNIT_ASSERT_VALUES_EQUAL(it->second, keyValues[1].second);
+    }
 }
 
 }   // namespace NCloud
