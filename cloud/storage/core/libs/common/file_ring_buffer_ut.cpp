@@ -413,6 +413,71 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         rb.PopFront();
         UNIT_ASSERT_VALUES_EQUAL("01", rb.Front());
     }
+
+    Y_UNIT_TEST(ShouldNotCycleInCaseOfCorruption)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 32;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        UNIT_ASSERT(rb.PushBack("aaa"));
+        UNIT_ASSERT(rb.PushBack("bb"));
+
+        TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+        m.Map(0, len + 40); // len + sizeof(THeader)
+        char* data = static_cast<char*>(m.Ptr());
+        UNIT_ASSERT_VALUES_EQUAL(2, data[51]);
+        data[51] = 0;
+
+        UNIT_ASSERT_VALUES_EQUAL("aaa", rb.Front());
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL("", rb.Front());
+    }
+
+    Y_UNIT_TEST(ShouldNotReadBeyondWritePosInCaseOfCorruption)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 32;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        UNIT_ASSERT(rb.PushBack("aaa"));
+        UNIT_ASSERT(rb.PushBack("bb"));
+
+        TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+        m.Map(0, len + 40); // len + sizeof(THeader)
+        char* data = static_cast<char*>(m.Ptr());
+        UNIT_ASSERT_VALUES_EQUAL(2, data[51]);
+        data[51] = 3;
+
+        UNIT_ASSERT_VALUES_EQUAL("aaa", rb.Front());
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL("", rb.Front());
+    }
+
+    Y_UNIT_TEST(ShouldNotLostNewDataInCaseOfCorruption)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 32;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        UNIT_ASSERT(rb.PushBack("aaa"));
+        UNIT_ASSERT(rb.PushBack("bb"));
+
+        TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+        m.Map(0, len + 40); // len + sizeof(THeader)
+        char* data = static_cast<char*>(m.Ptr());
+        UNIT_ASSERT_VALUES_EQUAL(2, data[51]);
+        data[51] = 1;
+
+        TFileRingBuffer rb2(f.GetName(), len);
+        UNIT_ASSERT(rb2.PushBack("c"));
+
+        UNIT_ASSERT_VALUES_EQUAL("aaa", rb2.Front());
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL("b", rb2.Front());
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL("c", rb2.Front());
+    }
 }
 
 }   // namespace NCloud
