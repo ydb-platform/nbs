@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
@@ -195,6 +196,7 @@ type nodeService struct {
 	mountOptions            []string
 
 	useDiscardForYDBBasedDisks bool
+	startEndpointRetryTimeout  time.Duration
 }
 
 func newNodeService(
@@ -211,7 +213,8 @@ func newNodeService(
 	nfsLocalFilestoreClient nfsclient.ClientIface,
 	mounter mounter.Interface,
 	mountOptions []string,
-	useDiscardForYDBBasedDisks bool) csi.NodeServer {
+	useDiscardForYDBBasedDisks bool,
+	startEndpointRetryTimeout time.Duration) csi.NodeServer {
 
 	return &nodeService{
 		nodeId:                     nodeId,
@@ -229,6 +232,7 @@ func newNodeService(
 		volumeOps:                  new(sync.Map),
 		mountOptions:               mountOptions,
 		useDiscardForYDBBasedDisks: useDiscardForYDBBasedDisks,
+		startEndpointRetryTimeout:  startEndpointRetryTimeout,
 	}
 }
 
@@ -598,6 +602,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
+		RetryTimeout:     uint32(s.startEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -610,11 +615,6 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	})
 
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, false /* nbs */) {
-			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-			})
-		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -695,6 +695,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
+		RetryTimeout:     uint32(s.startEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -707,11 +708,6 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	})
 
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, false /* nbs */) {
-			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-			})
-		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -934,6 +930,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
+		RetryTimeout:     uint32(s.startEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -944,12 +941,6 @@ func (s *nodeService) startNbsEndpointForNBD(
 			HostType: &hostType,
 		},
 	})
-
-	if s.IsGrpcTimeoutError(err, false /* nbs */) {
-		s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-		})
-	}
 
 	return resp, err
 }
