@@ -98,12 +98,17 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
         ui32 shardNo);
+    
+    template <typename TMethod>
+    TSessionInfo* GetSession(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev);
 
     template <typename TMethod>
     void ForwardXAttrRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        ui32 shardNo);
+        const TSessionInfo*);
 
     template <typename TMethod>
     void CompleteRequest(

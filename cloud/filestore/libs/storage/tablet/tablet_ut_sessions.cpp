@@ -828,6 +828,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetPreferredBlockSize(4_KB);
         features.SetAsyncHandleOperationPeriod(
             TDuration::MilliSeconds(50).MilliSeconds());
+        features.SetHasXAttrs(true);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 

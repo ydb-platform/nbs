@@ -12,10 +12,9 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-void TStorageServiceActor::ForwardXAttrRequest(
-    const TActorContext& ctx,
-    const typename TMethod::TRequest::TPtr& ev,
-    ui32 shardNo)
+TSessionInfo* TStorageServiceActor::GetSession(
+    const NActors::TActorContext& ctx,
+    const typename TMethod::TRequest::TPtr& ev)
 {
     auto* msg = ev->Get();
 
@@ -30,24 +29,33 @@ void TStorageServiceActor::ForwardXAttrRequest(
         TMethod::Name,
         msg->CallContext->RequestId);
 
-    auto* session = State->FindSession(sessionId, seqNo);
+    TSessionInfo* session = State->FindSession(sessionId, seqNo);
     if (!session || session->ClientId != clientId || !session->SessionActor) {
         auto response = std::make_unique<typename TMethod::TResponse>(
             ErrorInvalidSession(clientId, sessionId, seqNo));
-        return NCloud::Reply(ctx, *ev, std::move(response));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return nullptr;
     }
-    const NProto::TFileStore& filestore = session->FileStore;
 
-    // if there no extended attributes in the file system we don't create a requerst for them
-    if (!filestore.GetFeatures().GetHasXAttrs()) {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            ErrorAttributeDoesNotExist(TMethod::Name));
-        return NCloud::Reply(ctx, *ev, std::move(response));
-    }
+    return session;
+}
+
+template <typename TMethod>
+void TStorageServiceActor::ForwardXAttrRequest(
+    const TActorContext& ctx,
+    const typename TMethod::TRequest::TPtr& ev,
+    const TSessionInfo* session)
+{
+    auto* msg = ev->Get();
+
+    const ui64 seqNo = GetSessionSeqNo(msg->Record);
+    const auto shardNo = ExtractShardNo(ev->Get()->Record.GetNodeId());
+
+    const NProto::TFileStore& filestore = session->FileStore;
 
     auto [fsId, error] = SelectShard(
         ctx,
-        sessionId,
+        session->SessionId,
         seqNo,
         msg->Record.GetHeaders().GetDisableMultiTabletForwarding(),
         TMethod::Name,
@@ -88,29 +96,66 @@ void TStorageServiceActor::ForwardXAttrRequest(
     ctx.Send(event.release());
 }
 
-
 void TStorageServiceActor::HandleGetNodeXAttr(
     const TEvService::TEvGetNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto shardNo = ExtractShardNo(ev->Get()->Record.GetNodeId());
-    ForwardXAttrRequest<TEvService::TGetNodeXAttrMethod>(ctx, ev, shardNo);     
-}
+    const TSessionInfo* session =
+        GetSession<TEvService::TGetNodeXAttrMethod>(ctx, ev);
+    if (!session) {
+        return;
+    }
 
-void TStorageServiceActor::HandleSetNodeXAttr(
-    const TEvService::TEvSetNodeXAttrRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto shardNo = ExtractShardNo(ev->Get()->Record.GetNodeId());
-    ForwardXAttrRequest<TEvService::TSetNodeXAttrMethod>(ctx, ev, shardNo);     
+    // if there no extended attributes in the file system we don't create a
+    // requerst for them
+    if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
+        auto response =
+            std::make_unique<TEvService::TGetNodeXAttrMethod::TResponse>(
+                ErrorAttributeDoesNotExist(
+                    TEvService::TGetNodeXAttrMethod::Name));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    ForwardXAttrRequest<TEvService::TGetNodeXAttrMethod>(ctx, ev, session);
 }
 
 void TStorageServiceActor::HandleListNodeXAttr(
     const TEvService::TEvListNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto shardNo = ExtractShardNo(ev->Get()->Record.GetNodeId());
-    ForwardXAttrRequest<TEvService::TListNodeXAttrMethod>(ctx, ev, shardNo);     
+    const TSessionInfo* session =
+        GetSession<TEvService::TListNodeXAttrMethod>(ctx, ev);
+    if (!session) {
+        return;
+    }
+
+    // if there no extended attributes in the file system we return an empty
+    // list
+    if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
+        auto response =
+            std::make_unique<TEvService::TEvListNodeXAttrResponse>();
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    ForwardXAttrRequest<TEvService::TListNodeXAttrMethod>(ctx, ev, session);
+}
+
+void TStorageServiceActor::HandleSetNodeXAttr(
+    const TEvService::TEvSetNodeXAttrRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const TSessionInfo* session =
+        GetSession<TEvService::TSetNodeXAttrMethod>(ctx, ev);
+    if (!session) {
+        return;
+    }
+
+    // message to TIndexTabletState notifying thet XAttrs appeared should be
+    // placed here
+
+    ForwardXAttrRequest<TEvService::TSetNodeXAttrMethod>(ctx, ev, session);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
