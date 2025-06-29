@@ -132,12 +132,6 @@ TFileHandle TIndexNode::OpenHandle(const TString& name, int flags, int mode)
     return NLowLevel::OpenAt(NodeFd, name.data(), flags, mode);
 }
 
-NLowLevel::TOpenOrCreateResult
-TIndexNode::OpenOrCreateHandle(const TString& name, int flags, int mode)
-{
-    return NLowLevel::OpenOrCreateAt(NodeFd, name.data(), flags, mode);
-}
-
 void TIndexNode::Access(int mode)
 {
     return NLowLevel::Access(NodeFd, mode);

@@ -88,15 +88,6 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
         return TErrorResponse(ErrorInvalidArgument());
     }
 
-    if (!request.HasLink()) {
-        // For hard link no need to apply credentials since ownership is shared
-        // between the links
-        if (!credGuard.TryApplyCredentials(target->GetNodeFd())) {
-            parent->Unlink(request.GetName(), request.HasDirectory());
-            return TErrorResponse(ErrorFailedToApplyCredentials(request.GetName()));
-        }
-    }
-
     auto stat = target->Stat();
     if (!session->TryInsertNode(
             std::move(target),
