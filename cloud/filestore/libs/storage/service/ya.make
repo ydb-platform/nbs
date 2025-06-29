@@ -39,6 +39,7 @@ SRCS(
     service_actor_statfs.cpp
     service_actor_update_stats.cpp
     service_actor_writedata.cpp
+    service_actor_xattr.cpp
     service_state.cpp
     tablet_action_actor.cpp
 )
