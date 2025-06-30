@@ -10,7 +10,10 @@
 struct TOptions
 {
     TString SrcRoot;
-    TString OutputPath;
+    TString TextOutputPath;
+    TString BinaryOutputPath;
+    TString SchemeShardBackup;
+    TString HiveBackup;
 
     TOptions(int argc, char** argv);
 };

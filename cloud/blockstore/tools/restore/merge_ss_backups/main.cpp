@@ -21,11 +21,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const TString SchemeShardBackup = "nbs-path-description-backup.txt";
-const TString HiveBackup = "nbs-tablet-boot-info-backup.txt";
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TSchemeValue
 {
     ui32 Generation = 0;
@@ -66,10 +61,11 @@ using THiveGeneration = TMap<ui64, ui32>;
 ////////////////////////////////////////////////////////////////////////////////
 
 bool LoadSchemeShardBackup(
+    const TOptions& options,
     const TFsPath& path,
     NSSProxy::NProto::TPathDescriptionBackup* backupProto)
 {
-    auto backupPath = path / SchemeShardBackup;
+    auto backupPath = path / options.SchemeShardBackup;
     if (!backupPath.Exists()) {
         return false;
     }
@@ -83,10 +79,11 @@ bool LoadSchemeShardBackup(
 }
 
 bool LoadHiveBackup(
+    const TOptions& options,
     const TFsPath& path,
     NHiveProxy::NProto::TTabletBootInfoBackup* backupProto)
 {
-    auto backupPath = path / HiveBackup;
+    auto backupPath = path / options.HiveBackup;
     if (!backupPath.Exists()) {
         return false;
     }
@@ -109,18 +106,23 @@ THiveGeneration GetTabletGeneration(
     return result;
 }
 
-void ProcessDir(const TFsPath& path, TSchemeShardData* allData)
+void ProcessDir(
+    const TOptions& options,
+    const TFsPath& path,
+    TSchemeShardData* allData,
+    size_t dirIndex,
+    size_t totalDirCount)
 {
     const TInstant start = TInstant::Now();
 
     NSSProxy::NProto::TPathDescriptionBackup schemeProto;
     NHiveProxy::NProto::TTabletBootInfoBackup hiveProto;
-    const bool ssOk = LoadSchemeShardBackup(path, &schemeProto);
+    const bool ssOk = LoadSchemeShardBackup(options, path, &schemeProto);
     if (!ssOk) {
         Cout << path.GetPath().Quote() << " Failed" << Endl;
         return;
     }
-    const bool hiveOk = LoadHiveBackup(path, &hiveProto);
+    const bool hiveOk = LoadHiveBackup(options, path, &hiveProto);
     THiveGeneration tabletGeneration;
     if (hiveOk) {
         tabletGeneration = GetTabletGeneration(hiveProto);
@@ -152,25 +154,37 @@ void ProcessDir(const TFsPath& path, TSchemeShardData* allData)
         }
     }
     const TInstant end = TInstant::Now();
-    Cout << path.GetPath().Quote()
+    Cout << dirIndex << "/" << totalDirCount << " " << path.GetPath().Quote()
          << " OK, file count: " << schemeProto.GetData().size()
          << ", total count: " << allData->size()
          << ", time: " << FormatDuration(end - start) << Endl;
 }
 
-void Dump(TSchemeShardData allData, const TFsPath& outputPath)
+void Dump(
+    TSchemeShardData allData,
+    const TFsPath& textOutputPath,
+    const TFsPath& binaryOutputPath)
 {
-    TFileOutput output(outputPath);
-
     NSSProxy::NProto::TPathDescriptionBackup allProto;
     for (auto& [key, value]: allData) {
         (*allProto.MutableData())[key] = std::move(value.Description);
     }
 
-    Cout << "Dumping to " << outputPath.GetPath().Quote()
-         << " count: " << allData.size() << Endl;
-    SerializeToTextFormat(allProto, output);
-    Cout << "OK" << Endl;
+    if (textOutputPath.GetPath()) {
+        Cout << "Dumping to " << textOutputPath.GetPath().Quote()
+             << " with text format, items count: " << allData.size() << Endl;
+        TFileOutput output(textOutputPath);
+        SerializeToTextFormat(allProto, output);
+        Cout << "OK" << Endl;
+    }
+
+    if (binaryOutputPath.GetPath()) {
+        Cout << "Dumping to " << binaryOutputPath.GetPath().Quote()
+             << " with binary format, items count: " << allData.size() << Endl;
+        TOFStream out(binaryOutputPath.GetPath());
+        allProto.SerializeToArcadiaStream(&out);
+        Cout << "OK" << Endl;
+    }
 }
 
 void Run(const TOptions& options)
@@ -180,10 +194,16 @@ void Run(const TOptions& options)
     TVector<TString> children;
     srcRoot.ListNames(children);
     TSchemeShardData allData;
+    size_t dirIndex = 0;
     for (const auto& child: children) {
-        ProcessDir(srcRoot / child, &allData);
+        ProcessDir(
+            options,
+            srcRoot / child,
+            &allData,
+            ++dirIndex,
+            children.size());
     }
-    Dump(std::move(allData), options.OutputPath);
+    Dump(std::move(allData), options.TextOutputPath, options.BinaryOutputPath);
 }
 
 }   // namespace
