@@ -12,7 +12,7 @@ namespace NCloud {
 
 namespace {
 
-template<typename T>
+template <typename T>
 concept HasReserve = requires(T t) {
     { t.reserve(42) } -> std::same_as<void>;
 };
@@ -22,8 +22,12 @@ concept HasReserve = requires(T t) {
 // A simple wrapper around THashMap that also evicts the least recently used
 // elements when the capacity is reached. It keeps track of the order in which
 // keys are accessed
-template<typename TKey, typename TValue, typename THashFunc = THash<TKey>, 
-    typename TBase = THashMap<TKey, TValue, THashFunc, TEqualTo<TKey>, TStlAllocator>>
+template <
+    typename TKey,
+    typename TValue,
+    typename THashFunc = THash<TKey>,
+    typename TBase =
+        THashMap<TKey, TValue, THashFunc, TEqualTo<TKey>, TStlAllocator>>
 class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFunc, TBase>>
 {
     using TOrderList = TList<TKey, TStlAllocator>;
@@ -138,7 +142,7 @@ public:
         return Base.lower_bound(key);
     }
 
-    template<typename... Args>
+    template <typename... Args>
     std::pair<iterator, bool> emplace(Args&&... args)
     {
         if (Capacity == 0) {
@@ -150,7 +154,8 @@ public:
         return result;
     }
 
-    TValue& at(const TKey& key) {
+    TValue& at(const TKey& key)
+    {
         auto& result = Base.at(key);
         TouchKey(key);
         return result;
