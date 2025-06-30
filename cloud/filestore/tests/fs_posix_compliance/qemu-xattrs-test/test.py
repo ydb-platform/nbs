@@ -63,13 +63,13 @@ def check_xattrs(ssh: SshToGuest, file: str):
     set_xattr(ssh, file, xattr_names[0], xattr_values[0])
     set_xattr(ssh, file, xattr_names[1], xattr_values[1])
     out = get_str(list_xattr(ssh, file))
-    assert out.find(f"{xattr_names[0]}: {xattr_values[0]}") != -1 
+    assert out.find(f"{xattr_names[0]}: {xattr_values[0]}") != -1\
         and out.find(f"{xattr_names[1]}: {xattr_values[1]}") != -1
 
     # delete the first one
     del_xattr(ssh, file, xattr_names[0])
     out = get_str(list_xattr(ssh, file))
-    assert out.find(f"{xattr_names[0]}: {xattr_values[0]}") == -1 
+    assert out.find(f"{xattr_names[0]}: {xattr_values[0]}") == -1\
         and out.find(f"{xattr_names[1]}: {xattr_values[1]}") != -1
 
     # change value
@@ -95,14 +95,14 @@ def test():
     create_dir(ssh, dir_name)
     set_default_acl(ssh, dir_name)
     out = get_str(get_acl(ssh, dir_name))
-    assert out.find("default:user::rwx") != -1 
-        and out.find("default:group::rwx") != -1 
+    assert out.find("default:user::rwx") != -1\
+        and out.find("default:group::rwx") != -1\
         and out.find("default:other::rwx") != -1
 
     delete_all_acl(ssh, dir_name)
     out = get_str(get_acl(ssh, dir_name))
-    assert out.find("default:user::rwx") == -1 
-        and out.find("default:group::rwx") == -1 
+    assert out.find("default:user::rwx") == -1\
+        and out.find("default:group::rwx") == -1\
         and out.find("default:other::rwx") == -1
 
     # check that we can set and delete extended attributes of a file
