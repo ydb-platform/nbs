@@ -1821,13 +1821,13 @@ message TPartiallySuspendAgentResponse
 message TClusterCapacityInfo
 {
     // Kind of described space.
-    NCloud.NProto.EStorageMediaKind Kind = 1;
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 1;
 
     // Free space in bytes.
-    uint64 Free = 2;
+    uint64 FreeBytes = 2;
 
     // Total space in bytes.
-    uint64 Total = 3;
+    uint64 TotalBytes = 3;
 }
 
 message TGetClusterCapacityRequest

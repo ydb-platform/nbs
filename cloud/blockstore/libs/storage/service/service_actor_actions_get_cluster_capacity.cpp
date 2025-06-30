@@ -31,9 +31,9 @@ NPrivateProto::TClusterCapacityInfo ToResponse(
     const NProto::TClusterCapacityInfo& capacityInfo)
 {
     NPrivateProto::TClusterCapacityInfo info;
-    info.SetFree(capacityInfo.GetFree());
-    info.SetTotal(capacityInfo.GetTotal());
-    info.SetKind(capacityInfo.GetKind());
+    info.SetFree(capacityInfo.GetFreeBytes());
+    info.SetTotal(capacityInfo.GetTotalBytes());
+    info.SetKind(capacityInfo.GetStorageMediaKind());
 
     return info;
 }
@@ -57,11 +57,11 @@ private:
         std::unique_ptr<TEvService::TEvExecuteActionResponse> response);
 
     void HandleSuccess(const TActorContext& ctx, const TString& output);
-    void HandleEmptyList(const TActorContext& ctx, const TString& component);
+    void HandleEmptyClusterCapacity(const TActorContext& ctx, const TString& component);
 
 private:
-    STFUNC(StateGetDiskRegistryCapacity);
-    STFUNC(StateGetYDBCapacity);
+    STFUNC(StateGetDiskRegistryBasedCapacity);
+    STFUNC(StateGetYDBBasedCapacity);
 
     void HandleGetDiskRegistyCapacity(
         const TEvDiskRegistry::TEvGetClusterCapacityResponse::TPtr& ev,
@@ -80,7 +80,7 @@ TGetCapacityActor::TGetCapacityActor(TRequestInfoPtr requestInfo)
 
 void TGetCapacityActor::Bootstrap(const TActorContext& ctx)
 {
-    Become(&TThis::StateGetDiskRegistryCapacity);
+    Become(&TThis::StateGetDiskRegistryBasedCapacity);
 
     LOG_DEBUG(
         ctx,
@@ -116,7 +116,7 @@ void TGetCapacityActor::HandleSuccess(
     ReplyAndDie(ctx, std::move(response));
 }
 
-void TGetCapacityActor::HandleEmptyList(
+void TGetCapacityActor::HandleEmptyClusterCapacity(
     const TActorContext& ctx,
     const TString& component)
 {
@@ -140,11 +140,11 @@ void TGetCapacityActor::HandleGetDiskRegistyCapacity(
         LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Getting Disk Registry capacity failed: " << FormatError(error));
+            "Getting DiskRegistry capacity failed: " << FormatError(error));
     }
 
     if (msg->Record.GetCapacity().empty()) {
-        HandleEmptyList(ctx, "Disk Registry");
+        HandleEmptyClusterCapacity(ctx, "DiskRegistry");
         return;
     }
 
@@ -155,7 +155,7 @@ void TGetCapacityActor::HandleGetDiskRegistyCapacity(
         Capacities.push_back(std::move(capacity));
     }
 
-    Become(&TThis::StateGetYDBCapacity);
+    Become(&TThis::StateGetYDBBasedCapacity);
     NCloud::Send(
         ctx,
         MakeBlobStorageProxyID(0),
@@ -170,8 +170,13 @@ void TGetCapacityActor::HandleGetYDBCapacity(
 {
     auto* msg = ev->Get();
 
+    if (FAILED(msg->GetStatus())) {
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
     if (msg->Record.GetEntries().empty()) {
-        HandleEmptyList(ctx, "BSController");
+        HandleEmptyClusterCapacity(ctx, "BSController");
         return;
     }
 
@@ -200,14 +205,14 @@ void TGetCapacityActor::HandleGetYDBCapacity(
     }
 
     auto& ssd_capacity = Capacities.emplace_back();
-    ssd_capacity.SetKind(NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
-    ssd_capacity.SetFree(freeBytesSSD);
-    ssd_capacity.SetTotal(totalBytesSSD);
+    ssd_capacity.SetStorageMediaKind(NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+    ssd_capacity.SetFreeBytes(freeBytesSSD);
+    ssd_capacity.SetTotalBytes(totalBytesSSD);
 
     auto& hdd_capacity = Capacities.emplace_back();
-    hdd_capacity.SetKind(NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
-    hdd_capacity.SetFree(freeBytesHDD);
-    hdd_capacity.SetTotal(totalBytesHDD);
+    hdd_capacity.SetStorageMediaKind(NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
+    hdd_capacity.SetFreeBytes(freeBytesHDD);
+    hdd_capacity.SetTotalBytes(totalBytesHDD);
 
     NPrivateProto::TGetClusterCapacityResponse result;
     for (auto& capacity: Capacities) {
@@ -221,7 +226,7 @@ void TGetCapacityActor::HandleGetYDBCapacity(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TGetCapacityActor::StateGetDiskRegistryCapacity)
+STFUNC(TGetCapacityActor::StateGetDiskRegistryBasedCapacity)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
@@ -239,7 +244,7 @@ STFUNC(TGetCapacityActor::StateGetDiskRegistryCapacity)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TGetCapacityActor::StateGetYDBCapacity)
+STFUNC(TGetCapacityActor::StateGetYDBBasedCapacity)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(

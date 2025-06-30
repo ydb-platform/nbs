@@ -55,18 +55,18 @@ void TDiskRegistryActor::HandleGetClusterCapacity(
     for (const auto& [mediaKind, replicaCount]: diskRegistryBasedSSDMediaKinds)
     {
         NProto::TClusterCapacityInfo capacityInfo;
-        capacityInfo.SetFree(freeBytesSSD / replicaCount);
-        capacityInfo.SetTotal(totalBytesSSD / replicaCount);
-        capacityInfo.SetKind(mediaKind);
+        capacityInfo.SetFreeBytes(freeBytesSSD / replicaCount);
+        capacityInfo.SetTotalBytes(totalBytesSSD / replicaCount);
+        capacityInfo.SetStorageMediaKind(mediaKind);
         *response->Record.AddCapacity() = std::move(capacityInfo);
     }
 
     for (const auto& [mediaKind, replicaCount]: diskRegistryBasedHDDMediaKinds)
     {
         NProto::TClusterCapacityInfo capacityInfo;
-        capacityInfo.SetFree(freeBytesHDD / replicaCount);
-        capacityInfo.SetTotal(totalBytesHDD / replicaCount);
-        capacityInfo.SetKind(mediaKind);
+        capacityInfo.SetFreeBytes(freeBytesHDD / replicaCount);
+        capacityInfo.SetTotalBytes(totalBytesHDD / replicaCount);
+        capacityInfo.SetStorageMediaKind(mediaKind);
         *response->Record.AddCapacity() = std::move(capacityInfo);
     }
 

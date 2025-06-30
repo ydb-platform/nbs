@@ -88,9 +88,9 @@ message TDiskRegistrySetWritableStateResponse
 
 message TClusterCapacityInfo
 {
-    NCloud.NProto.EStorageMediaKind Kind = 1;
-    uint64 Free = 2;
-    uint64 Total = 3;
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 1;
+    uint64 FreeBytes = 2;
+    uint64 TotalBytes = 3;
 }
 
 message TGetClusterCapacityRequest
