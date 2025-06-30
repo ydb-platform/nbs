@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	nbs "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
-	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/driver/mocks"
 	csimounter "github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
 	nfs "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
@@ -131,15 +130,6 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 			volumeContext[requestQueuesCountVolumeContextKey] = strconv.Itoa(int(*requestQueuesCountOpt))
 			vhostQueuesCount = virtioBlkVhostQueuesCount(*requestQueuesCountOpt)
 		}
-		nbsClient.On("DescribeVolume", ctx, &nbs.TDescribeVolumeRequest{
-			DiskId: diskId,
-		}).Return(
-			&nbs.TDescribeVolumeResponse{
-				Volume: &nbs.TVolume{
-					StorageMediaKind: storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
-				},
-			},
-			nil)
 		nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			UnixSocketPath:   nbsSocketPath,
@@ -234,6 +224,12 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		StagingTargetPath: stagingTargetPath,
 	})
 	require.NoError(t, err)
+
+	nbsClient.AssertExpectations(t)
+	nfsClient.AssertExpectations(t)
+	nfsLocalClient.AssertExpectations(t)
+	nfsLocalFilestoreClient.AssertExpectations(t)
+	mounter.AssertExpectations(t)
 }
 
 func TestPublishUnpublishVolumeForKubevirt(t *testing.T) {
@@ -532,6 +528,12 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 
 	_, err = os.Stat(filepath.Join(socketsDir, instanceId))
 	assert.True(t, os.IsNotExist(err))
+
+	nbsClient.AssertExpectations(t)
+	nfsClient.AssertExpectations(t)
+	nfsLocalClient.AssertExpectations(t)
+	nfsLocalFilestoreClient.AssertExpectations(t)
+	mounter.AssertExpectations(t)
 }
 
 func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
@@ -869,6 +871,9 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		StagingTargetPath: stagingTargetPath,
 	})
 	require.NoError(t, err)
+
+	nbsClient.AssertExpectations(t)
+	mounter.AssertExpectations(t)
 }
 
 func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
@@ -895,7 +900,6 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	socketsDir := filepath.Join(tempDir, "sockets")
 	sourcePath := filepath.Join(socketsDir, diskId)
 	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
-	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
 	localFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
@@ -1009,10 +1013,6 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 
 	mounter.On("CleanupMountPoint", targetPath).Return(nil)
 
-	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
-		UnixSocketPath: deprecatedSocketPath,
-	}).Run(volumeOperationInProgress).Return(&nbs.TStopEndpointResponse{}, nil)
-
 	_, err = nodeService.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
 		VolumeId:   diskId,
 		TargetPath: targetPath,
@@ -1035,6 +1035,9 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		StagingTargetPath: stagingTargetPath,
 	})
 	require.NoError(t, err)
+
+	nbsClient.AssertExpectations(t)
+	mounter.AssertExpectations(t)
 }
 
 func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
@@ -1090,7 +1093,6 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		})
 	assert.NotEqual(t, -1, capabilityIndex)
 
-	nbsClient.On("DescribeVolume", ctx, &nbs.TDescribeVolumeRequest{DiskId: diskId}).Return(&nbs.TDescribeVolumeResponse{}, nil)
 	mounter.On("IsMountPoint", targetPath).Return(true, nil)
 
 	stat, err := nodeService.NodeGetVolumeStats(ctx, &csi.NodeGetVolumeStatsRequest{
@@ -1109,6 +1111,9 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	assert.Equal(t, nodesUsage.Unit, csi.VolumeUsage_INODES)
 	assert.NotEqual(t, 0, nodesUsage.Total)
 	assert.Equal(t, nodesUsage.Used+nodesUsage.Available, nodesUsage.Total)
+
+	nbsClient.AssertExpectations(t)
+	mounter.AssertExpectations(t)
 }
 
 func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
@@ -1166,6 +1171,9 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		VolumePath: targetPath,
 	})
 	require.Error(t, err)
+
+	nbsClient.AssertExpectations(t)
+	mounter.AssertExpectations(t)
 }
 
 func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
@@ -1244,184 +1252,9 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		VolumeContext: volumeContext,
 	})
 	require.Error(t, err)
-}
 
-func TestGrpcTimeoutForIKubevirt(t *testing.T) {
-	tempDir := t.TempDir()
-
-	nbsClient := mocks.NewNbsClientMock()
-	nfsClient := mocks.NewNfsEndpointClientMock()
-	nfsLocalClient := mocks.NewNfsEndpointClientMock()
-	nfsLocalFilestoreClient := mocks.NewNfsClientMock()
-	mounter := csimounter.NewMock()
-
-	ctx := context.Background()
-	nodeId := "testNodeId"
-	clientId := "testClientId"
-	instanceId := "testInstanceId"
-	actualClientId := "testClientId-" + instanceId
-	diskId := "test-disk-id-42"
-	deviceName := diskId
-	volumeId := diskId + "#" + instanceId
-	backend := "nbs"
-
-	stagingTargetPath := filepath.Join(tempDir, "testStagingTargetPath")
-	socketsDir := filepath.Join(tempDir, "sockets")
-	sourcePath := filepath.Join(socketsDir, instanceId, diskId)
-	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
-	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
-
-	nodeService := newNodeService(
-		nodeId,
-		clientId,
-		true,
-		socketsDir,
-		targetFsPathPattern,
-		"",
-		make(ExternalFsOverrideMap),
-		nbsClient,
-		nfsClient,
-		nfsLocalClient,
-		nfsLocalFilestoreClient,
-		mounter,
-		[]string{},
-		false,
-		defaultStartEndpointRetryTimeout,
-	)
-
-	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
-
-	volumeCapability := csi.VolumeCapability{
-		AccessType: &csi.VolumeCapability_Mount{
-			Mount: &csi.VolumeCapability_MountVolume{},
-		},
-		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: accessMode,
-		},
-	}
-
-	volumeContext := map[string]string{
-		backendVolumeContextKey: backend,
-		instanceIdKey:           instanceId,
-	}
-
-	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	grpcError := nbsclient.ClientError{Code: nbsclient.E_GRPC_DEADLINE_EXCEEDED}
-	startEndpointError := fmt.Errorf("%w", grpcError)
-	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
-	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
-		UnixSocketPath:   nbsSocketPath,
-		DiskId:           diskId,
-		InstanceId:       instanceId,
-		ClientId:         actualClientId,
-		DeviceName:       deviceName,
-		IpcType:          nbs.EClientIpcType_IPC_VHOST,
-		VhostQueuesCount: 8,
-		RetryTimeout:     uint32(defaultStartEndpointRetryTimeout.Milliseconds()),
-		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
-		Persistent:       true,
-		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			false,
-		},
-		ClientProfile: &nbs.TClientProfile{
-			HostType: &hostType,
-		},
-	}).Once().Return(&nbs.TStartEndpointResponse{}, startEndpointError)
-
-	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
-		UnixSocketPath: nbsSocketPath,
-	}).Once().Return(&nbs.TStopEndpointResponse{}, nil)
-
-	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
-		VolumeId:          volumeId,
-		StagingTargetPath: stagingTargetPath,
-		VolumeCapability:  &volumeCapability,
-		VolumeContext:     volumeContext,
-	})
-	require.Error(t, err)
-}
-
-func TestGrpcTimeoutForInfrakuber(t *testing.T) {
-	tempDir := t.TempDir()
-
-	nbsClient := mocks.NewNbsClientMock()
-	mounter := csimounter.NewMock()
-
-	ipcType := nbs.EClientIpcType_IPC_NBD
-	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
-	err := os.MkdirAll(nbdDeviceFile, fs.FileMode(0755))
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	nodeId := "testNodeId"
-	clientId := "testClientId"
-	diskId := "test-disk-id-42"
-	actualClientId := "testClientId-testNodeId"
-	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
-	stagingTargetPath := "testStagingTargetPath"
-	socketsDir := filepath.Join(tempDir, "sockets")
-	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
-
-	nodeService := newNodeService(
-		nodeId,
-		clientId,
-		false,
-		socketsDir,
-		targetFsPathPattern,
-		"",
-		make(ExternalFsOverrideMap),
-		nbsClient,
-		nil,
-		nil, // nfsLocalClient
-		nil, // nfsLocalFilestoreClient
-		mounter,
-		[]string{},
-		false,
-		defaultStartEndpointRetryTimeout,
-	)
-
-	volumeCapability := csi.VolumeCapability{
-		AccessType: &csi.VolumeCapability_Mount{},
-		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-		},
-	}
-
-	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	grpcError := nbsclient.ClientError{Code: nbsclient.E_GRPC_DEADLINE_EXCEEDED}
-	startEndpointError := fmt.Errorf("%w", grpcError)
-	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
-	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
-		UnixSocketPath:   socketPath,
-		DiskId:           diskId,
-		InstanceId:       nodeId,
-		ClientId:         actualClientId,
-		DeviceName:       diskId,
-		IpcType:          ipcType,
-		VhostQueuesCount: 8,
-		RetryTimeout:     uint32(defaultStartEndpointRetryTimeout.Milliseconds()),
-		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
-		Persistent:       true,
-		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			true,
-		},
-		ClientProfile: &nbs.TClientProfile{
-			HostType: &hostType,
-		},
-	}).Return(&nbs.TStartEndpointResponse{}, startEndpointError)
-
-	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
-		UnixSocketPath: socketPath,
-	}).Return(&nbs.TStopEndpointResponse{}, nil)
-
-	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
-		VolumeId:          diskId,
-		StagingTargetPath: stagingTargetPath,
-		VolumeCapability:  &volumeCapability,
-	})
-	require.Error(t, err)
+	nbsClient.AssertExpectations(t)
+	mounter.AssertExpectations(t)
 }
 
 func TestExternaFs(t *testing.T) {
@@ -1591,4 +1424,10 @@ func TestExternaFs(t *testing.T) {
 
 	_, err = os.Stat(filepath.Join(socketsDir, instanceId))
 	assert.True(t, os.IsNotExist(err))
+
+	nbsClient.AssertExpectations(t)
+	nfsClient.AssertExpectations(t)
+	nfsLocalClient.AssertExpectations(t)
+	nfsLocalFilestoreClient.AssertExpectations(t)
+	mounter.AssertExpectations(t)
 }
