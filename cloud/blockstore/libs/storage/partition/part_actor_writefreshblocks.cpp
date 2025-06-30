@@ -201,6 +201,8 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         return;
     }
 
+    Cerr << "WriteBlob" << Endl;
+
     Y_ABORT_UNLESS(!BlobContent.empty());
 
     const auto [generation, step] = ParseCommitId(CommitId);
@@ -387,10 +389,12 @@ void TPartitionActor::WriteFreshBlocks(
     const TActorContext& ctx,
     TArrayRef<TRequestInBuffer<TWriteBufferRequestData>> requestsInBuffer)
 {
+    Cerr << "WriteFreshBlocks 1" << Endl;
     if (requestsInBuffer.empty()) {
         return;
     }
 
+    Cerr << "WriteFreshBlocks 2" << Endl;
     if (State->GetUnflushedFreshBlobByteCount()
             >= Config->GetFreshByteCountHardLimit())
     {
@@ -417,6 +421,7 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
+    Cerr << "WriteFreshBlocks 3" << Endl;
     const auto commitId = State->GenerateCommitId();
 
     if (commitId == InvalidCommitId) {
@@ -428,8 +433,11 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
+    Cerr << "WriteFreshBlocks 4" << Endl;
+
     State->GetCommitQueue().AcquireBarrier(commitId);
 
+    Cerr << "WriteFreshBlocks 5" << Endl;
     const bool freshChannelWriteRequestsEnabled =
         Config->GetFreshChannelWriteRequestsEnabled() ||
         Config->IsFreshChannelWriteRequestsFeatureEnabled(
@@ -438,6 +446,7 @@ void TPartitionActor::WriteFreshBlocks(
             PartitionConfig.GetDiskId());
 
     if (freshChannelWriteRequestsEnabled && State->GetFreshChannelCount() > 0) {
+        Cerr << "WriteFreshBlocks 6" << Endl;
         TVector<TWriteFreshBlocksActor::TRequest> requests;
         requests.reserve(requestsInBuffer.size());
 
@@ -463,8 +472,11 @@ void TPartitionActor::WriteFreshBlocks(
             blockRanges.push_back(r.Data.Range);
             writeHandlers.push_back(r.Data.Handler);
         }
+        Cerr << "WriteFreshBlocks 7" << Endl;
 
         State->GetTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
+
+        Cerr << "WriteFreshBlocks 8" << Endl;
 
         const ui32 channel = State->PickNextChannel(
             EChannelDataKind::Fresh,
@@ -482,6 +494,7 @@ void TPartitionActor::WriteFreshBlocks(
             BlockDigestGenerator);
 
         Actors.Insert(actor);
+        Cerr << "WriteFreshBlocks 9" << Endl;
     } else {
         // write fresh blocks to FreshBlocks table
         TVector<TTxPartition::TWriteBlocks::TSubRequestInfo> subRequests(
@@ -517,6 +530,7 @@ void TPartitionActor::WriteFreshBlocks(
             ctx,
             CreateTx<TWriteBlocks>(commitId, std::move(subRequests)));
     }
+    Cerr << "WriteFreshBlocks 10" << Endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -573,6 +587,7 @@ bool TPartitionActor::PrepareWriteBlocks(
     TTransactionContext& tx,
     TTxPartition::TWriteBlocks& args)
 {
+    Cerr << "PrepareWriteBlocks" << Endl;
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
     Y_UNUSED(args);
@@ -586,6 +601,7 @@ void TPartitionActor::ExecuteWriteBlocks(
     TTransactionContext& tx,
     TTxPartition::TWriteBlocks& args)
 {
+    Cerr << "ExecuteWriteBlocks" << Endl;
     Y_UNUSED(ctx);
 
     TDeque<TRequestScope> timers;
@@ -607,6 +623,8 @@ void TPartitionActor::ExecuteWriteBlocks(
             return;
         }
     }
+
+    Cerr << "ExecuteWriteBlocks 1" << Endl;
 
     TPartitionDatabase db(tx.DB);
 
@@ -635,6 +653,7 @@ void TPartitionActor::ExecuteWriteBlocks(
             }
         }
 
+        Cerr << "StateWriteFreshBlocks" << Endl;
         State->WriteFreshBlocks(db, sr.Range, commitId, sgList);
 
         // update counters
@@ -643,13 +662,16 @@ void TPartitionActor::ExecuteWriteBlocks(
         State->SetUsedBlocks(db, sr.Range, 0);
     }
 
+    Cerr << "ExecuteWriteBlocks 3" << Endl;
     db.WriteMeta(State->GetMeta());
+    Cerr << "ExecuteWriteBlocks 4" << Endl;
 }
 
 void TPartitionActor::CompleteWriteBlocks(
     const TActorContext& ctx,
     TTxPartition::TWriteBlocks& args)
 {
+    Cerr << "CompleteWriteBlocks" << Endl;
     ui32 blockCount = 0;
     ui64 totalBytes = 0;
     ui64 execCycles = 0;

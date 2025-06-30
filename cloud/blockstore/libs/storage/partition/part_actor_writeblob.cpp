@@ -129,6 +129,7 @@ void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
 
 void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 {
+    Cerr << "SendPutRequest" << Endl;
     TString blobContent;
 
     if (const auto* guardedSgList = std::get_if<TGuardedSgList>(&Request->Data)) {
@@ -190,6 +191,7 @@ void TWriteBlobActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
+    Cerr << "NotifyCompleted" << Endl;
     auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobCompleted>(
         error);
     request->BlobId = Request->BlobId;
@@ -242,6 +244,7 @@ void TWriteBlobActor::HandlePutResult(
     const TEvBlobStorage::TEvPutResult::TPtr& ev,
     const TActorContext& ctx)
 {
+    Cerr << "HandlePutResult" << Endl;
     ResponseReceived = ctx.Now();
 
     const auto* msg = ev->Get();
@@ -251,7 +254,9 @@ void TWriteBlobActor::HandlePutResult(
     StorageStatusFlags = msg->StatusFlags;
     ApproximateFreeSpaceShare = msg->ApproximateFreeSpaceShare;
 
+    Cerr << "HandlePutResult!!!!!!!" << Endl;
     if (msg->Status != NKikimrProto::OK) {
+        Cerr << "NOT OK!!!!!!!" << Endl;
         ReplyError(ctx, *msg, msg->ErrorReason);
         return;
     }
