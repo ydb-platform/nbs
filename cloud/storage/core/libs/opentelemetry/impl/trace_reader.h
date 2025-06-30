@@ -11,7 +11,25 @@ ITraceReaderPtr CreateTraceExporter(
     TString id,
     ILoggingServicePtr logging,
     TString componentName,
+    TString tag,
+    ITraceReaderPtr consumer,
     ITraceServiceClientPtr traceServiceClient,
     TString serviceName);
+
+ITraceReaderPtr SetupTraceReaderWithOpentelemetryExport(
+    TString id,
+    ILoggingServicePtr logging,
+    TString componentName,
+    TString tag,
+    ITraceServiceClientPtr traceServiceClient,
+    TString serviceName);
+
+ITraceReaderPtr SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
+    TString id,
+    ILoggingServicePtr logging,
+    TString componentName,
+    ITraceServiceClientPtr traceServiceClient,
+    TString serviceName,
+    TRequestThresholds requestThresholds);
 
 } // namespace NCloud

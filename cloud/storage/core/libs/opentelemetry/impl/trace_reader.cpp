@@ -20,12 +20,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTraceOpenTelemetryExporter final: public ITraceReaderWithRingBuffer
+class TTraceOpenTelemetryExporter final: public ITraceReader
 {
 private:
     const TString ComponentName;
     const TString ServiceName;
+    const TString Tag;
 
+    ITraceReaderPtr Consumer;
     ILoggingServicePtr Logging;
     ITraceServiceClientPtr TraceServiceClient;
 
@@ -36,11 +38,15 @@ public:
             TString id,
             TString componentName,
             TString serviceName,
+            TString tag,
+            ITraceReaderPtr consumer,
             ILoggingServicePtr logging,
             ITraceServiceClientPtr traceServiceClient)
-        : ITraceReaderWithRingBuffer(std::move(id))
+        : ITraceReader(std::move(id))
         , ComponentName(std::move(componentName))
         , ServiceName(std::move(serviceName))
+        , Tag(std::move(tag))
+        , Consumer(std::move(consumer))
         , Logging(std::move(logging))
         , TraceServiceClient(std::move(traceServiceClient))
     {}
@@ -53,16 +59,20 @@ public:
             return;
         }
 
-        ui64 minSeenTimestamp = tl.Items[0].TimestampCycles;
-
         auto spans = ConvertToOpenTelemetrySpans(tl);
 
         ExportTraceServiceRequest traces;
         auto* resourceSpans = traces.add_resource_spans();
-        auto* attribute =
+
+        auto* serviceNameAttribute =
             resourceSpans->mutable_resource()->mutable_attributes()->Add();
-        attribute->set_key("service.name");
-        attribute->mutable_value()->set_string_value(ServiceName);
+        serviceNameAttribute->set_key("service.name");
+        serviceNameAttribute->mutable_value()->set_string_value(ServiceName);
+
+        auto* tagAttribute =
+            resourceSpans->mutable_resource()->mutable_attributes()->Add();
+        tagAttribute->set_key("tag");
+        tagAttribute->mutable_value()->set_string_value(Tag);
 
         auto* scopedSpans = resourceSpans->add_scope_spans();
         for (const auto& span: spans) {
@@ -84,16 +94,18 @@ public:
                     }
                 });
 
-        RingBuffer.PushBack(
-            {.Ts = TInstant::Now(),
-             .Date = minSeenTimestamp,
-             .TrackLog = tl,
-             .Tag = "AllRequests"});
+        Consumer->Push(tid, tl);
     }
 
     void Reset() override
     {
         TracksCount = 0;
+        Consumer->Reset();
+    }
+
+    void ForEach(std::function<void(const TEntry&)> fn) override
+    {
+        Consumer->ForEach(fn);
     }
 };
 
@@ -105,6 +117,8 @@ ITraceReaderPtr CreateTraceExporter(
     TString id,
     ILoggingServicePtr logging,
     TString componentName,
+    TString tag,
+    ITraceReaderPtr consumer,
     ITraceServiceClientPtr traceServiceClient,
     TString serviceName)
 {
@@ -112,8 +126,61 @@ ITraceReaderPtr CreateTraceExporter(
         std::move(id),
         std::move(componentName),
         std::move(serviceName),
+        std::move(tag),
+        std::move(consumer),
         std::move(logging),
         std::move(traceServiceClient));
+}
+
+ITraceReaderPtr SetupTraceReaderWithOpentelemetryExport(
+    TString id,
+    ILoggingServicePtr logging,
+    TString componentName,
+    TString tag,
+    ITraceServiceClientPtr traceServiceClient,
+    TString serviceName)
+{
+    ITraceReaderPtr traceReader =
+        std::make_shared<TTraceReaderWithRingBuffer>(id, tag);
+    traceReader = CreateTraceExporter(
+        id,
+        logging,
+        componentName,
+        tag,
+        std::move(traceReader),
+        std::move(traceServiceClient),
+        std::move(serviceName));
+    traceReader = CreateTraceLogger(
+        std::move(id),
+        std::move(traceReader),
+        std::move(logging),
+        std::move(componentName),
+        std::move(tag));
+    return traceReader;
+}
+
+ITraceReaderPtr SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
+    TString id,
+    ILoggingServicePtr logging,
+    TString componentName,
+    ITraceServiceClientPtr traceServiceClient,
+    TString serviceName,
+    TRequestThresholds requestThresholds)
+{
+    auto traceReader = SetupTraceReaderWithOpentelemetryExport(
+        id,
+        logging,
+        componentName,
+        "SlowRequests",
+        std::move(traceServiceClient),
+        std::move(serviceName));
+
+    return CreateSlowRequestsFilter(
+        std::move(id),
+        std::move(traceReader),
+        std::move(logging),
+        std::move(componentName),
+        std::move(requestThresholds));
 }
 
 }   // namespace NCloud

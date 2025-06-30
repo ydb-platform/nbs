@@ -602,11 +602,11 @@ void TBootstrap::InitLWTrace()
             samplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(TraceLoggerId, query);
-        TraceReaders.push_back(CreateTraceLogger(
+        TraceReaders.push_back(SetupTraceReaderWithLog(
             TraceLoggerId,
             traceLog,
-            "BLOCKSTORE_TRACE"
-        ));
+            "BLOCKSTORE_TRACE",
+            "AllRequests"));
     }
 
     if (auto samplingRate = diagnosticsConfig->GetSlowRequestSamplingRate()) {
@@ -615,7 +615,7 @@ void TBootstrap::InitLWTrace()
             samplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(SlowRequestsFilterId, query);
-        TraceReaders.push_back(CreateSlowRequestsFilter(
+        TraceReaders.push_back(SetupTraceReaderForSlowRequests(
             SlowRequestsFilterId,
             traceLog,
             "BLOCKSTORE_TRACE",

@@ -61,34 +61,50 @@ struct ITraceReader
     virtual void Reset() = 0;
 };
 
-struct ITraceReaderWithRingBuffer
+
+class TTraceReaderWithRingBuffer final
     : public ITraceReader
 {
     static constexpr size_t DefaultRingBufferSize = 1000;
 
+private:
     TSimpleRingBuffer<TEntry> RingBuffer;
+    ui64 TracksCount = 0;
+    const TString Tag;
 
-    explicit ITraceReaderWithRingBuffer(TString id)
-        : ITraceReader(std::move(id))
-        , RingBuffer(DefaultRingBufferSize)
-    {}
+public:
+    TTraceReaderWithRingBuffer(TString id, TString tag);
 
-    void ForEach(std::function<void(const TEntry&)> fn) override
-    {
-        for (ui64 i = RingBuffer.FirstIndex(); i < RingBuffer.TotalSize(); ++i) {
-            fn(RingBuffer[i]);
-        }
-    }
+    void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override;
+
+    void Reset() override;
+
+    void ForEach(std::function<void(const TEntry&)> fn) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 ITraceReaderPtr CreateTraceLogger(
     TString id,
+    ITraceReaderPtr consumer,
     ILoggingServicePtr logging,
-    TString componentName);
+    TString componentName,
+    TString tag);
 
 ITraceReaderPtr CreateSlowRequestsFilter(
+    TString id,
+    ITraceReaderPtr consumer,
+    ILoggingServicePtr logging,
+    TString componentName,
+    TRequestThresholds requestThresholds);
+
+ITraceReaderPtr SetupTraceReaderWithLog(
+    TString id,
+    ILoggingServicePtr logging,
+    TString componentName,
+    TString tag);
+
+ITraceReaderPtr SetupTraceReaderForSlowRequests(
     TString id,
     ILoggingServicePtr logging,
     TString componentName,
