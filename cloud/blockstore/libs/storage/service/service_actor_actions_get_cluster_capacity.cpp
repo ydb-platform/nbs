@@ -31,9 +31,9 @@ NPrivateProto::TClusterCapacityInfo ToResponse(
     const NProto::TClusterCapacityInfo& capacityInfo)
 {
     NPrivateProto::TClusterCapacityInfo info;
-    info.SetFree(capacityInfo.GetFreeBytes());
-    info.SetTotal(capacityInfo.GetTotalBytes());
-    info.SetKind(capacityInfo.GetStorageMediaKind());
+    info.SetFreeBytes(capacityInfo.GetFreeBytes());
+    info.SetTotalBytes(capacityInfo.GetTotalBytes());
+    info.SetStorageMediaKind(capacityInfo.GetStorageMediaKind());
 
     return info;
 }
@@ -169,11 +169,6 @@ void TGetCapacityActor::HandleGetYDBCapacity(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    if (FAILED(msg->GetStatus())) {
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
 
     if (msg->Record.GetEntries().empty()) {
         HandleEmptyClusterCapacity(ctx, "BSController");

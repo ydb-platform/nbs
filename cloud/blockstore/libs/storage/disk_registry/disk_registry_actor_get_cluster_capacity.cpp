@@ -23,12 +23,12 @@ void TDiskRegistryActor::HandleGetClusterCapacity(
     auto response =
         std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityResponse>();
 
-    auto sumBytesByPoolKind = [&](NProto::EDevicePoolKind kind)
+    auto sumBytesByPoolKind = [&](NProto::EDevicePoolKind poolKind)
     {
         ui64 freeBytes = 0;
         ui64 totalBytes = 0;
 
-        for (const auto& poolName: State->GetPoolNames(kind)) {
+        for (const auto& poolName: State->GetPoolNames(poolKind)) {
             auto racks = State->GatherRacksInfo(poolName);
             for (const auto& rack: racks) {
                 freeBytes += rack.FreeBytes;
