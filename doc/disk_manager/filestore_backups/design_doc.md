@@ -320,7 +320,10 @@ primary key is (`shard_id`, `chunk_id`, `referer`).
 For filesystem hierarchy restoration, we are going to use the separate restoration table (`filesystem_backup_restore_mapping`), which will store from source ids to destination ids:
 ```
 destination_filesystem_id: Utf8
-node_id: Uint64
+parent_node_id: Uint64
+name: Utf8
+destination_shard_id: Utf8
+destination_shard_node_name: Utf8
 destination_node_id: Uint64
 ```
 primary key is (`destination_filesystem_id`, `node_id`).
