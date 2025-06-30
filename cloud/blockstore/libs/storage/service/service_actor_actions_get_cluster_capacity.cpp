@@ -85,7 +85,7 @@ void TGetCapacityActor::Bootstrap(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Sending get nameservice config request");
+        "Sending get cluster capacity request");
 
     NCloud::Send(
         ctx,
