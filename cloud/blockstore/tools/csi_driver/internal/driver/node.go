@@ -817,6 +817,13 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
+	err = nil
+	defer func() {
+		if err != nil {
+			s.cleanupEndpoint(ctx, diskId)
+		}
+	}()
+
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	// startNbsEndpointForNBD is async function. Kubelet will retry
@@ -886,7 +893,12 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	devicePath := filepath.Join(req.StagingTargetPath, diskId)
-	return s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
+	err = s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
+
+	if err != nil {
+		s.cleanupEndpoint(ctx, diskId)
+	}
+	return err
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDevice(
@@ -971,6 +983,15 @@ func (s *nodeService) resolveEndpoint(ctx context.Context,
 	}
 
 	return startEndpointRequest
+}
+
+func (s *nodeService) cleanupEndpoint(ctx context.Context, diskId string) {
+	_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+		UnixSocketPath: filepath.Join(s.getEndpointDir("", diskId), nbsSocketName),
+	})
+	if err != nil {
+		logVolume(diskId, "StopEndpoint failed in cleanup: %w", err)
+	}
 }
 
 func (s *nodeService) getNfsClient(fileSystemId string) nfsclient.EndpointClientIface {
