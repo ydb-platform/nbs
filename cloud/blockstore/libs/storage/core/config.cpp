@@ -240,7 +240,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     /* InitialAddClientTimeout should include the time required to release     \
      * the volume lock and to bring the volume back up.                        \
      */                                                                        \
-    xxx(InitialAddClientTimeout,       TDuration, Seconds(30)                 )\
+    xxx(InitialAddClientTimeout,       TDuration, Seconds(1)                  )\
     xxx(LocalStartAddClientTimeout,    TDuration, Minutes(1)                  )\
     xxx(MaxIORequestsInFlight,         ui32,      10                          )\
     xxx(MaxIORequestsInFlightSSD,      ui32,      1000                        )\

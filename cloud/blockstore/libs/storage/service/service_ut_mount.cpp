@@ -2980,6 +2980,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     Y_UNIT_TEST(ShouldWaitForAddClientAfterTabletUnlocking)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetInitialAddClientTimeout(
+            TDuration::Seconds(30).MilliSeconds());
 
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env, storageServiceConfig);
