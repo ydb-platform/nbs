@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/kms/impl/compute_client.h>
 #include <cloud/blockstore/libs/kms/impl/kms_client.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
+#include <cloud/blockstore/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/blockstore/libs/opentelemetry/impl/trace_service_client.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/server.h>

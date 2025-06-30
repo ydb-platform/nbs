@@ -5,6 +5,8 @@
 #include <contrib/libs/opentelemetry-proto/opentelemetry/proto/common/v1/common.pb.h>
 #include <contrib/libs/opentelemetry-proto/opentelemetry/proto/trace/v1/trace.pb.h>
 
+#include <library/cpp/protobuf/util/pb_io.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/vector.h>
 
@@ -135,8 +137,11 @@ struct TLogItemsIterationContext
     TLogItemsIterationContext ConstructSubSpanIterationContext(
         ui64 subSpanCount)
     {
+        TLogItemsIterationContext res{
+            .Idx = Idx + 1,
+            .Count = Min(Idx + 1 + subSpanCount, Count)};
         Idx += subSpanCount;
-        return {.Idx = Idx + 1, .Count = Min(Idx + 1 + subSpanCount, Count)};
+        return res;
     }
 };
 
