@@ -427,10 +427,6 @@ void TBootstrapYdb::InitKikimrService()
         .Settings = std::move(settings)
     };
 
-    if (emergencyMode) {
-        registerOpts.SchemeShardDir = "";
-    }
-
     if (Configs->Options->LocationFile) {
         NProto::TLocation location;
         ParseProtoTextFromFile(Configs->Options->LocationFile, location);

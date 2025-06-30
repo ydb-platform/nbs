@@ -6,5 +6,6 @@ RECURSE(
     debug
     fs
     nbd
+    restore
     testing
 )
