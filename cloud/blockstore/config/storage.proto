@@ -1257,4 +1257,7 @@ message TStorageServiceConfig
     optional uint32 MaxCompactionRangesLoadingPerTx = 436;
     // Max inflight for out of order compaction map load requests.
     optional uint32 MaxOutOfOrderCompactionMapChunksInflight = 437;
+
+    // The time we will wait for the Partition tablet to boot. (in milliseconds).
+    optional uint32 BootPartitionsTimeout = 438;
 }

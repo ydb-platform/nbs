@@ -59,6 +59,12 @@ TPartitionActor::TPartitionActor(
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
     , VolumeTabletId(volumeTabletId)
+    , LogTitle(
+          TabletID(),
+          PartitionConfig.GetDiskId(),
+          StartTime,
+          0,
+          siblingCount)
 {}
 
 TPartitionActor::~TPartitionActor()
@@ -718,6 +724,27 @@ void TPartitionActor::HandleLockAndDrainRange(
     Y_ABORT("Unimplemented");
 }
 
+void TPartitionActor::HandleWakeUpOnBoot(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto& msg = ev->Get();
+
+    if (msg->Tag != BootWakeupEventTag) {
+        return;
+    }
+
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Tablet booting takes too "
+        "long, sending "
+        "poison pill",
+        LogTitle.GetWithTime().c_str());
+
+    Suicide(ctx);
+}
+
 TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
 {
     return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
@@ -797,6 +824,15 @@ bool TPartitionActor::RejectRequests(STFUNC_SIG)
 STFUNC(TPartitionActor::StateBoot)
 {
     UpdateActorStatsSampled(ActorContext());
+
+    if (ev->GetTypeRewrite() == TEvTablet::EvBoot &&
+        Config->GetBootPartitionsTimeout())
+    {
+        ActorContext().Schedule(
+            Config->GetBootPartitionsTimeout(),
+            new TEvents::TEvWakeup(BootWakeupEventTag));
+    }
+
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -807,6 +843,8 @@ STFUNC(TPartitionActor::StateBoot)
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
+
+        HFunc(TEvents::TEvWakeup, HandleWakeUpOnBoot);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -834,6 +872,11 @@ STFUNC(TPartitionActor::StateInit)
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
         BLOCKSTORE_HANDLE_REQUEST(InitIndex, TEvPartitionPrivate)
+
+        // Wakeup function should handle wakeup event taking into account that
+        // there is wakeup event scheduled during boot stage with
+        // TPartitionActor::BootWakeupEventTag tag.
+        IgnoreFunc(TEvents::TEvWakeup)
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -885,6 +928,11 @@ STFUNC(TPartitionActor::StateWork)
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
 
+        // Wakeup function should handle wakeup event taking into account that
+        // there is wakeup event scheduled during boot stage with
+        // TPartitionActor::BootWakeupEventTag tag.
+        IgnoreFunc(TEvents::TEvWakeup)
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(
@@ -931,6 +979,11 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+
+        // Wakeup function should handle wakeup event taking into account that
+        // there is wakeup event scheduled during boot stage with
+        // TPartitionActor::BootWakeupEventTag tag.
+        IgnoreFunc(TEvents::TEvWakeup)
 
         default:
             if (!RejectRequests(ev)) {
