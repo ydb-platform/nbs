@@ -100,7 +100,7 @@ func (s *storageYDB) addClusterCapacities(ctx context.Context,
 	defer tx.Rollback(ctx)
 
 	var values []persistence.Value
-	createdAt := time.Now()
+	addedAt := time.Now()
 
 	for _, capacity := range capacities {
 		capacityState := &clusterCapacityState{
@@ -109,7 +109,7 @@ func (s *storageYDB) addClusterCapacities(ctx context.Context,
 			Kind:       common.DiskKindToString(capacity.Kind),
 			TotalBytes: capacity.TotalBytes,
 			FreeBytes:  capacity.FreeBytes,
-			CreatedAt:  createdAt,
+			AddedAt:    addedAt,
 		}
 
 		values = append(values, capacityState.structValue())
@@ -119,6 +119,7 @@ func (s *storageYDB) addClusterCapacities(ctx context.Context,
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $capacities as List<%v>;
+
 		upsert into cluster_capacity
 		select *
 		from AS_TABLE($capacities)
@@ -145,11 +146,12 @@ func (s *storageYDB) getRecentClusterCapacities(
 		pragma TablePathPrefix = "%v";
 		declare $kind as Utf8;
 		declare $zone_id as Utf8;
+
 		$ordered = (
 			SELECT
 				t.*,
 				ROW_NUMBER() OVER
-				(PARTITION BY t.cell_id ORDER BY t.created_at DESC) AS row_number
+				(PARTITION BY t.cell_id ORDER BY t.added_at DESC) AS row_number
 			FROM cluster_capacity AS t
 			WHERE t.zone_id = $zone_id and t.kind = $kind
 		);
@@ -176,6 +178,7 @@ func (s *storageYDB) clearOldClusterCapacities(
 	session *persistence.Session,
 	createdBefore time.Time,
 ) error {
+
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
 		return err
@@ -188,7 +191,7 @@ func (s *storageYDB) clearOldClusterCapacities(
 		declare $created_before as Timestamp;
 
 		delete from cluster_capacity
-		where created_at < $created_before
+		where added_at < $created_before
 	`, s.tablesPath),
 		persistence.ValueParam("$created_before", persistence.TimestampValue(createdBefore)),
 	)

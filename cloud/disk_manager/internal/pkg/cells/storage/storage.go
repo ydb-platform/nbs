@@ -29,7 +29,7 @@ type clusterCapacityState struct {
 	Kind       string
 	TotalBytes uint64
 	FreeBytes  uint64
-	CreatedAt  time.Time
+	AddedAt    time.Time
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,9 +55,9 @@ func (c *clusterCapacityState) structValue() persistence.Value {
 		persistence.StructFieldValue("zone_id", persistence.UTF8Value(c.ZoneID)),
 		persistence.StructFieldValue("cell_id", persistence.UTF8Value(c.CellID)),
 		persistence.StructFieldValue("kind", persistence.UTF8Value(c.Kind)),
-		persistence.StructFieldValue("total", persistence.Uint64Value(c.TotalBytes)),
-		persistence.StructFieldValue("free", persistence.Uint64Value(c.FreeBytes)),
-		persistence.StructFieldValue("created_at", persistence.TimestampValue(c.CreatedAt)),
+		persistence.StructFieldValue("total_bytes", persistence.Uint64Value(c.TotalBytes)),
+		persistence.StructFieldValue("free_bytes", persistence.Uint64Value(c.FreeBytes)),
+		persistence.StructFieldValue("added_at", persistence.TimestampValue(c.AddedAt)),
 	)
 }
 
@@ -68,9 +68,9 @@ func clusterCapacityStateStructTypeString() string {
 		zone_id: Utf8,
 		cell_id: Utf8,
 		kind: Utf8,
-		total: Uint64,
-		free: Uint64,
-		created_at: Timestamp>`
+		total_bytes: Uint64,
+		free_bytes: Uint64,
+		added_at: Timestamp>`
 }
 
 func clusterCapacityStateTableDescription() persistence.CreateTableDescription {
@@ -78,12 +78,12 @@ func clusterCapacityStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("cell_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("kind", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("total", persistence.Optional(persistence.TypeUint64)),
-		persistence.WithColumn("free", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("total_bytes", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("free_bytes", persistence.Optional(persistence.TypeUint64)),
 
-		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("added_at", persistence.Optional(persistence.TypeTimestamp)),
 
-		persistence.WithPrimaryKeyColumn("kind", "cell_id", "created_at"),
+		persistence.WithPrimaryKeyColumn("kind", "cell_id", "added_at"),
 	)
 }
 
@@ -95,8 +95,8 @@ func scanClusterCapacity(
 		persistence.OptionalWithDefault("zone_id", &capacity.ZoneID),
 		persistence.OptionalWithDefault("cell_id", &capacity.CellID),
 		persistence.OptionalWithDefault("kind", &capacity.Kind),
-		persistence.OptionalWithDefault("total", &capacity.TotalBytes),
-		persistence.OptionalWithDefault("free", &capacity.FreeBytes),
+		persistence.OptionalWithDefault("total_bytes", &capacity.TotalBytes),
+		persistence.OptionalWithDefault("free_bytes", &capacity.FreeBytes),
 	)
 
 	return capacity, err
