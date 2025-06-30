@@ -93,4 +93,7 @@ message THeaders
 
     // Attempt number of the request.
     uint32 RetryNumber = 14;
+
+    // True if the request is cross-shard.
+    bool CrossShardRequest = 15;
 }
