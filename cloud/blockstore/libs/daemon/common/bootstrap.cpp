@@ -835,33 +835,31 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
         diagnosticsConfig->GetTracesSyslogIdentifier()
     );
 
-    const auto regularSamplingRate = diagnosticsConfig->GetSamplingRate();
-
-    if (regularSamplingRate) {
+    if (const auto samplingRate = diagnosticsConfig->GetSamplingRate()) {
         NLWTrace::TQuery query = ProbabilisticQuery(
             desc,
-            regularSamplingRate,
+            samplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(TraceLoggerId, query);
-        TraceReaders.push_back(CreateTraceLogger(
-            TraceLoggerId,
-            traceLog,
-            "BLOCKSTORE_TRACE"
-        ));
-    }
 
-    if (regularSamplingRate && serviceNameForExporter) {
-        NLWTrace::TQuery query = ProbabilisticQuery(
-            desc,
-            regularSamplingRate,
-            diagnosticsConfig->GetLWTraceShuttleCount());
-        lwManager.New(TraceExporterId, query);
-        TraceReaders.push_back(CreateTraceExporter(
-            TraceExporterId,
-            traceLog,
-            "BLOCKSTORE_TRACE",
-            GetTraceServiceClient(),
-            serviceNameForExporter));
+        ITraceReaderPtr reader;
+        if (serviceNameForExporter) {
+            reader = SetupTraceReaderWithOpentelemetryExport(
+                TraceLoggerId,
+                traceLog,
+                "BLOCKSTORE_TRACE",
+                "AllRequests",
+                GetTraceServiceClient(),
+                serviceNameForExporter);
+        } else {
+            reader = SetupTraceReaderWithLog(
+                TraceLoggerId,
+                traceLog,
+                "BLOCKSTORE_TRACE",
+                "AllRequests");
+        }
+
+        TraceReaders.push_back(std::move(reader));
     }
 
     if (auto samplingRate = diagnosticsConfig->GetSlowRequestSamplingRate()) {
@@ -870,11 +868,25 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
             samplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(SlowRequestsFilterId, query);
-        TraceReaders.push_back(CreateSlowRequestsFilter(
-            SlowRequestsFilterId,
-            traceLog,
-            "BLOCKSTORE_TRACE",
-            diagnosticsConfig->GetRequestThresholds()));
+
+        ITraceReaderPtr reader;
+        if (serviceNameForExporter) {
+            reader = SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
+                SlowRequestsFilterId,
+                traceLog,
+                "BLOCKSTORE_TRACE",
+                GetTraceServiceClient(),
+                serviceNameForExporter,
+                diagnosticsConfig->GetRequestThresholds());
+        } else {
+            reader = SetupTraceReaderForSlowRequests(
+                SlowRequestsFilterId,
+                traceLog,
+                "BLOCKSTORE_TRACE",
+                diagnosticsConfig->GetRequestThresholds());
+        }
+
+        TraceReaders.push_back(std::move(reader));
     }
 
     lwManager.RegisterCustomAction(
