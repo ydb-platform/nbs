@@ -256,8 +256,10 @@ void TPartitionActor::CompleteDescribeBlocks(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Complete describe blocks @%lu",
+        "%s [%lu][d:%s] Complete describe blocks @%lu",
         LogTitle.GetWithTime().c_str(),
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     LWTRACK(

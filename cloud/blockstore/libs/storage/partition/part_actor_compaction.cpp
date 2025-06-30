@@ -547,6 +547,8 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 Tablet,
                 std::move(request));
         } else {
+            Cerr << "WRITING COMPACTION BLOBS" << Endl;
+
             auto request =
                 std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                     rc.DataBlobId,

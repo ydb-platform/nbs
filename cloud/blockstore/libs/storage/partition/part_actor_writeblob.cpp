@@ -11,6 +11,7 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <library/cpp/blockcodecs/codecs.h>
+#include <util/random/random.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -168,6 +169,8 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
         }
     }
 
+    Cerr << "WRITE BLOB TEvBlobStorage::TEvPut " << (Request->Async ? "NKikimrBlobStorage::AsyncBlob " : "NKikimrBlobStorage::UserData") << Endl;
+
     auto request = std::make_unique<TEvBlobStorage::TEvPut>(
         MakeBlobId(TabletId, Request->BlobId),
         std::move(blobContent),
@@ -244,12 +247,19 @@ void TWriteBlobActor::HandlePutResult(
 {
     ResponseReceived = ctx.Now();
 
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     RequestInfo->CallContext->LWOrbit = std::move(msg->Orbit);
 
     StorageStatusFlags = msg->StatusFlags;
     ApproximateFreeSpaceShare = msg->ApproximateFreeSpaceShare;
+
+
+    const ui64 id = RandomNumber<ui64>(10);
+    if (id == 5) {
+        Cerr << "RANDOM RETURN ERROR" << Endl;
+        msg->Status = NKikimrProto::ERROR;
+    }
 
     if (msg->Status != NKikimrProto::OK) {
         ReplyError(ctx, *msg, msg->ErrorReason);

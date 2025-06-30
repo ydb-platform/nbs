@@ -214,6 +214,8 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         0   // partId
     );
 
+    Cerr << "WRITING FRESH BLOBS" << Endl;
+
     auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
         CombinedContext,
         blobId,
@@ -661,8 +663,10 @@ void TPartitionActor::CompleteWriteBlocks(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Complete write blocks @%lu",
+        "%s [%lu][d:%s] Complete write blocks @%lu",
         LogTitle.GetWithTime().c_str(),
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     if (args.Requests.size()) {

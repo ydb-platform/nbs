@@ -229,6 +229,7 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
         const auto& req = Requests[i];
         auto guardedSglist = BuildBlobContent(req);
 
+        Cerr << "WRITING MIXED BLOBS" << Endl;
         auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
             req.BlobId,
             std::move(guardedSglist),
