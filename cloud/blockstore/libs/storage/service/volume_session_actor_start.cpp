@@ -919,8 +919,6 @@ void TStartVolumeActor::SendVolumeTabletDeadErrorAndScheduleReboot(
     bool delay = true;
     switch (VolumeTabletDeadReason) {
         case TEvTablet::TEvTabletDead::ReasonDemotedByStateStorage:
-            // Avoid unnecessary delays
-            delay = false;
             StartShutdown(
                 ctx,
                 MakeError(E_REJECTED, "Tablet is demoted by state storage"));
