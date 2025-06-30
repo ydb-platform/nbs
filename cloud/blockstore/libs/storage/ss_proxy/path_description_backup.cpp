@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/datetime/base.h>
@@ -39,8 +41,19 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     if (ReadOnlyMode) {
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
+            "PathDescriptionBackup: start loading from file: "
+                << BackupFilePath.GetPath().Quote());
         try {
+            TInstant start = TInstant::Now();
             MergeFromTextFormat(BackupFilePath, BackupProto);
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::SS_PROXY,
+                "PathDescriptionBackup: loading from file finished "
+                    << FormatDuration(TInstant::Now() - start));
         } catch (...) {
             LOG_WARN_S(ctx, TBlockStoreComponents::SS_PROXY,
                 "PathDescriptionBackup: can't load from file: "
