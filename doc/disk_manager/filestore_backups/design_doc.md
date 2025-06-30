@@ -71,6 +71,7 @@ struct NodeRefs: TTableSchema<9>
 ```
 Note, that `NodeId` here is the id of a parent node, whereas `ChildId` is id of a child node,
 in the Disk Manager terminology we would prefer the terminology parent id and child id.
+For sharded filesystems, `ShardId` is the name of the shard, which is a separate filesystem, which stores files in plain structure (files are named by uids).
 
 **IMPORTANT** ID of inodes do not provide any information about which file was created earlier. Id of the shard is encoded into the id of inode.
 
@@ -232,10 +233,9 @@ message TNodeRef
     uint64 ChildId = 4;
     // ID of a shard.
     string ShardId = 5;
-    // node FQDN the shard is located on.
+    // Node ID within the shard.
     string ShardNodeName = 6;
 }
-
 ```
 The task will sequentially read `NodeRefsPaginationLimit` entries each time and save them to the database.
 After each read, the `NextNodeId` and `NextCookie` are stored to the task state.
@@ -248,10 +248,9 @@ node_id: Uint64
 name: Utf8
 tree_depth: Uint64
 shard_id: Utf8
-shard_node_name: Utf8
+shard_node_id: Utf8
 ```
 primarey key is (`backup_id`, `parent_node_id`, `name`).
-additional index is `shard_id`
 additional index is (`tree_depth`, `parent_node_id`, `name`),
 additional index is `node_id`.
 
@@ -279,7 +278,8 @@ Attributes backup will follow this algorithm:
 File attributes are saved to the `node_attributes` table:
 ```
 backup_id: Utf8
-node_id: Uint64
+parent_node_id: Uint64
+name: Utf8
 size: Uint64
 mtime: Timestamp
 atime: Timestamp
