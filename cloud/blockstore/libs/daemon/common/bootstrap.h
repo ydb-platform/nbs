@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/endpoints_grpc/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
+#include <cloud/blockstore/libs/opentelemetry/iface/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -22,6 +23,7 @@
 #include <cloud/storage/core/libs/coroutine/public.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
+
 #include <library/cpp/logger/log.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -114,6 +116,8 @@ protected:
     virtual IStartable* GetComputeClient() = 0;
     virtual IStartable* GetKmsClient() = 0;
     virtual IStartable* GetRootKmsClient() = 0;
+
+    virtual ITraceServiceClientPtr GetTraceServiceClient() = 0;
 
     virtual void InitSpdk() = 0;
     virtual void InitRdmaClient() = 0;

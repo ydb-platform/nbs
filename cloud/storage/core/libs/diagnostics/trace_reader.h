@@ -5,6 +5,7 @@
 #include <cloud/storage/core/protos/media.pb.h>
 #include <cloud/storage/core/protos/trace.pb.h>
 
+#include <library/cpp/containers/ring_buffer/ring_buffer.h>
 #include <library/cpp/lwtrace/log.h>
 
 #include <util/generic/hash.h>
@@ -59,6 +60,25 @@ struct ITraceReader
     virtual void ForEach(std::function<void(const TEntry&)> fn) = 0;
     virtual void Reset() = 0;
 };
+
+struct ITraceReaderWithRingBuffer
+    : public ITraceReader
+{
+    TSimpleRingBuffer<TEntry> RingBuffer;
+
+    explicit ITraceReaderWithRingBuffer(TString id)
+        : ITraceReader(std::move(id))
+        , RingBuffer(1000)
+    {}
+
+    void ForEach(std::function<void(const TEntry&)> fn) override
+    {
+        for (ui64 i = RingBuffer.FirstIndex(); i < RingBuffer.TotalSize(); ++i) {
+            fn(RingBuffer[i]);
+        }
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ITraceReaderPtr CreateTraceLogger(

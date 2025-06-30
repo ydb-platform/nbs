@@ -1,6 +1,8 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
+#include <cloud/blockstore/config/opentelemetry_client.pb.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -111,6 +113,17 @@ void TConfigInitializerCommon::InitRdmaConfig()
 
     RdmaConfig =
         std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
+}
+
+void TConfigInitializerCommon::InitTraceServiceClientConfig()
+{
+    NProto::TOpentelemetryTraceConfig config;
+
+    if (Options->TraceServiceConfig) {
+        ParseProtoTextFromFile(Options->TraceServiceConfig, config);
+    }
+
+    TraceServiceClientConfig = std::move(config);
 }
 
 void TConfigInitializerCommon::InitDiskRegistryProxyConfig()

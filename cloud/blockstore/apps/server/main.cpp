@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/kms/impl/compute_client.h>
 #include <cloud/blockstore/libs/kms/impl/kms_client.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
+#include <cloud/blockstore/libs/opentelemetry/impl/trace_service_client.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/server.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
@@ -93,6 +94,19 @@ int main(int argc, char** argv)
         }
 
         return NCloud::NBlockStore::CreateRootKmsClientStub();
+    };
+
+    serverModuleFactories->TraceServiceClientFactory = [] (
+        NProto::TGrpcClientConfig config,
+        NCloud::ILoggingServicePtr logging)
+    {
+        if (config.GetAddress()) {
+            return NCloud::NBlockStore::CreateTraceServiceClient(
+                std::move(logging),
+                std::move(config));
+        }
+
+        return NCloud::NBlockStore::CreateTraceServiceClientStub();
     };
 
     serverModuleFactories->SpdkFactory = [] (
