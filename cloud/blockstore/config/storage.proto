@@ -1262,4 +1262,7 @@ message TStorageServiceConfig
 
     // Time to wait for a partition tablet to boot (in milliseconds).
     optional uint32 PartitionBootTimeout = 438;
+
+    // In fallback mode, clean field SchemeShardDir when register node.
+    optional bool ResetSchemeShardDir = 439;
 }
