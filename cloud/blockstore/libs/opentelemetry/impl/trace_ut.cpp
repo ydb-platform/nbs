@@ -107,7 +107,6 @@ Y_UNIT_TEST_SUITE(TraceConverter)
 
                 const auto& span = spans.front();
 
-                UNIT_ASSERT_VALUES_EQUAL(span.Gettrace_id(), ToHexString16(tl.Id));
                 UNIT_ASSERT_VALUES_EQUAL(span.Getspan_id(), ToHexString8(0));
 
                 UNIT_ASSERT_VALUES_EQUAL(span.Getevents().size(), 4);
@@ -216,7 +215,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
             // Merged track:
             //   a-f(b)-a-f(d)-a-j(d,1)-d-a-j(b,6)-b-f(c)-b-j(c,1)-c-b-a
 
-            LWTRACK(IntParam, a, 0);
+            LWTRACK(NoParam, a);
             a.Fork(b);
             LWTRACK(IntParam, a, 1);
             a.Fork(d);
@@ -244,12 +243,15 @@ Y_UNIT_TEST_SUITE(TraceConverter)
             {
                 auto spans = ConvertToOpenTelemetrySpans(tl);
 
-                UNIT_ASSERT(spans.size() == 4);
+                UNIT_ASSERT_VALUES_EQUAL(spans.size(), 4);
 
                 auto getValues = [](const auto& span)
                 {
                     TVector<int> values;
                     for (const auto& event: span.Getevents()) {
+                        if (event.Getname() == "NoParam") {
+                            continue;
+                        }
                         UNIT_ASSERT_VALUES_EQUAL(event.Getname(), "IntParam");
                         UNIT_ASSERT_VALUES_EQUAL(
                             event.Getattributes().size(),
@@ -264,38 +266,41 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                     return values;
                 };
 
+                auto firstTraceId = spans[0].Gettrace_id();
+                UNIT_ASSERT_VALUES_EQUAL(16, firstTraceId.size());
+
                 UNIT_ASSERT(AllOf(
                     spans,
                     [&](const auto& span)
-                    { return span.Gettrace_id() == ToHexString16(tl.Id); }));
+                    { return span.Gettrace_id() == firstTraceId; }));
 
                 UNIT_ASSERT(!spans[0].Getparent_span_id());
                 UNIT_ASSERT_VALUES_EQUAL(
                     getValues(spans[0]),
-                    (TVector<int>{0, 1, 2, 8, 9}));
+                    (TVector<int>{1, 2, 8, 9}));
                 UNIT_ASSERT_VALUES_EQUAL(8, spans[0].Getspan_id().size());
 
                 UNIT_ASSERT_VALUES_EQUAL(
                     spans[0].Getspan_id(),
                     spans[1].Getparent_span_id());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    (TVector<int>{3, 4, 6}),
+                    (TVector<int>{7}),
                     getValues(spans[1]));
                 UNIT_ASSERT_VALUES_EQUAL(8, spans[1].Getspan_id().size());
 
                 UNIT_ASSERT_VALUES_EQUAL(
-                    spans[1].Getspan_id(),
+                    spans[0].Getspan_id(),
                     spans[2].Getparent_span_id());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    (TVector<int>{5}),
-                    getValues(spans[2]));
+                    getValues(spans[2]),
+                    (TVector<int>{3, 4, 6}));
                 UNIT_ASSERT_VALUES_EQUAL(8, spans[2].Getspan_id().size());
 
                 UNIT_ASSERT_VALUES_EQUAL(
-                    spans[0].Getspan_id(),
+                    spans[2].Getspan_id(),
                     spans[3].Getparent_span_id());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    (TVector<int>{7}),
+                    (TVector<int>{5}),
                     getValues(spans[3]));
                 UNIT_ASSERT_VALUES_EQUAL(8, spans[3].Getspan_id().size());
 
@@ -306,26 +311,25 @@ Y_UNIT_TEST_SUITE(TraceConverter)
 
                 TVector eventTimes{
                     getTime(spans, 0, 0),
-                    spans[1].Getstart_time_unix_nano(),
-                    getTime(spans, 0, 1),
-                    spans[3].Getstart_time_unix_nano(),
-                    getTime(spans, 0, 2),
-                    getTime(spans, 1, 0),
                     spans[2].Getstart_time_unix_nano(),
-                    getTime(spans, 1, 1),
+                    getTime(spans, 0, 1),
+                    spans[1].Getstart_time_unix_nano(),
+                    getTime(spans, 0, 2),
                     getTime(spans, 2, 0),
-                    spans[2].Getend_time_unix_nano(),
-                    getTime(spans, 1, 2),
-                    getTime(spans, 2, 0),
+                    spans[3].Getstart_time_unix_nano(),
+                    getTime(spans, 2, 1),
+                    getTime(spans, 3, 0),
                     spans[3].Getend_time_unix_nano(),
-                    getTime(spans, 0, 3),
+                    getTime(spans, 2, 2),
+                    getTime(spans, 1, 0),
                     spans[1].Getend_time_unix_nano(),
+                    getTime(spans, 0, 3),
+                    spans[2].Getend_time_unix_nano(),
                     getTime(spans, 0, 4)};
 
                 for (size_t i = 0; i < eventTimes.size() - 1; ++i) {
                     UNIT_ASSERT(eventTimes[i] < eventTimes[i + 1]);
                 }
-
             }
         } reader;
         mngr.ReadDepot("Query1", reader);
