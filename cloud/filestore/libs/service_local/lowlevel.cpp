@@ -109,9 +109,9 @@ FHANDLE Fd(const TFileHandle& handle)
     return handle;
 }
 
-bool RestoreCapability(cap_value_t val)
+[[nodiscard]] bool RestoreCapability(cap_value_t val)
 {
-    auto caps = cap_get_proc();
+    auto* caps = cap_get_proc();
     if (caps == NULL) {
         return false;
     }
@@ -125,12 +125,7 @@ bool RestoreCapability(cap_value_t val)
         return false;
     }
 
-    ret = cap_set_proc(caps);
-    if (ret == -1) {
-        return false;
-    }
-
-    return true;
+    return cap_set_proc(caps) != -1;
 }
 
 }   // namespace
@@ -687,7 +682,9 @@ UnixCredentialsGuard::UnixCredentialsGuard(
 
     if (trustUserCredentials) {
         // Bypass file read, write, and execute permission checks.
-        RestoreCapability(CAP_DAC_OVERRIDE);
+        // If RestoreCapability fails we fallback to pemissions check on the
+        // backend file system
+        std::ignore = RestoreCapability(CAP_DAC_OVERRIDE);
     }
 }
 
