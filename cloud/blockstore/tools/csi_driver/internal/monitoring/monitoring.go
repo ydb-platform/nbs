@@ -9,6 +9,8 @@ import (
 	"github.com/siddontang/go-log/log"
 	"github.com/ydb-platform/nbs/library/go/core/metrics"
 	"github.com/ydb-platform/nbs/library/go/core/metrics/prometheus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,7 +85,12 @@ func (m *Monitoring) ReportRequestCompleted(
 	if err == nil {
 		subregistry.Counter("Success").Inc()
 	} else {
-		subregistry.Counter("Errors").Inc()
+		s, ok := status.FromError(err)
+		if ok && s.Code() == codes.AlreadyExists {
+			subregistry.Counter("MountConflicts").Inc()
+		} else {
+			subregistry.Counter("Errors").Inc()
+		}
 	}
 	subregistry.IntGauge("InflightCount").Add(-1)
 }

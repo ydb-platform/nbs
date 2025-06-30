@@ -354,8 +354,11 @@ func (s *nodeService) NodeStageVolume(
 	}
 
 	if err != nil {
-		return nil, s.statusErrorf(codes.Internal,
-			"Failed to stage volume: %v", err)
+		var errorCode = codes.Internal
+		if s.IsMountConflictError(err, nfsBackend) {
+			errorCode = codes.AlreadyExists
+		}
+		return nil, s.statusErrorf(errorCode, "Failed to stage volume: %v", err)
 	}
 
 	return &csi.NodeStageVolumeResponse{}, nil
@@ -785,19 +788,19 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	return nil
 }
 
-func (s *nodeService) IsGrpcTimeoutError(err error, isNfs bool) bool {
+func (s *nodeService) IsErrorCode(err error, errorCode uint32, isNfs bool) bool {
 	if err != nil {
 		if !isNfs {
 			var clientErr *nbsclient.ClientError
 			if errors.As(err, &clientErr) {
-				if clientErr.Code == nbsclient.E_GRPC_DEADLINE_EXCEEDED {
+				if clientErr.Code == errorCode {
 					return true
 				}
 			}
 		} else {
 			var clientErr *nfsclient.ClientError
 			if errors.As(err, &clientErr) {
-				if clientErr.Code == nfsclient.E_GRPC_DEADLINE_EXCEEDED {
+				if clientErr.Code == errorCode {
 					return true
 				}
 			}
@@ -805,6 +808,14 @@ func (s *nodeService) IsGrpcTimeoutError(err error, isNfs bool) bool {
 	}
 
 	return false
+}
+
+func (s *nodeService) IsGrpcTimeoutError(err error, isNfs bool) bool {
+	return s.IsErrorCode(err, nbsclient.E_GRPC_DEADLINE_EXCEEDED, isNfs)
+}
+
+func (s *nodeService) IsMountConflictError(err error, isNfs bool) bool {
+	return s.IsErrorCode(err, nbsclient.E_MOUNT_CONFLICT, false)
 }
 
 func (s *nodeService) nodeStageDiskAsFilesystem(
