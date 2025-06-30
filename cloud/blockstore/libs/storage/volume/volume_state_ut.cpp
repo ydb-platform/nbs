@@ -1329,7 +1329,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             client.GetVolumeClientInfo().GetDisconnectTimestamp());
     }
 
-    Y_UNIT_TEST(ShouldActivateLocalDataPathAndRejectOtherPaths)
+    Y_UNIT_TEST(ShouldKeepLocalDataPathActive)
     {
         auto volumeState = CreateVolumeState();
         auto clientId = CreateGuidAsString();
@@ -1380,26 +1380,106 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             serverActor1,
             TVolumeClientState::EPipeState::ACTIVE);
 
+        // Activate local data path
         result = client.CheckLocalRequest(serverActor1.NodeId(), true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
+        // Remote data path can't deactivate local data path
+        result = client.CheckPipeRequest(serverActor2, true, "", "");
+        UNIT_ASSERT_VALUES_EQUAL_C(E_REJECTED, result.GetCode(), result);
+
+        // Local data path still active
+        result = client.CheckLocalRequest(serverActor1.NodeId(), true, "", "");
+        UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
+
+        // Remove local data path
+        res = volumeState.RemoveClient(clientId, serverActor1);
+        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error);
+
+        // Remote data path activated
         result = client.CheckPipeRequest(serverActor2, true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
-        result = client.CheckLocalRequest(serverActor1.NodeId(), true, "", "");
-        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, result.GetCode());
-
-        CheckPipeState(
-            client,
-            serverActor1,
-            TVolumeClientState::EPipeState::DEACTIVATED);
+        CheckServicePipeRemoved(volumeState, clientId, serverActor1);
         CheckPipeState(
             client,
             serverActor2,
             TVolumeClientState::EPipeState::ACTIVE);
     }
 
-    Y_UNIT_TEST(ShouldActivateRemoteDataPathAndRejectOtherPaths)
+    Y_UNIT_TEST(ShouldActivateRemoteDataPathAndRejectOtherRemotePaths)
+    {
+        auto volumeState = CreateVolumeState();
+        auto clientId = CreateGuidAsString();
+        auto serverActor1 = CreateActor(1);
+        auto serverActor2 = CreateActor(2);
+
+        auto info1 = CreateVolumeClientInfo(
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE);
+
+        auto info2 = CreateVolumeClientInfo(
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE);
+
+        auto res = volumeState.AddClient(info1, serverActor1);
+        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error);
+
+        res = volumeState.AddClient(info2, serverActor2);
+        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error);
+
+        auto& clients = volumeState.AccessClients();
+        UNIT_ASSERT_VALUES_EQUAL(1, clients.size());
+
+        auto& client = clients[clientId];
+        UNIT_ASSERT_VALUES_EQUAL(2, client.GetPipes().size());
+
+        CheckServicePipe(
+            volumeState,
+            serverActor1,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            TVolumeClientState::EPipeState::WAIT_START);
+
+        CheckServicePipe(
+            volumeState,
+            serverActor2,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            TVolumeClientState::EPipeState::WAIT_START);
+
+        auto result = client.CheckPipeRequest(serverActor2, true, "", "");
+        UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
+
+        CheckPipeState(
+            client,
+            serverActor2,
+            TVolumeClientState::EPipeState::ACTIVE);
+
+        result = client.CheckPipeRequest(serverActor2, true, "", "");
+        UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
+
+        result = client.CheckPipeRequest(serverActor1, true, "", "");
+        UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
+
+        result = client.CheckPipeRequest(serverActor2, true, "", "");
+
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, result.GetCode());
+
+        CheckPipeState(
+            client,
+            serverActor2,
+            TVolumeClientState::EPipeState::DEACTIVATED);
+
+        CheckPipeState(
+            client,
+            serverActor1,
+            TVolumeClientState::EPipeState::ACTIVE);
+    }
+
+    Y_UNIT_TEST(ShouldActivateLocalDataPathAndRejectOtherRemotePaths)
     {
         auto volumeState = CreateVolumeState();
         auto clientId = CreateGuidAsString();
@@ -1442,6 +1522,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             NProto::VOLUME_MOUNT_REMOTE,
             TVolumeClientState::EPipeState::WAIT_START);
 
+        // Activate remote pipe
         auto result = client.CheckPipeRequest(serverActor2, true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
@@ -1453,12 +1534,13 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         result = client.CheckPipeRequest(serverActor2, true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
+        // Activate local pipe
         result = client.CheckLocalRequest(serverActor1.NodeId(), true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
+        // Remote pipe deactivated
         result = client.CheckPipeRequest(serverActor2, true, "", "");
-
-        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, result.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL_C(E_BS_INVALID_SESSION, result.GetCode(), FormatError(result));
 
         CheckPipeState(
             client,
