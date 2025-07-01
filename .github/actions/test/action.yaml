@@ -72,7 +72,6 @@ runs:
         {
           echo "TMP_DIR=$TMP_DIR"
           echo "LOG_DIR=$TMP_DIR/logs"
-          echo "YA_MAKE_OUTPUT=$TMP_DIR/logs/ya_make_output"
           echo "OUT_DIR=$TMP_DIR/out"
           echo "ARTIFACTS_DIR=$TMP_DIR/artifacts"
           echo "TESTS_DATA_DIR=$TMP_DIR/test_data"
@@ -125,6 +124,9 @@ runs:
         BAZEL_REMOTE_URI: ${{ inputs.bazel_remote_uri }}
         USE_NETWORK_CACHE: ${{ inputs.use_network_cache }}
         CACHE_UPDATE: ${{ inputs.cache_update }}
+        TRUNCATE_ENABLED: ${{ inputs.truncate_enabled }}
+        SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         extra_params=(
           --run-all-tests
@@ -209,12 +211,16 @@ runs:
         ./ya --version
         RETRIES="${NUMBER_OF_RETRIES}"
         OOM_CAN_BE_RETRIED=1
+        BUILD_FAILED=0
+
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
         RETRY_FLAG=""
         i=0
         while [ "$RETRIES" -gt 0 ]; do
           RETRIES=$((RETRIES - 1))
           i=$((i + 1))
+          RETRY_LOG_DIR="$LOG_DIR/$i"
+          sudo -E -H -u github mkdir -p "$RETRY_LOG_DIR"
           echo "::group::ya-make-test-${i}"
           set +e
           (
@@ -222,11 +228,11 @@ runs:
                 "${test_type[@]/#/--test-type=}" \
                 "${extra_params[@]}" \
                 --junit "${JUNIT_REPORT_XML}.${i}" \
-                --log-file "$LOG_DIR/ya_log.$i.txt" \
-                --evlog-file "$LOG_DIR/ya_evlog.$i.jsonl" \
+                --log-file "$RETRY_LOG_DIR/ya_log.txt" \
+                --evlog-file "$RETRY_LOG_DIR/ya_evlog.jsonl" \
                 "$RETRY_FLAG";
             echo $? > exit_code
-          ) |& tee "${YA_MAKE_OUTPUT}.${i}.txt"
+          ) |& tee "$RETRY_LOG_DIR/ya_make_output.txt"
           set -e
           RC=$(< exit_code)
           DO_RETRY=0
@@ -266,12 +272,113 @@ runs:
               # process junit with retried runs
               DO_RETRY=1
               RETRY_FLAG="-X"
-              if [ "$i" -eq "$RETRY_COUNT" ];
-              then
-                DO_RETRY=0
-              fi
               ;;
           esac
+
+          echo "::group::s3-sync-logs"
+          if [ "$SYNC_TO_S3" = "true" ];
+          then
+            sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${i}/"
+          fi
+          echo "::endgroup::"
+
+          NEED_COPYING=0
+
+          # shellcheck disable=SC2024
+          if [ -f "${JUNIT_REPORT_XML}.${i}" ];
+          then
+            echo "::group::muted-tests"
+            cat .github/config/muted_ya.txt
+            MUTED_CONFIG=".github/config/muted_ya.txt"
+            echo "::endgroup::"
+            echo "::group::postprocess-junit-${i}"
+            sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
+              -m "${MUTED_CONFIG}" \
+              --ya-out "$OUT_DIR" \
+              --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${i}" \
+              --data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${i}$GITHUB_WORKSPACE" \
+              --log-out-dir "$ARTIFACTS_DIR/logs/${i}" \
+              "${JUNIT_REPORT_XML}.${i}"
+
+            sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS/${i}" "${JUNIT_REPORT_XML}.${i}"
+            echo "::endgroup::"
+            set +e
+            (sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}"; echo $? > fail_checker_exit_code) |& tee fail-checker-output.log
+            set -e
+            FAIL_CHECKER_RC=$(< fail_checker_exit_code)
+            if [ "$FAIL_CHECKER_RC" -ne 0 ]; then
+              NEED_COPYING=1
+              echo "::group::Copy-failed-tests-data"
+              sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}" --paths-only | while read -r path; do
+                echo $path
+                find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
+              done
+              echo "::endgroup::"
+            fi
+            if [ "$FAIL_CHECKER_RC" -eq 237 ]; then
+              BUILD_FAILED=1
+            fi
+          fi
+          if [ "$NEED_COPYING" -ne "0" ];
+          then 
+            chown -R github:github "$TESTS_DATA_DIR"
+            echo "::group::remove-binaries-from-tests-data-dir"
+            find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
+            find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
+            echo "::endgroup::"
+            echo "::group::remove-images-from-tests-data-dir"
+            find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name NVMENBS01 -o -name generated_other_big_raw_image
+            find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name NVMENBS01 -o -name generated_other_big_raw_image \) -delete
+            echo "::endgroup::"
+            echo "::group::truncate-err-files"
+            find "$TESTS_DATA_DIR" -type f -name "*.err" -size +1G -print0 | while IFS= read -r -d '' file; do
+                orig_size=$(du -h "$file" | cut -f1)
+                echo "$file - $orig_size"
+                # shellcheck disable=SC2193
+                if [ "$TRUNCATE_ENABLED" == "yes" ]; then
+                  truncate -s 1G "$file"
+                  echo "... truncated (original size was $orig_size) ..." >> "$file"
+                else
+                  echo "not truncated"
+                fi
+            done
+            echo "::endgroup::"
+            echo "::group::s3-sync-test-data"
+            if [ "$SYNC_TO_S3" = "true" ];
+            then
+              du -h "$TESTS_DATA_DIR/"
+              sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${i}/"
+            fi
+            echo "::endgroup::"
+          fi
+          # shellcheck disable=SC2024
+          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/orig_junit.${i}.xml.gz"
+          sudo -E -H -u github tar -C "$JUNIT_REPORT_PARTS/.." -czf "${REPORTS_ARTIFACTS_DIR}/junit_parts.${i}.xml.tar.gz" "$(basename $JUNIT_REPORT_PARTS)/${i}" "${JUNIT_REPORT_XML}.${i}"*
+
+
+          echo "::group::write-summary-${i}"
+          sudo -E -H -u github mkdir -p $ARTIFACTS_DIR/summary/${i}
+
+          cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
+
+          platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
+
+          export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
+          chown github:github $SUMMARY_OUT_ENV_PATH
+          sudo -E -H -u github .github/scripts/tests/generate-summary.py \
+            --summary-out-path "$ARTIFACTS_DIR/summary/${i}/" \
+            --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
+            --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${i}/" \
+            --build-preset "${platform_name}-${BUILD_PRESET}" \
+            "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
+
+          cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
+          echo "::endgroup::"
+
+          echo "::group::s3-sync"
+          sudo -E -H -u github s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+          echo "::endgroup::"
+
           if [ $DO_RETRY -eq 1 ]; then
             echo "Retrying..."
             echo "::endgroup::"
@@ -281,6 +388,13 @@ runs:
             break
           fi
         done
+        echo "exiting with code $FAIL_CHECKER_RC"
+        echo "END_EXIT_CODE=${FAIL_CHECKER_RC}" |tee -a "$GITHUB_ENV"
+        if [ "$BUILD_FAILED" -eq 1 ]; then
+          echo "BUILD_FAILED=1" | tee -a "$GITHUB_ENV"
+        else
+          echo "BUILD_FAILED=0" | tee -a "$GITHUB_ENV"
+        fi
 
     - name: copying system files
       if: ${{ !cancelled() }}
@@ -289,154 +403,29 @@ runs:
         sudo cp /var/log/kern.log "$LOG_DIR/kern.log" || true
         sudo chown -R github:github "$LOG_DIR/kern.log" || true
 
-    - name: archive unitest reports (orig)
-      shell: bash --noprofile --norc -eo pipefail -x {0}
-      run: |
-        # shellcheck disable=SC2024
-        for i in $(seq 1 $RETRIES); do
-          # shellcheck disable=SC2024
-          if [ -f "${JUNIT_REPORT_XML}.${i}" ];
-          then
-            # shellcheck disable=SC2024
-            sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/orig_junit.${i}.xml.gz"
-          fi
-        done
-
-    - name: postprocess junit report
-      shell: bash --noprofile --norc -eo pipefail -x {0}
-      run: |
-        echo "::group::muted-tests"
-        cat .github/config/muted_ya.txt
-        MUTED_CONFIG=".github/config/muted_ya.txt"
-        echo "::endgroup::"
-        for i in $(seq 1 $RETRIES); do
-          if [ -f "${JUNIT_REPORT_XML}.${i}" ];
-          then
-            echo "::group::postprocess-junit-${i}"
-            sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
-              -m "${MUTED_CONFIG}" \
-              --ya-out "$OUT_DIR" \
-              --log-url-prefix "$S3_WEBSITE_PREFIX/logs/" \
-              --data-url-prefix "$S3_WEBSITE_PREFIX/test_data$GITHUB_WORKSPACE" \
-              --log-out-dir "$ARTIFACTS_DIR/logs/" \
-              "${JUNIT_REPORT_XML}.${i}"
-
-            sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS/${i}" "${JUNIT_REPORT_XML}.${i}"
-            echo "::endgroup::"
-          fi
-        done
-
     - name: dump VM artifacts
       shell: bash --noprofile --norc -eo pipefail -x {0}
       if: ${{ !cancelled() }}
       run: |
         echo "::group::dump-vm-artifacts"
+        sudo mkdir -p "$LOG_DIR/system_logs"
         # shellcheck disable=SC2024
-        sudo dmesg -T > "$LOG_DIR/dmesg.log" || true
-        sudo cp /var/log/atop/atop_* "$LOG_DIR/" || true
-        sudo cp /var/log/syslog "$LOG_DIR/syslog.log" || true
-        sudo chown -R github:github "$LOG_DIR/dmesg.log" "$LOG_DIR/atop_*" "$LOG_DIR/syslog.log" || true
+        sudo dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || true
+        sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
+        sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
+        sudo chown -R github:github "$LOG_DIR/system_logs/" || true
+        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/"
         echo "::endgroup::"
 
-    - name: archive unitest reports (transformed)
+    - name: Finish with END_EXIT_CODE
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-
-        sudo -E -H -u github tar -C $JUNIT_REPORT_PARTS/.. -czf $REPORTS_ARTIFACTS_DIR/junit_parts.xml.tar.gz "$(basename $JUNIT_REPORT_PARTS)" ${JUNIT_REPORT_XML}*
-
-    - name: write tests summary
-      shell: bash --noprofile --norc -eo pipefail -x {0}
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-        BUILD_PRESET: ${{ inputs.build_preset }}
-      run: |
-        # shellcheck disable=SC2024
-        for i in $(seq 1 $RETRIES); do
-          # shellcheck disable=SC2024
-          if [ -f "${JUNIT_REPORT_XML}.${i}" ];
-          then
-            echo "::group::write-summary-${i}"
-            sudo -E -H -u github mkdir -p $ARTIFACTS_DIR/summary/${i}
-
-            cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
-
-            platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
-
-            export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
-            chown github:github $SUMMARY_OUT_ENV_PATH
-            sudo -E -H -u github .github/scripts/tests/generate-summary.py \
-              --summary-out-path "$ARTIFACTS_DIR/summary/${i}/" \
-              --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
-              --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${i}/" \
-              --build-preset "${platform_name}-${BUILD_PRESET}" \
-              "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
-
-            cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
-            echo "::endgroup::"
-          fi
-        done
-
-    - name: check test results
-      shell: bash --noprofile --norc -eo pipefail -x {0}
-      env:
-        TRUNCATE_ENABLED: ${{ inputs.truncate_enabled }}
-        SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
-      run: |
-        NEED_COPYING=0
-        # shellcheck disable=SC2024
-        for i in $(seq 1 $RETRIES); do
-          # shellcheck disable=SC2024
-          if [ -f "${JUNIT_REPORT_XML}.${i}" ];
-          then
-            set +e
-            (sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}"; echo $? > exit_code) |& tee fail-checker-output.log
-            set -e
-            RC=$(< exit_code)
-            if [ "$RC" -ne 0 ]; then
-              NEED_COPYING=1
-              echo "::group::Copy-failed-tests-data"
-              sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}" --paths-only | while read -r path; do
-                echo $path
-                find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
-              done
-              echo "::endgroup::"
-            fi
-          fi
-        done
-        if [ "$NEED_COPYING" -ne "0" ];
-        then 
-          chown -R github:github "$TESTS_DATA_DIR"
-          echo "::group::remove-binaries-from-tests-data-dir"
-          find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
-          find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
-          echo "::endgroup::"
-          echo "::group::remove-images-from-tests-data-dir"
-          find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name NVMENBS01 -o -name generated_other_big_raw_image
-          find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name NVMENBS01 -o -name generated_other_big_raw_image \) -delete
-          echo "::endgroup::"
-          echo "::group::truncate-err-files"
-          find "$TESTS_DATA_DIR" -type f -name "*.err" -size +1G -print0 | while IFS= read -r -d '' file; do
-              orig_size=$(du -h "$file" | cut -f1)
-              echo "$file - $orig_size"
-              # shellcheck disable=SC2193
-              if [ "$TRUNCATE_ENABLED" == "yes" ]; then
-                truncate -s 1G "$file"
-                echo "... truncated (original size was $orig_size) ..." >> "$file"
-              else
-                echo "not truncated"
-              fi
-          done
-          echo "::endgroup::"
-          echo "::group::s3-sync"
-          if [ "$SYNC_TO_S3" = "true" ];
-          then
-            du -h "$TESTS_DATA_DIR/"
-            sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/"
-          fi
-          echo "::endgroup::"
+        echo "Tests ended with exit code $END_EXIT_CODE"
+        if [ "$BUILD_FAILED" -eq 1 ]; then
+          echo "Build failed, setting END_EXIT_CODE to 237"
+          END_EXIT_CODE=237
         fi
-        echo "Exiting with $RC"
-        exit $RC
+        exit $END_EXIT_CODE
 
     - name: Sync test results to S3
       if: always()
@@ -444,14 +433,6 @@ runs:
       run: |
         echo "::group::s3-sync"
         sudo -E -H -u github s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
-        echo "::endgroup::"
-
-    - name: Sync logs results to S3
-      if: always()
-      shell: bash --noprofile --norc -eo pipefail -x {0}
-      run: |
-        echo "::group::s3-sync"
-        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/"
         echo "::endgroup::"
 
     - name: Display links to s3 summary
