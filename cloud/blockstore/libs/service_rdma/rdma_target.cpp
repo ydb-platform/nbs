@@ -27,6 +27,8 @@ LWTRACE_USING(BLOCKSTORE_RDMA_PROVIDER);
 
 namespace {
 
+constexpr size_t MaxRealProtoSize = 4_KB - NRdma::RDMA_PROTO_HEADER_SIZE;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define Y_ENSURE_RETURN(expr, message)                                         \
@@ -229,7 +231,7 @@ private:
                      buffer = std::move(buffer),
                      guardedSgList = std::move(guardedSgList)]() mutable
                     {
-                        if (response.ByteSizeLong() > 4_KB) {
+                        if (response.ByteSizeLong() > MaxRealProtoSize) {
                             // TODO: consider variable length proto size
                             // or switch from lwtrace to open telemetry like
                             // solution to avoid sending traces between nodes
@@ -306,7 +308,7 @@ private:
 
             taskQueue->ExecuteSimple([= , response = std::move(response)] () mutable {
 
-                if (response.ByteSizeLong() > 4_KB) {
+                if (response.ByteSizeLong() > MaxRealProtoSize) {
                     // TODO: consider variable length proto size
                     // or switch from lwtrace to open telemetry like
                     // solution to avoid sending traces between nodes
@@ -357,7 +359,7 @@ private:
         future.Subscribe([out = out, context = std::move(context), endpoint = Endpoint] (auto future) {
             auto response = ExtractResponse(future);
 
-            if (response.ByteSizeLong() > 4_KB) {
+            if (response.ByteSizeLong() > MaxRealProtoSize) {
                 // TODO: consider variable length proto size
                 // or switch from lwtrace to open telemetry like
                 // solution to avoid sending traces between nodes
