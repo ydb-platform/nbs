@@ -854,7 +854,7 @@ void TBootstrapYdb::InitRdmaRequestServer()
 
 void TBootstrapYdb::SetupShardingManager()
 {
-    if (Configs->ServerConfig->GetCellsEnabled()) {
+    if (Configs->ServerConfig->GetCellsState() == NProto::CELLS_ON) {
         ShardingManager = CreateShardingManager(
             Configs->ShardingConfig,
             Timer,
@@ -865,7 +865,8 @@ void TBootstrapYdb::SetupShardingManager()
             ServerStats,
             RdmaClient);
     } else {
-        ShardingManager = NSharding::CreateShardingManagerStub();
+        ShardingManager = NSharding::CreateShardingManagerStub(
+            Configs->ServerConfig->GetCellsState() == NProto::CELLS_OFF);
     }
 }
 
