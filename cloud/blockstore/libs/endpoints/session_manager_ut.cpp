@@ -452,13 +452,13 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
                                 ->GetSubgroup("cloud", cloudId)
                                 ->GetSubgroup("folder", folderId);
 
-        auto posponedCount = diskCounters->GetSubgroup("request", "ReadBlocks")
+        auto postponedCount = diskCounters->GetSubgroup("request", "ReadBlocks")
                                  ->FindCounter("PostponedCount")
                                  ->Val();
         if (disableClientThrottler) {
-            UNIT_ASSERT_VALUES_EQUAL(0, posponedCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, postponedCount);
         } else {
-            UNIT_ASSERT_VALUES_EQUAL(2, posponedCount);
+            UNIT_ASSERT_VALUES_EQUAL(2, postponedCount);
         }
     }
 
