@@ -693,7 +693,7 @@ public:
     [[nodiscard]] ui32 GetMaxCompactionRangesLoadingPerTx() const;
     [[nodiscard]] ui32 GetMaxOutOfOrderCompactionMapChunksInflight() const;
 
-    [[nodiscard]] TDuration GetBootPartitionsTimeout() const;
+    [[nodiscard]] TDuration GetPartitionBootTimeout() const;
 };
 
 ui64 GetAllocationUnit(

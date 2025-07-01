@@ -724,7 +724,7 @@ void TPartitionActor::HandleLockAndDrainRange(
     Y_ABORT("Unimplemented");
 }
 
-void TPartitionActor::HandleWakeUpOnBoot(
+void TPartitionActor::HandleWakeupOnBoot(
     const TEvents::TEvWakeup::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -737,9 +737,7 @@ void TPartitionActor::HandleWakeUpOnBoot(
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Tablet booting takes too "
-        "long, sending "
-        "poison pill",
+        "[%s] Tablet booting takes too long, sending poison pill",
         LogTitle.GetWithTime().c_str());
 
     Suicide(ctx);
@@ -826,10 +824,10 @@ STFUNC(TPartitionActor::StateBoot)
     UpdateActorStatsSampled(ActorContext());
 
     if (ev->GetTypeRewrite() == TEvTablet::EvBoot &&
-        Config->GetBootPartitionsTimeout())
+        Config->GetPartitionBootTimeout())
     {
         ActorContext().Schedule(
-            Config->GetBootPartitionsTimeout(),
+            Config->GetPartitionBootTimeout(),
             new TEvents::TEvWakeup(BootWakeupEventTag));
     }
 
@@ -844,7 +842,7 @@ STFUNC(TPartitionActor::StateBoot)
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
-        HFunc(TEvents::TEvWakeup, HandleWakeUpOnBoot);
+        HFunc(TEvents::TEvWakeup, HandleWakeupOnBoot);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 

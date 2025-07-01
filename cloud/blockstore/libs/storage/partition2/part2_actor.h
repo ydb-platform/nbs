@@ -578,7 +578,7 @@ private:
         const NActors::TActorContext& ctx,
         TEvPartitionPrivate::TOperationCompleted operation);
 
-    void HandleWakeUpOnBoot(
+    void HandleWakeupOnBoot(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 

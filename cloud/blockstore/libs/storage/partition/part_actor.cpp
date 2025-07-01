@@ -779,7 +779,7 @@ void TPartitionActor::HandleLockAndDrainRange(
     Y_DEBUG_ABORT_UNLESS(0);
 }
 
-void TPartitionActor::HandleWakeUpOnBoot(
+void TPartitionActor::HandleWakeupOnBoot(
     const TEvents::TEvWakeup::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -870,10 +870,10 @@ STFUNC(TPartitionActor::StateBoot)
     UpdateActorStatsSampled(ActorContext());
 
     if (ev->GetTypeRewrite() == TEvTablet::EvBoot &&
-        Config->GetBootPartitionsTimeout())
+        Config->GetPartitionBootTimeout())
     {
         ActorContext().Schedule(
-            Config->GetBootPartitionsTimeout(),
+            Config->GetPartitionBootTimeout(),
             new TEvents::TEvWakeup(BootWakeupEventTag));
     }
 
@@ -888,7 +888,7 @@ STFUNC(TPartitionActor::StateBoot)
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
-        HFunc(TEvents::TEvWakeup, HandleWakeUpOnBoot);
+        HFunc(TEvents::TEvWakeup, HandleWakeupOnBoot);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 

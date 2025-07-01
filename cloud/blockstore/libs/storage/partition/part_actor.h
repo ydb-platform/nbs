@@ -683,7 +683,7 @@ private:
         const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleWakeUpOnBoot(
+    void HandleWakeupOnBoot(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 

@@ -1542,7 +1542,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldDieIfBootingTakesTooMuchTime)
     {
         NProto::TStorageServiceConfig config;
-        config.SetBootPartitionsTimeout(TDuration::Seconds(10).MilliSeconds());
+        config.SetPartitionBootTimeout(TDuration::Seconds(10).MilliSeconds());
         auto runtime = PrepareTestActorRuntime(std::move(config));
 
         bool tabletWasKilled = false;
