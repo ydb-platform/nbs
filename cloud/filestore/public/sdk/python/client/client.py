@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import cloud.filestore.public.sdk.python.protos as protos
 
@@ -583,6 +583,93 @@ class Client(object):
             timestamp,
             trace_id,
             request_timeout)
+
+    class CreateHandleFlags:
+        def __init__(self, flags: List[protos.TCreateHandleRequest.EFlags]):
+            self.flags = 0
+
+            for flag in flags:
+                self.flags |= 1 << (flag - 1)
+
+    def create_handle(
+        self,
+        filesystem_id: str,
+        session_id: bytes,
+        node_id: int,
+        name: str = "",
+        flags: CreateHandleFlags = CreateHandleFlags([]),
+        mode: int = 0o644,
+        uid: int = 0,
+        gid: int = 0,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> protos.TCreateHandleResponse:
+        request = protos.TCreateHandleRequest(
+            Headers=protos.THeaders(SessionId=session_id),
+            FileSystemId=filesystem_id.encode("utf-8"),
+            NodeId=node_id,
+            Name=name.encode("utf-8"),
+            Flags=flags.flags,
+            Mode=mode,
+            Uid=uid,
+            Gid=gid,
+        )
+
+        return self.__impl.create_handle(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
+
+    def read_data(
+        self,
+        filesystem_id: str,
+        session_id: bytes,
+        node_id: int,
+        handle: int,
+        offset: int,
+        length: int,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None
+    ) -> protos.TReadDataResponse:
+        request = protos.TReadDataRequest(
+            Headers=protos.THeaders(SessionId=session_id),
+            FileSystemId=filesystem_id.encode("utf-8"),
+            NodeId=node_id,
+            Handle=handle,
+            Offset=offset,
+            Length=length
+        )
+
+        return self.__impl.read_data(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
+
+    def write_data(
+        self,
+        filesystem_id: str,
+        session_id: bytes,
+        node_id: int,
+        handle: int,
+        offset: int,
+        buffer: bytes,
+        buffer_offset: int = 0,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None
+    ) -> protos.TWriteDataResponse:
+        request = protos.TWriteDataRequest(
+            Headers=protos.THeaders(SessionId=session_id),
+            FileSystemId=filesystem_id.encode("utf-8"),
+            NodeId=node_id,
+            Handle=handle,
+            Offset=offset,
+            Buffer=buffer[buffer_offset:]
+        )
+
+        return self.__impl.write_data(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
 
 
 def CreateClient(
