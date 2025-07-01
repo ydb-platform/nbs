@@ -177,4 +177,7 @@ private:
 
 IFileIOServicePtr CreateFileIOServiceStub();
 
+IFileIOServicePtr CreateRoundRobinFileIOService(
+    TVector<IFileIOServicePtr> fileIOs);
+
 }   // namespace NCloud
