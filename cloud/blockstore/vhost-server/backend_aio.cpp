@@ -238,7 +238,21 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
 
         if (!file.IsOpen()) {
             int ret = errno;
-            Y_ABORT("can't open %s: %s", chunk.DevicePath.c_str(), strerror(ret));
+            STORAGE_ERROR(
+                "can't open %s: %s",
+                chunk.DevicePath.c_str(),
+                strerror(ret));
+
+            Devices.push_back(TAioDevice{
+                .StartOffset = totalBytes,
+                .EndOffset = totalBytes + chunk.ByteCount,
+                .File = std::move(file),
+                .FileOffset = chunk.Offset,
+                .BlockSize = BlockSize,
+                .NullBackend = true});
+
+            totalBytes += chunk.ByteCount;
+            continue;
         }
 
         ui64 fileLen = file.Seek(0, sEnd);

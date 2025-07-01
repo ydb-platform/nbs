@@ -100,6 +100,14 @@ void PrepareCompoundIO(
     const ui32 deviceCount = std::distance(it, end);
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
 
+    for (auto sIt = it; sIt != end; ++sIt) {
+        if (sIt->NullBackend) {
+            ++queueStats.CompFailed;
+            vhd_complete_bio(io, VHD_BDEV_IOERR);
+            return;
+        }
+    }
+
     STORAGE_DEBUG(
         "%s compound request, %u parts, %u buffers: start sector %lu, start "
         "block %lu, block count %lu, block size %u",
@@ -282,13 +290,20 @@ void PrepareIO(
 
     STORAGE_DEBUG(
         "%s request, %u buffers: start sector %lu, start block %lu, block "
-        "count %lu, block size %u",
+        "count %lu, block size %u, null device %d",
         bio->type == VHD_BDEV_READ ? "Read" : "Write",
         bio->sglist.nbuffers,
         bio->first_sector,
         logicalOffset / device.BlockSize,
         totalBytes / device.BlockSize,
-        device.BlockSize);
+        device.BlockSize,
+        device.NullBackend);
+
+    if (device.NullBackend) {
+        ++queueStats.SubFailed;
+        vhd_complete_bio(io, VHD_BDEV_IOERR);
+        return;
+    }
 
     auto buffers =
         std::span<vhd_buffer>{bio->sglist.buffers, bio->sglist.nbuffers};
