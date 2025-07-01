@@ -110,7 +110,6 @@ public:
     size_t GetResponseSize() const
     {
         return MAX_PROTO_SIZE +
-            NRdma::RDMA_PROTO_HEADER_SIZE +
             (static_cast<size_t>(Request->BlockSize) * Request->GetBlocksCount());
     }
 
@@ -237,7 +236,7 @@ public:
 
     size_t GetResponseSize() const
     {
-        return MAX_PROTO_SIZE + NRdma::RDMA_PROTO_HEADER_SIZE;
+        return MAX_PROTO_SIZE;
     }
 
     TFuture<TResponse> GetResponse() const
@@ -345,7 +344,7 @@ public:
 
     size_t GetResponseSize() const
     {
-        return MAX_PROTO_SIZE + NRdma::RDMA_PROTO_HEADER_SIZE;
+        return MAX_PROTO_SIZE;
     }
 
     TFuture<TResponse> GetResponse() const
