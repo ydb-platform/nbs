@@ -29,13 +29,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr size_t MaxRealProtoSize = 4_KB - NRdma::RDMA_PROTO_HEADER_SIZE;
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define Y_ENSURE_RETURN(expr, message)                                         \
     if (Y_UNLIKELY(!(expr))) {                                                 \
         return MakeError(E_ARGUMENT, TStringBuilder() << message);             \
     }                                                                          \
 // Y_ENSURE_RETURN
-
-////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -220,7 +222,7 @@ private:
              guardedSgList = std::move(guardedSgList),
              blockSize = request.GetBlockSize(),
              taskQueue = TaskQueue,
-             endpoint = Endpoint](auto future)
+             endpoint = Endpoint](auto future) mutable
             {
                 auto response = ExtractResponse(future);
 
@@ -229,24 +231,37 @@ private:
                      buffer = std::move(buffer),
                      guardedSgList = std::move(guardedSgList)]() mutable
                     {
-                        if (SUCCEEDED(response.GetError().GetCode())) {
-                            auto guard = guardedSgList.Acquire();
-                            Y_ENSURE(guard);
+                        if (response.ByteSizeLong() > MaxRealProtoSize) {
+                            // TODO: consider variable length proto size
+                            // or switch from lwtrace to open telemetry like
+                            // solution to avoid sending traces between nodes
+                            response.MutableTrace()->Clear();
+                        }
 
-                            ui32 flags = 0;
-                            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                        auto guard = guardedSgList.Acquire();
+                        Y_ENSURE(guard);
 
-                            size_t responseBytes = NRdma::
-                                TProtoMessageSerializer::SerializeWithData(
+                        ui32 flags = 0;
+                        SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+
+                        size_t responseBytes =
+                            SUCCEEDED(response.GetError().GetCode()) ?
+                                NRdma::TProtoMessageSerializer::SerializeWithData(
                                     out,
                                     TBlockStoreServerProtocol::
                                         EvReadBlocksResponse,
                                     flags,   // flags
                                     response,
-                                    guard.Get());
-                            if (auto ep = endpoint.lock()) {
-                                ep->SendResponse(context, responseBytes);
-                            }
+                                    guard.Get()):
+                                NRdma::TProtoMessageSerializer::Serialize(
+                                    out,
+                                    TBlockStoreServerProtocol::
+                                        EvReadBlocksResponse,
+                                    flags,   // flags
+                                    response);
+
+                        if (auto ep = endpoint.lock()) {
+                            ep->SendResponse(context, responseBytes);
                         }
                     });
             });
@@ -291,7 +306,14 @@ private:
         future.Subscribe([=, taskQueue = TaskQueue, endpoint = Endpoint] (auto future) {
             auto response = ExtractResponse(future);
 
-            taskQueue->ExecuteSimple([= , response = std::move(response)] {
+            taskQueue->ExecuteSimple([= , response = std::move(response)] () mutable {
+
+                if (response.ByteSizeLong() > MaxRealProtoSize) {
+                    // TODO: consider variable length proto size
+                    // or switch from lwtrace to open telemetry like
+                    // solution to avoid sending traces between nodes
+                    response.MutableTrace()->Clear();
+                }
 
                 ui32 flags = 0;
                 SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
@@ -336,6 +358,14 @@ private:
 
         future.Subscribe([out = out, context = std::move(context), endpoint = Endpoint] (auto future) {
             auto response = ExtractResponse(future);
+
+            if (response.ByteSizeLong() > MaxRealProtoSize) {
+                // TODO: consider variable length proto size
+                // or switch from lwtrace to open telemetry like
+                // solution to avoid sending traces between nodes
+                response.MutableTrace()->Clear();
+            }
+
             ui32 flags = 0;
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
             size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
