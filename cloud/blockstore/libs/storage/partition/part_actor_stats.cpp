@@ -55,12 +55,13 @@ void TPartitionActor::UpdateActorStats(const TActorContext& ctx)
     }
 }
 
-void TPartitionActor::SendStatsToService(const TActorContext& ctx)
+std::tuple<
+    ui64,
+    NBlobMetrics::TBlobLoadMetrics,
+    NBlobMetrics::TBlobLoadMetrics,
+    NKikimrTabletBase::TMetrics>
+TPartitionActor::GetStats(const NActors::TActorContext& ctx)
 {
-    if (!PartCounters) {
-        return;
-    }
-
     PartCounters->Simple.MixedBytesCount.Set(
         State->GetMixedBlocksCount() * State->GetBlockSize());
 
@@ -80,8 +81,7 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         State->GetLogicalUsedBlocksCount() * State->GetBlockSize());
 
     // TODO: output new compaction score via another counter
-    PartCounters->Simple.CompactionScore.Set(
-        State->GetLegacyCompactionScore());
+    PartCounters->Simple.CompactionScore.Set(State->GetLegacyCompactionScore());
 
     PartCounters->Simple.CompactionGarbageScore.Set(
         State->GetCompactionGarbageScore());
@@ -92,11 +92,9 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
     PartCounters->Simple.BytesCount.Set(
         State->GetBlocksCount() * State->GetBlockSize());
 
-    PartCounters->Simple.IORequestsInFlight.Set(
-        State->GetIORequestsInFlight());
+    PartCounters->Simple.IORequestsInFlight.Set(State->GetIORequestsInFlight());
 
-    PartCounters->Simple.IORequestsQueued.Set(
-        State->GetIORequestsQueued());
+    PartCounters->Simple.IORequestsQueued.Set(State->GetIORequestsQueued());
 
     PartCounters->Simple.UsedBlocksMapMemSize.Set(
         State->GetUsedBlocks().MemSize());
@@ -116,20 +114,27 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
 
     PartCounters->Simple.CheckpointBytes.Set(State->CalculateCheckpointBytes());
 
-    PartCounters->Simple.UnconfirmedBlobCount.Set(State->GetUnconfirmedBlobCount());
+    PartCounters->Simple.UnconfirmedBlobCount.Set(
+        State->GetUnconfirmedBlobCount());
     PartCounters->Simple.ConfirmedBlobCount.Set(State->GetConfirmedBlobCount());
 
-    ui64 sysCpuConsumption  = 0;
-    for (ui32 tx = 0; tx < TPartitionCounters::ETransactionType::TX_SIZE; ++tx) {
-        sysCpuConsumption += Counters->TxCumulative(tx, NKikimr::COUNTER_TT_EXECUTE_CPUTIME).Get();
-        sysCpuConsumption += Counters->TxCumulative(tx, NKikimr::COUNTER_TT_BOOKKEEPING_CPUTIME).Get();
+    ui64 sysCpuConsumption = 0;
+    for (ui32 tx = 0; tx < TPartitionCounters::ETransactionType::TX_SIZE; ++tx)
+    {
+        sysCpuConsumption +=
+            Counters->TxCumulative(tx, NKikimr::COUNTER_TT_EXECUTE_CPUTIME)
+                .Get();
+        sysCpuConsumption +=
+            Counters->TxCumulative(tx, NKikimr::COUNTER_TT_BOOKKEEPING_CPUTIME)
+                .Get();
     }
 
-    NBlobMetrics::TBlobLoadMetrics blobLoadMetrics = NBlobMetrics::MakeBlobLoadMetrics(
-        State->GetConfig().GetExplicitChannelProfiles(),
-        *Executor()->GetResourceMetrics());
-    NBlobMetrics::TBlobLoadMetrics offsetLoadMetrics = NBlobMetrics::TakeDelta(
-        PrevMetrics, blobLoadMetrics);
+    NBlobMetrics::TBlobLoadMetrics blobLoadMetrics =
+        NBlobMetrics::MakeBlobLoadMetrics(
+            State->GetConfig().GetExplicitChannelProfiles(),
+            *Executor()->GetResourceMetrics());
+    NBlobMetrics::TBlobLoadMetrics offsetLoadMetrics =
+        NBlobMetrics::TakeDelta(PrevMetrics, blobLoadMetrics);
     offsetLoadMetrics += OverlayMetrics;
 
     NKikimrTabletBase::TMetrics metrics;
@@ -138,6 +143,22 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         ctx.Now(),
         true   // forceAll
     );
+
+    return std::make_tuple(
+        sysCpuConsumption,
+        std::move(blobLoadMetrics),
+        std::move(offsetLoadMetrics),
+        std::move(metrics));
+}
+
+void TPartitionActor::SendStatsToService(const TActorContext& ctx)
+{
+    if (!PartCounters) {
+        return;
+    }
+
+    auto [sysCpuConsumption, blobLoadMetrics, offsetLoadMetrics, metrics] =
+        GetStats(ctx);
 
     auto request = std::make_unique<TEvStatsService::TEvVolumePartCounters>(
         MakeIntrusive<TCallContext>(),
@@ -160,6 +181,39 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         DiagnosticsConfig->GetHistogramCounterOptions());
 
     NCloud::Send(ctx, VolumeActorId, std::move(request));
+}
+
+void TPartitionActor::HandleUpdateCountersRequest(
+    const TEvStatsService::TEvUpdatePartCountersRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (!PartCounters) {
+        return;
+    }
+
+    auto [sysCpuConsumption, blobLoadMetrics, offsetLoadMetrics, metrics] =
+        GetStats(ctx);
+
+    auto response =
+        std::make_unique<TEvStatsService::TEvUpdatePartCountersResponse>(
+            sysCpuConsumption - SysCPUConsumption,
+            UserCPUConsumption,
+            std::move(PartCounters),
+            std::move(offsetLoadMetrics),
+            std::move(metrics),
+            SelfId());
+
+    PrevMetrics = std::move(blobLoadMetrics);
+    OverlayMetrics = {};
+
+    UserCPUConsumption = 0;
+    SysCPUConsumption = sysCpuConsumption;
+
+    PartCounters = CreatePartitionDiskCounters(
+        EPublishingPolicy::Repl,
+        DiagnosticsConfig->GetHistogramCounterOptions());
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

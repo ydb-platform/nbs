@@ -197,6 +197,50 @@ struct TEvStatsService
     };
 
     //
+    // UpdatePartCounters
+    //
+
+    struct TUpdatePartCountersRequest
+    {
+        TUpdatePartCountersRequest() = default;
+    };
+
+    struct TUpdatePartCountersResponse
+    {
+        ui64 VolumeSystemCpu;
+        ui64 VolumeUserCpu;
+        TPartitionDiskCountersPtr DiskCounters;
+        NBlobMetrics::TBlobLoadMetrics BlobLoadMetrics;
+        NKikimrTabletBase::TMetrics TabletMetrics;
+        NActors::TActorId PartActorId;
+
+        TUpdatePartCountersResponse(
+                ui64 volumeSystemCpu,
+                ui64 volumeUserCpu,
+                TPartitionDiskCountersPtr diskCounters,
+                NBlobMetrics::TBlobLoadMetrics metrics,
+                NKikimrTabletBase::TMetrics tabletMetrics,
+                const NActors::TActorId& partActorId)
+            : VolumeSystemCpu(volumeSystemCpu)
+            , VolumeUserCpu(volumeUserCpu)
+            , DiskCounters(std::move(diskCounters))
+            , BlobLoadMetrics(std::move(metrics))
+            , TabletMetrics(std::move(tabletMetrics))
+            , PartActorId(partActorId)
+        {}
+    };
+
+    struct TUpdatedAllPartCounters
+    {
+        TVector<TUpdatePartCountersResponse> Counters;
+
+        explicit TUpdatedAllPartCounters(
+            TVector<TUpdatePartCountersResponse> counters)
+            : Counters(std::move(counters))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -212,6 +256,9 @@ struct TEvStatsService
         EvVolumeSelfCounters,
         EvGetVolumeStatsRequest,
         EvGetVolumeStatsResponse,
+        EvUpdatePartCountersRequest,
+        EvUpdatePartCountersResponse,
+        EvUpdatedAllPartCounters,
 
         EvEnd
     };
@@ -251,6 +298,15 @@ struct TEvStatsService
         EvVolumeSelfCounters
     >;
 
+    using TEvUpdatePartCountersRequest =
+        TRequestEvent<TUpdatePartCountersRequest, EvUpdatePartCountersRequest>;
+
+    using TEvUpdatePartCountersResponse = TResponseEvent<
+        TUpdatePartCountersResponse,
+        EvUpdatePartCountersResponse>;
+
+    using TEvUpdatedAllPartCounters =
+        TResponseEvent<TUpdatedAllPartCounters, EvUpdatedAllPartCounters>;
 };
 
 
