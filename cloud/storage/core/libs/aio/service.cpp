@@ -143,7 +143,7 @@ public:
 
     void Stop() override
     {
-        if (ShouldStop.test_and_set()) {
+        if (ShouldStop.test()) {
             return;
         }
 
@@ -152,12 +152,12 @@ public:
 
         TFileHandle file {eventfd(1, EFD_NONBLOCK)};
 
-        TFileIOCompletion cb {
-            .Func = [](auto...) {}
-        };
-
         ui64 value = 0;
-        AsyncRead(file, 0, {std::bit_cast<char*>(&value), sizeof(value)}, &cb);
+        IFileIOService::AsyncRead(
+            file,
+            0,
+            {std::bit_cast<char*>(&value), sizeof(value)},
+            [&](const auto&, ui32) { ShouldStop.test_and_set(); });
 
         PollerThread.Join();
     }
