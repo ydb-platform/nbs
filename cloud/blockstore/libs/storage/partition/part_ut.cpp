@@ -13097,6 +13097,38 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         UNIT_ASSERT(!barriers.empty());
     }
+
+    Y_UNIT_TEST(ShouldPartitionSendStatisticToPartitionStatisticActor)
+    {
+        auto config = DefaultConfig();
+
+        // enable push scheme
+        config.SetUsePullSchemeForCollectingPartitionStatistic(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        bool isPartitionSendStatistic = false;
+
+        auto _ = runtime->AddObserver<
+            TEvStatsService::TEvUpdatePartCountersResponse>(
+            [&](TEvStatsService::TEvUpdatePartCountersResponse::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                isPartitionSendStatistic = true;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendToPipe(
+            std::make_unique<TEvStatsService::TEvUpdatePartCountersRequest>());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents();
+
+        // check that partition send statistic
+        UNIT_ASSERT(isPartitionSendStatistic);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
