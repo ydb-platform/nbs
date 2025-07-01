@@ -1592,3 +1592,91 @@ func TestExternaFs(t *testing.T) {
 	_, err = os.Stat(filepath.Join(socketsDir, instanceId))
 	assert.True(t, os.IsNotExist(err))
 }
+
+func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
+	tempDir := t.TempDir()
+
+	nbsClient := mocks.NewNbsClientMock()
+	mounter := csimounter.NewMock()
+
+	ipcType := nbs.EClientIpcType_IPC_NBD
+	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
+	err := os.MkdirAll(nbdDeviceFile, fs.FileMode(0755))
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	nodeId := "testNodeId"
+	clientId := "testClientId"
+	diskId := "test-disk-id-42"
+	actualClientId := "testClientId-testNodeId"
+	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
+	stagingTargetPath := "testStagingTargetPath"
+	socketsDir := filepath.Join(tempDir, "sockets")
+	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
+
+	nodeService := newNodeService(
+		nodeId,
+		clientId,
+		false,
+		socketsDir,
+		targetFsPathPattern,
+		"",
+		make(ExternalFsOverrideMap),
+		nbsClient,
+		nil,
+		nil, // nfsLocalClient
+		nil, // nfsLocalFilestoreClient
+		mounter,
+		[]string{},
+		false,
+		defaultStartEndpointRetryTimeout,
+	)
+
+	volumeCapability := csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{},
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		},
+	}
+
+	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
+	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(
+		&nbs.TListEndpointsResponse{}, nil)
+	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+		UnixSocketPath:   socketPath,
+		DiskId:           diskId,
+		InstanceId:       nodeId,
+		ClientId:         actualClientId,
+		DeviceName:       diskId,
+		IpcType:          ipcType,
+		VhostQueuesCount: 8,
+		RetryTimeout:     uint32(defaultStartEndpointRetryTimeout.Milliseconds()),
+		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		Persistent:       true,
+		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
+			true,
+		},
+		ClientProfile: &nbs.TClientProfile{
+			HostType: &hostType,
+		},
+	}).Return(&nbs.TStartEndpointResponse{
+		NbdDeviceFile: nbdDeviceFile,
+	}, nil)
+
+	nbdError := fmt.Errorf("%w", nbsclient.ClientError{Code: nbsclient.E_FAIL})
+	mounter.On("HasBlockDevice", nbdDeviceFile).Return(false, nbdError)
+
+	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+		UnixSocketPath: socketPath,
+	}).Return(&nbs.TStopEndpointResponse{}, nil)
+
+	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+		VolumeId:          diskId,
+		StagingTargetPath: stagingTargetPath,
+		VolumeCapability:  &volumeCapability,
+	})
+	require.Error(t, err)
+
+	mounter.AssertExpectations(t)
+}
