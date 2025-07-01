@@ -245,7 +245,10 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
 
 #undef BLOCKSTORE_PARTITION_UPDATE_COUNTER
 
-    SendStatsToService(ctx);
+    // Send counters to service only when we use push scheme
+    if (!Config->GetUsePullSchemeForCollectingPartitionStatistic()) {
+        SendStatsToService(ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -908,6 +911,10 @@ STFUNC(TPartitionActor::StateBoot)
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
 
+        HFunc(
+            TEvStatsService::TEvUpdatePartCountersRequest,
+            HandleUpdateCountersRequest);
+
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
         HFunc(TEvents::TEvWakeup, HandleWakeupOnBoot);
@@ -938,6 +945,10 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
 
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
+
+        HFunc(
+            TEvStatsService::TEvUpdatePartCountersRequest,
+            HandleUpdateCountersRequest);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
@@ -995,6 +1006,9 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted, HandleAddConfirmedBlobsCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted, HandleDescribeBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
+        HFunc(
+            TEvStatsService::TEvUpdatePartCountersRequest,
+            HandleUpdateCountersRequest);
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 
@@ -1040,6 +1054,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
+        IgnoreFunc(TEvStatsService::TEvUpdatePartCountersRequest);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);

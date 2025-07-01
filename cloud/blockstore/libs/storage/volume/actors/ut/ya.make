@@ -6,10 +6,12 @@ SRCS(
     forward_write_and_mark_used_ut.cpp
     read_and_clear_empty_blocks_actor_ut.cpp
     read_disk_registry_based_overlay_ut.cpp
+    partition_statistic_actor_ut.cpp
 )
 
 PEERDIR(
     contrib/ydb/library/actors/testlib
+    cloud/blockstore/libs/storage/volume
 )
 
 END()
