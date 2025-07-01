@@ -222,13 +222,17 @@ message TServerConfig
     optional bool UseFakeRdmaClient = 120;
 
     // Enable Discard/ZeroBlocks features for vhost devices
-    optional bool VhostDiscardEnabled = 121;    
+    optional bool VhostDiscardEnabled = 121;
 
     // Maximum request size in bytes for ZeroBlocks.
     // Requests exceeding this size will be split into smaller sub-requests,
     // each with a size up to MaxZeroBlocksSubRequestSize.
     // Max value for MaxZeroBlocksSubRequestSize is 2 GiB
     optional uint32 MaxZeroBlocksSubRequestSize = 122;
+
+    // Enables/Disables Cells feature.
+    optional bool CellsEnabled = 123;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
