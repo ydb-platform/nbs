@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -19,6 +21,7 @@ func trimTrailingWhitespace(input string) string {
 	for i, line := range lines {
 		lines[i] = strings.TrimRight(line, " \t")
 	}
+
 	return strings.Join(lines, "\n")
 }
 
@@ -163,7 +166,7 @@ func TestShouldReportMountConflicts(t *testing.T) {
 	defer serv.Close()
 
 	response, err := http.Get(serv.URL)
-	assert.Equal(t, err, nil)
+	require.NoError(t, err)
 	assert.Equal(t, response.StatusCode, http.StatusOK)
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count

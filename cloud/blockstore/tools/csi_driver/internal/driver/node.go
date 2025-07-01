@@ -358,6 +358,7 @@ func (s *nodeService) NodeStageVolume(
 		if s.IsMountConflictError(err, nfsBackend) {
 			errorCode = codes.AlreadyExists
 		}
+
 		return nil, s.statusErrorf(errorCode, "Failed to stage volume: %v", err)
 	}
 
