@@ -1252,6 +1252,56 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT_VALUES_EQUAL(1, response->History.size());
         }
     }
+
+    Y_UNIT_TEST(ShouldVolumeGetStatisticFromPartitionStatisticActor)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        // enable pull scheme
+        storageServiceConfig.SetUsePullSchemeForCollectingPartitionStatistic(
+            true);
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        bool updated = false;
+        auto updatedObserver =
+            runtime->AddObserver<TEvStatsService::TEvUpdatedAllPartCounters>(
+                [&](TEvStatsService::TEvUpdatedAllPartCounters::TPtr& ev)
+                {
+                    Y_UNUSED(ev);
+                    updated = true;
+                });
+
+        bool requestSendToPartitions = false;
+        auto sendRequestObserver =
+            runtime->AddObserver<TEvStatsService::TEvUpdatePartCountersRequest>(
+                [&](TEvStatsService::TEvUpdatePartCountersRequest::TPtr& ev)
+                {
+                    Y_UNUSED(ev);
+                    requestSendToPartitions = true;
+                });
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+
+        // check that TPartitionStatisticActor send request to partitions
+        UNIT_ASSERT(requestSendToPartitions);
+
+        // check that volume got statistic from TPartitionStatisticActor
+        UNIT_ASSERT(updated);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

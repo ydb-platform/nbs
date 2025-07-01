@@ -380,6 +380,8 @@ private:
 
     TVector<ui64> GCCompletedPartitions;
 
+    THashMap<NActors::TActorId, bool> IsSavedPartitionCounters;
+
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -605,6 +607,14 @@ private:
 
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
 
+    void SendStatisticRequest(const NActors::TActorContext& ctx);
+
+    void FinishUpdateCounters(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        ui64 cookie,
+        TCallContextPtr callContext);
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -703,6 +713,17 @@ private:
     void HandleDiskRegistryBasedPartCounters(
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void UpdatePartCounters(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        const NKikimrTabletBase::TMetrics& tabletMetrics,
+        NBlobMetrics::TBlobLoadMetrics& blobLoadMetrics,
+        TCallContextPtr callContext,
+        TPartitionDiskCountersPtr diskCounters,
+        ui64 cookie,
+        ui64 volumeSystemCpu,
+        ui64 volumeUserCpu);
 
     void HandlePartCounters(
         const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
@@ -1127,6 +1148,10 @@ private:
     void DestroyLeaderLink(
         TRequestInfoPtr requestInfo,
         TLeaderFollowerLink link,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdatePartCounters(
+        const TEvStatsService::TEvUpdatedAllPartCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     // Restart partitions. If these were partition of DiskRegistry-based disk,

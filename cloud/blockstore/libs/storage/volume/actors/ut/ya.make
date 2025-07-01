@@ -7,10 +7,12 @@ SRCS(
     read_and_clear_empty_blocks_actor_ut.cpp
     read_disk_registry_based_overlay_ut.cpp
     volume_as_partition_actor_ut.cpp
+    partition_statistic_actor_ut.cpp
 )
 
 PEERDIR(
     contrib/ydb/library/actors/testlib
+    cloud/blockstore/libs/storage/volume
 )
 
 END()

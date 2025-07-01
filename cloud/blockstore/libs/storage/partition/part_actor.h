@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
@@ -232,6 +233,13 @@ private:
             UpdateActorStats(ctx);
         }
     }
+
+    std::tuple<
+        ui64,
+        NBlobMetrics::TBlobLoadMetrics,
+        NBlobMetrics::TBlobLoadMetrics,
+        NKikimrTabletBase::TMetrics>
+    GetStats(const NActors::TActorContext& ctx);
 
     void SendStatsToService(const NActors::TActorContext& ctx);
 
@@ -691,6 +699,10 @@ private:
         const TVector<TAddFreshBlob>& freshBlobs,
         const TVector<TAddMixedBlob>& mixedBlobs,
         const TVector<TAddMergedBlob>& mergedBlobs) const;
+
+    void HandleUpdateCountersRequest(
+        const TEvStatsService::TEvUpdatePartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)

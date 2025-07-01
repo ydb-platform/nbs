@@ -4,8 +4,10 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/volume/actors/partition_statistic_actor.h>
 
 #include <cloud/storage/core/libs/common/media.h>
+#include <cloud/storage/core/libs/common/verify.h>
 
 #include <util/system/hostname.h>
 
@@ -33,6 +35,17 @@ constexpr double GetMetricsMultiplicator(
 {
     return static_cast<double>(UpdateCountersInterval.GetValue()) /
            DurationToCalculate;
+}
+
+bool IsForAllPartitionsStatSaved(
+    const THashMap<TActorId, bool>& isSavedPartitionCounters)
+{
+    for (auto [_, isSaved]: isSavedPartitionCounters) {
+        if (!isSaved) {
+            return false;
+        }
+    }
+    return true;
 }
 
 }   // namespace
@@ -283,21 +296,22 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         std::move(partStats));
 }
 
-void TVolumeActor::HandlePartCounters(
-    const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
-    const TActorContext& ctx)
+void TVolumeActor::UpdatePartCounters(
+    const NActors::TActorContext& ctx,
+    const NActors::TActorId& sender,
+    const NKikimrTabletBase::TMetrics& tabletMetrics,
+    NBlobMetrics::TBlobLoadMetrics& blobLoadMetrics,
+    TCallContextPtr callContext,
+    TPartitionDiskCountersPtr diskCounters,
+    ui64 cookie,
+    ui64 volumeSystemCpu,
+    ui64 volumeUserCpu)
 {
     Y_DEBUG_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
 
-    auto* msg = ev->Get();
+    auto requestInfo = CreateRequestInfo(sender, cookie, callContext);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext
-    );
-
-    auto tabletId = State->FindPartitionTabletId(ev->Sender);
+    auto tabletId = State->FindPartitionTabletId(sender);
     auto* statInfo =
         tabletId ? State->GetPartitionStatInfoByTabletId(*tabletId) : nullptr;
     if (!statInfo) {
@@ -306,28 +320,26 @@ void TVolumeActor::HandlePartCounters(
             TBlockStoreComponents::VOLUME,
             "%s Partition %s for disk counters not found",
             LogTitle.GetWithTime().c_str(),
-            ToString(ev->Sender).c_str());
+            ToString(sender).c_str());
         return;
     }
 
-    UpdateTabletMetrics(ctx, msg->TabletMetrics);
+    UpdateTabletMetrics(ctx, tabletMetrics);
 
     if (!statInfo->LastCounters) {
         statInfo->LastCounters = CreatePartitionDiskCounters(
             State->CountersPolicy(),
             DiagnosticsConfig->GetHistogramCounterOptions());
-        statInfo->LastMetrics = std::move(msg->BlobLoadMetrics);
+        statInfo->LastMetrics = std::move(blobLoadMetrics);
     }
 
-    statInfo->LastSystemCpu += msg->VolumeSystemCpu;
-    statInfo->LastUserCpu += msg->VolumeUserCpu;
+    statInfo->LastSystemCpu += volumeSystemCpu;
+    statInfo->LastUserCpu += volumeUserCpu;
 
-    statInfo->LastCounters->Add(*msg->DiskCounters);
+    statInfo->LastCounters->Add(*diskCounters);
 
-    UpdateCachedStats(*msg->DiskCounters, statInfo->CachedCounters);
-    CopyPartCountersToCachedStats(
-        *msg->DiskCounters,
-        statInfo->CachedCountersProto);
+    UpdateCachedStats(*diskCounters, statInfo->CachedCounters);
+    CopyPartCountersToCachedStats(*diskCounters, statInfo->CachedCountersProto);
 
     TVolumeDatabase::TPartStats partStats;
 
@@ -338,6 +350,74 @@ void TVolumeActor::HandlePartCounters(
         ctx,
         std::move(requestInfo),
         std::move(partStats));
+}
+
+void TVolumeActor::HandlePartCounters(
+    const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_DEBUG_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
+
+    auto* msg = ev->Get();
+
+    UpdatePartCounters(
+        ctx,
+        ev->Sender,
+        msg->TabletMetrics,
+        msg->BlobLoadMetrics,
+        msg->CallContext,
+        std::move(msg->DiskCounters),
+        ev->Cookie,
+        msg->VolumeSystemCpu,
+        msg->VolumeUserCpu);
+}
+
+void TVolumeActor::HandleUpdatePartCounters(
+    const TEvStatsService::TEvUpdatedAllPartCounters::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_DEBUG_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
+
+    auto* msg = ev->Get();
+
+    if (HasError(msg->Error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "Failed to update part counters. Error: %s",
+            FormatError(msg->Error).c_str());
+
+        // if we don't get response from all partitions
+        // end updating counters
+        if (msg->Counters.empty()) {
+            FinishUpdateCounters(
+                ctx,
+                SelfId(),                       // sender
+                0,                              // cookie
+                MakeIntrusive<TCallContext>()   // callContext
+            );
+
+            Actors.erase(ev->Sender);
+            return;
+        }
+    }
+
+    for (auto& partCounters: msg->Counters) {
+        IsSavedPartitionCounters[partCounters.PartActorId] = false;
+
+        UpdatePartCounters(
+            ctx,
+            partCounters.PartActorId,
+            partCounters.TabletMetrics,
+            partCounters.BlobLoadMetrics,
+            MakeIntrusive<TCallContext>(),
+            std::move(partCounters.DiskCounters),
+            ev->Cookie,
+            partCounters.VolumeSystemCpu,
+            partCounters.VolumeUserCpu);
+    }
+
+    Actors.erase(ev->Sender);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -380,6 +460,21 @@ void TVolumeActor::CompleteSavePartStats(
         "%s Part %lu stats saved",
         LogTitle.GetWithTime().c_str(),
         args.PartStats.TabletId);
+
+    if (Config->GetUsePullSchemeForCollectingPartitionStatistic() &&
+        !State->IsDiskRegistryMediaKind())
+    {
+        auto partActorId = args.RequestInfo->Sender;
+        IsSavedPartitionCounters[partActorId] = true;
+        if (IsForAllPartitionsStatSaved(IsSavedPartitionCounters)) {
+            FinishUpdateCounters(
+                ctx,
+                SelfId(),                       // sender
+                0,                              // cookie
+                MakeIntrusive<TCallContext>()   // callContext
+            );
+        }
+    }
 
     NCloud::Send(
         ctx,
@@ -637,6 +732,47 @@ void TVolumeActor::HandleLongRunningBlobOperation(
             msg.GroupId,
             FormatDuration(msg.Duration).c_str(),
             FormatError(msg.Error).c_str());
+    }
+}
+
+void TVolumeActor::SendStatisticRequest(const NActors::TActorContext& ctx)
+{
+    STORAGE_VERIFY_C(
+        State->GetPartitions(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "Empty partition list");
+
+    auto actor = NCloud::Register<TPartitionStatisticActor>(
+        ctx,
+        SelfId(),
+        State->GetPartitions());
+
+    Actors.insert(actor);
+}
+
+void TVolumeActor::FinishUpdateCounters(
+    const NActors::TActorContext& ctx,
+    const NActors::TActorId& sender,
+    ui64 cookie,
+    TCallContextPtr callContext)
+{
+    UpdateCountersScheduled = false;
+
+    UpdateCounters(ctx);
+    ScheduleRegularUpdates(ctx);
+
+    if (State) {
+        State->AccessMountHistory().CleanupHistoryIfNeeded(
+            ctx.Now() - Config->GetVolumeHistoryDuration());
+
+        auto requestInfo = CreateRequestInfo(sender, cookie, callContext);
+
+        ExecuteTx<TCleanupHistory>(
+            ctx,
+            std::move(requestInfo),
+            ctx.Now() - Config->GetVolumeHistoryDuration(),
+            Config->GetVolumeHistoryCleanupItemCount());
     }
 }
 

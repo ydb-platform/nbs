@@ -661,28 +661,16 @@ void TVolumeActor::HandleUpdateCounters(
     const TEvVolumePrivate::TEvUpdateCounters::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
-    UpdateCountersScheduled = false;
-
-    UpdateCounters(ctx);
-    ScheduleRegularUpdates(ctx);
-
-    if (State) {
-        State->AccessMountHistory().CleanupHistoryIfNeeded(
-            ctx.Now() - Config->GetVolumeHistoryDuration());
-
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            ev->Get()->CallContext);
-
-        ExecuteTx<TCleanupHistory>(
-            ctx,
-            std::move(requestInfo),
-            ctx.Now() - Config->GetVolumeHistoryDuration(),
-            Config->GetVolumeHistoryCleanupItemCount());
+    // if we use pull scheme, we must send request to partitions
+    // to collect statistic
+    if (Config->GetUsePullSchemeForCollectingPartitionStatistic() &&
+        !State->IsDiskRegistryMediaKind())
+    {
+        SendStatisticRequest(ctx);
+        return;
     }
+
+    FinishUpdateCounters(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
 }
 
 void TVolumeActor::HandleServerConnected(
@@ -1060,6 +1048,10 @@ STFUNC(TVolumeActor::StateWork)
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
+        HFunc(
+            TEvStatsService::TEvUpdatedAllPartCounters,
+            HandleUpdatePartCounters);
+
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
@@ -1119,6 +1111,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUpdateLinkOnFollowerResponse);
+
+        IgnoreFunc(TEvStatsService::TEvUpdatedAllPartCounters);
 
         default:
             if (!RejectRequests(ev)) {
