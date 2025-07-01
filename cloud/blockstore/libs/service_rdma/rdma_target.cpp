@@ -307,7 +307,6 @@ private:
             auto response = ExtractResponse(future);
 
             taskQueue->ExecuteSimple([= , response = std::move(response)] () mutable {
-
                 if (response.ByteSizeLong() > MaxRealProtoSize) {
                     // TODO: consider variable length proto size
                     // or switch from lwtrace to open telemetry like
