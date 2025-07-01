@@ -854,15 +854,20 @@ void TBootstrapYdb::InitRdmaRequestServer()
 
 void TBootstrapYdb::SetupShardingManager()
 {
-    ShardingManager = CreateShardingManager(
-        Configs->ShardingConfig,
-        Timer,
-        Scheduler,
-        Logging,
-        Monitoring,
-        GetTraceSerializer(),
-        ServerStats,
-        RdmaClient);
+    if (Configs->ServerConfig->GetCellsState() == NProto::CELLS_ON) {
+        ShardingManager = CreateShardingManager(
+            Configs->ShardingConfig,
+            Timer,
+            Scheduler,
+            Logging,
+            Monitoring,
+            GetTraceSerializer(),
+            ServerStats,
+            RdmaClient);
+    } else {
+        ShardingManager = NSharding::CreateShardingManagerStub(
+            Configs->ServerConfig->GetCellsState() == NProto::CELLS_OFF);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer

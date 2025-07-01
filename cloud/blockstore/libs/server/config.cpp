@@ -106,7 +106,8 @@ constexpr TDuration Seconds(int s)
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
     xxx(VhostDiscardEnabled,         bool,                   false            )\
-    xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )
+    xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
+    xxx(CellsState,                  NProto::ECellsState,   NProto::CELLS_OFF )
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \
@@ -220,6 +221,29 @@ void DumpImpl(
             break;
         default:
             os << "(Unknown EEndpointStorageType value "
+                << static_cast<int>(value)
+                << ")";
+            break;
+    }
+}
+
+template <>
+void DumpImpl(
+    const NProto::ECellsState& value,
+    IOutputStream& os)
+{
+    switch (value) {
+        case NProto::CELLS_OFF:
+            os << "CELLS_OFF";
+            break;
+        case NProto::CELLS_ON:
+            os << "CELLS_ON";
+            break;
+        case NProto::CELLS_UNAVAILABLE:
+            os << "CELLS_UNAVAILABLE";
+            break;
+        default:
+            os << "(Unknown ECellsState value "
                 << static_cast<int>(value)
                 << ")";
             break;

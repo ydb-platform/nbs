@@ -139,6 +139,7 @@ public:
     NProto::TChecksumFlags GetChecksumFlags() const;
     bool GetVhostDiscardEnabled() const;
     ui32 GetMaxZeroBlocksSubRequestSize() const;
+    NProto::ECellsState GetCellsState() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

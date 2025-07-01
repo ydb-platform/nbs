@@ -1,5 +1,7 @@
 #include "sharding.h"
 
+#include <cloud/blockstore/libs/service/context.h>
+
 namespace NCloud::NBlockStore::NSharding {
 
 namespace {
@@ -9,8 +11,11 @@ namespace {
 struct TShardingManagerStub
     : public IShardingManager
 {
-    explicit TShardingManagerStub()
+    const bool IsOff;
+
+    explicit TShardingManagerStub(bool isOff)
         : IShardingManager(nullptr)
+        , IsOff(isOff)
     {}
 
     [[nodiscard]] TResultOrError<THostEndpoint> GetShardEndpoint(
@@ -32,7 +37,30 @@ struct TShardingManagerStub
         Y_UNUSED(headers);
         Y_UNUSED(localService);
         Y_UNUSED(clientConfig);
-        return {};
+        if (IsOff) {
+            return {};
+        }
+        auto callContext = MakeIntrusive<TCallContext>();
+
+        auto request =
+            std::make_shared<NProto::TDescribeVolumeRequest>();
+        request->MutableHeaders()->CopyFrom(headers);
+        request->SetDiskId(diskId);
+
+        auto future = localService->DescribeVolume(
+            callContext,
+            std::move(request));
+
+        return future.Apply([] (const auto& future) {
+            const auto& result = future.GetValue();
+            if (!HasError(result.GetError())) {
+                return future;
+            }
+            NProto::TDescribeVolumeResponse response;
+            *response.MutableError() =
+                std::move(MakeError(E_REJECTED, "Not all shards available"));
+            return NThreading::MakeFuture(std::move(response));
+        });
     }
 
     void Start() override
@@ -46,9 +74,9 @@ struct TShardingManagerStub
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IShardingManagerPtr CreateShardingManagerStub()
+IShardingManagerPtr CreateShardingManagerStub(bool isOff)
 {
-    return std::make_shared<TShardingManagerStub>();
+    return std::make_shared<TShardingManagerStub>(isOff);
 }
 
 }   // namespace NCloud::NBlockStore::NSharding
