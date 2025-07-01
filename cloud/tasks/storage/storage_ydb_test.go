@@ -384,17 +384,18 @@ func TestStorageYDBGetTask(t *testing.T) {
 	modifiedAt := createdAt.Add(time.Hour)
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
-		GenerationID:   42,
-		Status:         TaskStatusReadyToRun,
-		State:          []byte{1, 2, 3},
-		Dependencies:   NewStringSet(),
-		ZoneID:         "zone",
+		IdempotencyKey:   getIdempotencyKeyForTest(t),
+		TaskType:         "task1",
+		Description:      "Some task",
+		CreatedAt:        createdAt,
+		CreatedBy:        "some_user",
+		ModifiedAt:       modifiedAt,
+		GenerationID:     42,
+		Status:           TaskStatusReadyToRun,
+		State:            []byte{1, 2, 3},
+		Dependencies:     NewStringSet(),
+		ZoneID:           "zone",
+		StallingDuration: 1000,
 	})
 	require.NoError(t, err)
 
@@ -412,6 +413,7 @@ func TestStorageYDBGetTask(t *testing.T) {
 	require.EqualValues(t, NewStringSet(), taskState.Dependencies)
 	require.WithinDuration(t, time.Time(createdAt), time.Time(taskState.ChangedStateAt), time.Microsecond)
 	require.EqualValues(t, "zone", taskState.ZoneID)
+	require.EqualValues(t, 1000, taskState.StallingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -2832,7 +2834,7 @@ func TestStorageYDBLockTaskToRun(t *testing.T) {
 	}, createdAt.Add(taskDuration), "host", "runner_43")
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 1)
-	require.EqualValues(t, taskState.StallingDuration, time.Duration(0))
+	require.EqualValues(t, 0, taskState.StallingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -2979,7 +2981,7 @@ func TestStorageYDBLockTaskToCancel(t *testing.T) {
 	}, createdAt.Add(taskDuration), "host", "runner_43")
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 1)
-	require.EqualValues(t, taskState.StallingDuration, time.Duration(0))
+	require.EqualValues(t, 0, taskState.StallingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -4849,7 +4851,7 @@ func TestStallingDurationAccumulatesOnStalkerRun(t *testing.T) {
 			GenerationID: uint64(i),
 		}, createdAt.Add(time.Duration(i+1)*taskDuration), "host", "runner_43")
 		require.NoError(t, err)
-		require.EqualValues(t, stallingDuration+time.Duration(i+1)*taskDuration, taskState.StallingDuration)
+		require.Equal(t, stallingDuration+time.Duration(i+1)*taskDuration, taskState.StallingDuration)
 	}
 }
 
@@ -4901,6 +4903,6 @@ func TestStallingDurationAccumulatesOnStalkerCancel(t *testing.T) {
 			GenerationID: uint64(i),
 		}, createdAt.Add(time.Duration(i+1)*taskDuration), "host", "runner_43")
 		require.NoError(t, err)
-		require.EqualValues(t, stallingDuration+time.Duration(i+1)*taskDuration, taskState.StallingDuration)
+		require.Equal(t, stallingDuration+time.Duration(i+1)*taskDuration, taskState.StallingDuration)
 	}
 }
