@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
@@ -94,4 +93,5 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1,4 +1,3 @@
-
 #include "propagate_to_follower.h"
 
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>

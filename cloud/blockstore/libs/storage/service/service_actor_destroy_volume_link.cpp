@@ -33,7 +33,7 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void RemoveLink(const NActors::TActorContext& ctx);
+    void UnlinkLeaderVolumeFromFollower(const NActors::TActorContext& ctx);
     void RemoveLinkOnFollower(const NActors::TActorContext& ctx);
 
     void HandleUnlinkLeaderVolumeFromFollowerResponse(
@@ -69,10 +69,11 @@ void TDestroyVolumeLinkActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    RemoveLink(ctx);
+    UnlinkLeaderVolumeFromFollower(ctx);
 }
 
-void TDestroyVolumeLinkActor::RemoveLink(const NActors::TActorContext& ctx)
+void TDestroyVolumeLinkActor::UnlinkLeaderVolumeFromFollower(
+    const NActors::TActorContext& ctx)
 {
     auto request =
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>(
@@ -113,9 +114,14 @@ void TDestroyVolumeLinkActor::HandleUnlinkLeaderVolumeFromFollowerResponse(
             FormatError(error).data());
 
         if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
-            // Leader disk not found. Try to remove on follower.
-            RemoveLinkOnFollower(ctx);
-            return;
+            auto status = static_cast<NKikimrScheme::EStatus>(
+                STATUS_FROM_CODE(error.GetCode()));
+            // TODO: return E_NOT_FOUND instead of StatusPathDoesNotExist
+            if (status == NKikimrScheme::StatusPathDoesNotExist) {
+                // Leader disk not found. Try to remove on follower.
+                RemoveLinkOnFollower(ctx);
+                return;
+            }
         }
     }
 
