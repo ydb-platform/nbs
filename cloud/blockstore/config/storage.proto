@@ -1257,4 +1257,8 @@ message TStorageServiceConfig
     optional uint32 MaxCompactionRangesLoadingPerTx = 436;
     // Max inflight for out of order compaction map load requests.
     optional uint32 MaxOutOfOrderCompactionMapChunksInflight = 437;
+
+    // Volume send requests to partitions to get partitions statistic
+    // instead of partitions send statistic to volume.
+    optional bool UsePullSchemeForCollectingPartitionStatistic = 438;
 }
