@@ -31,6 +31,10 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("NUM")
         .StoreResult(&SecurePort);
 
+    opts.AddLongOption("unix-socket-path")
+        .RequiredArgument("STR")
+        .StoreResult(&UnixSocketPath);
+
     opts.AddLongOption("mon-file")
         .RequiredArgument("STR")
         .StoreResult(&MonitoringConfig);
