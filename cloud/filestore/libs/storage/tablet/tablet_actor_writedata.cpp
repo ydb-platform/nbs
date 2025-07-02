@@ -178,7 +178,7 @@ bool TIndexTabletActor::PrepareTx_WriteData(
 
     if (Config->GetAllowHandlelessIO()) {
         if (args.ExplicitNodeId == InvalidNodeId) {
-            args.Error = ErrorInvalidArgument();
+            args.Error = ErrorInvalidTarget(args.ExplicitNodeId);
             return true;
         }
         args.NodeId = args.ExplicitNodeId;
@@ -216,7 +216,7 @@ bool TIndexTabletActor::PrepareTx_WriteData(
     // in the handleless mode. This should not lead to a TABLET_VERIFY.
     TABLET_VERIFY(args.Node || Config->GetAllowHandlelessIO());
     if (!args.Node) {
-        args.Error = ErrorInvalidArgument();
+        args.Error = ErrorInvalidTarget(args.NodeId);
         return true;
     }
     // TODO: access check
