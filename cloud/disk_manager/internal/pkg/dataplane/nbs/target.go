@@ -74,6 +74,12 @@ func NewDiskTarget(
 		encryption,
 	)
 	if err != nil {
+		// Checking if disk still exists.
+		_, describeErr := client.Describe(ctx, disk.DiskId)
+		if describeErr != nil {
+			return nil, describeErr
+		}
+
 		return nil, err
 	}
 

@@ -17,6 +17,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -390,4 +391,53 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 			require.Equal(t, chunkCount, sourceChunkCount)
 		}()
 	}
+}
+
+func TestDeleteEncryptedDiskDuringFilling(t *testing.T) {
+	ctx := newContext()
+
+	factory := newFactory(t, ctx)
+	client, err := factory.GetClient(ctx, "zone")
+	require.NoError(t, err)
+
+	diskID := t.Name()
+	disk := &types.Disk{ZoneId: "zone", DiskId: diskID}
+
+	ecnryptionDesc := &types.EncryptionDesc{
+		Mode: types.EncryptionMode_ENCRYPTION_AES_XTS,
+		Key: &types.EncryptionDesc_KmsKey{
+			KmsKey: &types.KmsKey{
+				KekId:        "kekid",
+				EncryptedDEK: []byte("encrypteddek"),
+				TaskId:       "taskid",
+			},
+		},
+	}
+
+	err = client.Create(ctx, nbs_client.CreateDiskParams{
+		ID:             diskID,
+		BlocksCount:    uint64(blocksInChunk * chunkCount),
+		BlockSize:      blockSize,
+		Kind:           types.DiskKind_DISK_KIND_SSD,
+		EncryptionDesc: ecnryptionDesc,
+	})
+	require.NoError(t, err)
+
+	client.Delete(ctx, diskID)
+
+	_, err = nbs.NewDiskTarget(
+		ctx,
+		factory,
+		disk,
+		ecnryptionDesc,
+		chunkSize,
+		false, // ignoreZeroChunks
+		0,     // fillGeneration
+		0,     // fillSeqNumber
+	)
+	require.Error(t, err)
+	nonRetriableErr := errors.NewEmptyNonRetriableError()
+	require.True(t, errors.Is(err, nonRetriableErr))
+	errors.As(err, &nonRetriableErr)
+	require.True(t, nonRetriableErr.Silent)
 }
