@@ -164,13 +164,20 @@ public:
         }
     }
 
-    void StartServer()
+    void StartServer(bool addNonExistingDevice = false)
     {
         Server = CreateServer(Logging, CreateAioBackend(Encryptor, Logging));
 
         Options.Layout.reserve(ChunkCount);
         Files.reserve(ChunkCount);
-        for (ui32 i = 0; i != ChunkCount; ++i) {
+
+        if (addNonExistingDevice) {
+            Options.Layout.push_back(
+                {.DevicePath = "NonExistingDevice",
+                 .ByteCount = ChunkByteCount});
+        }
+
+        for (ui32 i = addNonExistingDevice ? 1 : 0; i != ChunkCount; ++i) {
             auto& file = Files.emplace_back(MakeTempName());
 
             Options.Layout.push_back({
@@ -535,6 +542,47 @@ TEST_P(TServerTest, ShouldReadAndWrite)
         EXPECT_EQ(
             Unaligned ? writesCount - splittedWrites : 0,
             write.Unaligned);
+    }
+}
+
+TEST_P(TServerTest, ShouldResponseWithEIOOnRequestsToNonExistingDevice)
+{
+    StartServer(true);
+
+    auto getFillChar = [](size_t block) -> ui8
+    {
+        const TString allowedChars{
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"};
+        return allowedChars[block % allowedChars.size()];
+    };
+    auto makePatten = [&](size_t startBlock) -> TString
+    {
+        TString result;
+        result.resize(RequestSize);
+        for (size_t i = 0; i < BlocksPerRequest; ++i) {
+            memset(
+                const_cast<char*>(result.data()) + BlockSize * i,
+                getFillChar(startBlock + i),
+                BlockSize);
+        }
+        return result;
+    };
+
+    // write data
+    {
+        std::span hdr = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
+        std::span writeBuffer =
+            Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize);
+        std::span status = Memory.Allocate(1);
+
+        reinterpret_cast<virtio_blk_req_hdr*>(hdr.data())->sector =
+            0 * SectorsPerBlock;
+        TString expectedData = makePatten(0);
+        memcpy(writeBuffer.data(), expectedData.data(), expectedData.size());
+        auto writeOp =
+            Client.WriteAsync(QueueIndex, {hdr, writeBuffer}, {status});
+        EXPECT_EQ(status.size(), writeOp.GetValueSync());
+        EXPECT_EQ(VIRTIO_BLK_S_IOERR, status[0]);
     }
 }
 
