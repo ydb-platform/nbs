@@ -260,9 +260,12 @@ void TVolumeActor::HandleAllocateDiskIfNeeded(
 
     if (expectedSize <= actualSize) {
         if (expectedSize < actualSize) {
-            LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] Attempt to decrease disk size, currentSize=%lu, expectedSize=%lu",
-                TabletID(),
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Attempt to decrease disk size, currentSize=%lu, "
+                "expectedSize=%lu",
+                LogTitle.GetWithTime().c_str(),
                 actualSize,
                 expectedSize);
         }
@@ -270,9 +273,11 @@ void TVolumeActor::HandleAllocateDiskIfNeeded(
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Allocating disk, currentSize=%lu, expectedSize=%lu",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Allocating disk, currentSize=%lu, expectedSize=%lu",
+        LogTitle.GetWithTime().c_str(),
         actualSize,
         expectedSize);
 
@@ -339,8 +344,8 @@ void TVolumeActor::HandleAllocateDiskError(
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Disk allocation failed with error: %s. DiskId=%s",
-        TabletID(),
+        "%s Disk allocation failed with error: %s. DiskId=%s",
+        LogTitle.GetWithTime().c_str(),
         FormatError(error).c_str(),
         GetNewestConfig().GetDiskId().Quote().c_str());
 
@@ -363,12 +368,13 @@ void TVolumeActor::HandleAllocateDiskResponse(
         HandleAllocateDiskError(ctx, std::move(error));
         return;
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Disk allocation success. DiskId=%s, %s",
-            TabletID(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Disk allocation success. DiskId=%s, %s",
+            LogTitle.GetWithTime().c_str(),
             GetNewestConfig().GetDiskId().Quote().c_str(),
-            DescribeAllocation(msg->Record).c_str()
-        );
+            DescribeAllocation(msg->Record).c_str());
     }
 
     if (!StateLoadFinished) {
@@ -493,10 +499,12 @@ bool TVolumeActor::CheckAllocationResult(
 
     const auto oldReplicaCount = State->GetMeta().ReplicasSize();
     if (replicas.size() < oldReplicaCount) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Got less replicas than previously existed"
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Got less replicas than previously existed"
             ", old replica count: %lu, new replica count: %lu",
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             State->GetMeta().ReplicasSize(),
             replicas.size());
 
@@ -521,10 +529,12 @@ bool TVolumeActor::CheckAllocationResult(
             false);
 
         if (replicas[i].size() > devices.size()) {
-            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] Replica-%u: got more devices than main config"
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Replica-%u: got more devices than main config"
                 ", main device count: %lu, replica device count: %lu",
-                TabletID(),
+                LogTitle.GetWithTime().c_str(),
                 i,
                 devices.size(),
                 replicas[i].size());
@@ -535,8 +545,8 @@ bool TVolumeActor::CheckAllocationResult(
 
     if (ok && allocatedSize < expectedSize) {
         LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Bad disk allocation result, allocatedSize=%lu, expectedSize=%lu",
-            TabletID(),
+            "%s Bad disk allocation result, allocatedSize=%lu, expectedSize=%lu",
+            LogTitle.GetWithTime().c_str(),
             allocatedSize,
             expectedSize);
 
@@ -547,9 +557,11 @@ bool TVolumeActor::CheckAllocationResult(
         ReportDiskAllocationFailure();
 
         if (State->GetAcceptInvalidDiskAllocationResponse()) {
-            LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] Accepting invalid disk allocation response",
-                TabletID());
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Accepting invalid disk allocation response",
+                LogTitle.GetWithTime().c_str());
         } else {
             ScheduleAllocateDiskIfNeeded(ctx);
             return false;
@@ -614,8 +626,8 @@ void TVolumeActor::CompleteUpdateDevices(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Devices have been updated. DiskId: %s LiteReallocation: %d",
-        TabletID(),
+        "%s Devices have been updated. DiskId: %s LiteReallocation: %d",
+        LogTitle.GetWithTime().c_str(),
         State->GetDiskId().c_str(),
         args.LiteReallocation);
 

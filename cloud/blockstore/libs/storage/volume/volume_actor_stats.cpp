@@ -373,9 +373,11 @@ void TVolumeActor::CompleteSavePartStats(
     const TActorContext& ctx,
     TTxVolume::TSavePartStats& args)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Part %lu stats saved",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Part %lu stats saved",
+        LogTitle.GetWithTime().c_str(),
         args.PartStats.TabletId);
 
     NCloud::Send(
@@ -612,9 +614,9 @@ void TVolumeActor::HandleLongRunningBlobOperation(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] For volume %s detected %s (actor %s, group %u) %s running "
+            "%s For volume %s detected %s (actor %s, group %u) %s running "
             "for %s",
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             State->GetDiskId().Quote().c_str(),
             ToString(msg.Operation).c_str(),
             ev->Sender.ToString().c_str(),
@@ -627,9 +629,9 @@ void TVolumeActor::HandleLongRunningBlobOperation(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] For volume %s %s %s (actor %s, group %u) detected after %s, "
+            "%s For volume %s %s %s (actor %s, group %u) detected after %s, "
             "%s",
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             State->GetDiskId().Quote().c_str(),
             ToString(msg.Reason).c_str(),
             ToString(msg.Operation).c_str(),

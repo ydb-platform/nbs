@@ -81,9 +81,11 @@ void TVolumeActor::ScheduleRetryStartPartition(
 
     const auto timeout = deadline - now;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Waiting before retrying start of partition %lu (timeout: %s)",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Waiting before retrying start of partition %lu (timeout: %s)",
+        LogTitle.GetWithTime().c_str(),
         partition.TabletId,
         ToString(timeout).data());
 

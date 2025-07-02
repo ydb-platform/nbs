@@ -45,9 +45,11 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
                 GCCompletedPartitions.push_back(args.PartitionTabletId);
                 return;
             }
-            LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] Stopping partitions after gc finished",
-                TabletID());
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Stopping partitions after gc finished",
+                LogTitle.GetWithTime().c_str());
 
             StopPartitions(ctx, {});
             State->Reset();

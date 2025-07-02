@@ -75,9 +75,9 @@ void TVolumeActor::ReleaseReplacedDevices(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Releasing devices that don't belong to the volume anymore "
+            "%s Releasing devices that don't belong to the volume anymore "
             "for client: %s",
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             clientId.c_str());
 
         TAcquireReleaseDiskRequest request{clientId, nullptr, replacedDevices};

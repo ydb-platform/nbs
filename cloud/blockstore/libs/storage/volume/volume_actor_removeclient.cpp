@@ -155,9 +155,9 @@ void TVolumeActor::HandleRemoveClient(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Postponing RemoveClientRequest[%s] for volume %s: another "
+            "%s Postponing RemoveClientRequest[%s] for volume %s: another "
             "request in flight",
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             clientId.Quote().data(),
             diskId.Quote().data());
     }
@@ -186,10 +186,12 @@ void TVolumeActor::ExecuteRemoveClient(
 
     auto now = ctx.Now();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Volume %s received remove client %s request; pipe server %s, "
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Volume %s received remove client %s request; pipe server %s, "
         "pipe generation %u",
-        TabletID(),
+        LogTitle.GetWithTime().c_str(),
         args.DiskId.Quote().data(),
         args.ClientId.Quote().data(),
         ToString(args.PipeServerActorId).data());
@@ -236,9 +238,11 @@ void TVolumeActor::CompleteRemoveClient(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Removed client %s from volume %s",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Removed client %s from volume %s",
+        LogTitle.GetWithTime().c_str(),
         clientId.Quote().data(),
         diskId.Quote().data());
 

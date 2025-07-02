@@ -1046,15 +1046,19 @@ void TVolumeActor::CreateCheckpointLightRequest(
     const auto type = State->GetCheckpointStore().GetCheckpointType(checkpointId);
 
     if (type && *type == ECheckpointType::Light) {
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s: light checkpoint %s already exists",
-            TabletID(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s: light checkpoint %s already exists",
+            LogTitle.GetWithTime().c_str(),
             TCreateCheckpointMethod::Name,
             checkpointId.Quote().c_str());
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s created light checkpoint %s",
-            TabletID(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s created light checkpoint %s",
+            LogTitle.GetWithTime().c_str(),
             TCreateCheckpointMethod::Name,
             checkpointId.Quote().c_str());
 
@@ -1080,9 +1084,11 @@ void TVolumeActor::DeleteCheckpointLightRequest(
     ui64 requestId,
     const TString& checkpointId)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] %s deleted light checkpoint %s",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s %s deleted light checkpoint %s",
+        LogTitle.GetWithTime().c_str(),
         TCreateCheckpointMethod::Name,
         checkpointId.Quote().c_str());
 
@@ -1113,16 +1119,19 @@ void TVolumeActor::GetChangedBlocksForLightCheckpoints(
 
     auto replyError = [&](NProto::TError error)
     {
-        TString errorMsg = TStringBuilder()
-            << "[%lu] %s for light checkpoints failed, request parameters are:"
+        TString errorMsg =
+            TStringBuilder()
+            << "%s %s for light checkpoints failed, request parameters are:"
             << " LowCheckpointId: " << msg->Record.GetLowCheckpointId() << ","
             << " HighCheckpointId: " << msg->Record.GetHighCheckpointId() << ","
             << " StartIndex: " << msg->Record.GetStartIndex() << ","
             << " BlocksCount: " << msg->Record.GetBlocksCount() << ","
             << " error message: " << error.GetMessage();
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
             errorMsg.c_str(),
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             TGetChangedBlocksMethod::Name);
 
         NCloud::Reply(ctx, *requestInfo,
@@ -1189,9 +1198,11 @@ void TVolumeActor::ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBased
         << ", LowCheckpointId: " << msg->Record.GetLowCheckpointId().Quote()
         << ", HighCheckpointId: " << msg->Record.GetHighCheckpointId().Quote();
 
-    LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] %s %s",
-        TabletID(),
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s %s %s",
+        LogTitle.GetWithTime().c_str(),
         TGetChangedBlocksMethod::Name,
         errorMsg.c_str());
 
@@ -1314,8 +1325,8 @@ void TVolumeActor::HandleCheckpointRequest<TGetCheckpointStatusMethod>(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Get checkpoint status for checkpoint %s",
-        TabletID(),
+        "%s Get checkpoint status for checkpoint %s",
+        LogTitle.GetWithTime().c_str(),
         checkpointId.Quote().c_str());
 
     auto checkpoint = State->GetCheckpointStore().GetCheckpoint(checkpointId);
@@ -1486,13 +1497,14 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
     for (const auto& p: State->GetPartitions()) {
         partitionDescrs.push_back({p.TabletId, p.GetTopActorId(), false});
 
-        LOG_TRACE(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Forward %s request to partition: %lu %s",
-            TabletID(),
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Forward %s request to partition: %lu %s",
+            LogTitle.GetWithTime().c_str(),
             GetCheckpointRequestName(request.ReqType),
             p.TabletId,
-            ToString(p.GetTopActorId()).data()
-        );
+            ToString(p.GetTopActorId()).data());
     }
 
     if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {
@@ -1502,8 +1514,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
         LOG_TRACE(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Forward %s request to nonrepl partition: %s",
-            TabletID(),
+            "%s Forward %s request to nonrepl partition: %s",
+            LogTitle.GetWithTime().c_str(),
             GetCheckpointRequestName(request.ReqType),
             ToString(actorId).c_str());
     }
@@ -1665,9 +1677,11 @@ void TVolumeActor::CompleteSaveCheckpointRequest(
     const auto& checkpointRequest =
         State->GetCheckpointStore().GetRequestById(args.RequestId);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] CheckpointRequest %lu %s saved",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s CheckpointRequest %lu %s saved",
+        LogTitle.GetWithTime().c_str(),
         checkpointRequest.RequestId,
         checkpointRequest.CheckpointId.Quote().c_str());
 
@@ -1733,10 +1747,12 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
     const TCheckpointRequest& request =
         State->GetCheckpointStore().GetRequestById(args.RequestId);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] CheckpointRequest %lu for disk %s, checkpoint %s, marked: %s, "
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s CheckpointRequest %lu for disk %s, checkpoint %s, marked: %s, "
         "shadow disk: %s, error=%s",
-        TabletID(),
+        LogTitle.GetWithTime().c_str(),
         request.RequestId,
         State->GetDiskId().Quote().c_str(),
         request.CheckpointId.Quote().c_str(),
@@ -1829,9 +1845,9 @@ void TVolumeActor::CompleteUpdateShadowDiskState(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] For checkpoint %s shadow disk %s state updated. Processed "
+        "%s For checkpoint %s shadow disk %s state updated. Processed "
         "blocks: %lu, state: %s",
-        TabletID(),
+        LogTitle.GetWithTime().c_str(),
         request.CheckpointId.Quote().c_str(),
         request.ShadowDiskId.Quote().c_str(),
         args.ProcessedBlockCount,

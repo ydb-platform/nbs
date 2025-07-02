@@ -775,9 +775,11 @@ void TVolumeActor::HandleHttpInfo(
 
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] HTTP request: %s",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s HTTP request: %s",
+        LogTitle.GetWithTime().c_str(),
         msg->Query.Quote().data());
 
     auto requestInfo = CreateRequestInfo(

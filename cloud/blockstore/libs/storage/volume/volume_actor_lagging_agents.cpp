@@ -93,8 +93,8 @@ void TVolumeActor::HandleAddOutdatedLaggingDevicesResponse(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Couldn't add lagging devices to the DR. Error: %s",
-            TabletID(),
+            "%s Couldn't add lagging devices to the DR. Error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
         ctx.Schedule(
@@ -113,8 +113,8 @@ void TVolumeActor::HandleDeviceTimedOut(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Device \"%s\" timed out",
-        TabletID(),
+        "%s Device \"%s\" timed out",
+        LogTitle.GetWithTime().c_str(),
         msg->DeviceUUID.c_str());
 
     if (!LaggingDevicesAreAllowed()) {
@@ -155,8 +155,8 @@ void TVolumeActor::HandleDeviceTimedOut(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Could not find config with device %s",
-            TabletID(),
+            "%s Could not find config with device %s",
+            LogTitle.GetWithTime().c_str(),
             msg->DeviceUUID.c_str());
 
         auto response =
@@ -204,8 +204,8 @@ void TVolumeActor::HandleUpdateLaggingAgentMigrationState(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Lagging agent %s migration progress: %lu/%lu blocks",
-        TabletID(),
+        "%s Lagging agent %s migration progress: %lu/%lu blocks",
+        LogTitle.GetWithTime().c_str(),
         msg->AgentId.Quote().c_str(),
         msg->CleanBlockCount,
         msg->CleanBlockCount + msg->DirtyBlockCount);
@@ -224,8 +224,8 @@ void TVolumeActor::HandleLaggingAgentMigrationFinished(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Lagging agent %s migration finished",
-        TabletID(),
+        "%s Lagging agent %s migration finished",
+        LogTitle.GetWithTime().c_str(),
         msg->AgentId.Quote().c_str());
 
     if (UpdateVolumeConfigInProgress) {
@@ -238,9 +238,9 @@ void TVolumeActor::HandleLaggingAgentMigrationFinished(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Lagging agent %s removal may fail because the volume config "
+            "%s Lagging agent %s removal may fail because the volume config "
             "update is in progress",
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             msg->AgentId.Quote().c_str());
         State->RemoveLaggingAgent(msg->AgentId);
         return;
@@ -279,8 +279,8 @@ void TVolumeActor::ExecuteAddLaggingAgent(
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,
-                "[%lu] Agent %s is already lagging",
-                TabletID(),
+                "%s Agent %s is already lagging",
+                LogTitle.GetWithTime().c_str(),
                 laggingAgent.GetAgentId().c_str());
 
             STORAGE_CHECK_PRECONDITION(
@@ -300,9 +300,9 @@ void TVolumeActor::ExecuteAddLaggingAgent(
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,
-                "[%lu] Will not add a lagging agent %s. Agent's "
+                "%s Will not add a lagging agent %s. Agent's "
                 "devices intersect with already lagging %s",
-                TabletID(),
+                LogTitle.GetWithTime().c_str(),
                 args.Agent.GetAgentId().Quote().c_str(),
                 laggingAgent.GetAgentId().Quote().c_str());
 
@@ -324,9 +324,9 @@ void TVolumeActor::ExecuteAddLaggingAgent(
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,
-                "[%lu] There are other fresh devices on the same row with "
+                "%s There are other fresh devices on the same row with "
                 "device %s",
-                TabletID(),
+                LogTitle.GetWithTime().c_str(),
                 laggingDevice.GetDeviceUUID().c_str());
 
             args.Error = MakeError(
@@ -341,8 +341,8 @@ void TVolumeActor::ExecuteAddLaggingAgent(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Add lagging agent: %s, replicaIndex: %u, devices: ( %s )",
-        TabletID(),
+        "%s Add lagging agent: %s, replicaIndex: %u, devices: ( %s )",
+        LogTitle.GetWithTime().c_str(),
         args.Agent.GetAgentId().Quote().c_str(),
         args.Agent.GetReplicaIndex(),
         [&laggingDevices = args.Agent.GetDevices()]()
@@ -411,8 +411,8 @@ void TVolumeActor::ExecuteRemoveLaggingAgent(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Could not find an agent %s in lagging agents list.",
-            TabletID(),
+            "%s Could not find an agent %s in lagging agents list.",
+            LogTitle.GetWithTime().c_str(),
             args.AgentId.c_str());
         return;
     }

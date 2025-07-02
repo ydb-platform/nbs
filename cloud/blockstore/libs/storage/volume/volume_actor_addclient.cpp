@@ -297,9 +297,12 @@ void TVolumeActor::HandleAddClient(
     if (PendingClientRequests.size() == 1) {
         ProcessNextPendingClientRequest(ctx);
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Postponing AddClientRequest[%s] for volume %s: another request in flight",
-            TabletID(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Postponing AddClientRequest[%s] for volume %s: another request "
+            "in flight",
+            LogTitle.GetWithTime().c_str(),
             clientId.Quote().data(),
             diskId.Quote().data());
     }
@@ -334,9 +337,12 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
             if (AcquireReleaseDiskRequests.size() == 1) {
                 ProcessNextAcquireReleaseDiskRequest(ctx);
             } else {
-                LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-                    "[%lu] Postponing AcquireReleaseRequest[%s] for volume %s: another request in flight",
-                    TabletID(),
+                LOG_DEBUG(
+                    ctx,
+                    TBlockStoreComponents::VOLUME,
+                    "%s Postponing AcquireReleaseRequest[%s] for volume %s: "
+                    "another request in flight",
+                    LogTitle.GetWithTime().c_str(),
                     AcquireReleaseDiskRequests.back().ClientId.Quote().data(),
                     State->GetDiskId().Quote().data());
             }
@@ -430,9 +436,11 @@ void TVolumeActor::ExecuteAddClient(
                 const auto& clients = State->GetClients();
                 auto it = clients.find(prevWriter);
                 if (it != clients.end()) {
-                    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-                        "[%lu] Replace %s writer with %s",
-                        TabletID(),
+                    LOG_DEBUG(
+                        ctx,
+                        TBlockStoreComponents::VOLUME,
+                        "%s Replace %s writer with %s",
+                        LogTitle.GetWithTime().c_str(),
                         prevWriter.Quote().data(),
                         State->GetReadWriteAccessClientId().Quote().data());
                 }
@@ -499,9 +507,11 @@ void TVolumeActor::CompleteAddClient(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Added client %s to volume %s",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Added client %s to volume %s",
+        LogTitle.GetWithTime().c_str(),
         clientId.Quote().data(),
         diskId.Quote().data());
 
