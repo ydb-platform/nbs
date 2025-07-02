@@ -45,6 +45,7 @@ struct TOptions
     NProto::EEncryptionMode EncryptionMode = NProto::NO_ENCRYPTION;
     TString EncryptionKeyPath;
     ui32 EncryptionKeyringId = 0;
+    __pid_t BlockstoreServicePid = 0;
 
     NProto::TEncryptionSpec GetEncryptionSpec() const;
 

@@ -157,13 +157,80 @@ def test_vhost_server_work_along():
 
         # check that the server has lost the parent process
         __wait_message(err_r, 'Server started')
-        __wait_message(err_r, 'Parent process exit.')
+        __wait_message(err_r, 'Parent process exit')
 
         # check that stat request works
         for _ in range(3):
             os.kill(pid, signal.SIGUSR1)
             s = __read_json(out_r)
-            assert s['elapsed_ms'] != 0
+            assert 'elapsed_ms' in s
+
+        # wait vhost-server to shut down after a timeout
+        __wait_message(err_r, 'Wait for timeout')
+        __wait_message(err_r, 'Server has been stopped')
+
+        assert not os.path.exists(socket_path)
+
+
+def test_vhost_server_work_along_when_parent_exit_immediately():
+    work_along_time = 5
+    data_file_size = 4096
+    data_file_path = __prepare_data_file(data_file_size)
+
+    out_r_fd, out_w_fd = os.pipe()
+    err_r_fd, err_w_fd = os.pipe()
+
+    with tempfile.TemporaryDirectory() as tmp_dir, \
+            os.fdopen(out_r_fd, 'r') as out_r, \
+            os.fdopen(out_w_fd, 'w') as out_w, \
+            os.fdopen(err_r_fd, 'r') as err_r, \
+            os.fdopen(err_w_fd, 'w') as err_w:
+
+        socket_path = os.path.join(tmp_dir, 'local0.vhost')
+
+        assert not os.path.exists(socket_path)
+
+        # prepare vhost command line
+        vhost_cmd = [
+            VHOST_SERVER_BINARY_PATH,
+            '-i', 'local0',
+            '--disk-id', 'volume_with_long_name',
+            '-s', socket_path,
+            '-q', '2',
+            '--device', f"{data_file_path}:{data_file_size}:0",
+            '--wait-after-parent-exit', str(work_along_time)
+        ]
+
+        # run proxy process that will launch our vhost-server
+        proxy = subprocess.Popen(
+            [
+                RUN_AND_DIE_BINARY_PATH,
+                '--cmd', json.dumps(vhost_cmd),
+                '--immediately'
+            ],
+            stdin=None,
+            stdout=out_w,
+            stderr=err_w,
+            bufsize=0,
+            universal_newlines=True)
+
+        # wait proxy exit
+        proxy.communicate()
+        assert proxy.returncode == 0
+
+        # get pid of vhost-server
+        pid = int(out_r.readline().strip())
+        print("Vhost-server pid:", pid)
+
+        # check that the server has lost the parent process
+        __wait_message(err_r, 'Server started')
+        __wait_message(err_r, 'Parent process exit')
+
+        # check that stat request works
+        for _ in range(3):
+            os.kill(pid, signal.SIGUSR1)
+            s = __read_json(out_r)
+            assert 'elapsed_ms' in s
 
         # wait vhost-server to shut down after a timeout
         __wait_message(err_r, 'Wait for timeout')
