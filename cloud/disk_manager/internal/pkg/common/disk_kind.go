@@ -1,7 +1,6 @@
 package common
 
 import (
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
@@ -48,7 +47,7 @@ func DiskKindFromString(kind string) (types.DiskKind, error) {
 	case "hdd-local":
 		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
 	default:
-		return 0, errors.NewInvalidArgumentError(
+		return 0, NewInvalidArgumentError(
 			"unknown disk kind %v",
 			kind,
 		)

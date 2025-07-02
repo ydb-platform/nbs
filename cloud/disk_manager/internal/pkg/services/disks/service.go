@@ -14,7 +14,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -27,7 +26,7 @@ import (
 func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 	switch kind {
 	case disk_manager.DiskKind_DISK_KIND_UNSPECIFIED:
-		return 0, errors.NewInvalidArgumentError("disk kind is required")
+		return 0, common.NewInvalidArgumentError("disk kind is required")
 	case disk_manager.DiskKind_DISK_KIND_SSD:
 		return types.DiskKind_DISK_KIND_SSD, nil
 	case disk_manager.DiskKind_DISK_KIND_HDD:
@@ -45,7 +44,7 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 	case disk_manager.DiskKind_DISK_KIND_HDD_LOCAL:
 		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
 	default:
-		return 0, errors.NewInvalidArgumentError(
+		return 0, common.NewInvalidArgumentError(
 			"unknown disk kind %v",
 			kind,
 		)
@@ -68,7 +67,7 @@ func prepareEncryptionMode(
 	case disk_manager.EncryptionMode_ENCRYPTION_AT_REST:
 		return types.EncryptionMode_ENCRYPTION_AT_REST, nil
 	default:
-		return 0, errors.NewInvalidArgumentError(
+		return 0, common.NewInvalidArgumentError(
 			"unknown encryption mode %v",
 			mode,
 		)
@@ -108,7 +107,7 @@ func PrepareEncryptionDesc(
 	case nil:
 		result.Key = nil
 	default:
-		return nil, errors.NewInvalidArgumentError("unknown key %s", key)
+		return nil, common.NewInvalidArgumentError("unknown key %s", key)
 	}
 
 	return result, nil
@@ -116,14 +115,14 @@ func PrepareEncryptionDesc(
 
 func getBlocksCountForSize(size uint64, blockSize uint32) (uint64, error) {
 	if blockSize == 0 {
-		return 0, errors.NewInvalidArgumentError(
+		return 0, common.NewInvalidArgumentError(
 			"invalid block size %v",
 			blockSize,
 		)
 	}
 
 	if size%uint64(blockSize) != 0 {
-		return 0, errors.NewInvalidArgumentError(
+		return 0, common.NewInvalidArgumentError(
 			"invalid size %v for block size %v",
 			size,
 			blockSize,
@@ -177,7 +176,7 @@ func (s *service) prepareCreateDiskParams(
 	if len(req.DiskId.ZoneId) == 0 ||
 		len(req.DiskId.DiskId) == 0 {
 
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid disk id: %v",
 			req.DiskId,
 		)
@@ -190,7 +189,7 @@ func (s *service) prepareCreateDiskParams(
 
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
 	if len(diskIDPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIDPrefix) {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"can't create disk with id %q, because only disks with id prefix %q are allowed to be created",
 			req.DiskId.DiskId,
 			diskIDPrefix,
@@ -198,14 +197,14 @@ func (s *service) prepareCreateDiskParams(
 	}
 
 	if req.Size < 0 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid size: %v",
 			req.Size,
 		)
 	}
 
 	if req.BlockSize < 0 || req.BlockSize > math.MaxUint32 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid block size: %v",
 			req.BlockSize,
 		)
@@ -232,7 +231,7 @@ func (s *service) prepareCreateDiskParams(
 	}
 
 	if req.TabletVersion < 0 || req.TabletVersion > math.MaxUint32 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid tablet version: %v",
 			req.TabletVersion,
 		)
@@ -250,7 +249,7 @@ func (s *service) prepareCreateDiskParams(
 		}
 
 		if !allowed {
-			return nil, errors.NewInvalidArgumentError(
+			return nil, common.NewInvalidArgumentError(
 				"can't create a DiskRegistry based disk with id %q, because "+
 					"it is not allowed for the %q folder",
 				req.DiskId.DiskId,
@@ -402,7 +401,7 @@ func (s *service) CreateDisk(
 			},
 		)
 	default:
-		return "", errors.NewInvalidArgumentError("unknown src %s", src)
+		return "", common.NewInvalidArgumentError("unknown src %s", src)
 	}
 }
 
@@ -412,7 +411,7 @@ func (s *service) DeleteDisk(
 ) (string, error) {
 
 	if len(req.DiskId.DiskId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"disk id is empty, req=%v",
 			req,
 		)
@@ -420,7 +419,7 @@ func (s *service) DeleteDisk(
 
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
 	if len(diskIDPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIDPrefix) {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"can't delete disk with id %q, because only disks with id prefix %q are allowed to be deleted",
 			req.DiskId.DiskId,
 			diskIDPrefix,
@@ -447,14 +446,14 @@ func (s *service) ResizeDisk(
 ) (string, error) {
 
 	if len(req.DiskId.ZoneId) == 0 || len(req.DiskId.DiskId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
 	}
 
 	if req.Size < 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"invalid size: %v",
 			req.Size,
 		)
@@ -480,7 +479,7 @@ func (s *service) AlterDisk(
 ) (string, error) {
 
 	if len(req.DiskId.ZoneId) == 0 || len(req.DiskId.DiskId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -507,7 +506,7 @@ func (s *service) AssignDisk(
 ) (string, error) {
 
 	if len(req.DiskId.ZoneId) == 0 || len(req.DiskId.DiskId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -535,7 +534,7 @@ func (s *service) UnassignDisk(
 ) (string, error) {
 
 	if len(req.DiskId.ZoneId) == 0 || len(req.DiskId.DiskId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -572,14 +571,14 @@ func (s *service) DescribeDiskModel(
 	}
 
 	if req.Size < 0 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid size: %v",
 			req.Size,
 		)
 	}
 
 	if req.BlockSize < 0 || req.BlockSize > math.MaxUint32 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid block size: %v",
 			req.BlockSize,
 		)
@@ -591,7 +590,7 @@ func (s *service) DescribeDiskModel(
 	}
 
 	if req.TabletVersion < 0 || req.TabletVersion > math.MaxUint32 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid tablet version: %v",
 			req.TabletVersion,
 		)
@@ -648,7 +647,7 @@ func (s *service) StatDisk(
 	if len(req.DiskId.ZoneId) == 0 ||
 		len(req.DiskId.DiskId) == 0 {
 
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid disk id: %v",
 			req.DiskId,
 		)
@@ -675,13 +674,13 @@ func (s *service) MigrateDisk(
 	if len(req.DiskId.ZoneId) == 0 || len(req.DiskId.DiskId) == 0 ||
 		len(req.DstZoneId) == 0 {
 
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
 	}
 	if req.DiskId.ZoneId == req.DstZoneId {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"cannot migrate disk to the same zone, req=%v",
 			req,
 		)
@@ -741,7 +740,7 @@ func (s *service) SendMigrationSignal(
 		)
 	}
 
-	return errors.NewInvalidArgumentError(
+	return common.NewInvalidArgumentError(
 		"migration signal is invalid, req=%v",
 		req,
 	)
@@ -755,7 +754,7 @@ func (s *service) DescribeDisk(
 	if len(req.DiskId.ZoneId) == 0 ||
 		len(req.DiskId.DiskId) == 0 {
 
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid disk id: %v",
 			req.DiskId,
 		)
