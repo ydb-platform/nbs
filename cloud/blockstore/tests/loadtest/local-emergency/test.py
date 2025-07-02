@@ -31,6 +31,7 @@ def storage_config_with_emergency_mode(backups_folder):
     storage = default_storage_config(backups_folder)
     storage.HiveProxyFallbackMode = True
     storage.SSProxyFallbackMode = True
+    storage.ResetSchemeShardDir = True
     storage.DisableLocalService = True
     return storage
 

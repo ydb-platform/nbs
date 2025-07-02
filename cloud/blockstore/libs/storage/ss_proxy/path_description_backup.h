@@ -44,6 +44,9 @@ private:
     void ScheduleBackup(const NActors::TActorContext& ctx);
     NProto::TError Backup(const NActors::TActorContext& ctx);
 
+    bool LoadFromTextFormat(const NActors::TActorContext& ctx);
+    bool LoadFromBinaryFormat(const NActors::TActorContext& ctx);
+
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);

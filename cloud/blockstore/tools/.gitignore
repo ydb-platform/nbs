@@ -43,6 +43,7 @@ http_proxy/blockstore-http-proxy
 http_proxy/tests/cloud-blockstore-tools-http_proxy-tests
 http_proxy/ut/blockstore-http-proxy
 nbd/blockstore-nbd
+restore/merge_ss_backups/merge_ss_backups
 testing/build-fresh-blob/build-fresh-blob
 testing/chaos-monkey/chaos-monkey
 testing/chaos-monkey/tests/tests
