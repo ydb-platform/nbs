@@ -52,10 +52,10 @@ TOptionsCommon::TOptionsCommon()
         .DefaultValue("")
         .StoreResult(&RdmaConfig);
 
-    Opts.AddLongOption("sharding-file")
+    Opts.AddLongOption("cells-file")
         .RequiredArgument("FILE")
         .DefaultValue("")
-        .StoreResult(&ShardingConfig);
+        .StoreResult(&CellsConfig);
 
     Opts.AddLongOption("temporary-server", "run temporary server for blue-green deployment")
         .NoArgument()

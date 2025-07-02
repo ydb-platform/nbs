@@ -1,0 +1,80 @@
+syntax = "proto2";
+
+import "cloud/blockstore/config/client.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum ECellDataTransport
+{
+    CELL_DATA_TRANSPORT_UNSET = 0;
+    CELL_DATA_TRANSPORT_GRPC = 1;
+    CELL_DATA_TRANSPORT_NBD = 2;
+    CELL_DATA_TRANSPORT_RDMA = 3;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TCellHostConfig
+{
+    optional string Fqdn = 1;
+
+    // overrides Transport in TShardInfo.
+    optional ECellDataTransport Transport = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TCellConfig
+{
+    // Id of the shard.
+    optional string CellId = 1;
+
+    // Insecure Grpc port number.
+    optional uint32 GrpcPort = 2;
+
+    // RDMA port number.
+    optional uint32 RdmaPort = 4;
+
+    // NBD port number.
+    optional uint32 NbdPort = 5;
+
+    // Secure GRPC port number.
+    optional uint32 SecureGrpcPort = 6;
+
+    // Transport for this shard.
+    optional ECellDataTransport Transport = 7;
+
+    // List of host belonging to this shard.
+    repeated TCellHostConfig Hosts = 8;
+
+    // Number of host in a shard to send Describe requests during volume
+    // lookup.
+    optional uint32 CellDescribeHostCnt = 9;
+
+    // Number of host in a shard to have connections to.
+    optional uint32 MinCellConnections = 10;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TCellsConfig
+{
+    // Mapping from ShardId to fqdn hosts.
+    repeated TCellConfig Cells = 1;
+
+    // Shard Id, nbs belongs to.
+    optional string CellId = 2;
+
+    // Describe timeout.
+    optional uint32 DescribeTimeout = 3;
+
+    // Settings for Grpc client.
+    optional TClientConfig GrpcClientConfig = 4;
+
+    // Number of worker threads for RDMA Transport
+    optional uint32 RdmaTransportWorkers = 5;
+}

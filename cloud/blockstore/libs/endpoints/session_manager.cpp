@@ -1,5 +1,6 @@
 #include "session_manager.h"
 
+#include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -15,7 +16,6 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/sharding/iface/sharding.h>
 #include <cloud/blockstore/libs/validation/validation.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -319,7 +319,7 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IServerStatsPtr ServerStats;
     const IBlockStorePtr Service;
-    const NSharding::IShardingManagerPtr ShardingManager;
+    const NCells::ICellsManagerPtr CellsManager;
     const IStorageProviderPtr StorageProvider;
     const NRdma::IClientPtr RdmaClient;
     const IThrottlerProviderPtr ThrottlerProvider;
@@ -345,7 +345,7 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             IBlockStorePtr service,
-            NSharding::IShardingManagerPtr shardingManager,
+            NCells::ICellsManagerPtr cellsManager,
             IStorageProviderPtr storageProvider,
             NRdma::IClientPtr rdmaClient,
             IThrottlerProviderPtr throttlerProvider,
@@ -361,7 +361,7 @@ public:
         , VolumeStats(std::move(volumeStats))
         , ServerStats(std::move(serverStats))
         , Service(std::move(service))
-        , ShardingManager(std::move(shardingManager))
+        , CellsManager(std::move(cellsManager))
         , StorageProvider(std::move(storageProvider))
         , RdmaClient(std::move(rdmaClient))
         , ThrottlerProvider(std::move(throttlerProvider))
@@ -466,7 +466,7 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
         return TErrorResponse(describeResponse.GetError());
     }
     const auto& volume = describeResponse.GetVolume();
-    const auto& suId = describeResponse.GetShardId();
+    const auto& suId = describeResponse.GetCellId();
 
     auto result = CreateEndpoint(request, volume, suId);
     if (HasError(result)) {
@@ -500,7 +500,7 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers)
 {
-    auto multiShardFuture = ShardingManager->DescribeVolume(
+    auto multiShardFuture = CellsManager->DescribeVolume(
         diskId,
         headers,
         Service,
@@ -685,7 +685,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto clientConfig = CreateClientConfig(request);
 
     if (!shardId.empty()) {
-        auto result = ShardingManager->GetShardEndpoint(
+        auto result = CellsManager->GetCellEndpoint(
             shardId,
             clientConfig);
         if (HasError(result.GetError())) {
@@ -877,7 +877,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    NSharding::IShardingManagerPtr shardingManager,
+    NCells::ICellsManagerPtr cellsManager,
     IStorageProviderPtr storageProvider,
     NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,
@@ -903,7 +903,7 @@ ISessionManagerPtr CreateSessionManager(
         std::move(volumeStats),
         std::move(serverStats),
         std::move(service),
-        std::move(shardingManager),
+        std::move(cellsManager),
         std::move(storageProvider),
         std::move(rdmaClient),
         std::move(throttlerProvider),

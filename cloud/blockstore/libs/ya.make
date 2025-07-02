@@ -1,4 +1,5 @@
 RECURSE(
+    cells
     client
     client/bench
     client_rdma
@@ -32,7 +33,6 @@ RECURSE(
     service_local
     service_rdma
     service_throttling
-    sharding
     spdk
     storage
     storage/init

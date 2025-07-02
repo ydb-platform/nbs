@@ -59,7 +59,7 @@
         GROUPS("NBSRequest"),                                                  \
         TYPES(ui64),                                                           \
         NAMES("requestId"))                                                    \
-    PROBE(RequestReceived_Sharding,                                            \
+    PROBE(RequestReceived_Cells,                                               \
         GROUPS("NBSRequest"),                                                  \
         TYPES(),                                                               \
         NAMES())                                                               \
