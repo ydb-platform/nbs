@@ -92,6 +92,7 @@ def write_user_data(filename, args):
             'postgresql',
             'sysbench',
             'tmux',
+            'xattr'
         ],
         'power_state': {
             'delay': 'now',
