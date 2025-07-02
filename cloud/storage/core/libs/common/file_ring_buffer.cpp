@@ -175,7 +175,6 @@ private:
 
     void SetCorrupted()
     {
-        // TODO: external notification (?)
         Corrupted = true;
     }
 
