@@ -425,7 +425,7 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateGetCapacityActor(
+    TResultOrError<NActors::IActorPtr> CreateGetClusterCapacityActor(
         TRequestInfoPtr requestInfo,
         TString input);
 };
