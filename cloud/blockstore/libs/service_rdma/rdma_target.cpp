@@ -33,10 +33,6 @@ constexpr size_t MaxRealProtoSize = 4_KB - NRdma::RDMA_PROTO_HEADER_SIZE;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t MaxRealProtoSize = 4_KB - NRdma::RDMA_PROTO_HEADER_SIZE;
-
-////////////////////////////////////////////////////////////////////////////////
-
 #define Y_ENSURE_RETURN(expr, message)                                         \
     if (Y_UNLIKELY(!(expr))) {                                                 \
         return MakeError(E_ARGUMENT, TStringBuilder() << message);             \
