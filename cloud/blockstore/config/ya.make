@@ -4,6 +4,7 @@ INCLUDE_TAGS(GO_PROTO)
 EXCLUDE_TAGS(JAVA_PROTO)
 
 SRCS(
+    cells.proto
     client.proto
     diagnostics.proto
     discovery.proto
@@ -16,7 +17,6 @@ SRCS(
     rdma.proto
     root_kms.proto
     server.proto
-    sharding.proto
     spdk.proto
     storage.proto
     ydbstats.proto

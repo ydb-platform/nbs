@@ -7,6 +7,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/cells/impl
     cloud/blockstore/libs/client
     cloud/blockstore/libs/common
     cloud/blockstore/libs/daemon/common
@@ -29,7 +30,6 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_agent
     cloud/blockstore/libs/storage/disk_registry_proxy
     cloud/blockstore/libs/storage/init/server
-    cloud/blockstore/libs/sharding/impl
     cloud/blockstore/libs/ydbstats
 
     cloud/storage/core/config

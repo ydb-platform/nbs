@@ -3,8 +3,9 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/blockstore/libs/cells/iface/cells.h>
+
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
-#include <cloud/blockstore/libs/sharding/iface/sharding.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -65,9 +66,9 @@ ITraceSerializerPtr TBootstrapLocal::GetTraceSerializer()
     return CreateTraceSerializerStub();
 }
 
-void TBootstrapLocal::SetupShardingManager()
+void TBootstrapLocal::SetupCellsManager()
 {
-    ShardingManager = NSharding::CreateShardingManagerStub();
+    CellsManager = NCells::CreateCellsManagerStub();
 }
 
 TProgramShouldContinue& TBootstrapLocal::GetShouldContinue()

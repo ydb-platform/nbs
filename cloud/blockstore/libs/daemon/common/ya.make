@@ -9,6 +9,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/cells/iface
     cloud/blockstore/libs/client
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
@@ -29,7 +30,6 @@ PEERDIR(
     cloud/blockstore/libs/service_local
     cloud/blockstore/libs/service_rdma
     cloud/blockstore/libs/service_throttling
-    cloud/blockstore/libs/sharding/iface
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/disk_agent/model
     cloud/blockstore/libs/storage/disk_registry_proxy/model
