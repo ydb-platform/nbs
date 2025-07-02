@@ -94,6 +94,7 @@ class Client(object):
             block_size=0,
             blocks_count=0,
             storage_media=protos.STORAGE_MEDIA_HDD,
+            shard_count=None,
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
@@ -108,6 +109,8 @@ class Client(object):
             BlocksCount=blocks_count,
             StorageMediaKind=storage_media,
         )
+        if shard_count is not None:
+            request.ShardCount = shard_count
 
         return self.__impl.create_filestore(
             request,
@@ -624,10 +627,10 @@ class Client(object):
         self,
         filesystem_id: str,
         session_id: bytes,
-        node_id: int,
         handle: int,
         offset: int,
         length: int,
+        node_id: Optional[int] = None,
         idempotence_id: Optional[str] = None,
         timestamp: Optional[int] = None,
         trace_id: Optional[str] = None,
@@ -636,11 +639,12 @@ class Client(object):
         request = protos.TReadDataRequest(
             Headers=protos.THeaders(SessionId=session_id),
             FileSystemId=filesystem_id.encode("utf-8"),
-            NodeId=node_id,
             Handle=handle,
             Offset=offset,
             Length=length
         )
+        if node_id is not None:
+            request.NodeId = node_id
 
         return self.__impl.read_data(
             request, idempotence_id, timestamp, trace_id, request_timeout)
@@ -649,10 +653,10 @@ class Client(object):
         self,
         filesystem_id: str,
         session_id: bytes,
-        node_id: int,
         handle: int,
         offset: int,
         buffer: bytes,
+        node_id: Optional[int] = None,
         buffer_offset: int = 0,
         idempotence_id: Optional[str] = None,
         timestamp: Optional[int] = None,
@@ -662,11 +666,12 @@ class Client(object):
         request = protos.TWriteDataRequest(
             Headers=protos.THeaders(SessionId=session_id),
             FileSystemId=filesystem_id.encode("utf-8"),
-            NodeId=node_id,
             Handle=handle,
             Offset=offset,
             Buffer=buffer[buffer_offset:]
         )
+        if node_id is not None:
+            request.NodeId = node_id
 
         return self.__impl.write_data(
             request, idempotence_id, timestamp, trace_id, request_timeout)
