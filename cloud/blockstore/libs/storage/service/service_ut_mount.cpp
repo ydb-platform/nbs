@@ -3008,6 +3008,83 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(2, lockTabletRequestCount);
     }
 
+    Y_UNIT_TEST(ShouldStopVolumeIfItWasDemotedByStateStorage)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetDoNotStopVolumeTabletOnLockLost(true);
+
+        TTestEnv env(1, 2);
+        ui32 nodeIdx1 = SetupTestEnv(env, storageServiceConfig);
+        ui32 nodeIdx2 = SetupTestEnv(env, storageServiceConfig);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service1(runtime, nodeIdx1);
+        TServiceClient service2(runtime, nodeIdx2);
+
+        TVector<TActorId> volumeActorIds;
+        ui64 volumeDemotedByStateStorageCount = 0;
+
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvServicePrivate::EvVolumeTabletStatus: {
+                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        volumeActorIds.push_back(msg->VolumeActor);
+                        break;
+                    }
+                    case TEvTablet::EvTabletDead: {
+                        auto* msg = event->Get<TEvTablet::TEvTabletDead>();
+                        if (msg->Reason == TEvTablet::TEvTabletDead::ReasonDemotedByStateStorage
+                            // Ignore events that were sent to the volume.
+                            && Find(volumeActorIds.begin(), volumeActorIds.end(), event->Recipient) ==
+                            volumeActorIds.end())
+                        {
+                            ++volumeDemotedByStateStorageCount;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        service1.CreateVolume();
+        service1.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0, // mountFlags
+            0, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            0,  // fillSeqNumber
+            0   // fillGeneration
+        );
+
+        service2.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0, // mountFlags
+            1, // mountSeqNumber
+            NProto::TEncryptionDesc(),
+            0,  // fillSeqNumber
+            0   // fillGeneration
+        );
+
+        // If tablet on node with outdated mount does not stop then it will
+        // compete with other mount.
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(volumeDemotedByStateStorageCount, 1);
+    }
+
     Y_UNIT_TEST(ShouldShutdownVolumeAfterLockLostOnVolumeDeletionDuringMounting)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
