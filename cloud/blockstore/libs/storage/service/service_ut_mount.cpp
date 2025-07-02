@@ -3025,7 +3025,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TVector<TActorId> volumeActorIds;
         ui64 volumeDemotedByStateStorageCount = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
                         auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
@@ -3044,7 +3046,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+
+                return false;
             });
 
         service1.CreateVolume();
