@@ -1,7 +1,6 @@
 #pragma once
 
 #include "public.h"
-
 #include "host_endpoint.h"
 
 #include <cloud/blockstore/libs/client/public.h>
