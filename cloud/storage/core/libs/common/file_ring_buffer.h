@@ -38,6 +38,7 @@ public:
     bool Empty() const;
     TVector<TBrokenFileEntry> Validate() const;
     void Visit(const TVisitor& visitor) const;
+    bool IsCorrupted() const;
 };
 
 }   // namespace NCloud
