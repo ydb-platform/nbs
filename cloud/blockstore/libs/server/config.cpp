@@ -107,7 +107,7 @@ constexpr TDuration Seconds(int s)
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
     xxx(VhostDiscardEnabled,         bool,                   false            )\
     xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
-    xxx(CellsState,                  NProto::ECellsState,   NProto::CELLS_OFF )
+    xxx(CellsState,            NProto::ECellsState,   NProto::CELLS_STATE_OFF )
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \
@@ -233,13 +233,13 @@ void DumpImpl(
     IOutputStream& os)
 {
     switch (value) {
-        case NProto::CELLS_OFF:
+        case NProto::CELLS_STATE_OFF:
             os << "CELLS_OFF";
             break;
-        case NProto::CELLS_ON:
+        case NProto::CELLS_STATE_ON:
             os << "CELLS_ON";
             break;
-        case NProto::CELLS_UNAVAILABLE:
+        case NProto::CELLS_STATE_UNAVAILABLE:
             os << "CELLS_UNAVAILABLE";
             break;
         default:

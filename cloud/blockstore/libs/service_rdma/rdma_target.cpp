@@ -33,10 +33,6 @@ constexpr size_t MaxRealProtoSize = 4_KB - NRdma::RDMA_PROTO_HEADER_SIZE;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t MaxRealProtoSize = 4_KB - NRdma::RDMA_PROTO_HEADER_SIZE;
-
-////////////////////////////////////////////////////////////////////////////////
-
 #define Y_ENSURE_RETURN(expr, message)                                         \
     if (Y_UNLIKELY(!(expr))) {                                                 \
         return MakeError(E_ARGUMENT, TStringBuilder() << message);             \
@@ -195,7 +191,7 @@ private:
                 GetCycleCount());
         }
 
-        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+        LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
         Y_ENSURE_RETURN(request.GetBlockSize() != 0, "empty BlockSize");
@@ -288,7 +284,7 @@ private:
                 GetCycleCount());
         }
 
-        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+        LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
         auto [sglist, error] = SgListNormalize({ requestData.data(), requestData.length() }, request.GetBlockSize());
@@ -349,7 +345,7 @@ private:
                 GetCycleCount());
         }
 
-        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+        LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 

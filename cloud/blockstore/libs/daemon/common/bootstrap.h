@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/public.h>
@@ -14,7 +15,6 @@
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
-#include <cloud/blockstore/libs/sharding/iface/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/vhost/public.h>
@@ -58,7 +58,7 @@ protected:
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
-    NSharding::IShardingManagerPtr ShardingManager;
+    NCells::ICellsManagerPtr CellsManager;
     ISocketEndpointListenerPtr GrpcEndpointListener;
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;
@@ -127,7 +127,7 @@ protected:
 
     virtual void WarmupBSGroupConnections() = 0;
 
-    virtual void SetupShardingManager() = 0;
+    virtual void SetupCellsManager() = 0;
 
     void InitLWTrace();
     void InitProfileLog();

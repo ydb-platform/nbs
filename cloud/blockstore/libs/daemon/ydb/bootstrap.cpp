@@ -3,6 +3,7 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -40,7 +41,6 @@
 #include <cloud/blockstore/libs/service_local/storage_aio.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
-#include <cloud/blockstore/libs/sharding/iface/sharding.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -325,7 +325,7 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitKmsClientConfig();
     Configs->InitRootKmsConfig();
     Configs->InitComputeClientConfig();
-    Configs->InitShardingConfig();
+    Configs->InitCellsConfig();
 }
 
 void TBootstrapYdb::InitSpdk()
@@ -852,11 +852,11 @@ void TBootstrapYdb::InitRdmaRequestServer()
         std::move(rdmaConfig));
 }
 
-void TBootstrapYdb::SetupShardingManager()
+void TBootstrapYdb::SetupCellsManager()
 {
-    if (Configs->ServerConfig->GetCellsState() == NProto::CELLS_ON) {
-        ShardingManager = CreateShardingManager(
-            Configs->ShardingConfig,
+    if (Configs->ServerConfig->GetCellsState() == NProto::CELLS_STATE_ON) {
+        CellsManager = CreateCellsManager(
+            Configs->CellsConfig,
             Timer,
             Scheduler,
             Logging,
@@ -865,8 +865,8 @@ void TBootstrapYdb::SetupShardingManager()
             ServerStats,
             RdmaClient);
     } else {
-        ShardingManager = NSharding::CreateShardingManagerStub(
-            Configs->ServerConfig->GetCellsState() == NProto::CELLS_OFF);
+        CellsManager = NCells::CreateCellsManagerStub(
+            Configs->ServerConfig->GetCellsState() == NProto::CELLS_STATE_OFF);
     }
 }
 
