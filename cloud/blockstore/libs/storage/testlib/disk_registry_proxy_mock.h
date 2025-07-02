@@ -154,6 +154,9 @@ private:
                 TEvDiskRegistry::TEvMarkReplacementDeviceRequest,
                 HandleMarkReplacementDevice);
 
+            HFunc(
+                TEvDiskRegistry::TEvGetClusterCapacityRequest,
+                HandleGetClusterCapacity);
 
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
@@ -1079,6 +1082,23 @@ private:
             *ev,
             std::make_unique<TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse>(
                 testDiskRegistryTabletId));
+    }
+
+    void HandleGetClusterCapacity(
+        const TEvDiskRegistry::TEvGetClusterCapacityRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityResponse>();
+
+        NProto::TClusterCapacityInfo capacityInfo;
+        capacityInfo.SetFreeBytes(93_GB);
+        capacityInfo.SetTotalBytes(93_GB);
+        capacityInfo.SetStorageMediaKind(
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+        *response->Record.AddCapacity() = std::move(capacityInfo);
+        NCloud::Reply(ctx, *ev, std::move(response));
     }
 };
 

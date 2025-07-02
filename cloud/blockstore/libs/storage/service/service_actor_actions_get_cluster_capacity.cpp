@@ -40,18 +40,22 @@ NPrivateProto::TClusterCapacityInfo ToResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetCapacityActor final: public TActorBootstrapped<TGetCapacityActor>
+class TGetClusterCapacityActor final
+    : public TActorBootstrapped<TGetClusterCapacityActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     TVector<NPrivateProto::TClusterCapacityInfo> Capacities;
 
+    TActorId PipeClient;
+
 public:
-    explicit TGetCapacityActor(TRequestInfoPtr requestInfo);
+    explicit TGetClusterCapacityActor(TRequestInfoPtr requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
+    void CreateClient(const TActorContext& ctx);
     void ReplyAndDie(
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvExecuteActionResponse> response);
@@ -74,12 +78,15 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TGetCapacityActor::TGetCapacityActor(TRequestInfoPtr requestInfo)
+TGetClusterCapacityActor::TGetClusterCapacityActor(TRequestInfoPtr requestInfo)
     : RequestInfo(std::move(requestInfo))
 {}
 
-void TGetCapacityActor::Bootstrap(const TActorContext& ctx)
+void TGetClusterCapacityActor::Bootstrap(const TActorContext& ctx)
 {
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityRequest>();
+
     Become(&TThis::StateGetDiskRegistryBasedCapacity);
 
     LOG_DEBUG(
@@ -87,13 +94,31 @@ void TGetCapacityActor::Bootstrap(const TActorContext& ctx)
         TBlockStoreComponents::SERVICE,
         "Sending get cluster capacity request");
 
-    NCloud::Send(
-        ctx,
-        MakeDiskRegistryProxyServiceId(),
-        std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityRequest>());
+    NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-void TGetCapacityActor::ReplyAndDie(
+void TGetClusterCapacityActor::CreateClient(const TActorContext& ctx)
+{
+    NTabletPipe::TClientConfig clientConfig;
+    // clientConfig.RetryPolicy = {
+    //     .RetryLimitCount = StorageConfig->GetPipeClientRetryCount(),
+    //     .MinRetryTime = StorageConfig->GetPipeClientMinRetryTime(),
+    //     .MaxRetryTime = StorageConfig->GetPipeClientMaxRetryTime()};
+
+    PipeClient = ctx.Register(NTabletPipe::CreateClient(
+        ctx.SelfID,
+        MakeBSControllerID(0),
+        clientConfig));
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
+        "Tablet client: %lu (remote: %s)",
+        MakeBSControllerID(0),
+        ToString(PipeClient).data());
+}
+
+void TGetClusterCapacityActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvExecuteActionResponse> response)
 {
@@ -107,7 +132,7 @@ void TGetCapacityActor::ReplyAndDie(
     Die(ctx);
 }
 
-void TGetCapacityActor::HandleSuccess(
+void TGetClusterCapacityActor::HandleSuccess(
     const TActorContext& ctx,
     const TString& output)
 {
@@ -116,7 +141,7 @@ void TGetCapacityActor::HandleSuccess(
     ReplyAndDie(ctx, std::move(response));
 }
 
-void TGetCapacityActor::HandleEmptyClusterCapacity(
+void TGetClusterCapacityActor::HandleEmptyClusterCapacity(
     const TActorContext& ctx,
     const TString& component)
 {
@@ -129,7 +154,7 @@ void TGetCapacityActor::HandleEmptyClusterCapacity(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetCapacityActor::HandleGetDiskRegistyCapacity(
+void TGetClusterCapacityActor::HandleGetDiskRegistyCapacity(
     const TEvDiskRegistry::TEvGetClusterCapacityResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -156,15 +181,15 @@ void TGetCapacityActor::HandleGetDiskRegistyCapacity(
     }
 
     Become(&TThis::StateGetYDBBasedCapacity);
-    NCloud::Send(
-        ctx,
-        MakeBlobStorageProxyID(0),
-        std::make_unique<NSysView::TEvSysView::TEvGetStorageStatsRequest>());
+
+    auto request =
+        std::make_unique<NSysView::TEvSysView::TEvGetStorageStatsRequest>();
+    NCloud::PipeSend(ctx, , )
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetCapacityActor::HandleGetYDBCapacity(
+void TGetClusterCapacityActor::HandleGetYDBCapacity(
     const NSysView::TEvSysView::TEvGetStorageStatsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -221,7 +246,7 @@ void TGetCapacityActor::HandleGetYDBCapacity(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TGetCapacityActor::StateGetDiskRegistryBasedCapacity)
+STFUNC(TGetClusterCapacityActor::StateGetDiskRegistryBasedCapacity)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
@@ -239,7 +264,7 @@ STFUNC(TGetCapacityActor::StateGetDiskRegistryBasedCapacity)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TGetCapacityActor::StateGetYDBBasedCapacity)
+STFUNC(TGetClusterCapacityActor::StateGetYDBBasedCapacity)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
@@ -259,12 +284,12 @@ STFUNC(TGetCapacityActor::StateGetYDBBasedCapacity)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr> TServiceActor::CreateGetCapacityActor(
+TResultOrError<IActorPtr> TServiceActor::CreateGetClusterCapacityActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
     Y_UNUSED(input);
-    return {std::make_unique<TGetCapacityActor>(std::move(requestInfo))};
+    return {std::make_unique<TGetClusterCapacityActor>(std::move(requestInfo))};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
