@@ -36,26 +36,82 @@ bool IsRetriable(int error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TStopEvent
+{
+private:
+    TFileHandle Fd;
+    ui64 Value = 0;
+
+public:
+    TStopEvent()
+        : Fd(eventfd(0, EFD_CLOEXEC))
+    {
+        const int error = errno;
+        Y_ABORT_UNLESS(
+            Fd.IsOpen(),
+            "eventfd: %s (%d)",
+            LastSystemErrorText(error),
+            error);
+    }
+
+    void Signal()
+    {
+        while (eventfd_write(Fd, 1)) {
+            const int error = errno;
+            Y_ABORT_UNLESS(
+                IsRetriable(error),
+                "eventfd_write: %s (%d)",
+                LastSystemErrorText(error),
+                error);
+        }
+    }
+
+    void AsyncWait(io_uring& ring)
+    {
+        io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+        Y_ABORT_UNLESS(sqe);
+
+        io_uring_prep_read(sqe, Fd, &Value, sizeof(Value), 0);
+        io_uring_sqe_set_data(sqe, this);
+
+        for (;;) {
+            const int ret = io_uring_submit(&ring);
+            if (ret >= 0) {
+                break;
+            }
+            Y_ABORT_UNLESS(
+                IsRetriable(-ret),
+                "io_uring_submit: %s (%d)",
+                LastSystemErrorText(-ret),
+                -ret);
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TCompletionThread final: public ISimpleThread
 {
 private:
     const TString Name;
-    io_uring* const Ring;
-    TFileHandle StopFd;
+    io_uring& Ring;
+    TStopEvent StopEvent;
 
 public:
     TCompletionThread(TString name, io_uring& ring)
         : Name(std::move(name))
-        , Ring(&ring)
-        , StopFd(eventfd(0, EFD_CLOEXEC))
+        , Ring(ring)
+    {}
+
+    void Start()
     {
-        Y_ABORT_UNLESS(StopFd.IsOpen());
+        StopEvent.AsyncWait(Ring);
+        ISimpleThread::Start();
     }
 
     void Stop()
     {
-        int ret = eventfd_write(StopFd, 1);
-        Y_ABORT_UNLESS(!ret);
+        StopEvent.Signal();
     }
 
 private:
@@ -64,12 +120,9 @@ private:
         SetHighestThreadPriority();
         NCloud::SetCurrentThreadName(Name);
 
-        uint64_t shouldStop = 0;
-        ReadStopEvent(shouldStop);
-
         for (;;) {
             io_uring_cqe* cqe = nullptr;
-            const int ret = io_uring_wait_cqe(Ring, &cqe);
+            const int ret = io_uring_wait_cqe(&Ring, &cqe);
             if (ret < 0) {
                 Y_ABORT_UNLESS(
                     IsRetriable(-ret),
@@ -80,12 +133,11 @@ private:
             }
 
             void* data = io_uring_cqe_get_data(cqe);
-            if (data == &shouldStop) {
+            if (data == &StopEvent) {
                 break;
             }
 
             auto* completion = static_cast<TFileIOCompletion*>(data);
-
             if (cqe->res < 0) {
                 completion->Func(
                     completion,
@@ -95,32 +147,10 @@ private:
                 completion->Func(completion, {}, cqe->res);
             }
 
-            io_uring_cqe_seen(Ring, cqe);
+            io_uring_cqe_seen(&Ring, cqe);
         }
 
         return nullptr;
-    }
-
-    void ReadStopEvent(uint64_t& shouldStop)
-    {
-        io_uring_sqe* sqe = io_uring_get_sqe(Ring);
-        Y_ABORT_UNLESS(sqe);
-
-        io_uring_prep_read(
-            sqe,
-            StopFd,
-            &shouldStop,
-            sizeof(shouldStop),
-            0);
-        io_uring_sqe_set_data(sqe, &shouldStop);
-
-        for (;;) {
-            const int ret = io_uring_submit(Ring);
-            if (ret >= 0) {
-                break;
-            }
-            Y_ABORT_UNLESS(IsRetriable(-ret));
-        }
     }
 };
 
@@ -131,13 +161,13 @@ class TIoUringService final
 {
 private:
     io_uring Ring = {};
-    TCompletionThread CQ;
+    TCompletionThread CompletionThread;
 
 public:
-    TIoUringService(TString completionThreadName, ui32 size)
-        : CQ(std::move(completionThreadName), Ring)
+    TIoUringService(TString completionThreadName, ui32 submissionQueueEntries)
+        : CompletionThread(std::move(completionThreadName), Ring)
     {
-        int ret = io_uring_queue_init(size, &Ring, 0);
+        const int ret = io_uring_queue_init(submissionQueueEntries, &Ring, 0);
         Y_ABORT_UNLESS(
             ret == 0,
             "io_uring_queue_init: %s (%d)",
@@ -152,17 +182,17 @@ public:
 
     void Start() final
     {
-        CQ.Start();
+        CompletionThread.Start();
     }
 
     void Stop() final
     {
-        if (!CQ.Running()) {
+        if (!CompletionThread.Running()) {
             return;
         }
 
-        CQ.Stop();
-        CQ.Join();
+        CompletionThread.Stop();
+        CompletionThread.Join();
     }
 
     void AsyncRead(
@@ -271,11 +301,11 @@ private:
 
 IFileIOServicePtr CreateIoUringService(
     TString completionThreadName,
-    ui32 ringSize)
+    ui32 submissionQueueEntries)
 {
     return std::make_shared<TIoUringService>(
         std::move(completionThreadName),
-        ringSize);
+        submissionQueueEntries);
 }
 
 }   // namespace NCloud

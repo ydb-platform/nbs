@@ -46,11 +46,15 @@ TFsPath TryGetRamDrivePath()
 
 struct TFixture: public NUnitTest::TBaseFixture
 {
+    static const ui32 SubmissionQueueSize = 32;
+
     TFileHandle FileData;
     IFileIOServicePtr IoUring;
 
-    void SetUp(NUnitTest::TTestContext&) final
+    void SetUp(NUnitTest::TTestContext& context) final
     {
+        Y_UNUSED(context);
+
         const TFsPath filePath = TryGetRamDrivePath() / "test";
 
         FileData = TFileHandle(
@@ -58,12 +62,14 @@ struct TFixture: public NUnitTest::TBaseFixture
             OpenAlways | RdWr | DirectAligned | Sync);
         FileData.Resize(BlockCount * BlockSize);
 
-        IoUring = CreateIoUringService();
+        IoUring = CreateIoUringService("CQ", SubmissionQueueSize);
         IoUring->Start();
     }
 
-    void TearDown(NUnitTest::TTestContext&) final
+    void TearDown(NUnitTest::TTestContext& context) final
     {
+        Y_UNUSED(context);
+
         IoUring->Stop();
     }
 };

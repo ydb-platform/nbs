@@ -9,7 +9,7 @@ namespace NCloud {
 // Create a single-threaded io_uring service: IFileIOService operations should
 // not be invoked concurrently.
 IFileIOServicePtr CreateIoUringService(
-    TString completionThreadName = "CQ",
-    ui32 ringSize = 1024);
+    TString completionThreadName,
+    ui32 submissionQueueEntries);
 
 }   // namespace NCloud
