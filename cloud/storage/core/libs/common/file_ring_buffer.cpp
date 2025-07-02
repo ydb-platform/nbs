@@ -80,6 +80,7 @@ private:
             Header()->ReadPos = 0;
             return;
         }
+
         const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
         if (eh->Size == 0) {
             Header()->ReadPos = 0;
