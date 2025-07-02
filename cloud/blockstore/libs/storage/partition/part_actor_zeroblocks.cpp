@@ -107,7 +107,7 @@ void TZeroBlocksActor::AddBlobs(const TActorContext& ctx)
         TVector<TAddMixedBlob>(),
         std::move(MergedBlobs),
         TVector<TAddFreshBlob>(),
-        ADD_WRITE_RESULT
+        ADD_ZERO_RESULT
     );
 
     SafeToUseOrbit = false;
