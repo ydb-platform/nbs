@@ -120,6 +120,30 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TEntryInfo
+{
+    ui64 ActualPos = 0;
+    const TEntryHeader* Header = nullptr;
+    const char* Data = nullptr;
+
+    explicit operator bool() const
+    {
+        return Header != nullptr;
+    }
+
+    bool IsInvalid() const
+    {
+        return ActualPos == INVALID_POS;
+    }
+
+    static TEntryInfo CreateInvalid()
+    {
+        return TEntryInfo{.ActualPos = INVALID_POS};
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -144,18 +168,66 @@ private:
         return reinterpret_cast<THeader*>(Map.Ptr());
     }
 
-    void SkipSlackSpace()
+    static ui64 NextEntryPos(const TEntryInfo& e)
     {
-        if (Header()->ReadPos == Header()->WritePos) {
-            Header()->ReadPos = 0;
-            Header()->WritePos = 0;
-            return;
+        Y_ABORT_UNLESS(e);
+        Y_ABORT_UNLESS(e.Header != nullptr);
+        Y_ABORT_UNLESS(e.Header->Size > 0);
+
+        return e.ActualPos + sizeof(TEntryHeader) + e.Header->Size;
+    }
+
+    TEntryInfo GetEntry(ui64 pos) const
+    {
+        if (pos > Header()->WritePos) {
+            // This is valid only in the case:
+            // ====W]....[R====
+            //             ^- here
+            if (Header()->ReadPos <= Header()->WritePos ||
+                pos < Header()->ReadPos)
+            {
+                return TEntryInfo::CreateInvalid();
+            }
+
+            const auto* eh = Data.GetEntryHeader(pos);
+            if (eh != nullptr && eh->Size != 0) {
+                const auto* data = Data.GetEntryData(eh);
+                if (data == nullptr) {
+                    return TEntryInfo::CreateInvalid();
+                }
+                return {.ActualPos = pos, .Header = eh, .Data = data};
+            } else {
+                pos = 0;
+            }
         }
 
-        const auto* eh = Data.GetEntryHeader(Header()->ReadPos);
-        if (eh == nullptr || eh->Size == 0) {
-            Header()->ReadPos = 0;
+        if (pos == Header()->WritePos) {
+            // End of buffer
+            return {};
         }
+
+        if (Header()->ReadPos <= Header()->WritePos &&
+            pos < Header()->ReadPos)
+        {
+            return TEntryInfo::CreateInvalid();
+        }
+
+        const auto* eh = Data.GetEntryHeader(pos);
+        if (eh == nullptr || eh->Size == 0) {
+            return TEntryInfo::CreateInvalid();
+        }
+
+        const auto* data = Data.GetEntryData(eh);
+        if (data == nullptr) {
+            return TEntryInfo::CreateInvalid();
+        }
+
+        TEntryInfo res {.ActualPos = pos, .Header = eh, .Data = data};
+        if (NextEntryPos(res) > Header()->WritePos) {
+            return TEntryInfo::CreateInvalid();
+        }
+
+        return res;
     }
 
     ui64 VisitEntry(const TVisitor& visitor, ui64 pos) const
@@ -275,25 +347,8 @@ public:
 
     TStringBuf Front() const
     {
-        if (Empty()) {
-            return {};
-        }
-
-        const auto* eh = Data.GetEntryHeader(Header()->ReadPos);
-        if (eh == nullptr) {
-            // corruption
-            // TODO: report?
-            return {};
-        }
-
-        const auto* data = Data.GetEntryData(eh);
-        if (data == nullptr) {
-            // corruption
-            // TODO: report?
-            return {};
-        }
-
-        return {data, eh->Size};
+        auto e = GetEntry(Header()->ReadPos);
+        return e ? TStringBuf(e.Data, e.Header->Size) : TStringBuf();
     }
 
     TStringBuf Back() const
@@ -302,35 +357,49 @@ public:
             return {};
         }
 
-        if (Header()->WritePos < Header()->LastEntrySize) {
-            // corruption
-            // TODO: report?
-            return {};
-        }
+        Y_DEBUG_ABORT_UNLESS(Header()->WritePos >= Header()->LastEntrySize);
 
-        const auto* eh =
-            Data.GetEntryHeader(Header()->WritePos - Header()->LastEntrySize);
-        const auto* data = eh ? Data.GetEntryData(eh) : nullptr;
-        if (data == nullptr) {
-            // corruption
-            // TODO: report?
-            return {};
-        }
+        auto pos = Header()->WritePos - Header()->LastEntrySize;
+        const auto e = GetEntry(pos);
+        Y_DEBUG_ABORT_UNLESS(
+            e && e.ActualPos == pos && NextEntryPos(e) == Header()->WritePos);
 
-        return {data, eh->Size};
+        return {e.Data, e.Header->Size};
     }
 
     void PopFront()
     {
-        auto data = Front();
-        if (!data) {
+        auto e = GetEntry(Header()->ReadPos);
+        if (!e) {
+            if (e.IsInvalid()) {
+                SetCorrupted();
+            }
             return;
         }
 
-        Header()->ReadPos += sizeof(TEntryHeader) + data.size();
-        --Count;
+        if (Count == 0) {
+            SetCorrupted();
+            return;
+        }
+        Count--;
 
-        SkipSlackSpace();
+        e = GetEntry(NextEntryPos(e));
+        if (e) {
+            Header()->ReadPos = e.ActualPos;
+            return;
+        }
+
+        if (e.IsInvalid()) {
+            SetCorrupted();
+        }
+
+        Header()->ReadPos = 0;
+        Header()->WritePos = 0;
+
+        if (Count > 0) {
+            Count = 0;
+            SetCorrupted();
+        }
     }
 
     ui64 Size() const
@@ -345,11 +414,11 @@ public:
         return result;
     }
 
-    auto Validate() const
+    auto Validate()
     {
         TVector<TBrokenFileEntry> entries;
 
-        Visit([&] (ui32 checksum, TStringBuf entry) {
+        bool isConsistent = Visit([&] (ui32 checksum, TStringBuf entry) {
             const ui32 actualChecksum = Crc32c(entry.data(), entry.size());
             if (actualChecksum != checksum) {
                 entries.push_back({
@@ -359,25 +428,43 @@ public:
             }
         });
 
+        if (!isConsistent) {
+            SetCorrupted();
+        }
+
         return entries;
     }
 
     bool Visit(const TVisitor& visitor) const
     {
-        ui64 pos = Header()->ReadPos;
-        while (pos > Header()->WritePos && pos != INVALID_POS) {
-            pos = VisitEntry(visitor, pos);
+        auto e = GetEntry(Header()->ReadPos);
+        ui64 pos = e ? e.ActualPos : 0;
+        ui64 count = 0;
+
+        if (Header()->ReadPos != pos) {
+            return false;
         }
 
-        while (pos < Header()->WritePos && pos != INVALID_POS) {
-            pos = VisitEntry(visitor, pos);
-            if (!pos) {
-                // can happen if the buffer is corrupted
-                return false;
-            }
+        while (e) {
+            count++;
+            visitor(e.Header->Checksum, {e.Data, e.Header->Size});
+            pos = NextEntryPos(e);
+            e = GetEntry(pos);
         }
 
-        return pos == Header()->WritePos;
+        if (e.IsInvalid()) {
+            return false;
+        }
+
+        if (Header()->WritePos != pos) {
+            return false;
+        }
+
+        if (Count != count) {
+            return false;
+        }
+
+        return true;
     }
 
     bool IsCorrupted() const

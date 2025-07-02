@@ -31,6 +31,20 @@ TString Dump(const TVector<TFileRingBuffer::TBrokenFileEntry>& entries)
     return sb;
 }
 
+TString Dump(const TVector<TString>& entries)
+{
+    TStringBuilder sb;
+
+    for (ui32 i = 0; i < entries.size(); ++i) {
+        if (i) {
+            sb << ", ";
+        }
+        sb << entries[i];
+    }
+
+    return sb;
+}
+
 TString PopAll(TFileRingBuffer& rb)
 {
     TStringBuilder sb;
@@ -151,6 +165,11 @@ struct TReferenceImplementation
     auto Validate() const
     {
         return TVector<TFileRingBuffer::TBrokenFileEntry>();
+    }
+
+    bool IsCorrupted() const
+    {
+        return false;
     }
 };
 
@@ -452,6 +471,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             TStateWithCorruptedEntryLength s(i);
             TFileRingBuffer rb(s.F.GetName(), s.Len);
             UNIT_ASSERT_VALUES_EQUAL(i != 2, rb.IsCorrupted());
+
+            // Detect corruption in PopFront
+            TStateWithCorruptedEntryLength s2(i);
+            UNIT_ASSERT(!s2.Rb.IsCorrupted());
+            while (!s2.Rb.Empty()) {
+                s2.Rb.PopFront();
+            }
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, s2.Rb.IsCorrupted());
         }
     }
 
@@ -464,6 +491,30 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TStateWithCorruptedEntryLength bad(1);
         TFileRingBuffer rb2(bad.F.GetName(), bad.Len);
         UNIT_ASSERT(!rb2.PushBack("c"));
+    }
+
+    Y_UNIT_TEST(VisitAndPopBackShouldProduceSameResults)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            TFileRingBuffer rb(s.F.GetName(), s.Len);
+
+            TVector<TString> afterVisit;
+            rb.Visit([&] (ui32 checksum, TStringBuf entry)
+            {
+                Y_UNUSED(checksum);
+                afterVisit.push_back(TString(entry));
+            });
+
+            TVector<TString> afterPopBack;
+            while (!rb.Empty())
+            {
+                afterPopBack.push_back(TString(rb.Front()));
+                rb.PopFront();
+            }
+
+            UNIT_ASSERT_EQUAL(Dump(afterVisit), Dump(afterPopBack));
+        }
     }
 }
 
