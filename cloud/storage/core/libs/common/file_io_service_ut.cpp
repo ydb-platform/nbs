@@ -146,20 +146,24 @@ Y_UNIT_TEST_SUITE(TFileIOServiceTest)
         TFileHandle dummy {INVALID_FHANDLE};
         TArrayRef<char> buffer {nullptr, 1024};
 
+        TFileIOCompletion completion{
+            .Func = [] (auto...) {}
+        };
+
         for (size_t i = 0; i != RequestsPerService * fileIOs.size(); ++i) {
-            service->AsyncRead(dummy, 0, buffer, [](auto...) {});
-            service->AsyncWrite(dummy, 0, buffer, [](auto...) {});
+            service->AsyncRead(dummy, 0, buffer, &completion);
+            service->AsyncWrite(dummy, 0, buffer, &completion);
 
             service->AsyncReadV(
                 dummy,
                 0,
                 TVector<TArrayRef<char>>{buffer},
-                [](auto...) {});
+                &completion);
             service->AsyncWriteV(
                 dummy,
                 0,
                 TVector<TArrayRef<const char>>{buffer},
-                [](auto...) {});
+                &completion);
         }
 
         service->Stop();
