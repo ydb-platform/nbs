@@ -21,12 +21,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError MakeSystemError(int code)
+NProto::TError MakeSystemError(int code, TStringBuf message)
 {
     return MakeError(
         MAKE_SYSTEM_ERROR(code),
-        TStringBuilder() << "(" << LastSystemErrorText(code)
-                         << ") async IO operation failed");
+        TStringBuilder() << "(" << LastSystemErrorText(code) << ") "
+                         << message);
+}
+
+bool IsRetriable(int error)
+{
+    return error == EINTR || error == EAGAIN || error == EBUSY;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,7 +72,7 @@ private:
             const int ret = io_uring_wait_cqe(Ring, &cqe);
             if (ret < 0) {
                 Y_ABORT_UNLESS(
-                    ret == -EINTR,
+                    IsRetriable(-ret),
                     "io_uring_wait_cqe: %s (%d)",
                     LastSystemErrorText(-ret),
                     -ret);
@@ -82,7 +87,10 @@ private:
             auto* completion = static_cast<TFileIOCompletion*>(data);
 
             if (cqe->res < 0) {
-                completion->Func(completion, MakeSystemError(-cqe->res), 0);
+                completion->Func(
+                    completion,
+                    MakeSystemError(-cqe->res, "async IO operation failed"),
+                    0);
             } else {
                 completion->Func(completion, {}, cqe->res);
             }
@@ -111,7 +119,7 @@ private:
             if (ret >= 0) {
                 break;
             }
-            Y_ABORT_UNLESS(ret == -EAGAIN);
+            Y_ABORT_UNLESS(IsRetriable(-ret));
         }
     }
 };
@@ -244,10 +252,12 @@ private:
                 break;
             }
 
-            if (ret != -EAGAIN) {
+            if (!IsRetriable(-ret)) {
                 completion->Func(
                     completion,
-                    MakeError(MAKE_SYSTEM_ERROR(-ret), "io_uring_submit"),
+                    MakeSystemError(
+                        -ret,
+                        "unable to submit async IO operation"),
                     0);
                 break;
             }
