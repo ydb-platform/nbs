@@ -40,13 +40,13 @@ class TCompletionThread final: public ISimpleThread
 {
 private:
     const TString Name;
-    io_uring* Ring = nullptr;
+    io_uring* const Ring;
     TFileHandle StopFd;
 
 public:
-    TCompletionThread(TString name, io_uring* ring)
+    TCompletionThread(TString name, io_uring& ring)
         : Name(std::move(name))
-        , Ring(ring)
+        , Ring(&ring)
         , StopFd(eventfd(0, EFD_CLOEXEC))
     {
         Y_ABORT_UNLESS(StopFd.IsOpen());
@@ -135,7 +135,7 @@ private:
 
 public:
     TIoUringService(TString completionThreadName, ui32 size)
-        : CQ(std::move(completionThreadName), &Ring)
+        : CQ(std::move(completionThreadName), Ring)
     {
         int ret = io_uring_queue_init(size, &Ring, 0);
         Y_ABORT_UNLESS(
