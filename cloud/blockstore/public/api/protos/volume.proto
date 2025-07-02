@@ -707,7 +707,7 @@ message TDescribeVolumeResponse
     // Volume information.
     TVolume Volume = 2;
 
-    string ShardId = 3;
+    string CellId = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -3,6 +3,7 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
@@ -69,7 +70,6 @@
 #include <cloud/blockstore/libs/service_throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_tracker.h>
 #include <cloud/blockstore/libs/service_throttling/throttling.h>
-#include <cloud/blockstore/libs/sharding/iface/sharding.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
@@ -377,7 +377,7 @@ void TBootstrapBase::Init()
         CreateEncryptionKeyProvider(KmsKeyProvider, RootKmsKeyProvider),
         Configs->ServerConfig->GetEncryptZeroPolicy());
 
-    SetupShardingManager();
+    SetupCellsManager();
 
     auto sessionManager = CreateSessionManager(
         Timer,
@@ -388,7 +388,7 @@ void TBootstrapBase::Init()
         VolumeStats,
         ServerStats,
         Service,
-        ShardingManager,
+        CellsManager,
         StorageProvider,
         RdmaClient,
         encryptionClientFactory,
@@ -753,7 +753,7 @@ void TBootstrapBase::InitDbgConfigs()
     Configs->InitDiagnosticsConfig();
     Configs->InitDiscoveryConfig();
     Configs->InitSpdkEnvConfig();
-    Configs->InitShardingConfig();
+    Configs->InitCellsConfig();
 
     TLogSettings logSettings;
     logSettings.FiltrationLevel =
@@ -967,7 +967,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(GetTraceServiceClient());
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
-    START_COMMON_COMPONENT(ShardingManager);
+    START_COMMON_COMPONENT(CellsManager);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -1020,8 +1020,7 @@ void TBootstrapBase::Stop()
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
-
-    STOP_COMMON_COMPONENT(ShardingManager);
+    STOP_COMMON_COMPONENT(CellsManager);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(GetTraceServiceClient());

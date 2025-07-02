@@ -1,13 +1,13 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/server/config.h>
-#include <cloud/blockstore/libs/sharding/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
@@ -114,16 +114,16 @@ void TConfigInitializerCommon::InitRdmaConfig()
         std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
 }
 
-void TConfigInitializerCommon::InitShardingConfig()
+void TConfigInitializerCommon::InitCellsConfig()
 {
-    NProto::TShardingConfig shardingConfig;
+    NProto::TCellsConfig cellsConfig;
 
-    if (Options->ShardingConfig) {
-        ParseProtoTextFromFileRobust(Options->ShardingConfig, shardingConfig);
+    if (Options->CellsConfig) {
+        ParseProtoTextFromFileRobust(Options->CellsConfig, cellsConfig);
     }
 
-    ShardingConfig =
-        std::make_shared<NSharding::TShardingConfig>(std::move(shardingConfig));
+    CellsConfig =
+        std::make_shared<NCells::TCellsConfig>(std::move(cellsConfig));
 }
 
 void TConfigInitializerCommon::InitDiskRegistryProxyConfig()

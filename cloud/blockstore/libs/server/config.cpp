@@ -109,11 +109,15 @@ constexpr TDuration Seconds(int s)
     xxx(VhostDiscardEnabled,         bool,                   false            )\
     xxx(VhostOptimalIoSize,          ui32,                   0                )\
     xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
+<<<<<<< HEAD
     xxx(EncryptZeroPolicy,                                                     \
         NProto::EEncryptZeroPolicy,                                            \
         NProto::EZP_WRITE_ENCRYPTED_ZEROS                                     )\
     xxx(VhostPteFlushByteThreshold,  ui64,                   0                )\
     xxx(AutomaticNbdDeviceManagement,bool,                   false            )
+=======
+    xxx(CellsState,            NProto::ECellsState,   NProto::CELLS_STATE_OFF )
+>>>>>>> Users/yegorskii/su support (#3826)
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \

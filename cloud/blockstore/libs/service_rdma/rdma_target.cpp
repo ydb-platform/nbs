@@ -191,7 +191,7 @@ private:
                 GetCycleCount());
         }
 
-        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+        LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
         Y_ENSURE_RETURN(request.GetBlockSize() != 0, "empty BlockSize");
@@ -284,7 +284,7 @@ private:
                 GetCycleCount());
         }
 
-        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+        LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
         auto [sglist, error] = SgListNormalize({ requestData.data(), requestData.length() }, request.GetBlockSize());
@@ -307,7 +307,6 @@ private:
             auto response = ExtractResponse(future);
 
             taskQueue->ExecuteSimple([= , response = std::move(response)] () mutable {
-
                 if (response.ByteSizeLong() > MaxRealProtoSize) {
                     // TODO: consider variable length proto size
                     // or switch from lwtrace to open telemetry like
@@ -346,7 +345,7 @@ private:
                 GetCycleCount());
         }
 
-        LWTRACK(RequestReceived_Sharding, callContext->LWOrbit);
+        LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
