@@ -115,6 +115,27 @@ public:
     }
 
 private:
+    void ProcessCompletion(io_uring_cqe* cqe)
+    {
+        void* data = io_uring_cqe_get_data(cqe);
+        Y_DEBUG_ABORT_UNLESS(data);
+
+        if (!data) {
+            return;
+        }
+
+        auto* completion = static_cast<TFileIOCompletion*>(data);
+
+        if (cqe->res < 0) {
+            completion->Func(
+                completion,
+                MakeSystemError(-cqe->res, "async IO operation failed"),
+                0);
+        } else {
+            completion->Func(completion, {}, cqe->res);
+        }
+    }
+
     void* ThreadProc() final
     {
         SetHighestThreadPriority();
@@ -132,20 +153,11 @@ private:
                 continue;
             }
 
-            void* data = io_uring_cqe_get_data(cqe);
-            if (data == &StopEvent) {
+            if (io_uring_cqe_get_data(cqe) == &StopEvent) {
                 break;
             }
 
-            auto* completion = static_cast<TFileIOCompletion*>(data);
-            if (cqe->res < 0) {
-                completion->Func(
-                    completion,
-                    MakeSystemError(-cqe->res, "async IO operation failed"),
-                    0);
-            } else {
-                completion->Func(completion, {}, cqe->res);
-            }
+            ProcessCompletion(cqe);
 
             io_uring_cqe_seen(&Ring, cqe);
         }
