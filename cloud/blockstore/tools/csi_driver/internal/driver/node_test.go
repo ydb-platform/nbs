@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	nbs "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
+	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/driver/mocks"
 	csimounter "github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
 	nfs "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
