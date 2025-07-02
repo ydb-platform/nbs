@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cloud/blockstore/libs/cells/iface/public.h>
+#include <cloud/blockstore/libs/cells/iface/cell_host.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/cells/iface/endpoints_setup.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
-#include <cloud/blockstore/libs/cells/iface/cell_host.h>
+#include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
