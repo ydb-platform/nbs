@@ -1,7 +1,7 @@
 #include "cell.h"
 
-#include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/config/cells.pb.h>
+#include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
