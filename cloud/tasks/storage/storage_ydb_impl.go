@@ -42,8 +42,8 @@ func (s *storageYDB) getTaskID(
 		pragma TablePathPrefix = "%v";
 		declare $idempotency_key as Utf8;
 
-		select task_id
-		from task_ids
+		select id
+		from tasks
 		where idempotency_key = $idempotency_key
 	`, s.tablesPath),
 		persistence.ValueParam("$idempotency_key", persistence.UTF8Value(idempotencyKey)),
@@ -61,7 +61,7 @@ func (s *storageYDB) getTaskID(
 
 		var id string
 		err = res.ScanNamed(
-			persistence.OptionalWithDefault("task_id", &id),
+			persistence.OptionalWithDefault("id", &id),
 		)
 		if err != nil {
 			return "", err
@@ -78,35 +78,6 @@ func (s *storageYDB) getTaskID(
 	}
 
 	id := generateTaskID()
-
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $task_id as Utf8;
-		declare $idempotency_key as Utf8;
-		declare $account_id as Utf8;
-
-		upsert into task_ids
-			(task_id,
-			idempotency_key,
-			account_id)
-		values
-			($task_id,
-			 $idempotency_key,
-			 $account_id)
-	`, s.tablesPath),
-		persistence.ValueParam("$task_id", persistence.UTF8Value(id)),
-		persistence.ValueParam("$idempotency_key", persistence.UTF8Value(idempotencyKey)),
-		persistence.ValueParam("$account_id", persistence.UTF8Value(accountID)),
-	)
-	if err != nil {
-		return "", err
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return "", err
-	}
 
 	logging.Info(
 		ctx,
@@ -865,8 +836,8 @@ func (s *storageYDB) getTaskByIdempotencyKey(
 		pragma TablePathPrefix = "%v";
 		declare $idempotency_key as Utf8;
 
-		select task_id
-		from task_ids
+		select id
+		from tasks
 		where idempotency_key = $idempotency_key
 	`, s.tablesPath),
 		persistence.ValueParam("$idempotency_key", persistence.UTF8Value(idempotencyKey)),
@@ -884,7 +855,7 @@ func (s *storageYDB) getTaskByIdempotencyKey(
 
 	var id string
 	err = res.ScanNamed(
-		persistence.OptionalWithDefault("task_id", &id),
+		persistence.OptionalWithDefault("id", &id),
 	)
 	if err != nil {
 		return TaskState{}, err
@@ -1841,14 +1812,7 @@ func (s *storageYDB) clearEndedTasks(
 				return err
 			}
 
-			if len(idempotencyKey) == 0 {
-				err = execute("")
-			} else {
-				err = execute(`
-					delete from task_ids
-					where idempotency_key = $idempotency_key and account_id = $account_id;
-				`)
-			}
+			err = execute("")
 			if err != nil {
 				return err
 			}

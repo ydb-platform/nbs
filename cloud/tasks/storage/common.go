@@ -237,6 +237,7 @@ func taskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("panic_count", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("events", persistence.Optional(persistence.TypeBytes)),
 		persistence.WithPrimaryKeyColumn("id"),
+		persistence.WithPrimaryKeyColumn("idempotency_key", "account_id"),
 	)
 }
 
@@ -438,24 +439,6 @@ func CreateYDBTables(
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
-		"task_ids",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn("task_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("idempotency_key", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("account_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithPrimaryKeyColumn("idempotency_key", "account_id"),
-			persistence.WithSecondaryKeyColumn("task_id"),
-		),
-		dropUnusedColumns,
-	)
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Created task_ids table")
-
-	err = db.CreateOrAlterTable(
-		ctx,
-		config.GetStorageFolder(),
 		"ready_to_run",
 		readyToRunTableDescription(),
 		dropUnusedColumns,
@@ -566,12 +549,6 @@ func DropYDBTables(
 		return err
 	}
 	logging.Info(ctx, "Dropped tasks table")
-
-	err = db.DropTable(ctx, config.GetStorageFolder(), "task_ids")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped task_ids table")
 
 	err = db.DropTable(ctx, config.GetStorageFolder(), "ready_to_run")
 	if err != nil {
