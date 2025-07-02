@@ -139,14 +139,16 @@ jobs:
     - name: set up zramswap
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install -y zram-tools
-        echo "vm.swappiness=1" | sudo tee -a /etc/sysctl.conf
-        sudo sysctl -p
-        echo "SIZE=102400" | sudo tee -a /etc/default/zramswap
-        echo "PRIORITY=2" | sudo tee -a /etc/default/zramswap
-        echo "ALGO=lz4" | sudo tee -a /etc/default/zramswap
-        sudo systemctl restart zramswap
+        (
+          sudo apt-get update
+          sudo apt-get install -y zram-tools
+          echo "vm.swappiness=1" | sudo tee -a /etc/sysctl.conf
+          sudo sysctl -p
+          echo "SIZE=102400" | sudo tee -a /etc/default/zramswap
+          echo "PRIORITY=2" | sudo tee -a /etc/default/zramswap
+          echo "ALGO=lz4" | sudo tee -a /etc/default/zramswap
+          sudo systemctl restart zramswap
+        ) || echo "Failed to set up zramswap, continuing anyway"
 
     - name: Create background process that will adjust oom_score_adj for selection of processes
       shell: bash
