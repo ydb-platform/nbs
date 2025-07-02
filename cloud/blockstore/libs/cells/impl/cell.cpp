@@ -13,6 +13,7 @@
 
 #include <util/generic/hash_set.h>
 #include <util/random/random.h>
+#include <util/random/shuffle.h>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -27,6 +28,7 @@ TCellManager::TCellManager(
     for (const auto& host: Config.GetHosts()) {
         Unused.emplace_back(host.first);
     }
+    Shuffle(Unused.begin(), Unused.end());
 }
 
 TResultOrError<THostEndpoint> TCellManager::PickHost(
