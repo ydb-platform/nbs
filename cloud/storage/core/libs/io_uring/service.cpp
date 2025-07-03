@@ -12,9 +12,6 @@
 #include <liburing.h>
 #include <sys/eventfd.h>
 
-#include <mutex>
-#include <thread>
-
 namespace NCloud {
 
 namespace {
@@ -66,10 +63,12 @@ public:
         }
     }
 
-    void AsyncWait(io_uring& ring)
+    [[nodiscard]] NProto::TError AsyncWait(io_uring& ring)
     {
         io_uring_sqe* sqe = io_uring_get_sqe(&ring);
-        Y_ABORT_UNLESS(sqe);
+        if (!sqe) {
+            return MakeError(E_INVALID_STATE, "submission queue is full");
+        }
 
         io_uring_prep_read(sqe, Fd, &Value, sizeof(Value), 0);
         io_uring_sqe_set_data(sqe, this);
@@ -79,12 +78,12 @@ public:
             if (ret >= 0) {
                 break;
             }
-            Y_ABORT_UNLESS(
-                IsRetriable(-ret),
-                "io_uring_submit: %s (%d)",
-                LastSystemErrorText(-ret),
-                -ret);
+
+            if (!IsRetriable(-ret)) {
+                return MakeSystemError(-ret, "io_uring_submit");
+            }
         }
+        return {};
     }
 };
 
@@ -105,7 +104,13 @@ public:
 
     void Start()
     {
-        StopEvent.AsyncWait(Ring);
+        // The very first submission should always work fine
+        const auto error = StopEvent.AsyncWait(Ring);
+        Y_ABORT_IF(
+            HasError(error),
+            "can't setup a stop event: %s",
+            FormatError(error).c_str());
+
         ISimpleThread::Start();
     }
 
