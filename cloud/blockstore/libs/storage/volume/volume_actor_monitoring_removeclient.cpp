@@ -146,8 +146,7 @@ void TVolumeActor::HandleHttpInfo_RemoveClient(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Removing volume client per action from monitoring page:"
-        "client %s",
+        "%s Removing volume client per action from monitoring page: client %s",
         LogTitle.GetWithTime().c_str(),
         clientId.Quote().c_str());
 

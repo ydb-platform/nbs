@@ -634,15 +634,13 @@ void TVolumeActor::HandleBootExternalResponse(
     if (msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition &&
         msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition2) {
         // Partitions use specific tablet factory
-        const auto err = TStringBuilder()
-                    << msg->StorageInfo->TabletType;
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
             "%s Unexpected part %lu with type %s",
             LogTitle.GetWithTime().c_str(),
             partTabletId,
-            err.c_str());
+            ToString(msg->StorageInfo->TabletType).c_str());
         part->SetFailed(
             TStringBuilder()
                 << "Unexpected tablet type: "

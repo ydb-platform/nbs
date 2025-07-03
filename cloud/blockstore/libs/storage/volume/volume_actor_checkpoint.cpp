@@ -375,7 +375,7 @@ void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
     bool completed,
     std::optional<TString> error,
     TString shadowDiskId)
-{   
+{
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Sending UpdateCheckpointRequest to volume",
         VolumeTabletId);
@@ -1118,20 +1118,13 @@ void TVolumeActor::GetChangedBlocksForLightCheckpoints(
 
     auto replyError = [&](NProto::TError error)
     {
-        TString errorMsg =
-            TStringBuilder()
-            << "%s %s for light checkpoints failed, request parameters are:"
-            << " LowCheckpointId: " << msg->Record.GetLowCheckpointId() << ","
-            << " HighCheckpointId: " << msg->Record.GetHighCheckpointId() << ","
-            << " StartIndex: " << msg->Record.GetStartIndex() << ","
-            << " BlocksCount: " << msg->Record.GetBlocksCount() << ","
-            << " error message: " << error.GetMessage();
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            errorMsg.c_str(),
+            "%s %s for light checkpoints failed, request parameters are: %s",
             LogTitle.GetWithTime().c_str(),
-            TGetChangedBlocksMethod::Name);
+            TGetChangedBlocksMethod::Name,
+            FormatError(error).c_str());
 
         NCloud::Reply(ctx, *requestInfo,
             std::make_unique<TGetChangedBlocksMethod::TResponse>(std::move(error)));

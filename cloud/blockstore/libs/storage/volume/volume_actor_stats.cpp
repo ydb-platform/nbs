@@ -1,4 +1,5 @@
 #include "volume_actor.h"
+#include "cloud/storage/core/libs/common/format.h"
 
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
@@ -621,7 +622,7 @@ void TVolumeActor::HandleLongRunningBlobOperation(
             ev->Sender.ToString().c_str(),
             msg.GroupId,
             msg.FirstNotify ? "long" : "still",
-            msg.Duration.ToString().c_str());
+            FormatDuration(msg.Duration).c_str());
     } else {
         LongRunningActors.Erase(ev->Sender);
 

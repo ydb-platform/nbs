@@ -324,10 +324,10 @@ void TVolumeActor::ExecuteAddLaggingAgent(
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,
-                "%s There are other fresh devices on the same row with "
-                "device %s",
+                "%s There are other fresh devices on the same row with device "
+                "%s",
                 LogTitle.GetWithTime().c_str(),
-                laggingDevice.GetDeviceUUID().c_str());
+                laggingDevice.GetDeviceUUID().Quote().c_str());
 
             args.Error = MakeError(
                 E_INVALID_STATE,

@@ -188,8 +188,7 @@ void TVolumeActor::ExecuteRemoveClient(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Volume received remove client %s request; pipe server %s, "
-        "pipe generation %u",
+        "%s Volume received remove client %s request; pipe server %s",
         LogTitle.GetWithTime().c_str(),
         args.ClientId.Quote().c_str(),
         ToString(args.PipeServerActorId).c_str());

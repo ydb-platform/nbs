@@ -351,10 +351,9 @@ void TVolumeActor::HandleAllocateDiskError(
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Disk allocation failed with error: %s. DiskId=%s",
+        "%s Disk allocation failed with error: %s.",
         LogTitle.GetWithTime().c_str(),
-        FormatError(error).c_str(),
-        GetNewestConfig().GetDiskId().Quote().c_str());
+        FormatError(error).c_str());
 
     StorageAllocationResult = std::move(error);
 }
@@ -378,9 +377,8 @@ void TVolumeActor::HandleAllocateDiskResponse(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Disk allocation success. DiskId=%s, %s",
+            "%s Disk allocation success. %s",
             LogTitle.GetWithTime().c_str(),
-            GetNewestConfig().GetDiskId().Quote().c_str(),
             DescribeAllocation(msg->Record).c_str());
     }
 
