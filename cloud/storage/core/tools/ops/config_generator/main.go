@@ -47,8 +47,8 @@ func getNbsConfigMap() configurator.ConfigMap {
 		"nbs-disk-agent.txt":          {Proto: &nbsProto.TDiskAgentConfig{}, FileName: "disk-agent.txt"},
 		"nbs-disk-registry.txt":       {Proto: &nbsApiProto.TUpdateDiskRegistryConfigRequest{}, FileName: "update-disk-registry.txt"},
 		"nbs-iam.txt":                 {Proto: &coreProto.TIamClientConfig{}, FileName: "iam.txt"},
-		"nbs-kms.txt":                 {Proto: &nbsProto.TGrpcClientConfig{}, FileName: "kms.txt"},
-		"nbs-compute.txt":             {Proto: &nbsProto.TGrpcClientConfig{}, FileName: "compute.txt"},
+		"nbs-kms.txt":                 {Proto: &coreProto.TGrpcClientConfig{}, FileName: "kms.txt"},
+		"nbs-compute.txt":             {Proto: &coreProto.TGrpcClientConfig{}, FileName: "compute.txt"},
 		"nbs-rdma.txt":                {Proto: &nbsProto.TRdmaConfig{}, FileName: "rdma.txt"},
 		"nbs-root-kms.txt":            {Proto: &nbsProto.TRootKmsConfig{}, FileName: "root-kms.txt"},
 
