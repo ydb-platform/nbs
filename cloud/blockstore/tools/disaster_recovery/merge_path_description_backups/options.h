@@ -13,7 +13,6 @@ struct TOptions
     TString TextOutputPath;
     TString BinaryOutputPath;
     TString SchemeShardBackup;
-    TString HiveBackup;
 
     TOptions(int argc, char** argv);
 };

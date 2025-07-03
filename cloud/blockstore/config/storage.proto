@@ -1259,5 +1259,5 @@ message TStorageServiceConfig
     optional uint32 MaxOutOfOrderCompactionMapChunksInflight = 437;
 
     // In fallback mode, clean field SchemeShardDir when register node.
-    optional bool ResetSchemeShardDir = 438;
+    optional bool DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = 438;
 }
