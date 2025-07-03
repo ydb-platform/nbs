@@ -7337,7 +7337,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 128_KB,
                 data.c_str());
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_FS_INVAL,
+                E_FS_NOENT,
                 response->GetError().GetCode(),
                 response->GetErrorReason());
             response = tablet.AssertWriteDataFailed(
@@ -7346,12 +7346,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 128_KB + 1,
                 data.c_str(),
                 invalidNodeId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
         }
         {
             auto response =
                 tablet.AssertReadDataFailed(InvalidHandle, 0, 128_KB);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_FS_INVAL,
+                E_FS_NOENT,
                 response->GetError().GetCode(),
                 response->GetErrorReason());
             response = tablet.AssertReadDataFailed(
@@ -7360,7 +7364,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 128_KB + 1,
                 invalidNodeId);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_FS_INVAL,
+                E_FS_NOENT,
                 response->GetError().GetCode(),
                 response->GetErrorReason());
         }
