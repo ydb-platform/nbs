@@ -6,6 +6,7 @@ from junit_utils import iter_xml_files
 
 def check_for_fail(paths: List[str]):
     failed_list = []
+    build_failed_list = []
     error_list = []
     for path in paths:
         for fn, suite, case in iter_xml_files(path):
@@ -15,6 +16,8 @@ def check_for_fail(paths: List[str]):
 
             if is_failure:
                 failed_list.append((test_name, fn))
+                if "skipped due to a failed build" in case.find("failure").text:
+                    build_failed_list.append((test_name, fn))
             elif is_error:
                 error_list.append((test_name, fn))
 
@@ -24,7 +27,10 @@ def check_for_fail(paths: List[str]):
             print(f"failure: {t} ({fn})")
         for t, fn in error_list:
             print(f"error: {t} ({fn})")
-        raise SystemExit(-1)
+        if len(build_failed_list) > 0:
+            raise SystemExit(237)
+
+        raise SystemExit(1)
 
 
 def get_fail_dirs(paths: List[str]):
