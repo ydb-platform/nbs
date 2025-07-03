@@ -55,9 +55,7 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            true,   // directIO
-            ELocalSubmitQueueOpt::DontUse
-        );
+            {.DirectIO = true, .UseSubmissionThread = false});
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);

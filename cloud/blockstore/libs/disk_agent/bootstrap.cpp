@@ -480,9 +480,8 @@ bool TBootstrap::InitKikimrService()
                 LocalStorageProvider = CreateLocalStorageProvider(
                     FileIOServiceProvider,
                     NvmeManager,
-                    !config.GetDirectIoFlagDisabled(),
-                    ELocalSubmitQueueOpt::Use
-                );
+                    {.DirectIO = !config.GetDirectIoFlagDisabled(),
+                     .UseSubmissionThread = true});
 
                 STORAGE_INFO("Aio backend initialized");
                 break;

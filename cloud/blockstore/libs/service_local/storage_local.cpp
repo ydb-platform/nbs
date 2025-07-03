@@ -978,19 +978,19 @@ public:
 IStorageProviderPtr CreateLocalStorageProvider(
     IFileIOServiceProviderPtr fileIOProvider,
     INvmeManagerPtr nvmeManager,
-    bool directIO,
-    ELocalSubmitQueueOpt submitQueueOpt)
+    TLocalStorageProviderParams params)
 {
-    ITaskQueuePtr submitQueue = submitQueueOpt == ELocalSubmitQueueOpt::Use
-                                    ? CreateThreadPool("AIO.SQ", 1)
-                                    : CreateTaskQueueStub();
+    ITaskQueuePtr submitQueue =
+        params.UseSubmissionThread
+            ? CreateThreadPool(params.SubmissionThreadName, 1)
+            : CreateTaskQueueStub();
     submitQueue->Start();
 
     return std::make_shared<TLocalStorageProvider>(
         std::move(submitQueue),
         std::move(fileIOProvider),
         std::move(nvmeManager),
-        directIO);
+        params.DirectIO);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

@@ -656,8 +656,8 @@ void TBootstrapYdb::InitKikimrService()
         LocalStorageProvider = CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
-            !config.GetDirectIoFlagDisabled(),
-            ELocalSubmitQueueOpt::DontUse);
+            {.DirectIO = !config.GetDirectIoFlagDisabled(),
+             .UseSubmissionThread = false});
 
         STORAGE_INFO("LocalStorageProvider initialized");
     }

@@ -780,9 +780,7 @@ void TBootstrapBase::InitLocalService()
         CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
-            false,  // directIO
-            ELocalSubmitQueueOpt::DontUse
-        ));
+            {.DirectIO = false, .UseSubmissionThread = false}));
 }
 
 void TBootstrapBase::InitNullService()
