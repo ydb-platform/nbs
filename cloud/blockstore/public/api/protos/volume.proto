@@ -706,6 +706,8 @@ message TDescribeVolumeResponse
 
     // Volume information.
     TVolume Volume = 2;
+
+    string CellId = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

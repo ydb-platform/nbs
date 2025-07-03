@@ -108,6 +108,7 @@ constexpr TDuration Seconds(int s)
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
     xxx(VhostDiscardEnabled,         bool,                   false            )\
     xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
+    xxx(CellsState,            NProto::ECellsState,   NProto::CELLS_STATE_OFF )
     xxx(VhostPteFlushByteThreshold,  ui64,                   0                )\
     xxx(AutomaticNbdDeviceManagement,bool,                   false            )
 // BLOCKSTORE_SERVER_CONFIG
@@ -223,6 +224,29 @@ void DumpImpl(
             break;
         default:
             os << "(Unknown EEndpointStorageType value "
+                << static_cast<int>(value)
+                << ")";
+            break;
+    }
+}
+
+template <>
+void DumpImpl(
+    const NProto::ECellsState& value,
+    IOutputStream& os)
+{
+    switch (value) {
+        case NProto::CELLS_STATE_OFF:
+            os << "CELLS_OFF";
+            break;
+        case NProto::CELLS_STATE_ON:
+            os << "CELLS_ON";
+            break;
+        case NProto::CELLS_STATE_UNAVAILABLE:
+            os << "CELLS_UNAVAILABLE";
+            break;
+        default:
+            os << "(Unknown ECellsState value "
                 << static_cast<int>(value)
                 << ")";
             break;
