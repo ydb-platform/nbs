@@ -295,7 +295,7 @@ runs:
             sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
               -m "${MUTED_CONFIG}" \
               --ya-out "$OUT_DIR" \
-              --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${i}" \
+              --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${i}/" \
               --data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${i}$GITHUB_WORKSPACE" \
               --log-out-dir "$ARTIFACTS_DIR/logs/${i}" \
               "${JUNIT_REPORT_XML}.${i}"
