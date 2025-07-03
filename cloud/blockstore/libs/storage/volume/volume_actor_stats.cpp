@@ -253,10 +253,10 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Counters from partition %s (%s) do not belong to disk %s",
+            "%s Counters from partition %s (%s) do not belong to disk",
+            LogTitle.GetWithTime().c_str(),
             ToString(ev->Sender).c_str(),
-            msg->DiskId.Quote().c_str(),
-            State->GetDiskId().Quote().c_str());
+            msg->DiskId.Quote().c_str());
         return;
     }
 
@@ -303,9 +303,9 @@ void TVolumeActor::HandlePartCounters(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Partition %s for disk %s counters not found",
-            ToString(ev->Sender).c_str(),
-            State->GetDiskId().Quote().c_str());
+            "%s Partition %s for disk counters not found",
+            LogTitle.GetWithTime().c_str(),
+            ToString(ev->Sender).c_str());
         return;
     }
 
@@ -614,10 +614,9 @@ void TVolumeActor::HandleLongRunningBlobOperation(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s For volume %s detected %s (actor %s, group %u) %s running "
+            "%s For volume detected %s (actor %s, group %u) %s running "
             "for %s",
             LogTitle.GetWithTime().c_str(),
-            State->GetDiskId().Quote().c_str(),
             ToString(msg.Operation).c_str(),
             ev->Sender.ToString().c_str(),
             msg.GroupId,
@@ -629,10 +628,9 @@ void TVolumeActor::HandleLongRunningBlobOperation(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s For volume %s %s %s (actor %s, group %u) detected after %s, "
+            "%s For volume %s %s (actor %s, group %u) detected after %s, "
             "%s",
             LogTitle.GetWithTime().c_str(),
-            State->GetDiskId().Quote().c_str(),
             ToString(msg.Reason).c_str(),
             ToString(msg.Operation).c_str(),
             ev->Sender.ToString().c_str(),

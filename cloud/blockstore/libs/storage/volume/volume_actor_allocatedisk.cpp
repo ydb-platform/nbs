@@ -42,7 +42,7 @@ ui64 GetBlocks(const NKikimrBlockStore::TVolumeConfig& config)
 
 bool ValidateDevices(
     const TActorContext& ctx,
-    const ui64 tabletId,
+    const TString& logTitleTime,
     const TString& label,
     const TDevices& oldDevs,
     const TDevices& newDevs,
@@ -54,10 +54,12 @@ bool ValidateDevices(
     auto oldDeviceIt = oldDevs.begin();
     while (oldDeviceIt != oldDevs.end()) {
         if (newDeviceIt == newDevs.end()) {
-            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] %s: got less devices than previously existed"
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s: got less devices than previously existed"
                 ", old device count: %lu, new device count: %lu",
-                tabletId,
+                logTitleTime.c_str(),
                 label.c_str(),
                 oldDevs.size(),
                 newDevs.size());
@@ -69,9 +71,11 @@ bool ValidateDevices(
         if (checkDeviceId &&
                 newDeviceIt->GetDeviceUUID() != oldDeviceIt->GetDeviceUUID())
         {
-            LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] %s: device %u id changed: %s -> %s",
-                tabletId,
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s: device %u id changed: %s -> %s",
+                logTitleTime.c_str(),
                 label.c_str(),
                 std::distance(newDevs.begin(), newDeviceIt),
                 oldDeviceIt->GetDeviceUUID().Quote().c_str(),
@@ -79,9 +83,11 @@ bool ValidateDevices(
         }
 
         if (newDeviceIt->GetBlocksCount() != oldDeviceIt->GetBlocksCount()) {
-            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] %s: device block count changed: %s: %lu -> %lu",
-                tabletId,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s: device block count changed: %s: %lu -> %lu",
+                logTitleTime.c_str(),
                 label.c_str(),
                 oldDeviceIt->GetDeviceUUID().Quote().c_str(),
                 oldDeviceIt->GetBlocksCount(),
@@ -91,9 +97,11 @@ bool ValidateDevices(
         }
 
         if (newDeviceIt->GetBlockSize() != oldDeviceIt->GetBlockSize()) {
-            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] %s: device block size changed: %s: %u -> %u",
-                tabletId,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s: device block size changed: %s: %u -> %u",
+                logTitleTime.c_str(),
                 label.c_str(),
                 oldDeviceIt->GetDeviceUUID().Quote().c_str(),
                 oldDeviceIt->GetBlockSize(),
@@ -340,7 +348,7 @@ void TVolumeActor::HandleAllocateDiskError(
     {
         ReportDiskAllocationFailure();
     }
-
+    //fix
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -491,7 +499,7 @@ bool TVolumeActor::CheckAllocationResult(
 
     bool ok = ValidateDevices(
         ctx,
-        TabletID(),
+        LogTitle.GetWithTime(),
         "MainConfig",
         State->GetMeta().GetDevices(),
         devices,
@@ -514,7 +522,7 @@ bool TVolumeActor::CheckAllocationResult(
     for (ui32 i = 0; i < Min(replicas.size(), oldReplicaCount); ++i) {
         ok &= ValidateDevices(
             ctx,
-            TabletID(),
+            LogTitle.GetWithTime(),
             Sprintf("Replica-%u", i),
             State->GetMeta().GetReplicas(i).GetDevices(),
             replicas[i],
@@ -522,7 +530,7 @@ bool TVolumeActor::CheckAllocationResult(
 
         ok &= ValidateDevices(
             ctx,
-            TabletID(),
+            LogTitle.GetWithTime(),
             Sprintf("ReplicaReference-%u", i),
             devices,
             replicas[i],
@@ -626,9 +634,8 @@ void TVolumeActor::CompleteUpdateDevices(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Devices have been updated. DiskId: %s LiteReallocation: %d",
+        "%s Devices have been updated. LiteReallocation: %d",
         LogTitle.GetWithTime().c_str(),
-        State->GetDiskId().c_str(),
         args.LiteReallocation);
 
     // Hacky way to avoid race condition with "TTxVolume::TUpdateMigrationState"

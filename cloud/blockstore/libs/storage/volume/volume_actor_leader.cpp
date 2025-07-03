@@ -128,6 +128,7 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
             case TFollowerDiskInfo::EState::DataReady:
             case TFollowerDiskInfo::EState::Error: {
                 // Link creation finished.
+                //fix
                 LOG_INFO(
                     ctx,
                     TBlockStoreComponents::VOLUME,
@@ -318,7 +319,7 @@ void TVolumeActor::HandleLinkOnFollowerDestroyed(
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
+    //fix
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,

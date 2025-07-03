@@ -331,6 +331,7 @@ void TCheckpointActor<TMethod>::Drain(const TActorContext& ctx)
 
     ui32 cookie = 0;
     for (const auto& x: PartitionDescrs) {
+        //fix
         LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
             "[%lu] Sending Drain request to partition %lu",
             VolumeTabletId,
@@ -360,7 +361,7 @@ template <typename TMethod>
 void TCheckpointActor<TMethod>::ExternalDrain(const TActorContext& ctx)
 {
     STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::External);
-
+    //fix
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Wait for external drain event",
         VolumeTabletId);
@@ -376,7 +377,8 @@ void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
     bool completed,
     std::optional<TString> error,
     TString shadowDiskId)
-{
+{   
+    //fix
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Sending UpdateCheckpointRequest to volume",
         VolumeTabletId);
@@ -536,6 +538,7 @@ void TCheckpointActor<TMethod>::HandleExternalDrainDone(
 
     Y_UNUSED(ev);
 
+    //fix
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -566,6 +569,7 @@ void TCheckpointActor<TMethod>::HandleExternalDrainTimeout(
 
     Y_UNUSED(ev);
 
+    //fix
     LOG_WARN(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -640,6 +644,7 @@ void TCheckpointActor<TMethod>::HandleAllocateCheckpointResponse(
     if (!success) {
         Error = msg->GetError();
 
+        //fix
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -1193,8 +1198,7 @@ void TVolumeActor::ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBased
     TString errorMsg =
         TStringBuilder()
         << "Disk registry based disks can not handle GetChangedBlocks requests "
-           "for normal checkpoints, DiskId: "
-        << State->GetDiskId().Quote()
+           "for normal checkpoints"
         << ", LowCheckpointId: " << msg->Record.GetLowCheckpointId().Quote()
         << ", HighCheckpointId: " << msg->Record.GetHighCheckpointId().Quote();
 
@@ -1750,11 +1754,10 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s CheckpointRequest %lu for disk %s, checkpoint %s, marked: %s, "
+        "%s CheckpointRequest %lu, checkpoint %s, marked: %s, "
         "shadow disk: %s, error=%s",
         LogTitle.GetWithTime().c_str(),
         request.RequestId,
-        State->GetDiskId().Quote().c_str(),
         request.CheckpointId.Quote().c_str(),
         args.Completed ? "completed" : "rejected",
         args.ShadowDiskId.Quote().c_str(),

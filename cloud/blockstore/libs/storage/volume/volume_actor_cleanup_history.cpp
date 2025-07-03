@@ -45,12 +45,14 @@ void TVolumeActor::ExecuteCleanupHistory(
     }
 
     if (args.OutdatedHistory.size()) {
-        LOG_INFO_S(ctx, TBlockStoreComponents::VOLUME,
-            "[" << TabletID() << "]"
-            << "Deleted " << args.OutdatedHistory.size()
-            << " volume history records in range ["
-            << args.OutdatedHistory.front().Timestamp
-            << "," << args.OutdatedHistory.back().Timestamp << "]");
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Deleted %d volume history records in range [%s,%s]",
+            LogTitle.GetWithTime().c_str(),
+            args.OutdatedHistory.size(),
+            args.OutdatedHistory.front().Timestamp.ToString().c_str(),
+            args.OutdatedHistory.back().Timestamp.ToString().c_str());
     }
 }
 

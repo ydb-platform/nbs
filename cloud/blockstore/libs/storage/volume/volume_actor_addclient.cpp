@@ -34,11 +34,11 @@ void TVolumeActor::AcquireDisk(
 {
     Y_ABORT_UNLESS(State);
 
-    LOG_DEBUG_S(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Acquiring disk " << State->GetDiskId()
-    );
+        "%s Acquiring disk",
+        LogTitle.GetWithTime().c_str());
 
     if (Config->GetNonReplicatedVolumeDirectAcquireEnabled()) {
         SendAcquireDevicesToAgents(
@@ -113,13 +113,13 @@ void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
             nullptr
         );
 
-        LOG_DEBUG_S(
+        LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Reacquiring disk " << State->GetDiskId()
-                << " for client " << request.ClientId
-                << " with access mode " << static_cast<int>(request.AccessMode)
-        );
+            "%s Reacquiring disk for client %s with access mode %d",
+            LogTitle.GetWithTime().c_str(),
+            request.ClientId.c_str(),
+            static_cast<int>(request.AccessMode));
 
         AcquireReleaseDiskRequests.push_back(std::move(request));
     }
@@ -198,11 +198,12 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     ScheduleAcquireDiskIfNeeded(ctx);
 
     if (AcquireReleaseDiskRequests.empty()) {
-        LOG_DEBUG_S(
+        //fix
+        LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Unexpected TEvAcquireDiskResponse for disk " << State->GetDiskId()
-        );
+            "%s Unexpected TEvAcquireDiskResponse",
+            LogTitle.GetWithTime().c_str());
 
         return;
     }
@@ -211,11 +212,12 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     auto& cr = request.ClientRequest;
 
     if (HasError(error)) {
-        LOG_DEBUG_S(
+        //fix
+        LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Can't acquire disk " << State->GetDiskId()
-        );
+            "%s Can't acquire disk",
+            LogTitle.GetWithTime().c_str());
 
         if (cr) {
             auto response =
@@ -300,11 +302,10 @@ void TVolumeActor::HandleAddClient(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Postponing AddClientRequest[%s] for volume %s: another request "
+            "%s Postponing AddClientRequest[%s]: another request "
             "in flight",
             LogTitle.GetWithTime().c_str(),
-            clientId.Quote().data(),
-            diskId.Quote().data());
+            clientId.Quote().c_str());
     }
 }
 
@@ -340,11 +341,10 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
                 LOG_DEBUG(
                     ctx,
                     TBlockStoreComponents::VOLUME,
-                    "%s Postponing AcquireReleaseRequest[%s] for volume %s: "
+                    "%s Postponing AcquireReleaseRequest[%s]: "
                     "another request in flight",
                     LogTitle.GetWithTime().c_str(),
-                    AcquireReleaseDiskRequests.back().ClientId.Quote().data(),
-                    State->GetDiskId().Quote().data());
+                    AcquireReleaseDiskRequests.back().ClientId.Quote().c_str());
             }
 
             return;
@@ -441,8 +441,8 @@ void TVolumeActor::ExecuteAddClient(
                         TBlockStoreComponents::VOLUME,
                         "%s Replace %s writer with %s",
                         LogTitle.GetWithTime().c_str(),
-                        prevWriter.Quote().data(),
-                        State->GetReadWriteAccessClientId().Quote().data());
+                        prevWriter.Quote().c_str(),
+                        State->GetReadWriteAccessClientId().Quote().c_str());
                 }
             }
         }
@@ -510,10 +510,9 @@ void TVolumeActor::CompleteAddClient(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Added client %s to volume %s",
+        "%s Added client %s to volume",
         LogTitle.GetWithTime().c_str(),
-        clientId.Quote().data(),
-        diskId.Quote().data());
+        clientId.Quote().c_str());
 
     auto response = std::make_unique<TEvVolume::TEvAddClientResponse>();
     *response->Record.MutableError() = std::move(args.Error);

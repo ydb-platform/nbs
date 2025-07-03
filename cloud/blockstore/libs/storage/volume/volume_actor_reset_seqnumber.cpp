@@ -190,9 +190,8 @@ void TVolumeActor::HandleHttpInfo_ResetMountSeqNumber(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s resetting mount seqnumber from monitoring page: volume %s",
-        LogTitle.GetWithTime().c_str(),
-        State->GetDiskId().Quote().data());
+        "%s resetting mount seqnumber from monitoring page",
+        LogTitle.GetWithTime().c_str());
 
     const auto clientId = params.Get("ClientId");
 

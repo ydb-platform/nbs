@@ -780,7 +780,7 @@ void TVolumeActor::HandleHttpInfo(
         TBlockStoreComponents::VOLUME,
         "%s HTTP request: %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Query.Quote().data());
+        msg->Query.Quote().c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,

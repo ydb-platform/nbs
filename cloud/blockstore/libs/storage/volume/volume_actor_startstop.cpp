@@ -634,12 +634,15 @@ void TVolumeActor::HandleBootExternalResponse(
     if (msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition &&
         msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition2) {
         // Partitions use specific tablet factory
-        LOG_ERROR_S(
+        const auto err = TStringBuilder()
+                    << msg->StorageInfo->TabletType;
+        LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            LogTitle.GetWithTime()
-                << " Unexpected part " << partTabletId << " with type "
-                << msg->StorageInfo->TabletType);
+            "%s Unexpected part %lu with type %s",
+            LogTitle.GetWithTime().c_str(),
+            partTabletId,
+            err.c_str());
         part->SetFailed(
             TStringBuilder()
                 << "Unexpected tablet type: "
@@ -760,11 +763,15 @@ void TVolumeActor::HandleTabletStatus(
     Y_ABORT_UNLESS(partition, "Missing partition state for %lu", msg->TabletId);
 
     if (partition->Bootstrapper != ev->Sender) {
-        LOG_INFO_S(ctx, TBlockStoreComponents::VOLUME,
-            "[" << TabletID() << "]" <<
-            " Ignored status message " << static_cast<ui32>(msg->Status) <<
-            " from outdated bootstrapper " << ToString(ev->Sender) <<
-            " for partition " << msg->TabletId);
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Ignored status message %lu from outdated bootstrapper %s for "
+            "partition %lu",
+            LogTitle.GetWithTime().c_str(),
+            static_cast<ui32>(msg->Status),
+            ToString(ev->Sender).c_str(),
+            msg->TabletId);
         // CompleteUpdateConfig calls StopPartitions, and then it
         // calls StartPartitions with a completely new state.
         // Ignore any signals from outdated bootstrappers.
