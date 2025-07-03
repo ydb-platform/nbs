@@ -237,7 +237,6 @@ def test_read_write_data():
         nfs_client.write_data(
             "fs",
             session_id,
-            0,  # node id is irrelevant
             handle,
             0,  # offset
             data,
@@ -248,7 +247,6 @@ def test_read_write_data():
         read_data = nfs_client.read_data(
             "fs",
             session_id,
-            0,  # node id is irrelevant
             handle,
             0,  # offset
             len(data),
@@ -269,7 +267,6 @@ def test_read_write_data():
         read_only_data = nfs_client.read_data(
             "fs",
             session_id,
-            0,  # node id is irrelevant
             read_only_handle,
             0,  # offset
             len(data),
@@ -281,7 +278,6 @@ def test_read_write_data():
             nfs_client.write_data(
                 "fs",
                 session_id,
-                0,  # node id is irrelevant
                 read_only_handle,
                 0,  # offset
                 b"New data",

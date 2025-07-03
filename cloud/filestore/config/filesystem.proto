@@ -71,4 +71,9 @@ message TFileSystemConfig
     // Create parentless files only. Meaning that files will be created
     // without any reference to parent directory.
     optional bool ParentlessFilesOnly = 21;
+
+    // Allow handleless IO operations. If set, the service will infer the shard
+    // number from the nodeId in case of an invalid handle, rather than from the
+    // handle itself.
+    optional bool AllowHandlelessIO = 22;
 }

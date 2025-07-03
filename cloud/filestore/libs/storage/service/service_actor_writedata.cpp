@@ -489,6 +489,14 @@ void TStorageServiceActor::HandleWriteData(
     }
     const NProto::TFileStore& filestore = session->FileStore;
 
+    // In handleless IO mode, if the handle is not set, we use the nodeId to
+    // infer the shard number
+    ui32 shardNo = ExtractShardNo(
+        filestore.GetFeatures().GetAllowHandlelessIO() &&
+                msg->Record.GetHandle() == InvalidHandle
+            ? msg->Record.GetNodeId()
+            : msg->Record.GetHandle());
+
     auto [fsId, error] = SelectShard(
         ctx,
         sessionId,
@@ -497,7 +505,7 @@ void TStorageServiceActor::HandleWriteData(
         TEvService::TWriteDataMethod::Name,
         msg->CallContext->RequestId,
         filestore,
-        ExtractShardNo(msg->Record.GetHandle()));
+        shardNo);
 
     if (HasError(error)) {
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>(
