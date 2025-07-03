@@ -28,6 +28,7 @@ csi_driver/client
 debug/featureconfig/blockstore-debug-featureconfig
 debug/formatter/blockstore-debug-formatter
 debug/readbdev/blockstore-readbdev
+disaster_recovery/merge_path_description_backups/merge_path_description_backups
 fs/cleanup-ext4-meta/cleanup-ext4-meta
 fs/cleanup-ext4-meta/ut/cloud-blockstore-tools-fs-cleanup-ext4-meta-ut
 fs/cleanup-fs/cleanup-fs
@@ -43,7 +44,6 @@ http_proxy/blockstore-http-proxy
 http_proxy/tests/cloud-blockstore-tools-http_proxy-tests
 http_proxy/ut/blockstore-http-proxy
 nbd/blockstore-nbd
-restore/merge_ss_backups/merge_ss_backups
 testing/build-fresh-blob/build-fresh-blob
 testing/chaos-monkey/chaos-monkey
 testing/chaos-monkey/tests/tests

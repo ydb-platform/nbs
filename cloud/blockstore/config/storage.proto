@@ -1265,4 +1265,7 @@ message TStorageServiceConfig
 
     // In fallback mode, clean field SchemeShardDir when register node.
     optional bool ResetSchemeShardDir = 439;
+
+    // In emergency mode, don't pass scheme shard dir when registering node.
+    optional bool DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = 438;
 }

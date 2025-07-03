@@ -4,8 +4,8 @@ RECURSE(
     cms
     csi_driver
     debug
+    disaster_recovery
     fs
     nbd
-    restore
     testing
 )

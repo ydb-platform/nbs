@@ -420,7 +420,10 @@ void TBootstrapYdb::InitKikimrService()
     const bool emergencyMode =
         Configs->StorageConfig->GetHiveProxyFallbackMode() ||
         Configs->StorageConfig->GetSSProxyFallbackMode();
-    if (emergencyMode && Configs->StorageConfig->GetResetSchemeShardDir()) {
+    if (emergencyMode &&
+        Configs->StorageConfig
+            ->GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode())
+    {
         registerOpts.SchemeShardDir = "";
     }
 

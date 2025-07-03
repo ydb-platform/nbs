@@ -521,7 +521,7 @@ public:
     bool GetHiveProxyFallbackMode() const;
     TString GetPathDescriptionBackupFilePath() const;
     bool GetSSProxyFallbackMode() const;
-    bool GetResetSchemeShardDir() const;
+    bool GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode() const;
 
     ui32 GetRdmaTargetPort() const;
     bool GetUseNonreplicatedRdmaActor() const;
