@@ -348,7 +348,6 @@ void TVolumeActor::HandleAllocateDiskError(
     {
         ReportDiskAllocationFailure();
     }
-    //fix
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::VOLUME,

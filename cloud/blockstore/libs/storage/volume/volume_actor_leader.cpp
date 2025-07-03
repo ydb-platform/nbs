@@ -318,7 +318,6 @@ void TVolumeActor::HandleLinkOnFollowerDestroyed(
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    //fix
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,

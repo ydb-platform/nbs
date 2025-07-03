@@ -198,7 +198,6 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     ScheduleAcquireDiskIfNeeded(ctx);
 
     if (AcquireReleaseDiskRequests.empty()) {
-        //fix
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -212,7 +211,6 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     auto& cr = request.ClientRequest;
 
     if (HasError(error)) {
-        //fix
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
