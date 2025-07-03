@@ -327,4 +327,24 @@ STFUNC(TServiceActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void DescribeErrorLog(
+    const NActors::TActorContext& ctx,
+    const NProto::TError& error,
+    const char* prefix,
+    const char* volume)
+{
+    const auto priority = STATUS_FROM_CODE(error.GetCode()) ==
+                                  NKikimrScheme::StatusPathDoesNotExist
+                              ? NActors::NLog::PRI_WARN
+                              : NActors::NLog::PRI_ERROR;
+    LOG_LOG(
+        ctx,
+        priority,
+        TBlockStoreComponents::SERVICE,
+        "%s %s: describe failed: %s",
+        prefix,
+        volume,
+        FormatError(error).c_str());
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

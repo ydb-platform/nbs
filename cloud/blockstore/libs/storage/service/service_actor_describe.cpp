@@ -107,11 +107,11 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: describe failed: %s",
-            DiskId.Quote().data(),
-            FormatError(error).data());
-
+        DescribeErrorLog(
+            ctx,
+            error,
+            "Volume",
+            DiskId.Quote().c_str());
         ReplyAndDie(
             ctx,
             std::make_unique<TEvService::TEvDescribeVolumeResponse>(error));
@@ -145,11 +145,11 @@ void TDescribeVolumeActor::HandleDescribeDiskResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Non-replicated volume %s: describe failed: %s",
-            DiskId.Quote().data(),
-            FormatError(error).data());
-
+        DescribeErrorLog(
+            ctx,
+            error,
+            "Non-replicated volume",
+            DiskId.Quote().c_str());
         ReplyAndDie(
             ctx,
             std::make_unique<TEvService::TEvDescribeVolumeResponse>(error));

@@ -273,10 +273,11 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: describe failed: %s",
-            DiskId.Quote().c_str(),
-            FormatError(error).c_str());
+        DescribeErrorLog(
+            ctx,
+            error,
+            "Volume",
+            DiskId.Quote().c_str());
         Error = error;
 
         ReplyAndDie(ctx);

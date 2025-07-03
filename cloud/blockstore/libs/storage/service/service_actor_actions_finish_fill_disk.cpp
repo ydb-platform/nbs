@@ -195,10 +195,11 @@ void TFinishFillDiskActionActor::HandleDescribeVolumeResponse(
 
     NProto::TError error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: describe failed: %s",
-            Request.GetDiskId().Quote().c_str(),
-            FormatError(error).c_str());
+        DescribeErrorLog(
+            ctx,
+            error,
+            "Volume",
+            Request.GetDiskId().Quote().c_str());
         ReplyAndDie(ctx, std::move(error));
         return;
     }

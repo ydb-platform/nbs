@@ -571,9 +571,14 @@ void TVolumeProxyActor::HandleDescribeResponse(
     }
 
     const auto& error = msg->GetError();
-    if (FAILED(error.GetCode())) {
-        LOG_ERROR(
+    if (const auto errorCode = error.GetCode(); FAILED(errorCode)) {
+        const auto priority =
+            STATUS_FROM_CODE(errorCode) == NKikimrScheme::StatusPathDoesNotExist
+                ? NActors::NLog::PRI_WARN
+                : NActors::NLog::PRI_ERROR;
+        LOG_LOG(
             ctx,
+            priority,
             TBlockStoreComponents::VOLUME_PROXY,
             "%s Could not resolve path for volume. Error: %s",
             conn->LogTitle.GetWithTime().c_str(),

@@ -458,4 +458,11 @@ void RegisterAlterVolumeActor(
     TStorageConfigPtr config,
     const NPrivateProto::TSetupChannelsRequest& request,
     const NActors::TActorContext& ctx);
+
+void DescribeErrorLog(
+    const NActors::TActorContext& ctx,
+    const NProto::TError& error,
+    const char* prefix,
+    const char* volume);
+
 }   // namespace NCloud::NBlockStore::NStorage
