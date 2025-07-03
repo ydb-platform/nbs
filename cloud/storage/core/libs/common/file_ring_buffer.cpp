@@ -198,8 +198,9 @@ public:
         }
 
         auto* begin = static_cast<char*>(Map.Ptr()) + sizeof(THeader);
-        Data = {begin, begin + capacity};
+        Data = TEntriesData(begin, begin + capacity);
 
+        SkipSlackSpace();
         Visit([this] (ui32 checksum, TStringBuf entry) {
             Y_UNUSED(checksum);
             Y_UNUSED(entry);
