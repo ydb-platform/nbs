@@ -59,7 +59,7 @@
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/service_local.h>
-#include <cloud/blockstore/libs/service_local/storage_aio.h>
+#include <cloud/blockstore/libs/service_local/storage_local.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/service_local/storage_rdma.h>
 #include <cloud/blockstore/libs/service_local/storage_spdk.h>
@@ -777,11 +777,11 @@ void TBootstrapBase::InitLocalService()
     Service = CreateLocalService(
         config,
         DiscoveryService,
-        CreateAioStorageProvider(
+        CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
             false,  // directIO
-            EAioSubmitQueueOpt::DontUse
+            ELocalSubmitQueueOpt::DontUse
         ));
 }
 

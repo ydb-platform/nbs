@@ -37,7 +37,7 @@
 #include <cloud/blockstore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/blockstore/libs/service_kikimr/service_kikimr.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
-#include <cloud/blockstore/libs/service_local/storage_aio.h>
+#include <cloud/blockstore/libs/service_local/storage_local.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
@@ -637,7 +637,7 @@ void TBootstrapYdb::InitKikimrService()
     if (const auto& config = *Configs->DiskAgentConfig;
         config.GetEnabled() &&
         config.GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&
-        !AioStorageProvider)
+        !LocalStorageProvider)
     {
         NvmeManager = CreateNvmeManager(
             Configs->DiskAgentConfig->GetSecureEraseTimeout());
@@ -653,24 +653,24 @@ void TBootstrapYdb::InitKikimrService()
                       factory)
                 : CreateSingleFileIOServiceProvider(factory());
 
-        AioStorageProvider = CreateAioStorageProvider(
+        LocalStorageProvider = CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
             !config.GetDirectIoFlagDisabled(),
-            EAioSubmitQueueOpt::DontUse);
+            ELocalSubmitQueueOpt::DontUse);
 
-        STORAGE_INFO("AioStorageProvider initialized");
+        STORAGE_INFO("LocalStorageProvider initialized");
     }
 
     if (Configs->DiskAgentConfig->GetEnabled() &&
         Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_NULL &&
-        !AioStorageProvider)
+        !LocalStorageProvider)
     {
         NvmeManager = CreateNvmeManager(
             Configs->DiskAgentConfig->GetSecureEraseTimeout());
-        AioStorageProvider = CreateNullStorageProvider();
+        LocalStorageProvider = CreateNullStorageProvider();
 
-        STORAGE_INFO("AioStorageProvider (null) initialized");
+        STORAGE_INFO("LocalStorageProvider (null) initialized");
     }
 
     Allocator = CreateCachingAllocator(
@@ -734,7 +734,7 @@ void TBootstrapYdb::InitKikimrService()
     args.DiscoveryService = DiscoveryService;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.AioStorageProvider = AioStorageProvider;
+    args.LocalStorageProvider = LocalStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;
     args.TraceSerializer = TraceSerializer;

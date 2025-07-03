@@ -69,7 +69,7 @@ protected:
     IServerPtr Server;
     NSpdk::ISpdkEnvPtr Spdk;
     ICachingAllocatorPtr Allocator;
-    IStorageProviderPtr AioStorageProvider;
+    IStorageProviderPtr LocalStorageProvider;
     NClient::IEndpointProxyClientPtr EndpointProxyClient;
     IEndpointManagerPtr EndpointManager;
     IEndpointEventProxyPtr EndpointEventHandler;
