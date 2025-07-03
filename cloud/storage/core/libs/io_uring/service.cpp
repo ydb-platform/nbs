@@ -36,7 +36,7 @@ bool IsRetriable(int error)
 class TEvent
 {
 private:
-    TFileHandle Fd;
+    const TFileHandle Fd;
     ui64 Value = 0;
 
 public:
