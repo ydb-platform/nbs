@@ -2,7 +2,6 @@
 
 #include "options.h"
 
-#include <cloud/blockstore/config/opentelemetry_client.pb.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -13,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 
+#include <cloud/storage/core/config/opentelemetry_client.pb.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>

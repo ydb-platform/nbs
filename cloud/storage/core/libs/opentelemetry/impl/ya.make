@@ -8,11 +8,8 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/config
-    cloud/blockstore/libs/opentelemetry/iface
-    cloud/storage/core/libs/common
-    cloud/storage/core/libs/coroutine
-    cloud/storage/core/libs/iam/iface
+    cloud/storage/core/config
+    cloud/storage/core/libs/opentelemetry/iface
 
     contrib/libs/opentelemetry-proto
 

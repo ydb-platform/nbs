@@ -6,9 +6,6 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/config
-    cloud/storage/core/libs/common
-    cloud/storage/core/libs/coroutine
-    cloud/storage/core/libs/iam/iface
 
     contrib/libs/opentelemetry-proto
 

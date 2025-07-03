@@ -1,10 +1,10 @@
 #include "trace_service_client.h"
 
-#include <cloud/blockstore/libs/opentelemetry/iface/trace_service_client.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
 #include <contrib/libs/grpc/include/grpcpp/client_context.h>
@@ -18,7 +18,7 @@
 #include <util/string/join.h>
 #include <util/system/thread.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 using namespace NThreading;
 
@@ -28,8 +28,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const char AUTH_HEADER[] = "authorization";
-const char AUTH_METHOD[] = "Bearer";
+constexpr char AuthHeader[] = "authorization";
+constexpr char AuthMethod[] = "Bearer";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -60,8 +60,8 @@ public:
 
         if (authToken) {
             ClientContext.AddMetadata(
-                AUTH_HEADER,
-                TStringBuilder() << AUTH_METHOD << " " << authToken);
+                AuthHeader,
+                TStringBuilder() << AuthMethod << " " << authToken);
         }
 
         Request = std::move(request);
@@ -107,9 +107,12 @@ private:
     std::shared_ptr<trace::TraceService::Stub> Service;
 
 public:
-    TTraceServiceClient(ILoggingServicePtr logging, NProto::TGrpcClientConfig config)
+    TTraceServiceClient(
+            ILoggingServicePtr logging,
+            NProto::TGrpcClientConfig config)
         : Logging(std::move(logging))
         , Config(std::move(config))
+        , Log(Logging->CreateLog("BLOCKSTORE_SERVER"))
     {}
 
     ~TTraceServiceClient()
@@ -119,9 +122,8 @@ public:
 
     void Start() override
     {
-        Log = Logging->CreateLog("BLOCKSTORE_SERVER");
 
-        STORAGE_INFO("Connect to " << Config.GetAddress());
+        STORAGE_INFO("Connecting to " << Config.GetAddress());
 
         auto creds = Config.GetInsecure()
                          ? grpc::InsecureChannelCredentials()
@@ -159,12 +161,10 @@ public:
             std::move(traces));
 
         auto future =
-            requestHandler->Execute(*Service, &CQ, requestHandler.get());
+            requestHandler->Execute(*Service, &CQ, requestHandler.release());
 
-        requestHandler.release();
         return future;
     }
-
 
 private:
     void* ThreadProc() override
@@ -194,4 +194,4 @@ ITraceServiceClientPtr CreateTraceServiceClient(
     return a;
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

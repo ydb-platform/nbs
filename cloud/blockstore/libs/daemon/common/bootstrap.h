@@ -11,7 +11,6 @@
 #include <cloud/blockstore/libs/endpoints_grpc/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
-#include <cloud/blockstore/libs/opentelemetry/iface/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -21,6 +20,7 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
 

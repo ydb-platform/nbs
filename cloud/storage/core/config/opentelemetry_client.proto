@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package NCloud.NBlockStore.NProto;
+package NCloud.NProto;
 
-import "cloud/blockstore/config/grpc_client.proto";
+import "cloud/storage/core/config/grpc_client.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 

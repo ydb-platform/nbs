@@ -2,11 +2,11 @@
 
 #include <memory>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct ITraceServiceClient;
 using ITraceServiceClientPtr = std::shared_ptr<ITraceServiceClient>;
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

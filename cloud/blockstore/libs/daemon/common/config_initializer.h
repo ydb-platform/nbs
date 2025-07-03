@@ -2,21 +2,21 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/config/grpc_client.pb.h>
-#include <cloud/blockstore/config/opentelemetry_client.pb.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/discovery/public.h>
-#include <cloud/blockstore/libs/opentelemetry/iface/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
 
+#include <cloud/storage/core/config/grpc_client.pb.h>
+#include <cloud/storage/core/config/opentelemetry_client.pb.h>
 #include <cloud/storage/core/libs/daemon/config_initializer.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 
 #include <library/cpp/json/writer/json_value.h>
 #include <library/cpp/logger/log.h>

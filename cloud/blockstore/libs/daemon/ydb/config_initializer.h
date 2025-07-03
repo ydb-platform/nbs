@@ -2,9 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/config/grpc_client.pb.h>
 #include <cloud/blockstore/config/root_kms.pb.h>
-
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/common/public.h>
@@ -25,6 +23,7 @@
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
 #include <cloud/blockstore/libs/ydbstats/config.h>
 
+#include <cloud/storage/core/config/grpc_client.pb.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
@@ -59,8 +58,8 @@ struct TConfigInitializerYdb final
     NLogbroker::TLogbrokerConfigPtr LogbrokerConfig;
     NNotify::TNotifyConfigPtr NotifyConfig;
     NIamClient::TIamClientConfigPtr IamClientConfig;
-    NProto::TGrpcClientConfig KmsClientConfig;
-    NProto::TGrpcClientConfig ComputeClientConfig;
+    ::NCloud::NProto::TGrpcClientConfig KmsClientConfig;
+    ::NCloud::NProto::TGrpcClientConfig ComputeClientConfig;
     NProto::TRootKmsConfig RootKmsConfig;
 
     TConfigInitializerYdb(TOptionsYdbPtr options);

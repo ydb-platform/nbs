@@ -50,7 +50,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    NBlockStore::NProto::TGrpcClientConfig config;
+    NCloud::NProto::TGrpcClientConfig config;
     config.SetAddress(address);
     config.SetRequestTimeout(5000);
     config.SetInsecure(insecure);

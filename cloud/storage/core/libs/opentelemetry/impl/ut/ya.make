@@ -1,4 +1,4 @@
-UNITTEST_FOR(cloud/blockstore/libs/opentelemetry/impl)
+UNITTEST_FOR(cloud/storage/core/libs/opentelemetry/impl)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 

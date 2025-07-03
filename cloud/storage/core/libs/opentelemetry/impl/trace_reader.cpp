@@ -2,9 +2,9 @@
 
 #include "trace_convert.h"
 
-#include <cloud/blockstore/libs/opentelemetry/iface/trace_service_client.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 
 #include <contrib/libs/opentelemetry-proto/opentelemetry/proto/resource/v1/resource.pb.h>
 
@@ -13,7 +13,7 @@
 
 #include <utility>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 using namespace opentelemetry::proto::collector::trace::v1;
 
@@ -24,24 +24,26 @@ namespace {
 class TTraceOpenTelemetryExporter final: public ITraceReaderWithRingBuffer
 {
 private:
-    ui64 TracksCount = 0;
+    const TString ComponentName;
+    const TString ServiceName;
+
     ILoggingServicePtr Logging;
-    TString ComponentName;
     ITraceServiceClientPtr TraceServiceClient;
-    TString ServiceName;
+
+    ui64 TracksCount = 0;
 
 public:
     TTraceOpenTelemetryExporter(
             TString id,
-            ILoggingServicePtr logging,
             TString componentName,
-            ITraceServiceClientPtr traceServiceClient,
-            TString serviceName)
+            TString serviceName,
+            ILoggingServicePtr logging,
+            ITraceServiceClientPtr traceServiceClient)
         : ITraceReaderWithRingBuffer(std::move(id))
-        , Logging(std::move(logging))
         , ComponentName(std::move(componentName))
-        , TraceServiceClient(std::move(traceServiceClient))
         , ServiceName(std::move(serviceName))
+        , Logging(std::move(logging))
+        , TraceServiceClient(std::move(traceServiceClient))
     {}
 
     void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override
@@ -84,7 +86,10 @@ public:
                 });
 
         RingBuffer.PushBack(
-            {TInstant::Now(), minSeenTimestamp, tl, "AllRequests"});
+            {.Ts = TInstant::Now(),
+             .Date = minSeenTimestamp,
+             .TrackLog = tl,
+             .Tag = "AllRequests"});
     }
 
     void Reset() override
@@ -106,10 +111,10 @@ ITraceReaderPtr CreateTraceExporter(
 {
     return std::make_shared<TTraceOpenTelemetryExporter>(
         std::move(id),
-        std::move(logging),
         std::move(componentName),
-        std::move(traceServiceClient),
-        std::move(serviceName));
+        std::move(serviceName),
+        std::move(logging),
+        std::move(traceServiceClient));
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

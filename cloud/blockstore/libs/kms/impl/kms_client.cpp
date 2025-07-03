@@ -102,7 +102,7 @@ private:
     TGrpcInitializer GrpcInitializer;
 
     const ILoggingServicePtr Logging;
-    const NProto::TGrpcClientConfig Config;
+    const ::NCloud::NProto::TGrpcClientConfig Config;
 
     TLog Log;
 
@@ -112,7 +112,7 @@ private:
 public:
     TKmsClient(
             ILoggingServicePtr logging,
-            NProto::TGrpcClientConfig config)
+            ::NCloud::NProto::TGrpcClientConfig config)
         : Logging(std::move(logging))
         , Config(std::move(config))
     {
@@ -196,7 +196,7 @@ private:
 
 IKmsClientPtr CreateKmsClient(
     ILoggingServicePtr logging,
-    NProto::TGrpcClientConfig config)
+    ::NCloud::NProto::TGrpcClientConfig config)
 {
     return std::make_shared<TKmsClient>(
         std::move(logging),
