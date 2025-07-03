@@ -710,11 +710,11 @@ IStorageProviderPtr CreateTestStorageProvider(
     INvmeManagerPtr nvmeManager)
 {
     return std::make_shared<TTestStorageProvider>(
-        NServer::CreateAioStorageProvider(
+        NServer::CreateLocalStorageProvider(
             NServer::CreateSingleFileIOServiceProvider(std::move(fileIO)),
             std::move(nvmeManager),
             false,  // directIO
-            NServer::EAioSubmitQueueOpt::DontUse
+            NServer::ELocalSubmitQueueOpt::DontUse
         ));
 }
 

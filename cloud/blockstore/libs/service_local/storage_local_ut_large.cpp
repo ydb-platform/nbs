@@ -1,4 +1,4 @@
-#include "storage_aio.h"
+#include "storage_local.h"
 
 #include "file_io_service_provider.h"
 
@@ -35,7 +35,7 @@ using namespace NNvme;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TAioStorageTest)
+Y_UNIT_TEST_SUITE(TLocalStorageTest)
 {
     Y_UNIT_TEST(ShouldZeroWholeHugeFile)
     {
@@ -52,11 +52,11 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         fileIOServiceProvider->Start();
         Y_DEFER { fileIOServiceProvider->Stop(); };
 
-        auto provider = CreateAioStorageProvider(
+        auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
             true,   // directIO
-            EAioSubmitQueueOpt::DontUse
+            ELocalSubmitQueueOpt::DontUse
         );
 
         NProto::TVolume volume;
