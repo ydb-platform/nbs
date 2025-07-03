@@ -63,7 +63,7 @@ public:
         }
     }
 
-    [[nodiscard]] NProto::TError AsyncWait(io_uring& ring)
+    [[nodiscard]] NProto::TError Register(io_uring& ring)
     {
         io_uring_sqe* sqe = io_uring_get_sqe(&ring);
         if (!sqe) {
@@ -105,7 +105,7 @@ public:
     void Start()
     {
         // The very first submission should always work fine
-        const auto error = StopEvent.AsyncWait(Ring);
+        const auto error = StopEvent.Register(Ring);
         Y_ABORT_IF(
             HasError(error),
             "can't setup a stop event: %s",
