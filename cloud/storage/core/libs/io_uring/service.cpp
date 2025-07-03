@@ -108,7 +108,7 @@ public:
         const auto error = StopEvent.Register(Ring);
         Y_ABORT_IF(
             HasError(error),
-            "can't setup a stop event: %s",
+            "can't register a stop event: %s",
             FormatError(error).c_str());
 
         ISimpleThread::Start();
