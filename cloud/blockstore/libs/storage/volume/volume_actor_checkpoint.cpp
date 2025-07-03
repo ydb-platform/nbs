@@ -1508,7 +1508,7 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
             LogTitle.GetWithTime().c_str(),
             GetCheckpointRequestName(request.ReqType),
             p.TabletId,
-            ToString(p.GetTopActorId()).data());
+            ToString(p.GetTopActorId()).c_str());
     }
 
     if (auto actorId = State->GetDiskRegistryBasedPartitionActor()) {

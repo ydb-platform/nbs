@@ -87,7 +87,7 @@ void TVolumeActor::ScheduleRetryStartPartition(
         "%s Waiting before retrying start of partition %lu (timeout: %s)",
         LogTitle.GetWithTime().c_str(),
         partition.TabletId,
-        ToString(timeout).data());
+        ToString(timeout).c_str());
 
     partition.RetryCookie.Reset(ISchedulerCookie::Make3Way());
     ctx.Schedule(
@@ -610,7 +610,7 @@ void TVolumeActor::HandleBootExternalResponse(
             "%s BootExternalRequest for part %lu failed: %s",
             LogTitle.GetWithTime().c_str(),
             partTabletId,
-            FormatError(error).data());
+            FormatError(error).c_str());
 
         part->ExternalBootTimeout = Min(
             part->ExternalBootTimeout + Config->GetExternalBootRequestTimeoutIncrement(),

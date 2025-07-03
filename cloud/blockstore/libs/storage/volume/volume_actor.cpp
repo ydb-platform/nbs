@@ -145,9 +145,9 @@ void TVolumeActor::BecomeAux(const TActorContext& ctx, EState state)
         LogTitle.GetWithTime().c_str(),
         GetStateName(prevState).Quote().c_str(),
         GetStateName(state).Quote().c_str(),
-        ToString(Tablet()).data(),
-        ToString(SelfId()).data(),
-        ToString(ExecutorID()).data());
+        ToString(Tablet()).c_str(),
+        ToString(SelfId()).c_str(),
+        ToString(ExecutorID()).c_str());
 
     ReportTabletState(ctx);
 }

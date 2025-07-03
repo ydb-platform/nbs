@@ -149,7 +149,7 @@ void TVolumeActor::HandleHttpInfo_RemoveClient(
         "%s Removing volume client per action from monitoring page:"
         "client %s",
         LogTitle.GetWithTime().c_str(),
-        clientId.Quote().data());
+        clientId.Quote().c_str());
 
     if (!clientId) {
         RejectHttpRequest(

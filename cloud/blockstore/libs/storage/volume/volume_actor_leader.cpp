@@ -128,7 +128,6 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
             case TFollowerDiskInfo::EState::DataReady:
             case TFollowerDiskInfo::EState::Error: {
                 // Link creation finished.
-                //fix
                 LOG_INFO(
                     ctx,
                     TBlockStoreComponents::VOLUME,

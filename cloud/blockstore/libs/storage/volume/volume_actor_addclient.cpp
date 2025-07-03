@@ -199,7 +199,7 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
 
     if (AcquireReleaseDiskRequests.empty()) {
         //fix
-        LOG_DEBUG(
+        LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
             "%s Unexpected TEvAcquireDiskResponse",
@@ -213,11 +213,12 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
 
     if (HasError(error)) {
         //fix
-        LOG_DEBUG(
+        LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Can't acquire disk",
-            LogTitle.GetWithTime().c_str());
+            "%s Can't acquire disk error : %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
 
         if (cr) {
             auto response =

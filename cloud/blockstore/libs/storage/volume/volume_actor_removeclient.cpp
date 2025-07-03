@@ -158,7 +158,7 @@ void TVolumeActor::HandleRemoveClient(
             "%s Postponing RemoveClientRequest[%s] for volume: another "
             "request in flight",
             LogTitle.GetWithTime().c_str(),
-            clientId.Quote().data());
+            clientId.Quote().c_str());
     }
 }
 
@@ -241,7 +241,7 @@ void TVolumeActor::CompleteRemoveClient(
         TBlockStoreComponents::VOLUME,
         "%s Removed client %s from volume",
         LogTitle.GetWithTime().c_str(),
-        clientId.Quote().data());
+        clientId.Quote().c_str());
 
     auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>();
     *response->Record.MutableError() = std::move(args.Error);
