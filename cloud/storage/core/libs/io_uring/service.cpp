@@ -33,14 +33,14 @@ bool IsRetriable(int error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStopEvent
+class TEvent
 {
 private:
     TFileHandle Fd;
     ui64 Value = 0;
 
 public:
-    TStopEvent()
+    TEvent()
         : Fd(eventfd(0, EFD_CLOEXEC))
     {
         const int error = errno;
@@ -94,7 +94,7 @@ class TCompletionThread final: public ISimpleThread
 private:
     const TString Name;
     io_uring& Ring;
-    TStopEvent StopEvent;
+    TEvent StopEvent;
 
 public:
     TCompletionThread(TString name, io_uring& ring)
