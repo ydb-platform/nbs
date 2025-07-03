@@ -36,7 +36,7 @@ struct Y_PACKED TEntryHeader
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileRingBufferData
+class TEntriesData
 {
 private:
     char* Begin = nullptr;
@@ -69,7 +69,9 @@ private:
     }
 
 public:
-    void Init(char* begin, const char* end)
+    TEntriesData() = default;
+
+    TEntriesData(char* begin, const char* end)
     {
         Y_ABORT_UNLESS(begin != nullptr);
         Y_ABORT_UNLESS(end != nullptr);
@@ -130,7 +132,7 @@ class TFileRingBuffer::TImpl
 private:
     TFileMap Map;
 
-    TFileRingBufferData Data;
+    TEntriesData Data;
     ui64 Count = 0;
 
 private:
@@ -196,7 +198,7 @@ public:
         }
 
         auto* begin = static_cast<char*>(Map.Ptr()) + sizeof(THeader);
-        Data.Init(begin, begin + capacity);
+        Data = {begin, begin + capacity};
 
         Visit([this] (ui32 checksum, TStringBuf entry) {
             Y_UNUSED(checksum);
