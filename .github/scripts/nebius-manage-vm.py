@@ -207,8 +207,9 @@ until [ $exit_code -eq 0 ] || [ $i -gt 3 ]; do
     echo "$((date)) [$i] config.sh exited (or timed-out) with code $exit_code"
     [ $exit_code -eq 0 ] || find /actions-runner -name *.log -print -exec cat {{}} \; # noqa: W605
 done
-# exit code 0 to skip the error and to boot vm correctly
-./run.sh || exit 0
+# true to skip the error and to boot vm correctly
+./svc.sh install || true
+./svc.sh start || true
 """
 
     cloud_init = {
