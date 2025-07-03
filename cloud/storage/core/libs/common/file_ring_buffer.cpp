@@ -248,10 +248,6 @@ public:
                     return false;
                 }
             }
-        } else {
-            Header()->ReadPos = 0;
-            Header()->WritePos = 0;
-            writePos = 0;
         }
 
         Data.WriteEntry(writePos, data);
