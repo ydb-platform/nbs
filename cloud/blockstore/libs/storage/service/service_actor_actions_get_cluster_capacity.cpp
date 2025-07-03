@@ -47,10 +47,13 @@ private:
     const TRequestInfoPtr RequestInfo;
     TVector<NPrivateProto::TClusterCapacityInfo> Capacities;
 
+    const TStorageConfigPtr Config;
     TActorId PipeClient;
 
 public:
-    explicit TGetClusterCapacityActor(TRequestInfoPtr requestInfo);
+    explicit TGetClusterCapacityActor(
+        TRequestInfoPtr requestInfo,
+        TStorageConfigPtr config);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -78,8 +81,11 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TGetClusterCapacityActor::TGetClusterCapacityActor(TRequestInfoPtr requestInfo)
+TGetClusterCapacityActor::TGetClusterCapacityActor(
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config)
     : RequestInfo(std::move(requestInfo))
+    , Config(config)
 {}
 
 void TGetClusterCapacityActor::Bootstrap(const TActorContext& ctx)
@@ -100,10 +106,10 @@ void TGetClusterCapacityActor::Bootstrap(const TActorContext& ctx)
 void TGetClusterCapacityActor::CreateClient(const TActorContext& ctx)
 {
     NTabletPipe::TClientConfig clientConfig;
-    // clientConfig.RetryPolicy = {
-    //     .RetryLimitCount = StorageConfig->GetPipeClientRetryCount(),
-    //     .MinRetryTime = StorageConfig->GetPipeClientMinRetryTime(),
-    //     .MaxRetryTime = StorageConfig->GetPipeClientMaxRetryTime()};
+    clientConfig.RetryPolicy = {
+        .RetryLimitCount = Config->GetPipeClientRetryCount(),
+        .MinRetryTime = Config->GetPipeClientMinRetryTime(),
+        .MaxRetryTime = Config->GetPipeClientMaxRetryTime()};
 
     PipeClient = ctx.Register(NTabletPipe::CreateClient(
         ctx.SelfID,
@@ -182,9 +188,11 @@ void TGetClusterCapacityActor::HandleGetDiskRegistyCapacity(
 
     Become(&TThis::StateGetYDBBasedCapacity);
 
+    CreateClient(ctx);
+
     auto request =
         std::make_unique<NSysView::TEvSysView::TEvGetStorageStatsRequest>();
-    NCloud::PipeSend(ctx, , )
+    NTabletPipe::SendData(ctx, PipeClient, request.release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -271,6 +279,10 @@ STFUNC(TGetClusterCapacityActor::StateGetYDBBasedCapacity)
             NSysView::TEvSysView::TEvGetStorageStatsResponse,
             HandleGetYDBCapacity);
 
+        IgnoreFunc(NKikimr::TEvTabletPipe::TEvClientConnected);
+        IgnoreFunc(NKikimr::TEvTabletPipe::TEvClientDestroyed);
+        IgnoreFunc(NKikimr::TEvTabletPipe::TEvServerConnected);
+
         default:
             HandleUnexpectedEvent(
                 ev,
@@ -289,7 +301,9 @@ TResultOrError<IActorPtr> TServiceActor::CreateGetClusterCapacityActor(
     TString input)
 {
     Y_UNUSED(input);
-    return {std::make_unique<TGetClusterCapacityActor>(std::move(requestInfo))};
+    return {std::make_unique<TGetClusterCapacityActor>(
+        std::move(requestInfo),
+        Config)};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
