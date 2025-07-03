@@ -218,6 +218,10 @@ void TGetClusterCapacityActor::HandleGetYDBCapacity(
             continue;
         }
 
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "PDiskFilter: " << TString(entry.GetPDiskFilter()));
         if (entry.GetPDiskFilter().find("ssd") != TString::npos) {
             freeBytesSSD += entry.GetCurrentAvailableSize();
             totalBytesSSD += entry.GetCurrentAllocatedSize();
