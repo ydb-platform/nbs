@@ -136,6 +136,8 @@ public:
 
     ui32 GetMaxParallelSecureErasesAllowed() const;
 
+    bool GetUseStorageSubmissionThread() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
