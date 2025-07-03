@@ -84,6 +84,13 @@ func getNfsConfigMap() configurator.ConfigMap {
 	}
 }
 
+func getNfsLocalConfigMap() configurator.ConfigMap {
+	return configurator.ConfigMap{
+		"nfs-vhost-local.txt": {Proto: &nfsProto.TVhostAppConfig{}, FileName: "vhost.txt"},
+		"nfs-diag-local.txt":  {Proto: &nfsProto.TDiagnosticsConfig{}, FileName: "diagnostics.txt"},
+	}
+}
+
 func getConfigMap(serviceName string) configurator.ConfigMap {
 	switch serviceName {
 	case "nbs":
@@ -92,6 +99,8 @@ func getConfigMap(serviceName string) configurator.ConfigMap {
 		return getNbsConfigMap()
 	case "nfs":
 		return getNfsConfigMap()
+	case "nfs-local":
+		return getNfsLocalConfigMap()
 	default:
 		return configurator.ConfigMap{}
 	}
