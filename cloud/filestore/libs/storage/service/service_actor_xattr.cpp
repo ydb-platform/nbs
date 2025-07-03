@@ -12,7 +12,7 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-TSessionInfo* TStorageServiceActor::GetSession(
+TSessionInfo* TStorageServiceActor::GetAndValidateSession(
     const NActors::TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev)
 {
@@ -96,12 +96,14 @@ void TStorageServiceActor::ForwardXAttrRequest(
     ctx.Send(event.release());
 }
 
+///////////////////////////////////////////////////////////////////////////////
+
 void TStorageServiceActor::HandleGetNodeXAttr(
     const TEvService::TEvGetNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     const TSessionInfo* session =
-        GetSession<TEvService::TGetNodeXAttrMethod>(ctx, ev);
+        GetAndValidateSession<TEvService::TGetNodeXAttrMethod>(ctx, ev);
     if (!session) {
         return;
     }
@@ -120,12 +122,14 @@ void TStorageServiceActor::HandleGetNodeXAttr(
     ForwardXAttrRequest<TEvService::TGetNodeXAttrMethod>(ctx, ev, session);
 }
 
+///////////////////////////////////////////////////////////////////////////////
+
 void TStorageServiceActor::HandleListNodeXAttr(
     const TEvService::TEvListNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     const TSessionInfo* session =
-        GetSession<TEvService::TListNodeXAttrMethod>(ctx, ev);
+        GetAndValidateSession<TEvService::TListNodeXAttrMethod>(ctx, ev);
     if (!session) {
         return;
     }
@@ -142,17 +146,19 @@ void TStorageServiceActor::HandleListNodeXAttr(
     ForwardXAttrRequest<TEvService::TListNodeXAttrMethod>(ctx, ev, session);
 }
 
+///////////////////////////////////////////////////////////////////////////////
+
 void TStorageServiceActor::HandleSetNodeXAttr(
     const TEvService::TEvSetNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     const TSessionInfo* session =
-        GetSession<TEvService::TSetNodeXAttrMethod>(ctx, ev);
+        GetAndValidateSession<TEvService::TSetNodeXAttrMethod>(ctx, ev);
     if (!session) {
         return;
     }
 
-    // message to TIndexTabletState notifying thet XAttrs appeared should be
+    // message to TIndexTabletState notifying that XAttrs appeared should be
     // placed here
 
     ForwardXAttrRequest<TEvService::TSetNodeXAttrMethod>(ctx, ev, session);

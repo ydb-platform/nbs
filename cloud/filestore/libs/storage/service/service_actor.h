@@ -100,7 +100,7 @@ private:
         ui32 shardNo);
     
     template <typename TMethod>
-    TSessionInfo* GetSession(
+    TSessionInfo* GetAndValidateSession(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev);
 

@@ -51,6 +51,22 @@ def get_str(out):
     return str(out.stdout, 'utf-8')
 
 
+# test setting and deleting defualt ACL for a directory
+def check_dir_default_acl(ssh: SshToGuest, dir_name: str):
+    create_dir(ssh, dir_name)
+    set_default_acl(ssh, dir_name)
+    out = get_str(get_acl(ssh, dir_name))
+    assert out.find("default:user::rwx") != -1\
+        and out.find("default:group::rwx") != -1\
+        and out.find("default:other::rwx") != -1
+
+    delete_all_acl(ssh, dir_name)
+    out = get_str(get_acl(ssh, dir_name))
+    assert out.find("default:user::rwx") == -1\
+        and out.find("default:group::rwx") == -1\
+        and out.find("default:other::rwx") == -1
+
+
 # test setting, changing, deleting xattrs for a file
 def check_xattrs(ssh: SshToGuest, file: str):
     # initially there are no xattrs
@@ -90,20 +106,9 @@ def test():
 
     ssh = SshToGuest(user="qemu", port=port, key=ssh_key)
 
-    # check that we can set acl
+    # check that we can set and delete default acl for a directory
     dir_name = mount_dir + "/test"
-    create_dir(ssh, dir_name)
-    set_default_acl(ssh, dir_name)
-    out = get_str(get_acl(ssh, dir_name))
-    assert out.find("default:user::rwx") != -1\
-        and out.find("default:group::rwx") != -1\
-        and out.find("default:other::rwx") != -1
-
-    delete_all_acl(ssh, dir_name)
-    out = get_str(get_acl(ssh, dir_name))
-    assert out.find("default:user::rwx") == -1\
-        and out.find("default:group::rwx") == -1\
-        and out.find("default:other::rwx") == -1
+    check_dir_default_acl(ssh, dir_name)
 
     # check that we can set and delete extended attributes of a file
     file_name = mount_dir + "/a.txt"
