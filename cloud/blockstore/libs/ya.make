@@ -23,7 +23,6 @@ RECURSE(
     nbd/bench
     notify
     nvme
-    opentelemetry
     rdma
     rdma_test
     root_kms

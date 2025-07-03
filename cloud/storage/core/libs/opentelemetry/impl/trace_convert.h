@@ -4,11 +4,11 @@
 
 #include <library/cpp/lwtrace/log.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TVector<opentelemetry::proto::trace::v1::Span> ConvertToOpenTelemetrySpans(
     const NLWTrace::TTrackLog& tl);
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

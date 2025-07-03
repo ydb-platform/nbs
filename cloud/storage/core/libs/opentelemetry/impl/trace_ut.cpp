@@ -7,7 +7,7 @@
 
 #include <google/protobuf/text_format.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 enum ESimpleEnum
 {
@@ -336,4 +336,4 @@ Y_UNIT_TEST_SUITE(TraceConverter)
     }
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

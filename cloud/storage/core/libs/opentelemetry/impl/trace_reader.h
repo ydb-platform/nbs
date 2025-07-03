@@ -1,8 +1,7 @@
-#include <cloud/blockstore/libs/opentelemetry/iface/public.h>
-
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ITraceReaderPtr CreateTraceExporter(
     TString id,
@@ -11,4 +10,4 @@ ITraceReaderPtr CreateTraceExporter(
     ITraceServiceClientPtr traceServiceClient,
     TString serviceName);
 
-} // namespace NCloud::NBlockStore
+} // namespace NCloud

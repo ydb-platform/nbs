@@ -9,11 +9,12 @@
 
 #include <util/generic/hash.h>
 #include <util/generic/vector.h>
+#include <util/random/random.h>
 
 #include <algorithm>
 #include <random>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 using namespace opentelemetry::proto::trace::v1;
 using namespace opentelemetry::proto::common::v1;
@@ -22,7 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-AnyValue ConvertToOpenTelemtry(
+AnyValue ConvertToOpenTelemetry(
     const NLWTrace::TParam& param,
     NLWTrace::EParamTypePb type)
 {
@@ -107,7 +108,7 @@ Span_Event ProcessRegularItem(
         auto type = NLWTrace::ParamTypeToProtobuf(
             item.Probe->Event.Signature.ParamTypes[paramIdx]);
         const auto& param = item.Params.Param[paramIdx];
-        *kv.Mutablevalue() = std::move(ConvertToOpenTelemtry(param, type));
+        *kv.Mutablevalue() = std::move(ConvertToOpenTelemetry(param, type));
 
         auto* attributes = event.Mutableattributes();
         attributes->Add(std::move(kv));
@@ -186,8 +187,8 @@ class TSpanTree
 {
 private:
     TVector<Span> Spans;
-    ui64 TraceId;
-    ui64 RootSpanId;
+    const ui64 TraceId;
+    const ui64 RootSpanId;
 
 public:
     TSpanTree(ui64 traceId, ui64 spanId)
@@ -238,12 +239,7 @@ TSpanTree ProcessItemsToSpanTree(
     auto operationName = FindOperationName(tl, iterationContext);
     spanTree.GetParentSpan().Setname(operationName);
 
-    while (iterationContext) {
-        Y_DEFER
-        {
-            iterationContext.Next();
-        };
-
+    for (; iterationContext; iterationContext.Next()) {
         const auto& item = tl.Items[iterationContext.Idx];
         const auto& name = item.Probe->Event.Name;
         auto timeCycles = item.TimestampCycles;
@@ -252,13 +248,13 @@ TSpanTree ProcessItemsToSpanTree(
         auto curTimeStampNano =
             GetTimestampInNanoSeconds(referenceTimeCycle, timeCycles);
 
-        if (strcmp(name, "Fork") == 0) {
+        if (TStringBuf(name) == "Fork") {
             const auto childSpanId = item.Params.Param[0].Get<ui64>();
             spanIdToStartTime[childSpanId] = curTimeStampNano;
             continue;
         }
 
-        if (strcmp(name, "Join") == 0) {
+        if (TStringBuf(name) == "Join") {
             const auto childSpanId = item.Params.Param[0].Get<ui64>();
             const auto itemsCount = item.Params.Param[1].Get<ui64>();
 
@@ -278,7 +274,7 @@ TSpanTree ProcessItemsToSpanTree(
             continue;
         }
 
-        *(spanTree.GetParentSpan()).Addevents() =
+        *spanTree.GetParentSpan().Addevents() =
             ProcessRegularItem(item, referenceTimeCycle);
     }
 
@@ -310,21 +306,16 @@ TVector<Span> ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
 {
     auto traceId = FindRequestId(tl, {0, tl.Items.size()});
     if (!traceId) {
-        std::random_device r;
-
-        std::default_random_engine e(r());
-        std::uniform_int_distribution<ui64> uniform_dist(0, UINT64_MAX);
-
-        traceId = uniform_dist(e);
+        traceId = RandomNumber<ui64>();
     }
 
-    return TSpanTree::ExtractSpans(std::move(ProcessItemsToSpanTree(
+    return TSpanTree::ExtractSpans(ProcessItemsToSpanTree(
         tl,
         traceId,                    // traceId
         0,                          // currentSpanId
         {0, tl.Items.size()},       // iterationContext
         GetReferenceTimeCycle(tl)   // referenceTimeCycle
-        )));
+        ));
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

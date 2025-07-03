@@ -9,7 +9,7 @@
 
 #include <library/cpp/threading/future/future.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -29,4 +29,4 @@ struct ITraceServiceClient: public IStartable
 
 ITraceServiceClientPtr CreateTraceServiceClientStub();
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

@@ -46,8 +46,6 @@
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/opentelemetry/iface/trace_service_client.h>
-#include <cloud/blockstore/libs/opentelemetry/impl/trace_reader.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -101,6 +99,8 @@
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
+#include <cloud/storage/core/libs/opentelemetry/impl/trace_reader.h>
 #include <cloud/storage/core/libs/version/version.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
@@ -826,9 +826,9 @@ void TBootstrapBase::InitLWTrace()
         diagnosticsConfig->GetTracesSyslogIdentifier()
     );
 
-    auto regularSamplingRate = diagnosticsConfig->GetSamplingRate();
+    const auto regularSamplingRate = diagnosticsConfig->GetSamplingRate();
 
-    if (auto regularSamplingRate = diagnosticsConfig->GetSamplingRate()) {
+    if (regularSamplingRate) {
         NLWTrace::TQuery query = ProbabilisticQuery(
             desc,
             regularSamplingRate,

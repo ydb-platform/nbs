@@ -23,6 +23,7 @@ struct TOptionsYdb final
     TString KmsConfig;
     TString RootKmsConfig;
     TString ComputeConfig;
+    TString TraceServiceConfig;
 
     TOptionsYdb();
 

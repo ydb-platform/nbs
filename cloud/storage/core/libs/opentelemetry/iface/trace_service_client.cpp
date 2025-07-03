@@ -1,6 +1,6 @@
 #include "trace_service_client.h"
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -29,4 +29,4 @@ ITraceServiceClientPtr CreateTraceServiceClientStub()
 {
     return std::make_shared<TTraceServiceClientStub>();
 }
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

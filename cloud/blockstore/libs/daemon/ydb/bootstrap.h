@@ -4,14 +4,15 @@
 #include <cloud/blockstore/libs/kms/iface/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/public.h>
-#include <cloud/blockstore/libs/opentelemetry/iface/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
+#include <cloud/storage/core/config/grpc_client.pb.h>
 #include <cloud/storage/core/libs/actors/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 
@@ -56,7 +57,7 @@ struct TServerModuleFactories
         ILoggingServicePtr logging)> RootKmsClientFactory;
 
     std::function<ITraceServiceClientPtr(
-        const NProto::TGrpcClientConfig& config,
+        const ::NCloud::NProto::TGrpcClientConfig& config,
         ILoggingServicePtr logging)>
         TraceServiceClientFactory;
 

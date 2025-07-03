@@ -12,7 +12,6 @@ SRCS(
     http_proxy.proto
     logbroker.proto
     notify.proto
-    opentelemetry_client.proto
     plugin.proto
     rdma.proto
     root_kms.proto

@@ -52,10 +52,6 @@ TOptionsCommon::TOptionsCommon()
         .DefaultValue("")
         .StoreResult(&RdmaConfig);
 
-    Opts.AddLongOption("trace-file")
-        .RequiredArgument("PATH")
-        .StoreResult(&TraceServiceConfig);
-
     Opts.AddLongOption("temporary-server", "run temporary server for blue-green deployment")
         .NoArgument()
         .StoreTrue(&TemporaryServer);
