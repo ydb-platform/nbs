@@ -917,8 +917,8 @@ STFUNC(TPartitionActor::StateBoot)
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
 
         HFunc(
-            TEvStatsService::TEvUpdatePartCountersRequest,
-            HandleUpdateCountersRequest);
+            TEvStatsService::TEvGetPartCountersRequest,
+            HandleGetCountersRequest);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
@@ -952,8 +952,8 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
 
         HFunc(
-            TEvStatsService::TEvUpdatePartCountersRequest,
-            HandleUpdateCountersRequest);
+            TEvStatsService::TEvGetPartCountersRequest,
+            HandleGetCountersRequest);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
@@ -1012,8 +1012,8 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted, HandleDescribeBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
         HFunc(
-            TEvStatsService::TEvUpdatePartCountersRequest,
-            HandleUpdateCountersRequest);
+            TEvStatsService::TEvGetPartCountersRequest,
+            HandleGetCountersRequest);
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 
@@ -1059,7 +1059,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
-        IgnoreFunc(TEvStatsService::TEvUpdatePartCountersRequest);
+        IgnoreFunc(TEvStatsService::TEvGetPartCountersRequest);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);

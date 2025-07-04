@@ -1282,7 +1282,7 @@ message TStorageServiceConfig
     // If true, describes will be done using SchemeCache instead of TxProxy.
     optional bool UseSchemeCache = 443;
 
-    // Volume send requests to partitions to get partitions statistic
-    // instead of partitions send statistic to volume.
+    // The volume pulls statistics from the partitions,
+    // instead of the partitions pushing statistics to the volume themselves.
     optional bool UsePullSchemeForCollectingPartitionStatistic = 444;
 }

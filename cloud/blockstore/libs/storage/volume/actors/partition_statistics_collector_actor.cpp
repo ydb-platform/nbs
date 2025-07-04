@@ -1,4 +1,4 @@
-#include "partition_statistic_actor.h"
+#include "partition_statistics_collector_actor.h"
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -9,46 +9,28 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace {
-
-bool IsForAllPartitionsStatUpdate(
-    const THashMap<TActorId, bool>& isUpdatedPartitionCounters)
-{
-    for (auto [_, isUpdate]: isUpdatedPartitionCounters) {
-        if (!isUpdate) {
-            return false;
-        }
-    }
-    return true;
-}
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-TPartitionStatisticActor::TPartitionStatisticActor(
+TPartitionStatisticsCollectorActor::TPartitionStatisticsCollectorActor(
         const TActorId& owner,
         const TPartitionInfoList& partitions)
     : Owner(owner)
     , Partitions(partitions)
 {}
 
-void TPartitionStatisticActor::Bootstrap(const TActorContext& ctx)
+void TPartitionStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
     for (const auto& partition: Partitions) {
-        auto partActorId = partition.GetTopActorId();
-        IsUpdatedPartitionCounters[partActorId] = false;
         auto request =
-            std::make_unique<TEvStatsService::TEvUpdatePartCountersRequest>();
-        NCloud::Send(ctx, partActorId, std::move(request));
+            std::make_unique<TEvStatsService::TEvGetPartCountersRequest>();
+        NCloud::Send(ctx, partition.GetTopActorId(), std::move(request));
     }
 
-    ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
+    ctx.Schedule(TimeoutUpdateCountersInterval, new TEvents::TEvWakeup());
 }
 
-void TPartitionStatisticActor::SendStatToVolume(const TActorContext& ctx)
+void TPartitionStatisticsCollectorActor::SendStatToVolume(
+    const TActorContext& ctx)
 {
     NCloud::Send(
         ctx,
@@ -59,34 +41,23 @@ void TPartitionStatisticActor::SendStatToVolume(const TActorContext& ctx)
     Die(ctx);
 }
 
-void TPartitionStatisticActor::HandleTimeout(
+void TPartitionStatisticsCollectorActor::HandleTimeout(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
-    TStringBuilder builder;
-
-    builder << "Failed to update partition statistics. Can't get response from "
-               "partitions: ";
-
-    for (const auto& [partActorId, isGetResponse]: IsUpdatedPartitionCounters) {
-        if (!isGetResponse) {
-            builder << partActorId << " ";
-        }
-    }
-
     NCloud::Send(
         ctx,
         Owner,
         std::make_unique<TEvStatsService::TEvUpdatedAllPartCounters>(
-            MakeError(E_TIMEOUT, builder.c_str()),
+            MakeError(E_TIMEOUT, "Failed to update partition statistics"),
             std::move(PartCounters)));
 
     Die(ctx);
 }
 
-void TPartitionStatisticActor::HandlePoisonPill(
+void TPartitionStatisticsCollectorActor::HandlePoisonPill(
     const NActors::TEvents::TEvPoisonPill::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -95,12 +66,10 @@ void TPartitionStatisticActor::HandlePoisonPill(
     Die(ctx);
 }
 
-void TPartitionStatisticActor::HandleUpdatePartCountersResponse(
-    TEvStatsService::TEvUpdatePartCountersResponse::TPtr& ev,
+void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
+    TEvStatsService::TEvGetPartCountersResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-
     auto* record = ev->Get();
 
     PartCounters.emplace_back(
@@ -111,20 +80,19 @@ void TPartitionStatisticActor::HandleUpdatePartCountersResponse(
         std::move(record->TabletMetrics),
         record->PartActorId);
 
-    IsUpdatedPartitionCounters[ev->Sender] = true;
-    if (IsForAllPartitionsStatUpdate(IsUpdatedPartitionCounters)) {
+    if (Partitions.size() == PartCounters.size()) {
         SendStatToVolume(ctx);
     }
 }
 
-STFUNC(TPartitionStatisticActor::StateWork)
+STFUNC(TPartitionStatisticsCollectorActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleTimeout);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(
-            TEvStatsService::TEvUpdatePartCountersResponse,
-            HandleUpdatePartCountersResponse)
+            TEvStatsService::TEvGetPartCountersResponse,
+            HandleGetPartCountersResponse)
 
         default:
             HandleUnexpectedEvent(

@@ -1,4 +1,4 @@
-#include "partition_statistic_actor.h"
+#include "partition_statistics_collector_actor.h"
 
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
@@ -8,7 +8,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TPartitionStatisticActorTests)
+Y_UNIT_TEST_SUITE(TPartitionStatisticActorsCollectorTests)
 {
     struct TActorSystem: NActors::TTestActorRuntimeBase
     {
@@ -55,16 +55,16 @@ Y_UNIT_TEST_SUITE(TPartitionStatisticActorTests)
         partInfoList[0].SetStarted(actors);
 
         auto partitionStatisticActor = ActorSystem.Register(
-            new TPartitionStatisticActor{EdgeActor, partInfoList});
+            new TPartitionStatisticsCollectorActor{EdgeActor, partInfoList});
 
         ActorSystem
-            .GrabEdgeEvent<TEvStatsService::TEvUpdatePartCountersRequest>();
+            .GrabEdgeEvent<TEvStatsService::TEvGetPartCountersRequest>();
 
         NBlobMetrics::TBlobLoadMetrics metrics;
         NKikimrTabletBase::TMetrics tabletMetrics;
 
         auto response =
-            std::make_unique<TEvStatsService::TEvUpdatePartCountersResponse>(
+            std::make_unique<TEvStatsService::TEvGetPartCountersResponse>(
                 0,         // VolumeSystemCpu
                 0,         // VolumeUserCpu
                 nullptr,   // DiskCounters
@@ -82,7 +82,8 @@ Y_UNIT_TEST_SUITE(TPartitionStatisticActorTests)
             ActorSystem
                 .GrabEdgeEvent<TEvStatsService::TEvUpdatedAllPartCounters>();
 
-        // Check that TPartitionStatisticActor send statistic to volume
+        // Check that TPartitionStatisticsCollectorActor send statistic to
+        // volume
         UNIT_ASSERT(partStatisticActorResponse->Counters.size() == 1);
     }
 
@@ -103,8 +104,8 @@ Y_UNIT_TEST_SUITE(TPartitionStatisticActorTests)
                 return false;
             });
 
-        auto partitionStatisticActor =
-            ActorSystem.Register(new TPartitionStatisticActor{EdgeActor, {}});
+        auto partitionStatisticActor = ActorSystem.Register(
+            new TPartitionStatisticsCollectorActor{EdgeActor, {}});
 
         Y_UNUSED(partitionStatisticActor);
 
@@ -115,7 +116,7 @@ Y_UNIT_TEST_SUITE(TPartitionStatisticActorTests)
             ActorSystem
                 .GrabEdgeEvent<TEvStatsService::TEvUpdatedAllPartCounters>();
 
-        // Check that TPartitionStatisticActor send Error to volume
+        // Check that TPartitionStatisticsCollectorActor sent Error to volume
         UNIT_ASSERT(HasError(partStatisticActorResponse->Error));
     }
 
@@ -162,10 +163,10 @@ Y_UNIT_TEST_SUITE(TPartitionStatisticActorTests)
             {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() ==
-                    TEvStatsService::EvUpdatePartCountersRequest)
+                    TEvStatsService::EvGetPartCountersRequest)
                 {
                     auto response = std::make_unique<
-                        TEvStatsService::TEvUpdatePartCountersResponse>(
+                        TEvStatsService::TEvGetPartCountersResponse>(
                         0,         // VolumeSystemCpu
                         0,         // VolumeUserCpu
                         nullptr,   // DiskCounters
@@ -183,14 +184,14 @@ Y_UNIT_TEST_SUITE(TPartitionStatisticActorTests)
             });
 
         auto partitionStatisticActor = ActorSystem.Register(
-            new TPartitionStatisticActor{EdgeActor, partInfoList});
+            new TPartitionStatisticsCollectorActor{EdgeActor, partInfoList});
 
         Y_UNUSED(partitionStatisticActor);
 
         ActorSystem.AdvanceCurrentTime(TDuration::Seconds(1));
         ActorSystem.DispatchEvents({}, TDuration::MilliSeconds(10));
 
-        // check that actor send two requests
+        // Check that TPartitionStatisticsCollectorActor sent two requests
         UNIT_ASSERT(eventHandles.size() == 2);
 
         for (auto* handle: eventHandles) {
@@ -201,8 +202,8 @@ Y_UNIT_TEST_SUITE(TPartitionStatisticActorTests)
             ActorSystem
                 .GrabEdgeEvent<TEvStatsService::TEvUpdatedAllPartCounters>();
 
-        // Check that TPartitionStatisticActor send statistic for both
-        //  partitions to volume
+        // Check that TPartitionStatisticsCollectorActor sent statistics for
+        // both partitions to volume
         UNIT_ASSERT(partStatisticActorResponse->Counters.size() == 2);
     }
 
@@ -249,10 +250,10 @@ Y_UNIT_TEST_SUITE(TPartitionStatisticActorTests)
             {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() ==
-                    TEvStatsService::EvUpdatePartCountersRequest)
+                    TEvStatsService::EvGetPartCountersRequest)
                 {
                     auto response = std::make_unique<
-                        TEvStatsService::TEvUpdatePartCountersResponse>(
+                        TEvStatsService::TEvGetPartCountersResponse>(
                         0,         // VolumeSystemCpu
                         0,         // VolumeUserCpu
                         nullptr,   // DiskCounters
@@ -285,28 +286,28 @@ Y_UNIT_TEST_SUITE(TPartitionStatisticActorTests)
         Y_UNUSED(filter);
 
         auto partitionStatisticActor = ActorSystem.Register(
-            new TPartitionStatisticActor{EdgeActor, partInfoList});
+            new TPartitionStatisticsCollectorActor{EdgeActor, partInfoList});
 
         Y_UNUSED(partitionStatisticActor);
 
         ActorSystem.AdvanceCurrentTime(TDuration::Seconds(1));
         ActorSystem.DispatchEvents({}, TDuration::MilliSeconds(10));
 
-        // check that actor send two requests
+        // Check that TPartitionStatisticsCollectorActor sent two requests
         UNIT_ASSERT(eventHandles.size() == 2);
 
-        // reply only for one request
+        // Reply only to one request
         ActorSystem.Send(eventHandles[0]);
 
         auto partStatisticActorResponse =
             ActorSystem
                 .GrabEdgeEvent<TEvStatsService::TEvUpdatedAllPartCounters>();
 
-        // Check that TPartitionStatisticActor send statistic of one partition
-        // to volume
+        // Check that TPartitionStatisticsCollectorActor sent statistics of one
+        // partition to volume
         UNIT_ASSERT(partStatisticActorResponse->Counters.size() == 1);
 
-        // Check that TPartitionStatisticActor send Error to volume
+        // Check that TPartitionStatisticsCollectorActor sent Error to volume
         UNIT_ASSERT(HasError(partStatisticActorResponse->Error));
     }
 }

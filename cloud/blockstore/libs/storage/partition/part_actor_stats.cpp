@@ -55,12 +55,8 @@ void TPartitionActor::UpdateActorStats(const TActorContext& ctx)
     }
 }
 
-std::tuple<
-    ui64,
-    NBlobMetrics::TBlobLoadMetrics,
-    NBlobMetrics::TBlobLoadMetrics,
-    NKikimrTabletBase::TMetrics>
-TPartitionActor::GetStats(const NActors::TActorContext& ctx)
+TPartitionStatisticsCounters TPartitionActor::GetStats(
+    const NActors::TActorContext& ctx)
 {
     PartCounters->Simple.MixedBytesCount.Set(
         State->GetMixedBlocksCount() * State->GetBlockSize());
@@ -144,74 +140,75 @@ TPartitionActor::GetStats(const NActors::TActorContext& ctx)
         true   // forceAll
     );
 
-    return std::make_tuple(
-        sysCpuConsumption,
-        std::move(blobLoadMetrics),
-        std::move(offsetLoadMetrics),
-        std::move(metrics));
+    TPartitionStatisticsCounters counters(
+        sysCpuConsumption - SysCPUConsumption,
+        UserCPUConsumption,
+        PartCounters,
+        offsetLoadMetrics,
+        metrics);
+
+    PrevMetrics = std::move(blobLoadMetrics);
+    OverlayMetrics = {};
+
+    UserCPUConsumption = 0;
+    SysCPUConsumption = sysCpuConsumption;
+
+    PartCounters = CreatePartitionDiskCounters(
+        EPublishingPolicy::Repl,
+        DiagnosticsConfig->GetHistogramCounterOptions());
+
+    return counters;
 }
 
 void TPartitionActor::SendStatsToService(const TActorContext& ctx)
 {
-    if (!PartCounters) {
+    auto
+        [diffSysCpuConsumption,
+         userCpuConsumption,
+         partCounters,
+         offsetLoadMetrics,
+         metrics] = GetStats(ctx);
+
+    if (!partCounters) {
         return;
     }
-
-    auto [sysCpuConsumption, blobLoadMetrics, offsetLoadMetrics, metrics] =
-        GetStats(ctx);
 
     auto request = std::make_unique<TEvStatsService::TEvVolumePartCounters>(
         MakeIntrusive<TCallContext>(),
         State->GetConfig().GetDiskId(),
-        std::move(PartCounters),
-        sysCpuConsumption - SysCPUConsumption,
-        UserCPUConsumption,
+        std::move(partCounters),
+        diffSysCpuConsumption,
+        userCpuConsumption,
         !State->GetCheckpoints().IsEmpty(),
         std::move(offsetLoadMetrics),
         std::move(metrics));
 
-    PrevMetrics = std::move(blobLoadMetrics);
-    OverlayMetrics = {};
-
-    UserCPUConsumption = 0;
-    SysCPUConsumption = sysCpuConsumption;
-
-    PartCounters = CreatePartitionDiskCounters(
-        EPublishingPolicy::Repl,
-        DiagnosticsConfig->GetHistogramCounterOptions());
-
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
 
-void TPartitionActor::HandleUpdateCountersRequest(
-    const TEvStatsService::TEvUpdatePartCountersRequest::TPtr& ev,
+void TPartitionActor::HandleGetCountersRequest(
+    const TEvStatsService::TEvGetPartCountersRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    if (!PartCounters) {
+    auto
+        [diffSysCpuConsumption,
+         userCpuConsumption,
+         partCounters,
+         offsetLoadMetrics,
+         metrics] = GetStats(ctx);
+
+    if (!partCounters) {
         return;
     }
 
-    auto [sysCpuConsumption, blobLoadMetrics, offsetLoadMetrics, metrics] =
-        GetStats(ctx);
-
     auto response =
-        std::make_unique<TEvStatsService::TEvUpdatePartCountersResponse>(
-            sysCpuConsumption - SysCPUConsumption,
-            UserCPUConsumption,
-            std::move(PartCounters),
+        std::make_unique<TEvStatsService::TEvGetPartCountersResponse>(
+            diffSysCpuConsumption,
+            userCpuConsumption,
+            std::move(partCounters),
             std::move(offsetLoadMetrics),
             std::move(metrics),
             SelfId());
-
-    PrevMetrics = std::move(blobLoadMetrics);
-    OverlayMetrics = {};
-
-    UserCPUConsumption = 0;
-    SysCPUConsumption = sysCpuConsumption;
-
-    PartCounters = CreatePartitionDiskCounters(
-        EPublishingPolicy::Repl,
-        DiagnosticsConfig->GetHistogramCounterOptions());
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

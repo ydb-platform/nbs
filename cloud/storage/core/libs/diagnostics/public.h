@@ -33,6 +33,7 @@ constexpr TDuration UpdateLeakyBucketCountersInterval = TDuration::Seconds(1);
 constexpr TDuration UpdateStatsInterval = TDuration::Seconds(1);
 constexpr TDuration DumpTracksInterval = TDuration::Seconds(15);
 constexpr ui64 DumpTracksLimit = 150;
+constexpr TDuration TimeoutUpdateCountersInterval = TDuration::Seconds(10);
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -1257,7 +1257,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
 
-        // enable pull scheme
+        // Enable pull scheme
         storageServiceConfig.SetUsePullSchemeForCollectingPartitionStatistic(
             true);
 
@@ -1274,8 +1274,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         bool requestSendToPartitions = false;
         auto sendRequestObserver =
-            runtime->AddObserver<TEvStatsService::TEvUpdatePartCountersRequest>(
-                [&](TEvStatsService::TEvUpdatePartCountersRequest::TPtr& ev)
+            runtime->AddObserver<TEvStatsService::TEvGetPartCountersRequest>(
+                [&](TEvStatsService::TEvGetPartCountersRequest::TPtr& ev)
                 {
                     Y_UNUSED(ev);
                     requestSendToPartitions = true;
@@ -1290,16 +1290,18 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         {
             TDispatchOptions options;
             options.FinalEvents.emplace_back(
-                TEvStatsService::EvVolumePartCounters);
+                TEvStatsService::EvUpdatedAllPartCounters);
             runtime->DispatchEvents(options);
         }
 
-        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        //runtime->AdvanceCurrentTime(UpdateCountersInterval);
 
-        // check that TPartitionStatisticActor send request to partitions
+        // Check that TPartitionStatisticsCollectorActor sent request to
+        // partitions
         UNIT_ASSERT(requestSendToPartitions);
 
-        // check that volume got statistic from TPartitionStatisticActor
+        // Check that volume got statistics from
+        // TPartitionStatisticsCollectorActor
         UNIT_ASSERT(updated);
     }
 }
