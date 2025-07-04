@@ -848,8 +848,8 @@ STFUNC(TPartitionActor::StateBoot)
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
         HFunc(
-            TEvStatsService::TEvUpdatePartCountersRequest,
-            HandleUpdateCountersRequest);
+            TEvStatsService::TEvGetPartCountersRequest,
+            HandleGetCountersRequest);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
@@ -879,8 +879,8 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted, HandleLoadFreshBlobsCompleted);
         HFunc(TEvPartitionPrivate::TEvInitFreshZonesCompleted, HandleInitFreshZonesCompleted);
         HFunc(
-            TEvStatsService::TEvUpdatePartCountersRequest,
-            HandleUpdateCountersRequest);
+            TEvStatsService::TEvGetPartCountersRequest,
+            HandleGetCountersRequest);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
         BLOCKSTORE_HANDLE_REQUEST(InitIndex, TEvPartitionPrivate)
@@ -931,8 +931,8 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted, HandleTrimFreshLogCompleted);
         HFunc(TEvPartitionPrivate::TEvGetChangedBlocksCompleted, HandleGetChangedBlocksCompleted);
         HFunc(
-            TEvStatsService::TEvUpdatePartCountersRequest,
-            HandleUpdateCountersRequest);
+            TEvStatsService::TEvGetPartCountersRequest,
+            HandleGetCountersRequest);
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 
@@ -974,7 +974,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
-        IgnoreFunc(TEvStatsService::TEvUpdatePartCountersRequest);
+        IgnoreFunc(TEvStatsService::TEvGetPartCountersRequest);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvReadBlobCompleted);

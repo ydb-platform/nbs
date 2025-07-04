@@ -17,6 +17,7 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
+#include <cloud/blockstore/libs/storage/core/partition_statistics_counters.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
@@ -234,12 +235,7 @@ private:
         }
     }
 
-    std::tuple<
-        ui64,
-        NBlobMetrics::TBlobLoadMetrics,
-        NBlobMetrics::TBlobLoadMetrics,
-        NKikimrTabletBase::TMetrics>
-    GetStats(const NActors::TActorContext& ctx);
+    TPartitionStatisticsCounters GetStats(const NActors::TActorContext& ctx);
 
     void SendStatsToService(const NActors::TActorContext& ctx);
 
@@ -700,8 +696,8 @@ private:
         const TVector<TAddMixedBlob>& mixedBlobs,
         const TVector<TAddMergedBlob>& mergedBlobs) const;
 
-    void HandleUpdateCountersRequest(
-        const TEvStatsService::TEvUpdatePartCountersRequest::TPtr& ev,
+    void HandleGetCountersRequest(
+        const TEvStatsService::TEvGetPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

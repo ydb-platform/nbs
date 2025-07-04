@@ -7616,7 +7616,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
 
-        // enable push scheme
+        // Enable push scheme
         config.SetUsePullSchemeForCollectingPartitionStatistic(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7624,8 +7624,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         bool isPartitionSendStatistic = false;
 
         auto _ = runtime->AddObserver<
-            TEvStatsService::TEvUpdatePartCountersResponse>(
-            [&](TEvStatsService::TEvUpdatePartCountersResponse::TPtr& ev)
+            TEvStatsService::TEvGetPartCountersResponse>(
+            [&](TEvStatsService::TEvGetPartCountersResponse::TPtr& ev)
             {
                 Y_UNUSED(ev);
                 isPartitionSendStatistic = true;
@@ -7635,12 +7635,12 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.WaitReady();
 
         partition.SendToPipe(
-            std::make_unique<TEvStatsService::TEvUpdatePartCountersRequest>());
+            std::make_unique<TEvStatsService::TEvGetPartCountersRequest>());
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
         runtime->DispatchEvents();
 
-        // check that partition send statistic
+        // Check that partition sent statistics
         UNIT_ASSERT(isPartitionSendStatistic);
     }
 }

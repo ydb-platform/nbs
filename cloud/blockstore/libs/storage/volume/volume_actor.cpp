@@ -661,16 +661,21 @@ void TVolumeActor::HandleUpdateCounters(
     const TEvVolumePrivate::TEvUpdateCounters::TPtr& ev,
     const TActorContext& ctx)
 {
+    UpdateCountersScheduled = false;
+
     // if we use pull scheme, we must send request to partitions
     // to collect statistic
     if (Config->GetUsePullSchemeForCollectingPartitionStatistic() &&
         !State->IsDiskRegistryMediaKind())
     {
+        ScheduleRegularUpdates(ctx);
         SendStatisticRequest(ctx);
         return;
     }
 
-    FinishUpdateCounters(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
+    UpdateCounters(ctx);
+    ScheduleRegularUpdates(ctx);
+    CleanUpHistory(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
 }
 
 void TVolumeActor::HandleServerConnected(

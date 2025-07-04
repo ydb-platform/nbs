@@ -9,7 +9,7 @@ SRCS(
     read_disk_registry_based_overlay.cpp
     release_devices_actor.cpp
     shadow_disk_actor.cpp
-    partition_statistic_actor.cpp
+    partition_statistics_collector_actor.cpp
 )
 
 PEERDIR(

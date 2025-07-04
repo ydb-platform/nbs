@@ -380,8 +380,6 @@ private:
 
     TVector<ui64> GCCompletedPartitions;
 
-    THashMap<NActors::TActorId, bool> IsSavedPartitionCounters;
-
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -609,7 +607,7 @@ private:
 
     void SendStatisticRequest(const NActors::TActorContext& ctx);
 
-    void FinishUpdateCounters(
+    void CleanUpHistory(
         const NActors::TActorContext& ctx,
         const NActors::TActorId& sender,
         ui64 cookie,
@@ -714,7 +712,7 @@ private:
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void UpdatePartCounters(
+    std::optional<TTxVolume::TSavePartStats> UpdatePartCounters(
         const NActors::TActorContext& ctx,
         const NActors::TActorId& sender,
         const NKikimrTabletBase::TMetrics& tabletMetrics,
