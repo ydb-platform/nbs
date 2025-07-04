@@ -629,14 +629,13 @@ void TVolumeActor::HandleLongRunningBlobOperation(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s For volume %s %s (actor %s, group %u) detected after %s, "
-            "%s",
+            "%s For volume %s %s (actor %s, group %u) detected after %s, %s",
             LogTitle.GetWithTime().c_str(),
             ToString(msg.Reason).c_str(),
             ToString(msg.Operation).c_str(),
             ev->Sender.ToString().c_str(),
             msg.GroupId,
-            msg.Duration.ToString().c_str(),
+            FormatDuration(msg.Duration).c_str(),
             FormatError(msg.Error).c_str());
     }
 }

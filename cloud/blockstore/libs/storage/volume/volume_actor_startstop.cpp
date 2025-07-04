@@ -87,7 +87,7 @@ void TVolumeActor::ScheduleRetryStartPartition(
         "%s Waiting before retrying start of partition %lu (timeout: %s)",
         LogTitle.GetWithTime().c_str(),
         partition.TabletId,
-        ToString(timeout).c_str());
+        FormatDuration(timeout).c_str());
 
     partition.RetryCookie.Reset(ISchedulerCookie::Make3Way());
     ctx.Schedule(

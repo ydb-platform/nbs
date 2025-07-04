@@ -113,9 +113,9 @@ void TVolumeActor::HandleDeviceTimedOut(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Device \"%s\" timed out",
+        "%s Device %s timed out",
         LogTitle.GetWithTime().c_str(),
-        msg->DeviceUUID.c_str());
+        msg->DeviceUUID.Quote().c_str());
 
     if (!LaggingDevicesAreAllowed()) {
         NCloud::Reply(
