@@ -78,6 +78,8 @@ public:
 
     [[nodiscard]] TChildLogTitle GetChild(const ui64 startTime) const;
 
+    [[nodiscard]] TChildLogTitle GetChildWithCheckpointId(const ui64 startTime, const TString& checkpointId) const;
+
     [[nodiscard]] TString Get(EDetails details) const;
 
     [[nodiscard]] TString GetWithTime() const;

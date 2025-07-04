@@ -105,6 +105,17 @@ TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
     return TChildLogTitle(childPrefix, startTime);
 }
 
+TChildLogTitle TLogTitle::GetChildWithCheckpointId(const ui64 startTime, const TString& checkpointId) const {
+    TStringBuilder childPrefix;
+    childPrefix << CachedPrefix;
+    const auto duration = CyclesToDurationSafe(startTime - StartTime);
+    childPrefix << " t:" << FormatDuration(duration);
+    childPrefix << " cp:" << checkpointId.Quote();
+
+    return TChildLogTitle(childPrefix, startTime);
+}
+
+
 TString TLogTitle::Get(EDetails details) const
 {
     TStringBuilder result;
