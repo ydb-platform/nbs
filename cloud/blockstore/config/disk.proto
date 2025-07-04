@@ -305,6 +305,9 @@ message TDiskAgentConfig
 
     // Use a separate thread to submit requests to all FileIOServices.
     optional bool UseLocalStorageSubmissionThread = 41;
+
+    // Use one submission thread per FileIOService.
+    optional bool UseFileIOSubmissionThread = 42;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
