@@ -21,7 +21,7 @@ void TInMemoryIndexState::Reset(
     if (NodeRefs.size() > nodeRefsCapacity) {
         NodeRefsEvictionObserved();
     }
-    NodeRefs.SetCapacity(nodeRefsCapacity);
+    NodeRefs.SetMaxSize(nodeRefsCapacity);
 }
 
 void TInMemoryIndexState::LoadNodeRefs(const TVector<TNodeRef>& nodeRefs)
@@ -50,7 +50,7 @@ TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
         .NodesCount = Nodes.Size(),
         .NodesCapacity = Nodes.GetMaxSize(),
         .NodeRefsCount = NodeRefs.size(),
-        .NodeRefsCapacity = NodeRefs.capacity(),
+        .NodeRefsCapacity = NodeRefs.GetMaxSize(),
         .NodeAttrsCount = NodeAttrs.Size(),
         .NodeAttrsCapacity = NodeAttrs.GetMaxSize(),
         .IsNodeRefsExhaustive = IsNodeRefsExhaustive,
@@ -343,7 +343,7 @@ void TInMemoryIndexState::WriteNodeRef(
         .ShardNodeName = shardNodeName};
 
     if (it == NodeRefs.end()) {
-        if (NodeRefs.size() == NodeRefs.capacity()) {
+        if (NodeRefs.size() == NodeRefs.GetMaxSize()) {
             NodeRefsEvictionObserved();
         }
         NodeRefs.emplace(key, value);
