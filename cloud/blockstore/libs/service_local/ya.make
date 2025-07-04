@@ -24,7 +24,6 @@ PEERDIR(
 
     cloud/storage/core/libs/common
 
-    library/cpp/aio
     library/cpp/deprecated/atomic
     library/cpp/protobuf/util
 

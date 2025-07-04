@@ -16,6 +16,7 @@ PEERDIR(
     cloud/blockstore/libs/rdma/iface
 
     cloud/storage/core/libs/aio
+    cloud/storage/core/libs/io_uring
 )
 
 END()
