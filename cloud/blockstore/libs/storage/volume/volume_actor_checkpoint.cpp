@@ -360,6 +360,7 @@ template <typename TMethod>
 void TCheckpointActor<TMethod>::ExternalDrain(const TActorContext& ctx)
 {
     STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::External);
+
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Wait for external drain event",
         VolumeTabletId);
@@ -1121,9 +1122,15 @@ void TVolumeActor::GetChangedBlocksForLightCheckpoints(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s %s for light checkpoints failed, request parameters are: %s",
+            "%s %s for light checkpoints failed, request parameters are: "
+            "LowCheckpointId: %s,  HighCheckpointId: %s,  StartIndex: %lu, "
+            "BlocksCount: %lu, error: %s",
             LogTitle.GetWithTime().c_str(),
             TGetChangedBlocksMethod::Name,
+            msg->Record.GetLowCheckpointId().c_str(),
+            msg->Record.GetHighCheckpointId().c_str(),
+            msg->Record.GetStartIndex(),
+            msg->Record.GetBlocksCount(),
             FormatError(error).c_str());
 
         NCloud::Reply(ctx, *requestInfo,
