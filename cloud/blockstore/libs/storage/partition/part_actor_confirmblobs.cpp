@@ -229,7 +229,7 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
             "%s ConfirmBlobs failed: %u reason: %s",
             LogTitle.GetWithTime().c_str(),
             msg->GetStatus(),
-            FormatError(msg->GetError()).Quote().c_str());
+            FormatError(msg->GetError()).c_str());
         ReportConfirmBlobsError();
         Suicide(ctx);
         return;

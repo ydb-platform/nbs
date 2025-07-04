@@ -2045,12 +2045,8 @@ void TPartitionActor::CompleteCompaction(
                 TBlockStoreComponents::PARTITION,
                 "%s Selected patching candidate: %s, data blob: %s",
                 LogTitle.GetWithTime().c_str(),
-                ToString(rangeCompactionInfos.back().OriginalBlobId)
-                    .Quote()
-                    .c_str(),
-                ToString(rangeCompactionInfos.back().DataBlobId)
-                    .Quote()
-                    .c_str());
+                ToString(rangeCompactionInfos.back().OriginalBlobId).c_str(),
+                ToString(rangeCompactionInfos.back().DataBlobId).c_str());
         }
     }
 
@@ -2079,7 +2075,7 @@ void TPartitionActor::CompleteCompaction(
         TBlockStoreComponents::PARTITION,
         "%s Partition registered TCompactionActor with id [%lu]",
         LogTitle.GetWithTime().c_str(),
-        actor);
+        actor.ToString().c_str());
 
     Actors.Insert(actor);
 }

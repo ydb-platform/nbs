@@ -809,9 +809,9 @@ void TPartitionActor::CompleteCollectGarbage(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Partition registered TCollectGarbageHardActor with id [%lu]",
+        "%s Partition registered TCollectGarbageHardActor with id %s",
         LogTitle.GetWithTime().c_str(),
-        actor);
+        actor.ToString().c_str());
 
     Actors.Insert(actor);
 }
