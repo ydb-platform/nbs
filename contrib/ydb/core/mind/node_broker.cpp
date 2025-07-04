@@ -58,10 +58,7 @@ void TNodeBroker::OnActivateExecutor(const TActorContext &ctx)
 
     const auto *appData = AppData(ctx);
 
-    DomainId = appData->DomainsInfo->GetDomainUidByTabletId(TabletID());
-    Y_ABORT_UNLESS(DomainId < DOMAINS_COUNT);
-    SingleDomain = appData->DomainsInfo->Domains.size() == 1;
-    SingleDomainAlloc = SingleDomain && appData->FeatureFlags.GetEnableNodeBrokerSingleDomainMode();
+    Y_ABORT_UNLESS(appData->FeatureFlags.GetEnableNodeBrokerSingleDomainMode());
 
     MaxStaticId = Min(appData->DynamicNameserviceConfig->MaxStaticNodeId, TActorId::MaxNodeId);
     MinDynamicId = Max(MaxStaticId + 1, (ui64)Min(appData->DynamicNameserviceConfig->MinDynamicNodeId, TActorId::MaxNodeId));
@@ -105,11 +102,13 @@ bool TNodeBroker::OnRenderAppHtmlPage(NMon::TEvRemoteHttpInfo::TPtr ev,
     TStringStream str;
     HTML(str) {
         PRE() {
-            str << "Served domain: " << AppData(ctx)->DomainsInfo->Domains.at(DomainId)->Name << Endl
-                << "DynamicNameserviceConfig:" << Endl
-                << "  MaxStaticNodeId: " << AppData(ctx)->DynamicNameserviceConfig->MaxStaticNodeId << Endl
-                << "  MaxDynamicNodeId: " << AppData(ctx)->DynamicNameserviceConfig->MaxDynamicNodeId << Endl
-                << "  EpochDuration: " << EpochDuration << Endl
+            str << "Served domain: "
+                << AppData(ctx)->DomainsInfo->GetDomain()->Name << Endl
+                << "DynamicNameserviceConfig:" << Endl << "  MaxStaticNodeId: "
+                << AppData(ctx)->DynamicNameserviceConfig->MaxStaticNodeId
+                << Endl << "  MaxDynamicNodeId: "
+                << AppData(ctx)->DynamicNameserviceConfig->MaxDynamicNodeId
+                << Endl << "  EpochDuration: " << EpochDuration << Endl
                 << "  StableNodeNamePrefix: " << StableNodeNamePrefix << Endl
                 << "  BannedIds:";
             for (auto &pr : BannedIds)
@@ -239,24 +238,7 @@ void TNodeBroker::FixNodeId(TNodeInfo &node)
 void TNodeBroker::RecomputeFreeIds()
 {
     FreeIds.Clear();
-
-    if (SingleDomainAlloc) {
-        FreeIds.Set(MinDynamicId, MaxDynamicId + 1);
-    } else {
-        auto firstId = RewriteNodeId(MinDynamicId);
-        if (firstId < MinDynamicId)
-            firstId += NodeIdStep();
-
-        auto lastId = RewriteNodeId(MaxDynamicId);
-        if (lastId > MaxDynamicId)
-            lastId -= NodeIdStep();
-
-        // Only ids marked with our domain id are available
-        FreeIds.Reserve(lastId + 1);
-        for (ui32 id = firstId; id <= lastId; id += NodeIdStep()) {
-            FreeIds.Set(id);
-        }
-    }
+    FreeIds.Set(MinDynamicId, MaxDynamicId + 1);
 
     // Remove all allocated IDs from the set.
     for (auto &pr : Nodes)
@@ -312,7 +294,7 @@ void TNodeBroker::ProcessListNodesRequest(TEvNodeBroker::TEvListNodes::TPtr &ev)
 
     NKikimrNodeBroker::TNodesInfo info;
     Epoch.Serialize(*info.MutableEpoch());
-    info.SetDomain(DomainId);
+    info.SetDomain(AppData()->DomainsInfo->GetDomain()->DomainUid);
     TAutoPtr<TEvNodeBroker::TEvNodesInfo> resp = new TEvNodeBroker::TEvNodesInfo(info);
     if (version != Epoch.Version)
         resp->PreSerializedData = EpochCache;
@@ -410,7 +392,7 @@ void TNodeBroker::ApplyStateDiff(const TStateDiff &diff)
         LOG_DEBUG_S(TActorContext::AsActorContext(), NKikimrServices::NODE_BROKER,
                     "Remove node " << it->second.IdString());
 
-        if (!IsBannedId(id) && NodeIdDomain(id) == DomainId && id >= MinDynamicId && id <= MaxDynamicId) {
+        if (!IsBannedId(id) && id >= MinDynamicId && id <= MaxDynamicId) {
             FreeIds.Set(id);
         }
         if (it->second.SlotIndex.has_value()) {
@@ -663,12 +645,7 @@ bool TNodeBroker::DbLoadState(TTransactionContext &txc,
         // mode, and now temporarily restarted without this mode enabled. We
         // should still support nodes that have been registered before we
         // restarted, even though it's not available for allocation.
-        if (!SingleDomain && NodeIdDomain(id) != DomainId) {
-            LOG_ERROR_S(ctx, NKikimrServices::NODE_BROKER,
-                        "Ignoring node with wrong ID " << id << " from domain "
-                        << NodeIdDomain(id) << " (expected " << DomainId <<  ")");
-            toRemove.push_back(id);
-        } else if (id <= MaxStaticId || id > MaxDynamicId) {
+        if (id <= MaxStaticId || id > MaxDynamicId) {
             LOG_ERROR_S(ctx, NKikimrServices::NODE_BROKER,
                         "Ignoring node with wrong ID " << id << " not in range ("
                         << MaxStaticId << ", " << MaxDynamicId << "]");
