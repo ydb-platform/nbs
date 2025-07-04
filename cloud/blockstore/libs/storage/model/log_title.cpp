@@ -105,15 +105,21 @@ TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
     return TChildLogTitle(childPrefix, startTime);
 }
 
-TChildLogTitle TLogTitle::GetChildWithCheckpointId(const ui64 startTime, const TString& checkpointId) const {
+TChildLogTitle TLogTitle::GetChildWithTags(const ui64 startTime, std::span<std::pair<TString, TString>> additionalTags) const {
     TStringBuilder childPrefix;
     childPrefix << CachedPrefix;
+
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
     childPrefix << " t:" << FormatDuration(duration);
-    childPrefix << " cp:" << checkpointId.Quote();
+
+    // Добавляем дополнительные теги
+    for (const auto& [key, value] : additionalTags) {
+        childPrefix << " " << key.Quote() << ":" << value.Quote();
+    }
 
     return TChildLogTitle(childPrefix, startTime);
 }
+
 
 
 TString TLogTitle::Get(EDetails details) const

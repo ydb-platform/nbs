@@ -2,6 +2,7 @@
 
 #include <util/generic/string.h>
 #include <util/system/types.h>
+#include <span>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -78,7 +79,7 @@ public:
 
     [[nodiscard]] TChildLogTitle GetChild(const ui64 startTime) const;
 
-    [[nodiscard]] TChildLogTitle GetChildWithCheckpointId(const ui64 startTime, const TString& checkpointId) const;
+    [[nodiscard]] TChildLogTitle GetChildWithTags(const ui64 startTime, std::span<std::pair<TString, TString>> additionalTags) const;
 
     [[nodiscard]] TString Get(EDetails details) const;
 
