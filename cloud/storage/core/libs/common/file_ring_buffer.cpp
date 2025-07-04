@@ -42,30 +42,23 @@ private:
     char* Begin = nullptr;
     const char* End = nullptr;
 
-    bool IsValidRegion(const char* ptr, ui64 size) const
+    template <class T = char>
+    T* GetPtr(ui64 pos, ui64 size = sizeof(T)) const
     {
-        const char* end = ptr + size;
-        return Begin <= ptr && ptr <= end && end <= End;
+        char* begin = Begin + pos;
+        const char* end = begin + size;
+        return Begin <= begin && begin <= end && end <= End
+                   ? reinterpret_cast<T*>(begin)
+                   : nullptr;
     }
 
-    char* CheckPtr(char* ptr, ui64 size)
+    char* DoGetEntryData(const TEntryHeader* eh) const
     {
-        return IsValidRegion(ptr, size) ? ptr : nullptr;
-    }
+        Y_ABORT_UNLESS(eh != nullptr);
+        Y_ABORT_UNLESS(eh->Size != 0);
 
-    const char* CheckPtr(const char* ptr, ui64 size) const
-    {
-        return IsValidRegion(ptr, size) ? ptr : nullptr;
-    }
-
-    char* GetPtr(ui64 pos, ui64 size)
-    {
-        return CheckPtr(Begin + pos, size);
-    }
-
-    const char* GetPtr(ui64 pos, ui64 size) const
-    {
-        return CheckPtr(Begin + pos, size);
+        ui64 pos = reinterpret_cast<const char*>(eh) - Begin;
+        return GetPtr(pos + sizeof(eh), eh->Size);
     }
 
 public:
@@ -83,30 +76,22 @@ public:
 
     TEntryHeader* GetEntryHeader(ui64 pos)
     {
-        char* ptr = GetPtr(pos, sizeof(TEntryHeader));
-        return reinterpret_cast<TEntryHeader*>(ptr);
+        return GetPtr<TEntryHeader>(pos);
     }
 
     const TEntryHeader* GetEntryHeader(ui64 pos) const
     {
-        const char* ptr = GetPtr(pos, sizeof(TEntryHeader));
-        return reinterpret_cast<const TEntryHeader*>(ptr);
+        return GetPtr<TEntryHeader>(pos);
     }
 
     char* GetEntryData(TEntryHeader* eh)
     {
-        Y_ABORT_UNLESS(eh != nullptr);
-        return CheckPtr(
-            reinterpret_cast<char*>(eh) + sizeof(TEntryHeader),
-            eh->Size);
+        return DoGetEntryData(eh);
     }
 
     const char* GetEntryData(const TEntryHeader* eh) const
     {
-        Y_ABORT_UNLESS(eh != nullptr);
-        return CheckPtr(
-            reinterpret_cast<const char*>(eh) + sizeof(TEntryHeader),
-            eh->Size);
+        return DoGetEntryData(eh);
     }
 
     void WriteEntry(ui64 pos, TStringBuf data)
