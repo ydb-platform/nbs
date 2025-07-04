@@ -1,11 +1,6 @@
 name: Check github workflow
 
 on:
-  push:
-    paths:
-      - ".github/**"
-    branches:
-      - main
   pull_request:
     branches:
       - main
