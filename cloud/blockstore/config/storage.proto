@@ -1272,7 +1272,8 @@ message TStorageServiceConfig
     // we start using MultiAgent write requests.
     optional uint64 DirectWriteBandwidthQuota = 440;
 
-    // Volume send requests to partitions to get partitions statistic
-    // instead of partitions send statistic to volume.
+    // The volume pulls statistics from the partitions,
+    // instead of the partitions pushing statistics to the volume themselves.
     optional bool UsePullSchemeForCollectingPartitionStatistic = 441;
+}
 }
