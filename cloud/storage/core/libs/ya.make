@@ -12,6 +12,7 @@ RECURSE(
     grpc
     hive_proxy
     http
+    io_uring
     kikimr
     netlink
     ss_proxy
