@@ -147,8 +147,9 @@ class SshClient:
         command_line = [
             'scp',
             '-o', 'ServerAliveInterval=60',
+            '-o', 'IdentitiesOnly=yes',
             '-o', 'StrictHostKeyChecking=no',
-            "-o", "UserKnownHostsFile=/dev/null",
+            '-o', "UserKnownHostsFile=/dev/null",
             *self._key_path_cmd_argument,
             f'{self._scp_authorization_string}:{remote_path}',
             local_path,
@@ -218,6 +219,7 @@ class SshClient:
         command_line = [
             'scp',
             '-o', 'ServerAliveInterval=60',
+            '-o', 'IdentitiesOnly=yes',
             '-o', 'StrictHostKeyChecking=no',
             '-o', 'UserKnownHostsFile=/dev/null',
             *self._key_path_cmd_argument,
@@ -233,8 +235,9 @@ class SshClient:
         return [
             'ssh',
             '-o', 'ServerAliveInterval=60',
+            '-o', 'IdentitiesOnly=yes',
             '-o', 'StrictHostKeyChecking=no',
-            "-o", "UserKnownHostsFile=/dev/null",
+            '-o', "UserKnownHostsFile=/dev/null",
             *self._key_path_cmd_argument,
             '-T',  # Disable pseudo-terminal allocation.
             self._authorization_string,
