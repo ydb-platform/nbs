@@ -1743,90 +1743,25 @@ func (s *storageYDB) clearEndedTasks(
 	ctx context.Context,
 	session *persistence.Session,
 	endedBefore time.Time,
-	limit int,
 ) error {
-
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $ended_before as Timestamp;
-		declare $limit as Uint64;
+		declare $finished as Int64;
+		declare $cancelled as Int64;
 
-		select *
-		from ended
-		where ended_at < $ended_before
-		limit $limit
+		delete from tasks
+		where ended_at < $ended_before and (status == $finished or status == $cancelled);
+
+		delete from ended
+		where ended_at < $ended_before;
 	`, s.tablesPath),
 		persistence.ValueParam("$ended_before", persistence.TimestampValue(endedBefore)),
-		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$finished", persistence.Int64Value(int64(TaskStatusFinished))),
+		persistence.ValueParam("$cancelled", persistence.Int64Value(int64(TaskStatusCancelled))),
 	)
-	if err != nil {
-		return err
-	}
-	defer res.Close()
-
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			var (
-				endedAt        time.Time
-				taskID         string
-				idempotencyKey string
-				accountID      string
-			)
-			err = res.ScanNamed(
-				persistence.OptionalWithDefault("ended_at", &endedAt),
-				persistence.OptionalWithDefault("id", &taskID),
-				persistence.OptionalWithDefault("idempotency_key", &idempotencyKey),
-				persistence.OptionalWithDefault("account_id", &accountID),
-			)
-			if err != nil {
-				return err
-			}
-
-			execute := func(deleteFromTaskIds string) error {
-				_, err = session.ExecuteRW(ctx, fmt.Sprintf(`
-					--!syntax_v1
-					pragma TablePathPrefix = "%v";
-					declare $ended_at as Timestamp;
-					declare $task_id as Utf8;
-					declare $idempotency_key as Utf8;
-					declare $account_id as Utf8;
-					declare $finished as Int64;
-					declare $cancelled as Int64;
-
-					delete from tasks
-					where id = $task_id and (status = $finished or status = $cancelled);
-
-					%v
-
-					delete from ended
-					where ended_at = $ended_at and id = $task_id
-				`, s.tablesPath, deleteFromTaskIds),
-					persistence.ValueParam("$ended_at", persistence.TimestampValue(endedAt)),
-					persistence.ValueParam("$task_id", persistence.UTF8Value(taskID)),
-					persistence.ValueParam("$idempotency_key", persistence.UTF8Value(idempotencyKey)),
-					persistence.ValueParam("$account_id", persistence.UTF8Value(accountID)),
-					persistence.ValueParam("$finished", persistence.Int64Value(int64(TaskStatusFinished))),
-					persistence.ValueParam("$cancelled", persistence.Int64Value(int64(TaskStatusCancelled))),
-				)
-				return err
-			}
-
-			err = execute("")
-			if err != nil {
-				return err
-			}
-
-			logging.Info(
-				ctx,
-				"Cleared task with id %v, ended at %v",
-				taskID,
-				endedAt,
-			)
-		}
-	}
-
-	return nil
+	return err
 }
 
 func (s *storageYDB) forceFinishTask(

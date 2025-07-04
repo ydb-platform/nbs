@@ -4486,7 +4486,7 @@ func TestStorageYDBClearEndedTasks(t *testing.T) {
 
 	metricsRegistry.AssertAllExpectations(t)
 
-	err = storage.ClearEndedTasks(ctx, endedBefore, 100500)
+	err = storage.ClearEndedTasks(ctx, endedBefore)
 	require.NoError(t, err)
 
 	_, err = storage.GetTask(ctx, taskID1)

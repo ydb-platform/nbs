@@ -237,7 +237,6 @@ func taskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("panic_count", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("events", persistence.Optional(persistence.TypeBytes)),
 		persistence.WithPrimaryKeyColumn("id"),
-		persistence.WithPrimaryKeyColumn("idempotency_key", "account_id"),
 	)
 }
 
