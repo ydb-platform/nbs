@@ -218,14 +218,10 @@ void TGetClusterCapacityActor::HandleGetYDBCapacity(
             continue;
         }
 
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::SERVICE,
-            "PDiskFilter: " << TString(entry.GetPDiskFilter()));
-        if (entry.GetPDiskFilter().find("ssd") != TString::npos) {
+        if (entry.GetPDiskFilter().find("SSD") != TString::npos) {
             freeBytesSSD += entry.GetCurrentAvailableSize();
             totalBytesSSD += entry.GetCurrentAllocatedSize();
-        } else if (entry.GetPDiskFilter().find("hdd") != TString::npos) {
+        } else if (entry.GetPDiskFilter().find("ROT") != TString::npos) {
             freeBytesHDD += entry.GetCurrentAvailableSize();
             totalBytesHDD += entry.GetCurrentAllocatedSize();
         } else {
