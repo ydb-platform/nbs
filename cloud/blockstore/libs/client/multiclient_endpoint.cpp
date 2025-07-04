@@ -34,13 +34,6 @@ concept HasInstanceId = requires (TRequest r)
     { r.GetInstanceId() } -> std::same_as<TString>;
 };
 
-template <typename TRequest>
-concept HasEncryptionSpec = requires (TRequest r)
-{
-    { r.GetEncryptionSpec() } -> std::same_as<TString>;
-};
-
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TMultiClientEndpoint;
@@ -79,7 +72,8 @@ struct TClientEndpoint
             request.MutableHeaders()->SetInstanceId(InstanceId);
         }
 
-        if constexpr (HasEncryptionSpec<TRequest>) {
+        if constexpr (std::same_as<TRequest, NProto::TMountVolumeRequest>) {
+            request.MutableEncryptionSpec()->Clear();
             request.SetDisableEncryption(true);
         }
     }

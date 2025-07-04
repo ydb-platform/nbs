@@ -704,10 +704,6 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
 
         const auto& storageResult = Executor->WaitFor(future);
         storage = storageResult.GetResult();
-
-        clientConfig = CreateClientConfig(request);
-
-        service = Service;
     }
 
     IBlockStorePtr client = std::make_shared<TStorageDataClient>(
