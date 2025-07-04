@@ -55,6 +55,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui8 GetFillChar(size_t block)
+{
+    constexpr char AllowedChars[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    return AllowedChars[block % strlen(AllowedChars)];
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 const TString DefaultEncryptionKey("1234567890123456789012345678901");
 
 using TBlocksPerRequest = size_t;
@@ -386,6 +395,19 @@ public:
 
         return true;
     }
+
+    TString MakePattern(size_t startBlock)
+    {
+        TString result;
+        result.resize(RequestSize);
+        for (size_t i = 0; i < BlocksPerRequest; ++i) {
+            memset(
+                const_cast<char*>(result.data()) + BlockSize * i,
+                GetFillChar(startBlock + i),
+                BlockSize);
+        }
+        return result;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -442,25 +464,6 @@ TEST_P(TServerTest, ShouldReadAndWrite)
 {
     StartServer();
 
-    auto getFillChar = [](size_t block) -> ui8
-    {
-        const TString allowedChars{
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"};
-        return allowedChars[block % allowedChars.size()];
-    };
-    auto makePatten = [&](size_t startBlock) -> TString
-    {
-        TString result;
-        result.resize(RequestSize);
-        for (size_t i = 0; i < BlocksPerRequest; ++i) {
-            memset(
-                const_cast<char*>(result.data()) + BlockSize * i,
-                getFillChar(startBlock + i),
-                BlockSize);
-        }
-        return result;
-    };
-
     // write data
     size_t writesCount = 0;
     {
@@ -473,7 +476,7 @@ TEST_P(TServerTest, ShouldReadAndWrite)
         for (ui64 i = 0; i <= TotalBlockCount - BlocksPerRequest; ++i) {
             reinterpret_cast<virtio_blk_req_hdr*>(hdr.data())->sector =
                 i * SectorsPerBlock;
-            TString expectedData = makePatten(i);
+            TString expectedData = MakePattern(i);
             memcpy(
                 writeBuffer.data(),
                 expectedData.data(),
@@ -502,14 +505,14 @@ TEST_P(TServerTest, ShouldReadAndWrite)
             EXPECT_EQ(VIRTIO_BLK_S_OK, status[0]);
 
             TString readData(readBuffer.data(), readBuffer.size());
-            EXPECT_EQ(makePatten(i), readData);
+            EXPECT_EQ(MakePattern(i), readData);
             ++readsCount;
         }
     }
 
     // validate storage
     for (ui64 i = 0; i != TotalBlockCount; ++i) {
-        const TString expectedData(BlockSize, getFillChar(i));
+        const TString expectedData(BlockSize, GetFillChar(i));
         const TString realData = LoadBlockAndDecrypt(i);
         EXPECT_EQ(expectedData, realData);
     }
@@ -549,25 +552,6 @@ TEST_P(TServerTest, ShouldResponseWithEIOOnRequestsToNonExistingDevice)
 {
     StartServer(true);
 
-    auto getFillChar = [](size_t block) -> ui8
-    {
-        const TString allowedChars{
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"};
-        return allowedChars[block % allowedChars.size()];
-    };
-    auto makePatten = [&](size_t startBlock) -> TString
-    {
-        TString result;
-        result.resize(RequestSize);
-        for (size_t i = 0; i < BlocksPerRequest; ++i) {
-            memset(
-                const_cast<char*>(result.data()) + BlockSize * i,
-                getFillChar(startBlock + i),
-                BlockSize);
-        }
-        return result;
-    };
-
     // write data
     {
         std::span hdr = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
@@ -577,7 +561,7 @@ TEST_P(TServerTest, ShouldResponseWithEIOOnRequestsToNonExistingDevice)
 
         reinterpret_cast<virtio_blk_req_hdr*>(hdr.data())->sector =
             0 * SectorsPerBlock;
-        TString expectedData = makePatten(0);
+        TString expectedData = MakePattern(0);
         memcpy(writeBuffer.data(), expectedData.data(), expectedData.size());
         auto writeOp =
             Client.WriteAsync(QueueIndex, {hdr, writeBuffer}, {status});
@@ -1090,12 +1074,6 @@ TEST_P(TServerTest, ShouldReadAndWriteWithPteFlushEnabled)
     Options.PteFlushByteThreshold = 4096;
     StartServer();
 
-    auto getFillChar = [](size_t block) -> ui8
-    {
-        const TString allowedChars{
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"};
-        return allowedChars[block % allowedChars.size()];
-    };
     auto makePatten = [&](size_t startBlock) -> TString
     {
         TString result;
@@ -1103,7 +1081,7 @@ TEST_P(TServerTest, ShouldReadAndWriteWithPteFlushEnabled)
         for (size_t i = 0; i < BlocksPerRequest; ++i) {
             memset(
                 const_cast<char*>(result.data()) + BlockSize * i,
-                getFillChar(startBlock + i),
+                GetFillChar(startBlock + i),
                 BlockSize);
         }
         return result;
@@ -1156,7 +1134,7 @@ TEST_P(TServerTest, ShouldReadAndWriteWithPteFlushEnabled)
 
     // validate storage
     for (ui64 i = 0; i < TotalBlockCount; ++i) {
-        const TString expectedData(BlockSize, getFillChar(i));
+        const TString expectedData(BlockSize, GetFillChar(i));
         const TString realData = LoadBlockAndDecrypt(i);
         EXPECT_EQ(expectedData, realData);
     }

@@ -236,50 +236,50 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
     for (const auto& chunk: options.Layout) {
         TFileHandle file{chunk.DevicePath, flags};
 
+        ui64 offset = chunk.Offset;
+        ui64 fileLen = 0;
+
         if (!file.IsOpen()) {
             int ret = errno;
             STORAGE_ERROR(
-                "can't open %s: %s",
-                chunk.DevicePath.c_str(),
-                strerror(ret));
-
-            Devices.push_back(TAioDevice{
-                .StartOffset = totalBytes,
-                .EndOffset = totalBytes + chunk.ByteCount,
-                .File = std::move(file),
-                .FileOffset = chunk.Offset,
-                .BlockSize = BlockSize,
-                .NullBackend = true});
-
-            totalBytes += chunk.ByteCount;
-            continue;
-        }
-
-        ui64 fileLen = file.Seek(0, sEnd);
-
-        Y_ABORT_UNLESS(
-            fileLen,
-            "unable to retrive size of file %s",
-            chunk.DevicePath.Quote().c_str());
-
-        Y_ABORT_UNLESS(
-            !chunk.Offset || fileLen > chunk.Offset,
-            "%s: file is too small (%ld B) or the offset is too big (%ld B)",
-            chunk.DevicePath.Quote().c_str(),
-            fileLen,
-            chunk.Offset);
-
-        fileLen -= chunk.Offset;
-
-        if (chunk.ByteCount) {
-            Y_ABORT_UNLESS(
-                fileLen >= chunk.ByteCount,
-                "%s: file is too small (%ld B) expected at least %ld B",
+                "can't open %s: %s (%d)",
                 chunk.DevicePath.Quote().c_str(),
-                fileLen,
-                chunk.ByteCount);
+                strerror(ret),
+                ret);
+
+            Y_ABORT_UNLESS(chunk.ByteCount);
+            Y_ABORT_UNLESS(chunk.ByteCount);
 
             fileLen = chunk.ByteCount;
+            offset = 0;
+            file = {};
+        } else {
+            fileLen = file.Seek(0, sEnd);
+            Y_ABORT_UNLESS(
+                fileLen,
+                "unable to retrive size of file %s",
+                chunk.DevicePath.Quote().c_str());
+
+            Y_ABORT_UNLESS(
+                !offset || fileLen > offset,
+                "%s: file is too small (%ld B) or the offset is too big (%ld "
+                "B)",
+                chunk.DevicePath.Quote().c_str(),
+                fileLen,
+                chunk.Offset);
+
+            fileLen -= offset;
+
+            if (chunk.ByteCount) {
+                Y_ABORT_UNLESS(
+                    fileLen >= chunk.ByteCount,
+                    "%s: file is too small (%ld B) expected at least %ld B",
+                    chunk.DevicePath.Quote().c_str(),
+                    fileLen,
+                    chunk.ByteCount);
+
+                fileLen = chunk.ByteCount;
+            }
         }
 
         Y_ABORT_UNLESS(
@@ -298,7 +298,7 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
             .StartOffset = totalBytes,
             .EndOffset = totalBytes + fileLen,
             .File = std::move(file),
-            .FileOffset = chunk.Offset,
+            .FileOffset = offset,
             .BlockSize = BlockSize});
 
         totalBytes += fileLen;

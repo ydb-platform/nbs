@@ -101,7 +101,7 @@ void PrepareCompoundIO(
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
 
     for (auto sIt = it; sIt != end; ++sIt) {
-        if (sIt->NullBackend) {
+        if (!sIt->File.IsOpen()) {
             ++queueStats.CompFailed;
             vhd_complete_bio(io, VHD_BDEV_IOERR);
             return;
@@ -290,16 +290,16 @@ void PrepareIO(
 
     STORAGE_DEBUG(
         "%s request, %u buffers: start sector %lu, start block %lu, block "
-        "count %lu, block size %u, null device %d",
+        "count %lu, block size %u, device broken %d",
         bio->type == VHD_BDEV_READ ? "Read" : "Write",
         bio->sglist.nbuffers,
         bio->first_sector,
         logicalOffset / device.BlockSize,
         totalBytes / device.BlockSize,
         device.BlockSize,
-        device.NullBackend);
+        !device.File.IsOpen());
 
-    if (device.NullBackend) {
+    if (!device.File.IsOpen()) {
         ++queueStats.SubFailed;
         vhd_complete_bio(io, VHD_BDEV_IOERR);
         return;

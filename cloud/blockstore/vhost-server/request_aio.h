@@ -52,7 +52,6 @@ struct TAioDevice
     TFileHandle File;
     ui64 FileOffset = 0;
     ui32 BlockSize = 0;
-    bool NullBackend = false;
 };
 
 // Single IO request. Also map libvhost's vhd_buffer to iovec.
