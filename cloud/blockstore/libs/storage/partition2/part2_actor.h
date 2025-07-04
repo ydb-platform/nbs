@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/partition2.h>
+#include <cloud/blockstore/libs/storage/api/partition_statistics_counters.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -242,12 +243,7 @@ private:
         }
     }
 
-    std::tuple<
-        ui64,
-        NBlobMetrics::TBlobLoadMetrics,
-        NBlobMetrics::TBlobLoadMetrics,
-        NKikimrTabletBase::TMetrics>
-    GetStats(const NActors::TActorContext& ctx);
+    TPartitionStatisticsCounters GetStats(const NActors::TActorContext& ctx);
 
     void SendStatsToService(const NActors::TActorContext& ctx);
 
@@ -583,8 +579,8 @@ private:
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
 
-    void HandleUpdateCountersRequest(
-        const TEvStatsService::TEvUpdatePartCountersRequest::TPtr& ev,
+    void HandleGetCountersRequest(
+        const TEvStatsService::TEvGetPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

@@ -1258,7 +1258,7 @@ message TStorageServiceConfig
     // Max inflight for out of order compaction map load requests.
     optional uint32 MaxOutOfOrderCompactionMapChunksInflight = 437;
 
-    // Volume send requests to partitions to get partitions statistic
-    // instead of partitions send statistic to volume.
+    // The volume pulls statistics from the partitions,
+    // instead of the partitions pushing statistics to the volume themselves.
     optional bool UsePullSchemeForCollectingPartitionStatistic = 438;
 }

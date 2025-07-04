@@ -13,20 +13,18 @@ namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class TPartitionStatisticActor final
-    : public NActors::TActorBootstrapped<TPartitionStatisticActor>
+class TPartitionStatisticsCollectorActor final
+    : public NActors::TActorBootstrapped<TPartitionStatisticsCollectorActor>
 {
 private:
     const NActors::TActorId Owner;
 
     const TPartitionInfoList& Partitions;
 
-    THashMap<NActors::TActorId, bool> IsUpdatedPartitionCounters;
-
-    TVector<TEvStatsService::TUpdatePartCountersResponse> PartCounters;
+    TVector<TEvStatsService::GetPartCountersResponse> PartCounters;
 
 public:
-    TPartitionStatisticActor(
+    TPartitionStatisticsCollectorActor(
         const NActors::TActorId& owner,
         const TPartitionInfoList& partitions);
 
@@ -46,8 +44,8 @@ private:
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleUpdatePartCountersResponse(
-        TEvStatsService::TEvUpdatePartCountersResponse::TPtr& ev,
+    void HandleGetPartCountersResponse(
+        TEvStatsService::TEvGetPartCountersResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 
