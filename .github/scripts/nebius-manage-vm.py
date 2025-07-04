@@ -647,6 +647,7 @@ async def remove_disk_by_id(sdk: SDK, args: argparse.Namespace, disk_id: int = N
         logger.info("Would delete disk with ID %s", disk_id)
         return
     service = DiskServiceClient(sdk)
+    request = None
     try:
         request = await service.delete(DeleteDiskRequest(id=disk_id))
         await request.wait()
