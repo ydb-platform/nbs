@@ -164,6 +164,8 @@ def start(argv):
     if service_type == "local-noserver":
         set_env("NFS_SERVER_PORT", str(vhost_configurator.local_service_port))
 
+    set_env("NFS_VHOST_MON_PORT", str(vhost_configurator.mon_port))
+
 
 def stop(argv):
     logging.info(os.system("ss -tpna"))
