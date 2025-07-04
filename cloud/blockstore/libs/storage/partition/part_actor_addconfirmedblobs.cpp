@@ -205,10 +205,11 @@ void TPartitionActor::EnqueueAddConfirmedBlobsIfNeeded(
             MakeIntrusive<TCallContext>(CreateRequestId())
         );
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] AddConfirmedBlobs request sent: %lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s AddConfirmedBlobs request sent: %lu",
+        LogTitle.GetWithTime().c_str(),
         request->CallContext->RequestId);
 
     NCloud::Send(
@@ -318,10 +319,11 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
     const TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] AddConfirmedBlobs completed",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s AddConfirmedBlobs completed",
+        LogTitle.GetWithTime().c_str());
 
     const auto* msg = ev->Get();
 
@@ -329,15 +331,16 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
 
     Actors.Erase(ev->Sender);
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Stop tablet because of AddConfirmedBlobs error: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            FormatError(msg->GetError()).data());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Stop tablet because of AddConfirmedBlobs error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
 
-       ReportAddConfirmedBlobsError();
-       Suicide(ctx);
-       return;
+        ReportAddConfirmedBlobsError();
+        Suicide(ctx);
+        return;
     }
 
     UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);

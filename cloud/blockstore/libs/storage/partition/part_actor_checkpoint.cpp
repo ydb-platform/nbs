@@ -151,13 +151,14 @@ void TPartitionActor::CompleteCreateCheckpoint(
         "CreateCheckpoint",
         args.RequestInfo->CallContext->RequestId);
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-         "[%lu][d:%s] Checkpoint %s %s created (commit: %lu)",
-         TabletID(),
-         PartitionConfig.GetDiskId().c_str(),
-         args.WithoutData ? "without data" : "",
-         args.Checkpoint.CheckpointId.Quote().data(),
-         args.Checkpoint.CommitId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Checkpoint %s %s created (commit: %lu)",
+        LogTitle.GetWithTime().c_str(),
+        args.WithoutData ? "without data" : "",
+        args.Checkpoint.CheckpointId.Quote().c_str(),
+        args.Checkpoint.CommitId);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     RemoveTransaction(*args.RequestInfo);
@@ -281,11 +282,12 @@ void TPartitionActor::CompleteDeleteCheckpoint(
 {
     args.ReplyCallback(ctx, args.RequestInfo, args.Error);
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Checkpoint %s %s",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
-        args.CheckpointId.Quote().data(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Checkpoint %s %s",
+        LogTitle.GetWithTime().c_str(),
+        args.CheckpointId.Quote().c_str(),
         args.DeleteOnlyData ? "data deleted" : "deleted");
 
     RemoveTransaction(*args.RequestInfo);

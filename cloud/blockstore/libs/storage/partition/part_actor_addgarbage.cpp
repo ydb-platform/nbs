@@ -75,11 +75,12 @@ void TPartitionActor::ExecuteAddGarbage(
         std::inserter(diff, diff.begin()));
 
     for (const auto& blobId: diff) {
-        LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Add garbage blob: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            ToString(MakeBlobId(TabletID(), blobId)).data());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Add garbage blob: %s",
+            LogTitle.GetWithTime().c_str(),
+            ToString(MakeBlobId(TabletID(), blobId)).Quote().c_str());
 
         bool added = State->GetGarbageQueue().AddGarbageBlob(blobId);
         Y_ABORT_UNLESS(added);
