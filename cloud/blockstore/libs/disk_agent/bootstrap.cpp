@@ -481,7 +481,8 @@ bool TBootstrap::InitKikimrService()
                     FileIOServiceProvider,
                     NvmeManager,
                     {.DirectIO = !config.GetDirectIoFlagDisabled(),
-                     .UseSubmissionThread = true});
+                     .UseSubmissionThread =
+                         config.GetUseLocalStorageSubmissionThread()});
 
                 STORAGE_INFO("Aio backend initialized");
                 break;

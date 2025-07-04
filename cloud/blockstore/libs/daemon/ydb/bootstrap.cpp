@@ -657,7 +657,8 @@ void TBootstrapYdb::InitKikimrService()
             FileIOServiceProvider,
             NvmeManager,
             {.DirectIO = !config.GetDirectIoFlagDisabled(),
-             .UseSubmissionThread = false});
+             .UseSubmissionThread =
+                 config.GetUseLocalStorageSubmissionThread()});
 
         STORAGE_INFO("LocalStorageProvider initialized");
     }
