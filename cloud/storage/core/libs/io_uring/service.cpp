@@ -31,6 +31,49 @@ bool IsRetriable(int error)
     return error == EINTR || error == EAGAIN || error == EBUSY;
 }
 
+NProto::TError Submit(io_uring* ring)
+{
+    for (;;) {
+        const int ret = io_uring_submit(ring);
+        if (ret >= 0) {
+            return {};
+        }
+
+        if (!IsRetriable(-ret)) {
+            return MakeSystemError(-ret, "unable to submit async IO operation");
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TRing
+{
+private:
+    io_uring Ring;
+
+public:
+    explicit TRing(ui32 submissionQueueEntries)
+    {
+        const int ret = io_uring_queue_init(submissionQueueEntries, &Ring, 0);
+        Y_ABORT_UNLESS(
+            ret == 0,
+            "io_uring_queue_init: %s (%d)",
+            LastSystemErrorText(-ret),
+            -ret);
+    }
+
+    ~TRing()
+    {
+        io_uring_queue_exit(&Ring);
+    }
+
+    operator io_uring* ()
+    {
+        return &Ring;
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TEvent
@@ -63,9 +106,9 @@ public:
         }
     }
 
-    [[nodiscard]] NProto::TError Register(io_uring& ring)
+    [[nodiscard]] NProto::TError Register(TRing& ring)
     {
-        io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+        io_uring_sqe* sqe = io_uring_get_sqe(ring);
         if (!sqe) {
             return MakeError(E_INVALID_STATE, "submission queue is full");
         }
@@ -74,7 +117,7 @@ public:
         io_uring_sqe_set_data(sqe, this);
 
         for (;;) {
-            const int ret = io_uring_submit(&ring);
+            const int ret = io_uring_submit(ring);
             if (ret >= 0) {
                 break;
             }
@@ -93,11 +136,11 @@ class TCompletionThread final: public ISimpleThread
 {
 private:
     const TString Name;
-    io_uring& Ring;
+    TRing& Ring;
     TEvent StopEvent;
 
 public:
-    TCompletionThread(TString name, io_uring& ring)
+    TCompletionThread(TString name, TRing& ring)
         : Name(std::move(name))
         , Ring(ring)
     {}
@@ -116,7 +159,12 @@ public:
 
     void Stop()
     {
+        if (!Running()) {
+            return;
+        }
+
         StopEvent.Signal();
+        Join();
     }
 
 private:
@@ -148,7 +196,7 @@ private:
 
         for (;;) {
             io_uring_cqe* cqe = nullptr;
-            const int ret = io_uring_wait_cqe(&Ring, &cqe);
+            const int ret = io_uring_wait_cqe(Ring, &cqe);
             if (ret < 0) {
                 Y_ABORT_UNLESS(
                     IsRetriable(-ret),
@@ -164,7 +212,7 @@ private:
 
             ProcessCompletion(cqe);
 
-            io_uring_cqe_seen(&Ring, cqe);
+            io_uring_cqe_seen(Ring, cqe);
         }
 
         return nullptr;
@@ -177,25 +225,14 @@ class TIoUringService final
     : public IFileIOService
 {
 private:
-    io_uring Ring = {};
+    TRing Ring;
     TCompletionThread CompletionThread;
 
 public:
     TIoUringService(TString completionThreadName, ui32 submissionQueueEntries)
-        : CompletionThread(std::move(completionThreadName), Ring)
-    {
-        const int ret = io_uring_queue_init(submissionQueueEntries, &Ring, 0);
-        Y_ABORT_UNLESS(
-            ret == 0,
-            "io_uring_queue_init: %s (%d)",
-            LastSystemErrorText(-ret),
-            -ret);
-    }
-
-    ~TIoUringService() final
-    {
-        io_uring_queue_exit(&Ring);
-    }
+        : Ring(submissionQueueEntries)
+        , CompletionThread(std::move(completionThreadName), Ring)
+    {}
 
     void Start() final
     {
@@ -204,12 +241,7 @@ public:
 
     void Stop() final
     {
-        if (!CompletionThread.Running()) {
-            return;
-        }
-
         CompletionThread.Stop();
-        CompletionThread.Join();
     }
 
     void AsyncRead(
@@ -218,7 +250,7 @@ public:
         TArrayRef<char> buffer,
         TFileIOCompletion* completion) final
     {
-        Submit(
+        SubmitIO(
             IORING_OP_READ,
             file,
             buffer.data(),
@@ -233,7 +265,7 @@ public:
         const TVector<TArrayRef<char>>& buffers,
         TFileIOCompletion* completion) final
     {
-        Submit(
+        SubmitIO(
             IORING_OP_READV,
             file,
             buffers.data(),
@@ -248,7 +280,7 @@ public:
         TArrayRef<const char> buffer,
         TFileIOCompletion* completion) final
     {
-        Submit(
+        SubmitIO(
             IORING_OP_WRITE,
             file,
             buffer.data(),
@@ -263,7 +295,7 @@ public:
         const TVector<TArrayRef<const char>>& buffers,
         TFileIOCompletion* completion) final
     {
-        Submit(
+        SubmitIO(
             IORING_OP_WRITEV,
             file,
             buffers.data(),
@@ -273,7 +305,7 @@ public:
     }
 
 private:
-    void Submit(
+    void SubmitIO(
         int op,
         int fd,
         const void* addr,
@@ -281,7 +313,7 @@ private:
         ui64 offset,
         TFileIOCompletion* completion)
     {
-        io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
+        io_uring_sqe* sqe = io_uring_get_sqe(Ring);
         if (!sqe) {
             completion->Func(
                 completion,
@@ -293,21 +325,102 @@ private:
         io_uring_prep_rw(op, sqe, fd, addr, len, offset);
         io_uring_sqe_set_data(sqe, completion);
 
-        for (;;) {
-            const int ret = io_uring_submit(&Ring);
-            if (ret >= 0) {
-                break;
-            }
+        const auto error = Submit(Ring);
+        if (HasError(error)) {
+            completion->Func(completion, error, 0);
+        }
+    }
+};
 
-            if (!IsRetriable(-ret)) {
-                completion->Func(
-                    completion,
-                    MakeSystemError(
-                        -ret,
-                        "unable to submit async IO operation"),
-                    0);
-                break;
-            }
+////////////////////////////////////////////////////////////////////////////////
+
+class TIoUringServiceNull final
+    : public IFileIOService
+{
+private:
+    TRing Ring;
+    TCompletionThread CompletionThread;
+
+public:
+    TIoUringServiceNull(
+            TString completionThreadName,
+            ui32 submissionQueueEntries)
+        : Ring(submissionQueueEntries)
+        , CompletionThread(std::move(completionThreadName), Ring)
+    {}
+
+    void Start() final
+    {
+        CompletionThread.Start();
+    }
+
+    void Stop() final
+    {
+        CompletionThread.Stop();
+    }
+
+    void AsyncRead(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<char> buffer,
+        TFileIOCompletion* completion) final
+    {
+        Y_UNUSED(file, offset, buffer);
+
+        SubmitNOP(completion);
+    }
+
+    void AsyncReadV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<char>>& buffers,
+        TFileIOCompletion* completion) final
+    {
+        Y_UNUSED(file, offset, buffers);
+
+        SubmitNOP(completion);
+    }
+
+    void AsyncWrite(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<const char> buffer,
+        TFileIOCompletion* completion) final
+    {
+        Y_UNUSED(file, offset, buffer);
+
+        SubmitNOP(completion);
+    }
+
+    void AsyncWriteV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<const char>>& buffers,
+        TFileIOCompletion* completion) final
+    {
+        Y_UNUSED(file, offset, buffers);
+
+        SubmitNOP(completion);
+    }
+
+private:
+    void SubmitNOP(TFileIOCompletion* completion)
+    {
+        io_uring_sqe* sqe = io_uring_get_sqe(Ring);
+        if (!sqe) {
+            completion->Func(
+                completion,
+                MakeError(E_REJECTED, "Overloaded"),
+                0);
+            return;
+        }
+
+        io_uring_prep_nop(sqe);
+        io_uring_sqe_set_data(sqe, completion);
+
+        const auto error = Submit(Ring);
+        if (HasError(error)) {
+            completion->Func(completion, error, 0);
         }
     }
 };
@@ -321,6 +434,15 @@ IFileIOServicePtr CreateIoUringService(
     ui32 submissionQueueEntries)
 {
     return std::make_shared<TIoUringService>(
+        std::move(completionThreadName),
+        submissionQueueEntries);
+}
+
+IFileIOServicePtr CreateIoUringServiceNull(
+    TString completionThreadName,
+    ui32 submissionQueueEntries)
+{
+    return std::make_shared<TIoUringServiceNull>(
         std::move(completionThreadName),
         submissionQueueEntries);
 }
