@@ -18,4 +18,6 @@ message CellsConfig {
 
     // If empty, every folder is included.
     repeated string FolderAllowList = 3;
+
+    optional string StorageFolder = 4 [default = "cells"];
 }

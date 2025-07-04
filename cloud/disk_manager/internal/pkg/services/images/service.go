@@ -7,7 +7,6 @@ import (
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -43,7 +42,7 @@ func (s *service) CreateImage(
 	switch src := req.Src.(type) {
 	case *disk_manager.CreateImageRequest_SrcSnapshotId:
 		if len(src.SrcSnapshotId) == 0 || len(req.DstImageId) == 0 {
-			return "", errors.NewInvalidArgumentError(
+			return "", common.NewInvalidArgumentError(
 				"some of parameters are empty, req=%v",
 				req,
 			)
@@ -63,7 +62,7 @@ func (s *service) CreateImage(
 		)
 	case *disk_manager.CreateImageRequest_SrcImageId:
 		if len(src.SrcImageId) == 0 || len(req.DstImageId) == 0 {
-			return "", errors.NewInvalidArgumentError(
+			return "", common.NewInvalidArgumentError(
 				"some of parameters are empty, req=%v",
 				req,
 			)
@@ -83,7 +82,7 @@ func (s *service) CreateImage(
 		)
 	case *disk_manager.CreateImageRequest_SrcUrl:
 		if len(src.SrcUrl.Url) == 0 || len(req.DstImageId) == 0 {
-			return "", errors.NewInvalidArgumentError(
+			return "", common.NewInvalidArgumentError(
 				"some of parameters are empty, req=%v",
 				req,
 			)
@@ -106,7 +105,7 @@ func (s *service) CreateImage(
 			len(src.SrcDiskId.DiskId) == 0 ||
 			len(req.DstImageId) == 0 {
 
-			return "", errors.NewInvalidArgumentError(
+			return "", common.NewInvalidArgumentError(
 				"some of parameters are empty, req=%v",
 				req,
 			)
@@ -129,7 +128,7 @@ func (s *service) CreateImage(
 			},
 		)
 	default:
-		return "", errors.NewInvalidArgumentError("unknown src %s", src)
+		return "", common.NewInvalidArgumentError("unknown src %s", src)
 	}
 }
 
@@ -139,7 +138,7 @@ func (s *service) DeleteImage(
 ) (string, error) {
 
 	if len(req.ImageId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
