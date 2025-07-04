@@ -84,17 +84,13 @@ public:
     }
 
     void Bootstrap(const TActorContext &ctx) {
-        auto dinfo = AppData(ctx)->DomainsInfo;
-        if (dinfo->Domains.size() != 1) {
+        if (!AppData()->DomainsInfo->Domain) {
             Send(OwnerId, new NConsole::TEvConsole::TEvConfigSubscriptionError(Ydb::StatusIds::GENERIC_ERROR, "Ambiguous domain (use --domain option)"), 0, Cookie);
 
             Die(ctx);
 
             return;
         }
-
-        DomainUid = dinfo->Domains.begin()->second->DomainUid;
-        StateStorageGroup = dinfo->GetDefaultStateStorageGroup(DomainUid);
 
         if (!Tenant) {
             SendPoolStatusRequest(ctx);
@@ -128,7 +124,9 @@ public:
     }
 
     void SendPoolStatusRequest(const TActorContext &ctx) {
-        ctx.Send(MakeTenantPoolID(ctx.SelfID.NodeId(), DomainUid), new TEvTenantPool::TEvGetStatus(true),
+        ctx.Send(
+            MakeTenantPoolID(ctx.SelfID.NodeId()),
+            new TEvTenantPool::TEvGetStatus(true),
             IEventHandle::FlagTrackDelivery);
     }
 
@@ -384,7 +382,7 @@ private:
     }
 
     void OpenPipe(const TActorContext &ctx) {
-        auto console = MakeConsoleID(StateStorageGroup);
+        auto console = MakeConsoleID();
 
         NTabletPipe::TClientConfig pipeConfig;
         pipeConfig.RetryPolicy = FastConnectRetryPolicy();
@@ -413,9 +411,6 @@ private:
 
     TString Tenant;
     TString NodeType;
-
-    ui32 DomainUid;
-    ui32 StateStorageGroup;
 
     TActorId Pipe;
 };

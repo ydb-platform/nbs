@@ -30,7 +30,7 @@ namespace NKikimr::NBsController {
                         record.SetStatus(NKikimrProto::OK);
                         record.SetNodeID(nodeId);
                         record.SetInstanceId(Self->InstanceId);
-                        record.SetAvailDomain(AppData()->DomainsInfo->GetDomainUidByTabletId(Self->TabletID()));
+                        record.SetAvailDomain(AppData()->DomainsInfo->GetDomain()->DomainUid);
                         State.Outbox.emplace_back(nodeId, std::move(event), 0);
                     }
                 }

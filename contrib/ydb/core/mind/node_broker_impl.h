@@ -208,18 +208,6 @@ private:
 
     void ClearState();
 
-    ui32 NodeIdStep() const {
-        return SingleDomainAlloc ? 1 : (1 << DOMAIN_BITS);
-    }
-
-    ui32 NodeIdDomain(ui32 nodeId) const {
-        return SingleDomainAlloc ? DomainId : (nodeId & DOMAIN_MASK);
-    }
-
-    ui32 RewriteNodeId(ui32 nodeId) const {
-        return SingleDomainAlloc ? nodeId : ((nodeId & ~DOMAIN_MASK) | DomainId);
-    }
-
     // Internal state modifiers. Don't affect DB.
     void AddNode(const TNodeInfo &info);
     void RemoveNode(ui32 nodeId);
@@ -306,8 +294,6 @@ private:
     void Handle(TEvPrivate::TEvUpdateEpoch::TPtr &ev,
                 const TActorContext &ctx);
 
-    // ID of domain node broker is responsible for.
-    ui32 DomainId;
     // All registered dynamic nodes.
     THashMap<ui32, TNodeInfo> Nodes;
     THashMap<ui32, TNodeInfo> ExpiredNodes;
@@ -336,9 +322,6 @@ private:
     TTxProcessor::TPtr TxProcessor;
     TSchedulerCookieHolder EpochTimerCookieHolder;
     TString EpochCache;
-
-    bool SingleDomain = false;
-    bool SingleDomainAlloc = false;
 
 public:
     TNodeBroker(const TActorId &tablet, TTabletStorageInfo *info)

@@ -1250,11 +1250,7 @@ class TDomainLocal : public TActorBootstrapped<TDomainLocal> {
             ResolveTasks.erase(path);
 
             // subscribe for schema updates
-            const auto& domains = *AppData()->DomainsInfo;
-            const ui32 domainId = domains.GetDomainUidByTabletId(rec.GetPathDescription().GetSelf().GetSchemeshardId());
-            const ui32 boardSSId = domains.GetDomain(domainId).DefaultSchemeBoardGroup;
-
-            THolder<IActor> subscriber(CreateSchemeBoardSubscriber(SelfId(), path, boardSSId, ESchemeBoardSubscriberDeletionPolicy::Majority));
+            THolder<IActor> subscriber(CreateSchemeBoardSubscriber(SelfId(), path, ESchemeBoardSubscriberDeletionPolicy::Majority));
             tenant.Subscriber = Register(subscriber.Release());
         } else {
             LOG_WARN_S(ctx, NKikimrServices::LOCAL,
@@ -1386,8 +1382,9 @@ public:
         , SchemeRoot(domain.SchemeRoot)
         , Config(config)
     {
-        for (auto hiveUid : domain.HiveUids)
-            HiveIds.push_back(domainsInfo.GetHive(hiveUid));
+        if (const ui64 tabletId = domainsInfo.GetHive(); tabletId != TDomainsInfo::BadTabletId) {
+            HiveIds.push_back(tabletId);
+        }
 
         PipeConfig.RetryPolicy = NTabletPipe::TClientRetryPolicy::WithRetries();
 
