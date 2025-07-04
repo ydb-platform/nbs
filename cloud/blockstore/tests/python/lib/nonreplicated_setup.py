@@ -225,6 +225,8 @@ def setup_disk_agent_config(
     config.OffloadAllIORequestsParsingEnabled = True
     config.IOParserActorAllocateStorageEnabled = True
     config.PathsPerFileIOService = 2
+    config.UseLocalStorageSubmissionThread = False
+    config.UseOneSubmissionThreadPerAIOServiceEnabled = True
     config.MaxParallelSecureErasesAllowed = 3
 
     if cached_sessions_path is not None:
