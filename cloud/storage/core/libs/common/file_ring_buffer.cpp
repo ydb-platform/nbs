@@ -96,7 +96,7 @@ public:
 
     void WriteEntry(ui64 pos, TStringBuf data)
     {
-        auto eh = GetEntryHeader(pos);
+        auto* eh = GetEntryHeader(pos);
         Y_ABORT_UNLESS(eh != nullptr);
 
         eh->Size = data.size();
