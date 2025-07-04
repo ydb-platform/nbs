@@ -302,6 +302,9 @@ message TDiskAgentConfig
     // Max secure erase can be run in parallel.
     // For devices with the same name, only one secure erase is run at a time.
     optional uint32 MaxParallelSecureErasesAllowed = 40;
+
+    // Use a separate thread to submit requests to all FileIOServices.
+    optional bool UseLocalStorageSubmissionThread = 41;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

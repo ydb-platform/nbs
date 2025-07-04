@@ -713,9 +713,7 @@ IStorageProviderPtr CreateTestStorageProvider(
         NServer::CreateLocalStorageProvider(
             NServer::CreateSingleFileIOServiceProvider(std::move(fileIO)),
             std::move(nvmeManager),
-            false,  // directIO
-            NServer::ELocalSubmitQueueOpt::DontUse
-        ));
+            {.DirectIO = false, .UseSubmissionThread = false}));
 }
 
 NProto::TDiskAgentConfig CreateDefaultAgentConfig()
