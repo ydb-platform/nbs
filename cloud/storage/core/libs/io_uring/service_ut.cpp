@@ -28,6 +28,7 @@ namespace {
 
 constexpr ui32 BlockSize = 4_KB;
 constexpr const ui64 BlockCount = 1024;
+constexpr const ui32 SubmissionQueueSize = 32;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -46,8 +47,6 @@ TFsPath TryGetRamDrivePath()
 
 struct TFixture: public NUnitTest::TBaseFixture
 {
-    static const ui32 SubmissionQueueSize = 32;
-
     TFileHandle FileData;
     IFileIOServicePtr IoUring;
 
@@ -63,6 +62,28 @@ struct TFixture: public NUnitTest::TBaseFixture
         FileData.Resize(BlockCount * BlockSize);
 
         IoUring = CreateIoUringService("CQ", SubmissionQueueSize);
+        IoUring->Start();
+    }
+
+    void TearDown(NUnitTest::TTestContext& context) final
+    {
+        Y_UNUSED(context);
+
+        IoUring->Stop();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFixtureNull: public NUnitTest::TBaseFixture
+{
+    IFileIOServicePtr IoUring;
+
+    void SetUp(NUnitTest::TTestContext& context) final
+    {
+        Y_UNUSED(context);
+
+        IoUring = CreateIoUringServiceNull("CQ", SubmissionQueueSize);
         IoUring->Start();
     }
 
@@ -154,6 +175,34 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             for (char val: buffer) {
                 UNIT_ASSERT_VALUES_EQUAL('X', val);
             }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TIoUringNullTest)
+{
+    Y_UNIT_TEST_F(ShouldInvokeCompletions, TFixtureNull)
+    {
+        TFileHandle file;
+        const ui32 requests = 32;
+        const ui32 length = 1024;
+
+        TVector<TFuture<ui32>> futures;
+        TArrayRef<char> buffer{nullptr, length};
+
+        for (ui32 i = 0; i != requests; ++i) {
+            futures.push_back(IoUring->AsyncRead(file, 0, buffer));
+            futures.push_back(IoUring->AsyncReadV(file, 0, {{buffer}}));
+
+            futures.push_back(IoUring->AsyncWrite(file, 0, buffer));
+            futures.push_back(IoUring->AsyncWriteV(file, 0, {{buffer}}));
+        }
+
+        for (auto& future: futures) {
+            const ui32 len = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(0, len);
         }
     }
 }

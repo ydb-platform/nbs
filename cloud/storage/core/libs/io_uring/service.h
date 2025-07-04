@@ -12,4 +12,8 @@ IFileIOServicePtr CreateIoUringService(
     TString completionThreadName,
     ui32 submissionQueueEntries);
 
+IFileIOServicePtr CreateIoUringServiceNull(
+    TString completionThreadName,
+    ui32 submissionQueueEntries);
+
 }   // namespace NCloud
