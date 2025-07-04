@@ -3089,10 +3089,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.SecureEraseDevice("FileDevice-1");
     }
 
-    Y_UNIT_TEST(ShouldZeroFillDevice)
+    void ShouldZeroFillDeviceImpl(NProto::EDiskAgentBackendType backend)
     {
         auto agentConfig = CreateDefaultAgentConfig();
-        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetBackend(backend);
         agentConfig.SetDeviceEraseMethod(NProto::DEVICE_ERASE_METHOD_ZERO_FILL);
         agentConfig.SetAgentId("agent-id");
         agentConfig.SetEnabled(true);
@@ -3187,6 +3187,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         diskAgent.ReleaseDevices(uuids, clientId);
+    }
+
+    Y_UNIT_TEST(ShouldZeroFillDeviceAio)
+    {
+        ShouldZeroFillDeviceImpl(NProto::DISK_AGENT_BACKEND_AIO);
+    }
+
+    Y_UNIT_TEST(ShouldZeroFillDeviceIoUring)
+    {
+        ShouldZeroFillDeviceImpl(NProto::DISK_AGENT_BACKEND_IO_URING);
     }
 
     Y_UNIT_TEST(ShouldInjectExceptions)

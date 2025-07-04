@@ -3,14 +3,15 @@
 #include "file_io_service_provider.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/nvme/nvme_stub.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/nvme/nvme_stub.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
 
 #include <library/cpp/testing/common/env.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -30,6 +31,8 @@ using namespace NNvme;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui32 SubmissionQueueSize = 1024;
+
 #define UNIT_ASSERT_SUCCEEDED(e) \
     UNIT_ASSERT_C(SUCCEEDED(e.GetCode()), e.GetMessage())
 
@@ -37,7 +40,7 @@ using namespace NNvme;
 
 Y_UNIT_TEST_SUITE(TLocalStorageTest)
 {
-    Y_UNIT_TEST(ShouldZeroWholeHugeFile)
+    void ShouldZeroWholeHugeFile(IFileIOServicePtr fileIO)
     {
         const ui32 blockSize = 4_KB;
         const ui64 totalBlockCount = 5_GB / blockSize;
@@ -46,8 +49,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * totalBlockCount);
 
-        auto fileIOServiceProvider =
-            CreateSingleFileIOServiceProvider(CreateAIOService());
+        auto fileIOServiceProvider = CreateSingleFileIOServiceProvider(
+            CreateConcurrentFileIOService("SQ", std::move(fileIO)));
 
         fileIOServiceProvider->Start();
         Y_DEFER { fileIOServiceProvider->Stop(); };
@@ -150,6 +153,17 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
                 chunkSize,
                 std::count(buf.begin(), buf.end(), '\0'));
         }
+    }
+
+    Y_UNIT_TEST(ShouldZeroWholeHugeFileAio)
+    {
+        ShouldZeroWholeHugeFile(CreateAIOService(SubmissionQueueSize));
+    }
+
+    Y_UNIT_TEST(ShouldZeroWholeHugeFileIoUring)
+    {
+        ShouldZeroWholeHugeFile(
+            CreateIoUringService("CQ", SubmissionQueueSize));
     }
 }
 

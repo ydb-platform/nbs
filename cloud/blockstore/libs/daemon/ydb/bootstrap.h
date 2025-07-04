@@ -131,6 +131,7 @@ protected:
 
 private:
     void InitConfigs();
+    void InitDiskAgentBackend();
 };
 
 }   // namespace NCloud::NBlockStore::NServer

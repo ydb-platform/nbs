@@ -57,6 +57,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
@@ -378,6 +379,73 @@ void TBootstrapYdb::InitRdmaServer()
         std::move(rdmaConfig));
 }
 
+void TBootstrapYdb::InitDiskAgentBackend()
+{
+    const auto& config = *Configs->DiskAgentConfig;
+
+    if (!config.GetEnabled() ||
+        config.GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK)
+    {
+        return;
+    }
+
+    TString submissionThreadName = "AIO.SQ";
+    std::function<IFileIOServicePtr()> factory =
+        [maxEvents = config.GetMaxAIOContextEvents()]
+    {
+        return CreateAIOService(maxEvents);
+    };
+
+    if (config.GetBackend() == NProto::DISK_AGENT_BACKEND_IO_URING) {
+        submissionThreadName = "RNG.SQ";
+        factory =
+            [maxEvents = config.GetMaxAIOContextEvents(),
+             // io_uring service is not thread-safe, so it should be
+             // used with a submission thread anyway
+             useSubmissionThread = !config.GetUseLocalStorageSubmissionThread(),
+             index = ui32()]() mutable
+        {
+            auto fileIO = CreateIoUringService(
+                TStringBuilder() << "RNG" << index++,
+                maxEvents);
+
+            if (useSubmissionThread) {
+                fileIO = CreateConcurrentFileIOService(
+                    TStringBuilder() << "RNG.SQ" << index++,
+                    std::move(fileIO));
+            }
+
+            return fileIO;
+        };
+    }
+
+    NvmeManager =
+        CreateNvmeManager(Configs->DiskAgentConfig->GetSecureEraseTimeout());
+
+    if (config.GetBackend() == NProto::DISK_AGENT_BACKEND_NULL) {
+        LocalStorageProvider = CreateNullStorageProvider();
+    } else {
+        FileIOServiceProvider =
+            config.GetPathsPerFileIOService()
+                ? CreateFileIOServiceProvider(
+                      config.GetPathsPerFileIOService(),
+                      std::move(factory))
+                : CreateSingleFileIOServiceProvider(factory());
+
+        LocalStorageProvider = CreateLocalStorageProvider(
+            FileIOServiceProvider,
+            NvmeManager,
+            {.DirectIO = !config.GetDirectIoFlagDisabled(),
+             .UseSubmissionThread = config.GetUseLocalStorageSubmissionThread(),
+             .SubmissionThreadName = std::move(submissionThreadName)});
+    }
+
+    STORAGE_INFO(
+        "LocalStorageProvider ("
+        << NProto::EDiskAgentBackendType_Name(config.GetBackend())
+        << ") initialized");
+}
+
 void TBootstrapYdb::InitKikimrService()
 {
     InitConfigs();
@@ -634,45 +702,7 @@ void TBootstrapYdb::InitKikimrService()
 
     InitSpdk();
 
-    if (const auto& config = *Configs->DiskAgentConfig;
-        config.GetEnabled() &&
-        config.GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&
-        !LocalStorageProvider)
-    {
-        NvmeManager = CreateNvmeManager(
-            Configs->DiskAgentConfig->GetSecureEraseTimeout());
-
-        auto factory = [events = config.GetMaxAIOContextEvents()] {
-            return CreateAIOService(events);
-        };
-
-        FileIOServiceProvider =
-            config.GetPathsPerFileIOService()
-                ? CreateFileIOServiceProvider(
-                      config.GetPathsPerFileIOService(),
-                      factory)
-                : CreateSingleFileIOServiceProvider(factory());
-
-        LocalStorageProvider = CreateLocalStorageProvider(
-            FileIOServiceProvider,
-            NvmeManager,
-            {.DirectIO = !config.GetDirectIoFlagDisabled(),
-             .UseSubmissionThread =
-                 config.GetUseLocalStorageSubmissionThread()});
-
-        STORAGE_INFO("LocalStorageProvider initialized");
-    }
-
-    if (Configs->DiskAgentConfig->GetEnabled() &&
-        Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_NULL &&
-        !LocalStorageProvider)
-    {
-        NvmeManager = CreateNvmeManager(
-            Configs->DiskAgentConfig->GetSecureEraseTimeout());
-        LocalStorageProvider = CreateNullStorageProvider();
-
-        STORAGE_INFO("LocalStorageProvider (null) initialized");
-    }
+    InitDiskAgentBackend();
 
     Allocator = CreateCachingAllocator(
         Spdk ? Spdk->GetAllocator() : TDefaultAllocator::Instance(),

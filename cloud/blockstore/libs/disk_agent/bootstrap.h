@@ -103,6 +103,10 @@ private:
     void InitHTTPServer();
 
     void InitRdmaServer(NRdma::TRdmaConfig& config);
+
+    bool InitBackend();
+    void InitFileIOService(std::function<IFileIOServicePtr()> factory);
+    void InitLocalStorageProvider(TString submissionThreadName);
 };
 
 }   // namespace NCloud::NBlockStore::NServer
