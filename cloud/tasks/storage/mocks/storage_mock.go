@@ -186,10 +186,10 @@ func (s *StorageMock) LockTaskToCancel(
 func (s *StorageMock) MarkForCancellation(
 	ctx context.Context,
 	taskID string,
-	at time.Time,
+	now time.Time,
 ) (bool, error) {
 
-	args := s.Called(ctx, taskID, at)
+	args := s.Called(ctx, taskID, now)
 	return args.Bool(0), args.Error(1)
 }
 
