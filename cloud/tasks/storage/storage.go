@@ -222,6 +222,7 @@ type TaskState struct {
 	LastRunner          string
 	ZoneID              string
 	EstimatedTime       time.Time
+	StallingDuration    time.Duration
 	PanicCount          uint64
 	Events              []int64
 
@@ -352,7 +353,7 @@ type Storage interface {
 	LockTaskToRun(
 		ctx context.Context,
 		taskInfo TaskInfo,
-		at time.Time,
+		now time.Time,
 		hostname string,
 		runner string,
 	) (TaskState, error)
@@ -361,7 +362,7 @@ type Storage interface {
 	LockTaskToCancel(
 		ctx context.Context,
 		taskInfo TaskInfo,
-		at time.Time,
+		now time.Time,
 		hostname string,
 		runner string,
 	) (TaskState, error)
