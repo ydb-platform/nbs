@@ -14,7 +14,6 @@ import (
 type clearEndedTasksTask struct {
 	storage           storage.Storage
 	expirationTimeout time.Duration
-	limit             int
 }
 
 func (t *clearEndedTasksTask) Save() ([]byte, error) {
@@ -31,7 +30,7 @@ func (t *clearEndedTasksTask) Run(
 ) error {
 
 	endedBefore := time.Now().Add(-t.expirationTimeout)
-	return t.storage.ClearEndedTasks(ctx, endedBefore, t.limit)
+	return t.storage.ClearEndedTasks(ctx, endedBefore)
 }
 
 func (t *clearEndedTasksTask) Cancel(

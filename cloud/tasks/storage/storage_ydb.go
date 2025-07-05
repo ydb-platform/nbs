@@ -468,13 +468,12 @@ func (s *storageYDB) SendEvent(
 func (s *storageYDB) ClearEndedTasks(
 	ctx context.Context,
 	endedBefore time.Time,
-	limit int,
 ) error {
 
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.clearEndedTasks(ctx, session, endedBefore, limit)
+			return s.clearEndedTasks(ctx, session, endedBefore)
 		},
 	)
 }
