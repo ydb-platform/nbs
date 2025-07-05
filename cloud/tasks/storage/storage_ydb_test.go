@@ -384,17 +384,18 @@ func TestStorageYDBGetTask(t *testing.T) {
 	modifiedAt := createdAt.Add(time.Hour)
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
-		GenerationID:   42,
-		Status:         TaskStatusReadyToRun,
-		State:          []byte{1, 2, 3},
-		Dependencies:   NewStringSet(),
-		ZoneID:         "zone",
+		IdempotencyKey:   getIdempotencyKeyForTest(t),
+		TaskType:         "task1",
+		Description:      "Some task",
+		CreatedAt:        createdAt,
+		CreatedBy:        "some_user",
+		ModifiedAt:       modifiedAt,
+		GenerationID:     42,
+		Status:           TaskStatusReadyToRun,
+		State:            []byte{1, 2, 3},
+		Dependencies:     NewStringSet(),
+		ZoneID:           "zone",
+		InflightDuration: 10 * time.Minute,
 	})
 	require.NoError(t, err)
 
@@ -412,6 +413,7 @@ func TestStorageYDBGetTask(t *testing.T) {
 	require.EqualValues(t, NewStringSet(), taskState.Dependencies)
 	require.WithinDuration(t, time.Time(createdAt), time.Time(taskState.ChangedStateAt), time.Microsecond)
 	require.EqualValues(t, "zone", taskState.ZoneID)
+	require.EqualValues(t, 10*time.Minute, taskState.InflightDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
 

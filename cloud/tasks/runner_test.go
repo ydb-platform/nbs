@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"sync"
 	"testing"
@@ -118,9 +119,7 @@ func matchesState(
 			ok = assert.WithinDuration(t, actual.ModifiedAt, expected.ModifiedAt, threshold) && ok
 		} else {
 			modifiedAtHighBound := time.Now()
-			duration := modifiedAtHighBound.Sub(modifiedAtLowBound) / 2
-			pivot := modifiedAtLowBound.Add(duration)
-			ok = assert.WithinDuration(t, pivot, time.Time(actual.ModifiedAt), duration) && ok
+			ok = assert.WithinRange(t, actual.ModifiedAt, modifiedAtLowBound, modifiedAtHighBound) && ok
 		}
 
 		ok = assert.Contains(t, actual.ErrorMessage, expected.ErrorMessage) && ok
@@ -130,10 +129,7 @@ func matchesState(
 		if actual.ID == pingerTaskId {
 			// ping takes <1ms to complete
 			diff := actual.InflightDuration - expected.InflightDuration
-			if diff < 0 {
-				diff = -diff
-			}
-			ok = assert.Less(t, diff, threshold) && ok
+			ok = assert.Less(t, math.Abs(float64(diff)), float64(threshold)) && ok
 		}
 
 		actual.InflightDuration = expected.InflightDuration
@@ -149,8 +145,8 @@ func matchesStateArguments(
 	expected storage.TaskState,
 ) func(mock.Arguments) {
 	callback := matchesState(t, expected)
-	return func(a mock.Arguments) {
-		state := a[1].(storage.TaskState)
+	return func(args mock.Arguments) {
+		state := args[1].(storage.TaskState)
 		assert.True(t, callback(state))
 	}
 }
