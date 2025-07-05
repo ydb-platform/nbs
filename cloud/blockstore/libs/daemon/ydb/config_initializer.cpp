@@ -137,7 +137,7 @@ void TConfigInitializerYdb::InitIamClientConfig()
 
 void TConfigInitializerYdb::InitKmsClientConfig()
 {
-    NProto::TGrpcClientConfig config;
+    ::NCloud::NProto::TGrpcClientConfig config;
 
     if (Options->KmsConfig) {
         ParseProtoTextFromFile(Options->KmsConfig, config);
@@ -163,7 +163,7 @@ void TConfigInitializerYdb::InitRootKmsConfig()
 
 void TConfigInitializerYdb::InitComputeClientConfig()
 {
-    NProto::TGrpcClientConfig config;
+    ::NCloud::NProto::TGrpcClientConfig config;
 
     if (Options->ComputeConfig) {
         ParseProtoTextFromFile(Options->ComputeConfig, config);
@@ -350,7 +350,7 @@ void TConfigInitializerYdb::ApplyIamClientConfig(const TString& text)
 
 void TConfigInitializerYdb::ApplyKmsClientConfig(const TString& text)
 {
-    NProto::TGrpcClientConfig config;
+    ::NCloud::NProto::TGrpcClientConfig config;
     ParseProtoTextFromString(text, config);
 
     KmsClientConfig = std::move(config);
@@ -366,7 +366,7 @@ void TConfigInitializerYdb::ApplyRootKmsConfig(const TString& text)
 
 void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
 {
-    NProto::TGrpcClientConfig config;
+    ::NCloud::NProto::TGrpcClientConfig config;
     ParseProtoTextFromString(text, config);
 
     ComputeClientConfig = std::move(config);

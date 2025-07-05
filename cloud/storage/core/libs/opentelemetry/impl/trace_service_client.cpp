@@ -1,60 +1,58 @@
-#include "kms_client.h"
+#include "trace_service_client.h"
 
-#include <contrib/ydb/public/api/client/yc_private/kms/symmetric_crypto_service.grpc.pb.h>
-#include <contrib/ydb/public/api/client/yc_private/kms/symmetric_crypto_service.pb.h>
 
-#include <cloud/blockstore/libs/kms/iface/kms_client.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
 #include <contrib/libs/grpc/include/grpcpp/client_context.h>
-#include <contrib/libs/grpc/include/grpcpp/create_channel.h>
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
+#include <contrib/libs/grpc/include/grpcpp/create_channel.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
+#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.grpc.pb.h>
+#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
 
 #include <util/string/builder.h>
 #include <util/string/join.h>
 #include <util/system/thread.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 using namespace NThreading;
 
-namespace {
+namespace trace = opentelemetry::proto::collector::trace::v1;
 
-namespace kms = yandex::cloud::priv::kms::v1;
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const char AUTH_HEADER[] = "authorization";
-const char AUTH_METHOD[] = "Bearer";
+constexpr char AuthHeader[] = "authorization";
+constexpr char AuthMethod[] = "Bearer";
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRequestHandler final
 {
-private:
-    using TReader = grpc::ClientAsyncResponseReader<kms::SymmetricDecryptResponse>;
-    using TResult = TResultOrError<TString>;
+    using TReader =
+        grpc::ClientAsyncResponseReader<trace::ExportTraceServiceResponse>;
+    using TRequest = ITraceServiceClient::TRequest;
+    using TResponse = ITraceServiceClient::TResponse;
 
+private:
     grpc::ClientContext ClientContext;
     grpc::Status Status;
 
     std::unique_ptr<TReader> Reader;
 
-    kms::SymmetricDecryptRequest Request;
-    kms::SymmetricDecryptResponse Response;
+    trace::ExportTraceServiceRequest Request;
+    trace::ExportTraceServiceResponse Response;
 
-    TPromise<TResult> Promise = NewPromise<TResult>();
+    TPromise<TResponse> Promise = NewPromise<TResponse>();
 
 public:
-    TRequestHandler(
-        TDuration timeout,
-        TString authToken,
-        const TString& keyId,
-        const TString& ciphertext)
+    TRequestHandler(TDuration timeout, TString authToken, TRequest request)
     {
         if (timeout != TDuration::Zero()) {
             ClientContext.set_deadline(TInstant::Now() + timeout);
@@ -62,20 +60,19 @@ public:
 
         if (authToken) {
             ClientContext.AddMetadata(
-                AUTH_HEADER,
-                TStringBuilder() << AUTH_METHOD << " " << authToken);
+                AuthHeader,
+                TStringBuilder() << AuthMethod << " " << authToken);
         }
 
-        Request.set_key_id(keyId);
-        Request.set_ciphertext(ciphertext.data(), ciphertext.size());
+        Request = std::move(request);
     }
 
-    TFuture<TResult> Execute(
-        kms::SymmetricCryptoService::Stub& service,
+    TFuture<TResponse> Execute(
+        trace::TraceService::Stub& service,
         grpc::CompletionQueue* cq,
         void* tag)
     {
-        Reader = service.AsyncDecrypt(&ClientContext, Request, cq);
+        Reader = service.AsyncExport(&ClientContext, Request, cq);
         Reader->Finish(&Response, &Status, tag);
         return Promise;
     }
@@ -87,51 +84,50 @@ public:
                 MAKE_GRPC_ERROR(Status.error_code()),
                 Status.error_message()));
         } else {
-            Promise.SetValue(Response.plaintext());
+            Promise.SetValue(std::move(Response));
         }
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TKmsClient final
+class TTraceServiceClient final
     : public ISimpleThread
-    , public IKmsClient
+    , public ITraceServiceClient
 {
 private:
     TGrpcInitializer GrpcInitializer;
 
     const ILoggingServicePtr Logging;
-    const ::NCloud::NProto::TGrpcClientConfig Config;
+    const NProto::TGrpcClientConfig Config;
 
     TLog Log;
 
     grpc::CompletionQueue CQ;
-    std::shared_ptr<kms::SymmetricCryptoService::Stub> Service;
+    std::shared_ptr<trace::TraceService::Stub> Service;
 
 public:
-    TKmsClient(
+    TTraceServiceClient(
             ILoggingServicePtr logging,
-            ::NCloud::NProto::TGrpcClientConfig config)
+            NProto::TGrpcClientConfig config)
         : Logging(std::move(logging))
         , Config(std::move(config))
-    {
-    }
+        , Log(Logging->CreateLog("BLOCKSTORE_SERVER"))
+    {}
 
-    ~TKmsClient()
+    ~TTraceServiceClient()
     {
         Stop();
     }
 
     void Start() override
     {
-        Log = Logging->CreateLog("BLOCKSTORE_SERVER");
 
-        STORAGE_INFO("Connect to " << Config.GetAddress());
+        STORAGE_INFO("Connecting to " << Config.GetAddress());
 
         auto creds = Config.GetInsecure()
-            ? grpc::InsecureChannelCredentials()
-            : grpc::SslCredentials(grpc::SslCredentialsOptions());
+                         ? grpc::InsecureChannelCredentials()
+                         : grpc::SslCredentials(grpc::SslCredentialsOptions());
 
         grpc::ChannelArguments args;
         if (Config.GetSslTargetNameOverride()) {
@@ -143,8 +139,8 @@ public:
             std::move(creds),
             args);
 
-        Service = std::shared_ptr<kms::SymmetricCryptoService::Stub>(
-            kms::SymmetricCryptoService::NewStub(std::move(channel)));
+        Service = std::shared_ptr<trace::TraceService::Stub>(
+            trace::TraceService::NewStub(std::move(channel)));
 
         ISimpleThread::Start();
     }
@@ -155,23 +151,18 @@ public:
         Join();
     }
 
-    TFuture<TResponse> Decrypt(
-        const TString& keyId,
-        const TString& ciphertext,
+    TFuture<TResponse> Export(
+        TRequest traces,
         const TString& authToken) override
     {
         auto requestHandler = std::make_unique<TRequestHandler>(
             TDuration::MilliSeconds(Config.GetRequestTimeout()),
             authToken,
-            keyId,
-            ciphertext);
+            std::move(traces));
 
-        auto future = requestHandler->Execute(
-            *Service,
-            &CQ,
-            requestHandler.get());
+        auto future =
+            requestHandler->Execute(*Service, &CQ, requestHandler.release());
 
-        requestHandler.release();
         return future;
     }
 
@@ -182,8 +173,7 @@ private:
         bool ok;
         while (CQ.Next(&tag, &ok)) {
             std::unique_ptr<TRequestHandler> requestHandler(
-                static_cast<TRequestHandler*>(tag)
-            );
+                static_cast<TRequestHandler*>(tag));
             requestHandler->Complete();
         }
         return nullptr;
@@ -194,13 +184,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IKmsClientPtr CreateKmsClient(
+ITraceServiceClientPtr CreateTraceServiceClient(
     ILoggingServicePtr logging,
-    ::NCloud::NProto::TGrpcClientConfig config)
+    NProto::TGrpcClientConfig config)
 {
-    return std::make_shared<TKmsClient>(
+    auto a = std::make_shared<TTraceServiceClient>(
         std::move(logging),
         std::move(config));
+    return a;
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

@@ -13,10 +13,13 @@
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 
+#include <cloud/storage/core/config/grpc_client.pb.h>
 #include <cloud/storage/core/libs/daemon/app.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
+#include <cloud/storage/core/libs/opentelemetry/impl/trace_service_client.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 #include <contrib/ydb/core/security/ticket_parser.h>
@@ -54,7 +57,7 @@ int main(int argc, char** argv)
     };
 
     serverModuleFactories->ComputeClientFactory = [] (
-        NProto::TGrpcClientConfig config,
+        ::NCloud::NProto::TGrpcClientConfig config,
         NCloud::ILoggingServicePtr logging)
     {
         if (config.GetAddress()) {
@@ -67,7 +70,7 @@ int main(int argc, char** argv)
     };
 
     serverModuleFactories->KmsClientFactory = [] (
-        NProto::TGrpcClientConfig config,
+        ::NCloud::NProto::TGrpcClientConfig config,
         NCloud::ILoggingServicePtr logging)
     {
         if (config.GetAddress()) {
@@ -93,6 +96,19 @@ int main(int argc, char** argv)
         }
 
         return NCloud::NBlockStore::CreateRootKmsClientStub();
+    };
+
+    serverModuleFactories->TraceServiceClientFactory = [] (
+        ::NCloud::NProto::TGrpcClientConfig config,
+        NCloud::ILoggingServicePtr logging)
+    {
+        if (config.GetAddress()) {
+            return NCloud::CreateTraceServiceClient(
+                std::move(logging),
+                std::move(config));
+        }
+
+        return NCloud::CreateTraceServiceClientStub();
     };
 
     serverModuleFactories->SpdkFactory = [] (

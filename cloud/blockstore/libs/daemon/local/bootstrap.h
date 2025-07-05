@@ -38,6 +38,11 @@ protected:
     IStartable* GetKmsClient() override          { return nullptr; }
     IStartable* GetRootKmsClient() override      { return nullptr; }
 
+    ITraceServiceClientPtr GetTraceServiceClient() override
+    {
+        return nullptr;
+    }
+
     void InitSpdk() override;
     void InitRdmaClient() override;
     void InitRdmaServer() override;

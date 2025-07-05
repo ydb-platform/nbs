@@ -18,6 +18,7 @@ PEERDIR(
 
     cloud/storage/core/libs/daemon
     cloud/storage/core/libs/iam/iface
+    cloud/storage/core/libs/opentelemetry/impl
 
     contrib/ydb/core/security
     contrib/ydb/library/keys

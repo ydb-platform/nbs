@@ -13,7 +13,10 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
 
+#include <cloud/storage/core/config/grpc_client.pb.h>
+#include <cloud/storage/core/config/opentelemetry_client.pb.h>
 #include <cloud/storage/core/libs/daemon/config_initializer.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 
 #include <library/cpp/json/writer/json_value.h>
 #include <library/cpp/logger/log.h>
@@ -36,6 +39,7 @@ struct TConfigInitializerCommon
     NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
     NClient::THostPerformanceProfile HostPerformanceProfile;
     NRdma::TRdmaConfigPtr RdmaConfig;
+    NProto::TOpentelemetryTraceConfig TraceServiceClientConfig;
 
     TString Rack;
     TLog Log;
@@ -52,6 +56,7 @@ struct TConfigInitializerCommon
     void InitServerConfig();
     void InitSpdkEnvConfig();
     void InitRdmaConfig();
+    void InitTraceServiceClientConfig();
 
     virtual bool GetUseNonreplicatedRdmaActor() const = 0;
     virtual TDuration GetInactiveClientsTimeout() const = 0;

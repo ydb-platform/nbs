@@ -1,16 +1,15 @@
 #pragma once
 
-#include <cloud/blockstore/libs/kms/iface/public.h>
-
 #include <cloud/storage/core/config/grpc_client.pb.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IComputeClientPtr CreateComputeClient(
+ITraceServiceClientPtr CreateTraceServiceClient(
     ILoggingServicePtr logging,
-    ::NCloud::NProto::TGrpcClientConfig config);
+    NProto::TGrpcClientConfig config);
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

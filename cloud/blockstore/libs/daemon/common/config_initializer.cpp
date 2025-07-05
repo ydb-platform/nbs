@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -11,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 
+#include <cloud/storage/core/config/opentelemetry_client.pb.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
@@ -111,6 +113,17 @@ void TConfigInitializerCommon::InitRdmaConfig()
 
     RdmaConfig =
         std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
+}
+
+void TConfigInitializerCommon::InitTraceServiceClientConfig()
+{
+    NProto::TOpentelemetryTraceConfig config;
+
+    if (Options->TraceServiceConfig) {
+        ParseProtoTextFromFile(Options->TraceServiceConfig, config);
+    }
+
+    TraceServiceClientConfig = std::move(config);
 }
 
 void TConfigInitializerCommon::InitDiskRegistryProxyConfig()
