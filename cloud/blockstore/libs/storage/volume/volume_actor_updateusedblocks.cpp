@@ -139,9 +139,11 @@ void TVolumeActor::CompleteUpdateUsedBlocks(
     TTxVolume::TUpdateUsedBlocks& args)
 {
     for (const auto& range: args.Ranges) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] UpdateUsedBlocks done %lu %u",
-            TabletID(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s UpdateUsedBlocks done %lu %u",
+            LogTitle.GetWithTime().c_str(),
             range.Start,
             range.Size());
     }

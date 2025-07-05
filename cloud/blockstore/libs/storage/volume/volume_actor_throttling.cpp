@@ -155,9 +155,9 @@ void TVolumeActor::HandleBackpressureReport(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Partition %s for disk %s backpressure report not found",
-            ToString(ev->Sender).c_str(),
-            State->GetDiskId().Quote().c_str());
+            "%s Partition %s for disk backpressure report not found",
+            LogTitle.GetWithTime().c_str(),
+            ToString(ev->Sender).c_str());
 
         index = State->GetPartitions().size();
     }

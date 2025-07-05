@@ -20,9 +20,11 @@ void TVolumeActor::HandleUpdateVolumeParams(
 
     BLOCKSTORE_VOLUME_COUNTER(UpdateVolumeParams);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Received UpdateVolumeParams request",
-        TabletID());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Received UpdateVolumeParams request",
+        LogTitle.GetWithTime().c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -58,9 +60,11 @@ void TVolumeActor::HandleRemoveExpiredVolumeParams(
 {
     STORAGE_VERIFY(State, TWellKnownEntityTypes::TABLET, TabletID());
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Received RemoveExpiredVolumeParams request",
-        TabletID());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Received RemoveExpiredVolumeParams request",
+        LogTitle.GetWithTime().c_str());
 
     RemoveExpiredVolumeParamsScheduled = false;
 
@@ -120,9 +124,11 @@ void TVolumeActor::CompleteUpdateVolumeParams(
     const TActorContext& ctx,
     TTxVolume::TUpdateVolumeParams& args)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Sending OK response for UpdateVolumeParams",
-        TabletID());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Sending OK response for UpdateVolumeParams",
+        LogTitle.GetWithTime().c_str());
 
     auto response = std::make_unique<TEvVolume::TEvUpdateVolumeParamsResponse>();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

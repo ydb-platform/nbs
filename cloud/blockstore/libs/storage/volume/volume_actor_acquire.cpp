@@ -282,7 +282,7 @@ void TAcquireDevicesActor::OnAcquireResponse(
             LogPendingAgents().c_str());
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-            LOG_DEBUG(
+            LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,
                 "%s Canceling acquire operation for client: %s, targets: [%s]",

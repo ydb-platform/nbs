@@ -143,11 +143,12 @@ void TVolumeActor::HandleHttpInfo_RemoveClient(
     const auto diskId = State->GetDiskId();
     const auto clientId = params.Get("ClientId");
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Removing volume client per action from monitoring page: volume %s, client %s",
-        TabletID(),
-        diskId.Quote().data(),
-        clientId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Removing volume client per action from monitoring page: client %s",
+        LogTitle.GetWithTime().c_str(),
+        clientId.Quote().c_str());
 
     if (!clientId) {
         RejectHttpRequest(

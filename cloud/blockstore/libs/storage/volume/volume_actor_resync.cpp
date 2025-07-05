@@ -112,9 +112,11 @@ void TVolumeActor::HandleResyncFinished(
         "ResyncFinished",
         msg->CallContext->RequestId);
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Resync finished",
-        TabletID());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Resync finished",
+        LogTitle.GetWithTime().c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -153,9 +155,11 @@ void TVolumeActor::ExecuteToggleResync(
 
     args.ResyncWasNeeded = State->IsMirrorResyncNeeded();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Toggling resync: %d -> %d",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Toggling resync: %d -> %d",
+        LogTitle.GetWithTime().c_str(),
         State->GetMeta().GetResyncNeeded(),
         args.ResyncEnabled);
 

@@ -155,11 +155,10 @@ void TVolumeActor::HandleRemoveClient(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] Postponing RemoveClientRequest[%s] for volume %s: another "
+            "%s Postponing RemoveClientRequest[%s] for volume: another "
             "request in flight",
-            TabletID(),
-            clientId.Quote().data(),
-            diskId.Quote().data());
+            LogTitle.GetWithTime().c_str(),
+            clientId.Quote().c_str());
     }
 }
 
@@ -186,13 +185,13 @@ void TVolumeActor::ExecuteRemoveClient(
 
     auto now = ctx.Now();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Volume %s received remove client %s request; pipe server %s, "
-        "pipe generation %u",
-        TabletID(),
-        args.DiskId.Quote().data(),
-        args.ClientId.Quote().data(),
-        ToString(args.PipeServerActorId).data());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Volume received remove client %s request; pipe server %s",
+        LogTitle.GetWithTime().c_str(),
+        args.ClientId.Quote().c_str(),
+        ToString(args.PipeServerActorId).c_str());
 
     args.Error = State->RemoveClient(
         args.ClientId,
@@ -236,11 +235,12 @@ void TVolumeActor::CompleteRemoveClient(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Removed client %s from volume %s",
-        TabletID(),
-        clientId.Quote().data(),
-        diskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Removed client %s from volume",
+        LogTitle.GetWithTime().c_str(),
+        clientId.Quote().c_str());
 
     auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>();
     *response->Record.MutableError() = std::move(args.Error);

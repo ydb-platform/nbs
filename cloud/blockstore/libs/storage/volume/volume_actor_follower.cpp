@@ -28,9 +28,8 @@ void TVolumeActor::ExecuteUpdateLeader(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Persist leader %s %s -> %s",
+        "%s Persist leader %s -> %s",
         LogTitle.GetWithTime().c_str(),
-        State->GetDiskId().c_str(),
         args.Leader.Link.Describe().c_str(),
         current ? current->Describe().c_str() : "{}",
         args.Leader.Describe().c_str());
