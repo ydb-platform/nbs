@@ -147,6 +147,7 @@ type TaskStateJSON struct {
 	CloudID             string               `json:"cloud_id"`
 	FolderID            string               `json:"folder_id"`
 	EstimatedTime       time.Time            `json:"estimated_time"`
+	WaitingDuration     time.Duration        `json:"waiting_duration"`
 	PanicCount          uint64               `json:"panic_count"`
 }
 
@@ -215,6 +216,7 @@ func TaskStateToJSON(state *storage.TaskState) *TaskStateJSON {
 		LastRunner:          state.LastRunner,
 		ZoneID:              state.ZoneID,
 		EstimatedTime:       state.EstimatedTime,
+		WaitingDuration:     state.WaitingDuration,
 		PanicCount:          state.PanicCount,
 	}
 }

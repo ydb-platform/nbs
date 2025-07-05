@@ -1316,14 +1316,21 @@ func (s *storageYDB) prepareDependantsToWakeup(
 
 		if len(newState.Dependencies.Vals()) == 0 {
 			// Return from "sleeping" state because dependencies are resolved.
+
+			if newState.Status == TaskStatusWaitingToRun || newState.Status == TaskStatusWaitingToCancel {
+				now := time.Now()
+				newState.WaitingDuration += now.Sub(newState.ChangedStateAt)
+				newState.ModifiedAt = now
+				newState.ChangedStateAt = now
+				newState.GenerationID++
+			}
+
 			switch newState.Status {
 			case TaskStatusWaitingToRun:
 				newState.Status = TaskStatusReadyToRun
-				newState.GenerationID++
 
 			case TaskStatusWaitingToCancel:
 				newState.Status = TaskStatusReadyToCancel
-				newState.GenerationID++
 			}
 		}
 
@@ -1342,7 +1349,7 @@ func (s *storageYDB) markForCancellation(
 	ctx context.Context,
 	session *persistence.Session,
 	taskID string,
-	at time.Time,
+	now time.Time,
 ) (bool, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -1399,10 +1406,13 @@ func (s *storageYDB) markForCancellation(
 
 	lastState := state.DeepCopy()
 
+	if state.Status == TaskStatusWaitingToRun {
+		state.WaitingDuration += now.Sub(state.ChangedStateAt)
+	}
 	state.Status = TaskStatusReadyToCancel
 	state.GenerationID++
-	state.ModifiedAt = at
-	state.ChangedStateAt = at
+	state.ModifiedAt = now
+	state.ChangedStateAt = now
 	state.ErrorMessage = "Cancelled by client"
 	state.ErrorCode = grpc_codes.Canceled
 
