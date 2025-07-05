@@ -370,7 +370,7 @@ type Storage interface {
 	// Mark task for cancellation.
 	// Returns true if it's already cancelling (or cancelled)
 	// Returns false if it has successfully finished.
-	MarkForCancellation(ctx context.Context, taskID string, at time.Time) (bool, error)
+	MarkForCancellation(ctx context.Context, taskID string, now time.Time) (bool, error)
 
 	// This fails with WrongGenerationError, if generationID does not match.
 	// In callback you could perform custom transaction and it will be coupled

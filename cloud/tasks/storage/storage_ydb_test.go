@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -384,17 +385,18 @@ func TestStorageYDBGetTask(t *testing.T) {
 	modifiedAt := createdAt.Add(time.Hour)
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
-		GenerationID:   42,
-		Status:         TaskStatusReadyToRun,
-		State:          []byte{1, 2, 3},
-		Dependencies:   NewStringSet(),
-		ZoneID:         "zone",
+		IdempotencyKey:  getIdempotencyKeyForTest(t),
+		TaskType:        "task1",
+		Description:     "Some task",
+		CreatedAt:       createdAt,
+		CreatedBy:       "some_user",
+		ModifiedAt:      modifiedAt,
+		GenerationID:    42,
+		Status:          TaskStatusReadyToRun,
+		State:           []byte{1, 2, 3},
+		Dependencies:    NewStringSet(),
+		ZoneID:          "zone",
+		WaitingDuration: 10 * time.Minute,
 	})
 	require.NoError(t, err)
 
@@ -412,6 +414,7 @@ func TestStorageYDBGetTask(t *testing.T) {
 	require.EqualValues(t, NewStringSet(), taskState.Dependencies)
 	require.WithinDuration(t, time.Time(createdAt), time.Time(taskState.ChangedStateAt), time.Microsecond)
 	require.EqualValues(t, "zone", taskState.ZoneID)
+	require.EqualValues(t, 10*time.Minute, taskState.WaitingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -472,16 +475,17 @@ func TestStorageYDBGetTaskWithDependencies(t *testing.T) {
 	require.NoError(t, err)
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
-		GenerationID:   42,
-		Status:         TaskStatusReadyToRun,
-		State:          []byte{1, 2, 3},
-		Dependencies:   NewStringSet(depID1, depID2),
+		IdempotencyKey:  getIdempotencyKeyForTest(t),
+		TaskType:        "task1",
+		Description:     "Some task",
+		CreatedAt:       createdAt,
+		CreatedBy:       "some_user",
+		ModifiedAt:      modifiedAt,
+		GenerationID:    42,
+		Status:          TaskStatusReadyToRun,
+		State:           []byte{1, 2, 3},
+		Dependencies:    NewStringSet(depID1, depID2),
+		WaitingDuration: 10 * time.Minute,
 	})
 	require.NoError(t, err)
 
@@ -498,6 +502,7 @@ func TestStorageYDBGetTaskWithDependencies(t *testing.T) {
 	require.EqualValues(t, []byte{1, 2, 3}, taskState.State)
 	require.EqualValues(t, NewStringSet(depID1, depID2), taskState.Dependencies)
 	require.WithinDuration(t, time.Time(createdAt), time.Time(taskState.ChangedStateAt), time.Microsecond)
+	require.EqualValues(t, 10*time.Minute, taskState.WaitingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -3124,6 +3129,7 @@ func TestStorageYDBMarkForCancellation(t *testing.T) {
 	require.EqualValues(t, taskState.Status, TaskStatusReadyToCancel)
 	require.EqualValues(t, taskState.ErrorCode, grpc_codes.Canceled)
 	require.EqualValues(t, taskState.ErrorMessage, "Cancelled by client")
+	require.EqualValues(t, 0, taskState.WaitingDuration)
 }
 
 func TestStorageYDBMarkForCancellationIfAlreadyCancelling(t *testing.T) {
@@ -3174,6 +3180,7 @@ func TestStorageYDBMarkForCancellationIfAlreadyCancelling(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 0)
 	require.Equal(t, taskState.Status, TaskStatusCancelling)
+	require.EqualValues(t, 0, taskState.WaitingDuration)
 }
 
 func TestStorageYDBMarkForCancellationIfAlreadyFinished(t *testing.T) {
@@ -3223,6 +3230,7 @@ func TestStorageYDBMarkForCancellationIfAlreadyFinished(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 0)
 	require.Equal(t, taskState.Status, TaskStatusFinished)
+	require.EqualValues(t, 0, taskState.WaitingDuration)
 }
 
 func TestStorageYDBMarkForCancellationIfAlreadyCancelled(t *testing.T) {
@@ -3272,6 +3280,57 @@ func TestStorageYDBMarkForCancellationIfAlreadyCancelled(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 0)
 	require.Equal(t, taskState.Status, TaskStatusCancelled)
+	require.EqualValues(t, 0, taskState.WaitingDuration)
+}
+
+func TestStorageYDBMarkForCancellationWhileWaitingToRun(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+	createdAt := time.Now()
+	taskDuration := time.Minute
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": "task1"},
+	).On("Add", int64(1)).Once()
+
+	taskID, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         TaskStatusWaitingToRun,
+		State:          []byte{},
+		Dependencies:   NewStringSet(),
+	})
+	require.NoError(t, err)
+	metricsRegistry.AssertAllExpectations(t)
+
+	cancelling, err := storage.MarkForCancellation(ctx, taskID, createdAt.Add(taskDuration))
+	require.NoError(t, err)
+	require.True(t, cancelling)
+	metricsRegistry.AssertAllExpectations(t)
+
+	taskState, err := storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.EqualValues(t, taskState.GenerationID, 1)
+	require.Equal(t, taskState.Status, TaskStatusReadyToCancel)
+	require.Equal(t, taskDuration, taskState.WaitingDuration)
 }
 
 func TestStorageYDBUpdateTask(t *testing.T) {
@@ -4806,9 +4865,6 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 
 	// Make sure that WaitingDuration is almost correct
 	diff := (initialWaitingDuration + taskDuration) - task.WaitingDuration
-	if diff < 0 {
-		diff = -diff
-	}
 	threshold := 5 * time.Second
-	require.Less(t, diff, threshold)
+	require.Less(t, math.Abs(float64(diff)), float64(threshold))
 }

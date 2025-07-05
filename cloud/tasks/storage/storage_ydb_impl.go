@@ -1349,7 +1349,7 @@ func (s *storageYDB) markForCancellation(
 	ctx context.Context,
 	session *persistence.Session,
 	taskID string,
-	at time.Time,
+	now time.Time,
 ) (bool, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -1406,10 +1406,13 @@ func (s *storageYDB) markForCancellation(
 
 	lastState := state.DeepCopy()
 
+	if state.Status == TaskStatusWaitingToRun {
+		state.WaitingDuration += now.Sub(state.ChangedStateAt)
+	}
 	state.Status = TaskStatusReadyToCancel
 	state.GenerationID++
-	state.ModifiedAt = at
-	state.ChangedStateAt = at
+	state.ModifiedAt = now
+	state.ChangedStateAt = now
 	state.ErrorMessage = "Cancelled by client"
 	state.ErrorCode = grpc_codes.Canceled
 
