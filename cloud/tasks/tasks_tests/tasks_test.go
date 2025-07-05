@@ -464,7 +464,7 @@ func (t *unstableTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
-	return &empty.Empty{}, nil
+	return t.state, nil
 }
 
 func (t *unstableTask) GetResponse() proto.Message {
@@ -692,6 +692,20 @@ func waitTask(
 ) (uint64, error) {
 
 	return waitTaskWithTimeout(ctx, scheduler, id, defaultTimeout)
+}
+
+func getTaskMetadata(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+	id string,
+) (uint64, error) {
+
+	metadata, err := scheduler.GetTaskMetadata(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+
+	return metadata.(*wrappers.UInt64Value).GetValue(), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1018,6 +1032,65 @@ func TestTasksShouldFailRunningAfterRetriableErrorCountExceeded(t *testing.T) {
 	status, ok := grpc_status.FromError(err)
 	require.True(t, ok)
 	require.Equal(t, expected.Error(), status.Message())
+}
+
+func TestTasksShouldFailRunningAfterRetriableErrorCountForTaskTypeExceeded(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
+	runnersCount := uint64(2)
+	config.RunnersCount = &runnersCount
+	config.StalkingRunnersCount = &runnersCount
+
+	unstableTaskMaxRetriesCount := uint64(6)
+	defaultMaxRetriesCount := uint64(100)
+	config.MaxRetriableErrorCount = &defaultMaxRetriesCount
+	config.MaxRetriableErrorCountByTaskType = map[string]uint64{
+		"unstable": unstableTaskMaxRetriesCount,
+		"doubler":  uint64(3),
+	}
+
+	s := createServicesWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics_empty.NewRegistry())
+
+	err := registerUnstableTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleUnstableTask(
+		reqCtx,
+		s.scheduler,
+		unstableTaskMaxRetriesCount+1, // failuresUntilSuccess
+	)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.Error(t, err)
+
+	expected := errors.NewRetriableError(assert.AnError)
+
+	status, ok := grpc_status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, expected.Error(), status.Message())
+
+	failsCount, err := getTaskMetadata(ctx, s.scheduler, id)
+	require.NoError(t, err)
+	require.EqualValues(t, unstableTaskMaxRetriesCount+1, failsCount)
+
 }
 
 func TestTasksShouldNotRestoreRunningAfterNonRetriableError(t *testing.T) {
