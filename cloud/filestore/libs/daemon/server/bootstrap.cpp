@@ -110,6 +110,7 @@ void TBootstrapServer::InitComponents()
 void TBootstrapServer::InitConfigs()
 {
     Configs->InitAppConfig();
+    Configs->SetupGrpcThreadsLimit();
 }
 
 void TBootstrapServer::InitLWTrace()

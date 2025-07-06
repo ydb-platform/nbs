@@ -4,6 +4,8 @@
 #include <cloud/filestore/libs/server/config.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/grpc/utils.h>
+#include <cloud/storage/core/libs/grpc/threadpool.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -42,6 +44,13 @@ void TConfigInitializerServer::ApplyServerAppConfig(const TString& text)
 
     ServerConfig = std::make_shared<NServer::TServerConfig>(
         AppConfig.GetServerConfig());
+}
+
+void TConfigInitializerServer::SetupGrpcThreadsLimit() const
+{
+    ui32 maxThreads = ServerConfig->GetGrpcThreadsLimit();
+    SetExecutorThreadsLimit(maxThreads);
+    SetDefaultThreadPoolLimit(maxThreads);
 }
 
 }   // namespace NCloud::NFileStore::NDaemon
