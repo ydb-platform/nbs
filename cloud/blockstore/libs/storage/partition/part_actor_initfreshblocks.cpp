@@ -81,6 +81,7 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
     }
 
     for (const auto& block: blocks) {
+        Cerr << "INIT!!! TPartitionActor::HandleLoadFreshBlobsCompleted GetTrimFreshLogBarriers!!!" << Endl;
         State->GetTrimFreshLogBarriers().AcquireBarrier(block.Meta.CommitId);
     }
 

@@ -255,11 +255,11 @@ void TWriteBlobActor::HandlePutResult(
     ApproximateFreeSpaceShare = msg->ApproximateFreeSpaceShare;
 
 
-    const ui64 id = RandomNumber<ui64>(10);
-    if (id == 5) {
-        Cerr << "RANDOM RETURN ERROR" << Endl;
-        msg->Status = NKikimrProto::ERROR;
-    }
+    // const ui64 id = RandomNumber<ui64>(10);
+    // if (id == 5) {
+    //     Cerr << "RANDOM RETURN ERROR" << Endl;
+    //     msg->Status = NKikimrProto::ERROR;
+    // }
 
     if (msg->Status != NKikimrProto::OK) {
         ReplyError(ctx, *msg, msg->ErrorReason);

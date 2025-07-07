@@ -9,7 +9,6 @@
 #include <util/generic/ymath.h>
 #include <util/system/datetime.h>
 #include <util/system/hp_timer.h>
-#include <util/random/random.h>
 
 LWTRACE_USING(BLOBSTORAGE_PROVIDER);
 
@@ -614,12 +613,6 @@ public:
             BlobsEncrypted = PartSets.size();
         }
         ResumeBootstrap();
-
-        // const ui64 id = RandomNumber<ui64>(100);
-        // if (id == 33 && Queries > 100) {
-        //     ReplyAndDie(NKikimrProto::ERROR);
-	    // }
-
         CheckRequests(TEvents::TSystem::Bootstrap);
     }
 

@@ -329,6 +329,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         // commit & garbage queue barriers will be released when confirmed
         // blobs are added
     } else {
+        Cerr << "TPartitionActor::HandleWriteBlocksCompleted GetCommitQueue!!!" << Endl;
         State->GetCommitQueue().ReleaseBarrier(commitId);
         if (msg->CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);

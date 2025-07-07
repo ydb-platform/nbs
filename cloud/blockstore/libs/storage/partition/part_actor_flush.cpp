@@ -257,10 +257,12 @@ void TFlushActor::NotifyCompleted(
     const NProto::TError& error)
 {
     using TEvent = TEvPartitionPrivate::TEvFlushCompleted;
+    Cerr << "TFlushActor::NotifyCompleted error is " << error << Endl;
     auto ev = std::make_unique<TEvent>(
         error,
         FlushedFreshBlobCount,
         FlushedFreshBlobByteCount,
+        // TVector<TFlushedCommitId>
         std::move(FlushedCommitIdsFromChannel));
 
     ev->ExecCycles = RequestInfo->GetExecCycles();
@@ -833,17 +835,34 @@ void TPartitionActor::HandleFlushCompleted(
 
     UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
+    Cerr << "HandleFlushCompleted GetCommitQueue" << Endl;
     State->GetCommitQueue().ReleaseBarrier(commitId);
+    Cerr << "HandleFlushCompleted GetGarbageQueue" << Endl;
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
+    ////////////////////////////////////////////////////////////////////////////
+
+    Cerr << "HandleFlushCompleted error is " << FormatError(msg->Error).c_str() << " and has error is  " << HasError(msg->Error) << Endl;
+    Cerr << "But " << Endl;
     for (const auto& i: msg->FlushedCommitIdsFromChannel) {
-        State->GetTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
+        Cerr << "HandleFlushCompleted GetTrimFreshLogBarriers " << i.CommitId << " " << i.BlockCount << Endl;
+    }
+    Cerr << Endl;
+
+    if (!HasError(msg->Error)) {
+        for (const auto& i: msg->FlushedCommitIdsFromChannel) {
+            Cerr << "HandleFlushCompleted GetTrimFreshLogBarriers" << Endl;
+            State->GetTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
+        }
+
+        State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
+        State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
     }
 
-    State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
-    State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
-
     State->GetFlushedCommitIdsInProgress().clear();
+
+    ////////////////////////////////////////////////////////////////////////////
+
     State->GetFlushState().SetStatus(EOperationStatus::Idle);
 
     Actors.Erase(ev->Sender);
