@@ -77,4 +77,7 @@ message TCellsConfig
 
     // Number of worker threads for RDMA Transport
     optional uint32 RdmaTransportWorkers = 5;
+
+    // Enable/Disable feature
+    optional bool CellsEnabled = 6;
 }

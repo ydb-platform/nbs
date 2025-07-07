@@ -48,6 +48,7 @@ BLOCKSTORE_CELL_DEFAULT_CONFIG(BLOCKSTORE_CELL_DECLARE_CONFIG)
     xxx(CellId,                      TString,           {}                    )\
     xxx(DescribeTimeout,             TDuration,         TDuration::Seconds(30))\
     xxx(RdmaTransportWorkers,        ui32,              0                     )\
+    xxx(CellsEnabled,                bool,              false                 )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_CELLING_DECLARE_CONFIG(name, type, value)                  \

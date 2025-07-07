@@ -123,6 +123,7 @@ public:
     [[nodiscard]] TDuration GetDescribeTimeout() const;
     [[nodiscard]] const NClient::TClientAppConfig& GetGrpcClientConfig() const;
     [[nodiscard]] ui32 GetRdmaTransportWorkers() const;
+    [[nodiscard]] bool GetCellsEnabled() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
