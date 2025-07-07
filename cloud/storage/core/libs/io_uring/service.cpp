@@ -7,6 +7,7 @@
 #include <util/string/builder.h>
 #include <util/system/error.h>
 #include <util/system/file.h>
+#include <util/system/sanitizers.h>
 #include <util/system/thread.h>
 
 #include <liburing.h>
@@ -178,6 +179,7 @@ private:
         }
 
         auto* completion = static_cast<TFileIOCompletion*>(data);
+        NSan::Acquire(completion);
 
         if (cqe->res < 0) {
             completion->Func(
@@ -325,6 +327,8 @@ private:
         io_uring_prep_rw(op, sqe, fd, addr, len, offset);
         io_uring_sqe_set_data(sqe, completion);
 
+        NSan::Release(completion);
+
         const auto error = Submit(Ring);
         if (HasError(error)) {
             completion->Func(completion, error, 0);
@@ -417,6 +421,8 @@ private:
 
         io_uring_prep_nop(sqe);
         io_uring_sqe_set_data(sqe, completion);
+
+        NSan::Release(completion);
 
         const auto error = Submit(Ring);
         if (HasError(error)) {
