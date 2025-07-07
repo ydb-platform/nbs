@@ -22,6 +22,7 @@ public:
     explicit TConfigInitializerServer(TOptionsServerPtr options);
 
     void InitAppConfig();
+
 private:
     void ApplyServerAppConfig(const TString& text);
 };
