@@ -197,8 +197,6 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
         auto& req = WriteBlobRequests[i];
         auto guardedSglist = BuildBlobContentAndComputeChecksums(req);
 
-        Cerr << "WRITING MERGED BLOBS" << Endl;
-
         auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
             req.BlobId,
             std::move(guardedSglist),

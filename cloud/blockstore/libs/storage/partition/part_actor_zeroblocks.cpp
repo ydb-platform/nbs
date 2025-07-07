@@ -426,6 +426,7 @@ void TPartitionActor::CompleteZeroBlocks(
 
     ui64 commitId = args.CommitId;
 <<<<<<< HEAD
+<<<<<<< HEAD
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -433,6 +434,9 @@ void TPartitionActor::CompleteZeroBlocks(
         LogTitle.GetWithTime().c_str(),
 =======
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+=======
+    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
+>>>>>>> cleanup
         "[%lu][d:%s] Complete zero blocks @%lu",
         TabletID(),
         PartitionConfig.GetDiskId().c_str(),

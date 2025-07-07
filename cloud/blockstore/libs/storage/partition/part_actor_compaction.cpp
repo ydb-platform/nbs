@@ -547,8 +547,6 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 Tablet,
                 std::move(request));
         } else {
-            Cerr << "WRITING COMPACTION BLOBS" << Endl;
-
             auto request =
                 std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                     rc.DataBlobId,
@@ -1485,8 +1483,10 @@ void TPartitionActor::HandleCompactionCompleted(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Complete compaction @%lu",
+        "%s [%lu][d:%s] Complete compaction @%lu",
         LogTitle.GetWithTime().c_str(),
+        TabletID(),
+        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     if (HasError(msg->GetError())) {

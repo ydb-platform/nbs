@@ -622,7 +622,6 @@ private:
                 // This block is being flushed; we'll remove it on AddBlobs
                 // and we'll release barrier on FlushCompleted
                 if (FlushedCommitIdsInProgress.contains(garbageCommitId)) {
-                    Cerr << "DBDB WriteFreshBlocksImpl this block is being flushed " << garbageCommitId << Endl;
                     continue;
                 }
 
@@ -635,7 +634,6 @@ private:
                     true);  // isStoredInDb
 
                 if (removed) {
-                    Cerr << "DBDB TRIM FRESH LOG WriteFreshBlocksImpl with commit " << garbageCommitId << " and removed " << removed << Endl;
                     db.DeleteFreshBlock(blockIndex, garbageCommitId);
                     DecrementUnflushedFreshBlocksFromDbCount(1);
                 }
@@ -678,9 +676,7 @@ private:
             for (auto garbageCommitId: garbage) {
                 // This block is being flushed; we'll remove it on AddBlobs
                 // and we'll release barrier on FlushCompleted
-
                 if (FlushedCommitIdsInProgress.contains(garbageCommitId)) {
-                    Cerr << "WriteFreshBlocksImpl this block is being flushed " << garbageCommitId << Endl;
                     continue;
                 }
 
@@ -693,7 +689,6 @@ private:
                     false);  // isStoredInDb
 
                 if (removed) {
-                    Cerr << "TRIM FRESH LOG WriteFreshBlocksImpl with commit " << garbageCommitId << " and removed " << removed << Endl;
                     DecrementUnflushedFreshBlocksFromChannelCount(1);
                     TrimFreshLogBarriers.ReleaseBarrier(garbageCommitId);
                 }

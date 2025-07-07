@@ -79,7 +79,6 @@ class NbsLauncher:
         storage_config_patch.UseShadowDisksForNonreplDiskCheckpoints = True
 
         # TODO: Actualize blockstore storage config.
-        storage_config_patch.MaxWriteBlobErrorsBeforeSuicide = 10
         storage_config_patch.FreshChannelWriteRequestsEnabled = True
         storage_config_patch.FreshChannelCount = 1
 

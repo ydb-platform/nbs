@@ -1,5 +1,4 @@
 #include "barrier.h"
-#include <util/datetime/base.h>
 
 #include <util/generic/ylimits.h>
 
@@ -20,12 +19,6 @@ void TBarriers::AcquireBarrierN(ui64 commitId, ui32 refCount)
     } else {
         Barriers.emplace(commitId, refCount);
     }
-
-    Cerr << "new AcquireBarrierN Barriers " << Endl;
-    for (const auto& el : Barriers) {
-        Cerr << el.CommitId << ' ' << el.RefCount << Endl;
-    }
-    Cerr << Endl;
 }
 
 void TBarriers::ReleaseBarrier(ui64 commitId)
@@ -35,26 +28,12 @@ void TBarriers::ReleaseBarrier(ui64 commitId)
 
 void TBarriers::ReleaseBarrierN(ui64 commitId, ui32 refCount)
 {
-    Cerr << "ReleaseBarrierN commitId " << commitId << " refCount " << refCount << Endl;
     auto it = Barriers.find(TBarrier(commitId, 0));
-
-    Cerr << "prev ReleaseBarrierN Barriers " << Endl;
-    for (const auto& el : Barriers) {
-        Cerr << el.CommitId << ' ' << el.RefCount << Endl;
-    }
-    Cerr << Endl;
-
     Y_ABORT_UNLESS(it != Barriers.end());
     Y_ABORT_UNLESS(it->RefCount >= refCount);
     if ((const_cast<TBarrier&>(*it).RefCount -= refCount) == 0) {
         Barriers.erase(it);
     }
-
-    Cerr << "new ReleaseBarrierN Barriers " << Endl;
-    for (const auto& el : Barriers) {
-        Cerr << el.CommitId << ' ' << el.RefCount << Endl;
-    }
-    Cerr << Endl;
 }
 
 ui64 TBarriers::GetMinCommitId() const

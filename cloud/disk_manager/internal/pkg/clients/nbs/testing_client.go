@@ -186,32 +186,32 @@ func (c *testingClient) GoWriteRandomBlocksToNbsDisk(
 
 		for i := uint32(0); i < writeCount; i++ {
 			blockIndex := uint64(rand.Int63n(int64(blocksCount)))
-			possibleBlocksToWriteCount := blocksCount - blockIndex
-			blocksToWriteCount := uint32(min(1024, max(1, uint64(rand.Intn(int(possibleBlocksToWriteCount))))))
-			// dice := rand.Intn(2)
+			possibleBlocksToWriteCount := int(min(1024, blocksCount-blockIndex))
+			blocksToWriteCount := uint32(max(1, rand.Intn(possibleBlocksToWriteCount)))
+			dice := rand.Intn(2)
 
 			logging.Debug(
 				ctx,
-				"%v WRITING blocksToWriteCount %v",
-				diskID,
+				"Write %v blocks to disk %v",
 				blocksToWriteCount,
+				diskID,
 			)
 
 			var err error
 			blockAcc := crc32.NewIEEE()
 			data := make([]byte, blockSize*blocksToWriteCount)
 
-			// switch dice {
-			// case 0:
-			rand.Read(data)
-			if bytes.Equal(data, zeroes) {
-				logging.Debug(ctx, "rand generated all zeroes")
-			}
+			switch dice {
+			case 0:
+				rand.Read(data)
+				if bytes.Equal(data, zeroes) {
+					logging.Debug(ctx, "rand generated all zeroes")
+				}
 
-			err = session.Write(ctx, blockIndex, data)
-			// case 1:
-			// 	err = session.Zero(ctx, blockIndex, 1)
-			// }
+				err = session.Write(ctx, blockIndex, data)
+			case 1:
+				err = session.Zero(ctx, blockIndex, 1)
+			}
 
 			if err != nil {
 				return err

@@ -214,8 +214,6 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         0   // partId
     );
 
-    Cerr << "WRITING FRESH BLOBS" << Endl;
-
     auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
         CombinedContext,
         blobId,

@@ -7758,7 +7758,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReleaseTrimBarrierOnBlockDeletionWITHERROR)
+    Y_UNIT_TEST(ShouldNotReleaseTrimBarriersOnFlushError)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelCount(1);
@@ -7803,13 +7803,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto response = partition.RecvFlushResponse();
         UNIT_ASSERT(FAILED(response->GetStatus()));
 
-        // send error
         partition.WriteBlocks(TBlockRange32::WithLength(1, 2));
-        // parti
 
         partition.Flush();
-
-        UNIT_ASSERT(false);
     }
 
     Y_UNIT_TEST(ShouldHandleFlushCorrectlyWhileBlockFromFreshChannelIsBeingDeleted)

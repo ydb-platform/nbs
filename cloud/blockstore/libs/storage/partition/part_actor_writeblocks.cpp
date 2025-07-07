@@ -329,7 +329,12 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         // commit & garbage queue barriers will be released when confirmed
         // blobs are added
     } else {
-        Cerr << "TPartitionActor::HandleWriteBlocksCompleted GetCommitQueue!!!" << Endl;
+        LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
+            "[%lu][d:%s] Release commit queue barrier, commit id @%lu",
+            TabletID(),
+            PartitionConfig.GetDiskId().c_str(),
+            commitId);
+
         State->GetCommitQueue().ReleaseBarrier(commitId);
         if (msg->CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);
