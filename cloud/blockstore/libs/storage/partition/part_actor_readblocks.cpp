@@ -994,12 +994,13 @@ void TPartitionActor::ReadBlocks(
 {
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Start read blocks @%lu (range: %s)",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start read blocks @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
         commitId,
-        DescribeRange(readRange).data());
+        DescribeRange(readRange).c_str());
 
     AddTransaction(*requestInfo, requestInfo->CancelRoutine);
 
@@ -1266,10 +1267,11 @@ void TPartitionActor::FinalizeReadBlocks(
     TEvPartitionPrivate::TReadBlocksCompleted operation)
 {
     ui64 commitId = operation.CommitId;
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Complete read blocks @%lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete read blocks @%lu",
+        LogTitle.GetWithTime().c_str(),
         commitId);
 
     const auto& stats = operation.Stats;

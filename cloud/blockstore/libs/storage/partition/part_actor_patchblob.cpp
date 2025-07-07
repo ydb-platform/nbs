@@ -348,10 +348,11 @@ void TPartitionActor::HandlePatchBlobCompleted(
             msg->ApproximateFreeSpaceShare);
 
         if (msg->StorageStatusFlags.Check(yellowMoveFlag)) {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Yellow move flag received for channel %u and group %u",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Yellow move flag received for channel %u and group %u",
+                LogTitle.GetWithTime().c_str(),
                 patchedChannel,
                 patchedGroup);
 
@@ -361,11 +362,12 @@ void TPartitionActor::HandlePatchBlobCompleted(
     }
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Stop tablet because of PatchBlob error: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            FormatError(msg->GetError()).data());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Stop tablet because of PatchBlob error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
 
         ReportTabletBSFailure();
         Suicide(ctx);

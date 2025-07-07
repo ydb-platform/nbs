@@ -107,7 +107,7 @@ void TPartitionActor::DescribeBlocks(
         "%s Start describe blocks @%lu (range: %s)",
         LogTitle.GetWithTime().c_str(),
         commitId,
-        DescribeRange(describeRange).data());
+        DescribeRange(describeRange).c_str());
 
     AddTransaction<TEvVolume::TDescribeBlocksMethod>(*requestInfo);
 

@@ -1,4 +1,5 @@
 #include "part_actor.h"
+#include <cloud/storage/core/libs/common/format.h>
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -36,19 +37,21 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
     );
 
     if (State->GetTrimFreshLogTimeout()) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] TrimFreshLog request scheduled: %lu, %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s TrimFreshLog request scheduled: %lu, %s",
+            LogTitle.GetWithTime().c_str(),
             request->CallContext->RequestId,
-            State->GetTrimFreshLogTimeout().ToString().c_str());
+            FormatDuration(State->GetTrimFreshLogTimeout()).c_str());
 
         ctx.Schedule(State->GetTrimFreshLogTimeout(), request.release());
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] TrimFreshLog request sent: %lu",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s TrimFreshLog request sent: %lu",
+            LogTitle.GetWithTime().c_str(),
             request->CallContext->RequestId);
 
         NCloud::Send(
@@ -113,10 +116,11 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Start TrimFreshLog @%lu @%lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start TrimFreshLog @%lu @%lu",
+        LogTitle.GetWithTime().c_str(),
         trimFreshLogToCommitId,
         nextPerGenerationCounter);
 
@@ -146,18 +150,21 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-            "[d:" << PartitionConfig.GetDiskId() << "]"
-                << " TrimFreshLog failed: " << msg->GetStatus()
-                << " reason: " << msg->GetError().GetMessage().Quote());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s TrimFreshLog failed: %u reason: %s",
+            LogTitle.GetWithTime().c_str(),
+            msg->GetStatus(),
+            FormatError(msg->GetError()).c_str());
 
         State->RegisterTrimFreshLogError();
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] TrimFreshLog completed",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s TrimFreshLog completed",
+            LogTitle.GetWithTime().c_str());
 
         State->RegisterTrimFreshLogSuccess();
         State->SetLastTrimFreshLogToCommitId(msg->CommitId);
