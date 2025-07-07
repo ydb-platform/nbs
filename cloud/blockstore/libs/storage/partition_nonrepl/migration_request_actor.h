@@ -66,6 +66,11 @@ private:
         ui64 cookie);
     void Done(const NActors::TActorContext& ctx);
 
+    bool ProcessResponse(
+        const NActors::TActorContext& ctx,
+        ui64 cookie,
+        TResponseProto&& response);
+
     void UpdateResponse(
         const NActors::TActorId& sender,
         TResponseProto&& response);
@@ -200,6 +205,34 @@ void TMigrationRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
     TBase::Die(ctx);
 }
 
+template <typename TMethod>
+bool TMigrationRequestActor<TMethod>::ProcessResponse(
+    const NActors::TActorContext& ctx,
+    ui64 cookie,
+    TResponseProto&& response)
+{
+    switch (cookie) {
+        case LeaderCookie:
+            LeaderResponse = std::move(response);
+            break;
+        case FollowerCookie:
+            FollowerResponse = std::move(response);
+            break;
+        default: {
+            auto message = ReportUnexpectedCookie(
+                TStringBuilder() << __PRETTY_FUNCTION__ << " #"
+                                 << RequestInfo->CallContext->RequestId
+                                 << " DiskId: " << DiskId.Quote() << " "
+                                 << " Cookie: " << cookie);
+
+            LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, message);
+
+            return false;
+        }
+    }
+    return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -207,8 +240,6 @@ void TMigrationRequestActor<TMethod>::HandleUndelivery(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
     auto error = MakeError(
         E_REJECTED,
         TStringBuilder() << TMethod::Name << " request undelivered to "
@@ -222,24 +253,11 @@ void TMigrationRequestActor<TMethod>::HandleUndelivery(
         DiskId.c_str(),
         error.GetMessage().c_str());
 
-    switch (ev->Cookie) {
-        case LeaderCookie:
-            *LeaderResponse.MutableError() = std::move(error);
-            break;
-        case FollowerCookie:
-            *FollowerResponse.MutableError() = std::move(error);
-            break;
-        default: {
-            auto message = ReportUnexpectedCookie(
-                TStringBuilder() << __PRETTY_FUNCTION__ << " #"
-                                 << RequestInfo->CallContext->RequestId
-                                 << " DiskId: " << DiskId.Quote() << " "
-                                 << " Cookie: " << ev->Cookie);
-
-            LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, message);
-            TBase::Die(ctx);
-            return;
-        }
+    TResponseProto response;
+    *response.MutableError() = std::move(error);
+    if (!ProcessResponse(ctx, ev->Cookie, std::move(response))) {
+        TBase::Die(ctx);
+        return;
     }
 
     if (--PendingRequests) {
@@ -266,26 +284,9 @@ void TMigrationRequestActor<TMethod>::HandleResponse(
             FormatError(msg->Record.GetError()).c_str());
     }
 
-    switch (ev->Cookie) {
-        case LeaderCookie:
-            LeaderResponse = std::move(msg->Record);
-            break;
-        case FollowerCookie:
-            FollowerResponse = std::move(msg->Record);
-            break;
-        default: {
-            auto message = ReportUnexpectedCookie(
-                TStringBuilder() << __PRETTY_FUNCTION__ << " #"
-                                 << RequestInfo->CallContext->RequestId
-                                 << " DiskId: " << DiskId.Quote() << " "
-                                 << " Cookie: " << ev->Cookie);
-
-            LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, message);
-
-            TBase::Die(ctx);
-
-            return;
-        }
+    if (!ProcessResponse(ctx, ev->Cookie, std::move(msg->Record))) {
+        TBase::Die(ctx);
+        return;
     }
 
     if (--PendingRequests) {
