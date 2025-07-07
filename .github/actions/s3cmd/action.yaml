@@ -37,14 +37,14 @@ runs:
       if: inputs.install == 'true'
       shell: bash
       run: |
-        which s3cmd
+        which s3cmd || true
         which s3cmd || {
           [ ! -f updated ] && sudo apt-get -o Dpkg::Lock::Timeout=600 update
           touch updated
           sudo apt-get -o Dpkg::Lock::Timeout=600 install -y --no-install-recommends s3cmd
         }
         s3cmd --version
-        which aws
+        which aws || true
         which aws || {
           [ ! -f updated ] && sudo apt-get -o Dpkg::Lock::Timeout=600 update
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
