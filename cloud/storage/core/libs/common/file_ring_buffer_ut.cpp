@@ -368,6 +368,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(ri.Size(), rb->Size());
             UNIT_ASSERT_VALUES_EQUAL(ri.Empty(), rb->Empty());
             UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
+            UNIT_ASSERT(!rb->IsCorrupted());
         }
     }
 
@@ -422,6 +423,47 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("01"));
         rb.PopFront();
         UNIT_ASSERT_VALUES_EQUAL("01", rb.Front());
+    }
+
+    struct TStateWithCorruptedEntryLength
+    {
+        const TTempFileHandle F;
+        const ui32 Len = 32;
+        TFileRingBuffer Rb;
+
+        explicit TStateWithCorruptedEntryLength(int newLength)
+            : Rb(F.GetName(), Len)
+        {
+            UNIT_ASSERT(Rb.PushBack("aaa"));
+            UNIT_ASSERT(Rb.PushBack("bb"));
+
+            TFileMap m(F.GetName(), TMemoryMapCommon::oRdWr);
+            m.Map(0, Len + 40); // len + sizeof(THeader)
+            char* data = static_cast<char*>(m.Ptr());
+            UNIT_ASSERT_VALUES_EQUAL(2, data[51]);
+            data[51] = newLength;
+        }
+    };
+
+    Y_UNIT_TEST(ShouldSetIsCorruptedFlagWhenEntryLengthIsAltered)
+    {
+        for (int i = 0; i <= 32; i++) {
+            // Detect corruption in Visit
+            TStateWithCorruptedEntryLength s(i);
+            TFileRingBuffer rb(s.F.GetName(), s.Len);
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, rb.IsCorrupted());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldProhibitPushBackInCorruptedState)
+    {
+        TStateWithCorruptedEntryLength good(2);
+        TFileRingBuffer rb(good.F.GetName(), good.Len);
+        UNIT_ASSERT(rb.PushBack("c"));
+
+        TStateWithCorruptedEntryLength bad(1);
+        TFileRingBuffer rb2(bad.F.GetName(), bad.Len);
+        UNIT_ASSERT(!rb2.PushBack("c"));
     }
 }
 

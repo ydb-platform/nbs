@@ -15,7 +15,6 @@ namespace {
 
 constexpr ui32 VERSION = 2;
 constexpr ui64 INVALID_POS = Max<ui64>();
-constexpr TStringBuf INVALID_MARKER = "invalid_entry_marker";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -119,6 +118,7 @@ private:
 
     TEntriesData Data;
     ui64 Count = 0;
+    bool Corrupted = false;
 
 private:
     THeader* Header()
@@ -154,11 +154,15 @@ private:
 
         const auto* data = Data.GetEntryData(eh);
         if (data == nullptr) {
-            visitor(eh->Checksum, INVALID_MARKER);
             return INVALID_POS;
         }
         visitor(eh->Checksum, {data, eh->Size});
         return pos + sizeof(TEntryHeader) + eh->Size;
+    }
+
+    void SetCorrupted()
+    {
+        Corrupted = true;
     }
 
 public:
@@ -186,16 +190,25 @@ public:
         Data = TEntriesData(begin, begin + capacity);
 
         SkipSlackSpace();
-        Visit([this] (ui32 checksum, TStringBuf entry) {
+        bool isConsistent = Visit([this] (ui32 checksum, TStringBuf entry) {
             Y_UNUSED(checksum);
             Y_UNUSED(entry);
             ++Count;
         });
+
+        if (!isConsistent) {
+            SetCorrupted();
+        }
     }
 
 public:
     bool PushBack(TStringBuf data)
     {
+        if (IsCorrupted()) {
+            // TODO: should return error code
+            return false;
+        }
+
         if (data.empty()) {
             return false;
         }
@@ -333,7 +346,7 @@ public:
         return entries;
     }
 
-    void Visit(const TVisitor& visitor) const
+    bool Visit(const TVisitor& visitor) const
     {
         ui64 pos = Header()->ReadPos;
         while (pos > Header()->WritePos && pos != INVALID_POS) {
@@ -344,9 +357,16 @@ public:
             pos = VisitEntry(visitor, pos);
             if (!pos) {
                 // can happen if the buffer is corrupted
-                break;
+                return false;
             }
         }
+
+        return pos == Header()->WritePos;
+    }
+
+    bool IsCorrupted() const
+    {
+        return Corrupted;
     }
 };
 
@@ -397,7 +417,12 @@ TVector<TFileRingBuffer::TBrokenFileEntry> TFileRingBuffer::Validate() const
 
 void TFileRingBuffer::Visit(const TVisitor& visitor) const
 {
-    return Impl->Visit(visitor);
+    Impl->Visit(visitor);
+}
+
+bool TFileRingBuffer::IsCorrupted() const
+{
+    return Impl->IsCorrupted();
 }
 
 }   // namespace NCloud
