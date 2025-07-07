@@ -26,6 +26,7 @@
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
@@ -34,7 +35,6 @@
 #include <cloud/blockstore/libs/storage/init/disk_agent/actorsystem.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
-#include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -49,6 +49,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/features/features_config.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -207,44 +208,6 @@ public:
 NRdma::TServerConfigPtr CreateRdmaServerConfig(NRdma::TRdmaConfig& config)
 {
     return std::make_shared<NRdma::TServerConfig>(config.GetServer());
-}
-
-std::function<IFileIOServicePtr()> CreateAIOServiceFactory(
-    const NStorage::TDiskAgentConfig& config)
-{
-    return [events = config.GetMaxAIOContextEvents()]
-    {
-        return CreateAIOService(events);
-    };
-}
-
-std::function<IFileIOServicePtr()> CreateIoUringServiceFactory(
-    const NStorage::TDiskAgentConfig& config)
-{
-    const ui32 events = config.GetMaxAIOContextEvents();
-    // io_uring service is not thread-safe, so it should be
-    // used with a submission thread anyway
-    const bool useSubmissionThread =
-        !config.GetUseLocalStorageSubmissionThread();
-    const bool isNull =
-        config.GetBackend() == NProto::DISK_AGENT_BACKEND_IO_URING_NULL;
-
-    return [events, useSubmissionThread, isNull, index = ui32()]() mutable
-    {
-        TString cqName = TStringBuilder() << "RNG" << index++;
-
-        IFileIOServicePtr fileIO =
-            isNull ? CreateIoUringServiceNull(std::move(cqName), events)
-                   : CreateIoUringService(std::move(cqName), events);
-
-        if (useSubmissionThread) {
-            fileIO = CreateConcurrentFileIOService(
-                TStringBuilder() << "RNG.SQ" << index++,
-                std::move(fileIO));
-        }
-
-        return fileIO;
-    };
 }
 
 }   // namespace
