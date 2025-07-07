@@ -109,6 +109,15 @@ func (r *runnerForRun) lockTask(
 	return r.storage.LockTaskToRun(ctx, taskInfo, time.Now(), r.host, r.id)
 }
 
+func (r *runnerForRun) getMaxRetriableErrorCount(taskType string) uint64 {
+	count, ok := r.maxRetriableErrorCountByTaskType[taskType]
+	if !ok {
+		return r.maxRetriableErrorCountDefault
+	}
+
+	return count
+}
+
 func (r *runnerForRun) executeTask(
 	ctx context.Context,
 	execCtx *executionContext,
@@ -326,14 +335,6 @@ func (r *runnerForRun) lockAndExecuteTask(
 		r.missedEstimatesUntilTaskIsHanging,
 		r.maxSampledTaskGeneration,
 	)
-}
-
-func (r *runnerForRun) getMaxRetriableErrorCount(taskType string) uint64 {
-	count, ok := r.maxRetriableErrorCountByTaskType[taskType]
-	if !ok {
-		return r.maxRetriableErrorCountDefault
-	}
-	return count
 }
 
 ////////////////////////////////////////////////////////////////////////////////
