@@ -8,7 +8,9 @@ from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, 
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
-from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE
+from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE,  \
+    DISK_AGENT_BACKEND_AIO, \
+    DISK_AGENT_BACKEND_IO_URING
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
@@ -174,7 +176,7 @@ def __prepare_test_config(test_case):
     return prepared_config_path
 
 
-def __run_test(test_case, use_rdma):
+def __run_test(test_case, backend, use_rdma):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
@@ -213,7 +215,7 @@ def __run_test(test_case, use_rdma):
             [devices],
             device_erase_method=test_case.device_erase_method,
             dedicated_disk_agent=dedicated_disk_agent,
-        )
+            backend=backend)
 
         if test_case.lwtrace_query_path:
             enable_lwtrace(kikimr_cluster.client, test_case.lwtrace_query_path)
@@ -351,10 +353,25 @@ def __run_test(test_case, use_rdma):
     return ret
 
 
+BACKENDS = {
+    'aio': DISK_AGENT_BACKEND_AIO,
+    'io_uring': DISK_AGENT_BACKEND_IO_URING,
+}
+
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-@pytest.mark.parametrize("use_rdma", [True, False], ids=['rdma', 'no-rdma'])
-def test_load(test_case, use_rdma):
+@pytest.mark.parametrize("backend", BACKENDS.values(), ids=BACKENDS.keys())
+def test_load(test_case, backend):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
     if test_case.lwtrace_query_path:
         test_case.lwtrace_query_path = yatest_common.source_path(test_case.lwtrace_query_path)
-    return __run_test(test_case, use_rdma)
+
+    return __run_test(test_case, backend, use_rdma=False)
+
+
+@pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
+def test_load_rdma(test_case):
+    test_case.config_path = yatest_common.source_path(test_case.config_path)
+    if test_case.lwtrace_query_path:
+        test_case.lwtrace_query_path = yatest_common.source_path(test_case.lwtrace_query_path)
+
+    return __run_test(test_case, backend=DISK_AGENT_BACKEND_AIO, use_rdma=True)
