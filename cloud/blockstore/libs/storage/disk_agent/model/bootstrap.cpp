@@ -31,9 +31,10 @@ std::function<IFileIOServicePtr()> CreateIoUringServiceFactory(
         !config.GetUseLocalStorageSubmissionThread();
     const bool isNull =
         config.GetBackend() == NProto::DISK_AGENT_BACKEND_IO_URING_NULL;
-    return [events, useSubmissionThread, isNull, index = ui32()]() mutable
+    return [events, useSubmissionThread, isNull, nextIndex = ui32()]() mutable
     {
-        TString cqName = TStringBuilder() << "RNG" << index++;
+        const ui32 index = nextIndex++;
+        TString cqName = TStringBuilder() << "RNG" << index;
 
         IFileIOServicePtr fileIO =
             isNull ? CreateIoUringServiceNull(std::move(cqName), events)
@@ -41,7 +42,7 @@ std::function<IFileIOServicePtr()> CreateIoUringServiceFactory(
 
         if (useSubmissionThread) {
             fileIO = CreateConcurrentFileIOService(
-                TStringBuilder() << "RNG.SQ" << index++,
+                TStringBuilder() << "RNG.SQ" << index,
                 std::move(fileIO));
         }
 
