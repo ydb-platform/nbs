@@ -703,7 +703,7 @@ void TPartitionActor::HandleCollectGarbage(
         TBlockStoreComponents::PARTITION,
         "%s Partition registered TCollectGarbageActor with id [%lu]",
         LogTitle.GetWithTime().c_str(),
-        actor);
+        ToString(actor).c_str());
 
     Actors.Insert(actor);
 }
