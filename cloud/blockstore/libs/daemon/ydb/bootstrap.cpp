@@ -42,6 +42,7 @@
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/init/server/actorsystem.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
@@ -256,43 +257,6 @@ private:
             groupIds.size());
     }
 };
-
-std::function<IFileIOServicePtr()> CreateAIOServiceFactory(
-    const NStorage::TDiskAgentConfig& config)
-{
-    return [maxEvents = config.GetMaxAIOContextEvents()]
-    {
-        return CreateAIOService(maxEvents);
-    };
-}
-
-std::function<IFileIOServicePtr()> CreateIoUringServiceFactory(
-    const NStorage::TDiskAgentConfig& config)
-{
-    const ui32 events = config.GetMaxAIOContextEvents();
-    // io_uring service is not thread-safe, so it should be
-    // used with a submission thread anyway
-    const bool useSubmissionThread =
-        !config.GetUseLocalStorageSubmissionThread();
-    const bool isNull =
-        config.GetBackend() == NProto::DISK_AGENT_BACKEND_IO_URING_NULL;
-    return [events, useSubmissionThread, isNull, index = ui32()]() mutable
-    {
-        TString cqName = TStringBuilder() << "RNG" << index++;
-
-        IFileIOServicePtr fileIO =
-            isNull ? CreateIoUringServiceNull(std::move(cqName), events)
-                   : CreateIoUringService(std::move(cqName), events);
-
-        if (useSubmissionThread) {
-            fileIO = CreateConcurrentFileIOService(
-                TStringBuilder() << "RNG.SQ" << index++,
-                std::move(fileIO));
-        }
-
-        return fileIO;
-    };
-}
 
 }   // namespace
 
