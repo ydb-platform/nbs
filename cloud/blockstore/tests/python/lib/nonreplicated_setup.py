@@ -209,12 +209,13 @@ def setup_disk_agent_config(
         dedicated_disk_agent=False,
         agent_id="localhost",
         node_type='disk-agent',
-        cached_sessions_path=None):
+        cached_sessions_path=None,
+        backend=DISK_AGENT_BACKEND_AIO):
 
     config = TDiskAgentConfig()
     config.Enabled = True
     config.DedicatedDiskAgent = dedicated_disk_agent
-    config.Backend = DISK_AGENT_BACKEND_AIO
+    config.Backend = backend
     config.DirectIoFlagDisabled = True
     config.AgentId = agent_id
     config.AcquireRequired = True
@@ -354,7 +355,9 @@ def setup_nonreplicated(
         device_erase_method=None,
         dedicated_disk_agent=False,
         agent_count=1,
-        cached_sessions_dir_path=None):
+        cached_sessions_dir_path=None,
+        backend=DISK_AGENT_BACKEND_AIO):
+
     enable_custom_cms_configs(kikimr_client)
     setup_disk_registry_proxy_config(kikimr_client)
     for i in range(agent_count):
@@ -365,4 +368,5 @@ def setup_nonreplicated(
             dedicated_disk_agent,
             agent_id=make_agent_id(i),
             node_type=make_agent_node_type(i),
-            cached_sessions_path=make_agent_session_cache_path(cached_sessions_dir_path, i))
+            cached_sessions_path=make_agent_session_cache_path(cached_sessions_dir_path, i),
+            backend=backend)
