@@ -158,6 +158,7 @@ void TStorageServiceActor::HandleSetNodeXAttr(
         return;
     }
 
+    // https://github.com/ydb-platform/nbs/issues/3777
     // message to TIndexTabletState notifying that XAttrs appeared should be
     // placed here
 
