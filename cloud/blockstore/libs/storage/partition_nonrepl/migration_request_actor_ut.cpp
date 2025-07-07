@@ -224,7 +224,7 @@ Y_UNIT_TEST_SUITE(TMigrationRequestActorTest)
         UNIT_ASSERT(followerGotNonRetriableError.value());
     }
 
-    Y_UNIT_TEST_F(ShouldDistinguishLeaderAndFolloerResponses, TFixture)
+    Y_UNIT_TEST_F(ShouldDistinguishLeaderAndFollowerResponses, TFixture)
     {
         SetupRuntime();
 
@@ -353,6 +353,115 @@ Y_UNIT_TEST_SUITE(TMigrationRequestActorTest)
     }
 #endif // NDEBUG
 
+    Y_UNIT_TEST_F(ShouldHandleLeaderAndFollowerUndelivery, TFixture)
+    {
+        enum class EState
+        {
+            GrabEvents,
+            SendResponses
+        };
+        SetupRuntime();
+
+        EState state = EState::GrabEvents;
+        std::optional<bool> followerGotNonRetriableError;
+        TAutoPtr<IEventHandle> leaderRequest;
+        TAutoPtr<IEventHandle> followerRequest;
+        bool leaderUndelivery = false;
+        bool firstReplyWithUndelivery = false;
+
+        auto undeliveryFilter =
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvWriteOrZeroCompleted)
+            {
+                const auto* msg = event->template Get<
+                    TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted>();
+
+                followerGotNonRetriableError =
+                    msg->FollowerGotNonRetriableError;
+
+                return true;
+            }
+
+            if (state == EState::GrabEvents &&
+                event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest)
+            {
+                if (event->Recipient == FakeLeader) {
+                    leaderRequest = event;
+                } else if (event->Recipient == FakeFollower) {
+                    followerRequest = event;
+                } else {
+                    return false;
+                }
+
+                if (leaderRequest && followerRequest) {
+                    state = EState::SendResponses;
+
+                    auto undeliveredEvent =
+                        leaderUndelivery ? leaderRequest : followerRequest;
+                    auto successfulEvent =
+                        leaderUndelivery ? followerRequest : leaderRequest;
+
+                    auto undeliveredResponse = std::make_unique<IEventHandle>(
+                        undeliveredEvent->Sender,
+                        undeliveredEvent->Sender,
+                        undeliveredEvent->ReleaseBase().Release(),
+                        0,
+                        undeliveredEvent->Cookie,
+                        nullptr);
+                    auto successfulResponse = std::make_unique<IEventHandle>(
+                        successfulEvent->Sender,
+                        successfulEvent->Recipient,
+                        new TEvService::TEvWriteBlocksResponse(MakeError(S_OK)),
+                        0,   // flags
+                        successfulEvent->Cookie);
+
+                    if (firstReplyWithUndelivery) {
+                        runtime.SendAsync(undeliveredResponse.release());
+                        runtime.SendAsync(successfulResponse.release());
+                    } else {
+                        runtime.SendAsync(successfulResponse.release());
+                        runtime.SendAsync(undeliveredResponse.release());
+                    }
+                }
+
+                return true;
+            }
+
+            return false;
+        };
+        Runtime.SetEventFilter(undeliveryFilter);
+
+        TPartitionClient client = PartitionClient();
+
+        auto doCheck = [&](bool a, bool b)
+        {
+            state = EState::GrabEvents;
+            followerGotNonRetriableError.reset();
+            leaderRequest.Reset();
+            followerRequest.Reset();
+            leaderUndelivery = a;
+            firstReplyWithUndelivery = b;
+
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(0, 1024),
+                'X');
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            UNIT_ASSERT(followerGotNonRetriableError.has_value());
+            UNIT_ASSERT(!followerGotNonRetriableError.value());
+        };
+
+        doCheck(false, false);
+        doCheck(false, true);
+        doCheck(true, false);
+        doCheck(true, true);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
