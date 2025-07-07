@@ -39,9 +39,8 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "%s LoadFreshBlobs failed: %u reason: %s",
+            "%s LoadFreshBlobs failed. error: %s",
             LogTitle.GetWithTime().c_str(),
-            msg->GetStatus(),
             FormatError(msg->GetError()).c_str());
         ReportInitFreshBlocksError();
         Suicide(ctx);

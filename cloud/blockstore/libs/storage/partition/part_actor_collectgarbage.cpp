@@ -718,9 +718,8 @@ void TPartitionActor::HandleCollectGarbageCompleted(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "%s GC failed: %u reason: %s",
+            "%s GC failed. error: %s",
             LogTitle.GetWithTime().c_str(),
-            msg->GetStatus(),
             FormatError(msg->GetError()).c_str());
 
         State->RegisterCollectError();

@@ -312,10 +312,8 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "%s LoadState failed: GetUsedBlocks from base disk failed: %u "
-            "reason: %s",
+            "%s LoadState failed: GetUsedBlocks from base disk failed. error: %s",
             LogTitle.GetWithTime().c_str(),
-            msg->GetStatus(),
             FormatError(msg->GetError()).c_str());
         Suicide(ctx);
         return;
