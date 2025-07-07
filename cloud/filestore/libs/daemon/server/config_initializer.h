@@ -22,7 +22,6 @@ public:
     explicit TConfigInitializerServer(TOptionsServerPtr options);
 
     void InitAppConfig();
-    void SetupGrpcThreadsLimit() const;
 private:
     void ApplyServerAppConfig(const TString& text);
 };

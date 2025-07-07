@@ -17,7 +17,7 @@
 #include <cloud/storage/core/config/features.pb.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
-#include <cloud/storage/core/libs/grpc/threadpool.h>
+#include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -264,7 +264,7 @@ void TConfigInitializerYdb::ApplyServerAppConfig(const TString& text)
     SetupServerPorts(serverConfig);
 
     ServerConfig = std::make_shared<TServerAppConfig>(appConfig);
-    SetupGrpcThreadsLimit();
+    SetGrpcThreadsLimit(ServerConfig->GetGrpcThreadsLimit());
 }
 
 void TConfigInitializerYdb::ApplyDiagnosticsConfig(const TString& text)
