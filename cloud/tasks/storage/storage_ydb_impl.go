@@ -1209,7 +1209,8 @@ func (s *storageYDB) lockTaskToExecute(
 		// This task was in running/cancelling state
 		// and was picked up by the stalking runner
 		state.StallingDuration += now.Sub(state.ModifiedAt)
-	}
+}
+
 	state.ModifiedAt = now
 
 	transition := stateTransition{
