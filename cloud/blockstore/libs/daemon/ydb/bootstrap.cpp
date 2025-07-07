@@ -3,6 +3,7 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
@@ -865,7 +866,7 @@ void TBootstrapYdb::InitRdmaRequestServer()
 
 void TBootstrapYdb::SetupCellsManager()
 {
-    if (Configs->ServerConfig->GetCellsState() == NProto::CELLS_STATE_ON) {
+    if (Configs->CellsConfig->GetCellsEnabled()) {
         CellsManager = CreateCellsManager(
             Configs->CellsConfig,
             Timer,
@@ -876,8 +877,7 @@ void TBootstrapYdb::SetupCellsManager()
             ServerStats,
             RdmaClient);
     } else {
-        CellsManager = NCells::CreateCellsManagerStub(
-            Configs->ServerConfig->GetCellsState() == NProto::CELLS_STATE_OFF);
+        CellsManager = NCells::CreateCellsManagerStub();
     }
 }
 

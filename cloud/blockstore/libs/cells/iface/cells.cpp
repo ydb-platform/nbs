@@ -11,11 +11,8 @@ namespace {
 struct TCellsManagerStub
     : public ICellsManager
 {
-    const bool IsOff;
-
-    explicit TCellsManagerStub(bool isOff)
+    explicit TCellsManagerStub()
         : ICellsManager(nullptr)
-        , IsOff(isOff)
     {}
 
     [[nodiscard]] TResultOrError<THostEndpoint> GetCellEndpoint(
@@ -37,30 +34,7 @@ struct TCellsManagerStub
         Y_UNUSED(headers);
         Y_UNUSED(localService);
         Y_UNUSED(clientConfig);
-        if (IsOff) {
-            return {};
-        }
-        auto callContext = MakeIntrusive<TCallContext>();
-
-        auto request =
-            std::make_shared<NProto::TDescribeVolumeRequest>();
-        request->MutableHeaders()->CopyFrom(headers);
-        request->SetDiskId(diskId);
-
-        auto future = localService->DescribeVolume(
-            callContext,
-            std::move(request));
-
-        return future.Apply([] (const auto& future) {
-            const auto& result = future.GetValue();
-            if (!HasError(result.GetError())) {
-                return future;
-            }
-            NProto::TDescribeVolumeResponse response;
-            *response.MutableError() =
-                std::move(MakeError(E_REJECTED, "Not all cells available"));
-            return NThreading::MakeFuture(std::move(response));
-        });
+        return {};
     }
 
     void Start() override
@@ -74,9 +48,9 @@ struct TCellsManagerStub
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellsManagerPtr CreateCellsManagerStub(bool isOff)
+ICellsManagerPtr CreateCellsManagerStub()
 {
-    return std::make_shared<TCellsManagerStub>(isOff);
+    return std::make_shared<TCellsManagerStub>();
 }
 
 }   // namespace NCloud::NBlockStore::NCells
