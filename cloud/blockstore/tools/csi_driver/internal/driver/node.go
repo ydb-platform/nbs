@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
@@ -195,6 +196,7 @@ type nodeService struct {
 	mountOptions            []string
 
 	useDiscardForYDBBasedDisks bool
+	startEndpointRetryTimeout  time.Duration
 }
 
 func newNodeService(
@@ -211,7 +213,8 @@ func newNodeService(
 	nfsLocalFilestoreClient nfsclient.ClientIface,
 	mounter mounter.Interface,
 	mountOptions []string,
-	useDiscardForYDBBasedDisks bool) csi.NodeServer {
+	useDiscardForYDBBasedDisks bool,
+	startEndpointRetryTimeout time.Duration) csi.NodeServer {
 
 	return &nodeService{
 		nodeId:                     nodeId,
@@ -229,6 +232,7 @@ func newNodeService(
 		volumeOps:                  new(sync.Map),
 		mountOptions:               mountOptions,
 		useDiscardForYDBBasedDisks: useDiscardForYDBBasedDisks,
+		startEndpointRetryTimeout:  startEndpointRetryTimeout,
 	}
 }
 
@@ -590,7 +594,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
-	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
+	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       podId,
@@ -598,6 +602,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
+		RetryTimeout:     uint32(s.startEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -607,14 +612,11 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
-	})
+	}
+	_, err := s.nbsClient.StartEndpoint(ctx,
+		s.resolveEndpoint(ctx, startEndpointRequest))
 
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, false /* nbs */) {
-			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-			})
-		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -687,7 +689,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
-	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
+	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       instanceId,
@@ -695,6 +697,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
+		RetryTimeout:     uint32(s.startEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -704,14 +707,11 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
-	})
+	}
+	_, err := s.nbsClient.StartEndpoint(ctx,
+		s.resolveEndpoint(ctx, startEndpointRequest))
 
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, false /* nbs */) {
-			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-			})
-		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -817,6 +817,13 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
+	err = nil
+	defer func() {
+		if err != nil {
+			s.cleanupEndpoint(ctx, diskId)
+		}
+	}()
+
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	// startNbsEndpointForNBD is async function. Kubelet will retry
@@ -886,7 +893,12 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	devicePath := filepath.Join(req.StagingTargetPath, diskId)
-	return s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
+	err = s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
+
+	if err != nil {
+		s.cleanupEndpoint(ctx, diskId)
+	}
+	return err
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDevice(
@@ -925,15 +937,17 @@ func (s *nodeService) startNbsEndpointForNBD(
 		nbsInstanceId = s.nodeId
 	}
 
+	unixSocketPath := filepath.Join(endpointDir, nbsSocketName)
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
-	resp, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
-		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
+	startEndpointRequest := &nbsapi.TStartEndpointRequest{
+		UnixSocketPath:   unixSocketPath,
 		DiskId:           diskId,
 		InstanceId:       nbsInstanceId,
 		ClientId:         fmt.Sprintf("%s-%s", s.clientId, nbsInstanceId),
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
+		RetryTimeout:     uint32(s.startEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -943,15 +957,41 @@ func (s *nodeService) startNbsEndpointForNBD(
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
-	})
-
-	if s.IsGrpcTimeoutError(err, false /* nbs */) {
-		s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-		})
 	}
+	resp, err := s.nbsClient.StartEndpoint(ctx,
+		s.resolveEndpoint(ctx, startEndpointRequest))
 
 	return resp, err
+}
+
+func (s *nodeService) resolveEndpoint(ctx context.Context,
+	startEndpointRequest *nbsapi.TStartEndpointRequest) *nbsapi.TStartEndpointRequest {
+	listEndpointsResp, err := s.nbsClient.ListEndpoints(ctx,
+		&nbsapi.TListEndpointsRequest{})
+	if err != nil {
+		return startEndpointRequest
+	}
+
+	for _, endpoint := range listEndpointsResp.Endpoints {
+		if endpoint.UnixSocketPath == startEndpointRequest.UnixSocketPath &&
+			endpoint.InstanceId == startEndpointRequest.InstanceId &&
+			endpoint.DiskId == startEndpointRequest.DiskId {
+			endpoint.GetHeaders().Internal = nil
+			logVolume(endpoint.DiskId, "Existing endpoint was found: %q", endpoint)
+			return endpoint
+		}
+	}
+
+	return startEndpointRequest
+}
+
+func (s *nodeService) cleanupEndpoint(ctx context.Context, diskId string) {
+	_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+		UnixSocketPath: filepath.Join(s.getEndpointDir("", diskId), nbsSocketName),
+	})
+	if err != nil {
+		logVolume(diskId, "StopEndpoint failed in cleanup: %w", err)
+	}
 }
 
 func (s *nodeService) getNfsClient(fileSystemId string) nfsclient.EndpointClientIface {
@@ -1903,16 +1943,8 @@ func (s *nodeService) NodeExpandVolume(
 			"New blocks count is less than current blocks count value")
 	}
 
-	podId, err := s.parsePodId(req.VolumePath)
-	if err != nil {
-		return nil, err
-	}
-
-	endpointDirOld := s.getEndpointDir(podId, diskId)
-	unixSocketPathOld := filepath.Join(endpointDirOld, nbsSocketName)
-
-	endpointDirNew := s.getEndpointDir("", diskId)
-	unixSocketPathNew := filepath.Join(endpointDirNew, nbsSocketName)
+	endpointDir := s.getEndpointDir("", diskId)
+	unixSocketPath := filepath.Join(endpointDir, nbsSocketName)
 
 	listEndpointsResp, err := s.nbsClient.ListEndpoints(
 		ctx, &nbsapi.TListEndpointsRequest{},
@@ -1923,19 +1955,9 @@ func (s *nodeService) NodeExpandVolume(
 	}
 
 	nbdDevicePath := ""
-	unixSocketPath := ""
 	for _, endpoint := range listEndpointsResp.Endpoints {
-		// Fallback to previous implementation for already mounted volumes
-		// Must be removed after migration of all endpoints to the new format
-		if endpoint.UnixSocketPath == unixSocketPathOld {
+		if endpoint.UnixSocketPath == unixSocketPath {
 			nbdDevicePath = endpoint.GetNbdDeviceFile()
-			unixSocketPath = unixSocketPathOld
-			break
-		}
-
-		if endpoint.UnixSocketPath == unixSocketPathNew {
-			nbdDevicePath = endpoint.GetNbdDeviceFile()
-			unixSocketPath = unixSocketPathNew
 			break
 		}
 	}

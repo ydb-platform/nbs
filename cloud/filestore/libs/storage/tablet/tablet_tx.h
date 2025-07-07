@@ -82,6 +82,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LoadNodes,                          __VA_ARGS__)                       \
                                                                                \
     xxx(ReadData,                           __VA_ARGS__)                       \
+                                                                               \
+    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 
 #define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
@@ -1549,6 +1551,9 @@ struct TTxIndexTablet
         const TByteRange AlignedByteRange;
         /*const*/ IBlockBufferPtr Buffer;
         const bool DescribeOnly;
+        // Used when we want to read data from a specific node, not the node
+        // inferred from the handle.
+        ui64 ExplicitNodeId = InvalidNodeId;
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
@@ -1575,6 +1580,7 @@ struct TTxIndexTablet
             , AlignedByteRange(alignedByteRange)
             , Buffer(std::move(buffer))
             , DescribeOnly(describeOnly)
+            , ExplicitNodeId(request.GetNodeId())
             , Blocks(AlignedByteRange.BlockCount())
             , Bytes(AlignedByteRange.BlockCount())
         {
@@ -1612,6 +1618,10 @@ struct TTxIndexTablet
         const ui64 Handle;
         const TByteRange ByteRange;
         /*const*/ IBlockBufferPtr Buffer;
+        // Used when we want to write data to a specific node, not the node
+        // inferred from the handle.
+        ui64 ExplicitNodeId = InvalidNodeId;
+
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
@@ -1629,6 +1639,7 @@ struct TTxIndexTablet
             , Handle(request.GetHandle())
             , ByteRange(byteRange)
             , Buffer(std::move(buffer))
+            , ExplicitNodeId(request.GetNodeId())
         {}
 
         void Clear()
@@ -1659,6 +1670,9 @@ struct TTxIndexTablet
         TVector<NKikimr::TLogoBlobID> BlobIds;
         TVector<TBlockBytesMeta> UnalignedDataParts;
         ui64 CommitId;
+        // Used when we want to access a specific node, not the node
+        // inferred from the handle.
+        ui64 ExplicitNodeId = InvalidNodeId;
 
         ui64 NodeId = InvalidNodeId;
         TMaybe<IIndexTabletDatabase::TNode> Node;
@@ -1677,6 +1691,7 @@ struct TTxIndexTablet
             , BlobIds(std::move(blobIds))
             , UnalignedDataParts(std::move(unalignedDataParts))
             , CommitId(commitId)
+            , ExplicitNodeId(request.GetNodeId())
         {}
 
         void Clear()
@@ -2362,6 +2377,42 @@ struct TTxIndexTablet
             NextNodeId = 0;
         }
     };
+
+    //
+    // ReadNodeRefs
+    //
+
+   struct TReadNodeRefs: TIndexStateNodeUpdates
+   {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TReadNodeRefsRequest Request;
+        const ui64 NodeId;
+        const TString Cookie;
+        const ui64 Limit;
+        TVector<IIndexTabletDatabase::TNodeRef> Refs;
+        ui64 NextNodeId = 0;
+        TString NextCookie;
+
+        TReadNodeRefs(
+                TRequestInfoPtr requestInfo,
+                const NProtoPrivate::TReadNodeRefsRequest& request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(request)
+            , NodeId(request.GetNodeId())
+            , Cookie(request.GetCookie())
+            , Limit(request.GetLimit())
+            , Refs(Limit)
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
+            Refs.clear();
+            NextNodeId = 0;
+            NextCookie.clear();
+        }
+   };
+
 };
 
 }   // namespace NCloud::NFileStore::NStorage

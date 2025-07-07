@@ -19,6 +19,7 @@
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
+#include <cloud/blockstore/libs/nbd/utils.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -149,9 +150,7 @@ void TBootstrap::Init()
         GrpcLog,
         Options->EnableGrpcTracing || logConfig.GetEnableGrpcTracing());
 
-    ui32 maxThreads = ClientConfig->GetGrpcThreadsLimit();
-    SetExecutorThreadsLimit(maxThreads);
-    SetDefaultThreadPoolLimit(maxThreads);
+    SetGrpcThreadsLimit(ClientConfig->GetGrpcThreadsLimit());
 
     ui32 monPort = monConfig.GetPort();
     if (monPort) {
@@ -292,16 +291,23 @@ void TBootstrap::Start()
     }
 
     if (Options->ConnectDevice) {
-#if defined(_linux_)
         if (Options->Netlink) {
-            NbdDevice = CreateNetlinkDevice(
-                Logging,
-                listenAddress,
-                Options->ConnectDevice,
-                Options->RequestTimeout,
-                Options->ConnectionTimeout,
-                Options->Reconfigure);
-        } else {
+            if (Options->ConnectDevicePath) {
+                NbdDevice = CreateNetlinkDevice(
+                    Logging,
+                    listenAddress,
+                    Options->ConnectDevicePath,
+                    Options->RequestTimeout,
+                    Options->ConnectionTimeout);
+            } else {
+                NbdDevice = CreateFreeNetlinkDevice(
+                    Logging,
+                    listenAddress,
+                    TString(DEVICE_PREFIX),
+                    Options->RequestTimeout,
+                    Options->ConnectionTimeout);
+            }
+        } else if (Options->ConnectDevicePath) {
             // The only case we want kernel to retry requests is when the socket
             // is dead due to nbd server restart. And since we can't configure
             // ioctl device to use a new socket, request timeout effectively
@@ -309,24 +315,26 @@ void TBootstrap::Start()
             NbdDevice = CreateDevice(
                 Logging,
                 listenAddress,
-                Options->ConnectDevice,
+                Options->ConnectDevicePath,
+                Options->ConnectionTimeout);
+        } else {
+            NbdDevice = CreateFreeDevice(
+                Logging,
+                listenAddress,
+                TString(DEVICE_PREFIX),
                 Options->ConnectionTimeout);
         }
-        auto future = NbdDevice->Start();
-        const auto& status = future.GetValue();
+        auto status = NbdDevice->Start().GetValueSync();
         if (HasError(status)) {
             ythrow yexception() << status.GetMessage();
         }
-#else
-        ythrow yexception() << "unsupported platform";
-#endif
     }
 }
 
 void TBootstrap::Stop()
 {
     if (NbdDevice) {
-        NbdDevice->Stop(Options->Disconnect);
+        NbdDevice->Stop(true);
     }
 
     switch (Options->DeviceMode) {

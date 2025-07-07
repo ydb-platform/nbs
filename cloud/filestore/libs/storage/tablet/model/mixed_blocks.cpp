@@ -127,7 +127,7 @@ struct TMixedBlocks::TImpl
 
     void SetOffloadedRangesCapacity(ui64 offloadedRangesCapacity)
     {
-        OffloadedRanges.SetCapacity(offloadedRangesCapacity);
+        OffloadedRanges.SetMaxSize(offloadedRangesCapacity);
     }
 
     explicit TImpl(IAllocator* alloc)
@@ -199,7 +199,7 @@ void TMixedBlocks::UnRefRange(ui32 rangeId)
     // If ref count drops to 0, move the range to offloaded ranges. No need to
     // offload the range if the capacity is 0
     if (it->second.RefCount == 0) {
-        if (Impl->OffloadedRanges.capacity() != 0) {
+        if (Impl->OffloadedRanges.GetMaxSize() != 0) {
             auto [_, inserted] =
                 Impl->OffloadedRanges.emplace(rangeId, Impl->Alloc);
             Y_DEBUG_ABORT_UNLESS(inserted);

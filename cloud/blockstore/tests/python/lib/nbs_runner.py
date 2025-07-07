@@ -61,6 +61,7 @@ class LocalNbs(Daemon):
             use_secure_registration=False,
             grpc_ssl_port=None,
             access_service_type=AccessService,
+            log_config=None,
     ):
 
         if dynamic_storage_pools is not None:
@@ -118,6 +119,7 @@ class LocalNbs(Daemon):
         self.ydbstats_config = ydbstats_config
         self.compute_config = compute_config
         self.kms_config = kms_config
+        self.log_config = log_config
 
         self.__proto_configs = {
             "diag.txt": self.__generate_diag_txt(),
@@ -287,46 +289,45 @@ ModifyScheme {
         return self.__cwd
 
     def __generate_server_log_txt(self):
-        services_info = [
-            b"TABLET_EXECUTOR",
-            b"INTERCONNECT",
-            b"BLOCKSTORE_AUTH",
-            b"BLOCKSTORE_BOOTSTRAPPER",
-            b"BLOCKSTORE_CLIENT",
-            b"BLOCKSTORE_NBD",
-            b"BLOCKSTORE_PARTITION_WORKER",
-            b"BLOCKSTORE_SCHEDULER",
-            b"BLOCKSTORE_SERVER",
-            b"BLOCKSTORE_SERVICE",
-            b"BLOCKSTORE_SERVICE_PROXY",
-            b"BLOCKSTORE_DISCOVERY",
-            b"BLOCKSTORE_DISK_REGISTRY_PROXY",
-            b"BLOCKSTORE_VOLUME",
-            b"BLOCKSTORE_RDMA",
-        ]
+        components = {
+            b"TABLET_EXECUTOR": 6,
+            b"INTERCONNECT": 6,
+            b"BLOCKSTORE_AUTH": 6,
+            b"BLOCKSTORE_BOOTSTRAPPER": 6,
+            b"BLOCKSTORE_CLIENT": 6,
+            b"BLOCKSTORE_NBD": 6,
+            b"BLOCKSTORE_PARTITION_WORKER": 6,
+            b"BLOCKSTORE_SCHEDULER": 6,
+            b"BLOCKSTORE_SERVER": 6,
+            b"BLOCKSTORE_SERVICE": 6,
+            b"BLOCKSTORE_SERVICE_PROXY": 6,
+            b"BLOCKSTORE_DISCOVERY": 6,
+            b"BLOCKSTORE_DISK_REGISTRY_PROXY": 6,
+            b"BLOCKSTORE_VOLUME": 6,
+            b"BLOCKSTORE_RDMA": 6,
+            b"BLOCKSTORE_PARTITION": 7,
+            b"BLOCKSTORE_DISK_REGISTRY": 7,
+            b"BLOCKSTORE_DISK_REGISTRY_WORKER": 7,
+            b"BLOCKSTORE_DISK_AGENT": 7,
+            b"BLOCKSTORE_HIVE_PROXY": 7,
+            b"BLOCKSTORE_SS_PROXY": 7,
+        }
 
-        services_dbg = [
-            b"BLOCKSTORE_PARTITION",
-            b"BLOCKSTORE_DISK_REGISTRY",
-            b"BLOCKSTORE_DISK_REGISTRY_WORKER",
-            b"BLOCKSTORE_DISK_AGENT",
-            b"BLOCKSTORE_HIVE_PROXY",
-            b"BLOCKSTORE_SS_PROXY",
-        ]
+        config = TLogConfig()
 
-        log_config = TLogConfig()
-        for service_name in services_info:
-            log_config.Entry.add(Component=service_name, Level=6)
+        config.DefaultLevel = 6
+        config.AllowDropEntries = False
 
-        for service_name in services_dbg:
-            log_config.Entry.add(Component=service_name, Level=7)
+        if self.log_config is not None:
+            config.MergeFrom(self.log_config)
 
-        if self.__grpc_trace:
-            log_config.DefaultLevel = 6
+        entries = [x.Component for x in config.Entry]
 
-        log_config.AllowDropEntries = False
+        for component, level in components.items():
+            if component not in entries:
+                config.Entry.add(Component=component, Level=level)
 
-        return log_config
+        return config
 
     def __generate_diag_txt(self):
         diag = TDiagnosticsConfig()

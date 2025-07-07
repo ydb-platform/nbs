@@ -10,6 +10,8 @@ PY_SRCS(
 )
 
 PEERDIR(
+    cloud/storage/core/tests/common
+
     contrib/python/PyYAML
     contrib/python/retrying
     library/python/fs

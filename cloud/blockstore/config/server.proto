@@ -222,13 +222,26 @@ message TServerConfig
     optional bool UseFakeRdmaClient = 120;
 
     // Enable Discard/ZeroBlocks features for vhost devices
-    optional bool VhostDiscardEnabled = 121;    
+    optional bool VhostDiscardEnabled = 121;
 
     // Maximum request size in bytes for ZeroBlocks.
     // Requests exceeding this size will be split into smaller sub-requests,
     // each with a size up to MaxZeroBlocksSubRequestSize.
     // Max value for MaxZeroBlocksSubRequestSize is 2 GiB
     optional uint32 MaxZeroBlocksSubRequestSize = 122;
+
+    // If set to a non-zero value, PTEs of the external vhost server backing
+    // the guest memory regions for blockdev are flushed (unmapped and mapped
+    // back) every N bytes processed by the backend. E.g. if this value is 4096,
+    // PTEs will be flushed after the guest reads/writes 8 512-byte blocks or
+    // 1 4KiB block.
+    optional uint64 VhostPteFlushByteThreshold = 123;
+
+    // Ask system to provide a free nbd device
+    optional bool AutomaticNbdDeviceManagement = 124;
+
+    // Disables per-client throttlers.
+    optional bool DisableClientThrottlers = 125;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

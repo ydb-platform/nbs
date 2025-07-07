@@ -7,9 +7,8 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
-    : Nodes(0), NodeAttrs(0)
+    : Nodes(0), NodeAttrs(0), NodeRefs(allocator)
 {
-    Y_UNUSED(allocator);
 }
 
 void TInMemoryIndexState::Reset(
@@ -19,7 +18,10 @@ void TInMemoryIndexState::Reset(
 {
     Nodes.SetMaxSize(nodesCapacity);
     NodeAttrs.SetMaxSize(nodeAttrsCapacity);
-    NodeRefsCapacity = nodeRefsCapacity;
+    if (NodeRefs.size() > nodeRefsCapacity) {
+        NodeRefsEvictionObserved();
+    }
+    NodeRefs.SetMaxSize(nodeRefsCapacity);
 }
 
 void TInMemoryIndexState::LoadNodeRefs(const TVector<TNodeRef>& nodeRefs)
@@ -48,7 +50,7 @@ TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
         .NodesCount = Nodes.Size(),
         .NodesCapacity = Nodes.GetMaxSize(),
         .NodeRefsCount = NodeRefs.size(),
-        .NodeRefsCapacity = NodeRefsCapacity,
+        .NodeRefsCapacity = NodeRefs.GetMaxSize(),
         .NodeAttrsCount = NodeAttrs.Size(),
         .NodeAttrsCapacity = NodeAttrs.GetMaxSize(),
         .IsNodeRefsExhaustive = IsNodeRefsExhaustive,
@@ -266,6 +268,8 @@ bool TInMemoryIndexState::ReadNodeRefs(
 
     ui32 bytes = 0;
     while (it != NodeRefs.end() && it->first.NodeId == nodeId) {
+        NodeRefs.TouchKey(it->first);
+
         ui64 minCommitId = it->second.CommitId;
         ui64 maxCommitId = InvalidCommitId;
 
@@ -331,17 +335,21 @@ void TInMemoryIndexState::WriteNodeRef(
     const TString& shardNodeName)
 {
     const auto key = TNodeRefsKey(nodeId, name);
-    if (NodeRefs.size() == NodeRefsCapacity && !NodeRefs.contains(key)) {
-        NodeRefs.clear();
-
-        IsNodeRefsEvictionObserved = true;
-        IsNodeRefsExhaustive = false;
-    }
-    NodeRefs[key] = TNodeRefsRow{
+    auto it = NodeRefs.find(key);
+    TNodeRefsRow value{
         .CommitId = commitId,
         .ChildId = childNode,
         .ShardId = shardId,
         .ShardNodeName = shardNodeName};
+
+    if (it == NodeRefs.end()) {
+        if (NodeRefs.size() == NodeRefs.GetMaxSize()) {
+            NodeRefsEvictionObserved();
+        }
+        NodeRefs.emplace(key, value);
+    } else {
+        it->second = value;
+    }
 }
 
 void TInMemoryIndexState::DeleteNodeRef(ui64 nodeId, const TString& name)

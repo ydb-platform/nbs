@@ -16,6 +16,10 @@ SRCS(
 )
 
 IF (OS_LINUX)
+    PEERDIR(
+        contrib/libs/libcap
+    )
+
     SRCS(
         lowlevel.cpp
     )

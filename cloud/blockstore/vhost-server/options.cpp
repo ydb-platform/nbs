@@ -110,6 +110,10 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("INT")
         .StoreResult(&SocketAccessMode);
 
+    opts.AddLongOption("vmpte-flush-threshold", "Flush VmPTEs every threshold bytes")
+        .RequiredArgument("INT")
+        .StoreResult(&PteFlushByteThreshold);
+
     opts.AddLongOption('v', "verbose", "output level for diagnostics messages")
         .OptionalArgument("STR")
         .StoreResultDef(&VerboseLevel);
@@ -154,6 +158,12 @@ void TOptions::Parse(int argc, char** argv)
             "keyring id with encryption key")
         .RequiredArgument("INT")
         .StoreResult(&EncryptionKeyringId);
+
+    opts.AddLongOption(
+            "blockstore-service-pid",
+            "PID of blockstore service")
+        .RequiredArgument("INT")
+        .StoreResult(&BlockstoreServicePid);
 
     TOptsParseResultException res(&opts, argc, argv);
 

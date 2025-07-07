@@ -779,6 +779,25 @@ void TPartitionActor::HandleLockAndDrainRange(
     Y_DEBUG_ABORT_UNLESS(0);
 }
 
+void TPartitionActor::HandleWakeupOnBoot(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto& msg = ev->Get();
+
+    if (msg->Tag != BootWakeupEventTag) {
+        return;
+    }
+
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Tablet booting takes too long, sending poison pill",
+        LogTitle.GetWithTime().c_str());
+
+    Suicide(ctx);
+}
+
 bool TPartitionActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -849,6 +868,15 @@ TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
 STFUNC(TPartitionActor::StateBoot)
 {
     UpdateActorStatsSampled(ActorContext());
+
+    if (ev->GetTypeRewrite() == TEvTablet::EvBoot &&
+        Config->GetPartitionBootTimeout())
+    {
+        ActorContext().Schedule(
+            Config->GetPartitionBootTimeout(),
+            new TEvents::TEvWakeup(BootWakeupEventTag));
+    }
+
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -859,6 +887,8 @@ STFUNC(TPartitionActor::StateBoot)
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
+
+        HFunc(TEvents::TEvWakeup, HandleWakeupOnBoot);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -888,6 +918,11 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
+
+        // Wakeup function should handle wakeup event taking into account that
+        // there is wakeup event scheduled during boot stage with
+        // TPartitionActor::BootWakeupEventTag tag.
+        IgnoreFunc(TEvents::TEvWakeup)
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -950,6 +985,11 @@ STFUNC(TPartitionActor::StateWork)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsResponse);
 
+        // Wakeup function should handle wakeup event taking into account that
+        // there is wakeup event scheduled during boot stage with
+        // TPartitionActor::BootWakeupEventTag tag.
+        IgnoreFunc(TEvents::TEvWakeup)
+
         default:
             if (!HandleRequests(ev) &&
                 !HandleDefaultEvents(ev, SelfId()))
@@ -1002,6 +1042,11 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+
+        // Wakeup function should handle wakeup event taking into account that
+        // there is wakeup event scheduled during boot stage with
+        // TPartitionActor::BootWakeupEventTag tag.
+        IgnoreFunc(TEvents::TEvWakeup)
 
         default:
             if (!RejectRequests(ev)) {

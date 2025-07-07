@@ -1005,7 +1005,7 @@ private:
     TOperationState CollectGarbageState;
 
     TGarbageQueue GarbageQueue;
-    ui32 LastCollectCounter = 0;
+    ui32 LastCollectPerGenerationCounter = 0;
     TDuration CollectTimeout;
     bool StartupGcExecuted = false;
 
@@ -1053,9 +1053,9 @@ public:
         Meta.SetLastCollectCommitId(commitId);
     }
 
-    ui32 NextCollectCounter()
+    ui32 NextCollectPerGenerationCounter()
     {
-        return ++LastCollectCounter;
+        return ++LastCollectPerGenerationCounter;
     }
 
     void InitGarbage(

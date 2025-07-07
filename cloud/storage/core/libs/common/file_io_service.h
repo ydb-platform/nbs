@@ -177,4 +177,11 @@ private:
 
 IFileIOServicePtr CreateFileIOServiceStub();
 
+IFileIOServicePtr CreateRoundRobinFileIOService(
+    TVector<IFileIOServicePtr> fileIOs);
+
+IFileIOServicePtr CreateConcurrentFileIOService(
+    const TString& submissionThreadName,
+    IFileIOServicePtr fileIO);
+
 }   // namespace NCloud

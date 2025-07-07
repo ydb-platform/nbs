@@ -6,6 +6,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/nbd
     cloud/blockstore/public/api/grpc
     cloud/blockstore/public/api/protos
 

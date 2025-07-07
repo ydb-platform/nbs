@@ -251,6 +251,8 @@ message TStorageServiceConfig
     optional uint32 MaxWriteCostMultiplier = 70;
 
     // Timeout to register client at volume.
+    // InitialAddClientTimeout should include the time required to release
+    // the volume lock and to bring the volume back up.
     optional uint32 InitialAddClientTimeout = 71;
 
     // Timeout to register client after tablet local start.
@@ -1257,4 +1259,7 @@ message TStorageServiceConfig
     optional uint32 MaxCompactionRangesLoadingPerTx = 436;
     // Max inflight for out of order compaction map load requests.
     optional uint32 MaxOutOfOrderCompactionMapChunksInflight = 437;
+
+    // Time to wait for a partition tablet to boot (in milliseconds).
+    optional uint32 PartitionBootTimeout = 438;
 }

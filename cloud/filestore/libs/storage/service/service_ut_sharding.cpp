@@ -513,8 +513,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     }
 
     void DoShouldCheckAttrForNodeCreatedInShardViaLeader(
-        NProto::TStorageConfig& config,
-        TSetNodeAttrArgs newArgs,
+        NProto::TStorageConfig & config,
+        std::function<TSetNodeAttrArgs()> newArgsConstructor,
         bool shouldTriggerCriticalEvent)
     {
         TShardedFileSystemConfig fsConfig;
@@ -565,6 +565,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             headers1,
             TCreateNodeArgs::File(RootNodeId, name))->Record.GetNode().GetId();
         UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId));
+        TSetNodeAttrArgs newArgs = newArgsConstructor();
         newArgs.Node = nodeId;
         service.SetNodeAttr(headers1, fsConfig.Shard1Id, newArgs);
 
@@ -593,21 +594,45 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST_SIMPLE(ShouldCheckAttrForNodeCreatedInShardViaLeader)
     {
-        // If the size is changed without mtime change, this is not an expected
-        // situation
-        DoShouldCheckAttrForNodeCreatedInShardViaLeader(
-            config,
-            TSetNodeAttrArgs(InvalidNodeId).SetSize(1_MB),
-            true);
-
-        // If the size is changed with mtime change, this is an acceptable
+        // If the size is changed with mtime update, this is an acceptable
         // situation and should not trigger the critical event
         DoShouldCheckAttrForNodeCreatedInShardViaLeader(
             config,
-            TSetNodeAttrArgs(InvalidNodeId)
-                .SetSize(1_MB)
-                .SetMTime(Max<ui64>()),
+            []()
+            {
+                return TSetNodeAttrArgs(InvalidNodeId)
+                    .SetSize(1_MB)
+                    .SetMTime(
+                        (TInstant::Now() + TDuration::Hours(1)).MicroSeconds());
+            },
             false);
+
+        // Even if the MTime is within a reasonable range, it should not
+        // trigger the critical event
+        DoShouldCheckAttrForNodeCreatedInShardViaLeader(
+            config,
+            []()
+            {
+                return TSetNodeAttrArgs(InvalidNodeId)
+                    .SetSize(1_MB)
+                    .SetMTime((TInstant::Now() - TDuration::Seconds(10))
+                                  .MicroSeconds());
+            },
+            false);
+
+        // If the MTime is too long ago, it should trigger the critical
+        // event, since it is likely that the creation has overwritten
+        // the node created earlier in the shard
+        DoShouldCheckAttrForNodeCreatedInShardViaLeader(
+            config,
+            []()
+            {
+                return TSetNodeAttrArgs(InvalidNodeId)
+                    .SetSize(1_MB)
+                    .SetMTime((TInstant::Now() - TDuration::Minutes(10))
+                                  .MicroSeconds());
+            },
+            true);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(
@@ -4463,6 +4488,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // triggering background shard stats collection
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions{
+                .FinalEvents = {TDispatchOptions::TFinalEventCondition(
+                    TEvIndexTablet::EvGetStorageStatsResponse,
+                    2)}});
 
         {
             using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;

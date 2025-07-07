@@ -1,4 +1,4 @@
-#include "storage_aio.h"
+#include "storage_local.h"
 
 #include "file_io_service_provider.h"
 
@@ -913,7 +913,7 @@ void TAioStorage::ReportIOError()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAioStorageProvider final
+class TLocalStorageProvider final
     : public IStorageProvider
 {
 private:
@@ -923,7 +923,7 @@ private:
     const bool DirectIO;
 
 public:
-    explicit TAioStorageProvider(
+    explicit TLocalStorageProvider(
             ITaskQueuePtr submitQueue,
             IFileIOServiceProviderPtr fileIOProvider,
             INvmeManagerPtr nvmeManager,
@@ -975,22 +975,22 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStorageProviderPtr CreateAioStorageProvider(
+IStorageProviderPtr CreateLocalStorageProvider(
     IFileIOServiceProviderPtr fileIOProvider,
     INvmeManagerPtr nvmeManager,
-    bool directIO,
-    EAioSubmitQueueOpt submitQueueOpt)
+    TLocalStorageProviderParams params)
 {
-    ITaskQueuePtr submitQueue = submitQueueOpt == EAioSubmitQueueOpt::Use
-                                    ? CreateThreadPool("AIO.SQ", 1)
-                                    : CreateTaskQueueStub();
+    ITaskQueuePtr submitQueue =
+        params.UseSubmissionThread
+            ? CreateThreadPool(params.SubmissionThreadName, 1)
+            : CreateTaskQueueStub();
     submitQueue->Start();
 
-    return std::make_shared<TAioStorageProvider>(
+    return std::make_shared<TLocalStorageProvider>(
         std::move(submitQueue),
         std::move(fileIOProvider),
         std::move(nvmeManager),
-        directIO);
+        params.DirectIO);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

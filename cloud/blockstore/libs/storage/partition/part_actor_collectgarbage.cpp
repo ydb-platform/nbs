@@ -40,7 +40,8 @@ private:
     const TTabletStorageInfoPtr TabletInfo;
     const ui64 LastGCCommitId;
     const ui64 CollectCommitId;
-    const ui32 CollectCounter;
+    const ui32 RecordGeneration;
+    const ui32 PerGenerationCounter;
 
     TVector<TPartialBlobId> NewBlobs;
     TVector<TPartialBlobId> GarbageBlobs;
@@ -60,7 +61,8 @@ public:
         TTabletStorageInfoPtr tabletInfo,
         ui64 lastGCCommitId,
         ui64 collectCommitId,
-        ui32 collectCounter,
+        ui32 recordGeneration,
+        ui32 perGenerationCounter,
         TVector<TPartialBlobId> newBlobs,
         TVector<TPartialBlobId> garbageBlobs,
         TVector<ui32> mixedAndMergedChannels,
@@ -101,7 +103,8 @@ TCollectGarbageActor::TCollectGarbageActor(
         TTabletStorageInfoPtr tabletInfo,
         ui64 lastGCCommitId,
         ui64 collectCommitId,
-        ui32 collectCounter,
+        ui32 recordGeneration,
+        ui32 perGenerationCounter,
         TVector<TPartialBlobId> newBlobs,
         TVector<TPartialBlobId> garbageBlobs,
         TVector<ui32> mixedAndMergedChannels,
@@ -112,7 +115,8 @@ TCollectGarbageActor::TCollectGarbageActor(
     , TabletInfo(std::move(tabletInfo))
     , LastGCCommitId(lastGCCommitId)
     , CollectCommitId(collectCommitId)
-    , CollectCounter(collectCounter)
+    , RecordGeneration(recordGeneration)
+    , PerGenerationCounter(perGenerationCounter)
     , NewBlobs(std::move(newBlobs))
     , GarbageBlobs(std::move(garbageBlobs))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
@@ -154,15 +158,15 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
         CleanupWholeHistory,
         LastGCCommitId,
         CollectCommitId,
-        CollectCounter);
+        PerGenerationCounter);
 
     auto collect = ParseCommitId(CollectCommitId);
     for (ui32 channel: MixedAndMergedChannels) {
         for (auto& kv: requests.GetRequests(channel)) {
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
                 TabletInfo->TabletID,               // tablet
-                collect.first,                      // record generation
-                CollectCounter,                     // per generation counter
+                RecordGeneration,                   // record generation
+                PerGenerationCounter,               // per generation counter
                 channel,                            // collect channel
                 true,                               // yes, collect
                 collect.first,                      // collect generation
@@ -315,7 +319,8 @@ private:
     const TString DiskId;
     const TTabletStorageInfoPtr TabletInfo;
     const ui64 CollectCommitId;
-    const ui32 CollectCounter;
+    const ui32 RecordGeneration;
+    const ui32 PerGenerationCounter;
 
     TVector<TPartialBlobId> KnownBlobIds;
 
@@ -331,7 +336,8 @@ public:
         TString diskId,
         TTabletStorageInfoPtr tabletInfo,
         ui64 collectCommitId,
-        ui32 collectCounter,
+        ui32 recordGeneration,
+        ui32 perGenerationCounter,
         TVector<TPartialBlobId> knownBlobIds,
         TVector<ui32> mixedAndMergedChannels);
 
@@ -365,7 +371,8 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
         TString diskId,
         TTabletStorageInfoPtr tabletInfo,
         ui64 collectCommitId,
-        ui32 collectCounter,
+        ui32 recordGeneration,
+        ui32 perGenerationCounter,
         TVector<TPartialBlobId> knownBlobIds,
         TVector<ui32> mixedAndMergedChannels)
     : RequestInfo(std::move(requestInfo))
@@ -373,7 +380,8 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
     , DiskId(std::move(diskId))
     , TabletInfo(std::move(tabletInfo))
     , CollectCommitId(collectCommitId)
-    , CollectCounter(collectCounter)
+    , RecordGeneration(recordGeneration)
+    , PerGenerationCounter(perGenerationCounter)
     , KnownBlobIds(std::move(knownBlobIds))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
 {
@@ -403,15 +411,14 @@ void TCollectGarbageHardActor::CollectGarbage(const TActorContext& ctx)
         KnownBlobIds,
         CollectCommitId);
 
-    auto collect = ParseCommitId(CollectCommitId);
     for (ui32 channel: MixedAndMergedChannels) {
         for (auto& kv: requests.GetRequests(channel)) {
             auto barrier = ParseCommitId(kv.second.CollectCommitId);
 
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
                 TabletInfo->TabletID,               // tablet
-                collect.first,                      // record generation
-                CollectCounter,                     // per generation counter
+                RecordGeneration,                   // record generation
+                PerGenerationCounter,               // per generation counter
                 channel,                            // collect channel
                 true,                               // yes, collect
                 barrier.first,                      // collect generation
@@ -618,7 +625,9 @@ void TPartitionActor::HandleCollectGarbage(
         return;
     }
 
-    ui64 commitId = State->GetCollectCommitId();
+    const ui64 commitId = State->GetCollectCommitId();
+    // use tablet generation as record generation
+    const ui32 recordGeneration = Executor()->Generation();
 
     if (State->CollectGarbageHardRequested) {
         State->CollectGarbageHardRequested = false;
@@ -647,8 +656,8 @@ void TPartitionActor::HandleCollectGarbage(
         return;
     }
 
-    auto collectCounter = State->NextCollectCounter();
-    if (collectCounter == InvalidCollectCounter) {
+    auto nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
+    if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
         RebootPartitionOnCollectCounterOverflow(ctx, "CollectGarbage");
         return;
     }
@@ -658,7 +667,7 @@ void TPartitionActor::HandleCollectGarbage(
         TabletID(),
         PartitionConfig.GetDiskId().c_str(),
         commitId,
-        collectCounter,
+        nextPerGenerationCounter,
         static_cast<ui32>(newBlobs.size()),
         static_cast<ui32>(garbageBlobs.size()));
 
@@ -677,7 +686,8 @@ void TPartitionActor::HandleCollectGarbage(
         Info(),
         State->GetLastCollectCommitId(),
         commitId,
-        collectCounter,
+        recordGeneration,
+        nextPerGenerationCounter,
         std::move(newBlobs),
         std::move(garbageBlobs),
         std::move(mixedAndMergedChannels),
@@ -765,8 +775,8 @@ void TPartitionActor::CompleteCollectGarbage(
 
     RemoveTransaction(*args.RequestInfo);
 
-    auto collectCounter = State->NextCollectCounter();
-    if (collectCounter == InvalidCollectCounter) {
+    auto nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
+    if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
         RebootPartitionOnCollectCounterOverflow(ctx, "CollectGarbageHard");
         return;
     }
@@ -782,11 +792,12 @@ void TPartitionActor::CompleteCollectGarbage(
         PartitionConfig.GetDiskId(),
         Info(),
         args.CollectCommitId,
-        State->NextCollectCounter(),
+        Executor()->Generation(),
+        nextPerGenerationCounter,
         std::move(args.KnownBlobIds),
         std::move(mixedAndMergedChannels));
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Partition registered TCollectGarbageActor with id [%lu]",
+        "[%lu][d:%s] Partition registered TCollectGarbageHardActor with id [%lu]",
         TabletID(),
         PartitionConfig.GetDiskId().c_str(),
         actor);

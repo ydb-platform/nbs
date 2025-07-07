@@ -33,6 +33,7 @@ struct TOptions
     ui32 BatchSize = 1024;
     ui32 BlockSize = 512;
     ui32 QueueCount = 0;
+    ui64 PteFlushByteThreshold = 0;
     ui32 SocketAccessMode = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
 
     TString LogType = "json";
@@ -44,6 +45,7 @@ struct TOptions
     NProto::EEncryptionMode EncryptionMode = NProto::NO_ENCRYPTION;
     TString EncryptionKeyPath;
     ui32 EncryptionKeyringId = 0;
+    __pid_t BlockstoreServicePid = 0;
 
     NProto::TEncryptionSpec GetEncryptionSpec() const;
 

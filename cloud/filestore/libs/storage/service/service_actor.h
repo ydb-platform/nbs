@@ -244,6 +244,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateReadNodeRefsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
 private:
     void RenderSessions(IOutputStream& out);
     void RenderLocalFileStores(IOutputStream& out);

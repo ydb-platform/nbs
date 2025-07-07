@@ -125,9 +125,7 @@ void TBootstrap::Init()
 
     GrpcLoggerInit(GrpcLog, logConfig.GetEnableGrpcTracing());
 
-    ui32 maxThreads = ClientConfig->GetGrpcThreadsLimit();
-    SetExecutorThreadsLimit(maxThreads);
-    SetDefaultThreadPoolLimit(maxThreads);
+    SetGrpcThreadsLimit(ClientConfig->GetGrpcThreadsLimit());
 
     ui32 monPort = monConfig.GetPort();
     if (monPort) {

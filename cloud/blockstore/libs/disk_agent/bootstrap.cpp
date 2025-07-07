@@ -20,7 +20,7 @@
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
-#include <cloud/blockstore/libs/service_local/storage_aio.h>
+#include <cloud/blockstore/libs/service_local/storage_local.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
@@ -477,19 +477,19 @@ bool TBootstrap::InitKikimrService()
                               factory)
                         : CreateSingleFileIOServiceProvider(factory());
 
-                AioStorageProvider = CreateAioStorageProvider(
+                LocalStorageProvider = CreateLocalStorageProvider(
                     FileIOServiceProvider,
                     NvmeManager,
-                    !config.GetDirectIoFlagDisabled(),
-                    EAioSubmitQueueOpt::Use
-                );
+                    {.DirectIO = !config.GetDirectIoFlagDisabled(),
+                     .UseSubmissionThread =
+                         config.GetUseLocalStorageSubmissionThread()});
 
                 STORAGE_INFO("Aio backend initialized");
                 break;
             }
             case NProto::DISK_AGENT_BACKEND_NULL:
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-                AioStorageProvider = CreateNullStorageProvider();
+                LocalStorageProvider = CreateNullStorageProvider();
                 STORAGE_INFO("Null backend initialized");
                 break;
         }
@@ -540,7 +540,7 @@ bool TBootstrap::InitKikimrService()
     args.AsyncLogger = AsyncLogger;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.AioStorageProvider = AioStorageProvider;
+    args.LocalStorageProvider = LocalStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;
     args.RdmaServer = RdmaServer;

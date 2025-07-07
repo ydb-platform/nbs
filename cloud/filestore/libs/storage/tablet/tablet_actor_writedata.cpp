@@ -98,7 +98,11 @@ void TIndexTabletActor::HandleWriteData(
 
     auto validator = [&](const NProto::TWriteDataRequest& request)
     {
-        return ValidateWriteRequest(ctx, request, range);
+        return ValidateWriteRequest(
+            ctx,
+            request,
+            range,
+            !Config->GetAllowHandlelessIO());
     };
 
     if (!AcceptRequest<TEvService::TWriteDataMethod>(ev, ctx, validator)) {
@@ -172,18 +176,27 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         return true;
     }
 
-    auto* handle = FindHandle(args.Handle);
-    if (!handle || handle->Session != session) {
-        args.Error = ErrorInvalidHandle(args.Handle);
-        return true;
-    }
+    if (Config->GetAllowHandlelessIO()) {
+        if (args.ExplicitNodeId == InvalidNodeId) {
+            args.Error = ErrorInvalidTarget(args.ExplicitNodeId);
+            return true;
+        }
+        args.NodeId = args.ExplicitNodeId;
+    } else {
+        auto* handle = FindHandle(args.Handle);
+        if (!handle || handle->Session != session) {
+            args.Error = ErrorInvalidHandle(args.Handle);
+            return true;
+        }
 
-    if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
-        args.Error = ErrorInvalidHandle(args.Handle);
-        return true;
-    }
+        if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE))
+        {
+            args.Error = ErrorInvalidHandle(args.Handle);
+            return true;
+        }
 
-    args.NodeId = handle->GetNodeId();
+        args.NodeId = handle->GetNodeId();
+    }
     args.CommitId = GetCurrentCommitId();
 
     LOG_TRACE(ctx, TFileStoreComponents::TABLET,
@@ -199,8 +212,14 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         return false;
     }
 
+    // It is possible to explicitly pass a nodeId that is non-existent
+    // in the handleless mode. This should not lead to a TABLET_VERIFY.
+    TABLET_VERIFY(args.Node || Config->GetAllowHandlelessIO());
+    if (!args.Node) {
+        args.Error = ErrorInvalidTarget(args.NodeId);
+        return true;
+    }
     // TODO: access check
-    TABLET_VERIFY(args.Node);
     if (!HasSpaceLeft(args.Node->Attrs, args.ByteRange.End())) {
         args.Error = ErrorNoSpaceLeft();
         return true;

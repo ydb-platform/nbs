@@ -704,19 +704,30 @@ bool TIndexTabletActor::ValidateTx_ReadData(
         return false;
     }
 
-    auto* handle = FindHandle(args.Handle);
-    if (!handle || handle->Session != session) {
-        args.Error = ErrorInvalidHandle(args.Handle);
-        return false;
+    if (Config->GetAllowHandlelessIO()) {
+        if (args.ExplicitNodeId == InvalidNodeId) {
+            args.Error = ErrorInvalidTarget(args.ExplicitNodeId);
+            return false;
+        }
+        args.NodeId = args.ExplicitNodeId;
+        args.CommitId = GetCurrentCommitId();
+    } else {
+        auto* handle = FindHandle(args.Handle);
+        if (!handle || handle->Session != session) {
+            args.Error = ErrorInvalidHandle(args.Handle);
+            return false;
+        }
+
+        if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_READ))
+        {
+            args.Error = ErrorInvalidHandle(args.Handle);
+            return false;
+        }
+
+        args.NodeId = handle->GetNodeId();
+        args.CommitId = handle->GetCommitId();
     }
 
-    if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_READ)) {
-        args.Error = ErrorInvalidHandle(args.Handle);
-        return false;
-    }
-
-    args.NodeId = handle->GetNodeId();
-    args.CommitId = handle->GetCommitId();
     if (args.DescribeOnly) {
         // initializing args.ReadAheadRange in an ugly way since TMaybe doesn't
         // support classes which don't have an assignment operator
@@ -758,7 +769,13 @@ bool TIndexTabletActor::PrepareTx_ReadData(
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
         ready = false;
     } else {
-        TABLET_VERIFY(args.Node);
+        // it is possible to explicitly pass a nodeId that is non-existentin
+        // the handleless mode. This should not lead to a TABLET_VERIFY
+        TABLET_VERIFY(args.Node || Config->GetAllowHandlelessIO());
+        if (!args.Node) {
+            args.Error = ErrorInvalidTarget(args.NodeId);
+            return true;
+        }
         // TODO: access check
     }
 

@@ -11,17 +11,18 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class EAioSubmitQueueOpt : bool {
-    DontUse = false,
-    Use = true
+struct TLocalStorageProviderParams
+{
+    bool DirectIO = false;
+    bool UseSubmissionThread = false;
+    TString SubmissionThreadName = "AIO.SQ";
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStorageProviderPtr CreateAioStorageProvider(
+IStorageProviderPtr CreateLocalStorageProvider(
     IFileIOServiceProviderPtr fileIOProvider,
     NNvme::INvmeManagerPtr nvmeManager,
-    bool directIO,
-    EAioSubmitQueueOpt submitQueueOpt);
+    TLocalStorageProviderParams params);
 
 }   // namespace NCloud::NBlockStore::NServer

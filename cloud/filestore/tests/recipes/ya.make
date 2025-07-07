@@ -2,6 +2,7 @@ RECURSE(
     mount
     service-kikimr
     service-local
+    stats-collector
     tablets-restarter
     vhost
     vhost-endpoint

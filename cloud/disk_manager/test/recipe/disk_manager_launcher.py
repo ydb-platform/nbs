@@ -596,6 +596,10 @@ class DiskManagerLauncher:
             max_restart_period_sec=max_restart_period_sec,
         )
 
+    @property
+    def disk_manager(self):
+        return self.__daemon
+
     def start(self):
         self.__daemon.start()
         register_process(SERVICE_NAME, self.__daemon.pid)

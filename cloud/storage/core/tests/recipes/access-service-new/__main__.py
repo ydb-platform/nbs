@@ -8,8 +8,13 @@ from library.python.testing.recipe import declare_recipe, set_env
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 logger = logging.getLogger(__name__)
+ERR_LOG_FILE_NAMES_FILE = "access_service_new_recipe.err_log_files"
 
 
 def parse_args(args):
@@ -50,6 +55,9 @@ def start(argv):
         cert_key_file=cert_key_file,
     )
     access_service.start()
+    append_recipe_err_files(
+        ERR_LOG_FILE_NAMES_FILE, access_service.daemon.stderr_file_name
+    )
     set_env("ACCESS_SERVICE_TYPE", "new")
     set_env("ACCESS_SERVICE_PORT", str(port))
     set_env("ACCESS_SERVICE_CONTROL_PORT", str(control_port))
@@ -67,6 +75,12 @@ def stop(argv):
     except OSError:
         logger.exception("While killing pid `%s`", pid)
         raise
+
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError(
+            "Errors occurred during new access-service-new execution: {}".format(errors)
+        )
 
 
 if __name__ == "__main__":

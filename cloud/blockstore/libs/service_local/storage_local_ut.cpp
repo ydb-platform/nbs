@@ -1,4 +1,4 @@
-#include "storage_aio.h"
+#include "storage_local.h"
 
 #include "file_io_service_provider.h"
 
@@ -116,11 +116,11 @@ auto CreateAndStartAIOServiceProvider()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TAioStorageTest)
+Y_UNIT_TEST_SUITE(TLocalStorageTest)
 {
     void ShouldHandleLocalReadWriteRequestsImpl(
         ui32 blockSize,
-        EAioSubmitQueueOpt submitQueueOpt)
+        TLocalStorageProviderParams params)
     {
         const ui64 blockCount = 1024;
         const ui64 startIndex = 10;
@@ -132,12 +132,10 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
         Y_DEFER { fileIOServiceProvider->Stop(); };
 
-        auto provider = CreateAioStorageProvider(
+        auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            false,  // directIO
-            submitQueueOpt
-        );
+            std::move(params));
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -228,7 +226,7 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 0), buffer);
     }
 
-    void ShouldHandleZeroBlocksRequestsImpl(EAioSubmitQueueOpt submitQueueOpt)
+    void ShouldHandleZeroBlocksRequestsImpl(TLocalStorageProviderParams params)
     {
         const ui32 blockSize = 4096;
         const ui64 blockCount = 32_MB / blockSize;
@@ -248,12 +246,10 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
         Y_DEFER { fileIOServiceProvider->Stop(); };
 
-        auto provider = CreateAioStorageProvider(
+        auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            false,  // directIO
-            submitQueueOpt
-        );
+            std::move(params));
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -304,36 +300,40 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
     {
         ShouldHandleLocalReadWriteRequestsImpl(
             512,
-            EAioSubmitQueueOpt::DontUse);
+            {.DirectIO = false, .UseSubmissionThread = false});
     }
 
     Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_512_withSubmitQueue)
     {
-        ShouldHandleLocalReadWriteRequestsImpl(512, EAioSubmitQueueOpt::Use);
+        ShouldHandleLocalReadWriteRequestsImpl(
+            512,
+            {.DirectIO = false, .UseSubmissionThread = true});
     }
 
     Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_1024)
     {
         ShouldHandleLocalReadWriteRequestsImpl(
             1024,
-            EAioSubmitQueueOpt::DontUse);
+            {.DirectIO = false, .UseSubmissionThread = false});
     }
 
     Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_4096)
     {
         ShouldHandleLocalReadWriteRequestsImpl(
             DefaultBlockSize,
-            EAioSubmitQueueOpt::DontUse);
+            {.DirectIO = false, .UseSubmissionThread = false});
     }
 
     Y_UNIT_TEST(ShouldHandleZeroBlocksRequests)
     {
-        ShouldHandleZeroBlocksRequestsImpl(EAioSubmitQueueOpt::DontUse);
+        ShouldHandleZeroBlocksRequestsImpl(
+            {.DirectIO = false, .UseSubmissionThread = false});
     }
 
     Y_UNIT_TEST(ShouldHandleZeroBlocksRequests_withSubmitQueue)
     {
-        ShouldHandleZeroBlocksRequestsImpl(EAioSubmitQueueOpt::Use);
+        ShouldHandleZeroBlocksRequestsImpl(
+            {.DirectIO = false, .UseSubmissionThread = true});
     }
 
     Y_UNIT_TEST(ShouldHandleZeroBlocksRequestsForBigFiles)
@@ -348,12 +348,10 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
         Y_DEFER { fileIOServiceProvider->Stop(); };
 
-        auto provider = CreateAioStorageProvider(
+        auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            false,  // directIO
-            EAioSubmitQueueOpt::DontUse
-        );
+            {.DirectIO = false, .UseSubmissionThread = false});
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -481,12 +479,10 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
         Y_DEFER { fileIOServiceProvider->Stop(); };
 
-        auto provider = CreateAioStorageProvider(
+        auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            true,  // directIO
-            EAioSubmitQueueOpt::DontUse
-        );
+            {.DirectIO = true, .UseSubmissionThread = false});
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -545,12 +541,10 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
         Y_DEFER { fileIOServiceProvider->Stop(); };
 
-        auto provider = CreateAioStorageProvider(
+        auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(false /* not ssd */),
-            true,  // directIO
-            EAioSubmitQueueOpt::DontUse
-        );
+            {.DirectIO = true, .UseSubmissionThread = false});
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -607,12 +601,10 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
         Y_DEFER { fileIOServiceProvider->Stop(); };
 
-        auto provider = CreateAioStorageProvider(
+        auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            false,  // directIO
-            EAioSubmitQueueOpt::DontUse
-        );
+            {.DirectIO = false, .UseSubmissionThread = false});
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -671,11 +663,10 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
 
         auto deallocateHistory = std::make_shared<TNvmeDeallocateHistory>();
 
-        auto provider = CreateAioStorageProvider(
+        auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(true, deallocateHistory),
-            true,   // directIO
-            EAioSubmitQueueOpt::DontUse);
+            {.DirectIO = true, .UseSubmissionThread = false});
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);

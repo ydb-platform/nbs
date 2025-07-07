@@ -203,9 +203,11 @@ void TVolumeActor::HandleReallocateDisk(
 
     auto request = MakeAllocateDiskRequest();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] ReallocateDiskRequest: %s",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s ReallocateDiskRequest: %s",
+        LogTitle.GetWithTime().c_str(),
         request.Utf8DebugString().Quote().c_str());
 
     NCloud::Register<TReallocateActor>(

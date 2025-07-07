@@ -20,8 +20,13 @@ from cloud.filestore.tests.python.lib.server import FilestoreServer, wait_for_fi
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreServerConfigGenerator
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 PID_FILE_NAME = "local_kikimr_nfs_server_recipe.pid"
+ERR_LOG_FILE_NAMES_FILE = "local_kikimr_nfs_server_recipe.err_log_files"
 PDISK_SIZE = 32 * 1024 * 1024 * 1024
 
 logger = logging.getLogger(__name__)
@@ -123,6 +128,8 @@ def start(argv):
     filestore_server = FilestoreServer(configurator=filestore_configurator)
     filestore_server.start()
 
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, filestore_server.stderr_file_name)
+
     with open(PID_FILE_NAME, "w") as f:
         f.write(str(filestore_server.pid))
 
@@ -147,6 +154,10 @@ def stop(argv):
     with open(PID_FILE_NAME) as f:
         pid = int(f.read())
         shutdown(pid)
+
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError("Recipe found errors in the log files: " + "\n".join(errors))
 
 
 if __name__ == "__main__":

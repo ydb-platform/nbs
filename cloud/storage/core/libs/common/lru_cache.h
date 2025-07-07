@@ -10,19 +10,31 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+template <typename T>
+concept HasReserve = requires(T t) {
+    { t.reserve(42) } -> std::same_as<void>;
+};
+
+}   // namespace
+
 // A simple wrapper around THashMap that also evicts the least recently used
 // elements when the capacity is reached. It keeps track of the order in which
 // keys are accessed
-template <typename TKey, typename TValue>
-class TLRUCache: public TMapOps<TLRUCache<TKey, TValue>>
+template <
+    typename TKey,
+    typename TValue,
+    typename THashFunc = THash<TKey>,
+    typename TBase =
+        THashMap<TKey, TValue, THashFunc, TEqualTo<TKey>, TStlAllocator>>
+class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFunc, TBase>>
 {
-    using TBase =
-        THashMap<TKey, TValue, THash<TKey>, TEqualTo<TKey>, TStlAllocator>;
     using TOrderList = TList<TKey, TStlAllocator>;
     using TOrderPositions = THashMap<
         TKey,
         typename TOrderList::iterator,
-        THash<TKey>,
+        THashFunc,
         TEqualTo<TKey>,
         TStlAllocator>;
 
@@ -37,21 +49,7 @@ class TLRUCache: public TMapOps<TLRUCache<TKey, TValue>>
 
     IAllocator* Alloc;
 
-    size_t Capacity = 0;
-
-private:
-    // Bumps the key to the front of the order list, used upon any access
-    void UpdateOrder(const TKey& key)
-    {
-        auto it = OrderPositions.find(key);
-        if (it != OrderPositions.end()) {
-            OrderList.splice(OrderList.begin(), OrderList, it->second);
-        } else {
-            OrderPositions.emplace(
-                key,
-                OrderList.insert(OrderList.begin(), key));
-        }
-    }
+    size_t MaxSize = 0;
 
     inline void RemoveFromOrder(const TKey& key)
     {
@@ -64,7 +62,7 @@ private:
 
     void CleanupIfNeeded()
     {
-        while (Base.size() > Capacity) {
+        while (Base.size() > MaxSize) {
             auto& key = OrderList.back();
             Base.erase(key);
             OrderPositions.erase(key);
@@ -82,12 +80,36 @@ public:
         , Alloc(alloc)
     {}
 
-    void SetCapacity(size_t capacity)
+    void SetMaxSize(size_t maxSize)
     {
-        Capacity = capacity;
+        MaxSize = maxSize;
         CleanupIfNeeded();
-        Base.reserve(Capacity);
-        OrderPositions.reserve(Capacity);
+    }
+
+    void Reserve(size_t hint)
+    {
+        if constexpr (HasReserve<TBase>) {
+            Base.reserve(hint);
+        }
+        OrderPositions.reserve(hint);
+    }
+
+    // Movesd the key to the front of the order list; used upon any access
+    void TouchKey(const TKey& key)
+    {
+        auto it = OrderPositions.find(key);
+        if (it != OrderPositions.end()) {
+            OrderList.splice(OrderList.begin(), OrderList, it->second);
+        } else {
+            OrderPositions.emplace(
+                key,
+                OrderList.insert(OrderList.begin(), key));
+        }
+    }
+
+    iterator begin()
+    {
+        return Base.begin();
     }
 
     iterator end()
@@ -99,7 +121,7 @@ public:
     {
         auto result = Base.find(key);
         if (result != Base.end()) {
-            UpdateOrder(key);
+            TouchKey(key);
         }
         return result;
     }
@@ -110,22 +132,36 @@ public:
         Base.erase(it);
     }
 
+    void erase(const TKey& key)
+    {
+        auto it = Base.find(key);
+        if (it != Base.end()) {
+            RemoveFromOrder(it->first);
+            Base.erase(it);
+        }
+    }
+
+    iterator lower_bound(const TKey& key)
+    {
+        return Base.lower_bound(key);
+    }
+
     template <typename... Args>
     std::pair<iterator, bool> emplace(Args&&... args)
     {
-        if (Capacity == 0) {
+        if (MaxSize == 0) {
             return {Base.end(), false};
         }
         auto result = Base.emplace(std::forward<Args>(args)...);
-        UpdateOrder(result.first->first);
+        TouchKey(result.first->first);
         CleanupIfNeeded();
         return result;
     }
 
-    template <class T>
-    TValue& at(const T& key) {
+    TValue& at(const TKey& key)
+    {
         auto& result = Base.at(key);
-        UpdateOrder(key);
+        TouchKey(key);
         return result;
     }
 
@@ -134,9 +170,9 @@ public:
         return Base.size();
     }
 
-    [[nodiscard]] size_t capacity() const
+    [[nodiscard]] size_t GetMaxSize() const
     {
-        return Capacity;
+        return MaxSize;
     }
 };
 
