@@ -112,9 +112,8 @@ TChildLogTitle TLogTitle::GetChildWithTags(const ui64 startTime, std::span<std::
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
     childPrefix << " t:" << FormatDuration(duration);
 
-    // Добавляем дополнительные теги
     for (const auto& [key, value] : additionalTags) {
-        childPrefix << " " << key.Quote() << ":" << value.Quote();
+        childPrefix << " " << key << ":" << value;
     }
 
     return TChildLogTitle(childPrefix, startTime);

@@ -1540,7 +1540,7 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     request.RequestId,
                     request.CheckpointId);
             }
-            std::vector<std::pair<TString, TString>> tags = { {"cp", request.CheckpointId} };
+            std::vector<std::pair<TString, TString>> tags = {{"cp", request.CheckpointId}};
             actorId =
                 NCloud::Register<TCheckpointActor<TCreateCheckpointMethod>>(
                     ctx,
@@ -1570,7 +1570,7 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     request.RequestId,
                     request.CheckpointId);
             }
-            std::vector<std::pair<TString, TString>> tags = { {"cp", request.CheckpointId} };
+            std::vector<std::pair<TString, TString>> tags = {{"cp", request.CheckpointId}};
             actorId =
                 NCloud::Register<TCheckpointActor<TDeleteCheckpointMethod>>(
                     ctx,
@@ -1594,7 +1594,7 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
             break;
         }
         case ECheckpointRequestType::DeleteData: {
-            std::vector<std::pair<TString, TString>> tags = { {"cp", request.CheckpointId} };
+            std::vector<std::pair<TString, TString>> tags = {{"cp", request.CheckpointId}};
             actorId =
                 NCloud::Register<TCheckpointActor<TDeleteCheckpointDataMethod>>(
                     ctx,
