@@ -42,7 +42,7 @@ ui64 GetBlocks(const NKikimrBlockStore::TVolumeConfig& config)
 
 bool ValidateDevices(
     const TActorContext& ctx,
-    const TString& logTitleTime,
+    const TString& logTitle,
     const TString& label,
     const TDevices& oldDevs,
     const TDevices& newDevs,
@@ -59,7 +59,7 @@ bool ValidateDevices(
                 TBlockStoreComponents::VOLUME,
                 "%s %s: got less devices than previously existed"
                 ", old device count: %lu, new device count: %lu",
-                logTitleTime.c_str(),
+                logTitle.c_str(),
                 label.c_str(),
                 oldDevs.size(),
                 newDevs.size());
@@ -75,7 +75,7 @@ bool ValidateDevices(
                 ctx,
                 TBlockStoreComponents::VOLUME,
                 "%s %s: device %u id changed: %s -> %s",
-                logTitleTime.c_str(),
+                logTitle.c_str(),
                 label.c_str(),
                 std::distance(newDevs.begin(), newDeviceIt),
                 oldDeviceIt->GetDeviceUUID().Quote().c_str(),
@@ -87,7 +87,7 @@ bool ValidateDevices(
                 ctx,
                 TBlockStoreComponents::VOLUME,
                 "%s %s: device block count changed: %s: %lu -> %lu",
-                logTitleTime.c_str(),
+                logTitle.c_str(),
                 label.c_str(),
                 oldDeviceIt->GetDeviceUUID().Quote().c_str(),
                 oldDeviceIt->GetBlocksCount(),
@@ -101,7 +101,7 @@ bool ValidateDevices(
                 ctx,
                 TBlockStoreComponents::VOLUME,
                 "%s %s: device block size changed: %s: %u -> %u",
-                logTitleTime.c_str(),
+                logTitle.c_str(),
                 label.c_str(),
                 oldDeviceIt->GetDeviceUUID().Quote().c_str(),
                 oldDeviceIt->GetBlockSize(),
