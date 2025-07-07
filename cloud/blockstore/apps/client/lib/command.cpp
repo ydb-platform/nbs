@@ -445,9 +445,7 @@ void TCommand::Init()
     Logging = CreateLoggingService("console", logSettings);
     Log = Logging->CreateLog("BLOCKSTORE_CLIENT");
 
-    ui32 maxThreads = ClientConfig->GetGrpcThreadsLimit();
-    SetExecutorThreadsLimit(maxThreads);
-    SetDefaultThreadPoolLimit(maxThreads);
+    SetGrpcThreadsLimit(ClientConfig->GetGrpcThreadsLimit());
 
     ui32 monPort = monConfig.GetPort();
     if (monPort) {
