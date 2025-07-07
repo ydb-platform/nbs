@@ -209,15 +209,38 @@ void TMigrationRequestActor<TMethod>::HandleUndelivery(
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] %s request undelivered to some nonrepl partitions",
-        DiskId.c_str(),
-        TMethod::Name);
-
-    *LeaderResponse.MutableError() = MakeError(
+    auto error = MakeError(
         E_REJECTED,
-        TStringBuilder() << TMethod::Name
-                         << " request undelivered to some nonrepl partitions");
+        TStringBuilder() << TMethod::Name << " request undelivered to "
+                         << (ev->Cookie == LeaderCookie ? "leader" : "follower")
+                         << " nonrepl partitions");
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] %s",
+        DiskId.c_str(),
+        error.GetMessage().c_str());
+
+    switch (ev->Cookie) {
+        case LeaderCookie:
+            *LeaderResponse.MutableError() = std::move(error);
+            break;
+        case FollowerCookie:
+            *FollowerResponse.MutableError() = std::move(error);
+            break;
+        default: {
+            auto message = ReportUnexpectedCookie(
+                TStringBuilder() << __PRETTY_FUNCTION__ << " #"
+                                 << RequestInfo->CallContext->RequestId
+                                 << " DiskId: " << DiskId.Quote() << " "
+                                 << " Cookie: " << ev->Cookie);
+
+            LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, message);
+            TBase::Die(ctx);
+            return;
+        }
+    }
 
     if (--PendingRequests) {
         return;
