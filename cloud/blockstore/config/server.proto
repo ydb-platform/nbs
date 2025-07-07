@@ -36,15 +36,6 @@ message TChecksumFlags
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum ECellsState
-{
-    CELLS_STATE_ON = 0;
-    CELLS_STATE_OFF = 1;
-    CELLS_STATE_UNAVAILABLE = 2;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 message TServerConfig
 {
     // Host name or address to listen on.
@@ -238,9 +229,6 @@ message TServerConfig
     // each with a size up to MaxZeroBlocksSubRequestSize.
     // Max value for MaxZeroBlocksSubRequestSize is 2 GiB
     optional uint32 MaxZeroBlocksSubRequestSize = 122;
-
-    // Enables/Disables Cells feature.
-    optional ECellsState CellsState = 123;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

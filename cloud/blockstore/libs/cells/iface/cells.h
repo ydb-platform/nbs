@@ -49,6 +49,6 @@ ICellsManagerPtr CreateCellsManager(
     IServerStatsPtr serverStats,
     NRdma::IClientPtr rdmaClient);
 
-ICellsManagerPtr CreateCellsManagerStub(bool isOff);
+ICellsManagerPtr CreateCellsManagerStub();
 
 }   // namespace NCloud::NBlockStore::NCells
