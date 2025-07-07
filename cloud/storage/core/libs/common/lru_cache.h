@@ -49,7 +49,7 @@ class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFunc, TBase>>
 
     IAllocator* Alloc;
 
-    size_t Capacity = 0;
+    size_t MaxSize = 0;
 
     inline void RemoveFromOrder(const TKey& key)
     {
@@ -62,7 +62,7 @@ class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFunc, TBase>>
 
     void CleanupIfNeeded()
     {
-        while (Base.size() > Capacity) {
+        while (Base.size() > MaxSize) {
             auto& key = OrderList.back();
             Base.erase(key);
             OrderPositions.erase(key);
@@ -80,14 +80,18 @@ public:
         , Alloc(alloc)
     {}
 
-    void SetCapacity(size_t capacity)
+    void SetMaxSize(size_t maxSize)
     {
-        Capacity = capacity;
+        MaxSize = maxSize;
         CleanupIfNeeded();
+    }
+
+    void Reserve(size_t hint)
+    {
         if constexpr (HasReserve<TBase>) {
-            Base.reserve(Capacity);
+            Base.reserve(hint);
         }
-        OrderPositions.reserve(Capacity);
+        OrderPositions.reserve(hint);
     }
 
     // Movesd the key to the front of the order list; used upon any access
@@ -145,7 +149,7 @@ public:
     template <typename... Args>
     std::pair<iterator, bool> emplace(Args&&... args)
     {
-        if (Capacity == 0) {
+        if (MaxSize == 0) {
             return {Base.end(), false};
         }
         auto result = Base.emplace(std::forward<Args>(args)...);
@@ -166,9 +170,9 @@ public:
         return Base.size();
     }
 
-    [[nodiscard]] size_t capacity() const
+    [[nodiscard]] size_t GetMaxSize() const
     {
-        return Capacity;
+        return MaxSize;
     }
 };
 
