@@ -140,7 +140,6 @@ TFlushActor::TFlushActor(
 
 void TFlushActor::Bootstrap(const TActorContext& ctx)
 {
-    Cerr << "TFlushActor::Bootstrap!!!" << Endl;
     TRequestScope timer(*RequestInfo);
 
     Become(&TThis::StateWork);
@@ -195,6 +194,8 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
             ++RequestsCompleted;
             continue;
         }
+
+        Cerr << "WRITING FLUSH BLOBS" << Endl;
 
         auto request =
             std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
@@ -832,13 +833,10 @@ void TPartitionActor::HandleFlushCompleted(
 
     UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
-    Cerr << "HandleFlushCompleted GetCommitQueue" << Endl;
     State->GetCommitQueue().ReleaseBarrier(commitId);
-    Cerr << "HandleFlushCompleted GetGarbageQueue" << Endl;
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
     for (const auto& i: msg->FlushedCommitIdsFromChannel) {
-        Cerr << "HandleFlushCompleted GetTrimFreshLogBarriers" << Endl;
         State->GetTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
     }
 
