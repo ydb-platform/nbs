@@ -1996,8 +1996,12 @@ void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
     RDMA_INFO(endpoint->Log, "detach pollers and close connection");
 
     ConnectionPoller->Detach(endpoint);
-    endpoint->Poller->Detach(endpoint);
-    endpoint->DestroyQP();
+    // if this is false, we are still resolving the address/route
+    // and haven't created a QP yet
+    if (endpoint->CompletionQueue) {
+        endpoint->Poller->Detach(endpoint);
+        endpoint->DestroyQP();
+    }
     endpoint->Connection.reset();
     endpoint->StopResult.SetValue();
     endpoint->Poller->Release(endpoint);
