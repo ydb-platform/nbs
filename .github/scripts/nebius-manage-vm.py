@@ -647,6 +647,7 @@ async def remove_disk_by_id(sdk: SDK, args: argparse.Namespace, disk_id: int = N
         logger.info("Would delete disk with ID %s", disk_id)
         return
     service = DiskServiceClient(sdk)
+    request = None
     try:
         request = await service.delete(DeleteDiskRequest(id=disk_id))
         await request.wait()
@@ -661,6 +662,7 @@ async def remove_disk_by_id(sdk: SDK, args: argparse.Namespace, disk_id: int = N
 async def remove_vm_by_id(sdk: SDK, instance_id: int = None) -> str:
     instance_name = None
     service = InstanceServiceClient(sdk)
+    request = None
     try:
         instance_name = await service.get(GetInstanceRequest(id=instance_id))
         instance_name = instance_name.metadata.name
