@@ -579,47 +579,7 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
-    if (request->GetBlocksCount() == 0 || BlockSize == 0) {
-        return MakeFutureErrorResponse<NProto::TZeroBlocksResponse>(
-            E_ARGUMENT,
-            "Request size should not be zero");
-    }
-
-    STORAGE_VERIFY(
-        BlockSize <= ZeroBlock.size(),
-        TWellKnownEntityTypes::DISK,
-        request->GetDiskId());
-    TBlockDataRef zeroDataRef(ZeroBlock.data(), BlockSize);
-    TSgList zeroSgList(request->GetBlocksCount(), zeroDataRef);
-    TGuardedSgList guardedSgList(std::move(zeroSgList));
-
-    auto writeRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
-    writeRequest->MutableHeaders()->CopyFrom(request->GetHeaders());
-    writeRequest->SetDiskId(request->GetDiskId());
-    writeRequest->SetStartIndex(request->GetStartIndex());
-    writeRequest->SetFlags(request->GetFlags());
-    writeRequest->SetSessionId(request->GetSessionId());
-    writeRequest->BlocksCount = request->GetBlocksCount();
-    writeRequest->BlockSize = BlockSize;
-    writeRequest->Sglist = guardedSgList;
-
-    auto future = WriteBlocksLocal(
-        std::move(callContext),
-        std::move(writeRequest));
-
-    return future.Apply([
-        sgList = std::move(guardedSgList)] (const auto& f) mutable
-    {
-        sgList.Close();
-
-        const auto& response = f.GetValue();
-
-        NProto::TZeroBlocksResponse zeroResponse;
-        zeroResponse.MutableError()->CopyFrom(response.GetError());
-        zeroResponse.MutableTrace()->CopyFrom(response.GetTrace());
-        zeroResponse.SetThrottlerDelay(response.GetThrottlerDelay());
-        return zeroResponse;
-    });
+    return Client->ZeroBlocks(std::move(callContext), std::move(request));
 }
 
 NProto::TError TEncryptionClient::Encrypt(
