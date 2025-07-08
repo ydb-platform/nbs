@@ -1132,7 +1132,7 @@ func (s *storageYDB) lockTaskToExecute(
 	ctx context.Context,
 	session *persistence.Session,
 	taskInfo TaskInfo,
-	at time.Time,
+	now time.Time,
 	acceptableStatus func(TaskStatus) bool,
 	newStatus TaskStatus,
 	hostname string,
@@ -1200,13 +1200,18 @@ func (s *storageYDB) lockTaskToExecute(
 
 	state.Status = newStatus
 	state.GenerationID++
-	state.ModifiedAt = at
 	state.LastHost = hostname
 	state.LastRunner = runner
 	state.ChangedStateAt = lastState.ChangedStateAt
 	if lastState.Status != state.Status {
-		state.ChangedStateAt = at
+		state.ChangedStateAt = now
+	} else {
+		// This task was in running/cancelling state
+		// and was picked up by the stalking runner
+		state.StallingDuration += now.Sub(state.ModifiedAt)
 	}
+
+	state.ModifiedAt = now
 
 	transition := stateTransition{
 		lastState: &lastState,
@@ -1342,7 +1347,7 @@ func (s *storageYDB) markForCancellation(
 	ctx context.Context,
 	session *persistence.Session,
 	taskID string,
-	at time.Time,
+	now time.Time,
 ) (bool, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -1401,8 +1406,8 @@ func (s *storageYDB) markForCancellation(
 
 	state.Status = TaskStatusReadyToCancel
 	state.GenerationID++
-	state.ModifiedAt = at
-	state.ChangedStateAt = at
+	state.ModifiedAt = now
+	state.ChangedStateAt = now
 	state.ErrorMessage = "Cancelled by client"
 	state.ErrorCode = grpc_codes.Canceled
 
