@@ -240,6 +240,22 @@ func (client *durableClient) DescribeFileStoreModel(
 	return resp.(*protos.TDescribeFileStoreModelResponse), err
 }
 
+func (client *durableClient) ReadNodeRefs(
+	ctx context.Context,
+	req *protos.TReadNodeRefsRequest,
+) (*protos.TReadNodeRefsResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ReadNodeRefs(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TReadNodeRefsResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type durableEndpointClient struct {

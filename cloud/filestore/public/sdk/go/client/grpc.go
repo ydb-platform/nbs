@@ -299,6 +299,24 @@ func (client *grpcClient) DescribeFileStoreModel(
 	return resp.(*protos.TDescribeFileStoreModelResponse), err
 }
 
+func (client *grpcClient) ReadNodeRefs(
+	ctx context.Context,
+	req *protos.TReadNodeRefsRequest,
+) (*protos.TReadNodeRefsResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ReadNodeRefs(ctx, req)
+		})
+
+	return resp.(*protos.TReadNodeRefsResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type grpcEndpointClient struct {
