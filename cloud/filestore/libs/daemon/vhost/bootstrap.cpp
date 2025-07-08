@@ -180,6 +180,13 @@ private:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
+{
+    return CreateThreadedAIOService(config.GetNumThreads());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -292,7 +299,7 @@ void TBootstrapVhost::InitEndpoints()
         auto serviceConfig = std::make_shared<TLocalFileStoreConfig>(
             *localServiceConfig);
         ThreadPool = CreateThreadPool("svc", serviceConfig->GetNumThreads());
-        FileIOService = CreateThreadedAIOService(serviceConfig->GetNumThreads());
+        FileIOService = CreateFileIOService(*serviceConfig);
         LocalService = CreateLocalFileStore(
             std::move(serviceConfig),
             Timer,
