@@ -2,6 +2,7 @@
 
 #include <util/generic/string.h>
 #include <util/system/types.h>
+#include <span>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -77,6 +78,15 @@ public:
     GetPartitionPrefix(ui64 tabletId, ui32 partitionIndex, ui32 partitionCount);
 
     [[nodiscard]] TChildLogTitle GetChild(const ui64 startTime) const;
+
+    [[nodiscard]] TChildLogTitle GetChildWithTags(
+        ui64 startTime,
+        std::span<const std::pair<TString, TString>> additionalTags) const;
+
+    [[nodiscard]] TChildLogTitle GetChildWithTags(
+        ui64 startTime,
+        std::initializer_list<std::pair<TString, TString>> additionalTags)
+        const;
 
     [[nodiscard]] TString Get(EDetails details) const;
 
