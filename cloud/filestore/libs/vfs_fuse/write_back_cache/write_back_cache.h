@@ -39,6 +39,11 @@ public:
 
     ~TWriteBackCache();
 
+    explicit operator bool() const
+    {
+        return !!Impl;
+    }
+
     NThreading::TFuture<NProto::TReadDataResponse> ReadData(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request);
