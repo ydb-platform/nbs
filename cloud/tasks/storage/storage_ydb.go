@@ -396,7 +396,7 @@ func (s *storageYDB) LockTaskToCancel(
 func (s *storageYDB) MarkForCancellation(
 	ctx context.Context,
 	taskID string,
-	at time.Time,
+	now time.Time,
 ) (bool, error) {
 
 	var cancelling bool
@@ -405,7 +405,7 @@ func (s *storageYDB) MarkForCancellation(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			cancelling, err = s.markForCancellation(ctx, session, taskID, at)
+			cancelling, err = s.markForCancellation(ctx, session, taskID, now)
 			return err
 		},
 	)
