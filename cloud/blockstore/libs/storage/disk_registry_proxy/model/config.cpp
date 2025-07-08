@@ -2,7 +2,11 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -11,8 +15,8 @@ namespace {
 #define BLOCKSTORE_DISK_REGISTRY_PROXY_CONFIG(xxx)                             \
     xxx(Owner,                  ui64,                 0                       )\
     xxx(OwnerIdx,               ui64,                 0                       )\
-    xxx(LookupTimeout,          TDuration,            TDuration::Minutes(1)   )\
-    xxx(RetryLookupTimeout,     TDuration,            TDuration::Seconds(3)   )\
+    xxx(LookupTimeout,          TDuration,            1min                    )\
+    xxx(RetryLookupTimeout,     TDuration,            3s                      )\
     xxx(DiskRegistryTabletId,   ui64,                 0                       )\
 // BLOCKSTORE_DISK_REGISTRY_PROXY_CONFIG
 

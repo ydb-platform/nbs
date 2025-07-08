@@ -13,9 +13,12 @@
 #include <google/protobuf/text_format.h>
 #include <google/protobuf/util/message_differencer.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NKikimr;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -28,31 +31,6 @@ constexpr ui32 DefaultLinkedDiskBandwidth = 100;
 constexpr ui32 DefaultLinkedIoDepth = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
-
-TDuration Days(ui32 value)
-{
-    return TDuration::Days(value);
-}
-
-TDuration Hours(ui32 value)
-{
-    return TDuration::Hours(value);
-}
-
-TDuration Minutes(ui32 value)
-{
-    return TDuration::Minutes(value);
-}
-
-TDuration Seconds(ui32 value)
-{
-    return TDuration::Seconds(value);
-}
-
-TDuration MSeconds(ui32 value)
-{
-    return TDuration::MilliSeconds(value);
-}
 
 NProto::TLinkedDiskFillBandwidth GetBandwidth(
     const TStorageConfig& config,
@@ -124,13 +102,13 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(TabletBootInfoBackupFilePath,   TString,     ""                       )\
     xxx(PathDescriptionBackupFilePath,  TString,     ""                       )\
     xxx(DiskRegistrySplitTransactionCounter, ui32,   10000                    )\
-    xxx(DiskRegistryBackupPeriod,      TDuration,    Days(1)                  )\
+    xxx(DiskRegistryBackupPeriod,      TDuration,    1d                       )\
     xxx(DiskRegistryBackupDirPath,     TString,      ""                       )\
                                                                                \
-    xxx(DiskRegistryMetricsCachePeriod, TDuration,   Days(14)                 )\
+    xxx(DiskRegistryMetricsCachePeriod, TDuration,   14d                      )\
     xxx(DiskRegistryCountersHost,       TString,     ""                       )\
     xxx(ManuallyPreemptedVolumesFile,   TString,     PreemptedVolumesFile     )\
-    xxx(ManuallyPreemptedVolumeLivenessCheckPeriod,  TDuration,   Days(7)     )\
+    xxx(ManuallyPreemptedVolumeLivenessCheckPeriod,  TDuration,   7d          )\
                                                                                \
     xxx(BlobCompressionCodec,           TString,     "lz4"                    )\
                                                                                \
@@ -142,14 +120,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxChangedBlocksRangeBlocksCount,           ui64,       1 << 20       )\
     xxx(CachedDiskAgentConfigPath,                  TString,    ""            )\
     xxx(CachedDiskAgentSessionsPath,                TString,    ""            )\
-    xxx(ServiceSelfPingInterval,                    TDuration,  MSeconds(10)  )\
+    xxx(ServiceSelfPingInterval,                    TDuration,  10ms          )\
                                                                                \
     xxx(DestructionAllowedOnlyForDisksWithIdPrefixes, TVector<TString>, {}    )\
                                                                                \
     xxx(NodeRegistrationToken,                TString,     "root@builtin"     )\
     xxx(NodeRegistrationMaxAttempts,          ui32,        10                 )\
-    xxx(NodeRegistrationTimeout,              TDuration,   Seconds(5)         )\
-    xxx(NodeRegistrationErrorTimeout,         TDuration,   Seconds(1)         )\
+    xxx(NodeRegistrationTimeout,              TDuration,   5s                 )\
+    xxx(NodeRegistrationErrorTimeout,         TDuration,   1s                 )\
     xxx(NodeType,                             TString,               {}       )\
     xxx(NodeRegistrationRootCertsFile,        TString,               {}       )\
     xxx(NodeRegistrationCert,                 TCertificate,          {}       )\
@@ -164,11 +142,11 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
-    xxx(WriteBlobThreshold,            ui32,      1_MB                        )\
-    xxx(WriteBlobThresholdSSD,         ui32,      128_KB                      )\
-    xxx(WriteMixedBlobThresholdHDD,    ui32,      0                           )\
-    xxx(FlushThreshold,                ui32,      4_MB                        )\
-    xxx(FreshBlobCountFlushThreshold,  ui32,      3200                        )\
+    xxx(WriteBlobThreshold,                 ui32,      1_MB                   )\
+    xxx(WriteBlobThresholdSSD,              ui32,      128_KB                 )\
+    xxx(WriteMixedBlobThresholdHDD,         ui32,      0                      )\
+    xxx(FlushThreshold,                     ui32,      4_MB                   )\
+    xxx(FreshBlobCountFlushThreshold,       ui32,      3200                   )\
     xxx(FreshBlobByteCountFlushThreshold,   ui32,      16_MB                  )\
                                                                                \
     xxx(SSDCompactionType,                                                     \
@@ -184,9 +162,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxAffectedBlocksPerCompaction,     ui32,      8192                   )\
     xxx(V1GarbageCompactionEnabled,         bool,      false                  )\
     xxx(OptimizeForShortRanges,             bool,      false                  )\
-    xxx(MaxCompactionDelay,                 TDuration, TDuration::Zero()      )\
-    xxx(MinCompactionDelay,                 TDuration, TDuration::Zero()      )\
-    xxx(MaxCompactionExecTimePerSecond,     TDuration, TDuration::Zero()      )\
+    xxx(MaxCompactionDelay,                 TDuration, 0s                     )\
+    xxx(MinCompactionDelay,                 TDuration, 0s                     )\
+    xxx(MaxCompactionExecTimePerSecond,     TDuration, 0s                     )\
     xxx(CompactionScoreHistorySize,             ui32,   10                    )\
     xxx(CompactionScoreLimitForThrottling,      ui32,   300                   )\
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
@@ -198,16 +176,16 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxCompactionRangeCountPerRun,          ui32,   8                     )\
     xxx(GarbageCompactionRangeCountPerRun,      ui32,   1                     )\
     xxx(ForcedCompactionRangeCountPerRun,       ui32,   1                     )\
-    xxx(CompactionCountPerRunChangingPeriod,    TDuration, Seconds(60)        )\
+    xxx(CompactionCountPerRunChangingPeriod,    TDuration, 60s                )\
     xxx(BatchCompactionEnabled,                 bool,   false                 )\
     xxx(BlobPatchingEnabled,                    bool,   false                 )\
     /* If threshold is not 0, use it */                                        \
     xxx(MaxDiffPercentageForBlobPatching,       ui32,   0                     )\
                                                                                \
     xxx(CleanupThreshold,                       ui32,      10                 )\
-    xxx(MaxCleanupDelay,                        TDuration, TDuration::Zero()  )\
-    xxx(MinCleanupDelay,                        TDuration, TDuration::Zero()  )\
-    xxx(MaxCleanupExecTimePerSecond,            TDuration, TDuration::Zero()  )\
+    xxx(MaxCleanupDelay,                        TDuration, 0s                 )\
+    xxx(MinCleanupDelay,                        TDuration, 0s                 )\
+    xxx(MaxCleanupExecTimePerSecond,            TDuration, 0s                 )\
     xxx(CleanupScoreHistorySize,                ui32,      10                 )\
     xxx(CleanupQueueBytesLimitForThrottling,    ui64,      100_MB             )\
     /* measured in overwritten blocks */                                       \
@@ -217,28 +195,28 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CollectGarbageThreshold,       ui32,      10                          )\
     xxx(RunV2SoftGcAtStartup,                   bool,      false              )\
     xxx(DontEnqueueCollectGarbageUponPartitionStartup,  bool,      false      )\
-    xxx(HiveLockExpireTimeout,         TDuration, Seconds(30)                 )\
-    xxx(TabletRebootCoolDownIncrement, TDuration, MSeconds(500)               )\
-    xxx(TabletRebootCoolDownMax,       TDuration, Seconds(30)                 )\
-    xxx(MinExternalBootRequestTimeout, TDuration, Seconds(1)                  )\
-    xxx(MaxExternalBootRequestTimeout, TDuration, Seconds(30)                 )\
-    xxx(ExternalBootRequestTimeoutIncrement, TDuration, MSeconds(500)         )\
+    xxx(HiveLockExpireTimeout,                  TDuration, 30s                )\
+    xxx(TabletRebootCoolDownIncrement,          TDuration, 500ms              )\
+    xxx(TabletRebootCoolDownMax,                TDuration, 30s                )\
+    xxx(MinExternalBootRequestTimeout,          TDuration, 1s                 )\
+    xxx(MaxExternalBootRequestTimeout,          TDuration, 30s                )\
+    xxx(ExternalBootRequestTimeoutIncrement,    TDuration, 500ms              )\
     xxx(PipeClientRetryCount,          ui32,      4                           )\
-    xxx(PipeClientMinRetryTime,        TDuration, Seconds(1)                  )\
-    xxx(PipeClientMaxRetryTime,        TDuration, Seconds(4)                  )\
+    xxx(PipeClientMinRetryTime,        TDuration, 1s                          )\
+    xxx(PipeClientMaxRetryTime,        TDuration, 4s                          )\
     xxx(FlushBlobSizeThreshold,        ui32,      4_MB                        )\
     xxx(FlushToDevNull,                bool,      false                       )\
-    xxx(CompactionRetryTimeout,        TDuration, Seconds(1)                  )\
-    xxx(CleanupRetryTimeout,           TDuration, Seconds(1)                  )\
+    xxx(CompactionRetryTimeout,        TDuration, 1s                          )\
+    xxx(CleanupRetryTimeout,           TDuration, 1s                          )\
     xxx(MaxReadWriteRangeSize,         ui64,      4_GB                        )\
     xxx(MaxBlobRangeSize,              ui32,      128_MB                      )\
     xxx(MaxRangesPerBlob,              ui32,      8                           )\
     xxx(MaxBlobSize,                   ui32,      4_MB                        )\
-    xxx(InactiveClientsTimeout,        TDuration, Seconds(9)                  )\
-    xxx(AttachedDiskDestructionTimeout,TDuration, Minutes(1)                  )\
-    xxx(ClientRemountPeriod,           TDuration, Seconds(4)                  )\
-    xxx(InitialAddClientTimeout,       TDuration, Seconds(1)                  )\
-    xxx(LocalStartAddClientTimeout,    TDuration, Minutes(1)                  )\
+    xxx(InactiveClientsTimeout,        TDuration, 9s                          )\
+    xxx(AttachedDiskDestructionTimeout,TDuration, 1min                        )\
+    xxx(ClientRemountPeriod,           TDuration, 4s                          )\
+    xxx(InitialAddClientTimeout,       TDuration, 1s                          )\
+    xxx(LocalStartAddClientTimeout,    TDuration, 1min                        )\
     xxx(MaxIORequestsInFlight,         ui32,      10                          )\
     xxx(MaxIORequestsInFlightSSD,      ui32,      1000                        )\
     xxx(AllowVersionInModifyScheme,    bool,      false                       )\
@@ -333,19 +311,19 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ThrottlingBurstPercentage,     ui32,      100                         )\
     xxx(ThrottlingMaxPostponedWeight,  ui32,      128_MB                      )\
     xxx(DefaultPostponedRequestWeight, ui32,      1_KB                        )\
-    xxx(ThrottlingBoostTime,           TDuration, Minutes(30)                 )\
-    xxx(ThrottlingBoostRefillTime,     TDuration, Hours(12)                   )\
+    xxx(ThrottlingBoostTime,           TDuration, 30min                       )\
+    xxx(ThrottlingBoostRefillTime,     TDuration, 12h                         )\
     xxx(ThrottlingSSDBoostUnits,       ui32,      0                           )\
     xxx(ThrottlingHDDBoostUnits,       ui32,      4                           )\
-    xxx(ThrottlerStateWriteInterval,   TDuration, Seconds(60)                 )\
+    xxx(ThrottlerStateWriteInterval,   TDuration, 60s                         )\
                                                                                \
-    xxx(StatsUploadInterval,           TDuration, Seconds(0)                  )\
+    xxx(StatsUploadInterval,           TDuration, 0s                          )\
                                                                                \
     xxx(AuthorizationMode,                                                     \
             NCloud::NProto::EAuthorizationMode,                                \
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
-    xxx(MaxThrottlerDelay,             TDuration, Seconds(25)                 )\
+    xxx(MaxThrottlerDelay,             TDuration, 25s                         )\
                                                                                \
     xxx(CompactionScoreLimitForBackpressure,            ui32,   300           )\
     xxx(CompactionScoreThresholdForBackpressure,        ui32,   100           )\
@@ -356,9 +334,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshByteCountFeatureMaxValue,                  ui32,   10            )\
     xxx(FreshByteCountHardLimit,                        ui32,   256_MB        )\
                                                                                \
-    xxx(CleanupQueueBytesLimitForBackpressure,            ui64,   4_TB        )\
-    xxx(CleanupQueueBytesThresholdForBackpressure,        ui64,   1_TB        )\
-    xxx(CleanupQueueBytesFeatureMaxValue,                 ui32,   10          )\
+    xxx(CleanupQueueBytesLimitForBackpressure,          ui64,   4_TB          )\
+    xxx(CleanupQueueBytesThresholdForBackpressure,      ui64,   1_TB          )\
+    xxx(CleanupQueueBytesFeatureMaxValue,               ui32,   10            )\
                                                                                \
     xxx(DiskSpaceScoreThrottlingEnabled,                bool,   false         )\
                                                                                \
@@ -385,16 +363,16 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(UseTestBlockDigestGenerator,                    bool,   false         )\
     xxx(DigestedBlocksPercentage,                       ui32,   1             )\
                                                                                \
-    xxx(IndexStructuresConversionAttemptInterval,   TDuration,  Seconds(10)   )\
+    xxx(IndexStructuresConversionAttemptInterval,   TDuration,  10s           )\
                                                                                \
-    xxx(NonReplicatedDiskRecyclingPeriod,           TDuration,  Minutes(10)   )\
-    xxx(NonReplicatedDiskRepairTimeout,             TDuration,  Minutes(10)   )\
-    xxx(NonReplicatedDiskSwitchToReadOnlyTimeout,   TDuration,  Hours(1)      )\
-    xxx(AgentRequestTimeout,                        TDuration,  Seconds(1)    )\
+    xxx(NonReplicatedDiskRecyclingPeriod,           TDuration,  10min         )\
+    xxx(NonReplicatedDiskRepairTimeout,             TDuration,  10min         )\
+    xxx(NonReplicatedDiskSwitchToReadOnlyTimeout,   TDuration,  1h            )\
+    xxx(AgentRequestTimeout,                        TDuration,  1s            )\
                                                                                \
-    xxx(NonReplicatedAgentMinTimeout,                  TDuration,  Seconds(30))\
-    xxx(NonReplicatedAgentMaxTimeout,                  TDuration,  Minutes(5) )\
-    xxx(NonReplicatedAgentDisconnectRecoveryInterval,  TDuration,  Minutes(1) )\
+    xxx(NonReplicatedAgentMinTimeout,                  TDuration,  30s        )\
+    xxx(NonReplicatedAgentMaxTimeout,                  TDuration,  5min       )\
+    xxx(NonReplicatedAgentDisconnectRecoveryInterval,  TDuration,  1min       )\
     xxx(NonReplicatedAgentTimeoutGrowthFactor,         double,     2          )\
                                                                                \
     xxx(AcquireNonReplicatedDevices,                bool,       false         )\
@@ -407,7 +385,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(DefaultTabletVersion,                      ui32,     0                )\
                                                                                \
     xxx(NonReplicatedInflightLimit,                ui32,        1024          )\
-    xxx(MaxTimedOutDeviceStateDuration,            TDuration,   Minutes(20)   )\
+    xxx(MaxTimedOutDeviceStateDuration,            TDuration,   20min         )\
                                                                                \
     xxx(MaxDisksInPlacementGroup,                  ui32,      5               )\
     xxx(MaxPlacementPartitionCount,                ui32,      5               )\
@@ -415,13 +393,13 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(MaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval, ui32, 1       )\
                                                                                \
-    xxx(BrokenDiskDestructionDelay,                     TDuration, Seconds(5) )\
+    xxx(BrokenDiskDestructionDelay,                     TDuration, 5s         )\
     xxx(AutomaticallyReplacedDevicesFreezePeriod,       TDuration, {}         )\
     xxx(MaxAutomaticDeviceReplacementsPerHour,          ui32,      0          )\
                                                                                \
-    xxx(VolumeHistoryDuration,                     TDuration, Days(7)         )\
+    xxx(VolumeHistoryDuration,                     TDuration, 7d              )\
     xxx(VolumeHistoryCacheSize,                    ui32,      100             )\
-    xxx(DeletedCheckpointHistoryLifetime,          TDuration, Days(7)         )\
+    xxx(DeletedCheckpointHistoryLifetime,          TDuration, 7d              )\
     xxx(VolumeMetaHistoryDisplayedRecordLimit,     ui32,      30              )\
                                                                                \
     xxx(BytesPerPartition,                         ui64,      512_TB          )\
@@ -429,12 +407,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(BytesPerStripe,                            ui32,      16_MB           )\
     xxx(MaxPartitionsPerVolume,                    ui32,      2               )\
     xxx(MultipartitionVolumesEnabled,              bool,      false           )\
-    xxx(NonReplicatedInfraTimeout,                 TDuration, Days(1)         )\
-    xxx(NonReplicatedInfraUnavailableAgentTimeout, TDuration, Hours(1)        )\
-    xxx(NonReplicatedMinRequestTimeoutSSD,         TDuration, MSeconds(500)   )\
-    xxx(NonReplicatedMaxRequestTimeoutSSD,         TDuration, Seconds(30)     )\
-    xxx(NonReplicatedMinRequestTimeoutHDD,         TDuration, Seconds(5)      )\
-    xxx(NonReplicatedMaxRequestTimeoutHDD,         TDuration, Seconds(30)     )\
+    xxx(NonReplicatedInfraTimeout,                 TDuration, 1d              )\
+    xxx(NonReplicatedInfraUnavailableAgentTimeout, TDuration, 1h              )\
+    xxx(NonReplicatedMinRequestTimeoutSSD,         TDuration, 500ms           )\
+    xxx(NonReplicatedMaxRequestTimeoutSSD,         TDuration, 30s             )\
+    xxx(NonReplicatedMinRequestTimeoutHDD,         TDuration, 5s              )\
+    xxx(NonReplicatedMaxRequestTimeoutHDD,         TDuration, 30s             )\
     xxx(NonReplicatedMigrationStartAllowed,        bool,      false           )\
     xxx(NonReplicatedVolumeMigrationDisabled,      bool,      false           )\
     xxx(MigrationIndexCachingInterval,             ui32,      65536           )\
@@ -445,14 +423,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxNonReplicatedDeviceMigrationsInProgress,             ui32,      75 )\
     xxx(MaxNonReplicatedDeviceMigrationPercentageInProgress,    ui32,      5  )\
     xxx(MirroredMigrationStartAllowed,             bool,      false           )\
-    xxx(PlacementGroupAlertPeriod,                 TDuration, Hours(8)        )\
+    xxx(PlacementGroupAlertPeriod,                 TDuration, 8h              )\
     xxx(EnableLoadActor,                           bool,      false           )\
                                                                                \
     xxx(UserDataDebugDumpAllowed,                  bool,      false           )\
     xxx(CpuMatBenchNsSystemThreshold,              ui64,      3000            )\
     xxx(CpuMatBenchNsUserThreshold,                ui64,      3000            )\
     xxx(CpuLackThreshold,                          ui32,      70              )\
-    xxx(InitialPullDelay,                          TDuration, Minutes(10)     )\
+    xxx(InitialPullDelay,                          TDuration, 10min           )\
                                                                                \
     xxx(LogicalUsedBlocksUpdateBlockCount,         ui32,      128'000'000     )\
                                                                                \
@@ -464,16 +442,16 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(StatsUploadDiskCount,                      ui32,      1000            )\
     xxx(StatsUploadMaxRowsPerTx,                   ui32,      10000           )\
-    xxx(StatsUploadRetryTimeout,                   TDuration, Seconds(5)      )\
+    xxx(StatsUploadRetryTimeout,                   TDuration, 5s              )\
                                                                                \
     xxx(RemoteMountOnly,                           bool,      false           )\
     xxx(MaxLocalVolumes,                           ui32,      100             )\
                                                                                \
-    xxx(DiskRegistryVolumeConfigUpdatePeriod,      TDuration, Minutes(5)      )\
+    xxx(DiskRegistryVolumeConfigUpdatePeriod,      TDuration, 5min            )\
     xxx(DiskRegistryAlwaysAllocatesLocalDisks,     bool,      false           )\
     xxx(DiskRegistryCleanupConfigOnRemoveHost,     bool,      false           )\
                                                                                \
-    xxx(ReassignRequestRetryTimeout,               TDuration, Seconds(5)      )\
+    xxx(ReassignRequestRetryTimeout,               TDuration, 5s              )\
     xxx(ReassignChannelsPercentageThreshold,       ui32,      10              )\
                                                                                \
     xxx(MixedIndexCacheV1Enabled,                  bool,      false           )\
@@ -482,8 +460,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxReadBlobErrorsBeforeSuicide,            ui32,      5               )\
     xxx(MaxWriteBlobErrorsBeforeSuicide,           ui32,      1               )\
     xxx(RejectMountOnAddClientTimeout,             bool,      false           )\
-    xxx(NonReplicatedVolumeNotificationTimeout,    TDuration, Seconds(30)     )\
-    xxx(NonReplicatedSecureEraseTimeout,           TDuration, Minutes(10)     )\
+    xxx(NonReplicatedVolumeNotificationTimeout,    TDuration, 30s             )\
+    xxx(NonReplicatedSecureEraseTimeout,           TDuration, 10min           )\
     xxx(MaxDevicesToErasePerDeviceNameForDefaultPoolKind,   ui32,   100       )\
     xxx(MaxDevicesToErasePerDeviceNameForLocalPoolKind,     ui32,   100       )\
     xxx(MaxDevicesToErasePerDeviceNameForGlobalPoolKind,    ui32,   1         )\
@@ -495,14 +473,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(UseNonreplicatedRdmaActor,                 bool,      false           )\
     xxx(UseRdma,                                   bool,      false           )\
     xxx(NonReplicatedDontSuspendDevices,           bool,      false           )\
-    xxx(AddClientRetryTimeoutIncrement,            TDuration, MSeconds(100)   )\
+    xxx(AddClientRetryTimeoutIncrement,            TDuration, 100ms           )\
     xxx(MaxNonReplicatedDiskDeallocationRequests,  ui32,      16              )\
-    xxx(BalancerActionDelayInterval,               TDuration, Seconds(3)      )\
+    xxx(BalancerActionDelayInterval,               TDuration, 3s              )\
                                                                                \
     xxx(UseMirrorResync,                           bool,      false           )\
     xxx(ForceMirrorResync,                         bool,      false           )\
     xxx(ResyncIndexCachingInterval,                ui32,      65536           )\
-    xxx(ResyncAfterClientInactivityInterval,       TDuration, Minutes(1)      )\
+    xxx(ResyncAfterClientInactivityInterval,       TDuration, 1min            )\
     xxx(AutoResyncPolicy,                                                      \
         NProto::EResyncPolicy,                                                 \
         NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB              )\
@@ -511,7 +489,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB              )\
     xxx(MirrorReadReplicaCount,                    ui32,      0               )\
                                                                                \
-    xxx(PingMetricsHalfDecayInterval,              TDuration, Seconds(15)     )\
+    xxx(PingMetricsHalfDecayInterval,              TDuration, 15s             )\
     xxx(DisableManuallyPreemptedVolumesTracking,   bool,      false           )\
                                                                                \
     xxx(DisableStartPartitionsForGc,               bool,      false           )\
@@ -524,62 +502,62 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(RejectLateRequestsAtDiskAgentEnabled,      bool,      false           )\
     xxx(AssignIdToWriteAndZeroRequestsEnabled,     bool,      false           )\
                                                                                \
-    xxx(AgentListExpiredParamsCleanupInterval,     TDuration, Seconds(1)      )\
+    xxx(AgentListExpiredParamsCleanupInterval,     TDuration, 1s              )\
                                                                                \
     xxx(UseShadowDisksForNonreplDiskCheckpoints,   bool,      false           )\
                                                                                \
     xxx(DiskPrefixLengthWithBlockChecksumsInBlobs, ui64,      0               )\
     xxx(CheckBlockChecksumsInBlobsUponRead,        bool,      false           )\
     xxx(ConfigsDispatcherServiceEnabled,           bool,      false           )\
-    xxx(CachedAcquireRequestLifetime,              TDuration, Seconds(40)     )\
+    xxx(CachedAcquireRequestLifetime,              TDuration, 40s             )\
                                                                                \
     xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
                                                                                \
-    xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
+    xxx(VolumeProxyCacheRetryDuration,             TDuration, 15s             )\
                                                                                \
-    xxx(UseDirectCopyRange,                             bool,      false         )\
-    xxx(NonReplicatedVolumeDirectAcquireEnabled,        bool,      false         )\
-    xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
-    xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
-    xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024          )\
-    xxx(MinAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, MSeconds(250) )\
-    xxx(MaxAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, Seconds(1)    )\
-    xxx(MinAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, Seconds(1)    )\
-    xxx(MaxAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, Seconds(10)   )\
-    xxx(MaxAcquireShadowDiskTotalTimeoutWhenBlocked,    TDuration, Seconds(5)    )\
-    xxx(MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked, TDuration, Seconds(600)  )\
-    xxx(WaitDependentDisksRetryRequestDelay,            TDuration, Seconds(1)    )\
-                                                                                  \
-    xxx(DataScrubbingEnabled,                           bool,      false         )\
-    xxx(ResyncRangeAfterScrubbing,                      bool,      false         )\
-    xxx(ScrubbingInterval,                              TDuration, MSeconds(50)  )\
-    xxx(ScrubbingChecksumMismatchTimeout,               TDuration, Seconds(300)  )\
-    xxx(ScrubbingBandwidth,                             ui64,      20            )\
-    xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
-    xxx(MinScrubbingBandwidth,                          ui64,      5             )\
-    xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
-    xxx(ScrubbingResyncPolicy,                                                    \
-        NProto::EResyncPolicy,                                                    \
-        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB                           )\
-                                                                                  \
-    xxx(LaggingDevicesForMirror2DisksEnabled,     bool,      false               )\
-    xxx(LaggingDevicesForMirror3DisksEnabled,     bool,      false               )\
-    xxx(LaggingDeviceTimeoutThreshold,            TDuration, Seconds(5)          )\
-    xxx(LaggingDevicePingInterval,                TDuration, MSeconds(500)       )\
-    xxx(LaggingDeviceMaxMigrationBandwidth,       ui32,      400                 )\
-    xxx(LaggingDeviceMaxMigrationIoDepth,         ui32,      1                   )\
-    xxx(ResyncAfterLaggingAgentMigration,         bool,      false               )\
-    xxx(MultiAgentWriteEnabled,                   bool,      false               )\
-    xxx(MultiAgentWriteRequestSizeThreshold,      ui32,      0                   )\
-    xxx(NetworkForwardingTimeout,                 TDuration, MSeconds(100)       )\
-                                                                                  \
-    xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
-    xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
-    xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
-    xxx(AllowLiteDiskReallocations,                     bool,      false         )\
-    xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
-    xxx(BlobStorageAsyncRequestTimeoutHDD,              TDuration, Seconds(0)    )\
-    xxx(BlobStorageAsyncRequestTimeoutSSD,              TDuration, Seconds(0)    )\
+    xxx(UseDirectCopyRange,                             bool,      false      )\
+    xxx(NonReplicatedVolumeDirectAcquireEnabled,        bool,      false      )\
+    xxx(MaxShadowDiskFillBandwidth,                     ui32,      512        )\
+    xxx(MaxShadowDiskFillIoDepth,                       ui32,      1          )\
+    xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024       )\
+    xxx(MinAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, 250ms      )\
+    xxx(MaxAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, 1s         )\
+    xxx(MinAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, 1s         )\
+    xxx(MaxAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, 10s        )\
+    xxx(MaxAcquireShadowDiskTotalTimeoutWhenBlocked,    TDuration, 5s         )\
+    xxx(MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked, TDuration, 600s       )\
+    xxx(WaitDependentDisksRetryRequestDelay,            TDuration, 1s         )\
+                                                                               \
+    xxx(DataScrubbingEnabled,                           bool,      false      )\
+    xxx(ResyncRangeAfterScrubbing,                      bool,      false      )\
+    xxx(ScrubbingInterval,                              TDuration, 50ms       )\
+    xxx(ScrubbingChecksumMismatchTimeout,               TDuration, 300s       )\
+    xxx(ScrubbingBandwidth,                             ui64,      20         )\
+    xxx(MaxScrubbingBandwidth,                          ui64,      50         )\
+    xxx(MinScrubbingBandwidth,                          ui64,      5          )\
+    xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false    )\
+    xxx(ScrubbingResyncPolicy,                                                 \
+        NProto::EResyncPolicy,                                                 \
+        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB                        )\
+                                                                               \
+    xxx(LaggingDevicesForMirror2DisksEnabled,     bool,      false            )\
+    xxx(LaggingDevicesForMirror3DisksEnabled,     bool,      false            )\
+    xxx(LaggingDeviceTimeoutThreshold,            TDuration, 5s               )\
+    xxx(LaggingDevicePingInterval,                TDuration, 500ms            )\
+    xxx(LaggingDeviceMaxMigrationBandwidth,       ui32,      400              )\
+    xxx(LaggingDeviceMaxMigrationIoDepth,         ui32,      1                )\
+    xxx(ResyncAfterLaggingAgentMigration,         bool,      false            )\
+    xxx(MultiAgentWriteEnabled,                   bool,      false            )\
+    xxx(MultiAgentWriteRequestSizeThreshold,      ui32,      0                )\
+    xxx(NetworkForwardingTimeout,                 TDuration, 100ms            )\
+                                                                               \
+    xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false      )\
+    xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000    )\
+    xxx(IdleAgentDeployByCmsDelay,                      TDuration, 1h         )\
+    xxx(AllowLiteDiskReallocations,                     bool,      false      )\
+    xxx(DiskRegistryDisksNotificationTimeout,           TDuration, 5s         )\
+    xxx(BlobStorageAsyncRequestTimeoutHDD,              TDuration, 0s         )\
+    xxx(BlobStorageAsyncRequestTimeoutSSD,              TDuration, 0s         )\
                                                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
     xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\
@@ -588,11 +566,11 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(EnableToChangeErrorStatesFromDiskRegistryMonpage, bool,    false      )\
     xxx(CalculateSplittedUsedQuotaMetric,                 bool,    false      )\
                                                                                \
-    xxx(DestroyVolumeTimeout,                      TDuration, Seconds(30)     )\
+    xxx(DestroyVolumeTimeout,                      TDuration, 30s             )\
     xxx(CompactionMergedBlobThresholdHDD,          ui32,      0               )\
                                                                                \
     xxx(BSGroupsPerChannelToWarmup,                ui32,      1               )\
-    xxx(WarmupBSGroupConnectionsTimeout,           TDuration, Seconds(1)      )\
+    xxx(WarmupBSGroupConnectionsTimeout,           TDuration, 1s              )\
     xxx(AllowAdditionalSystemTablets,              bool,      false           )\
                                                                                \
     xxx(CheckRangeMaxRangeSize,                    ui32,      4_MB            )\
@@ -602,14 +580,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )\
     xxx(DoNotStopVolumeTabletOnLockLost,                   bool,   false      )\
                                                                                \
-    xxx(LoadConfigsFromCmsRetryMinDelay,      TDuration,   Seconds(2)         )\
-    xxx(LoadConfigsFromCmsRetryMaxDelay,      TDuration,   Seconds(512)       )\
-    xxx(LoadConfigsFromCmsTotalTimeout,       TDuration,   Hours(1)           )\
+    xxx(LoadConfigsFromCmsRetryMinDelay,      TDuration,   2s                 )\
+    xxx(LoadConfigsFromCmsRetryMaxDelay,      TDuration,   512s               )\
+    xxx(LoadConfigsFromCmsTotalTimeout,       TDuration,   1h                 )\
                                                                                \
     xxx(MaxCompactionRangesLoadingPerTx,                   ui32,   0          )\
     xxx(MaxOutOfOrderCompactionMapChunksInflight,          ui32,   5          )\
                                                                                \
-    xxx(PartitionBootTimeout,                 TDuration,   Seconds(0)         )\
+    xxx(PartitionBootTimeout,                 TDuration,   0s                 )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

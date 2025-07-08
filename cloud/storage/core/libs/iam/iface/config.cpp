@@ -2,38 +2,25 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <chrono>
+
 namespace NCloud::NIamClient {
 
+using namespace std::chrono_literals;
+
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-TDuration Minutes(ui64 x)
-{
-    return TDuration::Minutes(x);
-}
-
-TDuration Seconds(ui64 x)
-{
-    return TDuration::Seconds(x);
-}
-
-TDuration MSeconds(ui64 x)
-{
-    return TDuration::MilliSeconds(x);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
 #define IAM_SERVICE_CONFIG(xxx)                                                \
     xxx(MetadataServiceUrl,              TString,        {}                   )\
     xxx(TokenAgentUnixSocket,            TString,        {}                   )\
-    xxx(InitialRetryTimeout,             TDuration,      MSeconds(500)        )\
-    xxx(RetryTimeoutIncrement,           TDuration,      MSeconds(0)          )\
+    xxx(InitialRetryTimeout,             TDuration,      500ms                )\
+    xxx(RetryTimeoutIncrement,           TDuration,      0s                   )\
     xxx(RetryAttempts,                   ui32,           1                    )\
-    xxx(GrpcTimeout,                     TDuration,      Seconds(30)          )\
-    xxx(HttpTimeout,                     TDuration,      Seconds(30)          )\
-    xxx(TokenRefreshTimeout,             TDuration,      Minutes(0)           )\
+    xxx(GrpcTimeout,                     TDuration,      30s                  )\
+    xxx(HttpTimeout,                     TDuration,      30s                  )\
+    xxx(TokenRefreshTimeout,             TDuration,      0s                   )\
 // IAM_SERVICE_CONFIG
 
 #define IAM_SERVICE_DECLARE_CONFIG(name, type, value)                          \

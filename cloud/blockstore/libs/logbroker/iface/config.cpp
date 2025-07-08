@@ -42,19 +42,12 @@ IOutputStream& operator <<(
     IOutputStream& out,
     NProto::TLogbrokerConfig::EProtocol pt)
 {
-    switch (pt) {
-        case NProto::TLogbrokerConfig::PROTOCOL_UNSPECIFIED:
-            return out << "PROTOCOL_UNSPECIFIED";
-        case NProto::TLogbrokerConfig::PROTOCOL_PQ0:
-            return out << "PROTOCOL_PQ0";
-        case NProto::TLogbrokerConfig::PROTOCOL_TOPIC_API:
-            return out << "PROTOCOL_TOPIC_API";
-        default:
-            return out
-                << "(Unknown TLogbrokerConfig::EProtocol value "
-                << static_cast<int>(pt)
-                << ")";
+    const auto& s = NProto::TLogbrokerConfig::EProtocol_Name(pt);
+    if (s.empty()) {
+        return out << "(Unknown TLogbrokerConfig::EProtocol value "
+                   << static_cast<int>(pt) << ")";
     }
+    return out << s;
 }
 
 }   // namespace

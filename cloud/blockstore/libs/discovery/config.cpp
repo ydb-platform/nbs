@@ -4,21 +4,13 @@
 
 #include <util/generic/vector.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NDiscovery {
 
+using namespace std::chrono_literals;
+
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-TDuration Secs(ui32 x)
-{
-    return TDuration::Seconds(x);
-}
-
-TDuration Mins(ui32 x)
-{
-    return TDuration::Minutes(x);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,14 +18,14 @@ TDuration Mins(ui32 x)
     xxx(ConductorApiUrl,                TString,          ""                  )\
     xxx(InstanceListFile,               TString,          ""                  )\
     xxx(BannedInstanceListFile,         TString,          ""                  )\
-    xxx(ConductorRequestInterval,       TDuration,        Mins(5)             )\
-    xxx(LocalFilesReloadInterval,       TDuration,        Secs(1)             )\
-    xxx(HealthCheckInterval,            TDuration,        Secs(1)             )\
+    xxx(ConductorRequestInterval,       TDuration,        5min                )\
+    xxx(LocalFilesReloadInterval,       TDuration,        1s                  )\
+    xxx(HealthCheckInterval,            TDuration,        1s                  )\
     xxx(ConductorGroups,                TVector<TString>, {}                  )\
     xxx(ConductorInstancePort,          ui32,             9766                )\
     xxx(ConductorSecureInstancePort,    ui32,             0                   )\
-    xxx(ConductorRequestTimeout,        TDuration,        Secs(15)            )\
-    xxx(PingRequestTimeout,             TDuration,        Secs(15)            )\
+    xxx(ConductorRequestTimeout,        TDuration,        15s                 )\
+    xxx(PingRequestTimeout,             TDuration,        15s                 )\
     xxx(MaxPingRequestsPerHealthCheck,  ui32,        20                       )\
 // BLOCKSTORE_DISCOVERY_CONFIG
 

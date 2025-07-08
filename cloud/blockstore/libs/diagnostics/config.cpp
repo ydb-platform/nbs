@@ -6,59 +6,63 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore {
+
+using namespace std::chrono_literals;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DIAGNOSTICS_CONFIG(xxx)                                                               \
-    xxx(HostNameScheme,                  NProto::EHostNameScheme, NProto::EHostNameScheme::HOSTNAME_RAW )\
-    xxx(BastionNameSuffix,               TString,         ""                                            )\
-    xxx(ViewerHostName,                  TString,         ""                                            )\
-    xxx(KikimrMonPort,                   ui32,            8765                                          )\
-    xxx(NbsMonPort,                      ui32,            8766                                          )\
-                                                                                                         \
-    xxx(SamplingRate,                    ui32,            0                                             )\
-    xxx(SlowRequestSamplingRate,         ui32,            0                                             )\
-    xxx(TracesUnifiedAgentEndpoint,      TString,         ""                                            )\
-    xxx(TracesSyslogIdentifier,          TString,         ""                                            )\
-                                                                                                         \
-    xxx(ProfileLogTimeThreshold,         TDuration,       TDuration::Seconds(15)                        )\
-    xxx(UseAsyncLogger,                  bool,            false                                         )\
-    xxx(UnsafeLWTrace,                   bool,            false                                         )\
-    xxx(LWTraceDebugInitializationQuery, TString,         ""                                            )\
-    xxx(SsdPerfSettings,                TVolumePerfSettings,  {}                                        )\
-    xxx(HddPerfSettings,                TVolumePerfSettings,  {}                                        )\
-    xxx(NonreplPerfSettings,            TVolumePerfSettings,  {}                                        )\
-    xxx(HddNonreplPerfSettings,         TVolumePerfSettings,  {}                                        )\
-    xxx(Mirror2PerfSettings,            TVolumePerfSettings,  {}                                        )\
-    xxx(Mirror3PerfSettings,            TVolumePerfSettings,  {}                                        )\
-    xxx(LocalSSDPerfSettings,           TVolumePerfSettings,  {}                                        )\
-    xxx(LocalHDDPerfSettings,           TVolumePerfSettings,  {}                                        )\
-    xxx(ExpectedIoParallelism,          ui32,                 32                                        )\
-    xxx(CloudIdsWithStrictSLA,          TVector<TString>,     {}                                        )\
-    xxx(LWTraceShuttleCount,            ui32,                 2000                                      )\
-    xxx(MonitoringUrlData,              TMonitoringUrlData,   {}                                        )\
-                                                                                                         \
-    xxx(CpuWaitFilename,            TString, "/sys/fs/cgroup/cpu/system.slice/nbs.service/cpuacct.wait" )\
-                                                                                                         \
-    xxx(PostponeTimePredictorInterval,       TDuration,       TDuration::Seconds(5)                     )\
-    xxx(PostponeTimePredictorMaxTime,        TDuration,       TDuration::Seconds(20)                    )\
-    xxx(PostponeTimePredictorPercentage,     double,          0.5                                       )\
-    xxx(SSDDowntimeThreshold,                TDuration,       TDuration::Seconds(5)                     )\
-    xxx(HDDDowntimeThreshold,                TDuration,       TDuration::Seconds(15)                    )\
-    xxx(NonreplicatedSSDDowntimeThreshold,   TDuration,       TDuration::Seconds(5)                     )\
-    xxx(NonreplicatedHDDDowntimeThreshold,   TDuration,       TDuration::Seconds(15)                    )\
-    xxx(Mirror2SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
-    xxx(Mirror3SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
-    xxx(LocalSSDDowntimeThreshold,           TDuration,       TDuration::Seconds(5)                     )\
-    xxx(LocalHDDDowntimeThreshold,           TDuration,       TDuration::Seconds(15)                    )\
-    xxx(ReportHistogramAsMultipleCounters,   bool,            true                                      )\
-    xxx(ReportHistogramAsSingleCounter,      bool,            false                                     )\
-    xxx(StatsFetcherType, NCloud::NProto::EStatsFetcherType, NCloud::NProto::EStatsFetcherType::CGROUP  )\
-                                                                                                         \
-    xxx(SkipReportingZeroBlocksMetricsForYDBBasedDisks, bool, false                                     )\
+#define BLOCKSTORE_DIAGNOSTICS_CONFIG(xxx)                                     \
+    xxx(HostNameScheme,     NProto::EHostNameScheme, NProto::HOSTNAME_RAW     )\
+    xxx(BastionNameSuffix,               TString,         ""                  )\
+    xxx(ViewerHostName,                  TString,         ""                  )\
+    xxx(KikimrMonPort,                   ui32,            8765                )\
+    xxx(NbsMonPort,                      ui32,            8766                )\
+                                                                               \
+    xxx(SamplingRate,                    ui32,            0                   )\
+    xxx(SlowRequestSamplingRate,         ui32,            0                   )\
+    xxx(TracesUnifiedAgentEndpoint,      TString,         ""                  )\
+    xxx(TracesSyslogIdentifier,          TString,         ""                  )\
+                                                                               \
+    xxx(ProfileLogTimeThreshold,         TDuration,       15s                 )\
+    xxx(UseAsyncLogger,                  bool,            false               )\
+    xxx(UnsafeLWTrace,                   bool,            false               )\
+    xxx(LWTraceDebugInitializationQuery, TString,         ""                  )\
+    xxx(SsdPerfSettings,                TVolumePerfSettings,  {}              )\
+    xxx(HddPerfSettings,                TVolumePerfSettings,  {}              )\
+    xxx(NonreplPerfSettings,            TVolumePerfSettings,  {}              )\
+    xxx(HddNonreplPerfSettings,         TVolumePerfSettings,  {}              )\
+    xxx(Mirror2PerfSettings,            TVolumePerfSettings,  {}              )\
+    xxx(Mirror3PerfSettings,            TVolumePerfSettings,  {}              )\
+    xxx(LocalSSDPerfSettings,           TVolumePerfSettings,  {}              )\
+    xxx(LocalHDDPerfSettings,           TVolumePerfSettings,  {}              )\
+    xxx(ExpectedIoParallelism,          ui32,                 32              )\
+    xxx(CloudIdsWithStrictSLA,          TVector<TString>,     {}              )\
+    xxx(LWTraceShuttleCount,            ui32,                 2000            )\
+    xxx(MonitoringUrlData,              TMonitoringUrlData,   {}              )\
+                                                                               \
+    xxx(CpuWaitFilename, TString, "/sys/fs/cgroup/cpu/system.slice/nbs.service/cpuacct.wait" )\
+                                                                               \
+    xxx(PostponeTimePredictorInterval,       TDuration,       5s              )\
+    xxx(PostponeTimePredictorMaxTime,        TDuration,       20s             )\
+    xxx(PostponeTimePredictorPercentage,     double,          0.5             )\
+    xxx(SSDDowntimeThreshold,                TDuration,       5s              )\
+    xxx(HDDDowntimeThreshold,                TDuration,       15s             )\
+    xxx(NonreplicatedSSDDowntimeThreshold,   TDuration,       5s              )\
+    xxx(NonreplicatedHDDDowntimeThreshold,   TDuration,       15s             )\
+    xxx(Mirror2SSDDowntimeThreshold,         TDuration,       5s              )\
+    xxx(Mirror3SSDDowntimeThreshold,         TDuration,       5s              )\
+    xxx(LocalSSDDowntimeThreshold,           TDuration,       5s              )\
+    xxx(LocalHDDDowntimeThreshold,           TDuration,       15s             )\
+    xxx(ReportHistogramAsMultipleCounters,   bool,            true            )\
+    xxx(ReportHistogramAsSingleCounter,      bool,            false           )\
+    xxx(StatsFetcherType, NCloud::NProto::EStatsFetcherType, NCloud::NProto::CGROUP  )\
+                                                                               \
+    xxx(SkipReportingZeroBlocksMetricsForYDBBasedDisks, bool, false           )\
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 
 #define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \

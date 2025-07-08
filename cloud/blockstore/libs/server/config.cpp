@@ -7,7 +7,11 @@
 #include <util/generic/size_literals.h>
 #include <util/system/sysstat.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NServer {
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -17,11 +21,6 @@ using TStrings = TVector<TString>;
 
 static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
 
-constexpr TDuration Seconds(int s)
-{
-    return TDuration::Seconds(s);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_SERVER_CONFIG(xxx)                                          \
@@ -29,7 +28,7 @@ constexpr TDuration Seconds(int s)
     xxx(Port,                        ui32,                  9766              )\
     xxx(DataHost,                    TString,               "localhost"       )\
     xxx(DataPort,                    ui32,                  9767              )\
-    xxx(MaxMessageSize,              ui32,                  64*1024*1024      )\
+    xxx(MaxMessageSize,              ui32,                  64_MB             )\
     xxx(ThreadsCount,                ui32,                  1                 )\
     xxx(PreparedRequestsCount,       ui32,                  10                )\
     xxx(MemoryQuotaBytes,            ui32,                  0                 )\
@@ -45,8 +44,8 @@ constexpr TDuration Seconds(int s)
     xxx(KeepAliveProbesCount,        ui32,                  0                 )\
     xxx(StrictContractValidation,    bool,                  false             )\
     xxx(LoadCmsConfigs,              bool,                  false             )\
-    xxx(ShutdownTimeout,             TDuration,             Seconds(30)       )\
-    xxx(RequestTimeout,              TDuration,             Seconds(30)       )\
+    xxx(ShutdownTimeout,             TDuration,             30s               )\
+    xxx(RequestTimeout,              TDuration,             30s               )\
     xxx(UnixSocketPath,              TString,               {}                )\
     xxx(UnixSocketBacklog,           ui32,                  16                )\
     xxx(GrpcThreadsLimit,            ui32,                  4                 )\
@@ -63,8 +62,8 @@ constexpr TDuration Seconds(int s)
     xxx(VhostAffinity,               TAffinity,             {}                )\
     xxx(NbdAffinity,                 TAffinity,             {}                )\
     xxx(NodeRegistrationMaxAttempts,    ui32,               10                )\
-    xxx(NodeRegistrationTimeout,        TDuration,          Seconds(5)        )\
-    xxx(NodeRegistrationErrorTimeout,   TDuration,          Seconds(1)        )\
+    xxx(NodeRegistrationTimeout,        TDuration,          5s                )\
+    xxx(NodeRegistrationErrorTimeout,   TDuration,          1s                )\
     xxx(NbdSocketSuffix,             TString,               {}                )\
     xxx(GrpcKeepAliveTime,           ui32,                  7200000           )\
     xxx(GrpcKeepAliveTimeout,        ui32,                  20000             )\
@@ -86,7 +85,7 @@ constexpr TDuration Seconds(int s)
     xxx(MaxWriteBandwidth,           ui64,                  0                 )\
     xxx(MaxReadIops,                 ui32,                  0                 )\
     xxx(MaxWriteIops,                ui32,                  0                 )\
-    xxx(MaxBurstTime,                TDuration,             Seconds(0)        )\
+    xxx(MaxBurstTime,                TDuration,             0s                )\
     xxx(RdmaClientEnabled,           bool,                  false             )\
     xxx(UseFakeRdmaClient,           bool,                  false             )\
     xxx(DisableClientThrottlers,     bool,                  false             )\
@@ -98,13 +97,13 @@ constexpr TDuration Seconds(int s)
     xxx(NbdDevicePrefix,             TString,               "/dev/nbd"        )\
     xxx(SocketAccessMode,            ui32,                  MODE0660          )\
     xxx(NbdNetlink,                  bool,                  false             )\
-    xxx(NbdRequestTimeout,           TDuration,             Seconds(600)      )\
-    xxx(NbdConnectionTimeout,        TDuration,             Seconds(86400)    )\
+    xxx(NbdRequestTimeout,           TDuration,             10min             )\
+    xxx(NbdConnectionTimeout,        TDuration,             1d                )\
     xxx(EndpointProxySocketPath,     TString,               ""                )\
     xxx(AllowAllRequestsViaUDS,      bool,                  false             )\
     xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
-    xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
+    xxx(VhostServerTimeoutAfterParentExit, TDuration,       1min              )\
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
     xxx(VhostDiscardEnabled,         bool,                   false            )\
     xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
@@ -166,7 +165,6 @@ void DumpImpl(const T& t, IOutputStream& os)
     os << t;
 }
 
-template <>
 void DumpImpl(const TVector<TString>& value, IOutputStream& os)
 {
     for (size_t i = 0; i < value.size(); ++i) {
@@ -177,7 +175,6 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
     }
 }
 
-template <>
 void DumpImpl(const TVector<TCertificate>& value, IOutputStream& os)
 {
     for (size_t i = 0; i < value.size(); ++i) {
@@ -193,7 +190,6 @@ void DumpImpl(const TVector<TCertificate>& value, IOutputStream& os)
     }
 }
 
-template <>
 void DumpImpl(const TAffinity& value, IOutputStream& os)
 {
     const auto& cores = value.GetCores();
@@ -206,27 +202,16 @@ void DumpImpl(const TAffinity& value, IOutputStream& os)
     }
 }
 
-template <>
-void DumpImpl(
-    const NCloud::NProto::EEndpointStorageType& value,
-    IOutputStream& os)
+void DumpImpl(NCloud::NProto::EEndpointStorageType value, IOutputStream& os)
 {
-    switch (value) {
-        case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
-            os << "ENDPOINT_STORAGE_DEFAULT";
-            break;
-        case NCloud::NProto::ENDPOINT_STORAGE_KEYRING:
-            os << "ENDPOINT_STORAGE_KEYRING";
-            break;
-        case NCloud::NProto::ENDPOINT_STORAGE_FILE:
-            os << "ENDPOINT_STORAGE_FILE";
-            break;
-        default:
-            os << "(Unknown EEndpointStorageType value "
-                << static_cast<int>(value)
-                << ")";
-            break;
+    const auto& s = NCloud::NProto::EEndpointStorageType_Name(value);
+    if (s.empty()) {
+        os << "(Unknown EEndpointStorageType value " << static_cast<int>(value)
+           << ")";
+        return;
     }
+
+    os << s;
 }
 
 }   // namespace

@@ -2,16 +2,13 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NYdbStats {
 
+using namespace std::chrono_literals;
+
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-TDuration Seconds(ui32 value)
-{
-    return TDuration::Seconds(value);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -28,8 +25,8 @@ TDuration Seconds(ui32 value)
     xxx(GroupsTableName,                  TString,          ""                )\
     xxx(PartitionsTableName,              TString,          ""                )\
     xxx(UseSsl,                           bool,             false             )\
-    xxx(StatsTableTtl,                    TDuration,        Seconds(0)        )\
-    xxx(ArchiveStatsTableTtl,             TDuration,        Seconds(0)        )\
+    xxx(StatsTableTtl,                    TDuration,        0s                )\
+    xxx(ArchiveStatsTableTtl,             TDuration,        0s                )\
 
 // BLOCKSTORE_YDBSTATS_CONFIG
 

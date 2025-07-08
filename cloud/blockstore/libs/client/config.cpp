@@ -5,26 +5,13 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NClient {
 
+using namespace std::chrono_literals;
+
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-TDuration Minutes(ui64 x)
-{
-    return TDuration::Minutes(x);
-}
-
-TDuration Seconds(ui64 x)
-{
-    return TDuration::Seconds(x);
-}
-
-TDuration MSeconds(ui64 x)
-{
-    return TDuration::MilliSeconds(x);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -32,18 +19,18 @@ TDuration MSeconds(ui64 x)
     xxx(Host,                   TString,          "localhost"                 )\
     xxx(Port,                   ui32,             0                           )\
     xxx(InsecurePort,           ui32,             9766                        )\
-    xxx(MaxMessageSize,         ui32,             64*1024*1024                )\
+    xxx(MaxMessageSize,         ui32,             64_MB                       )\
     xxx(ThreadsCount,           ui32,             1                           )\
                                                                                \
-    xxx(RequestTimeout,                 TDuration,      Seconds(30)           )\
-    xxx(RequestTimeoutIncrementOnRetry, TDuration,      Seconds(30)           )\
-    xxx(RequestTimeoutMax,              TDuration,      Minutes(2)            )\
-    xxx(RetryTimeout,                   TDuration,      Minutes(5)            )\
-    xxx(RetryTimeoutIncrement,          TDuration,      MSeconds(500)         )\
-    xxx(ConnectionErrorMaxRetryTimeout, TDuration,      MSeconds(100)         )\
-    xxx(GrpcReconnectBackoff,           TDuration,      MSeconds(100)         )\
-    xxx(DiskRegistryBasedDiskInitialRetryTimeout,  TDuration,  MSeconds(500)  )\
-    xxx(YDBBasedDiskInitialRetryTimeout,           TDuration,  MSeconds(500)  )\
+    xxx(RequestTimeout,                 TDuration,      30s                   )\
+    xxx(RequestTimeoutIncrementOnRetry, TDuration,      30s                   )\
+    xxx(RequestTimeoutMax,              TDuration,      2min                  )\
+    xxx(RetryTimeout,                   TDuration,      5min                  )\
+    xxx(RetryTimeoutIncrement,          TDuration,      500ms                 )\
+    xxx(ConnectionErrorMaxRetryTimeout, TDuration,      100ms                 )\
+    xxx(GrpcReconnectBackoff,           TDuration,      100ms                 )\
+    xxx(DiskRegistryBasedDiskInitialRetryTimeout,  TDuration,  500ms          )\
+    xxx(YDBBasedDiskInitialRetryTimeout,           TDuration,  500ms          )\
                                                                                \
     xxx(MemoryQuotaBytes,       ui32,             0                           )\
     xxx(SecurePort,             ui32,             0                           )\
@@ -54,14 +41,14 @@ TDuration MSeconds(ui64 x)
     xxx(UnixSocketPath,         TString,          {}                          )\
     xxx(GrpcThreadsLimit,       ui32,             4                           )\
     xxx(InstanceId,             TString,          {}                          )\
-    xxx(MaxRequestSize,         ui32,             4*1024*1024                 )\
+    xxx(MaxRequestSize,         ui32,             4_MB                        )\
     xxx(ClientId,               TString,          {}                          )\
     xxx(IpcType,                NProto::EClientIpcType, NProto::IPC_GRPC      )\
     xxx(NbdThreadsCount,        ui32,             1                           )\
     xxx(NbdSocketSuffix,        TString,          {}                          )\
     xxx(NbdStructuredReply,     bool,             false                       )\
     xxx(NbdUseNbsErrors,        bool,             false                       )\
-    xxx(RemountDeadline,        TDuration,        MSeconds(500)               )\
+    xxx(RemountDeadline,        TDuration,        500ms                       )\
     xxx(NvmeDeviceTransportId,  TString,          {}                          )\
     xxx(NvmeDeviceNqn,          TString,          {}                          )\
     xxx(ScsiDeviceUrl,          TString,          {}                          )\
@@ -106,22 +93,11 @@ ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
 
 IOutputStream& operator <<(IOutputStream& out, NProto::EClientIpcType ipcType)
 {
-    switch (ipcType) {
-        case NProto::IPC_GRPC:
-            return out << "IPC_GRPC";
-        case NProto::IPC_NBD:
-            return out << "IPC_NBD";
-        case NProto::IPC_VHOST:
-            return out << "IPC_VHOST";
-        case NProto::IPC_NVME:
-            return out << "IPC_NVME";
-        case NProto::IPC_SCSI:
-            return out << "IPC_SCSI";
-        case NProto::IPC_RDMA:
-            return out << "IPC_RDMA";
-        default:
-            return out << "(Unknown value " << static_cast<int>(ipcType) << ")";
+    const auto& s = NProto::EClientIpcType_Name(ipcType);
+    if (s.empty()) {
+        return out << "(Unknown value " << static_cast<int>(ipcType) << ")";
     }
+    return out << s;
 }
 
 }   // namespace
