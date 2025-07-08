@@ -449,20 +449,22 @@ void TPartitionActor::HandleWriteBlobCompleted(
             msg->ApproximateFreeSpaceShare);
 
         if (msg->StorageStatusFlags.Check(yellowStopFlag)) {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Yellow stop flag received for channel %u and group %u",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Yellow stop flag received for channel %u and group %u",
+                LogTitle.GetWithTime().c_str(),
                 channel,
                 groupId);
 
             ScheduleYellowStateUpdate(ctx);
             ReassignChannelsIfNeeded(ctx);
         } else if (msg->StorageStatusFlags.Check(yellowMoveFlag)) {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Yellow move flag received for channel %u and group %u",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Yellow move flag received for channel %u and group %u",
+                LogTitle.GetWithTime().c_str(),
                 channel,
                 groupId);
 
@@ -472,22 +474,25 @@ void TPartitionActor::HandleWriteBlobCompleted(
     }
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] WriteBlob error happened: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            FormatError(msg->GetError()).data());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s WriteBlob error happened: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
 
         if (State->IncrementWriteBlobErrorCount()
                 >= Config->GetMaxWriteBlobErrorsBeforeSuicide())
         {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Stop tablet because of too many WritedBlob errors (actor %s, group %u): %s",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Stop tablet because of too many WritedBlob errors (actor "
+                "%s, group %u): %s",
+                LogTitle.GetWithTime().c_str(),
                 ev->Sender.ToString().c_str(),
                 groupId,
-                FormatError(msg->GetError()).data());
+                FormatError(msg->GetError()).c_str());
 
             ReportTabletBSFailure();
             Suicide(ctx);

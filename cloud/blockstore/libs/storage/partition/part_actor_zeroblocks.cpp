@@ -279,12 +279,13 @@ void TPartitionActor::HandleZeroBlocks(
 
     ++WriteAndZeroRequestsInProgress;
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Start zero blocks @%lu (range: %s)",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start zero blocks @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
         commitId,
-        DescribeRange(writeRange).data());
+        DescribeRange(writeRange).c_str());
 
     State->GetCommitQueue().AcquireBarrier(commitId);
 
@@ -348,10 +349,11 @@ void TPartitionActor::HandleZeroBlocksCompleted(
     const auto* msg = ev->Get();
 
     ui64 commitId = msg->CommitId;
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Complete zero blocks @%lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete zero blocks @%lu",
+        LogTitle.GetWithTime().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);
@@ -421,10 +423,11 @@ void TPartitionActor::CompleteZeroBlocks(
     RemoveTransaction(*args.RequestInfo);
 
     ui64 commitId = args.CommitId;
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Complete zero blocks @%lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete zero blocks @%lu",
+        LogTitle.GetWithTime().c_str(),
         commitId);
 
     auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>();
