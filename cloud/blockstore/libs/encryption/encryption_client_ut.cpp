@@ -170,7 +170,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 testClient,
                 logging,
                 nullptr,
-                encryptionDesc);
+                encryptionDesc,
+                NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
             auto mountResponse = MountVolume(*encryptionClient);
             UNIT_ASSERT(!HasError(mountResponse));
@@ -207,7 +208,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 testClient,
                 logging,
                 nullptr,
-                encryptionDesc);
+                encryptionDesc,
+                NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
             auto mountResponse1 = MountVolume(*encryptionClient1);
             UNIT_ASSERT(!HasError(mountResponse1));
@@ -216,7 +218,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 encryptionClient1,
                 logging,
                 nullptr,
-                encryptionDesc);
+                encryptionDesc,
+                NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
             auto mountResponse2 = MountVolume(*encryptionClient2);
             UNIT_ASSERT(HasError(mountResponse2));
@@ -259,7 +262,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            GetDefaultEncryption());
+            GetDefaultEncryption(),
+            NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -332,7 +336,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            GetDefaultEncryption());
+            GetDefaultEncryption(),
+            NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -397,6 +402,124 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldEncryptAllBlocksInZeroBlockUsingWriteBlocksLocal)
+    {
+        auto logging = CreateLoggingService("console");
+        size_t blockSize = 8;
+        size_t storageBlocksCount = 16;
+
+        TVector<TString> storageBlocks(Reserve(storageBlocksCount));
+        for (size_t i = 0; i < storageBlocksCount; ++i) {
+            storageBlocks.emplace_back(blockSize, '0');
+        }
+
+        auto testClient = std::make_shared<TTestService>();
+        auto testEncryptor = std::make_shared<TTestEncryptor>();
+
+        auto encryptionClient = CreateEncryptionClient(
+            testClient,
+            logging,
+            testEncryptor,
+            GetDefaultEncryption(),
+            NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
+
+        auto zRequest = std::make_shared<NProto::TZeroBlocksRequest>();
+        zRequest->MutableHeaders()->SetClientId("testClientId");
+        zRequest->SetDiskId("testDiskId");
+        zRequest->SetStartIndex(1);
+        zRequest->SetBlocksCount(6);
+        zRequest->SetFlags(42);
+        zRequest->SetSessionId("testSessionId");
+        UNIT_ASSERT_VALUES_EQUAL(6, GetFieldCount<NProto::TZeroBlocksRequest>());
+
+        NProto::TWriteBlocksLocalResponse wResponse;
+        wResponse.MutableError()->SetMessage("testMessage");
+        wResponse.MutableTrace()->SetRequestStartTime(42);
+        wResponse.SetThrottlerDelay(13);
+        UNIT_ASSERT_VALUES_EQUAL(3, GetFieldCount<NProto::TWriteBlocksResponse>());
+
+        testClient->MountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                Y_UNUSED(request);
+
+                NProto::TMountVolumeResponse response;
+                response.MutableVolume()->SetBlockSize(blockSize);
+                return MakeFuture(std::move(response));
+            };
+
+        testClient->WriteBlocksLocalHandler =
+            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> wRequest) {
+                auto guard = wRequest->Sglist.Acquire();
+                UNIT_ASSERT(guard);
+                const auto& sglist = guard.Get();
+
+                for (size_t i = 0; i < sglist.size(); ++i) {
+                    size_t n = i + wRequest->GetStartIndex();
+                    UNIT_ASSERT(storageBlocks[n].size() == sglist[i].Size());
+                    auto* dst = const_cast<char*>(storageBlocks[n].data());
+                    auto* src = sglist[i].Data();
+                    memcpy(dst, src, sglist[i].Size());
+                }
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    zRequest->MutableHeaders()->GetClientId(),
+                    wRequest->MutableHeaders()->GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    zRequest->GetDiskId(),
+                    wRequest->GetDiskId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    zRequest->GetStartIndex(),
+                    wRequest->GetStartIndex());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    zRequest->GetFlags(),
+                    wRequest->GetFlags());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    zRequest->GetSessionId(),
+                    wRequest->GetSessionId());
+                UNIT_ASSERT_VALUES_EQUAL(6, GetFieldCount<NProto::TZeroBlocksRequest>());
+                UNIT_ASSERT_VALUES_EQUAL(6, GetFieldCount<NProto::TWriteBlocksRequest>());
+
+                return MakeFuture(wResponse);
+            };
+
+        auto mountResponse = MountVolume(*encryptionClient);
+        UNIT_ASSERT(!HasError(mountResponse));
+
+        auto future = encryptionClient->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            zRequest);
+        auto zResponse = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(zResponse));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            wResponse.MutableError()->GetMessage(),
+            zResponse.MutableError()->GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(
+            wResponse.MutableTrace()->GetRequestStartTime(),
+            zResponse.MutableTrace()->GetRequestStartTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            wResponse.GetThrottlerDelay(),
+            zResponse.GetThrottlerDelay());
+        UNIT_ASSERT_VALUES_EQUAL(3, GetFieldCount<NProto::TWriteBlocksResponse>());
+        UNIT_ASSERT_VALUES_EQUAL(3, GetFieldCount<NProto::TZeroBlocksResponse>());
+
+        for (size_t i = 0; i < storageBlocksCount; ++i) {
+            TBlockDataRef block(storageBlocks[i].data(), storageBlocks[i].size());
+
+            if (zRequest->GetStartIndex() <= i &&
+                i < zRequest->GetStartIndex() + zRequest->GetBlocksCount())
+            {
+                TString decrypted(block.Size(), 0);
+                TBlockDataRef decryptedRef(decrypted.data(), decrypted.size());
+                auto err = testEncryptor->Decrypt(block, decryptedRef, i);
+                UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
+                UNIT_ASSERT(BlockFilledByValue(decryptedRef, 0));
+            } else {
+                UNIT_ASSERT(BlockFilledByValue(block, '0'));
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldNotEncryptInZeroBlock)
     {
         auto logging = CreateLoggingService("console");
@@ -409,7 +532,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            GetDefaultEncryption());
+            GetDefaultEncryption(),
+            NProto::EEncryptZeroPolicy::EZP_WRITE_ZERO_BLOCKS);
 
         auto zRequest = std::make_shared<NProto::TZeroBlocksRequest>();
         zRequest->MutableHeaders()->SetClientId("testClientId");
@@ -487,7 +611,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            GetDefaultEncryption());
+            GetDefaultEncryption(),
+            NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -550,7 +675,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            GetDefaultEncryption());
+            GetDefaultEncryption(),
+            NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -613,7 +739,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            GetDefaultEncryption());
+            GetDefaultEncryption(),
+            NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -677,7 +804,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            GetDefaultEncryption());
+            GetDefaultEncryption(),
+            NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -782,7 +910,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             testEncryptor,
-            GetDefaultEncryption());
+            GetDefaultEncryption(),
+            NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -1009,7 +1138,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             testClient,
             logging,
             std::make_shared<TTestEncryptor>(),
-            GetDefaultEncryption());
+            GetDefaultEncryption(),
+            NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
@@ -1238,8 +1368,11 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             };
 
         {
-            auto encryptionClient =
-                CreateVolumeEncryptionClient(testClient, KeyProvider, Logging);
+            auto encryptionClient = CreateVolumeEncryptionClient(
+                testClient,
+                KeyProvider,
+                Logging,
+                NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
             auto response = MountVolume(*encryptionClient);
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -1295,8 +1428,11 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             };
 
         {
-            auto encryptionClient =
-                CreateVolumeEncryptionClient(testClient, KeyProvider, Logging);
+            auto encryptionClient = CreateVolumeEncryptionClient(
+                testClient,
+                KeyProvider,
+                Logging,
+                NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
             auto response = MountVolume(*encryptionClient);
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -1393,8 +1529,11 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             };
 
         {
-            auto encryptionClient =
-                CreateVolumeEncryptionClient(testClient, KeyProvider, Logging);
+            auto encryptionClient = CreateVolumeEncryptionClient(
+                testClient,
+                KeyProvider,
+                Logging,
+                NProto::EEncryptZeroPolicy::EZP_WRITE_ENCRYPTED_ZEROS);
 
             auto response = MountVolume(*encryptionClient);
             UNIT_ASSERT_VALUES_EQUAL_C(

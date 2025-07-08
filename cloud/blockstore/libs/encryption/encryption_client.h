@@ -2,11 +2,12 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/config/server.pb.h>
+#include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/public/api/protos/encryption.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
-#include <cloud/blockstore/libs/diagnostics/public.h>
-#include <cloud/blockstore/libs/service/public.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 namespace NCloud::NBlockStore {
@@ -17,13 +18,15 @@ namespace NCloud::NBlockStore {
 IBlockStorePtr CreateVolumeEncryptionClient(
     IBlockStorePtr client,
     IEncryptionKeyProviderPtr encryptionKeyProvider,
-    ILoggingServicePtr logging);
+    ILoggingServicePtr logging,
+    NProto::EEncryptZeroPolicy encryptZeroPolicy);
 
 IBlockStorePtr CreateEncryptionClient(
     IBlockStorePtr client,
     ILoggingServicePtr logging,
     IEncryptorPtr encryptor,
-    NProto::TEncryptionDesc encryptionDesc);
+    NProto::TEncryptionDesc encryptionDesc,
+    NProto::EEncryptZeroPolicy encryptZeroPolicy);
 
 IBlockStorePtr CreateSnapshotEncryptionClient(
     IBlockStorePtr client,
@@ -48,6 +51,7 @@ struct IEncryptionClientFactory
 
 IEncryptionClientFactoryPtr CreateEncryptionClientFactory(
     ILoggingServicePtr logging,
-    IEncryptionKeyProviderPtr encryptionKeyProvider);
+    IEncryptionKeyProviderPtr encryptionKeyProvider,
+    NProto::EEncryptZeroPolicy encryptZeroPolicy);
 
 }   // namespace NCloud::NBlockStore

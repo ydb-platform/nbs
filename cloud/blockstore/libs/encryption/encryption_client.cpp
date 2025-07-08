@@ -144,6 +144,7 @@ class TEncryptionClient final
 private:
     const IEncryptorPtr Encryptor;
     const NProto::TEncryptionDesc EncryptionDesc;
+    const NProto::EEncryptZeroPolicy EncryptZeroPolicy;
 
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
     ui32 BlockSize = 0;
@@ -156,10 +157,12 @@ public:
             IBlockStorePtr client,
             ILoggingServicePtr logging,
             IEncryptorPtr encryptor,
-            NProto::TEncryptionDesc encryptionDesc)
+            NProto::TEncryptionDesc encryptionDesc,
+            NProto::EEncryptZeroPolicy encryptZeroPolicy)
         : TClientWrapper(std::move(client))
         , Encryptor(std::move(encryptor))
         , EncryptionDesc(std::move(encryptionDesc))
+        , EncryptZeroPolicy(encryptZeroPolicy)
         , Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
     {}
 
@@ -167,9 +170,11 @@ public:
             IBlockStorePtr client,
             ILoggingServicePtr logging,
             IEncryptorPtr encryptor,
-            const NProto::TVolume& volume)
+            const NProto::TVolume& volume,
+            NProto::EEncryptZeroPolicy encryptZeroPolicy)
         : TClientWrapper(std::move(client))
         , Encryptor(std::move(encryptor))
+        , EncryptZeroPolicy(encryptZeroPolicy)
         , StorageMediaKind(volume.GetStorageMediaKind())
         , BlockSize(volume.GetBlockSize())
         , ZeroBlock(volume.GetBlockSize(), 0)
@@ -579,7 +584,51 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
-    return Client->ZeroBlocks(callContext,  std::move(request));
+    if (EncryptZeroPolicy == NProto::EEncryptZeroPolicy::EZP_WRITE_ZERO_BLOCKS) {
+        return Client->ZeroBlocks(callContext, std::move(request));
+    }
+
+    if (request->GetBlocksCount() == 0 || BlockSize == 0) {
+        return MakeFutureErrorResponse<NProto::TZeroBlocksResponse>(
+            E_ARGUMENT,
+            "Request size should not be zero");
+    }
+
+    STORAGE_VERIFY(
+        BlockSize <= ZeroBlock.size(),
+        TWellKnownEntityTypes::DISK,
+        request->GetDiskId());
+    TBlockDataRef zeroDataRef(ZeroBlock.data(), BlockSize);
+    TSgList zeroSgList(request->GetBlocksCount(), zeroDataRef);
+    TGuardedSgList guardedSgList(std::move(zeroSgList));
+
+    auto writeRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+    writeRequest->MutableHeaders()->CopyFrom(request->GetHeaders());
+    writeRequest->SetDiskId(request->GetDiskId());
+    writeRequest->SetStartIndex(request->GetStartIndex());
+    writeRequest->SetFlags(request->GetFlags());
+    writeRequest->SetSessionId(request->GetSessionId());
+    writeRequest->BlocksCount = request->GetBlocksCount();
+    writeRequest->BlockSize = BlockSize;
+    writeRequest->Sglist = guardedSgList;
+
+    auto future = WriteBlocksLocal(
+        std::move(callContext),
+        std::move(writeRequest));
+
+    return future.Apply([
+        sgList = std::move(guardedSgList)] (const auto& f) mutable
+    {
+        sgList.Close();
+
+        const auto& response = f.GetValue();
+
+        NProto::TZeroBlocksResponse zeroResponse;
+        zeroResponse.MutableError()->CopyFrom(response.GetError());
+        zeroResponse.MutableTrace()->CopyFrom(response.GetTrace());
+        zeroResponse.SetThrottlerDelay(response.GetThrottlerDelay());
+        return zeroResponse;
+    });
 }
 
 NProto::TError TEncryptionClient::Encrypt(
@@ -663,6 +712,7 @@ class TVolumeEncryptionClient final
 private:
     const ILoggingServicePtr Logging;
     const IEncryptionKeyProviderPtr KeyProvider;
+    const NProto::EEncryptZeroPolicy EncryptZeroPolicy;
     TLog Log;
 
     bool Initialized = false;
@@ -671,10 +721,12 @@ public:
     TVolumeEncryptionClient(
             IBlockStorePtr client,
             IEncryptionKeyProviderPtr keyProvider,
-            ILoggingServicePtr logging)
+            ILoggingServicePtr logging,
+            NProto::EEncryptZeroPolicy encryptZeroPolicy)
         : TClientWrapper(std::move(client))
         , Logging(std::move(logging))
         , KeyProvider(std::move(keyProvider))
+        , EncryptZeroPolicy(encryptZeroPolicy)
         , Log(Logging->CreateLog("BLOCKSTORE_CLIENT"))
     {}
 
@@ -794,6 +846,7 @@ private:
             .Apply(
                 [client = Client,
                  volume = volume,
+                 encryptZeroPolicy = EncryptZeroPolicy,
                  logging = Logging](auto future) mutable
                 -> TResultOrError<IBlockStorePtr>
                 {
@@ -808,7 +861,9 @@ private:
                             std::move(client),
                             std::move(logging),
                             CreateAesXtsEncryptor(std::move(key)),
-                            volume));
+                            volume,
+                            encryptZeroPolicy
+                        ));
                 });
     }
 };
@@ -978,13 +1033,16 @@ class TEncryptionClientFactory
 private:
     const ILoggingServicePtr Logging;
     const IEncryptionKeyProviderPtr EncryptionKeyProvider;
+    const NProto::EEncryptZeroPolicy EncryptZeroPolicy;
 
 public:
     TEncryptionClientFactory(
             ILoggingServicePtr logging,
-            IEncryptionKeyProviderPtr encryptionKeyProvider)
+            IEncryptionKeyProviderPtr encryptionKeyProvider,
+            NProto::EEncryptZeroPolicy encryptZeroPolicy)
         : Logging(std::move(logging))
         , EncryptionKeyProvider(std::move(encryptionKeyProvider))
+        , EncryptZeroPolicy(encryptZeroPolicy)
     {}
 
     NThreading::TFuture<TResponse> CreateEncryptionClient(
@@ -996,7 +1054,8 @@ public:
             return MakeFuture<TResponse>(CreateVolumeEncryptionClient(
                 std::move(client),
                 EncryptionKeyProvider,
-                Logging));
+                Logging,
+                EncryptZeroPolicy));
         }
 
         if (encryptionSpec.GetKeyHash()) {
@@ -1015,6 +1074,7 @@ public:
         return future.Apply(
             [client = std::move(client),
              logging = Logging,
+             encryptZeroPolicy = EncryptZeroPolicy,
              mode = encryptionSpec.GetMode()](auto f) mutable -> TResponse
             {
                 auto response = f.ExtractValue();
@@ -1044,7 +1104,8 @@ public:
                     std::move(client),
                     std::move(logging),
                     std::move(encryptor),
-                    std::move(encryptionDesc));
+                    std::move(encryptionDesc),
+                    encryptZeroPolicy);
             });
     }
 };
@@ -1056,25 +1117,29 @@ public:
 IBlockStorePtr CreateVolumeEncryptionClient(
     IBlockStorePtr client,
     IEncryptionKeyProviderPtr encryptionKeyProvider,
-    ILoggingServicePtr logging)
+    ILoggingServicePtr logging,
+    NProto::EEncryptZeroPolicy encryptZeroPolicy)
 {
     return std::make_shared<TVolumeEncryptionClient>(
         std::move(client),
         std::move(encryptionKeyProvider),
-        std::move(logging));
+        std::move(logging),
+        encryptZeroPolicy);
 }
 
 IBlockStorePtr CreateEncryptionClient(
     IBlockStorePtr client,
     ILoggingServicePtr logging,
     IEncryptorPtr encryptor,
-    NProto::TEncryptionDesc encryptionDesc)
+    NProto::TEncryptionDesc encryptionDesc,
+    NProto::EEncryptZeroPolicy encryptZeroPolicy)
 {
     return std::make_shared<TEncryptionClient>(
         std::move(client),
         std::move(logging),
         std::move(encryptor),
-        std::move(encryptionDesc));
+        std::move(encryptionDesc),
+        encryptZeroPolicy);
 }
 
 IBlockStorePtr CreateSnapshotEncryptionClient(
@@ -1090,11 +1155,13 @@ IBlockStorePtr CreateSnapshotEncryptionClient(
 
 IEncryptionClientFactoryPtr CreateEncryptionClientFactory(
     ILoggingServicePtr logging,
-    IEncryptionKeyProviderPtr encryptionKeyProvider)
+    IEncryptionKeyProviderPtr encryptionKeyProvider,
+    NProto::EEncryptZeroPolicy encryptZeroPolicy)
 {
     return std::make_shared<TEncryptionClientFactory>(
         std::move(logging),
-        std::move(encryptionKeyProvider));
+        std::move(encryptionKeyProvider),
+        encryptZeroPolicy);
 }
 
 }   // namespace NCloud::NBlockStore
