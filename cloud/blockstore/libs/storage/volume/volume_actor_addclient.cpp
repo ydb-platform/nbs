@@ -35,13 +35,15 @@ std::unique_ptr<TEvVolume::TEvAddClientResponse> CreateAddClientResponse(
     TString clientId,
     bool forceTabletRestart,
     TString instanceId,
-    const TVolumeState& state)
+    const TVolumeState& state,
+    bool inMigration)
 {
     auto response = std::make_unique<TEvVolume::TEvAddClientResponse>();
     *response->Record.MutableError() = std::move(error);
     response->Record.SetTabletId(tabletId);
     response->Record.SetClientId(std::move(clientId));
     response->Record.SetForceTabletRestart(forceTabletRestart);
+    response->Record.SetInMigration(inMigration);
 
     const auto& volumeConfig = state.GetMeta().GetVolumeConfig();
     auto* volumeInfo = response->Record.MutableVolume();
@@ -362,7 +364,8 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             clientRequest->GetClientId(),
             request.ForceTabletRestart,
             request.ClientRequest->AddedClientInfo.GetInstanceId(),
-            *State);
+            *State,
+            false);
 
         NCloud::Reply(ctx, *clientRequest->RequestInfo, std::move(response));
 
@@ -557,6 +560,7 @@ void TVolumeActor::ExecuteAddClient(
         now);
     args.Error = std::move(res.Error);
     args.ForceTabletRestart = res.ForceTabletRestart;
+    args.InMigration = res.InMigration;
 
     TVolumeDatabase db(tx.DB);
     db.WriteHistory(
@@ -693,7 +697,8 @@ void TVolumeActor::CompleteAddClient(
             clientId,
             args.ForceTabletRestart,
             args.Info.GetInstanceId(),
-            *State);
+            *State,
+            args.InMigration);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     }
