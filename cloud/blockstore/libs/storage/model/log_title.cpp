@@ -126,9 +126,6 @@ TChildLogTitle TLogTitle::GetChildWithTags(
     const ui64 startTime,
     std::initializer_list<std::pair<TString, TString>> additionalTags) const
 {
-    // std::initializer_list неявно преобразуется в std::span.
-    // Это безопасно, так как время жизни initializer_list гарантировано
-    // на время вызова функции.
     return GetChildWithTags(startTime, std::span(additionalTags));
 }
 
