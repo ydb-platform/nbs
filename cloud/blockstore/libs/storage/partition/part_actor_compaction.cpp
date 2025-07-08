@@ -1569,7 +1569,8 @@ void PrepareRangeCompaction(
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
-    TTxPartition::TRangeCompaction& args)
+    TTxPartition::TRangeCompaction& args,
+    const TString& logTitle)
 {
     TCompactionBlockVisitor visitor(args, commitId);
     state.FindFreshBlocks(visitor, args.BlockRange, commitId);
@@ -1633,11 +1634,12 @@ void PrepareRangeCompaction(
             ++it;
         }
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Dropping last %u blobs, %u blocks"
-            ", remaining blobs: %u, blocks: %u",
-            tabletId,
-            state.GetConfig().GetDiskId().c_str(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Dropping last %u blobs, %u blocks, remaining blobs: %u, "
+            "blocks: %u",
+            logTitle.c_str(),
             args.BlobsSkipped,
             args.BlocksSkipped,
             liveBlocks.size(),
@@ -1987,7 +1989,8 @@ bool TPartitionActor::PrepareCompaction(
             ready,
             db,
             *State,
-            rangeCompaction);
+            rangeCompaction,
+            LogTitle.GetWithTime());
     }
 
     return ready;

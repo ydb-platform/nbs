@@ -39,6 +39,7 @@ private:
     const TString DiskId;
     const std::unique_ptr<TRequest> Request;
     const ui32 GroupId;
+    TChildLogTitle LogTitle;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -55,7 +56,8 @@ public:
         TString diskId,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
-        ui32 groupId);
+        ui32 groupId,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -95,7 +97,8 @@ TWriteBlobActor::TWriteBlobActor(
         TString diskId,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
-        ui32 groupId)
+        ui32 groupId,
+        TChildLogTitle logTitle)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -108,6 +111,7 @@ TWriteBlobActor::TWriteBlobActor(
     , DiskId(std::move(diskId))
     , Request(std::move(request))
     , GroupId(groupId)
+    , LogTitle(std::move(logTitle))
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -225,12 +229,13 @@ void TWriteBlobActor::ReplyError(
     const TEvBlobStorage::TEvPutResult& response,
     const TString& description)
 {
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] TEvBlobStorage::TEvPut failed: %s\n%s",
-        TabletId,
-        DiskId.c_str(),
-        description.data(),
-        response.Print(false).data());
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s TEvBlobStorage::TEvPut failed: %s\n%s",
+        LogTitle.GetWithTime().c_str(),
+        description.c_str(),
+        response.Print(false).c_str());
 
     auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + description);
     ReplyAndDie(ctx, std::make_unique<TResponse>(error));
@@ -398,7 +403,8 @@ void TPartitionActor::HandleWriteBlob(
             GetDowntimeThreshold(
                 *DiagnosticsConfig,
                 PartitionConfig.GetStorageMediaKind()),
-            groupId));
+            groupId,
+            LogTitle.GetChild(GetCycleCount())));
 
     ProcessIOQueue(ctx, channel);
 }

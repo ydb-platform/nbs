@@ -39,6 +39,7 @@ private:
     const TActorId Tablet;
     const ui64 TabletId;
     const EAction Action;
+    TChildLogTitle LogTitle;
     const TVector<TPartialBlobId> BlobIds;
 
 public:
@@ -47,6 +48,7 @@ public:
         const TActorId& tablet,
         ui64 tabletId,
         EAction action,
+        TChildLogTitle logTitle,
         TVector<TPartialBlobId> blobIds = {});
 
     void Bootstrap(const TActorContext& ctx);
@@ -77,15 +79,17 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpGarbageActor::THttpGarbageActor(
-        TRequestInfoPtr requestInfo,
-        const TActorId& tablet,
-        ui64 tabletId,
-        EAction action,
-        TVector<TPartialBlobId> blobIds)
+    TRequestInfoPtr requestInfo,
+    const TActorId& tablet,
+    ui64 tabletId,
+    EAction action,
+    TChildLogTitle logTitle,
+    TVector<TPartialBlobId> blobIds)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , TabletId(tabletId)
     , Action(action)
+    , LogTitle(std::move(logTitle))
     , BlobIds(std::move(blobIds))
 {}
 
@@ -121,9 +125,12 @@ void THttpGarbageActor::ReplyAndDie(
     auto alertType = EAlertLevel::SUCCESS;
     TStringStream msg;
     if (FAILED(error.GetCode())) {
-        msg << "[" << TabletId << "] ";
-        msg << "Operation completed with error : " << FormatError(error);
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION, msg.Str());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Operation completed with error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
         alertType = EAlertLevel::DANGER;
     } else {
         msg << "Operation successfully completed";
@@ -264,6 +271,7 @@ void TPartitionActor::HandleHttpInfo_AddGarbage(
         SelfId(),
         TabletID(),
         THttpGarbageActor::AddGarbage,
+        LogTitle.GetChild(GetCycleCount()),
         std::move(blobIds));
 }
 
@@ -282,7 +290,8 @@ void TPartitionActor::HandleHttpInfo_CollectGarbage(
         std::move(requestInfo),
         SelfId(),
         TabletID(),
-        THttpGarbageActor::CollectGarbage);
+        THttpGarbageActor::CollectGarbage,
+        LogTitle.GetChild(GetCycleCount()));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
