@@ -2073,7 +2073,8 @@ void TPartitionActor::CompleteCompaction(
         compactionType,
         args.CommitId,
         std::move(rangeCompactionInfos),
-        std::move(requests));
+        std::move(requests),
+        LogTitle.GetChild(GetCycleCount()));
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
