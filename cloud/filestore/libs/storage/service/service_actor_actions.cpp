@@ -104,10 +104,6 @@ void TStorageServiceActor::HandleExecuteAction(
             "getfilesystemtopology",
             &TStorageServiceActor::CreateGetFileSystemTopologyActionActor
         },
-        {
-            "readnoderefs",
-            &TStorageServiceActor::CreateReadNodeRefsActionActor
-        },
     };
 
     auto it = actions.find(action);

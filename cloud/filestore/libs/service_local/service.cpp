@@ -514,6 +514,17 @@ private:
             "ExecuteAction is not implemented for the local service");
     }
 
+    template <>
+    NProto::TReadNodeRefsResponse Execute<TReadNodeRefsMethod>(
+        NProto::TReadNodeRefsRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
+    {
+        Y_UNUSED(request, logRequest);
+        return TErrorResponse(
+            E_NOT_IMPLEMENTED,
+            "ReadNodeRefs is not implemented for the local service");
+    }
+
     NProto::TCreateFileStoreResponse CreateFileStore(
         const NProto::TCreateFileStoreRequest& request);
 

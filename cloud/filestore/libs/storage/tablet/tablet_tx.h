@@ -2385,7 +2385,7 @@ struct TTxIndexTablet
    struct TReadNodeRefs: TIndexStateNodeUpdates
    {
         const TRequestInfoPtr RequestInfo;
-        const NProtoPrivate::TReadNodeRefsRequest Request;
+        const NProto::TReadNodeRefsRequest Request;
         const ui64 NodeId;
         const TString Cookie;
         const ui64 Limit;
@@ -2395,7 +2395,7 @@ struct TTxIndexTablet
 
         TReadNodeRefs(
                 TRequestInfoPtr requestInfo,
-                const NProtoPrivate::TReadNodeRefsRequest& request)
+                const NProto::TReadNodeRefsRequest& request)
             : RequestInfo(std::move(requestInfo))
             , Request(request)
             , NodeId(request.GetNodeId())

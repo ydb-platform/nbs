@@ -8,6 +8,7 @@ import "cloud/filestore/public/api/protos/endpoint.proto";
 import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/locks.proto";
 import "cloud/filestore/public/api/protos/node.proto";
+import "cloud/filestore/public/api/protos/noderefs.proto";
 import "cloud/filestore/public/api/protos/ping.proto";
 import "cloud/filestore/public/api/protos/session.proto";
 
@@ -392,6 +393,14 @@ service TFileStoreService
     rpc ExecuteAction(TExecuteActionRequest) returns (TExecuteActionResponse) {
         option (google.api.http) = {
             post: "/execute_action"
+            body: "*"
+        };
+    }
+
+
+    rpc ReadNodeRefs(TReadNodeRefsRequest) returns (TReadNodeRefsResponse) {
+        option (google.api.http) = {
+            post: "/node_refs"
             body: "*"
         };
     }

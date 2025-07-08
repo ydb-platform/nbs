@@ -36,6 +36,8 @@ namespace NCloud::NFileStore {
     xxx(DestroyCheckpoint,                  __VA_ARGS__)                       \
                                                                                \
     xxx(ExecuteAction,                      __VA_ARGS__)                       \
+    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
+                                                                               \
 // FILESTORE_SERVICE_METHODS
 
 #define FILESTORE_DATA_METHODS(xxx, ...)                                       \

@@ -11,6 +11,7 @@
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 #include <cloud/filestore/public/api/protos/locks.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
+#include <cloud/filestore/public/api/protos/noderefs.pb.h>
 #include <cloud/filestore/public/api/protos/ping.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
 

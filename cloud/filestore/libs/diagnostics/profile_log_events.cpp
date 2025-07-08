@@ -13,6 +13,7 @@
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 #include <cloud/filestore/public/api/protos/locks.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
+#include <cloud/filestore/public/api/protos/noderefs.pb.h>
 #include <cloud/filestore/public/api/protos/ping.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
 
@@ -143,6 +144,7 @@ void FinalizeProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(ListEndpoints)
     IMPLEMENT_DEFAULT_METHOD(KickEndpoint)
     IMPLEMENT_DEFAULT_METHOD(ExecuteAction)
+    IMPLEMENT_DEFAULT_METHOD(ReadNodeRefs)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 
@@ -530,6 +532,7 @@ void InitProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(ListEndpoints, NProto)
     IMPLEMENT_DEFAULT_METHOD(KickEndpoint, NProto)
     IMPLEMENT_DEFAULT_METHOD(ExecuteAction, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ReadNodeRefs, NProto)
     IMPLEMENT_DEFAULT_METHOD(DescribeData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(GenerateBlobIds, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(AddData, NProtoPrivate)
