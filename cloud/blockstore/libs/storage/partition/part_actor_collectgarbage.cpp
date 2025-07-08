@@ -44,6 +44,7 @@ private:
     const ui64 CollectCommitId;
     const ui32 RecordGeneration;
     const ui32 PerGenerationCounter;
+    TChildLogTitle LogTitle;
 
     TVector<TPartialBlobId> NewBlobs;
     TVector<TPartialBlobId> GarbageBlobs;
@@ -68,7 +69,8 @@ public:
         TVector<TPartialBlobId> newBlobs,
         TVector<TPartialBlobId> garbageBlobs,
         TVector<ui32> mixedAndMergedChannels,
-        bool cleanupWholeHistory);
+        bool cleanupWholeHistory,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -110,7 +112,8 @@ TCollectGarbageActor::TCollectGarbageActor(
         TVector<TPartialBlobId> newBlobs,
         TVector<TPartialBlobId> garbageBlobs,
         TVector<ui32> mixedAndMergedChannels,
-        bool cleanupWholeHistory)
+        bool cleanupWholeHistory,
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , DiskId(std::move(diskId))
@@ -119,6 +122,7 @@ TCollectGarbageActor::TCollectGarbageActor(
     , CollectCommitId(collectCommitId)
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
+    , LogTitle(std::move(logTitle))
     , NewBlobs(std::move(newBlobs))
     , GarbageBlobs(std::move(garbageBlobs))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
@@ -179,11 +183,12 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
                 false,                              // multi collect not allowed
                 false);                             // soft barrier
 
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] %s",
-                TabletInfo->TabletID,
-                DiskId.c_str(),
-                request->Print(true).data());
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                request->Print(true).c_str());
 
             SendToBSProxy(
                 ctx,
@@ -323,6 +328,7 @@ private:
     const ui64 CollectCommitId;
     const ui32 RecordGeneration;
     const ui32 PerGenerationCounter;
+    TChildLogTitle LogTitle;
 
     TVector<TPartialBlobId> KnownBlobIds;
 
@@ -341,7 +347,8 @@ public:
         ui32 recordGeneration,
         ui32 perGenerationCounter,
         TVector<TPartialBlobId> knownBlobIds,
-        TVector<ui32> mixedAndMergedChannels);
+        TVector<ui32> mixedAndMergedChannels,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -376,7 +383,8 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
         ui32 recordGeneration,
         ui32 perGenerationCounter,
         TVector<TPartialBlobId> knownBlobIds,
-        TVector<ui32> mixedAndMergedChannels)
+        TVector<ui32> mixedAndMergedChannels,
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , DiskId(std::move(diskId))
@@ -384,6 +392,7 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
     , CollectCommitId(collectCommitId)
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
+    , LogTitle(std::move(logTitle))
     , KnownBlobIds(std::move(knownBlobIds))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
 {
@@ -431,11 +440,12 @@ void TCollectGarbageHardActor::CollectGarbage(const TActorContext& ctx)
                 false,                              // multi collect not allowed
                 true);                              // hard barrier
 
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] %s",
-                TabletInfo->TabletID,
-                DiskId.c_str(),
-                request->Print(true).data());
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                request->Print(true).c_str());
 
             SendToBSProxy(
                 ctx,
@@ -697,7 +707,8 @@ void TPartitionActor::HandleCollectGarbage(
         std::move(newBlobs),
         std::move(garbageBlobs),
         std::move(mixedAndMergedChannels),
-        !State->GetStartupGcExecuted());
+        !State->GetStartupGcExecuted(),
+        LogTitle.GetChild(GetCycleCount()));
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -804,7 +815,8 @@ void TPartitionActor::CompleteCollectGarbage(
         Executor()->Generation(),
         nextPerGenerationCounter,
         std::move(args.KnownBlobIds),
-        std::move(mixedAndMergedChannels));
+        std::move(mixedAndMergedChannels),
+        LogTitle.GetChild(GetCycleCount()));
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
