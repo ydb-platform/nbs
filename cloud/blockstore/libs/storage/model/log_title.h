@@ -79,7 +79,14 @@ public:
 
     [[nodiscard]] TChildLogTitle GetChild(const ui64 startTime) const;
 
-    [[nodiscard]] TChildLogTitle GetChildWithTags(const ui64 startTime, std::span<std::pair<TString, TString>> additionalTags) const;
+    [[nodiscard]] TChildLogTitle GetChildWithTags(
+        ui64 startTime,
+        std::span<const std::pair<TString, TString>> additionalTags) const;
+
+    [[nodiscard]] TChildLogTitle GetChildWithTags(
+        ui64 startTime,
+        std::initializer_list<std::pair<TString, TString>> additionalTags)
+        const;
 
     [[nodiscard]] TString Get(EDetails details) const;
 

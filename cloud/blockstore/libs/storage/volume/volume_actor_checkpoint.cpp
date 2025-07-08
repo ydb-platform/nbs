@@ -758,9 +758,8 @@ void TCheckpointActor<TMethod>::HandleReleaseDiskResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Failed to release shadow disk %s for client %s. Error: %s",
+            "%s Failed to release shadow disk for client %s. Error: %s",
             LogTitle.GetWithTime().c_str(),
-            ShadowDiskId.Quote().c_str(),
             GetClientId(releaseSessionKind).c_str(),
             FormatError(record.GetError()).c_str());
 
@@ -1540,7 +1539,6 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     request.RequestId,
                     request.CheckpointId);
             }
-            std::vector<std::pair<TString, TString>> tags = {{"cp", request.CheckpointId}};
             actorId =
                 NCloud::Register<TCheckpointActor<TCreateCheckpointMethod>>(
                     ctx,
@@ -1560,7 +1558,9 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     false,
                     Executor()->Generation(),
                     std::move(shadowDiskId),
-                    LogTitle.GetChildWithTags(GetCycleCount(), tags));
+                    LogTitle.GetChildWithTags(
+                        GetCycleCount(),
+                        {{"cp", request.CheckpointId}}));
             break;
         }
         case ECheckpointRequestType::Delete: {
@@ -1570,7 +1570,6 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     request.RequestId,
                     request.CheckpointId);
             }
-            std::vector<std::pair<TString, TString>> tags = {{"cp", request.CheckpointId}};
             actorId =
                 NCloud::Register<TCheckpointActor<TDeleteCheckpointMethod>>(
                     ctx,
@@ -1590,11 +1589,12 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     needToDestroyShadowActor,
                     Executor()->Generation(),
                     std::move(shadowDiskId),
-                    LogTitle.GetChildWithTags(GetCycleCount(), tags));
+                    LogTitle.GetChildWithTags(
+                        GetCycleCount(),
+                        {{"cp", request.CheckpointId}}));
             break;
         }
         case ECheckpointRequestType::DeleteData: {
-            std::vector<std::pair<TString, TString>> tags = {{"cp", request.CheckpointId}};
             actorId =
                 NCloud::Register<TCheckpointActor<TDeleteCheckpointDataMethod>>(
                     ctx,
@@ -1614,7 +1614,9 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     needToDestroyShadowActor,
                     Executor()->Generation(),
                     std::move(shadowDiskId),
-                    LogTitle.GetChildWithTags(GetCycleCount(), tags));
+                    LogTitle.GetChildWithTags(
+                        GetCycleCount(),
+                        {{"cp", request.CheckpointId}}));
             break;
         }
         default:

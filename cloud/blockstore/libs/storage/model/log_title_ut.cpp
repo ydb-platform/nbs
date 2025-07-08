@@ -215,12 +215,13 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
 
         std::vector<std::pair<TString, TString>> tags = {{"cp", "123"}};
 
-        auto childLogTitle =
-            logTitle1.GetChildWithTags(startTime + GetCyclesPerMillisecond() * 1001, tags);
+        auto childLogTitle = logTitle1.GetChildWithTags(
+            startTime + GetCyclesPerMillisecond() * 1001,
+            tags);
 
         UNIT_ASSERT_STRING_CONTAINS(
             childLogTitle.GetWithTime(),
-            "[v:12345 g:5 d:disk1 t:1.001s + 1. cp:123");
+            "[v:12345 g:5 d:disk1 cp:123 t:1.001s + 1.");
     }
 }
 

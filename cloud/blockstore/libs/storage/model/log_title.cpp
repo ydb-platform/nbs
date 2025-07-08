@@ -105,21 +105,32 @@ TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
     return TChildLogTitle(childPrefix, startTime);
 }
 
-TChildLogTitle TLogTitle::GetChildWithTags(const ui64 startTime, std::span<std::pair<TString, TString>> additionalTags) const {
+TChildLogTitle TLogTitle::GetChildWithTags(
+    const ui64 startTime,
+    std::span<const std::pair<TString, TString>> additionalTags) const
+{
     TStringBuilder childPrefix;
     childPrefix << CachedPrefix;
+
+    for (const auto& [key, value]: additionalTags) {
+        childPrefix << " " << key << ":" << value;
+    }
 
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
     childPrefix << " t:" << FormatDuration(duration);
 
-    for (const auto& [key, value] : additionalTags) {
-        childPrefix << " " << key << ":" << value;
-    }
-
     return TChildLogTitle(childPrefix, startTime);
 }
 
-
+TChildLogTitle TLogTitle::GetChildWithTags(
+    const ui64 startTime,
+    std::initializer_list<std::pair<TString, TString>> additionalTags) const
+{
+    // std::initializer_list неявно преобразуется в std::span.
+    // Это безопасно, так как время жизни initializer_list гарантировано
+    // на время вызова функции.
+    return GetChildWithTags(startTime, std::span(additionalTags));
+}
 
 TString TLogTitle::Get(EDetails details) const
 {
