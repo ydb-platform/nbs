@@ -1,4 +1,5 @@
 #include "lru_cache.h"
+#include <cloud/filestore/libs/storage/tablet/model/alloc.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -172,6 +173,48 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         it = hashMap.lower_bound("key4");
         UNIT_ASSERT_VALUES_EQUAL(it->first, keyValues[1].first);
         UNIT_ASSERT_VALUES_EQUAL(it->second, keyValues[1].second);
+    }
+
+    Y_UNIT_TEST(ShouldNotAllocateAtSetMaxSize)
+    {
+        TProfilingAllocator allocator;
+        NCloud::TLRUCache<TString, TString> hashMap(&allocator);
+
+        const size_t initialBytesCount = allocator.GetBytesAllocated();
+
+        const int maxSize = 128;
+        hashMap.SetMaxSize(maxSize);
+
+        // check that nothing is allocated when we set MAxSize
+        UNIT_ASSERT_EQUAL(initialBytesCount, allocator.GetBytesAllocated());
+    }
+
+    Y_UNIT_TEST(ShouldNotAllocateExtraDuringEviction)
+    {
+        TProfilingAllocator allocator;
+        NCloud::TLRUCache<TString, TString> hashMap(&allocator);
+        const int maxSize = 128;
+        hashMap.SetMaxSize(maxSize);
+
+        // fill with pairs key: "key0{num}", value: val0{num}
+        TString keyPrefix = "key0";
+        TString valuePrefix = "val0";
+        for (size_t i = 0; i < maxSize; i++) {
+            hashMap.emplace(keyPrefix + std::to_string(i), valuePrefix + std::to_string(i));
+        }
+
+        const size_t prevBytesCount = allocator.GetBytesAllocated();
+        // fill with pairs key: "key1{num}", value: val1{num}
+        // all the prevous pairs should be evicted
+        keyPrefix = "key1";
+        valuePrefix = "val1";
+        for (size_t i = 0; i < maxSize; i++) {
+            hashMap.emplace(keyPrefix + std::to_string(i), valuePrefix + std::to_string(i));
+        }
+        const size_t postBytesCount = allocator.GetBytesAllocated();
+
+        // check that allocated byted count has not changed after old values were evicted
+        UNIT_ASSERT_EQUAL(prevBytesCount, postBytesCount);
     }
 }
 
