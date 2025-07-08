@@ -1009,7 +1009,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_C(!HasError(res.Error), res.Error);
 
         res = volumeState.AddClient(info2, CreateActor(2));
-        UNIT_ASSERT_C(HasError(res.Error), res.Error);
+        UNIT_ASSERT_C(!HasError(res.Error), res.Error);
+        UNIT_ASSERT(res.VolumeClientMigrationInProgress);
+        UNIT_ASSERT_EQUAL(0, res.RemovedClientIds.size());
 
         CheckServicePipe(
             volumeState,
@@ -1018,10 +1020,12 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             NProto::VOLUME_MOUNT_LOCAL,
             TVolumeClientState::EPipeState::WAIT_START);
 
-        CheckServicePipeRemoved(
+        CheckServicePipe(
             volumeState,
-            clientId2,
-            CreateActor(2));
+            CreateActor(2),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            TVolumeClientState::EPipeState::WAIT_START);
     }
 
     Y_UNIT_TEST(ShouldNotAllowLROIfLRWAlreadyExists)
@@ -2334,6 +2338,132 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
             UNIT_ASSERT(!volumeState.GetUseRdma());
         }
+    }
+
+    Y_UNIT_TEST(ShouldRemountLocalReadOnlyToLocalReadWrite)
+    {
+        auto volumeState = CreateVolumeState();
+        auto clientId1 = CreateGuidAsString();
+
+        auto info1 = CreateVolumeClientInfo(
+            clientId1,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL);
+
+        auto info2 = CreateVolumeClientInfo(
+            clientId1,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
+
+        auto res = volumeState.AddClient(info1, CreateActor(1));
+        UNIT_ASSERT_C(!HasError(res.Error), res.Error);
+
+        CheckServicePipe(
+            volumeState,
+            CreateActor(1),
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            TVolumeClientState::EPipeState::WAIT_START);
+
+        res = volumeState.AddClient(info2, CreateActor(2));
+        UNIT_ASSERT_C(!HasError(res.Error), res.Error);
+        UNIT_ASSERT(!res.VolumeClientMigrationInProgress);
+        UNIT_ASSERT_EQUAL(0, res.RemovedClientIds.size());
+
+        CheckServicePipe(
+            volumeState,
+            CreateActor(2),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            TVolumeClientState::EPipeState::WAIT_START);
+    }
+
+    Y_UNIT_TEST(ShouldAllowLocalReadOnlyWithHigherSeqNumAndOldLocalReadWrite)
+    {
+        auto volumeState = CreateVolumeState();
+        auto clientId1 = CreateGuidAsString();
+        auto clientId2 = CreateGuidAsString();
+
+        ui32 seqNum = 1;
+        auto info1 = CreateVolumeClientInfo(
+            clientId1,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            seqNum);
+
+        ++seqNum;
+        auto info2 = CreateVolumeClientInfo(
+            clientId2,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            seqNum);
+
+        auto res = volumeState.AddClient(info1, CreateActor(1));
+        UNIT_ASSERT_C(!HasError(res.Error), res.Error);
+
+        CheckServicePipe(
+            volumeState,
+            CreateActor(1),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            TVolumeClientState::EPipeState::WAIT_START);
+
+        res = volumeState.AddClient(info2, CreateActor(2));
+        UNIT_ASSERT_C(!HasError(res.Error), res.Error);
+
+        CheckServicePipe(
+            volumeState,
+            CreateActor(2),
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            TVolumeClientState::EPipeState::WAIT_START);
+    }
+
+    Y_UNIT_TEST(
+        ShouldReturnVolumeClientMigrationInProgressForReadWriteAddClientIfHasLocalReadOnlyClient)
+    {
+        auto volumeState = CreateVolumeState();
+
+        ui32 seqNum = 0;
+        auto info1 = CreateVolumeClientInfo(
+            CreateGuidAsString(),
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            seqNum);
+
+        auto info2 = CreateVolumeClientInfo(
+            CreateGuidAsString(),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            seqNum);
+
+        auto info3 = CreateVolumeClientInfo(
+            CreateGuidAsString(),
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            ++seqNum);
+
+        auto res = volumeState.AddClient(info1, CreateActor(1));
+        UNIT_ASSERT_C(!HasError(res.Error), res.Error);
+        UNIT_ASSERT(!res.VolumeClientMigrationInProgress);
+
+        res = volumeState.AddClient(info2, CreateActor(2));
+        UNIT_ASSERT_C(!HasError(res.Error), res.Error);
+        UNIT_ASSERT(res.VolumeClientMigrationInProgress);
+
+        res = volumeState.AddClient(info3, CreateActor(2));
+        UNIT_ASSERT_C(!HasError(res.Error), res.Error);
+        UNIT_ASSERT(!res.VolumeClientMigrationInProgress);
+
+        info2.SetMountSeqNumber(++seqNum);
+        res = volumeState.AddClient(info2, CreateActor(2));
+        UNIT_ASSERT_C(!HasError(res.Error), res.Error);
+        UNIT_ASSERT(!res.VolumeClientMigrationInProgress);
+
+        info3.SetMountSeqNumber(++seqNum);
+        res = volumeState.AddClient(info3, CreateActor(2));
+        UNIT_ASSERT_C(!HasError(res.Error), res.Error);
+        UNIT_ASSERT(!res.VolumeClientMigrationInProgress);
     }
 }
 
