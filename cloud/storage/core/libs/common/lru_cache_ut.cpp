@@ -1,5 +1,5 @@
 #include "lru_cache.h"
-#include <cloud/filestore/libs/storage/tablet/model/alloc.h>
+#include <cloud/storage/core/libs/common/alloc.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -175,7 +175,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_VALUES_EQUAL(it->second, keyValues[1].second);
     }
 
-    Y_UNIT_TEST(ShouldNotAllocateAtSetMaxSize)
+    Y_UNIT_TEST(ShouldNotAllocateMemoryWhenSettingMaxSize)
     {
         TProfilingAllocator allocator;
         NCloud::TLRUCache<TString, TString> hashMap(&allocator);
@@ -189,7 +189,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_EQUAL(initialBytesCount, allocator.GetBytesAllocated());
     }
 
-    Y_UNIT_TEST(ShouldNotAllocateExtraDuringEviction)
+    Y_UNIT_TEST(ShouldNotAllocateExtraMemoryDuringEviction)
     {
         TProfilingAllocator allocator;
         NCloud::TLRUCache<TString, TString> hashMap(&allocator);
