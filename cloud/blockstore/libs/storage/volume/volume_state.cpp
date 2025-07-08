@@ -626,7 +626,7 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
     TInstant referenceTimestamp)
 {
     const auto& clientId = info.GetClientId();
-    const auto rwClientId = ReadWriteAccessClientId;
+    auto mountMode = info.GetVolumeMountMode();
 
     TAddClientResult res;
 
@@ -635,48 +635,22 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         return res;
     }
 
-    bool readWriteAccess = IsReadWriteMode(info.GetVolumeAccessMode());
-
-    if (readWriteAccess && !CanAcceptClient(
-                               info.GetFillSeqNumber(),
-                               info.GetFillGeneration()))
-   {
-        res.Error = MakeError(
-            E_PRECONDITION_FAILED,
-            TStringBuilder()
-                << "Client can not be accepted with read-write access"
-                << ", new FillSeqNumber: " << info.GetFillSeqNumber()
-                << ", current FillSeqNumber: " << Meta.GetFillSeqNumber()
-                << ", proposed FillGeneration: " << info.GetFillGeneration()
-                << ", actual FillGeneration: " << Meta.GetVolumeConfig().GetFillGeneration()
-                << ", is disk filling finished: " << Meta.GetVolumeConfig().GetIsFillFinished());
+    const bool readWriteAccess = IsReadWriteMode(info.GetVolumeAccessMode());
+    if (readWriteAccess && !OnAddClientRW(info, referenceTimestamp, res)) {
         return res;
     }
 
-    if (readWriteAccess && ReadWriteAccessClientId && ReadWriteAccessClientId != clientId) {
-        if (!CanPreemptClient(
-                ReadWriteAccessClientId,
-                referenceTimestamp,
-                info.GetMountSeqNumber()))
-        {
-                res.Error = MakeError(
-                    E_BS_MOUNT_CONFLICT,
-                    TStringBuilder()
-                        << "Volume " << Config->GetDiskId().Quote()
-                        << " already has connection with read-write access: "
-                        << ReadWriteAccessClientId);
-                return res;
-        }
-        res.RemovedClientIds.push_back(ReadWriteAccessClientId);
-    }
-
-    bool localMount = (info.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL);
+    bool localMount = (mountMode == NProto::VOLUME_MOUNT_LOCAL);
     if (localMount && LocalMountClientId && LocalMountClientId != clientId) {
         if (!CanPreemptClient(
                 LocalMountClientId,
                 referenceTimestamp,
                 info.GetMountSeqNumber()))
         {
+            if (IsInMigration() && readWriteAccess) {
+                localMount = false;
+                mountMode = NProto::VOLUME_MOUNT_REMOTE;
+            } else {
                 res.Error = MakeError(
                     E_BS_MOUNT_CONFLICT,
                     TStringBuilder()
@@ -684,10 +658,13 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
                         << " already has connection with local mount: "
                         << LocalMountClientId);
                 return res;
-        }
-
-        if (!res.RemovedClientIds || (LocalMountClientId != rwClientId)) {
-            res.RemovedClientIds.emplace_back(std::move(LocalMountClientId));
+            }
+        } else {
+            if (!res.RemovedClientIds ||
+                (LocalMountClientId != ReadWriteAccessClientId))
+            {
+                res.RemovedClientIds.emplace_back(LocalMountClientId);
+            }
         }
     }
 
@@ -696,16 +673,18 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
                                  ShouldForceTabletRestart(info);
         ReadWriteAccessClientId = clientId;
         MountSeqNumber = info.GetMountSeqNumber();
+        res.InMigration = !localMount && IsInMigration();
     }
 
-    if (localMount) {
+    if (localMount && LocalMountClientId != clientId) {
         LocalMountClientId = clientId;
     }
 
     auto range = ClientIdsByPipeServerId.equal_range(pipeServerActorId);
-    auto it = find_if(range.first, range.second, [&] (const auto& p) {
-        return p.second == clientId;
-    });
+    auto it = find_if(
+        range.first,
+        range.second,
+        [&](const auto& p) { return p.second == clientId; });
     if (it == range.second) {
         ClientIdsByPipeServerId.emplace(pipeServerActorId, clientId);
     }
@@ -718,7 +697,7 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         pipeServerActorId,
         senderActorId.NodeId(),
         info.GetVolumeAccessMode(),
-        info.GetVolumeMountMode(),
+        mountMode,
         info.GetMountFlags());
 
     if (HasError(pipeRes.Error)) {
@@ -1078,7 +1057,7 @@ void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)
 bool TVolumeState::CanPreemptClient(
     const TString& oldClientId,
     TInstant referenceTimestamp,
-    ui64 newClientMountSeqNumber)
+    ui64 newClientMountSeqNumber) const
 {
     return
         IsClientStale(oldClientId, referenceTimestamp) ||
@@ -1087,7 +1066,7 @@ bool TVolumeState::CanPreemptClient(
 
 bool TVolumeState::CanAcceptClient(
     ui64 newFillSeqNumber,
-    ui64 proposedFillGeneration)
+    ui64 proposedFillGeneration) const
 {
     if (proposedFillGeneration == 0) {
         // TODO: NBS-4425: do not accept client with zero fillGeneration if fill
@@ -1293,6 +1272,49 @@ void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& block
         return;
     }
     CheckpointLight->Set(blockRange);
+}
+
+bool TVolumeState::OnAddClientRW(
+    const NProto::TVolumeClientInfo& info,
+    TInstant referenceTimestamp,
+    TAddClientResult& res) const
+{
+    if (!CanAcceptClient(info.GetFillSeqNumber(), info.GetFillGeneration())) {
+        res.Error = MakeError(
+            E_PRECONDITION_FAILED,
+            TStringBuilder()
+                << "Client can not be accepted with read-write access"
+                << ", new FillSeqNumber: " << info.GetFillSeqNumber()
+                << ", current FillSeqNumber: " << Meta.GetFillSeqNumber()
+                << ", proposed FillGeneration: " << info.GetFillGeneration()
+                << ", actual FillGeneration: "
+                << Meta.GetVolumeConfig().GetFillGeneration()
+                << ", is disk filling finished: "
+                << Meta.GetVolumeConfig().GetIsFillFinished());
+        return false;
+    }
+
+    if (ReadWriteAccessClientId &&
+        ReadWriteAccessClientId != info.GetClientId())
+    {
+        if (!CanPreemptClient(
+                ReadWriteAccessClientId,
+                referenceTimestamp,
+                info.GetMountSeqNumber()))
+        {
+            res.Error = MakeError(
+                E_BS_MOUNT_CONFLICT,
+                TStringBuilder()
+                    << "Volume " << Config->GetDiskId().Quote()
+                    << " already has connection with read-write access: "
+                    << ReadWriteAccessClientId);
+            return false;
+        }
+
+        res.RemovedClientIds.push_back(ReadWriteAccessClientId);
+    }
+
+    return true;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
