@@ -192,7 +192,7 @@ func (c *testingClient) GoWriteRandomBlocksToNbsDisk(
 
 			logging.Debug(
 				ctx,
-				"Write %v blocks to disk %v",
+				"Writing %v blocks to disk %v",
 				blocksToWriteCount,
 				diskID,
 			)

@@ -823,10 +823,8 @@ void TPartitionActor::HandleFlushCompleted(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s [%lu][d:%s] Complete flush @%lu",
+        "%s Complete flush @%lu",
         LogTitle.GetWithTime().c_str(),
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);

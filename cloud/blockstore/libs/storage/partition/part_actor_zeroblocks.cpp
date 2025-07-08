@@ -352,10 +352,8 @@ void TPartitionActor::HandleZeroBlocksCompleted(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s [%lu][d:%s] Complete zero blocks @%lu",
+        "%s Complete zero blocks @%lu",
         LogTitle.GetWithTime().c_str(),
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);
@@ -425,22 +423,11 @@ void TPartitionActor::CompleteZeroBlocks(
     RemoveTransaction(*args.RequestInfo);
 
     ui64 commitId = args.CommitId;
-<<<<<<< HEAD
-<<<<<<< HEAD
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Complete zero blocks @%lu",
+        "%s Complete ZeroBlocks transaction @%lu",
         LogTitle.GetWithTime().c_str(),
-=======
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-=======
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
->>>>>>> cleanup
-        "[%lu][d:%s] Complete zero blocks @%lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
->>>>>>> add dm test with fault injection
         commitId);
 
     auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>();

@@ -661,10 +661,8 @@ void TPartitionActor::CompleteWriteBlocks(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s [%lu][d:%s] Complete write blocks @%lu",
+        "%s Complete WriteBlocks transaction @%lu",
         LogTitle.GetWithTime().c_str(),
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     if (args.Requests.size()) {

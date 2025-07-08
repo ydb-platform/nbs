@@ -1483,10 +1483,8 @@ void TPartitionActor::HandleCompactionCompleted(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s [%lu][d:%s] Complete compaction @%lu",
+        "%s Complete compaction @%lu",
         LogTitle.GetWithTime().c_str(),
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     if (HasError(msg->GetError())) {

@@ -1270,10 +1270,8 @@ void TPartitionActor::FinalizeReadBlocks(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s [%lu][d:%s] Complete read blocks @%lu",
+        "%s Finalizing ReadBlocks @%lu",
         LogTitle.GetWithTime().c_str(),
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     const auto& stats = operation.Stats;

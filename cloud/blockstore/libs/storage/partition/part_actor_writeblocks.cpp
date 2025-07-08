@@ -285,10 +285,8 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s [%lu][d:%s] Complete write blocks @%lu",
+        "%s Complete write blocks @%lu",
         LogTitle.GetWithTime().c_str(),
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);
@@ -329,10 +327,11 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         // commit & garbage queue barriers will be released when confirmed
         // blobs are added
     } else {
-        LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Release commit queue barrier, commit id @%lu",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Releasing commit queue barrier, commit id @%lu",
+            LogTitle.GetWithTime().c_str(),
             commitId);
 
         State->GetCommitQueue().ReleaseBarrier(commitId);
