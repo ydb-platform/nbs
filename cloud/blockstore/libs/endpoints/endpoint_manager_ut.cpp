@@ -527,7 +527,8 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
 
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             bootstrap.Logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         bootstrap.SessionManager = CreateSessionManager(
             bootstrap.Timer,

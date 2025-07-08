@@ -368,7 +368,8 @@ void TBootstrapBase::Init()
 
     auto encryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
-        CreateEncryptionKeyProvider(KmsKeyProvider, RootKmsKeyProvider));
+        CreateEncryptionKeyProvider(KmsKeyProvider, RootKmsKeyProvider),
+        Configs->ServerConfig->GetEncryptZeroPolicy());
 
     SetupCellsManager();
 

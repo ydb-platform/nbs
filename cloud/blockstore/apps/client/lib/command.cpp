@@ -481,7 +481,8 @@ void TCommand::Init()
 
     EncryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
-        CreateDefaultEncryptionKeyProvider());
+        CreateDefaultEncryptionKeyProvider(),
+        NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
     if (!ClientEndpoint) {
         ClientStats = CreateClientStats(

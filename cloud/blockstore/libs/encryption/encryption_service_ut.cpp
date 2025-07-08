@@ -269,7 +269,8 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
 
         auto clientFactory = CreateEncryptionClientFactory(
             logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         auto service = std::make_shared<TTestService>();
         service->CreateVolumeHandler =
@@ -342,8 +343,10 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
             return encryptionKey;
         };
 
-        auto clientFactory =
-            CreateEncryptionClientFactory(logging, encryptionKeyProvider);
+        auto clientFactory = CreateEncryptionClientFactory(
+            logging,
+            encryptionKeyProvider,
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         auto service = std::make_shared<TTestService>();
         service->CreateVolumeHandler =
