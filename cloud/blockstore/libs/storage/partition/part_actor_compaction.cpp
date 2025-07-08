@@ -155,6 +155,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const TDuration BlobStorageAsyncRequestTimeout;
     const ECompactionType CompactionType;
+    TChildLogTitle LogTitle;
 
     const ui64 CommitId;
 
@@ -191,7 +192,8 @@ public:
         ECompactionType compactionType,
         ui64 commitId,
         TVector<TRangeCompactionInfo> rangeCompactionInfos,
-        TVector<TRequest> requests);
+        TVector<TRequest> requests,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -254,7 +256,8 @@ TCompactionActor::TCompactionActor(
         ECompactionType compactionType,
         ui64 commitId,
         TVector<TRangeCompactionInfo> rangeCompactionInfos,
-        TVector<TRequest> requests)
+        TVector<TRequest> requests,
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , DiskId(std::move(diskId))
@@ -265,6 +268,7 @@ TCompactionActor::TCompactionActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
     , CompactionType(compactionType)
+    , LogTitle(std::move(logTitle))
     , CommitId(commitId)
     , RangeCompactionInfos(std::move(rangeCompactionInfos))
     , Requests(std::move(requests))
@@ -620,9 +624,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             LOG_ERROR(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] unexpected channel data kind %u",
-                TabletId,
-                DiskId.c_str(),
+                "%s unexpected channel data kind %u",
+                LogTitle.GetWithTime().c_str(),
                 static_cast<int>(channelDataKind));
         }
     };
@@ -707,10 +710,11 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
 
         if (rc.AffectedBlocks.size() > MaxAffectedBlocksPerCompaction) {
             // KIKIMR-6286: preventing heavy transactions
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Cropping AffectedBlocks: %lu -> %lu, range: %s",
-                TabletId,
-                DiskId.c_str(),
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Cropping AffectedBlocks: %lu -> %lu, range: %s",
+                LogTitle.GetWithTime().c_str(),
                 rc.AffectedBlocks.size(),
                 MaxAffectedBlocksPerCompaction,
                 DescribeRange(rc.BlockRange).c_str());
