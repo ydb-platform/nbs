@@ -143,7 +143,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
 
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         auto sessionManager = CreateSessionManager(
             CreateWallClockTimer(),
@@ -258,7 +259,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
 
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         auto sessionManager = CreateSessionManager(
             CreateWallClockTimer(),
@@ -379,7 +381,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         auto logging = CreateLoggingService("console");
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         TSessionManagerOptions options;
         options.DisableClientThrottler = disableClientThrottler;

@@ -584,7 +584,7 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
-    if (EncryptZeroPolicy == NProto::EEncryptZeroPolicy::EZP_WRITE_ZERO_BLOCKS) {
+    if (EncryptZeroPolicy == NProto::EZP_WRITE_ZERO_BLOCKS) {
         return Client->ZeroBlocks(callContext, std::move(request));
     }
 
