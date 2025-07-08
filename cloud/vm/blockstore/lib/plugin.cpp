@@ -246,7 +246,8 @@ TPlugin::TPlugin(
 {
     EncryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
-        CreateDefaultEncryptionKeyProvider());
+        CreateDefaultEncryptionKeyProvider(),
+        NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
