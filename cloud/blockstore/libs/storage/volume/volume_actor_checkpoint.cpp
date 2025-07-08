@@ -943,9 +943,8 @@ void TCheckpointActor<TMethod>::DoActionForDiskRegistryBasedPartition(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s AllocateCheckpointDiskRequest: %s",
-            LogTitle.GetWithTime().c_str(),
-            request->Record.Utf8DebugString().Quote().c_str());
+            "%s AllocateCheckpointDiskRequest.",
+            LogTitle.GetWithTime().c_str());
 
         NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
     }
