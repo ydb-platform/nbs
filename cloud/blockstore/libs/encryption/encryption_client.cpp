@@ -862,8 +862,7 @@ private:
                             std::move(logging),
                             CreateAesXtsEncryptor(std::move(key)),
                             volume,
-                            encryptZeroPolicy
-                        ));
+                            encryptZeroPolicy));
                 });
     }
 };

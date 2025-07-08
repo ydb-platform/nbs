@@ -251,6 +251,7 @@ message TServerConfig
     // Disables per-client throttlers.
     optional bool DisableClientThrottlers = 125;
 
+    // Policy for encryption of zeroed blocks.
     optional EEncryptZeroPolicy EncryptZeroPolicy = 126;
 }
 
