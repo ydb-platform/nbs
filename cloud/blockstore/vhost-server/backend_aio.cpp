@@ -232,6 +232,7 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
     Devices.reserve(options.Layout.size());
 
     ui64 totalBytes = 0;
+    bool hasBrokenDevices = false;
 
     for (const auto& chunk: options.Layout) {
         TFileHandle file{chunk.DevicePath, flags};
@@ -240,6 +241,8 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
         ui64 fileLen = 0;
 
         if (!file.IsOpen()) {
+            hasBrokenDevices = true;
+
             int ret = errno;
             STORAGE_ERROR(
                 "can't open %s: %s (%d)",
@@ -247,7 +250,6 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
                 strerror(ret),
                 ret);
 
-            Y_ABORT_UNLESS(chunk.ByteCount);
             Y_ABORT_UNLESS(chunk.ByteCount);
 
             fileLen = chunk.ByteCount;
@@ -310,7 +312,8 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
         .block_size = BlockSize,
         .num_queues = options.QueueCount,   // Max count of virtio queues
         .total_blocks = totalBytes / BlockSize,
-        .features = options.ReadOnly ? VHD_BDEV_F_READONLY : 0,
+        .features =
+            options.ReadOnly || hasBrokenDevices ? VHD_BDEV_F_READONLY : 0,
         .pte_flush_byte_threshold = options.PteFlushByteThreshold};
 }
 

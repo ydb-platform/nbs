@@ -186,7 +186,7 @@ public:
                  .ByteCount = ChunkByteCount});
         }
 
-        for (ui32 i = addNonExistingDevice ? 1 : 0; i != ChunkCount; ++i) {
+        for (ui32 i = 0; i != ChunkCount - addNonExistingDevice; ++i) {
             auto& file = Files.emplace_back(MakeTempName());
 
             Options.Layout.push_back({
@@ -396,7 +396,7 @@ public:
         return true;
     }
 
-    TString MakePattern(size_t startBlock)
+    TString MakePattern(size_t startBlock) const
     {
         TString result;
         result.resize(RequestSize);

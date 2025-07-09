@@ -18,6 +18,25 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsBrokenDevice(const TAioDevice& device)
+{
+    return !device.File.IsOpen();
+}
+
+void CompleteRequestWithError(vhd_io* io, TSimpleStats& queueStats)
+{
+    auto* bio = vhd_get_bdev_io(io);
+    const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
+
+    auto& requestStat = queueStats.Requests[bio->type];
+    requestStat.Errors += 1;
+    requestStat.Bytes += bytes;
+
+    vhd_complete_bio(io, VHD_BDEV_IOERR);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <bool DoDecrypt>
 [[nodiscard]] NProto::TError DoCryptoOperation(
     IEncryptor& encryptor,
@@ -100,12 +119,10 @@ void PrepareCompoundIO(
     const ui32 deviceCount = std::distance(it, end);
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
 
-    for (auto sIt = it; sIt != end; ++sIt) {
-        if (!sIt->File.IsOpen()) {
-            ++queueStats.CompFailed;
-            vhd_complete_bio(io, VHD_BDEV_IOERR);
-            return;
-        }
+    if (std::any_of(it, end, IsBrokenDevice)) {
+        ++queueStats.CompFailed;
+        CompleteRequestWithError(io, queueStats);
+        return;
     }
 
     STORAGE_DEBUG(
@@ -299,9 +316,8 @@ void PrepareIO(
         device.BlockSize,
         !device.File.IsOpen());
 
-    if (!device.File.IsOpen()) {
-        ++queueStats.SubFailed;
-        vhd_complete_bio(io, VHD_BDEV_IOERR);
+    if (IsBrokenDevice(device)) {
+        CompleteRequestWithError(io, queueStats);
         return;
     }
 
