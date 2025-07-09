@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/datetime/base.h>
@@ -39,12 +41,8 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     if (ReadOnlyMode) {
-        try {
-            MergeFromTextFormat(BackupFilePath, BackupProto);
-        } catch (...) {
-            LOG_WARN_S(ctx, TBlockStoreComponents::SS_PROXY,
-                "PathDescriptionBackup: can't load from file: "
-                << CurrentExceptionMessage());
+        if (!LoadFromTextFormat(ctx)) {
+            LoadFromBinaryFormat(ctx);
         }
     } else {
         ScheduleBackup(ctx);
@@ -102,6 +100,65 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
     }
 
     return error;
+}
+
+bool TPathDescriptionBackup::LoadFromTextFormat(
+    const NActors::TActorContext& ctx)
+{
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
+        "PathDescriptionBackup: loading from text format: "
+            << BackupFilePath.GetPath().Quote());
+    try {
+        TInstant start = TInstant::Now();
+        MergeFromTextFormat(BackupFilePath, BackupProto);
+
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
+            "PathDescriptionBackup: loading from text format finished "
+                << FormatDuration(TInstant::Now() - start));
+        return true;
+    } catch (...) {
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
+            "PathDescriptionBackup: can't load text format file: "
+                << CurrentExceptionMessage());
+    }
+    return false;
+}
+
+bool TPathDescriptionBackup::LoadFromBinaryFormat(
+    const NActors::TActorContext& ctx)
+{
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
+        "PathDescriptionBackup: loading from binary format: "
+            << BackupFilePath.GetPath().Quote());
+
+    TInstant start = TInstant::Now();
+    TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
+    TUnbufferedFileInput input(file);
+    const bool succ = BackupProto.MergeFromString(input.ReadAll());
+    if (!succ) {
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
+            "PathDescriptionBackup: can't load from binary format: "
+                << BackupFilePath.GetPath().Quote());
+        return false;
+    }
+
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
+        "PathDescriptionBackup: loading from binary format finished "
+            << FormatDuration(TInstant::Now() - start));
+
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

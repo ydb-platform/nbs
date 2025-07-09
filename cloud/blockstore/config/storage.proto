@@ -1262,4 +1262,8 @@ message TStorageServiceConfig
 
     // Time to wait for a partition tablet to boot (in milliseconds).
     optional uint32 PartitionBootTimeout = 438;
+
+    // In emergency (SSProxy/HiveProxy fallback mode), don't pass SchemeShardDir
+    // when registering node in Node Broker
+    optional bool DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = 439;
 }
