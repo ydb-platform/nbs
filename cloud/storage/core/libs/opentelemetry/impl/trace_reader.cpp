@@ -61,9 +61,9 @@ public:
         ExportTraceServiceRequest traces;
         auto* resourceSpans = traces.Addresource_spans();
         auto* attribute =
-            resourceSpans->Mutableresource()->Mutableattributes()->Add();
-        attribute->Setkey("service.name");
-        attribute->Mutablevalue()->Setstring_value(ServiceName);
+            resourceSpans->Mutableresource()->mutable_attributes()->Add();
+        attribute->set_key("service.name");
+        attribute->mutable_value()->set_string_value(ServiceName);
 
         auto* scopedSpans = resourceSpans->Addscope_spans();
         for (const auto& span: spans) {

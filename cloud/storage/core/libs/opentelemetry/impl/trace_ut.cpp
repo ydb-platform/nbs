@@ -107,72 +107,72 @@ Y_UNIT_TEST_SUITE(TraceConverter)
 
                 const auto& span = spans.front();
 
-                UNIT_ASSERT_VALUES_EQUAL(span.Getspan_id(), ToHexString8(0));
+                UNIT_ASSERT_VALUES_EQUAL(span.get_span_id(), ToHexString8(0));
 
-                UNIT_ASSERT_VALUES_EQUAL(span.Getevents().size(), 4);
+                UNIT_ASSERT_VALUES_EQUAL(span.get_events().size(), 4);
 
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[0].Getname(),
+                    span.get_events()[0].get_name(),
                     "NoParam");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[0].Getattributes().size(),
+                    span.get_events()[0].get_attributes().size(),
                     0);
 
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[1].Getname(),
+                    span.get_events()[1].get_name(),
                     "IntParam");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[1].Getattributes().size(),
+                    span.get_events()[1].get_attributes().size(),
                     1);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[1].Getattributes()[0].Getkey(),
+                    span.get_events()[1].get_attributes()[0].get_key(),
                     "value");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[1]
-                        .Getattributes()[0]
-                        .Getvalue()
-                        .Getint_value(),
+                    span.get_events()[1]
+                        .get_attributes()[0]
+                        .get_value()
+                        .get_int_value(),
                     1);
 
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[2].Getname(),
+                    span.get_events()[2].get_name(),
                     "TwoIntParam");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[2].Getattributes().size(),
+                    span.get_events()[2].get_attributes().size(),
                     2);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[2].Getattributes()[0].Getkey(),
+                    span.get_events()[2].get_attributes()[0].get_key(),
                     "value1");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[2]
-                        .Getattributes()[0]
-                        .Getvalue()
-                        .Getint_value(),
+                    span.get_events()[2]
+                        .get_attributes()[0]
+                        .get_value()
+                        .get_int_value(),
                     3);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[2].Getattributes()[1].Getkey(),
+                    span.get_events()[2].get_attributes()[1].get_key(),
                     "value2");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[2]
-                        .Getattributes()[1]
-                        .Getvalue()
-                        .Getint_value(),
+                    span.get_events()[2]
+                        .get_attributes()[1]
+                        .get_value()
+                        .get_int_value(),
                     4);
 
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[3].Getname(),
+                    span.get_events()[3].get_name(),
                     "StringParam");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[3].Getattributes().size(),
+                    span.get_events()[3].get_attributes().size(),
                     1);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[3].Getattributes()[0].Getkey(),
+                    span.get_events()[3].get_attributes()[0].get_key(),
                     "svalue");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.Getevents()[3]
-                        .Getattributes()[0]
-                        .Getvalue()
-                        .Getstring_value(),
+                    span.get_events()[3]
+                        .get_attributes()[0]
+                        .get_value()
+                        .get_string_value(),
                     "string");
             }
         } reader;
@@ -248,83 +248,83 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                 auto getValues = [](const auto& span)
                 {
                     TVector<int> values;
-                    for (const auto& event: span.Getevents()) {
-                        if (event.Getname() == "NoParam") {
+                    for (const auto& event: span.get_events()) {
+                        if (event.get_name() == "NoParam") {
                             continue;
                         }
-                        UNIT_ASSERT_VALUES_EQUAL(event.Getname(), "IntParam");
+                        UNIT_ASSERT_VALUES_EQUAL(event.get_name(), "IntParam");
                         UNIT_ASSERT_VALUES_EQUAL(
-                            event.Getattributes().size(),
+                            event.get_attributes().size(),
                             1);
                         UNIT_ASSERT_VALUES_EQUAL(
-                            event.Getattributes()[0].Getkey(),
+                            event.get_attributes()[0].get_key(),
                             "value");
                         values.push_back(
-                            event.Getattributes()[0].Getvalue().Getint_value());
+                            event.get_attributes()[0].get_value().get_int_value());
                     }
 
                     return values;
                 };
 
-                auto firstTraceId = spans[0].Gettrace_id();
+                auto firstTraceId = spans[0].get_trace_id();
                 UNIT_ASSERT_VALUES_EQUAL(16, firstTraceId.size());
 
                 UNIT_ASSERT(AllOf(
                     spans,
                     [&](const auto& span)
-                    { return span.Gettrace_id() == firstTraceId; }));
+                    { return span.get_trace_id() == firstTraceId; }));
 
-                UNIT_ASSERT(!spans[0].Getparent_span_id());
+                UNIT_ASSERT(!spans[0].get_parent_span_id());
                 UNIT_ASSERT_VALUES_EQUAL(
                     getValues(spans[0]),
                     (TVector<int>{1, 2, 8, 9}));
-                UNIT_ASSERT_VALUES_EQUAL(8, spans[0].Getspan_id().size());
+                UNIT_ASSERT_VALUES_EQUAL(8, spans[0].get_span_id().size());
 
                 UNIT_ASSERT_VALUES_EQUAL(
-                    spans[0].Getspan_id(),
-                    spans[1].Getparent_span_id());
+                    spans[0].get_span_id(),
+                    spans[1].get_parent_span_id());
                 UNIT_ASSERT_VALUES_EQUAL(
                     (TVector<int>{7}),
                     getValues(spans[1]));
-                UNIT_ASSERT_VALUES_EQUAL(8, spans[1].Getspan_id().size());
+                UNIT_ASSERT_VALUES_EQUAL(8, spans[1].get_span_id().size());
 
                 UNIT_ASSERT_VALUES_EQUAL(
-                    spans[0].Getspan_id(),
-                    spans[2].Getparent_span_id());
+                    spans[0].get_span_id(),
+                    spans[2].get_parent_span_id());
                 UNIT_ASSERT_VALUES_EQUAL(
                     getValues(spans[2]),
                     (TVector<int>{3, 4, 6}));
-                UNIT_ASSERT_VALUES_EQUAL(8, spans[2].Getspan_id().size());
+                UNIT_ASSERT_VALUES_EQUAL(8, spans[2].get_span_id().size());
 
                 UNIT_ASSERT_VALUES_EQUAL(
-                    spans[2].Getspan_id(),
-                    spans[3].Getparent_span_id());
+                    spans[2].get_span_id(),
+                    spans[3].get_parent_span_id());
                 UNIT_ASSERT_VALUES_EQUAL(
                     (TVector<int>{5}),
                     getValues(spans[3]));
-                UNIT_ASSERT_VALUES_EQUAL(8, spans[3].Getspan_id().size());
+                UNIT_ASSERT_VALUES_EQUAL(8, spans[3].get_span_id().size());
 
                 auto getTime = [](const auto& spans, int i, int j)
                 {
-                    return spans[i].Getevents()[j].Gettime_unix_nano();
+                    return spans[i].get_events()[j].get_time_unix_nano();
                 };
 
                 TVector eventTimes{
                     getTime(spans, 0, 0),
-                    spans[2].Getstart_time_unix_nano(),
+                    spans[2].get_start_time_unix_nano(),
                     getTime(spans, 0, 1),
-                    spans[1].Getstart_time_unix_nano(),
+                    spans[1].get_start_time_unix_nano(),
                     getTime(spans, 0, 2),
                     getTime(spans, 2, 0),
-                    spans[3].Getstart_time_unix_nano(),
+                    spans[3].get_start_time_unix_nano(),
                     getTime(spans, 2, 1),
                     getTime(spans, 3, 0),
-                    spans[3].Getend_time_unix_nano(),
+                    spans[3].get_end_time_unix_nano(),
                     getTime(spans, 2, 2),
                     getTime(spans, 1, 0),
-                    spans[1].Getend_time_unix_nano(),
+                    spans[1].get_end_time_unix_nano(),
                     getTime(spans, 0, 3),
-                    spans[2].Getend_time_unix_nano(),
+                    spans[2].get_end_time_unix_nano(),
                     getTime(spans, 0, 4)};
 
                 for (size_t i = 0; i < eventTimes.size() - 1; ++i) {

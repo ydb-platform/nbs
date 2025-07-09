@@ -30,31 +30,31 @@ AnyValue ConvertToOpenTelemetry(
     AnyValue value;
     switch (type) {
         case NLWTrace::PT_I64:
-            value.Setint_value(param.Get<i64>());
+            value.set_int_value(param.Get<i64>());
             break;
         case NLWTrace::PT_Ui64:
-            value.Setint_value(param.Get<ui64>());
+            value.set_int_value(param.Get<ui64>());
             break;
         case NLWTrace::PT_Double:
-            value.Setdouble_value(param.Get<double>());
+            value.set_double_value(param.Get<double>());
             break;
         case NLWTrace::PT_Str:
-            value.Setstring_value(param.Get<TString>());
+            value.set_string_value(param.Get<TString>());
             break;
         case NLWTrace::PT_Symbol:
-            value.Setstring_value(*param
+            value.set_string_value(*param
                                        .Get<typename NLWTrace::TParamTraits<
                                            NLWTrace::TSymbol>::TStoreType>()
                                        .Str);
             break;
         case NLWTrace::PT_Check:
-            value.Setint_value(param
+            value.set_int_value(param
                                    .Get<typename NLWTrace::TParamTraits<
                                        NLWTrace::TCheck>::TStoreType>()
                                    .Value);
             break;
         default:
-            value.Setstring_value("unknown type");
+            value.set_string_value("unknown type");
             break;
     }
 
@@ -94,8 +94,8 @@ Span_Event ProcessRegularItem(
     TReferenceTimeCycle referenceTimeCycle)
 {
     Span_Event event;
-    event.Setname(item.Probe->Event.Name);
-    event.Settime_unix_nano(
+    event.set_name(item.Probe->Event.Name);
+    event.set_time_unix_nano(
         GetTimestampInNanoSeconds(referenceTimeCycle, item.TimestampCycles));
 
     Y_ABORT_UNLESS(
@@ -103,14 +103,14 @@ Span_Event ProcessRegularItem(
         "Too many params");
     for (size_t paramIdx = 0; paramIdx < item.SavedParamsCount; ++paramIdx) {
         KeyValue kv;
-        kv.Setkey(item.Probe->Event.Signature.ParamNames[paramIdx]);
+        kv.set_key(item.Probe->Event.Signature.ParamNames[paramIdx]);
 
         auto type = NLWTrace::ParamTypeToProtobuf(
             item.Probe->Event.Signature.ParamTypes[paramIdx]);
         const auto& param = item.Params.Param[paramIdx];
-        *kv.Mutablevalue() = std::move(ConvertToOpenTelemetry(param, type));
+        *kv.mutable_value() = std::move(ConvertToOpenTelemetry(param, type));
 
-        auto* attributes = event.Mutableattributes();
+        auto* attributes = event.mutable_attributes();
         attributes->Add(std::move(kv));
     }
 
@@ -152,7 +152,7 @@ T FindFirst(
     const char* fieldName,
     TLogItemsIterationContext iterationContext)
 {
-    while (iterationContext) {
+    for (; iterationContext; iterationContext.Next()) {
         const auto& item = tl.Items[iterationContext.Idx];
         for (size_t paramIdx = 0; paramIdx < item.SavedParamsCount; ++paramIdx)
         {
@@ -163,7 +163,6 @@ T FindFirst(
                 return item.Params.Param[paramIdx].Get<T>();
             }
         }
-        iterationContext.Next();
     }
 
     return {};
@@ -196,8 +195,8 @@ public:
         , RootSpanId(spanId)
     {
         Spans.emplace_back();
-        GetParentSpan().Setspan_id(ToHexString8(RootSpanId));
-        GetParentSpan().Settrace_id(ToHexString16(TraceId));
+        GetParentSpan().set_span_id(ToHexString8(RootSpanId));
+        GetParentSpan().set_trace_id(ToHexString16(TraceId));
     }
 
     void AddSpanSubTree(TSpanTree subtree)
@@ -266,9 +265,9 @@ TSpanTree ProcessItemsToSpanTree(
                 iterationContext.ConstructSubSpanIterationContext(itemsCount),
                 referenceTimeCycle);
 
-            subSpans.GetParentSpan().Setstart_time_unix_nano(
+            subSpans.GetParentSpan().set_start_time_unix_nano(
                 spanIdToStartTime[childSpanId]);
-            subSpans.GetParentSpan().Setend_time_unix_nano(curTimeStampNano);
+            subSpans.GetParentSpan().set_end_time_unix_nano(curTimeStampNano);
 
             spanTree.AddSpanSubTree(std::move(subSpans));
             continue;
@@ -278,9 +277,9 @@ TSpanTree ProcessItemsToSpanTree(
             ProcessRegularItem(item, referenceTimeCycle);
     }
 
-    spanTree.GetParentSpan().Setstart_time_unix_nano(
+    spanTree.GetParentSpan().set_start_time_unix_nano(
         GetTimestampInNanoSeconds(referenceTimeCycle, startTimeCycles));
-    spanTree.GetParentSpan().Setend_time_unix_nano(
+    spanTree.GetParentSpan().set_end_time_unix_nano(
         GetTimestampInNanoSeconds(referenceTimeCycle, endTimeCycles));
 
     return spanTree;
