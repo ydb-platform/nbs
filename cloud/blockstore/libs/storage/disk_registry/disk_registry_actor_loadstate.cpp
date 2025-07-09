@@ -93,7 +93,8 @@ bool TDiskRegistryActor::LoadState(
         db.ReadSuspendedDevices(args.SuspendedDevices),
         db.ReadAutomaticallyReplacedDevices(args.AutomaticallyReplacedDevices),
         db.ReadDiskRegistryAgentListParams(args.DiskRegistryAgentListParams),
-        db.ReadDiskWithRecentlyReplacedDevices(args.ReplicasWithRecentlyReplacedDevices),
+        db.ReadDiskWithRecentlyReplacedDevices(
+            args.ReplicasWithRecentlyReplacedDevices),
     });
 }
 

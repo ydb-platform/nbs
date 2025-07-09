@@ -337,7 +337,8 @@ private:
 
     NDiskRegistry::TNotificationSystem NotificationSystem;
 
-    THashMap<TString, TString> ReplicasWithRecentlyReplacedDevices;
+    THashMap<TString, NProto::TReplicaWithRecentlyReplacedDevices>
+        ReplicasWithRecentlyReplacedDevices;
 
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
@@ -361,8 +362,10 @@ public:
         TVector<TString> outdatedVolumeConfigs,
         TVector<NProto::TSuspendedDevice> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
-        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams,
-        THashMap<TString, TString> replicasWithRecentlyReplacedDevices);
+        THashMap<TString, NProto::TDiskRegistryAgentParams>
+            diskRegistryAgentListParams,
+        THashMap<TString, NProto::TReplicaWithRecentlyReplacedDevices>
+            replicasWithRecentlyReplacedDevices);
 
     ~TDiskRegistryState();
 
@@ -1128,7 +1131,14 @@ private:
         const TString& diskId,
         ui64 seqNo);
 
+    void AddDiskWithRecentlyReplacedDevices(
+        TDiskRegistryDatabase& db,
+        const TDiskId& masterDiskId,
+        const TDiskId& replicaId,
+        ui64 seqNo);
+
     void ReplaceNextDevices(
+        TInstant now,
         TDiskRegistryDatabase& db,
         const TString& diskId,
         ui64 seqNo);
@@ -1358,7 +1368,7 @@ private:
         TString message,
         bool manual);
 
-    void TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+    bool TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
         TDiskRegistryDatabase& db,
         TDiskState& disk,
         const TString& diskId,

@@ -133,11 +133,10 @@ public:
 
     void AddDiskWithRecentlyReplacedDevices(
         const TString& masterDiskId,
-        const TString& replicaId);
+        const NProto::TReplicaWithRecentlyReplacedDevices& replica);
     void DeleteDiskWithRecentlyReplacedDevices(const TString& masterDiskId);
     bool ReadDiskWithRecentlyReplacedDevices(
-        TVector<TString>& masterDiskIds,
-        TVector<TString>& replicaIds);
+        TVector<NProto::TReplicaWithRecentlyReplacedDevices>& replicas);
 
 private:
     template <typename TTable>

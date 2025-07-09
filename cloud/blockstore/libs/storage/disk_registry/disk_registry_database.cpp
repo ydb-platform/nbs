@@ -752,24 +752,21 @@ void TDiskRegistryDatabase::DeleteDiskRegistryAgentListParams(const TString& age
 
 void TDiskRegistryDatabase::AddDiskWithRecentlyReplacedDevices(
     const TString& masterDiskId,
-    const TString& replicaId)
+    const NProto::TReplicaWithRecentlyReplacedDevices& replica)
 {
     using TTable = TDiskRegistrySchema::DisksWithRecentlyReplacedDevices;
-    Table<TTable>().Key(masterDiskId).Update<TTable::ReplicaId>(replicaId);
+    Table<TTable>().Key(masterDiskId).Update<TTable::Replica>(replica);
 }
 
 void TDiskRegistryDatabase::DeleteDiskWithRecentlyReplacedDevices(
     const TString& masterDiskId)
 {
     using TTable = TDiskRegistrySchema::DisksWithRecentlyReplacedDevices;
-    Table<TTable>()
-        .Key(masterDiskId)
-        .Delete();
+    Table<TTable>().Key(masterDiskId).Delete();
 }
 
 bool TDiskRegistryDatabase::ReadDiskWithRecentlyReplacedDevices(
-    TVector<TString>& masterDiskIds,
-    TVector<TString>& replicaIds)
+    TVector<NProto::TReplicaWithRecentlyReplacedDevices>& replicas)
 {
     using TTable = TDiskRegistrySchema::DisksWithRecentlyReplacedDevices;
     auto it =
@@ -780,8 +777,7 @@ bool TDiskRegistryDatabase::ReadDiskWithRecentlyReplacedDevices(
     }
 
     while (it.IsValid()) {
-        masterDiskIds.push_back(it.GetValue<TTable::MasterDiskId>());
-        replicaIds.push_back(it.GetValue<TTable::ReplicaId>());
+        replicas.push_back(it.GetValue<TTable::Replica>());
 
         if (!it.Next()) {
             return false;   // not ready

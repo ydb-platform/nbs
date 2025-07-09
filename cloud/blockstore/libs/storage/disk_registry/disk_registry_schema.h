@@ -322,12 +322,14 @@ struct TDiskRegistrySchema
             : public Column<1, NKikimr::NScheme::NTypeIds::String>
         {};
 
-        struct ReplicaId
+        struct Replica
             : public Column<2, NKikimr::NScheme::NTypeIds::String>
-        {};
+        {
+            using Type = NProto::TReplicaWithRecentlyReplacedDevices;
+        };
 
         using TKey = TableKey<MasterDiskId>;
-        using TColumns = TableColumns<MasterDiskId, ReplicaId>;
+        using TColumns = TableColumns<MasterDiskId, Replica>;
     };
 
     using TTables = SchemaTables<

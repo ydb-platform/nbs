@@ -494,6 +494,13 @@ message TUserNotification
     }
 }
 
+message TReplicaWithRecentlyReplacedDevices
+{
+    string MasterDiskId = 1;
+    string ReplicaId = 2;
+    uint64 SeqNo = 3;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 message TDiskRegistryStateBackup
