@@ -2,6 +2,7 @@
 
 #include "config.h"
 
+#include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/quota_metrics.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
@@ -14,8 +15,10 @@
 #include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/throttling/throttler_tracker.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -23,8 +26,6 @@
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 #include <cloud/storage/core/libs/throttling/helpers.h>
 #include <cloud/storage/core/libs/throttling/leaky_bucket.h>
-
-#include <cloud/blockstore/config/client.pb.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -54,7 +55,7 @@ private:
     NProto::TClientPerformanceProfile Profile;
 
 public:
-    TThrottlerPolicy(const NProto::TClientPerformanceProfile& pp)
+    explicit TThrottlerPolicy(const NProto::TClientPerformanceProfile& pp)
         : Bucket(SecondsToDuration(pp.GetBurstTime() / 1'000.))
         , Profile(pp)
     {
@@ -68,6 +69,15 @@ public:
     {
         const NProto::TClientMediaKindPerformanceProfile* mediaKindProfile
             = nullptr;
+
+        // For BlobStorage-based disks disable throttling for ZeroBlocks
+        // requests, as these requests only perform index operations in the
+        // partition tablet local database.
+        if (IsBlobStorageMediaKind(mediaKind) &&
+            requestType == EBlockStoreRequest::ZeroBlocks)
+        {
+            return TDuration::Zero();
+        }
 
         switch (mediaKind) {
             case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
