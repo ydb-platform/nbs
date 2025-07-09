@@ -452,7 +452,7 @@ private:
 
         TErrorHandler(
                 std::weak_ptr<TEndpointManager> manager,
-                std::share_ptr<TEndpoint> endpoint)
+                std::shared_ptr<TEndpoint> endpoint)
             : Manager(std::move(manager))
             , Endpoint(std::move(endpoint))
         {}
@@ -1437,7 +1437,7 @@ void TEndpointManager::DoProcessException(
 
     if (endpoint->Generation != context->Generation) {
         STORAGE_WARN(
-            prefix << "generation mismatch (" << endpoint->Generation.load()
+            prefix << "generation mismatch (" << endpoint->Generation
                    << " != " << context->Generation << "), cancel restart");
         return;
     }
