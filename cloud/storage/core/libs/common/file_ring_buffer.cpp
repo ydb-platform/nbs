@@ -223,6 +223,19 @@ private:
             Header()->ReadPos = 0;
             Header()->WritePos = 0;
         }
+
+        if (e.IsInvalid()) {
+            SetCorrupted();
+        }
+    }
+
+    void CheckSize()
+    {
+        bool empty = Header()->ReadPos == Header()->WritePos;
+        if (empty != (Count == 0)) {
+            SetCorrupted();
+            Count = empty ? 0 : 1;
+        }
     }
 
     TEntryInfo GetEntry(ui64 pos) const
@@ -368,6 +381,10 @@ public:
                     return false;
                 }
             }
+        } else if (writePos != 0) {
+            // This may happen when the buffer is tampered while it is in use
+            SetCorrupted();
+            return false;
         }
 
         Data.WriteEntry(writePos, data);
@@ -428,6 +445,7 @@ public:
         --Count;
 
         SkipSlackSpace();
+        CheckSize();
     }
 
     ui64 Size() const
@@ -442,11 +460,11 @@ public:
         return result;
     }
 
-    auto Validate() const
+    auto Validate()
     {
         TVector<TBrokenFileEntry> entries;
 
-        Visit([&] (ui32 checksum, TStringBuf entry) {
+        bool isConsistent = Visit([&] (ui32 checksum, TStringBuf entry) {
             const ui32 actualChecksum = Crc32c(entry.data(), entry.size());
             if (actualChecksum != checksum) {
                 entries.push_back({
@@ -456,22 +474,28 @@ public:
             }
         });
 
+        if (!isConsistent) {
+            SetCorrupted();
+        }
+
         return entries;
     }
 
     bool Visit(const TVisitor& visitor) const
     {
         ui64 pos = Header()->ReadPos;
+        ui64 count = 0;
 
         auto e = GetEntry(pos);
 
         while (e.HasValue()) {
+            count++;
             visitor(e.Header->Checksum, e.GetData());
             pos = e.GetNextEntryPos();
             e = GetEntry(pos);
         }
 
-        return pos == Header()->WritePos && !e.IsInvalid();
+        return pos == Header()->WritePos && !e.IsInvalid() && count == Count;
     }
 
     bool IsCorrupted() const

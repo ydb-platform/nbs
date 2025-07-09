@@ -466,6 +466,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             TStateWithCorruptedEntryLength s(i);
             TFileRingBuffer rb(s.F.GetName(), s.Len);
             UNIT_ASSERT_VALUES_EQUAL(i != 2, rb.IsCorrupted());
+
+            // Detect corruption in PopFront
+            TStateWithCorruptedEntryLength s2(i);
+            UNIT_ASSERT(!s2.Rb.IsCorrupted());
+            while (!s2.Rb.Empty()) {
+                s2.Rb.PopFront();
+            }
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, s2.Rb.IsCorrupted());
         }
     }
 
