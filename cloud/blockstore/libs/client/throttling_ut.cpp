@@ -429,7 +429,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             0,
             2'000'000,
             NCloud::NProto::STORAGE_MEDIA_SSD,
-            EBlockStoreRequest::ZeroBlocks,
+            EBlockStoreRequest::ReadBlocksLocal,
             GetApproximateValue(
                 2_GB,
                 performanceProfile.GetSSDProfile().GetMaxWriteIops(),
@@ -445,6 +445,17 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 performanceProfile.GetSSDProfile().GetMaxReadIops(),
                 performanceProfile.GetSSDProfile().GetMaxReadBandwidth())
         );
+        for (int i = 0; i < 20; ++i) {
+            DO_TEST(
+                0,
+                2'000'000,
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                EBlockStoreRequest::ZeroBlocks,
+                GetApproximateValue(
+                    1023_MB,
+                    performanceProfile.GetSSDProfile().GetMaxReadIops(),
+                    performanceProfile.GetSSDProfile().GetMaxReadBandwidth()));
+        }
         for (int i = 0; i < 20; ++i) {
             DO_TEST(
                 0, 2'500'000,
