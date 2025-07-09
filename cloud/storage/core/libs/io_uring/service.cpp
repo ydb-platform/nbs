@@ -149,17 +149,18 @@ public:
     void Start()
     {
         SubmissionThread->Start();
+
+        // Since IORING_SETUP_R_DISABLED and IORING_SETUP_SINGLE_ISSUER
+        // are set, we must enable the ring in the context of the
+        // submission thread.
         SubmissionThread->ExecuteSimple(
             [this]
             {
-                // Since IORING_SETUP_R_DISABLED and IORING_SETUP_SINGLE_ISSUER
-                // are set, we must enable the ring and register a stop event in
-                // the context of the submission thread.
-                if (auto error = EnableRing(&Ring); HasError(error)) {
-                    Y_ABORT(
-                        "can't enable the ring: %s",
-                        FormatError(error).c_str());
-                }
+                const auto error = EnableRing(&Ring);
+                Y_ABORT_IF(
+                    HasError(error),
+                    "can't enable the ring: %s",
+                    FormatError(error).c_str());
 
                 // Start the completion thread only after enabling the ring.
                 CompletionThread.Start();
@@ -172,8 +173,7 @@ public:
             return;
         }
 
-        // Send a stop signal
-        AsyncNOP(nullptr);
+        SubmissionThread->ExecuteSimple([this] { SubmitStopSignal(); });
 
         CompletionThread.Join();
         SubmissionThread->Stop();
@@ -247,6 +247,27 @@ private:
         const auto error = Submit(&Ring);
         if (HasError(error)) {
             completion->Func(completion, error, 0);
+        }
+    }
+
+    void SubmitStopSignal()
+    {
+        for (;;) {
+            io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
+            if (sqe) {
+                io_uring_prep_nop(sqe);
+                io_uring_sqe_set_data(sqe, nullptr);
+
+                const auto error = Submit(&Ring);
+                Y_ABORT_IF(
+                    HasError(error),
+                    "can't submit a stop signal: %s",
+                    FormatError(error).c_str());
+                break;
+            }
+
+            // the submission queue is full, so we're waiting
+            SpinLockPause();
         }
     }
 
