@@ -61,7 +61,10 @@ struct TFixture: public NUnitTest::TBaseFixture
             OpenAlways | RdWr | DirectAligned | Sync);
         FileData.Resize(BlockCount * BlockSize);
 
-        IoUring = CreateIoUringService("CQ", SubmissionQueueSize);
+        auto factory = CreateIoUringServiceFactory(
+            {.SubmissionQueueEntries = SubmissionQueueSize});
+
+        IoUring = factory();
         IoUring->Start();
     }
 
@@ -83,7 +86,10 @@ struct TFixtureNull: public NUnitTest::TBaseFixture
     {
         Y_UNUSED(context);
 
-        IoUring = CreateIoUringServiceNull("CQ", SubmissionQueueSize);
+        auto factory = CreateIoUringServiceNullFactory(
+            {.SubmissionQueueEntries = SubmissionQueueSize});
+
+        IoUring = factory();
         IoUring->Start();
     }
 
