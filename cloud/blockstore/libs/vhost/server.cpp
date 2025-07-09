@@ -446,7 +446,7 @@ public:
             options.BlockSize,
             options.UnalignedRequestsDisabled,
             options.CheckBufferModificationDuringWriting,
-            options.IsReliableMediaKind,
+            options.StorageMediaKind,
             options.MaxZeroBlocksSubRequestSize);
 
         auto endpoint = std::make_shared<TEndpoint>(
