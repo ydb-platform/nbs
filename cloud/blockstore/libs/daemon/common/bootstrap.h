@@ -127,7 +127,7 @@ protected:
 
     virtual void WarmupBSGroupConnections() = 0;
 
-    void InitLWTrace();
+    void InitLWTrace(const TString& serviceNameForExporter);
     void InitProfileLog();
     void InitLogs();
 

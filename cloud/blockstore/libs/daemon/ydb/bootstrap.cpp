@@ -803,7 +803,7 @@ void TBootstrapYdb::InitKikimrService()
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
-    InitLWTrace();
+    InitLWTrace(Configs->TraceServiceClientConfig.GetServiceName());
 
     STORAGE_INFO("LWTrace initialized");
 

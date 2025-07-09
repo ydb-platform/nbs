@@ -741,7 +741,7 @@ void TBootstrapBase::InitDbgConfigs()
 
     Logging = CreateLoggingService("console", logSettings);
 
-    InitLWTrace();
+    InitLWTrace({});
 
     auto monPort = Configs->GetMonitoringPort();
     if (monPort) {
@@ -801,7 +801,7 @@ void TBootstrapBase::InitNullService()
     Service = CreateNullService(config);
 }
 
-void TBootstrapBase::InitLWTrace()
+void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
 {
     auto& probes = NLwTraceMonPage::ProbeRegistry();
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_SERVER_PROVIDER));
@@ -841,9 +841,7 @@ void TBootstrapBase::InitLWTrace()
         ));
     }
 
-    if (regularSamplingRate &&
-        Configs->TraceServiceClientConfig.GetServiceName())
-    {
+    if (regularSamplingRate && serviceNameForExporter) {
         NLWTrace::TQuery query = ProbabilisticQuery(
             desc,
             regularSamplingRate,
@@ -854,7 +852,7 @@ void TBootstrapBase::InitLWTrace()
             traceLog,
             "BLOCKSTORE_TRACE",
             GetTraceServiceClient(),
-            Configs->TraceServiceClientConfig.GetServiceName()));
+            serviceNameForExporter));
     }
 
     if (auto samplingRate = diagnosticsConfig->GetSlowRequestSamplingRate()) {
