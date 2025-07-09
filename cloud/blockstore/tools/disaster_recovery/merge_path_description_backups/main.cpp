@@ -37,10 +37,11 @@ bool LoadPathDescriptionBackup(
     const TFsPath& path,
     NSSProxy::NProto::TPathDescriptionBackup* backupProto)
 {
-    auto backupPath = path / options.SchemeShardBackup;
+    auto backupPath = path / options.SchemeShardBackupFileName;
     if (!backupPath.Exists()) {
         return false;
     }
+
     TFile file(backupPath, OpenExisting | RdOnly | Seq);
     TUnbufferedFileInput input(file);
     NProtoBuf::LogSilencer silencer;
@@ -62,7 +63,7 @@ void ProcessDir(
     NSSProxy::NProto::TPathDescriptionBackup pathDescriptionProto;
 
     if (!LoadPathDescriptionBackup(options, path, &pathDescriptionProto)) {
-        Cout << path.GetPath().Quote() << " Failed" << Endl;
+        Cerr << path.GetPath().Quote() << " Failed" << Endl;
         return;
     }
 

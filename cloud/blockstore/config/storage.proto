@@ -1263,9 +1263,7 @@ message TStorageServiceConfig
     // Time to wait for a partition tablet to boot (in milliseconds).
     optional uint32 PartitionBootTimeout = 438;
 
-    // In fallback mode, clean field SchemeShardDir when register node.
-    optional bool ResetSchemeShardDir = 439;
-
-    // In emergency mode, don't pass scheme shard dir when registering node.
-    optional bool DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = 438;
+    // In emergency (SSProxy/HiveProxy fallback mode), don't pass SchemeShardDir
+    // when registering node in Node Broker
+    optional bool DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = 439;
 }

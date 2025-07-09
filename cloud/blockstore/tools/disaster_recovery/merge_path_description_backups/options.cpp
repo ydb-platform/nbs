@@ -25,7 +25,7 @@ TOptions::TOptions(int argc, char** argv)
     opts.AddLongOption("path-description-file-name")
         .RequiredArgument("STR")
         .DefaultValue("nbs-path-description-backup.txt")
-        .StoreResult(&SchemeShardBackup);
+        .StoreResult(&SchemeShardBackupFileName);
 
     TOptsParseResultException(&opts, argc, argv);
 }

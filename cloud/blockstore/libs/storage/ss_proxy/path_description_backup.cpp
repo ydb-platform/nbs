@@ -108,7 +108,7 @@ bool TPathDescriptionBackup::LoadFromTextFormat(
     LOG_WARN_S(
         ctx,
         TBlockStoreComponents::SS_PROXY,
-        "PathDescriptionBackup: start loading from text format: "
+        "PathDescriptionBackup: loading from text format: "
             << BackupFilePath.GetPath().Quote());
     try {
         TInstant start = TInstant::Now();
@@ -117,14 +117,14 @@ bool TPathDescriptionBackup::LoadFromTextFormat(
         LOG_WARN_S(
             ctx,
             TBlockStoreComponents::SS_PROXY,
-            "PathDescriptionBackup: loading from file finished "
+            "PathDescriptionBackup: loading from text format finished "
                 << FormatDuration(TInstant::Now() - start));
         return true;
     } catch (...) {
         LOG_WARN_S(
             ctx,
             TBlockStoreComponents::SS_PROXY,
-            "PathDescriptionBackup: can't load from file: "
+            "PathDescriptionBackup: can't load text format file: "
                 << CurrentExceptionMessage());
     }
     return false;
@@ -136,7 +136,7 @@ bool TPathDescriptionBackup::LoadFromBinaryFormat(
     LOG_WARN_S(
         ctx,
         TBlockStoreComponents::SS_PROXY,
-        "PathDescriptionBackup: start loading from binary format: "
+        "PathDescriptionBackup: loading from binary format: "
             << BackupFilePath.GetPath().Quote());
 
     TInstant start = TInstant::Now();
@@ -147,7 +147,7 @@ bool TPathDescriptionBackup::LoadFromBinaryFormat(
         LOG_WARN_S(
             ctx,
             TBlockStoreComponents::SS_PROXY,
-            "PathDescriptionBackup: can't load from file: "
+            "PathDescriptionBackup: can't load from binary format: "
                 << BackupFilePath.GetPath().Quote());
         return false;
     }
@@ -155,7 +155,7 @@ bool TPathDescriptionBackup::LoadFromBinaryFormat(
     LOG_WARN_S(
         ctx,
         TBlockStoreComponents::SS_PROXY,
-        "PathDescriptionBackup: loading from file finished "
+        "PathDescriptionBackup: loading from binary format finished "
             << FormatDuration(TInstant::Now() - start));
 
     return true;
