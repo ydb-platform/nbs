@@ -23,8 +23,9 @@ bool IsBrokenDevice(const TAioDevice& device)
     return !device.File.IsOpen();
 }
 
-void CompleteRequestWithError(vhd_io* io, TSimpleStats& queueStats)
+void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
 {
+    ++queueStats.SubFailed;
     auto* bio = vhd_get_bdev_io(io);
     const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
@@ -121,7 +122,7 @@ void PrepareCompoundIO(
 
     if (std::any_of(it, end, IsBrokenDevice)) {
         ++queueStats.CompFailed;
-        CompleteRequestWithError(io, queueStats);
+        DiscardRequest(io, queueStats);
         return;
     }
 
@@ -317,7 +318,7 @@ void PrepareIO(
         !device.File.IsOpen());
 
     if (IsBrokenDevice(device)) {
-        CompleteRequestWithError(io, queueStats);
+        DiscardRequest(io, queueStats);
         return;
     }
 
