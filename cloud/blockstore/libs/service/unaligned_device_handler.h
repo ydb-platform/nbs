@@ -50,7 +50,7 @@ public:
         ui32 maxZeroBlocksSubRequestSize,
         ui32 maxUnalignedRequestSize,
         bool checkBufferModificationDuringWriting,
-        bool isReliableMediaKind);
+        NProto::EStorageMediaKind storageMediaKind);
 
     ~TUnalignedDeviceHandler() override;
 

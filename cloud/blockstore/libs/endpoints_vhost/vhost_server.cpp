@@ -50,8 +50,7 @@ public:
         options.CheckBufferModificationDuringWriting =
             ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
-        options.IsReliableMediaKind =
-            IsReliableMediaKind(volume.GetStorageMediaKind());
+        options.StorageMediaKind = volume.GetStorageMediaKind();
         options.DiscardEnabled =
             VhostDiscardEnabled &&
             !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());

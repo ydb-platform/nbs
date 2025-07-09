@@ -23,7 +23,7 @@ private:
     const ui32 BlockSize;
     const ui32 MaxBlockCount;
     const ui32 MaxBlockCountForZeroBlocksRequest;
-    const bool IsReliableMediaKind;
+    const NProto::EStorageMediaKind StorageMediaKind;
 
     std::atomic<bool> CriticalErrorReported = false;
 
@@ -36,7 +36,7 @@ public:
         ui32 maxSubRequestSize,
         ui32 maxZeroBlocksSubRequestSize,
         bool checkBufferModificationDuringWriting,
-        bool isReliableMediaKind);
+        NProto::EStorageMediaKind storageMediaKind);
 
     // implements IDeviceHandler
     NThreading::TFuture<NProto::TReadBlocksLocalResponse> Read(
