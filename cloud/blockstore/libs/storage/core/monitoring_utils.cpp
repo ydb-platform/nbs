@@ -1216,124 +1216,39 @@ void DumpLatency(
     size_t columnCount)
 {
     const TString containerId = "transactions-latency-container";
+    const TString toggleId = "transactions-auto-refresh-toggle";
 
     HTML (out) {
-        out << R"(
-            <div style="margin: 10px 0;">
-                <label style="cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="transactions-auto-refresh-toggle">
-                    Auto update info
-                </label>
-            </div>
-        )";
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
 
         out << "<div id=\"" << containerId << "\">";
-        TAG (TH3) {
-            out << "Transactions";
-        }
+        TAG (TH3) { out << "Transactions"; }
         DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
-        TAG (TH3) {
-            out << "Groups";
-        }
+        TAG (TH3) { out << "Groups"; }
         out << "</div>";
 
-        out << R"(
-        <script>
-        (function() {
-            const TAB_ID = 'Transactions';
-            const CONTAINER_ID = ')"
-                    << containerId << R"(';
-            const TOGGLE_ID = 'transactions-auto-refresh-toggle';
-            const TABLET_ID = ')"
-                    << ToString(tabletId) << R"(';
-            const INTERVAL_MS = 1000;
-
-            const tabPane = document.getElementById(TAB_ID);
-            const container = document.getElementById(CONTAINER_ID);
-            const toggle = document.getElementById(TOGGLE_ID);
-            let intervalId = null;
-
-            if (!tabPane || !container || !toggle) {
-                console.error('One of the required elements for auto-refresh is missing:', {tabPane, container, toggle});
-                return;
-            }
-
-            function renderTransactionsLatency(stat) {
-                for (let key in stat) {
+        out << R"(<script>
+            function updateTransactionsData(result, container) {
+                if (!result.stat) return;
+                for (let key in result.stat) {
                     const element = container.querySelector('#' + key);
                     if (element) {
-                        element.textContent = stat[key];
+                        element.textContent = result.stat[key];
                     }
                 }
             }
+        </script>)";
 
-            function loadTransactionsLatency() {
-                if (intervalId === null || document.hidden || !tabPane.classList.contains('active')) {
-                    stopAutoRefresh();
-                    return;
-                }
-                var url = '?action=getTransactionsLatency&TabletID=' + TABLET_ID;
-                $.ajax({
-                    url: url,
-                    success: function(result) {
-                        renderTransactionsLatency(result.stat);
-                    },
-                    error: function(jqXHR, status) {
-                        console.error('Error fetching transactions latency:', status);
-                        stopAutoRefresh();
-                    }
-                });
-            }
-
-            function startAutoRefresh() {
-                if (intervalId !== null || !toggle.checked) return;
-                console.log('Starting auto-refresh for tab: ' + TAB_ID);
-                loadTransactionsLatency();
-                intervalId = setInterval(loadTransactionsLatency, INTERVAL_MS);
-            }
-
-            function stopAutoRefresh() {
-                if (intervalId === null) return;
-                console.log('Stopping auto-refresh for tab: ' + TAB_ID);
-                clearInterval(intervalId);
-                intervalId = null;
-            }
-
-            const observer = new MutationObserver(function(mutations) {
-                for (let mutation of mutations) {
-                    if (mutation.attributeName === 'class') {
-                        if (tabPane.classList.contains('active')) {
-                            startAutoRefresh();
-                        } else {
-                            stopAutoRefresh();
-                        }
-                    }
-                }
-            });
-            observer.observe(tabPane, { attributes: true });
-
-            toggle.addEventListener('change', function() {
-                if (this.checked) {
-                    if (tabPane.classList.contains('active')) {
-                        startAutoRefresh();
-                    }
-                } else {
-                    stopAutoRefresh();
-                }
-            });
-
-            document.addEventListener('visibilitychange', function() {
-                if (!document.hidden) {
-                    if (tabPane.classList.contains('active')) {
-                        startAutoRefresh();
-                    }
-                } else {
-                    stopAutoRefresh();
-                }
-            });
-        })();
-        </script>
-        )";
+        RenderAutoRefreshScript(
+            out,
+            "Transactions",
+            containerId,
+            toggleId,
+            "getTransactionsLatency",
+            tabletId,
+            1000,
+            "updateTransactionsData"
+        );
     }
 }
 
@@ -1375,6 +1290,116 @@ HTTP_METHOD GetHttpMethodType(const NActors::NMon::TEvRemoteHttpInfo& msg)
         return static_cast<HTTP_METHOD>(ext->GetMethod());
     }
     return msg.GetMethod();
+}
+
+void RenderAutoRefreshToggle(
+    IOutputStream& out,
+    const TString& toggleId,
+    const TString& labelText,
+    bool isCheckedByDefault)
+{
+    out << R"(<div style="margin: 10px 0;">)"
+        << R"(<label style="cursor: pointer; user-select: none;">)"
+        << R"(<input type="checkbox" id=")" << toggleId << R"(")"
+        << (isCheckedByDefault ? " checked" : "") << R"(> )" << labelText
+        << "</label></div>";
+}
+
+void RenderAutoRefreshScript(
+    IOutputStream& out,
+    const TString& tabId,
+    const TString& containerId,
+    const TString& toggleId,
+    const TString& ajaxAction,
+    ui64 tabletId,
+    int intervalMs,
+    const TString& jsUpdateFunctionName)
+{
+    out << R"(<script>
+(function() {
+    document.addEventListener('DOMContentLoaded', function() {
+
+        const TAB_ID = ')"
+        << tabId << R"(';
+        const CONTAINER_ID = ')"
+        << containerId << R"(';
+        const TOGGLE_ID = ')"
+        << toggleId << R"(';
+        const TABLET_ID = ')"
+        << ToString(tabletId) << R"(';
+        const INTERVAL_MS = )"
+        << intervalMs << R"(;
+
+        const tabPane = document.getElementById(TAB_ID);
+        const container = document.getElementById(CONTAINER_ID);
+        const toggle = document.getElementById(TOGGLE_ID);
+        let intervalId = null;
+
+        if (!tabPane || !container || !toggle) {
+            console.error('Auto-refresh for "' + TAB_ID + '" aborted: missing required HTML elements.');
+            return;
+        }
+
+        function loadData() {
+            if (intervalId === null || document.hidden || !tabPane.classList.contains('active')) {
+                stopAutoRefresh();
+                return;
+            }
+
+            var url = '?action=)"
+        << ajaxAction << R"(&TabletID=' + TABLET_ID;
+            $.ajax({
+                url: url,
+                success: function(result) {
+                    )"
+        << jsUpdateFunctionName << R"((result, container);
+                },
+                error: function(jqXHR, status) {
+                    console.error('Error fetching data for )"
+        << tabId << R"(:', status);
+                    stopAutoRefresh();
+                }
+            });
+        }
+
+        function startAutoRefresh() {
+            if (intervalId !== null || !toggle.checked) return;
+            loadData();
+            intervalId = setInterval(loadData, INTERVAL_MS);
+        }
+
+        function stopAutoRefresh() {
+            if (intervalId === null) return;
+            clearInterval(intervalId);
+            intervalId = null;
+        }
+
+        const observer = new MutationObserver(mutations => {
+            mutations.forEach(mutation => {
+                if (mutation.attributeName === 'class') {
+                    if (tabPane.classList.contains('active')) startAutoRefresh();
+                    else stopAutoRefresh();
+                }
+            });
+        });
+        observer.observe(tabPane, { attributes: true });
+
+        toggle.addEventListener('change', e => {
+            if (e.target.checked) { if (tabPane.classList.contains('active')) startAutoRefresh(); }
+            else stopAutoRefresh();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) { if (tabPane.classList.contains('active')) startAutoRefresh(); }
+            else stopAutoRefresh();
+        });
+
+        if (tabPane.classList.contains('active') && toggle.checked) {
+            startAutoRefresh();
+        }
+    });
+})();
+</script>)";
 }
 
 }   // namespace NMonitoringUtils

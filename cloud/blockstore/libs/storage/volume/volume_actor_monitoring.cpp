@@ -1234,18 +1234,12 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         )";
 
     const TString containerId = "requests-latency-container";
+    const TString toggleId = "requests-auto-refresh-toggle";
 
     HTML (out) {
         out << style;
 
-        out << R"(
-            <div style="margin: 10px 0;">
-                <label style="cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="requests-auto-refresh-toggle">
-                    Auto update info
-                </label>
-            </div>
-        )";
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
 
         out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
@@ -1253,29 +1247,8 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         }
         out << "</div>";
 
-        out << R"(
-        <script>
-        (function() {
-
-            const TAB_ID = 'Latency';
-            const CONTAINER_ID = ')"
-            << containerId << R"(';
-            const TOGGLE_ID = 'requests-auto-refresh-toggle';
-            const TABLET_ID = ')"
-            << ToString(TabletID()) << R"(';
-            const INTERVAL_MS = 1000;
-
-            const tabPane = document.getElementById(TAB_ID);
-            const container = document.getElementById(CONTAINER_ID);
-            const toggle = document.getElementById(TOGGLE_ID);
-            let intervalId = null;
-
-            if (!tabPane || !container || !toggle) {
-                console.error('One of the required elements for latency auto-refresh is missing.');
-                return;
-            }
-
-            function applyRequestsValues(result) {
+        out << R"(<script>
+            function updateRequestsData(result, container) {
                 const data = { ...result.stat, ...result.percentiles };
                 for (let key in data) {
                     const element = container.querySelector('#' + key);
@@ -1284,79 +1257,18 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
                     }
                 }
             }
+        </script>)";
 
-            function loadRequestsLatency() {
-                if (intervalId === null || document.hidden || !tabPane.classList.contains('active')) {
-                    stopAutoRefresh();
-                    return;
-                }
-
-                var url = '?action=getRequestsLatency&TabletID=' + TABLET_ID;
-                $.ajax({
-                    url: url,
-                    success: function(result) {
-                        applyRequestsValues(result);
-                    },
-                    error: function(jqXHR, status) {
-                        console.error('Error fetching requests latency:', status);
-                        stopAutoRefresh();
-                    }
-                });
-            }
-
-            function startAutoRefresh() {
-                if (intervalId !== null || !toggle.checked) return;
-
-                console.log('Starting auto-refresh for tab: ' + TAB_ID);
-                loadRequestsLatency();
-                intervalId = setInterval(loadRequestsLatency, INTERVAL_MS);
-            }
-
-            function stopAutoRefresh() {
-                if (intervalId === null) return;
-
-                console.log('Stopping auto-refresh for tab: ' + TAB_ID);
-                clearInterval(intervalId);
-                intervalId = null;
-            }
-
-
-            const observer = new MutationObserver(function(mutations) {
-                for (let mutation of mutations) {
-                    if (mutation.attributeName === 'class') {
-                        if (tabPane.classList.contains('active')) {
-                            startAutoRefresh();
-                        } else {
-                            stopAutoRefresh();
-                        }
-                    }
-                }
-            });
-            observer.observe(tabPane, { attributes: true });
-
-            toggle.addEventListener('change', function() {
-                if (this.checked) {
-                    if (tabPane.classList.contains('active')) {
-                        startAutoRefresh();
-                    }
-                } else {
-                    stopAutoRefresh();
-                }
-            });
-
-            document.addEventListener('visibilitychange', function() {
-                if (!document.hidden) {
-                    if (tabPane.classList.contains('active')) {
-                        startAutoRefresh();
-                    }
-                } else {
-                    stopAutoRefresh();
-                }
-            });
-
-        })();
-        </script>
-        )";
+        RenderAutoRefreshScript(
+            out,
+            "Latency",
+            containerId,
+            toggleId,
+            "getRequestsLatency",
+            TabletID(),
+            1000,
+            "updateRequestsData"
+        );
     }
 }
 
