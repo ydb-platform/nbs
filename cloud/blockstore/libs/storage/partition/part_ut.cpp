@@ -7758,6 +7758,56 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotReleaseTrimBarriersOnFlushError)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelCount(1);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetMaxWriteBlobErrorsBeforeSuicide(10);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(1, 2));
+        partition.WriteBlocks(TBlockRange32::WithLength(1, 2));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetFreshBlocksCount());
+        }
+
+        bool flush = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPutResult: {
+                        if (flush) {
+                            auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                            msg->Status = NKikimrProto::ERROR;
+                            flush = false;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            }
+        );
+
+        flush = true;
+        partition.SendFlushRequest();
+        auto response = partition.RecvFlushResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+
+        partition.WriteBlocks(TBlockRange32::WithLength(1, 2));
+
+        partition.Flush();
+    }
+
     Y_UNIT_TEST(ShouldHandleFlushCorrectlyWhileBlockFromFreshChannelIsBeingDeleted)
     {
         auto config = DefaultConfig();

@@ -327,6 +327,13 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         // commit & garbage queue barriers will be released when confirmed
         // blobs are added
     } else {
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Releasing commit queue barrier, commit id @%lu",
+            LogTitle.GetWithTime().c_str(),
+            commitId);
+
         State->GetCommitQueue().ReleaseBarrier(commitId);
         if (msg->CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);

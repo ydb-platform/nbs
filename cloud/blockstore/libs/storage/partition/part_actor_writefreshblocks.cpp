@@ -661,7 +661,7 @@ void TPartitionActor::CompleteWriteBlocks(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Complete write blocks @%lu",
+        "%s Complete WriteBlocks transaction @%lu",
         LogTitle.GetWithTime().c_str(),
         commitId);
 

@@ -426,7 +426,7 @@ void TPartitionActor::CompleteZeroBlocks(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Complete zero blocks @%lu",
+        "%s Complete ZeroBlocks transaction @%lu",
         LogTitle.GetWithTime().c_str(),
         commitId);
 

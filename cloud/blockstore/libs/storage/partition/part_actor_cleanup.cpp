@@ -308,7 +308,7 @@ void TPartitionActor::CompleteCleanup(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Complete cleanup @%lu",
+        "%s Complete Cleanup transaction @%lu",
         LogTitle.GetWithTime().c_str(),
         args.CommitId);
 

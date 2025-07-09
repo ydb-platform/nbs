@@ -1270,7 +1270,7 @@ void TPartitionActor::FinalizeReadBlocks(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Complete read blocks @%lu",
+        "%s Finalizing ReadBlocks @%lu",
         LogTitle.GetWithTime().c_str(),
         commitId);
 

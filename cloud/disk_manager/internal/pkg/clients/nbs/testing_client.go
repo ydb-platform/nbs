@@ -186,11 +186,20 @@ func (c *testingClient) GoWriteRandomBlocksToNbsDisk(
 
 		for i := uint32(0); i < writeCount; i++ {
 			blockIndex := uint64(rand.Int63n(int64(blocksCount)))
+			possibleBlocksToWriteCount := int(min(1024, blocksCount-blockIndex))
+			blocksToWriteCount := uint32(max(1, rand.Intn(possibleBlocksToWriteCount)))
 			dice := rand.Intn(2)
+
+			logging.Debug(
+				ctx,
+				"Writing %v blocks to disk %v",
+				blocksToWriteCount,
+				diskID,
+			)
 
 			var err error
 			blockAcc := crc32.NewIEEE()
-			data := make([]byte, blockSize)
+			data := make([]byte, blockSize*blocksToWriteCount)
 
 			switch dice {
 			case 0:

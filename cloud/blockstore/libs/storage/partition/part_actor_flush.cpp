@@ -834,14 +834,17 @@ void TPartitionActor::HandleFlushCompleted(
     State->GetCommitQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
-    for (const auto& i: msg->FlushedCommitIdsFromChannel) {
-        State->GetTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
+    if (!HasError(msg->Error)) {
+        for (const auto& i: msg->FlushedCommitIdsFromChannel) {
+            State->GetTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
+        }
+
+        State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
+        State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
     }
 
-    State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
-    State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
-
     State->GetFlushedCommitIdsInProgress().clear();
+
     State->GetFlushState().SetStatus(EOperationStatus::Idle);
 
     Actors.Erase(ev->Sender);

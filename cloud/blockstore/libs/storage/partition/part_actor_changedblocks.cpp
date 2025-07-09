@@ -513,7 +513,8 @@ void TPartitionActor::CompleteGetChangedBlocks(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Complete diff blocks between @%lu and @%lu (range: %s)",
+        "%s Complete GetChangedBlocks transaction between ",
+        "@%lu and @%lu (range: %s)",
         LogTitle.GetWithTime().c_str(),
         args.LowCommitId,
         args.HighCommitId,
