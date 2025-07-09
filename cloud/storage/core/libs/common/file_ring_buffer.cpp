@@ -33,6 +33,34 @@ struct Y_PACKED TEntryHeader
     ui32 Checksum = 0;
 };
 
+//  Structure contract:
+//
+//  1. Empty buffer:
+//    - ReadPos = WritePos = 0
+//
+//  2. Non-empty buffer:
+//    - ReadPos != WritePos
+//    - ReadPos points to the first byte of the first valid entry
+//    - WritePos points to the first byte right after the last valid entry
+//    - LastEntrySize is the size of the last valid entry
+//
+//  3. Valid entry:
+//    - Size > 0
+//    - The entry takes sizeof(TEntryHeader) + Size contiguous bytes in
+//      the occupied part of the buffer
+//
+//  4. Occupied part of the buffer:
+//     - ReadPos < WritePos: [ReadPos, WritePos)
+//     - ReadPos > WritePos: [ReadPos, Capacity) + [0, WritePos)
+//
+//  5. Slack space entry marker:
+//     - Size = 0
+//     - Instructs to read the next entry at pos = 0
+//     - Can appear only when ReadPos > WritePos in [ReadPos, Capacity) part
+//
+//  6. Implicit slack space marker:
+//     - pos + sizeof(TEntryHeader) > Capacity
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TEntriesData
@@ -107,6 +135,62 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TEntryInfo
+{
+    ui64 ActualPos = 0;
+    const TEntryHeader* Header = nullptr;
+    const char* Data = nullptr;
+
+    bool HasValue() const
+    {
+        return Header != nullptr;
+    }
+
+    bool IsInvalid() const
+    {
+        return ActualPos == INVALID_POS;
+    }
+
+    TStringBuf GetData() const
+    {
+        return HasValue() ? TStringBuf(Data, Header->Size) : TStringBuf();
+    }
+
+    ui64 GetNextEntryPos() const
+    {
+        return Header != nullptr && Header->Size > 0
+            ? ActualPos + sizeof(TEntryHeader) + Header->Size
+            : INVALID_POS;
+    }
+
+    static TEntryInfo Create(
+        ui64 pos,
+        const TEntryHeader* header,
+        const char* data)
+    {
+        Y_ABORT_UNLESS(pos != INVALID_POS);
+        Y_ABORT_UNLESS(header != nullptr);
+        Y_ABORT_UNLESS(header->Size > 0);
+        Y_ABORT_UNLESS(data != nullptr);
+
+        return TEntryInfo{.ActualPos = pos, .Header = header, .Data = data};
+    }
+
+    static TEntryInfo CreateEmpty(ui64 pos)
+    {
+        Y_ABORT_UNLESS(pos != INVALID_POS);
+
+        return TEntryInfo{.ActualPos = pos};
+    }
+
+    static TEntryInfo CreateInvalid()
+    {
+        return TEntryInfo{.ActualPos = INVALID_POS};
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,38 +215,100 @@ private:
         return reinterpret_cast<THeader*>(Map.Ptr());
     }
 
-    void SkipSlackSpace()
+    TEntryInfo GetEntry(ui64 pos) const
     {
-        if (Header()->ReadPos == Header()->WritePos) {
-            Header()->ReadPos = 0;
-            Header()->WritePos = 0;
-            return;
+        if (pos > Header()->WritePos) {
+            // This is valid only in the case:
+            // ====W]....[R====
+            //             ^- here
+            if (Header()->ReadPos <= Header()->WritePos ||
+                pos < Header()->ReadPos)
+            {
+                return TEntryInfo::CreateInvalid();
+            }
+
+            const auto* eh = Data.GetEntryHeader(pos);
+            if (eh != nullptr && eh->Size != 0) {
+                const auto* data = Data.GetEntryData(eh);
+                return data != nullptr
+                    ? TEntryInfo::Create(pos, eh, data)
+                    : TEntryInfo::CreateInvalid();
+            }
+            pos = 0;
         }
 
-        const auto* eh = Data.GetEntryHeader(Header()->ReadPos);
-        if (eh == nullptr || eh->Size == 0) {
-            Header()->ReadPos = 0;
+        if (pos == Header()->WritePos) {
+            return TEntryInfo::CreateEmpty(pos);
         }
-    }
 
-    ui64 VisitEntry(const TVisitor& visitor, ui64 pos) const
-    {
+        Y_ABORT_UNLESS(pos < Header()->WritePos);
+
+        if (pos < Header()->ReadPos &&
+            Header()->ReadPos <= Header()->WritePos)
+        {
+            return TEntryInfo::CreateInvalid();
+        }
+
         const auto* eh = Data.GetEntryHeader(pos);
         if (eh == nullptr || eh->Size == 0) {
-            return 0;
+            return TEntryInfo::CreateInvalid();
         }
 
         const auto* data = Data.GetEntryData(eh);
         if (data == nullptr) {
-            return INVALID_POS;
+            return TEntryInfo::CreateInvalid();
         }
-        visitor(eh->Checksum, {data, eh->Size});
-        return pos + sizeof(TEntryHeader) + eh->Size;
+
+        auto res = TEntryInfo::Create(pos, eh, data);
+        if (res.GetNextEntryPos() > Header()->WritePos) {
+            return TEntryInfo::CreateInvalid();
+        }
+
+        return res;
+    }
+
+    TEntryInfo GetFrontEntry() const
+    {
+        return GetEntry(Header()->ReadPos);
+    }
+
+    TEntryInfo GetNextEntry(const TEntryInfo& e) const
+    {
+        return e.HasValue()
+            ? GetEntry(e.GetNextEntryPos())
+            : TEntryInfo::CreateInvalid();
     }
 
     void SetCorrupted()
     {
         Corrupted = true;
+    }
+
+    void CheckDataStructure()
+    {
+        TEntryInfo front = GetFrontEntry();
+        TEntryInfo back = front;
+        TEntryInfo cur = front;
+
+        while (cur.HasValue()) {
+            Count++;
+            back = cur;
+            cur = GetNextEntry(cur);
+        }
+
+        if (cur.IsInvalid() || cur.ActualPos != Header()->WritePos) {
+            SetCorrupted();
+        }
+
+        if (front.HasValue()) {
+            Header()->ReadPos = front.ActualPos;
+            Header()->WritePos = back.GetNextEntryPos();
+            Header()->LastEntrySize = back.GetNextEntryPos() - back.ActualPos;
+        } else {
+            Header()->ReadPos = 0;
+            Header()->WritePos = 0;
+            Header()->LastEntrySize = 0;
+        }
     }
 
 public:
@@ -189,12 +335,7 @@ public:
         auto* begin = static_cast<char*>(Map.Ptr()) + sizeof(THeader);
         Data = TEntriesData(begin, begin + capacity);
 
-        SkipSlackSpace();
-        Visit([this] (ui32 checksum, TStringBuf entry) {
-            Y_UNUSED(checksum);
-            Y_UNUSED(entry);
-            ++Count;
-        });
+        CheckDataStructure();
     }
 
 public:
@@ -255,25 +396,15 @@ public:
 
     TStringBuf Front() const
     {
-        if (Empty()) {
-            return {};
-        }
+        auto e = GetFrontEntry();
 
-        const auto* eh = Data.GetEntryHeader(Header()->ReadPos);
-        if (eh == nullptr) {
+        if (e.IsInvalid()) {
             // corruption
             // TODO: report?
             return {};
         }
 
-        const auto* data = Data.GetEntryData(eh);
-        if (data == nullptr) {
-            // corruption
-            // TODO: report?
-            return {};
-        }
-
-        return {data, eh->Size};
+        return e.GetData();
     }
 
     TStringBuf Back() const
@@ -287,30 +418,36 @@ public:
             // TODO: report?
             return {};
         }
+        auto pos = Header()->WritePos - Header()->LastEntrySize;
+        const auto e = GetEntry(pos);
 
-        const auto* eh =
-            Data.GetEntryHeader(Header()->WritePos - Header()->LastEntrySize);
-        const auto* data = eh ? Data.GetEntryData(eh) : nullptr;
-        if (data == nullptr) {
+        if (!e.HasValue() || e.ActualPos != pos ||
+            e.GetNextEntryPos() != Header()->WritePos)
+        {
             // corruption
             // TODO: report?
             return {};
         }
 
-        return {data, eh->Size};
+        return e.GetData();
     }
 
     void PopFront()
     {
-        auto data = Front();
-        if (!data) {
+        auto cur = GetFrontEntry();
+        if (!cur.HasValue()) {
             return;
         }
 
-        Header()->ReadPos += sizeof(TEntryHeader) + data.size();
-        --Count;
+        auto next = GetNextEntry(cur);
+        if (next.HasValue()) {
+            Header()->ReadPos = next.ActualPos;
+        } else {
+            Header()->ReadPos = 0;
+            Header()->WritePos = 0;
+        }
 
-        SkipSlackSpace();
+        --Count;
     }
 
     ui64 Size() const
@@ -344,22 +481,14 @@ public:
 
     void Visit(const TVisitor& visitor)
     {
-        ui64 pos = Header()->ReadPos;
-        while (pos > Header()->WritePos && pos != INVALID_POS) {
-            pos = VisitEntry(visitor, pos);
+        auto e = GetFrontEntry();
+
+        while (e.HasValue()) {
+            visitor(e.Header->Checksum, e.GetData());
+            e = GetNextEntry(e);
         }
 
-        while (pos < Header()->WritePos && pos != INVALID_POS) {
-            pos = VisitEntry(visitor, pos);
-            if (!pos) {
-                // can happen if the buffer is corrupted
-                pos = INVALID_POS;
-                break;
-            }
-        }
-
-        if (pos == INVALID_POS || pos != Header()->WritePos)
-        {
+        if (e.IsInvalid()) {
             SetCorrupted();
         }
     }
