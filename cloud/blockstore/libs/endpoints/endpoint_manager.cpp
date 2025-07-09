@@ -431,14 +431,11 @@ private:
         ui64 Generation;
         TBackoffDelayProvider BackoffProvider;
 
-        TExceptionContext(std::weak_ptr<TEndpoint> endpoint)
+        TExceptionContext(std::weak_ptr<TEndpoint> endpoint, ui64 generation)
             : Endpoint(std::move(endpoint))
+            , Generation(generation)
             , BackoffProvider(MIN_RECONNECT_DELAY, MAX_RECONNECT_DELAY)
-        {
-            if (auto endpoint = Endpoint.lock()) {
-                Generation = endpoint->Generation;
-            }
-        }
+        {}
     };
 
     struct TErrorHandler
@@ -447,14 +444,23 @@ private:
     {
         std::weak_ptr<TEndpointManager> Manager;
         std::weak_ptr<TEndpoint> Endpoint;
+        std::atomic<ui64> Generation;
 
         TErrorHandler(std::weak_ptr<TEndpointManager> manager)
             : Manager(std::move(manager))
         {}
 
-        void SetEndpoint(std::weak_ptr<TEndpoint> endpoint)
+        TErrorHandler(
+                std::weak_ptr<TEndpointManager> manager,
+                std::share_ptr<TEndpoint> endpoint)
+            : Manager(std::move(manager))
+            , Endpoint(std::move(endpoint))
+        {}
+
+        void SetEndpoint(std::shared_ptr<TEndpoint> endpoint)
         {
-            Endpoint = std::move(endpoint);
+            Endpoint = endpoint;
+            Generation = endpoint->Generation;
         }
 
         void ProcessException(std::exception_ptr e) override
@@ -463,7 +469,7 @@ private:
 
             if (auto manager = Manager.lock()) {
                 manager->ProcessException(
-                    std::make_shared<TExceptionContext>(Endpoint));
+                    std::make_shared<TExceptionContext>(Endpoint, Generation));
             }
         }
     };
@@ -1430,7 +1436,9 @@ void TEndpointManager::DoProcessException(
     }
 
     if (endpoint->Generation != context->Generation) {
-        STORAGE_WARN(prefix << "generation mismatch, cancel restart");
+        STORAGE_WARN(
+            prefix << "generation mismatch (" << endpoint->Generation.load()
+                   << " != " << context->Generation << "), cancel restart");
         return;
     }
     endpoint->Generation++;
@@ -1456,6 +1464,14 @@ void TEndpointManager::DoProcessException(
     STORAGE_INFO(prefix << "close socket");
     CloseAllEndpointSockets(*endpoint->Request);
 
+    auto socketPath = endpoint->Request->GetUnixSocketPath();
+
+    STORAGE_INFO(prefix << "update error handler");
+    NbdErrorHandlerMap->Erase(socketPath);
+    NbdErrorHandlerMap->Emplace(
+        socketPath,
+        std::make_shared<TErrorHandler>(weak_from_this(), endpoint));
+
     STORAGE_INFO(prefix << "open socket");
     auto error = OpenAllEndpointSockets(
         *endpoint->Request,
@@ -1471,7 +1487,7 @@ void TEndpointManager::DoProcessException(
     if (hasDevice) {
         STORAGE_INFO(prefix << "start device");
         auto device = NbdDeviceFactory->Create(
-            TNetworkAddress(TUnixSocketPath(endpoint->Request->GetUnixSocketPath())),
+            TNetworkAddress(TUnixSocketPath(socketPath)),
             endpoint->Request->GetNbdDeviceFile(),
             endpoint->Volume.GetBlocksCount(),
             endpoint->Volume.GetBlockSize());
