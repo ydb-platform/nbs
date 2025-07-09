@@ -1215,46 +1215,124 @@ void DumpLatency(
     const TTransactionTimeTracker& transactionTimeTracker,
     size_t columnCount)
 {
-    const TString script = R"(
+    const TString containerId = "transactions-latency-container";
+
+    HTML (out) {
+        out << R"(
+            <div style="margin: 10px 0;">
+                <label style="cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="transactions-auto-refresh-toggle">
+                    Auto update info
+                </label>
+            </div>
+        )";
+
+        out << "<div id=\"" << containerId << "\">";
+        TAG (TH3) {
+            out << "Transactions";
+        }
+        DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
+        TAG (TH3) {
+            out << "Groups";
+        }
+        out << "</div>";
+
+        out << R"(
         <script>
+        (function() {
+            const TAB_ID = 'Transactions';
+            const CONTAINER_ID = ')"
+                    << containerId << R"(';
+            const TOGGLE_ID = 'transactions-auto-refresh-toggle';
+            const TABLET_ID = ')"
+                    << ToString(tabletId) << R"(';
+
+            const tabPane = document.getElementById(TAB_ID);
+            const container = document.getElementById(CONTAINER_ID);
+            const toggle = document.getElementById(TOGGLE_ID);
+            let intervalId = null;
+
+            if (!tabPane || !container || !toggle) {
+                console.error('One of the required elements for auto-refresh is missing:', {tabPane, container, toggle});
+                return;
+            }
+
             function renderTransactionsLatency(stat) {
                 for (let key in stat) {
-                    const element = document.getElementById(key);
+                    const element = container.querySelector('#' + key);
                     if (element) {
                         element.textContent = stat[key];
                     }
                 }
             }
+
             function loadTransactionsLatency() {
-                var url = '?action=getTransactionsLatency';
-                url += '&TabletID=)" +
-                           ToString(tabletId) + R"(';
+                if (intervalId === null || document.hidden || !tabPane.classList.contains('active')) {
+                    stopAutoRefresh();
+                    return;
+                }
+                var url = '?action=getTransactionsLatency&TabletID=' + TABLET_ID;
                 $.ajax({
                     url: url,
                     success: function(result) {
                         renderTransactionsLatency(result.stat);
                     },
                     error: function(jqXHR, status) {
-                        console.log('error');
+                        console.error('Error fetching transactions latency:', status);
+                        stopAutoRefresh();
                     }
                 });
             }
-            setInterval(function() { loadTransactionsLatency(); }, 1000);
-            loadTransactionsLatency();
+
+            function startAutoRefresh() {
+                if (intervalId !== null || !toggle.checked) return;
+                console.log('Starting auto-refresh for tab: ' + TAB_ID);
+                loadTransactionsLatency();
+                intervalId = setInterval(loadTransactionsLatency, 1000);
+            }
+
+            function stopAutoRefresh() {
+                if (intervalId === null) return;
+                console.log('Stopping auto-refresh for tab: ' + TAB_ID);
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+
+            const observer = new MutationObserver(function(mutations) {
+                for (let mutation of mutations) {
+                    if (mutation.attributeName === 'class') {
+                        if (tabPane.classList.contains('active')) {
+                            startAutoRefresh();
+                        } else {
+                            stopAutoRefresh();
+                        }
+                    }
+                }
+            });
+            observer.observe(tabPane, { attributes: true });
+
+            toggle.addEventListener('change', function() {
+                if (this.checked) {
+                    if (tabPane.classList.contains('active')) {
+                        startAutoRefresh();
+                    }
+                } else {
+                    stopAutoRefresh();
+                }
+            });
+
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    if (tabPane.classList.contains('active')) {
+                        startAutoRefresh();
+                    }
+                } else {
+                    stopAutoRefresh();
+                }
+            });
+        })();
         </script>
         )";
-
-    HTML (out) {
-        out << script;
-
-        TAG (TH3) {
-            out << "Transactions";
-        }
-        DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
-
-        TAG (TH3) {
-            out << "Groups";
-        }
     }
 }
 
