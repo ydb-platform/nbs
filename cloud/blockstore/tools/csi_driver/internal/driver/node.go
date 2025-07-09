@@ -785,16 +785,17 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 }
 
 func (s *nodeService) GetNbsErrorCode(err error) (uint32, bool) {
-	if err != nil {
-		var nbsClientErr *nbsclient.ClientError
-		if errors.As(err, &nbsClientErr) {
-			return nbsClientErr.Code, true
-		}
+	if err == nil {
+		return 0, false
+	}
+	var nbsClientErr *nbsclient.ClientError
+	if errors.As(err, &nbsClientErr) {
+		return nbsClientErr.Code, true
+	}
 
-		var nfsClientErr *nfsclient.ClientError
-		if errors.As(err, &nfsClientErr) {
-			return nfsClientErr.Code, true
-		}
+	var nfsClientErr *nfsclient.ClientError
+	if errors.As(err, &nfsClientErr) {
+		return nfsClientErr.Code, true
 	}
 
 	return 0, false
@@ -807,13 +808,15 @@ func (s *nodeService) GetGrpcErrorCode(err error) codes.Code {
 
 	errorCode, ok := s.GetNbsErrorCode(err)
 
-	if ok {
-		switch errorCode {
-		case nbsclient.E_MOUNT_CONFLICT:
-			return codes.AlreadyExists
-		case nbsclient.E_GRPC_UNAVAILABLE, nfsclient.E_GRPC_UNAVAILABLE:
-			return codes.Unavailable
-		}
+	if !ok {
+		return codes.Internal
+	}
+
+	switch errorCode {
+	case nbsclient.E_MOUNT_CONFLICT:
+		return codes.AlreadyExists
+	case nbsclient.E_GRPC_UNAVAILABLE, nfsclient.E_GRPC_UNAVAILABLE:
+		return codes.Unavailable
 	}
 
 	return codes.Internal

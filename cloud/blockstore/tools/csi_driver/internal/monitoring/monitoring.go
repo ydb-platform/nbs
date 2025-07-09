@@ -23,6 +23,22 @@ func requestDurationBuckets() metrics.DurationBuckets {
 	)
 }
 
+func isRetriableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	status, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	switch status.Code() {
+	case codes.Aborted, codes.AlreadyExists, codes.Unavailable:
+		return true
+	}
+
+	return false
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type MonitoringConfig struct {
@@ -86,14 +102,8 @@ func (m *Monitoring) ReportRequestCompleted(
 	if err == nil {
 		subregistry.Counter("Success").Inc()
 	} else {
-		s, ok := status.FromError(err)
-		if ok {
-			switch s.Code() {
-			case codes.Aborted, codes.AlreadyExists, codes.Unavailable:
-				subregistry.Counter("RetriableErrors").Inc()
-			default:
-				subregistry.Counter("Errors").Inc()
-			}
+		if isRetriableError(err) {
+			subregistry.Counter("RetriableErrors").Inc()
 		} else {
 			subregistry.Counter("Errors").Inc()
 		}
