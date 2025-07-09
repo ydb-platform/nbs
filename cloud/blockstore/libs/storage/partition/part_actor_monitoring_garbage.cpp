@@ -79,12 +79,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpGarbageActor::THttpGarbageActor(
-    TRequestInfoPtr requestInfo,
-    const TActorId& tablet,
-    ui64 tabletId,
-    EAction action,
-    TChildLogTitle logTitle,
-    TVector<TPartialBlobId> blobIds)
+        TRequestInfoPtr requestInfo,
+        const TActorId& tablet,
+        ui64 tabletId,
+        EAction action,
+        TChildLogTitle logTitle,
+        TVector<TPartialBlobId> blobIds)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , TabletId(tabletId)
@@ -125,6 +125,8 @@ void THttpGarbageActor::ReplyAndDie(
     auto alertType = EAlertLevel::SUCCESS;
     TStringStream msg;
     if (FAILED(error.GetCode())) {
+        msg << LogTitle.GetWithTime();
+        msg << "Operation completed with error : " << FormatError(error);
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
