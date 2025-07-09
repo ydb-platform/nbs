@@ -87,8 +87,13 @@ func (m *Monitoring) ReportRequestCompleted(
 		subregistry.Counter("Success").Inc()
 	} else {
 		s, ok := status.FromError(err)
-		if ok && s.Code() == codes.AlreadyExists {
-			subregistry.Counter("MountConflicts").Inc()
+		if ok {
+			switch s.Code() {
+			case codes.Aborted, codes.AlreadyExists, codes.Unavailable:
+				subregistry.Counter("RetriableErrors").Inc()
+			default:
+				subregistry.Counter("Errors").Inc()
+			}
 		} else {
 			subregistry.Counter("Errors").Inc()
 		}

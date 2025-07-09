@@ -157,8 +157,12 @@ Time_count{component="server",method="/csi.v1.Controller/ControllerPublishVolume
 `)
 }
 
-func TestShouldReportMountConflicts(t *testing.T) {
+func TestShouldReportRetriableErros(t *testing.T) {
 	mon := NewTestMonitoring()
+	mon.ReportRequestReceived("/csi.v1.Node/NodeStageVolume")
+	mon.ReportRequestCompleted("/csi.v1.Node/NodeStageVolume", status.Error(codes.Unavailable, ""), -1)
+	mon.ReportRequestReceived("/csi.v1.Node/NodeStageVolume")
+	mon.ReportRequestCompleted("/csi.v1.Node/NodeStageVolume", status.Error(codes.Aborted, ""), -1)
 	mon.ReportRequestReceived("/csi.v1.Node/NodeStageVolume")
 	mon.ReportRequestCompleted("/csi.v1.Node/NodeStageVolume", status.Error(codes.AlreadyExists, ""), -1)
 
@@ -171,12 +175,12 @@ func TestShouldReportMountConflicts(t *testing.T) {
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count
 # TYPE Count counter
-Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 3
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
-# HELP MountConflicts
-# TYPE MountConflicts counter
-MountConflicts{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+# HELP RetriableErrors
+# TYPE RetriableErrors counter
+RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 3
 `)
 }
