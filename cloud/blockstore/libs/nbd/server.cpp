@@ -205,6 +205,8 @@ private:
         while (ResponseQueue.Dequeue(&response)) {
             if (!response) {
                 // stop signal received
+                Handler->ProcessException(
+                    std::make_exception_ptr(TSystemError(-ESHUTDOWN)));
                 break;
             }
 
