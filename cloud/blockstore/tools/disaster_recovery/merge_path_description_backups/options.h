@@ -12,7 +12,7 @@ struct TOptions
     TString SrcRoot;
     TString TextOutputPath;
     TString BinaryOutputPath;
-    TString SchemeShardBackupFileName;
+    TString PathDescriptionBackupFileName;
 
     TOptions(int argc, char** argv);
 };

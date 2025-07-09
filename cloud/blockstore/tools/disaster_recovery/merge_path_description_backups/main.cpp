@@ -37,7 +37,7 @@ bool LoadPathDescriptionBackup(
     const TFsPath& path,
     NSSProxy::NProto::TPathDescriptionBackup* backupProto)
 {
-    auto backupPath = path / options.SchemeShardBackupFileName;
+    auto backupPath = path / options.PathDescriptionBackupFileName;
     if (!backupPath.Exists()) {
         return false;
     }

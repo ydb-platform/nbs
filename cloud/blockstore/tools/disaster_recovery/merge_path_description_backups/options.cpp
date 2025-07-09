@@ -22,10 +22,10 @@ TOptions::TOptions(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&BinaryOutputPath);
 
-    opts.AddLongOption("path-description-file-name")
+    opts.AddLongOption("path-description-backup-file-name")
         .RequiredArgument("STR")
         .DefaultValue("nbs-path-description-backup.txt")
-        .StoreResult(&SchemeShardBackupFileName);
+        .StoreResult(&PathDescriptionBackupFileName);
 
     TOptsParseResultException(&opts, argc, argv);
 }
