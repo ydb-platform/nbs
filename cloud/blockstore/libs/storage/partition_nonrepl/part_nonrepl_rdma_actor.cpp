@@ -187,6 +187,20 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
     }
 
     for (auto& r: *deviceRequests) {
+        if (PartConfig->GetOutdatedDeviceIds().contains(
+                r.Device.GetDeviceUUID()))
+        {
+            reply(
+                ctx,
+                requestInfo,
+                PartConfig->MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "Device " << r.Device.GetDeviceUUID()
+                                     << " is lagging behind on data. All IO "
+                                        "operations are prohibited."));
+            return false;
+        }
+
         auto& ep = AgentId2Endpoint[r.Device.GetAgentId()];
         if (!ep) {
             auto* f = AgentId2EndpointFuture.FindPtr(r.Device.GetAgentId());

@@ -131,6 +131,13 @@ public:
     bool ReadDiskRegistryAgentListParams(THashMap<TString, NProto::TDiskRegistryAgentParams>& params);
     void DeleteDiskRegistryAgentListParams(const TString& agentId);
 
+    void AddDiskWithRecentlyReplacedDevices(
+        const TString& masterDiskId,
+        const NProto::TReplicaWithRecentlyReplacedDevices& replica);
+    void DeleteDiskWithRecentlyReplacedDevices(const TString& masterDiskId);
+    bool ReadDiskWithRecentlyReplacedDevices(
+        TVector<NProto::TReplicaWithRecentlyReplacedDevices>& replicas);
+
 private:
     template <typename TTable>
     bool LoadConfigs(TVector<typename TTable::Config::Type>& configs);

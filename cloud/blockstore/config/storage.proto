@@ -1262,4 +1262,7 @@ message TStorageServiceConfig
 
     // Time to wait for a partition tablet to boot (in milliseconds).
     optional uint32 PartitionBootTimeout = 438;
+
+    // Enable buttons for agent/device state changing.
+    // optional bool SingleReplicaDeviceReplacements = 438; ??code
 }
