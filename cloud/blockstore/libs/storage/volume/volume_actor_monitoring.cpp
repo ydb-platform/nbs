@@ -1181,37 +1181,6 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         return;
     }
 
-    const TString script = R"(
-        <script>
-            function applyRequestsValues(stat) {
-                for (let key in stat) {
-                    const element = document.getElementById(key);
-                    if (element) {
-                        element.textContent = stat[key];
-                    }
-                }
-            }
-
-            function loadRequestsLatency() {
-                var url = '?action=getRequestsLatency';
-                url += '&TabletID=)" + ToString(TabletID()) + R"(';
-                $.ajax({
-                    url: url,
-                    success: function(result) {
-                        applyRequestsValues(result.stat);
-                        applyRequestsValues(result.percentiles);
-                    },
-                    error: function(jqXHR, status) {
-                        console.log('error');
-                    }
-                });
-            }
-
-            setInterval(function() { loadRequestsLatency(); }, 1000);
-            loadRequestsLatency();
-        </script>
-        )";
-
  const TString style = R"(
         <style>
             .table-latency {
@@ -1264,13 +1233,130 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         </style>
         )";
 
+    const TString containerId = "requests-latency-container";
+
     HTML (out) {
-        out << script;
         out << style;
 
+        out << R"(
+            <div style="margin: 10px 0;">
+                <label style="cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="requests-auto-refresh-toggle">
+                    Auto update info
+                </label>
+            </div>
+        )";
+
+        out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
             RenderSizeTable(out, State->GetBlockSize());
         }
+        out << "</div>";
+
+        out << R"(
+        <script>
+        (function() {
+
+            const TAB_ID = 'Latency';
+            const CONTAINER_ID = ')"
+            << containerId << R"(';
+            const TOGGLE_ID = 'requests-auto-refresh-toggle';
+            const TABLET_ID = ')"
+            << ToString(TabletID()) << R"(';
+            const INTERVAL_MS = 1000;
+
+            const tabPane = document.getElementById(TAB_ID);
+            const container = document.getElementById(CONTAINER_ID);
+            const toggle = document.getElementById(TOGGLE_ID);
+            let intervalId = null;
+
+            if (!tabPane || !container || !toggle) {
+                console.error('One of the required elements for latency auto-refresh is missing.');
+                return;
+            }
+
+            function applyRequestsValues(result) {
+                const data = { ...result.stat, ...result.percentiles };
+                for (let key in data) {
+                    const element = container.querySelector('#' + key);
+                    if (element) {
+                        element.textContent = data[key];
+                    }
+                }
+            }
+
+            function loadRequestsLatency() {
+                if (intervalId === null || document.hidden || !tabPane.classList.contains('active')) {
+                    stopAutoRefresh();
+                    return;
+                }
+
+                var url = '?action=getRequestsLatency&TabletID=' + TABLET_ID;
+                $.ajax({
+                    url: url,
+                    success: function(result) {
+                        applyRequestsValues(result);
+                    },
+                    error: function(jqXHR, status) {
+                        console.error('Error fetching requests latency:', status);
+                        stopAutoRefresh();
+                    }
+                });
+            }
+
+            function startAutoRefresh() {
+                if (intervalId !== null || !toggle.checked) return;
+
+                console.log('Starting auto-refresh for tab: ' + TAB_ID);
+                loadRequestsLatency();
+                intervalId = setInterval(loadRequestsLatency, INTERVAL_MS);
+            }
+
+            function stopAutoRefresh() {
+                if (intervalId === null) return;
+
+                console.log('Stopping auto-refresh for tab: ' + TAB_ID);
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+
+
+            const observer = new MutationObserver(function(mutations) {
+                for (let mutation of mutations) {
+                    if (mutation.attributeName === 'class') {
+                        if (tabPane.classList.contains('active')) {
+                            startAutoRefresh();
+                        } else {
+                            stopAutoRefresh();
+                        }
+                    }
+                }
+            });
+            observer.observe(tabPane, { attributes: true });
+
+            toggle.addEventListener('change', function() {
+                if (this.checked) {
+                    if (tabPane.classList.contains('active')) {
+                        startAutoRefresh();
+                    }
+                } else {
+                    stopAutoRefresh();
+                }
+            });
+
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    if (tabPane.classList.contains('active')) {
+                        startAutoRefresh();
+                    }
+                } else {
+                    stopAutoRefresh();
+                }
+            });
+
+        })();
+        </script>
+        )";
     }
 }
 

@@ -1246,6 +1246,7 @@ void DumpLatency(
             const TOGGLE_ID = 'transactions-auto-refresh-toggle';
             const TABLET_ID = ')"
                     << ToString(tabletId) << R"(';
+            const INTERVAL_MS = 1000;
 
             const tabPane = document.getElementById(TAB_ID);
             const container = document.getElementById(CONTAINER_ID);
@@ -1288,7 +1289,7 @@ void DumpLatency(
                 if (intervalId !== null || !toggle.checked) return;
                 console.log('Starting auto-refresh for tab: ' + TAB_ID);
                 loadTransactionsLatency();
-                intervalId = setInterval(loadTransactionsLatency, 1000);
+                intervalId = setInterval(loadTransactionsLatency, INTERVAL_MS);
             }
 
             function stopAutoRefresh() {
