@@ -100,67 +100,10 @@ NProto::TError EnableRing(io_uring* ring)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEvent
-{
-private:
-    const TFileHandle Fd;
-    ui64 Value = 0;
-
-public:
-    TEvent()
-        : Fd(eventfd(0, EFD_CLOEXEC))
-    {
-        const int error = errno;
-        Y_ABORT_UNLESS(
-            Fd.IsOpen(),
-            "eventfd: %s (%d)",
-            LastSystemErrorText(error),
-            error);
-    }
-
-    void Signal()
-    {
-        while (eventfd_write(Fd, 1)) {
-            const int error = errno;
-            Y_ABORT_UNLESS(
-                IsRetriable(error),
-                "eventfd_write: %s (%d)",
-                LastSystemErrorText(error),
-                error);
-        }
-    }
-
-    [[nodiscard]] NProto::TError Register(io_uring* ring)
-    {
-        io_uring_sqe* sqe = io_uring_get_sqe(ring);
-        if (!sqe) {
-            return MakeError(E_INVALID_STATE, "submission queue is full");
-        }
-
-        io_uring_prep_read(sqe, Fd, &Value, sizeof(Value), 0);
-        io_uring_sqe_set_data(sqe, this);
-
-        for (;;) {
-            const int ret = io_uring_submit(ring);
-            if (ret >= 0) {
-                break;
-            }
-
-            if (!IsRetriable(-ret)) {
-                return MakeSystemError(-ret, "io_uring_submit");
-            }
-        }
-        return {};
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TIoUring
 {
 private:
     io_uring Ring = {};
-    TEvent StopEvent;
 
     ITaskQueuePtr SubmissionThread;
     TThread CompletionThread;
@@ -222,13 +165,6 @@ public:
                         FormatError(error).c_str());
                 }
 
-                // The very first submission should always work fine
-                if (auto error = StopEvent.Register(&Ring); HasError(error)) {
-                    Y_ABORT(
-                        "can't register a stop event: %s",
-                        FormatError(error).c_str());
-                }
-
                 CompletionThread.Start();
             });
     }
@@ -239,9 +175,10 @@ public:
             return;
         }
 
-        StopEvent.Signal();
-        CompletionThread.Join();
+        // Send a stop signal
+        AsyncNOP(nullptr);
 
+        CompletionThread.Join();
         SubmissionThread->Stop();
     }
 
@@ -352,7 +289,7 @@ private:
                 continue;
             }
 
-            if (io_uring_cqe_get_data(cqe) == &StopEvent) {
+            if (!io_uring_cqe_get_data(cqe)) {
                 break;
             }
 
