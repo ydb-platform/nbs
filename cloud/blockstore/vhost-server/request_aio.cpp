@@ -121,7 +121,6 @@ void PrepareCompoundIO(
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
 
     if (std::any_of(it, end, IsBrokenDevice)) {
-        ++queueStats.CompFailed;
         DiscardRequest(io, queueStats);
         return;
     }
