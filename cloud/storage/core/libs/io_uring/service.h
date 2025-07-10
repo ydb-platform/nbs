@@ -2,8 +2,6 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 
-#include <functional>
-
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,13 +24,13 @@ struct TIoUringServiceParams
 IFileIOServicePtr CreateIoUringService(TIoUringServiceParams params);
 IFileIOServicePtr CreateIoUringServiceNull(TIoUringServiceParams params);
 
-// To share kernel worker threads, all io_uring services must be created by
-// calling a corresponding factory function.
+// To share kernel worker threads, all io_uring services must be created via a
+// corresponding factory.
 
-std::function<IFileIOServicePtr()> CreateIoUringServiceFactory(
+IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
     TIoUringServiceParams params);
 
-std::function<IFileIOServicePtr()> CreateIoUringServiceNullFactory(
+IFileIOServiceFactoryPtr CreateIoUringServiceNullFactory(
     TIoUringServiceParams params);
 
 }   // namespace NCloud
