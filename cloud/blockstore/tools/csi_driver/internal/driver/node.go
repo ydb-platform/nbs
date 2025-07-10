@@ -354,12 +354,7 @@ func (s *nodeService) NodeStageVolume(
 	}
 
 	if err != nil {
-		var errorCode = codes.Internal
-		if s.IsMountConflictError(err, nfsBackend) {
-			errorCode = codes.AlreadyExists
-		}
-
-		return nil, s.statusErrorf(errorCode, "Failed to stage volume: %v", err)
+		return nil, s.statusErrorf(s.GetGrpcErrorCode(err), "Failed to stage volume: %v", err)
 	}
 
 	return &csi.NodeStageVolumeResponse{}, nil
@@ -394,7 +389,7 @@ func (s *nodeService) NodeUnstageVolume(
 		if stageData, err := s.readStageData(stageRecordPath); err == nil {
 			if err := s.nodeUnstageVhostSocket(ctx, nbsId, stageData); err != nil {
 				return nil, s.statusErrorf(
-					codes.InvalidArgument,
+					s.GetGrpcErrorCode(err),
 					"Failed to unstage volume: %v", err)
 			}
 			ignoreError(os.Remove(stageRecordPath))
@@ -402,7 +397,7 @@ func (s *nodeService) NodeUnstageVolume(
 	} else {
 		if err := s.nodeUnstageVolume(ctx, req); err != nil {
 			return nil, s.statusErrorf(
-				codes.InvalidArgument,
+				s.GetGrpcErrorCode(err),
 				"Failed to unstage volume: %v", err)
 		}
 	}
@@ -510,7 +505,7 @@ func (s *nodeService) NodePublishVolume(
 	}
 
 	if err != nil {
-		return nil, s.statusErrorf(codes.Internal,
+		return nil, s.statusErrorf(s.GetGrpcErrorCode(err),
 			"Failed to publish volume: %v", err)
 	}
 
@@ -542,7 +537,7 @@ func (s *nodeService) NodeUnpublishVolume(
 
 	if err := s.nodeUnpublishVolume(ctx, req); err != nil {
 		return nil, s.statusErrorf(
-			codes.InvalidArgument,
+			s.GetGrpcErrorCode(err),
 			"Failed to unpublish volume: %v", err)
 	}
 
@@ -789,34 +784,48 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	return nil
 }
 
-func (s *nodeService) IsErrorCode(err error, errorCode uint32, isNfs bool) bool {
-	if err != nil {
-		if !isNfs {
-			var clientErr *nbsclient.ClientError
-			if errors.As(err, &clientErr) {
-				if clientErr.Code == errorCode {
-					return true
-				}
-			}
-		} else {
-			var clientErr *nfsclient.ClientError
-			if errors.As(err, &clientErr) {
-				if clientErr.Code == errorCode {
-					return true
-				}
-			}
-		}
+func (s *nodeService) GetNbsErrorCode(err error) (uint32, bool) {
+	if err == nil {
+		return 0, false
 	}
 
-	return false
+	var nbsClientErr *nbsclient.ClientError
+	if errors.As(err, &nbsClientErr) {
+		return nbsClientErr.Code, true
+	}
+
+	var nfsClientErr *nfsclient.ClientError
+	if errors.As(err, &nfsClientErr) {
+		return nfsClientErr.Code, true
+	}
+
+	return 0, false
 }
 
-func (s *nodeService) IsGrpcTimeoutError(err error, isNfs bool) bool {
-	return s.IsErrorCode(err, nbsclient.E_GRPC_DEADLINE_EXCEEDED, isNfs)
+func (s *nodeService) GetGrpcErrorCode(err error) codes.Code {
+	if err == nil {
+		return codes.OK
+	}
+
+	errorCode, ok := s.GetNbsErrorCode(err)
+	if !ok {
+		return codes.Internal
+	}
+
+	switch errorCode {
+	case nbsclient.E_MOUNT_CONFLICT:
+		return codes.AlreadyExists
+	case nbsclient.E_GRPC_UNAVAILABLE, nfsclient.E_GRPC_UNAVAILABLE:
+		return codes.Unavailable
+	}
+
+	return codes.Internal
 }
 
-func (s *nodeService) IsMountConflictError(err error, isNfs bool) bool {
-	return s.IsErrorCode(err, nbsclient.E_MOUNT_CONFLICT, false)
+func (s *nodeService) IsGrpcTimeoutError(err error) bool {
+	code, ok := s.GetNbsErrorCode(err)
+	return ok && (code == nbsclient.E_GRPC_DEADLINE_EXCEEDED ||
+		(code == nfsclient.E_GRPC_DEADLINE_EXCEEDED))
 }
 
 func (s *nodeService) nodeStageDiskAsFilesystem(
@@ -1043,7 +1052,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		},
 	})
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, true /* nfs */) {
+		if s.IsGrpcTimeoutError(err) {
 			nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
 				SocketPath: filepath.Join(endpointDir, nfsSocketName),
 			})
@@ -1079,7 +1088,7 @@ func (s *nodeService) nodeStageFileStoreStartEndpoint(
 		},
 	})
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, true /* nfs */) {
+		if s.IsGrpcTimeoutError(err) {
 			s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
 				SocketPath: filepath.Join(endpointDir, nfsSocketName),
 			})
@@ -1171,7 +1180,7 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 			},
 		})
 		if err != nil {
-			if s.IsGrpcTimeoutError(err, true /* nfs */) {
+			if s.IsGrpcTimeoutError(err) {
 				s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
 					SocketPath: filepath.Join(endpointDir, nfsSocketName),
 				})
@@ -1225,7 +1234,7 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 
 	_, err = s.nfsLocalClient.StartEndpoint(ctx, startReq)
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, true /* nfs */) {
+		if s.IsGrpcTimeoutError(err) {
 			s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
 				SocketPath: filepath.Join(endpointDir, nfsSocketName),
 			})
@@ -1930,7 +1939,7 @@ func (s *nodeService) NodeExpandVolume(
 				"Volume is not found")
 		}
 		return nil, s.statusErrorf(
-			codes.Internal,
+			s.GetGrpcErrorCode(err),
 			"Failed to expand volume: %v", err)
 	}
 
@@ -1962,8 +1971,9 @@ func (s *nodeService) NodeExpandVolume(
 		ctx, &nbsapi.TListEndpointsRequest{},
 	)
 	if err != nil {
-		log.Printf("List endpoints failed %v", err)
-		return nil, err
+		return nil, s.statusErrorf(
+			s.GetGrpcErrorCode(err),
+			"List endpoints failed: %v", err)
 	}
 
 	nbdDevicePath := ""
@@ -1988,8 +1998,9 @@ func (s *nodeService) NodeExpandVolume(
 	})
 
 	if err != nil {
-		log.Printf("Resize volume failed %v", err)
-		return nil, err
+		return nil, s.statusErrorf(
+			s.GetGrpcErrorCode(err),
+			"Resize volume failed %v", err)
 	}
 
 	_, err = s.nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
@@ -1997,9 +2008,8 @@ func (s *nodeService) NodeExpandVolume(
 	})
 
 	if err != nil {
-		log.Printf("Resize device failed %v", err)
 		return nil, s.statusErrorf(
-			codes.Internal,
+			s.GetGrpcErrorCode(err),
 			"Failed to resize device %v", err)
 	}
 
