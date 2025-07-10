@@ -788,6 +788,7 @@ func (s *nodeService) GetNbsErrorCode(err error) (uint32, bool) {
 	if err == nil {
 		return 0, false
 	}
+
 	var nbsClientErr *nbsclient.ClientError
 	if errors.As(err, &nbsClientErr) {
 		return nbsClientErr.Code, true
@@ -807,7 +808,6 @@ func (s *nodeService) GetGrpcErrorCode(err error) codes.Code {
 	}
 
 	errorCode, ok := s.GetNbsErrorCode(err)
-
 	if !ok {
 		return codes.Internal
 	}
