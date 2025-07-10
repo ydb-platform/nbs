@@ -427,17 +427,17 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
     struct TStateWithCorruptedEntryLength
     {
-        const TTempFileHandle F;
+        const TTempFileHandle FileHandle;
         const ui32 Len = 32;
-        TFileRingBuffer Rb;
+        TFileRingBuffer RingBuffer;
 
         explicit TStateWithCorruptedEntryLength(int newLength)
-            : Rb(F.GetName(), Len)
+            : RingBuffer(FileHandle.GetName(), Len)
         {
-            UNIT_ASSERT(Rb.PushBack("aaa"));
-            UNIT_ASSERT(Rb.PushBack("bb"));
+            UNIT_ASSERT(RingBuffer.PushBack("aaa"));
+            UNIT_ASSERT(RingBuffer.PushBack("bb"));
 
-            TFileMap m(F.GetName(), TMemoryMapCommon::oRdWr);
+            TFileMap m(FileHandle.GetName(), TMemoryMapCommon::oRdWr);
             m.Map(0, Len + 40); // len + sizeof(THeader)
             char* data = static_cast<char*>(m.Ptr());
             UNIT_ASSERT_VALUES_EQUAL(2, data[51]);
@@ -450,7 +450,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         for (int i = 0; i <= 32; i++) {
             // Detect corruption in Visit
             TStateWithCorruptedEntryLength s(i);
-            TFileRingBuffer rb(s.F.GetName(), s.Len);
+            TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
             UNIT_ASSERT_VALUES_EQUAL(i != 2, rb.IsCorrupted());
         }
     }
@@ -458,11 +458,11 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     Y_UNIT_TEST(ShouldProhibitPushBackInCorruptedState)
     {
         TStateWithCorruptedEntryLength good(2);
-        TFileRingBuffer rb(good.F.GetName(), good.Len);
+        TFileRingBuffer rb(good.FileHandle.GetName(), good.Len);
         UNIT_ASSERT(rb.PushBack("c"));
 
         TStateWithCorruptedEntryLength bad(1);
-        TFileRingBuffer rb2(bad.F.GetName(), bad.Len);
+        TFileRingBuffer rb2(bad.FileHandle.GetName(), bad.Len);
         UNIT_ASSERT(!rb2.PushBack("c"));
     }
 }

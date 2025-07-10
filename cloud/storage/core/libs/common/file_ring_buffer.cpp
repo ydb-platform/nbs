@@ -156,6 +156,7 @@ private:
         if (data == nullptr) {
             return INVALID_POS;
         }
+
         visitor(eh->Checksum, {data, eh->Size});
         return pos + sizeof(TEntryHeader) + eh->Size;
     }
@@ -346,6 +347,7 @@ public:
         return entries;
     }
 
+    // Returns 'true' if all entries were visited and no corruption was detected
     bool Visit(const TVisitor& visitor) const
     {
         ui64 pos = Header()->ReadPos;
