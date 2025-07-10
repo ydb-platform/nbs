@@ -42,7 +42,6 @@ bool LoadPathDescriptionBackup(
 
     TFile file(backupPath, OpenExisting | RdOnly | Seq);
     TUnbufferedFileInput input(file);
-    NProtoBuf::LogSilencer silencer;
     return TryMergeFromTextFormat(
         input,
         *backupProto,
