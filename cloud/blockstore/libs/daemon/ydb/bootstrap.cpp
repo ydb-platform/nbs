@@ -638,16 +638,15 @@ void TBootstrapYdb::InitKikimrService()
         NvmeManager = CreateNvmeManager(
             Configs->DiskAgentConfig->GetSecureEraseTimeout());
 
-        auto factory = [events = config.GetMaxAIOContextEvents()] {
-            return CreateAIOService(events);
-        };
+        auto factory = CreateAIOServiceFactory(
+            {.MaxEvents = config.GetMaxAIOContextEvents()});
 
-        FileIOServiceProvider =
-            config.GetPathsPerFileIOService()
-                ? CreateFileIOServiceProvider(
-                      config.GetPathsPerFileIOService(),
-                      factory)
-                : CreateSingleFileIOServiceProvider(factory());
+        FileIOServiceProvider = config.GetPathsPerFileIOService()
+                                    ? CreateFileIOServiceProvider(
+                                          config.GetPathsPerFileIOService(),
+                                          std::move(factory))
+                                    : CreateSingleFileIOServiceProvider(
+                                          factory->CreateFileIOService());
 
         LocalStorageProvider = CreateLocalStorageProvider(
             FileIOServiceProvider,
