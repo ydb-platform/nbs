@@ -13,7 +13,6 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/partition2.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
-#include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
@@ -589,8 +588,8 @@ private:
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
 
-    void HandleGetCountersRequest(
-        const TEvStatsService::TEvGetPartCountersRequest::TPtr& ev,
+    void HandleGetPartCountersRequest(
+        const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

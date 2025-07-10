@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
@@ -184,6 +186,39 @@ struct TEvPartitionCommonPrivate
     };
 
     //
+    // GetPartCounters
+    //
+
+    struct GetPartCountersRequest
+    {
+        GetPartCountersRequest() = default;
+    };
+
+    struct GetPartCountersResponse
+    {
+        ui64 VolumeSystemCpu;
+        ui64 VolumeUserCpu;
+        TPartitionDiskCountersPtr DiskCounters;
+        NBlobMetrics::TBlobLoadMetrics BlobLoadMetrics;
+        NKikimrTabletBase::TMetrics TabletMetrics;
+
+        GetPartCountersResponse() = default;
+
+        GetPartCountersResponse(
+                ui64 volumeSystemCpu,
+                ui64 volumeUserCpu,
+                TPartitionDiskCountersPtr diskCounters,
+                NBlobMetrics::TBlobLoadMetrics metrics,
+                NKikimrTabletBase::TMetrics tabletMetrics)
+            : VolumeSystemCpu(volumeSystemCpu)
+            , VolumeUserCpu(volumeUserCpu)
+            , DiskCounters(std::move(diskCounters))
+            , BlobLoadMetrics(std::move(metrics))
+            , TabletMetrics(std::move(tabletMetrics))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -198,6 +233,8 @@ struct TEvPartitionCommonPrivate
         EvReadBlobCompleted,
         EvTDescribeBlocksCompleted,
         EvLongRunningOperation,
+        EvGetPartCountersRequest,
+        EvGetPartCountersResponse,
 
         EvEnd
     };
@@ -212,6 +249,10 @@ struct TEvPartitionCommonPrivate
     using TEvReadBlobCompleted = TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
     using TEvDescribeBlocksCompleted = TResponseEvent<TDescribeBlocksCompleted, EvTDescribeBlocksCompleted>;
     using TEvLongRunningOperation = TRequestEvent<TLongRunningOperation, EvLongRunningOperation>;
+    using TEvGetPartCountersRequest =
+        TRequestEvent<GetPartCountersRequest, EvGetPartCountersRequest>;
+    using TEvGetPartCountersResponse =
+        TResponseEvent<GetPartCountersResponse, EvGetPartCountersResponse>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

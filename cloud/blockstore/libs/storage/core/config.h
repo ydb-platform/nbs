@@ -698,10 +698,10 @@ public:
     [[nodiscard]] ui32 GetMaxOutOfOrderCompactionMapChunksInflight() const;
 
     [[nodiscard]] TDuration GetPartitionBootTimeout() const;
-
+    
     [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
 
-    [[nodiscard]] bool GetUsePullSchemeForCollectingPartitionStatistic() const;
+    [[nodiscard]] bool GetPullPartitionStatisticsFromVolume() const;
 };
 
 ui64 GetAllocationUnit(
