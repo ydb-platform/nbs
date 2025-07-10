@@ -27,10 +27,12 @@ func isRetriableError(err error) bool {
 	if err == nil {
 		return false
 	}
+
 	status, ok := status.FromError(err)
 	if !ok {
 		return false
 	}
+
 	switch status.Code() {
 	case codes.Aborted, codes.AlreadyExists, codes.Unavailable:
 		return true
