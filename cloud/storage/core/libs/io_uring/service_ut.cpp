@@ -188,6 +188,11 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             }
         }
     }
+
+    Y_UNIT_TEST_F(ShouldStop, TFixture)
+    {
+        IoUring->Stop();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
