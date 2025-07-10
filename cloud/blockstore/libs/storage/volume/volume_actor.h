@@ -380,6 +380,37 @@ private:
 
     TVector<ui64> GCCompletedPartitions;
 
+    struct TUpdatePartCounters
+    {
+        NActors::TActorId Sender;
+        ui64 Cookie;
+        ui64 VolumeSystemCpu;
+        ui64 VolumeUserCpu;
+        TCallContextPtr CallContext;
+        TPartitionDiskCountersPtr DiskCounters;
+        NKikimrTabletBase::TMetrics TabletMetrics;
+        NBlobMetrics::TBlobLoadMetrics BlobLoadMetrics;
+
+        TUpdatePartCounters(
+                NActors::TActorId sender,
+                ui64 cookie,
+                ui64 volumeSystemCpu,
+                ui64 volumeUserCpu,
+                TCallContextPtr callContext,
+                TPartitionDiskCountersPtr diskCounters,
+                NKikimrTabletBase::TMetrics tabletMetrics,
+                NBlobMetrics::TBlobLoadMetrics blobLoadMetrics)
+            : Sender(sender)
+            , Cookie(cookie)
+            , VolumeSystemCpu(volumeSystemCpu)
+            , VolumeUserCpu(volumeUserCpu)
+            , CallContext(std::move(callContext))
+            , DiskCounters(std::move(diskCounters))
+            , TabletMetrics(std::move(tabletMetrics))
+            , BlobLoadMetrics(std::move(blobLoadMetrics))
+        {}
+    };
+
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -605,7 +636,7 @@ private:
 
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
 
-    void SendStatisticRequest(const NActors::TActorContext& ctx);
+    void SendStatisticRequests(const NActors::TActorContext& ctx);
 
     void CleanUpHistory(
         const NActors::TActorContext& ctx,
@@ -712,16 +743,9 @@ private:
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    std::optional<TTxVolume::TSavePartStats> UpdatePartCounters(
+    void UpdatePartCounters(
         const NActors::TActorContext& ctx,
-        const NActors::TActorId& sender,
-        const NKikimrTabletBase::TMetrics& tabletMetrics,
-        NBlobMetrics::TBlobLoadMetrics& blobLoadMetrics,
-        TCallContextPtr callContext,
-        TPartitionDiskCountersPtr diskCounters,
-        ui64 cookie,
-        ui64 volumeSystemCpu,
-        ui64 volumeUserCpu);
+        TUpdatePartCounters& args);
 
     void HandlePartCounters(
         const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
@@ -1148,8 +1172,8 @@ private:
         TLeaderFollowerLink link,
         const NActors::TActorContext& ctx);
 
-    void HandleUpdatePartCounters(
-        const TEvStatsService::TEvUpdatedAllPartCounters::TPtr& ev,
+    void HandleGetPartCountersResponse(
+        const TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     // Restart partitions. If these were partition of DiskRegistry-based disk,

@@ -28,7 +28,6 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ReadHistory,                    __VA_ARGS__)                           \
     xxx(CleanupHistory,                 __VA_ARGS__)                           \
     xxx(SavePartStats,                  __VA_ARGS__)                           \
-    xxx(SaveMultiplePartStats,          __VA_ARGS__)                           \
     xxx(SaveCheckpointRequest,          __VA_ARGS__)                           \
     xxx(UpdateCheckpointRequest,        __VA_ARGS__)                           \
     xxx(UpdateShadowDiskState,          __VA_ARGS__)                           \
@@ -425,20 +424,6 @@ struct TTxVolume
                 TVolumeDatabase::TPartStats partStats)
             : RequestInfo(std::move(requestInfo))
             , PartStats(std::move(partStats))
-        {}
-
-        void Clear()
-        {
-            // nothing to do
-        }
-    };
-
-    struct TSaveMultiplePartStats
-    {
-        const TVector<TSavePartStats> PartStats;
-
-        explicit TSaveMultiplePartStats(TVector<TSavePartStats>& partStats)
-            : PartStats(std::move(partStats))
         {}
 
         void Clear()
