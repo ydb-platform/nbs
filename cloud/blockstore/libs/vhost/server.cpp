@@ -521,7 +521,10 @@ private:
             int res = RunRequestQueue();
             if (res != -EAGAIN) {
                 if (res < 0) {
-                    ReportVhostQueueRunningError();
+                    ReportVhostQueueRunningError(
+                        TStringBuilder()
+                        << "Failed to run vhost request queue. Return code: "
+                        << -res);
                     STORAGE_ERROR(
                         "Failed to run vhost request queue. Return code: " << -res);
                 }

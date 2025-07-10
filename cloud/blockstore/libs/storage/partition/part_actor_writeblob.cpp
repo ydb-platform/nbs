@@ -500,7 +500,11 @@ void TPartitionActor::HandleWriteBlobCompleted(
                 groupId,
                 FormatError(msg->GetError()).c_str());
 
-            ReportTabletBSFailure();
+            ReportTabletBSFailure(
+                TStringBuilder()
+                << "Stop tablet because of too many WritedBlob errors (actor "
+                << ev->Sender.ToString() << ", group " << groupId
+                << "): " << FormatError(msg->GetError()));
             Suicide(ctx);
             return;
         }

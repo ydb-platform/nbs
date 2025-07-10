@@ -288,9 +288,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
             LogTitle.GetWithTime().c_str(),
             FormatDuration(timeout).c_str());
     }
-
+    TStringBuilder sb;
     {
-        TStringBuilder sb;
+
         for (const auto channel: channels) {
             if (sb.size()) {
                 sb << ", ";
@@ -314,7 +314,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         TabletID(),
         std::move(channels));
 
-    ReportReassignTablet();
+    ReportReassignTablet(
+        TStringBuilder() << LogTitle.GetWithTime().c_str()
+                         << " Reassign request sent for channels: " << sb);
     ReassignRequestSentTs = ctx.Now();
 }
 

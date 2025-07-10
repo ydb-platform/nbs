@@ -1793,7 +1793,9 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
     if (HasError(error) && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT)) {
         STORAGE_ERROR("Failed to get endpoints from storage: "
             << FormatError(error));
-        ReportEndpointRestoringError();
+        ReportEndpointRestoringError(
+            TStringBuilder()
+            << "Failed to get endpoints from storage: " << FormatError(error));
         return MakeFuture();
     }
 
@@ -1817,7 +1819,10 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
         auto request = DeserializeEndpoint<NProto::TStartEndpointRequest>(str);
 
         if (!request) {
-            ReportEndpointRestoringError();
+            ReportEndpointRestoringError(
+                TStringBuilder()
+                << "Failed to deserialize request. ID: " << endpointId);
+
             STORAGE_ERROR("Failed to deserialize request. ID: " << endpointId);
             continue;
         }
@@ -1829,7 +1834,12 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
                 auto error = NbdDeviceManager.AcquireDevice(nbdDevice);
 
                 if (HasError(error)) {
-                    ReportEndpointRestoringError();
+                    ReportEndpointRestoringError(
+                        TStringBuilder() << "Failed to acquire nbd device"
+                                         << ", endpoint: "
+                                         << request->GetUnixSocketPath().Quote()
+                                         << ", error: " << FormatError(error));
+
                     STORAGE_ERROR("Failed to acquire nbd device"
                         << ", endpoint: " << request->GetUnixSocketPath().Quote()
                         << ", error: " << FormatError(error));
@@ -1860,7 +1870,10 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
         future.Subscribe([weakPtr, socketPath, endpointId] (const auto& f) {
             const auto& response = f.GetValue();
             if (HasError(response)) {
-                ReportEndpointRestoringError();
+                ReportEndpointRestoringError(
+                    TStringBuilder()
+                    << "Endpoint restoring error occurred for endpoint ID: "
+                    << endpointId << ", socket path: " << socketPath);
             }
 
             if (auto ptr = weakPtr.lock()) {

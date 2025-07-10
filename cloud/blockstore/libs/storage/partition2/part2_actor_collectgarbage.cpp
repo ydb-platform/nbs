@@ -217,7 +217,10 @@ void TCollectGarbageActor::NotifyCompleted(
 void TCollectGarbageActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
-        ReportCollectGarbageError();
+        ReportCollectGarbageError(
+            TStringBuilder()
+            << "Collect garbage error: " << FormatError(error));
+
         Error = std::move(error);
     }
 }
@@ -449,7 +452,10 @@ void TCollectGarbageHardActor::NotifyCompleted(
 void TCollectGarbageHardActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
-        ReportCollectGarbageError();
+        ReportCollectGarbageError(
+            TStringBuilder()
+            << "Collect garbage error: " << FormatError(error));
+
         Error = std::move(error);
     }
 }

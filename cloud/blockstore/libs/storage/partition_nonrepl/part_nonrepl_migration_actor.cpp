@@ -235,7 +235,13 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
                     target.GetDeviceUUID().c_str(),
                     target.GetBlocksCount());
 
-                ReportBadMigrationConfig();
+                ReportBadMigrationConfig(
+                    TStringBuilder()
+                    << "[" << SrcConfig->GetName() << "] source ("
+                    << device.GetDeviceUUID() << ") block count ("
+                    << device.GetBlocksCount() << ")"
+                    << " != target (" << target.GetDeviceUUID()
+                    << ") block count (" << target.GetBlocksCount() << ")");
                 return {};
             }
 
@@ -288,7 +294,10 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
             FormatError(error).c_str());
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-            ReportMigrationFailed();
+            ReportMigrationFailed(
+                TStringBuilder()
+                << "Finish migration failed, error: " << FormatError(error));
+
             return;
         }
     }
