@@ -1221,15 +1221,17 @@ void DumpLatency(
     HTML (out) {
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
 
-        out << "<div id=\"" << containerId << "\">";
-        TAG (TH3) { out << "Transactions"; }
-        DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
-        TAG (TH3) { out << "Groups"; }
-        out << "</div>";
+        DIV_CLASS_ID(" ", containerId) {
+            TAG (TH3) { out << "Transactions"; }
+            DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
+            TAG (TH3) { out << "Groups"; }
+        }
 
         out << R"(<script>
             function updateTransactionsData(result, container) {
-                if (!result.stat) return;
+                if (!result.stat) {
+                    return;
+                }
                 for (let key in result.stat) {
                     const element = container.querySelector('#' + key);
                     if (element) {
@@ -1346,8 +1348,9 @@ void RenderAutoRefreshScript(
         function isContentActive() {
             if (tabPane) {
                 return tabPane.classList.contains('active');
+            } else {
+                return true;
             }
-            return true;
         }
 
         function loadData() {
@@ -1371,13 +1374,17 @@ void RenderAutoRefreshScript(
         }
 
         function startAutoRefresh() {
-            if (intervalId !== null || !toggle.checked) return;
+            if (intervalId !== null || !toggle.checked) {
+                return;
+            }
             loadData();
             intervalId = setInterval(loadData, INTERVAL_MS);
         }
 
         function stopAutoRefresh() {
-            if (intervalId === null) return;
+            if (intervalId === null) {
+                return;
+            }
             clearInterval(intervalId);
             intervalId = null;
         }
@@ -1386,8 +1393,11 @@ void RenderAutoRefreshScript(
             const observer = new MutationObserver(mutations => {
                 mutations.forEach(mutation => {
                     if (mutation.attributeName === 'class') {
-                        if (tabPane.classList.contains('active')) startAutoRefresh();
-                        else stopAutoRefresh();
+                        if (tabPane.classList.contains('active')) {
+                            startAutoRefresh();
+                        } else {
+                            stopAutoRefresh();
+                        }
                     }
                 });
             });
@@ -1396,7 +1406,9 @@ void RenderAutoRefreshScript(
 
         toggle.addEventListener('change', e => {
             if (e.target.checked) {
-                if (isContentActive()) startAutoRefresh();
+                if (isContentActive()) {
+                    startAutoRefresh();
+                }
             } else {
                 stopAutoRefresh();
             }
@@ -1404,7 +1416,9 @@ void RenderAutoRefreshScript(
 
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
-                if (isContentActive()) startAutoRefresh();
+                if (isContentActive()) {
+                    startAutoRefresh();
+                }
             } else {
                 stopAutoRefresh();
             }
