@@ -128,6 +128,10 @@ message TAddClientResponse
 
     // Signal that volume tablet should be restarted.
     bool ForceTabletRestart = 7;
+
+    // In fact volume has client with local mounting and read-only access.
+    // It is special case to migrate VMs.
+    bool InMigration = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
