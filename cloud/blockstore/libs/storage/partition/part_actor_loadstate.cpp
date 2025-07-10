@@ -167,8 +167,8 @@ void TPartitionActor::CompleteLoadState(
         // example: CLOUDINC-2027
         ReportInvalidTabletConfig(
             TStringBuilder()
-            << LogTitle.GetWithTime().c_str()
-            << " tablet info differs from config: tabletChannelCount < "
+            << "DiskId" << partitionConfig.diskid()
+            << ";tablet info differs from config: tabletChannelCount < "
                "configChannelCount ("
             << tabletChannelCount << " < " << configChannelCount << ")");
 

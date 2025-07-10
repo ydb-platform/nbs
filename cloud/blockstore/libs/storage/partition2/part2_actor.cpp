@@ -252,7 +252,7 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         std::move(channels));
 
     ReportReassignTablet(
-        TStringBuilder() << LogTitle.GetWithTime().c_str()
+        TStringBuilder() << TabletID()
                          << " Reassign request sent for channels: " << sb);
     ReassignRequestSentTs = ctx.Now();
 }

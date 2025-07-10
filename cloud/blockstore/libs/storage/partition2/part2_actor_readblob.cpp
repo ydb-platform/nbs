@@ -440,9 +440,9 @@ void TPartitionActor::HandleReadBlobCompleted(
 
             ReportTabletBSFailure(
                 TStringBuilder()
-                << "Stop tablet because of too many ReadBlob errors (actor "
-                << ev->Sender.ToString() << ", group " << msg->GroupId
-                << "): " << FormatError(msg->GetError()));
+                << "tablet stop because of too many ReadBlob errors"
+                << TabletID()
+                << ", group " << msg->GroupId);
             Suicide(ctx);
         } else {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,

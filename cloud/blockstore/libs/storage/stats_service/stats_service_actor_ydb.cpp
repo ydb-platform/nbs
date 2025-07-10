@@ -411,7 +411,10 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
                 YdbStatsRequestSentTs.ToString().c_str(),
                 now.ToString().c_str());
 
-            ReportHangingYdbStatsRequest();
+            ReportHangingYdbStatsRequest(
+                TStringBuilder() << "YdbStatsRequest hanging, sent at "
+                                 << YdbStatsRequestSentTs.ToString() << ", now "
+                                 << ctx.Now().ToString());
         }
     }
 }
