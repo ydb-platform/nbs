@@ -5,6 +5,8 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 
+#include <library/cpp/threading/future/future.h>
+
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 #include <util/system/error.h>
@@ -107,6 +109,8 @@ private:
     ITaskQueuePtr SubmissionThread;
     TThread CompletionThread;
 
+    NThreading::TFuture<void> Started;
+
 public:
     explicit TIoUring(TIoUringServiceParams params)
         : TIoUring(std::move(params), nullptr)
@@ -119,6 +123,8 @@ public:
 
     ~TIoUring()
     {
+        Stop();
+
         io_uring_queue_exit(&Ring);
         Ring = {};
     }
@@ -130,7 +136,7 @@ public:
         // Since IORING_SETUP_R_DISABLED and IORING_SETUP_SINGLE_ISSUER
         // are set, we must enable the ring in the context of the
         // submission thread.
-        SubmissionThread->ExecuteSimple(
+        Started = SubmissionThread->Execute(
             [this]
             {
                 const auto error = EnableRing(&Ring);
@@ -146,9 +152,12 @@ public:
 
     void Stop()
     {
-        if (!CompletionThread.Running()) {
+        if (!Started.Initialized()) {
             return;
         }
+
+        Started.Wait();
+        Started = {};
 
         SubmissionThread->ExecuteSimple([this] { SubmitStopSignal(); });
 
