@@ -7,7 +7,6 @@ import (
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -30,7 +29,7 @@ func (s *service) CreateSnapshot(
 		len(req.Src.DiskId) == 0 ||
 		len(req.SnapshotId) == 0 {
 
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -64,7 +63,7 @@ func (s *service) DeleteSnapshot(
 ) (string, error) {
 
 	if len(req.SnapshotId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)

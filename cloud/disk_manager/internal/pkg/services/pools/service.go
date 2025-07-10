@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -26,7 +26,7 @@ func (s *service) AcquireBaseDisk(
 		len(req.OverlayDisk.ZoneId) == 0 ||
 		len(req.OverlayDisk.DiskId) == 0 {
 
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -43,7 +43,7 @@ func (s *service) ReleaseBaseDisk(
 	if len(req.OverlayDisk.ZoneId) == 0 ||
 		len(req.OverlayDisk.DiskId) == 0 {
 
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -61,7 +61,7 @@ func (s *service) RebaseOverlayDisk(
 		len(req.OverlayDisk.DiskId) == 0 ||
 		len(req.TargetBaseDiskId) == 0 {
 
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -78,7 +78,7 @@ func (s *service) ConfigurePool(
 	if len(req.ZoneId) == 0 ||
 		len(req.ImageId) == 0 {
 
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -93,7 +93,7 @@ func (s *service) DeletePool(
 ) (string, error) {
 
 	if len(req.ImageId) == 0 || len(req.ZoneId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -108,7 +108,7 @@ func (s *service) ImageDeleting(
 ) (string, error) {
 
 	if len(req.ImageId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -132,7 +132,7 @@ func (s *service) RetireBaseDisk(
 ) (string, error) {
 
 	if len(req.BaseDiskId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -147,7 +147,7 @@ func (s *service) RetireBaseDisks(
 ) (string, error) {
 
 	if len(req.ImageId) == 0 || len(req.ZoneId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)

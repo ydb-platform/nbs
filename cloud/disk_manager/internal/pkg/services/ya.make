@@ -1,7 +1,6 @@
 RECURSE(
     disks
     common
-    errors
     filesystem
     images
     placementgroup
