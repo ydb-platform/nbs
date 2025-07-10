@@ -17,15 +17,11 @@ struct TIoUringServiceParams
 
     ui32 BoundWorkers = 0;
     ui32 UnboundWorkers = 0;
+
+    bool ShareKernelWorkers = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-IFileIOServicePtr CreateIoUringService(TIoUringServiceParams params);
-IFileIOServicePtr CreateIoUringServiceNull(TIoUringServiceParams params);
-
-// To share kernel worker threads, all io_uring services must be created via a
-// corresponding factory.
 
 IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
     TIoUringServiceParams params);

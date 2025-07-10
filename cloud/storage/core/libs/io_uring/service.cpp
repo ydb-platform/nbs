@@ -477,7 +477,7 @@ struct TIoUringServiceNull final
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-class TIoUringServiceFactory
+class TIoUringServiceFactory final
     : public IFileIOServiceFactory
 {
 private:
@@ -501,6 +501,10 @@ public:
         params.CompletionThreadName = TStringBuilder()
                                       << Params.CompletionThreadName << index;
 
+        if (!Params.ShareKernelWorkers) {
+            return std::make_shared<T>(std::move(params));
+        }
+
         if (IoUring) {
             return std::make_shared<T>(std::move(params), *IoUring);
         }
@@ -514,16 +518,6 @@ public:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
-IFileIOServicePtr CreateIoUringService(TIoUringServiceParams params)
-{
-    return std::make_shared<TIoUringService>(std::move(params));
-}
-
-IFileIOServicePtr CreateIoUringServiceNull(TIoUringServiceParams params)
-{
-    return std::make_shared<TIoUringServiceNull>(std::move(params));
-}
 
 IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
     TIoUringServiceParams params)

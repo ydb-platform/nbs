@@ -64,7 +64,8 @@ struct TFixture: public NUnitTest::TBaseFixture
         auto factory = CreateIoUringServiceFactory(
             {.SubmissionQueueEntries = SubmissionQueueSize,
              .BoundWorkers = 1,
-             .UnboundWorkers = 1});
+             .UnboundWorkers = 1,
+             .ShareKernelWorkers = true});
 
         IoUring = factory->CreateFileIOService();
         IoUring->Start();
