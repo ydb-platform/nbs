@@ -1261,7 +1261,6 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
 
         RenderAutoRefreshScript(
             out,
-            "Latency",
             containerId,
             toggleId,
             "getRequestsLatency",

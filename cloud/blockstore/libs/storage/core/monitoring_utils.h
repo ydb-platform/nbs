@@ -196,7 +196,6 @@ void RenderAutoRefreshToggle(
 
 void RenderAutoRefreshScript(
     IOutputStream& out,
-    const TString& tabId,
     const TString& containerId,
     const TString& toggleId,
     const TString& ajaxAction,

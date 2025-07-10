@@ -1241,7 +1241,6 @@ void DumpLatency(
 
         RenderAutoRefreshScript(
             out,
-            "Transactions",
             containerId,
             toggleId,
             "getTransactionsLatency",
@@ -1307,7 +1306,6 @@ void RenderAutoRefreshToggle(
 
 void RenderAutoRefreshScript(
     IOutputStream& out,
-    const TString& tabId,
     const TString& containerId,
     const TString& toggleId,
     const TString& ajaxAction,
@@ -1317,10 +1315,16 @@ void RenderAutoRefreshScript(
 {
     out << R"(<script>
 (function() {
+    const currentScript = document.currentScript;
+
     document.addEventListener('DOMContentLoaded', function() {
 
-        const TAB_ID = ')"
-        << tabId << R"(';
+        if (!currentScript) {
+            console.error("Auto-refresh: could not determine currentScript.");
+            return;
+        }
+        const tabPane = currentScript.closest('.tab-pane');
+
         const CONTAINER_ID = ')"
         << containerId << R"(';
         const TOGGLE_ID = ')"
@@ -1330,13 +1334,12 @@ void RenderAutoRefreshScript(
         const INTERVAL_MS = )"
         << intervalMs << R"(;
 
-        const tabPane = document.getElementById(TAB_ID);
         const container = document.getElementById(CONTAINER_ID);
         const toggle = document.getElementById(TOGGLE_ID);
         let intervalId = null;
 
         if (!tabPane || !container || !toggle) {
-            console.error('Auto-refresh for "' + TAB_ID + '" aborted: missing required HTML elements.');
+            console.error('Auto-refresh aborted: required HTML elements not found.');
             return;
         }
 
@@ -1345,7 +1348,6 @@ void RenderAutoRefreshScript(
                 stopAutoRefresh();
                 return;
             }
-
             var url = '?action=)"
         << ajaxAction << R"(&TabletID=' + TABLET_ID;
             $.ajax({
@@ -1355,8 +1357,7 @@ void RenderAutoRefreshScript(
         << jsUpdateFunctionName << R"((result, container);
                 },
                 error: function(jqXHR, status) {
-                    console.error('Error fetching data for )"
-        << tabId << R"(:', status);
+                    console.error('Error fetching data for ' + CONTAINER_ID + ':', status);
                     stopAutoRefresh();
                 }
             });
