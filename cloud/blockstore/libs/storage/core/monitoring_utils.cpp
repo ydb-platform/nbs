@@ -1325,7 +1325,6 @@ void RenderAutoRefreshScript(
         }
         const tabPane = currentScript.closest('.tab-pane');
 
-        // Конфигурация
         const CONTAINER_ID = ')"
         << containerId << R"(';
         const TOGGLE_ID = ')"
@@ -1397,7 +1396,6 @@ void RenderAutoRefreshScript(
 
         toggle.addEventListener('change', e => {
             if (e.target.checked) {
-                // Пытаемся запустить, только если контент активен
                 if (isContentActive()) startAutoRefresh();
             } else {
                 stopAutoRefresh();
