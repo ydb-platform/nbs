@@ -77,6 +77,15 @@ IBlockStoreValidationClientPtr CreateValidationClient(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+IBlockStorePtr CreateDataIntegrityClient(
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    IBlockStorePtr client,
+    NProto::EStorageMediaKind mediaKind,
+    ui32 blockSize);
+
+////////////////////////////////////////////////////////////////////////////////
+
 IBlockDigestCalculatorPtr CreateCrcDigestCalculator();
 
 TVector<ui64> CalculateBlocksDigest(

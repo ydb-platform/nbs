@@ -949,15 +949,19 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
     IErrorHandlerPtr errorHandler,
     const TStorageOptions& options)
 {
-    auto deviceHandler = deviceHandlerFactory->CreateDeviceHandler(
-        std::move(storage),
-        options.DiskId,
-        options.ClientId,
-        options.BlockSize,
-        options.UnalignedRequestsDisabled,
-        options.CheckBufferModificationDuringWriting,
-        options.StorageMediaKind,
-        options.MaxZeroBlocksSubRequestSize);
+    TDeviceHandlerParams params{
+        .Storage = std::move(storage),
+        .DiskId = options.DiskId,
+        .ClientId = options.ClientId,
+        .BlockSize = options.BlockSize,
+        .MaxZeroBlocksSubRequestSize = options.MaxZeroBlocksSubRequestSize,
+        .CheckBufferModificationDuringWriting =
+            options.CheckBufferModificationDuringWriting,
+        .UnalignedRequestsDisabled = options.UnalignedRequestsDisabled,
+        .StorageMediaKind = options.StorageMediaKind};
+
+    auto deviceHandler =
+        deviceHandlerFactory->CreateDeviceHandler(std::move(params));
 
     return std::make_shared<TServerHandlerFactory>(
         std::move(logging),

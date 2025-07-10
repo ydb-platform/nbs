@@ -21,6 +21,14 @@ message TIOVector
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Checksum message.
+
+message TChecksum
+{
+    repeated uint32 Checksums = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Blocks read request/response.
 
 message TReadBlocksRequest
@@ -67,6 +75,9 @@ message TReadBlocksResponse
     // If true, it means that all the data read was zeros.
     // It's a hint, false negatives are allowed.
     bool AllZeroes = 6;
+
+    // Checksum of the "Blocks" data read.
+    TChecksum Checksum = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,6 +102,9 @@ message TWriteBlocksRequest
 
     // Session identifier.
     string SessionId = 6;
+
+    // Checksums of the "Blocks" data to write.
+    TChecksum Checksum = 7;
 }
 
 message TWriteBlocksResponse

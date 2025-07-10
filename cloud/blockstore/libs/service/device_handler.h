@@ -37,24 +37,30 @@ struct IDeviceHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDeviceHandlerParams
+{
+    IStoragePtr Storage;
+    TString DiskId;
+    TString ClientId;
+    ui32 BlockSize = 0;
+    ui32 MaxZeroBlocksSubRequestSize = 0;
+    bool CheckBufferModificationDuringWriting = false;
+    bool UnalignedRequestsDisabled = false;
+    NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
+};
+
 struct IDeviceHandlerFactory
 {
     virtual ~IDeviceHandlerFactory() = default;
 
     virtual IDeviceHandlerPtr CreateDeviceHandler(
-        IStoragePtr storage,
-        TString diskId,
-        TString clientId,
-        ui32 blockSize,
-        bool unalignedRequestsDisabled,
-        bool checkBufferModificationDuringWriting,
-        NProto::EStorageMediaKind storageMediaKind,
-        ui32 MaxZeroBlocksSubRequestSize) = 0;
+        TDeviceHandlerParams params) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IDeviceHandlerFactoryPtr CreateDefaultDeviceHandlerFactory();
-IDeviceHandlerFactoryPtr CreateDeviceHandlerFactory(ui32 maxSubRequestSize);
+IDeviceHandlerFactoryPtr CreateDeviceHandlerFactoryForTesting(
+    ui32 maxSubRequestSize);
 
 }   // namespace NCloud::NBlockStore

@@ -13,6 +13,10 @@ namespace NCloud::NBlockStore {
 
 constexpr ui32 DefaultBlockSize = 4_KB;
 
+// Keep the value less than MaxBufferSize in
+// cloud/blockstore/libs/rdma/iface/client.h
+constexpr ui32 MaxSubRequestSize = 4_MB;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct ICachingAllocator;
