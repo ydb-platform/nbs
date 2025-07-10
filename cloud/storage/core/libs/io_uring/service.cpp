@@ -108,37 +108,14 @@ private:
     TThread CompletionThread;
 
 public:
-    explicit TIoUring(TIoUringServiceParams params, TIoUring* other = nullptr)
-        : SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
-        , CompletionThread(
-              [this, threadName = std::move(params.CompletionThreadName)]
-              {
-                  SetHighestThreadPriority();
-                  ::NCloud::SetCurrentThreadName(threadName);
-                  ProcessCompletionQueue();
-              })
-    {
-        const auto error = InitRing(
-            &Ring,
-            params.SubmissionQueueEntries,
-            other ? &other->Ring : nullptr);
+    explicit TIoUring(TIoUringServiceParams params)
+        : TIoUring(std::move(params), nullptr)
+    {}
 
-        Y_ABORT_IF(
-            HasError(error),
-            "can't initialize the ring: %s",
-            FormatError(error).c_str());
-
-        if (!other && (params.BoundWorkers || params.UnboundWorkers)) {
-            const auto error = SetMaxWorkers(
-                &Ring,
-                params.BoundWorkers,
-                params.UnboundWorkers);
-            Y_ABORT_IF(
-                HasError(error),
-                "can't set max workers: %s",
-                FormatError(error).c_str());
-        }
-    }
+    // Share kernel worker threads with `other`
+    TIoUring(TIoUringServiceParams params, TIoUring& other)
+        : TIoUring(std::move(params), &other)
+    {}
 
     ~TIoUring()
     {
@@ -200,6 +177,36 @@ public:
     }
 
 private:
+    TIoUring(TIoUringServiceParams params, TIoUring* other)
+        : SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
+        , CompletionThread(
+              std::bind_front(
+                  &TIoUring::CompletionThreadProc,
+                  this,
+                  std::move(params.CompletionThreadName)))
+    {
+        const auto error = InitRing(
+            &Ring,
+            params.SubmissionQueueEntries,
+            other ? &other->Ring : nullptr);
+
+        Y_ABORT_IF(
+            HasError(error),
+            "can't initialize the ring: %s",
+            FormatError(error).c_str());
+
+        if (!other && (params.BoundWorkers || params.UnboundWorkers)) {
+            const auto error = SetMaxWorkers(
+                &Ring,
+                params.BoundWorkers,
+                params.UnboundWorkers);
+            Y_ABORT_IF(
+                HasError(error),
+                "can't set max workers: %s",
+                FormatError(error).c_str());
+        }
+    }
+
     void SubmitIO(
         int op,
         int fd,
@@ -293,8 +300,11 @@ private:
         }
     }
 
-    void ProcessCompletionQueue()
+    void CompletionThreadProc(const TString& threadName)
     {
+        SetHighestThreadPriority();
+        NCloud::SetCurrentThreadName(threadName);
+
         for (;;) {
             io_uring_cqe* cqe = nullptr;
             const int ret = io_uring_wait_cqe(&Ring, &cqe);
@@ -320,14 +330,16 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIoUringService final
+struct TIoUringServiceBase
     : public IFileIOService
 {
     TIoUring IoUring;
 
-    explicit TIoUringService(
-            TIoUringServiceParams params,
-            TIoUring* other = nullptr)
+    explicit TIoUringServiceBase(TIoUringServiceParams params)
+        : IoUring(std::move(params))
+    {}
+
+    TIoUringServiceBase(TIoUringServiceParams params, TIoUring& other)
         : IoUring(std::move(params), other)
     {}
 
@@ -340,6 +352,14 @@ struct TIoUringService final
     {
         IoUring.Stop();
     }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TIoUringService final
+    : public TIoUringServiceBase
+{
+    using TIoUringServiceBase::TIoUringServiceBase;
 
     void AsyncRead(
         TFileHandle& file,
@@ -405,25 +425,9 @@ struct TIoUringService final
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TIoUringServiceNull final
-    : public IFileIOService
+    : public TIoUringServiceBase
 {
-    TIoUring IoUring;
-
-    explicit TIoUringServiceNull(
-            TIoUringServiceParams params,
-            TIoUring* other = nullptr)
-        : IoUring(std::move(params), other)
-    {}
-
-    void Start() final
-    {
-        IoUring.Start();
-    }
-
-    void Stop() final
-    {
-        IoUring.Stop();
-    }
+    using TIoUringServiceBase::TIoUringServiceBase;
 
     void AsyncRead(
         TFileHandle& file,
@@ -472,7 +476,9 @@ struct TIoUringServiceNull final
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename T>
 class TIoUringServiceFactory
+    : public IFileIOServiceFactory
 {
 private:
     const TIoUringServiceParams Params;
@@ -485,8 +491,7 @@ public:
         : Params(std::move(params))
     {}
 
-    template <typename T>
-    IFileIOServicePtr CreateService()
+    IFileIOServicePtr CreateFileIOService() final
     {
         const ui32 index = Index++;
 
@@ -496,12 +501,12 @@ public:
         params.CompletionThreadName = TStringBuilder()
                                       << Params.CompletionThreadName << index;
 
-        auto service = std::make_shared<T>(std::move(params), IoUring.get());
-
-        if (!IoUring) {
-            IoUring = std::shared_ptr<TIoUring>(service, &service->IoUring);
+        if (IoUring) {
+            return std::make_shared<T>(std::move(params), *IoUring);
         }
 
+        auto service = std::make_shared<T>(std::move(params));
+        IoUring = std::shared_ptr<TIoUring>(service, &service->IoUring);
         return service;
     }
 };
@@ -520,20 +525,18 @@ IFileIOServicePtr CreateIoUringServiceNull(TIoUringServiceParams params)
     return std::make_shared<TIoUringServiceNull>(std::move(params));
 }
 
-std::function<IFileIOServicePtr()> CreateIoUringServiceFactory(
+IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
     TIoUringServiceParams params)
 {
-    return std::bind_front(
-        &TIoUringServiceFactory::CreateService<TIoUringService>,
-        TIoUringServiceFactory(std::move(params)));
+    return std::make_shared<TIoUringServiceFactory<TIoUringService>>(
+        std::move(params));
 }
 
-std::function<IFileIOServicePtr()> CreateIoUringServiceNullFactory(
+IFileIOServiceFactoryPtr CreateIoUringServiceNullFactory(
     TIoUringServiceParams params)
 {
-    return std::bind_front(
-        &TIoUringServiceFactory::CreateService<TIoUringServiceNull>,
-        TIoUringServiceFactory(std::move(params)));
+    return std::make_shared<TIoUringServiceFactory<TIoUringServiceNull>>(
+        std::move(params));
 }
 
 }   // namespace NCloud
