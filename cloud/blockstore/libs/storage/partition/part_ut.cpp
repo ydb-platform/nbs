@@ -12925,20 +12925,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldPartitionSendStatisticToPartitionStatisticActor)
+    Y_UNIT_TEST(ShouldPartitionSendStatistics)
     {
         auto config = DefaultConfig();
 
         // Enable push scheme
-        config.SetUsePullSchemeForCollectingPartitionStatistic(true);
+        config.SetPullPartitionStatisticsFromVolume(true);
 
         auto runtime = PrepareTestActorRuntime(config);
 
         bool isPartitionSendStatistic = false;
 
         auto _ = runtime->AddObserver<
-            TEvStatsService::TEvGetPartCountersResponse>(
-            [&](TEvStatsService::TEvGetPartCountersResponse::TPtr& ev)
+            TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
+            [&](TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev)
             {
                 Y_UNUSED(ev);
                 isPartitionSendStatistic = true;
@@ -12948,7 +12948,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WaitReady();
 
         partition.SendToPipe(
-            std::make_unique<TEvStatsService::TEvGetPartCountersRequest>());
+            std::make_unique<
+                TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
         runtime->DispatchEvents();

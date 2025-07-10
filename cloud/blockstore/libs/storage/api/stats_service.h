@@ -197,54 +197,6 @@ struct TEvStatsService
     };
 
     //
-    // GetPartCounters
-    //
-
-    struct GetPartCountersRequest
-    {
-        GetPartCountersRequest() = default;
-    };
-
-    struct GetPartCountersResponse
-    {
-        ui64 VolumeSystemCpu;
-        ui64 VolumeUserCpu;
-        TPartitionDiskCountersPtr DiskCounters;
-        NBlobMetrics::TBlobLoadMetrics BlobLoadMetrics;
-        NKikimrTabletBase::TMetrics TabletMetrics;
-        NActors::TActorId PartActorId;
-
-        GetPartCountersResponse(
-                ui64 volumeSystemCpu,
-                ui64 volumeUserCpu,
-                TPartitionDiskCountersPtr diskCounters,
-                NBlobMetrics::TBlobLoadMetrics metrics,
-                NKikimrTabletBase::TMetrics tabletMetrics,
-                const NActors::TActorId& partActorId)
-            : VolumeSystemCpu(volumeSystemCpu)
-            , VolumeUserCpu(volumeUserCpu)
-            , DiskCounters(std::move(diskCounters))
-            , BlobLoadMetrics(std::move(metrics))
-            , TabletMetrics(std::move(tabletMetrics))
-            , PartActorId(partActorId)
-        {}
-    };
-
-    //
-    // UpdatedAllPartCounters
-    //
-
-    struct TUpdatedAllPartCounters
-    {
-        TVector<GetPartCountersResponse> Counters;
-
-        explicit TUpdatedAllPartCounters(
-            TVector<GetPartCountersResponse> counters)
-            : Counters(std::move(counters))
-        {}
-    };
-
-    //
     // Events declaration
     //
 
@@ -260,9 +212,6 @@ struct TEvStatsService
         EvVolumeSelfCounters,
         EvGetVolumeStatsRequest,
         EvGetVolumeStatsResponse,
-        EvGetPartCountersRequest,
-        EvGetPartCountersResponse,
-        EvUpdatedAllPartCounters,
 
         EvEnd
     };
@@ -302,14 +251,6 @@ struct TEvStatsService
         EvVolumeSelfCounters
     >;
 
-    using TEvGetPartCountersRequest =
-        TRequestEvent<GetPartCountersRequest, EvGetPartCountersRequest>;
-
-    using TEvGetPartCountersResponse =
-        TResponseEvent<GetPartCountersResponse, EvGetPartCountersResponse>;
-
-    using TEvUpdatedAllPartCounters =
-        TResponseEvent<TUpdatedAllPartCounters, EvUpdatedAllPartCounters>;
 };
 
 

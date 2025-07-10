@@ -665,11 +665,11 @@ void TVolumeActor::HandleUpdateCounters(
 
     // if we use pull scheme, we must send request to partitions
     // to collect statistic
-    if (Config->GetUsePullSchemeForCollectingPartitionStatistic() &&
+    if (Config->GetPullPartitionStatisticsFromVolume() &&
         !State->IsDiskRegistryMediaKind())
     {
         ScheduleRegularUpdates(ctx);
-        SendStatisticRequest(ctx);
+        SendStatisticRequests(ctx);
         return;
     }
 
@@ -1048,8 +1048,8 @@ STFUNC(TVolumeActor::StateWork)
             HandleGetDrTabletInfoResponse);
 
         HFunc(
-            TEvStatsService::TEvUpdatedAllPartCounters,
-            HandleUpdatePartCounters);
+            TEvPartitionCommonPrivate::TEvGetPartCountersResponse,
+            HandleGetPartCountersResponse);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
@@ -1108,7 +1108,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
 
-        IgnoreFunc(TEvStatsService::TEvUpdatedAllPartCounters);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvGetPartCountersResponse);
 
         default:
             if (!RejectRequests(ev)) {

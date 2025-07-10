@@ -49,8 +49,7 @@ void TPartitionActor::UpdateActorStats(const TActorContext& ctx)
     }
 }
 
-TPartitionStatisticsCounters TPartitionActor::GetStats(
-    const NActors::TActorContext& ctx)
+TPartitionStatisticsCounters TPartitionActor::GetStats(const TActorContext& ctx)
 {
     PartCounters->Simple.MixedBytesCount.Set(
         State->GetMixedBlockCount() * State->GetBlockSize());
@@ -164,9 +163,9 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
 
-void TPartitionActor::HandleGetCountersRequest(
-    const TEvStatsService::TEvGetPartCountersRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+void TPartitionActor::HandleGetPartCountersRequest(
+    const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
 {
     auto
         [diffSysCpuConsumption,
@@ -180,13 +179,12 @@ void TPartitionActor::HandleGetCountersRequest(
     }
 
     auto response =
-        std::make_unique<TEvStatsService::TEvGetPartCountersResponse>(
+        std::make_unique<TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
             diffSysCpuConsumption,
             userCpuConsumption,
             std::move(partCounters),
             std::move(offsetLoadMetrics),
-            std::move(metrics),
-            SelfId());
+            std::move(metrics));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

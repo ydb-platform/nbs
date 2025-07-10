@@ -239,7 +239,7 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
 #undef BLOCKSTORE_PARTITION_UPDATE_COUNTER
 
     // Send counters to service only when we use push scheme
-    if (!Config->GetUsePullSchemeForCollectingPartitionStatistic()) {
+    if (!Config->GetPullPartitionStatisticsFromVolume()) {
         SendStatsToService(ctx);
     }
 }
@@ -862,8 +862,8 @@ STFUNC(TPartitionActor::StateBoot)
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
 
         HFunc(
-            TEvStatsService::TEvGetPartCountersRequest,
-            HandleGetCountersRequest);
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersRequest);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
@@ -895,8 +895,8 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
 
         HFunc(
-            TEvStatsService::TEvGetPartCountersRequest,
-            HandleGetCountersRequest);
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersRequest);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
@@ -950,8 +950,8 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted, HandleDescribeBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
         HFunc(
-            TEvStatsService::TEvGetPartCountersRequest,
-            HandleGetCountersRequest);
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersRequest);
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 
@@ -992,7 +992,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
-        IgnoreFunc(TEvStatsService::TEvGetPartCountersRequest);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvGetPartCountersRequest);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
