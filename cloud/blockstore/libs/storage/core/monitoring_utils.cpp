@@ -1325,6 +1325,7 @@ void RenderAutoRefreshScript(
         }
         const tabPane = currentScript.closest('.tab-pane');
 
+        // Конфигурация
         const CONTAINER_ID = ')"
         << containerId << R"(';
         const TOGGLE_ID = ')"
@@ -1338,13 +1339,20 @@ void RenderAutoRefreshScript(
         const toggle = document.getElementById(TOGGLE_ID);
         let intervalId = null;
 
-        if (!tabPane || !container || !toggle) {
-            console.error('Auto-refresh aborted: required HTML elements not found.');
+        if (!container || !toggle) {
+            console.error('Auto-refresh aborted: missing container or toggle element.');
             return;
         }
 
+        function isContentActive() {
+            if (tabPane) {
+                return tabPane.classList.contains('active');
+            }
+            return true;
+        }
+
         function loadData() {
-            if (intervalId === null || document.hidden || !tabPane.classList.contains('active')) {
+            if (intervalId === null || document.hidden || !isContentActive()) {
                 stopAutoRefresh();
                 return;
             }
@@ -1375,27 +1383,36 @@ void RenderAutoRefreshScript(
             intervalId = null;
         }
 
-        const observer = new MutationObserver(mutations => {
-            mutations.forEach(mutation => {
-                if (mutation.attributeName === 'class') {
-                    if (tabPane.classList.contains('active')) startAutoRefresh();
-                    else stopAutoRefresh();
-                }
+        if (tabPane) {
+            const observer = new MutationObserver(mutations => {
+                mutations.forEach(mutation => {
+                    if (mutation.attributeName === 'class') {
+                        if (tabPane.classList.contains('active')) startAutoRefresh();
+                        else stopAutoRefresh();
+                    }
+                });
             });
-        });
-        observer.observe(tabPane, { attributes: true });
+            observer.observe(tabPane, { attributes: true });
+        }
 
         toggle.addEventListener('change', e => {
-            if (e.target.checked) { if (tabPane.classList.contains('active')) startAutoRefresh(); }
-            else stopAutoRefresh();
+            if (e.target.checked) {
+                // Пытаемся запустить, только если контент активен
+                if (isContentActive()) startAutoRefresh();
+            } else {
+                stopAutoRefresh();
+            }
         });
 
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) { if (tabPane.classList.contains('active')) startAutoRefresh(); }
-            else stopAutoRefresh();
+            if (!document.hidden) {
+                if (isContentActive()) startAutoRefresh();
+            } else {
+                stopAutoRefresh();
+            }
         });
 
-        if (tabPane.classList.contains('active') && toggle.checked) {
+        if (isContentActive() && toggle.checked) {
             startAutoRefresh();
         }
     });
