@@ -3,8 +3,6 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/ss_proxy/protos/path_description_backup.pb.h>
 
-#include <contrib/libs/protobuf/src/google/protobuf/stubs/logging.h>
-
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/datetime/base.h>
