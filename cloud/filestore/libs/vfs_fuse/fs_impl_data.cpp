@@ -227,7 +227,7 @@ void TFileSystem::Release(
         return;
     }
 
-    if (Config->GetServerWriteBackCacheEnabled()) {
+    if (WriteBackCache) {
         WriteBackCache.FlushData(handle).Subscribe(
             [=, ptr = weak_from_this()] (const auto&)
             {
@@ -354,7 +354,7 @@ void TFileSystem::Read(
     request->SetLength(size);
 
     TFuture<NProto::TReadDataResponse> future;
-    if (Config->GetServerWriteBackCacheEnabled()) {
+    if (WriteBackCache) {
         future = WriteBackCache.ReadData(callContext, std::move(request));
     } else {
         future = Session->ReadData(callContext, std::move(request));
@@ -414,7 +414,7 @@ void TFileSystem::Write(
 
     const auto size = buffer.size();
 
-    if (Config->GetServerWriteBackCacheEnabled()) {
+    if (WriteBackCache && Config->GetServerWriteBackCacheEnabled()) {
         // TODO(svartmetal): check whether handle is non-direct and has write
         // permission
         WriteBackCache.WriteData(callContext, std::move(request))
@@ -562,7 +562,7 @@ void TFileSystem::WriteBuf(
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
     request->SetBuffer(alignedBuffer.TakeBuffer());
 
-    if (Config->GetServerWriteBackCacheEnabled()) {
+    if (WriteBackCache && Config->GetServerWriteBackCacheEnabled()) {
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(
                 [=, ptr = weak_from_this()] (const auto& future)
@@ -718,7 +718,7 @@ void TFileSystem::Flush(
 
     auto future = fsyncQueueFuture;
 
-    if (Config->GetServerWriteBackCacheEnabled()) {
+    if (WriteBackCache) {
         auto writeBackCacheFlushFuture = WriteBackCache.FlushData(fi->fh)
             .Apply([] (const auto&) { return MakeError(S_OK); });
 
@@ -825,7 +825,7 @@ void TFileSystem::FSync(
 
     auto future = fsyncQueueFuture;
 
-    if (Config->GetServerWriteBackCacheEnabled()) {
+    if (WriteBackCache) {
         auto convertOK = [] (const auto&) { return MakeError(S_OK); };
 
         TFuture<NProto::TError> writeBackCacheFlushFuture;
@@ -932,7 +932,7 @@ void TFileSystem::FSyncDir(
 
     auto future = fsyncQueueFuture;
 
-    if (Config->GetServerWriteBackCacheEnabled()) {
+    if (WriteBackCache) {
         auto writeBackCacheFlushFuture = WriteBackCache.FlushAllData()
             .Apply([] (const auto&) { return MakeError(S_OK); });
 
