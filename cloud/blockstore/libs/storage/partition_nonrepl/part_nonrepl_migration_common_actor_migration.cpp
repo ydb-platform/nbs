@@ -450,7 +450,9 @@ void TNonreplicatedPartitionMigrationCommonActor::DoRegisterTrafficSource(
 void TNonreplicatedPartitionMigrationCommonActor::OnMigrationNonRetriableError(
     const NActors::TActorContext& ctx)
 {
-    ReportMigrationFailed();
+    ReportMigrationFailed(
+    TStringBuilder()
+        << "Non-retriable migration error occurred; disk " << DiskId);
     MigrationOwner->OnMigrationError(ctx);
     MigrationEnabled = false;
 }

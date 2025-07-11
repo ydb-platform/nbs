@@ -226,7 +226,9 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         ui64 value = stats.Get##category##Counters().Get##name();             \
         Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                         \
         if (value < counter.Get()) {                                          \
-            ReportCounterUpdateRace();                                        \
+            ReportCounterUpdateRace(                                          \
+                TStringBuilder() << "CounterUpdateRace: category="            \
+                << #category  << " name=" << #name);                          \
             LOG_ERROR(                                                        \
                 ctx,                                                          \
                 TBlockStoreComponents::PARTITION,                             \
@@ -288,9 +290,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
             LogTitle.GetWithTime().c_str(),
             FormatDuration(timeout).c_str());
     }
-
+    TStringBuilder sb;
     {
-        TStringBuilder sb;
+
         for (const auto channel: channels) {
             if (sb.size()) {
                 sb << ", ";
@@ -314,7 +316,10 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         TabletID(),
         std::move(channels));
 
-    ReportReassignTablet();
+    ReportReassignTablet(
+        TStringBuilder() << TabletID()
+                         << " tablet; reassign request sent for channels: "
+                         << sb);
     ReassignRequestSentTs = ctx.Now();
 }
 

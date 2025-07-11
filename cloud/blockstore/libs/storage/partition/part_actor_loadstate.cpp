@@ -165,7 +165,12 @@ void TPartitionActor::CompleteLoadState(
     if (tabletChannelCount < configChannelCount) {
         // either a race or a bug (if this situation occurs again after tablet restart)
         // example: CLOUDINC-2027
-        ReportInvalidTabletConfig();
+        ReportInvalidTabletConfig(
+            TStringBuilder()
+            << "DiskId" << partitionConfig.diskid()
+            << ";tablet info differs from config: tabletChannelCount < "
+               "configChannelCount ("
+            << tabletChannelCount << " < " << configChannelCount << ")");
 
         LOG_ERROR(
             ctx,

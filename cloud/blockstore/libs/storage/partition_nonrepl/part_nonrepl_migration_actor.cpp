@@ -235,7 +235,14 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
                     target.GetDeviceUUID().c_str(),
                     target.GetBlocksCount());
 
-                ReportBadMigrationConfig();
+                ReportBadMigrationConfig(
+                    TStringBuilder()
+                    << "Disk=" << SrcConfig->GetName()
+                    << ", SourceDevice=" << device.GetDeviceUUID()
+                    << ", TargetDevice=" << target.GetDeviceUUID()
+                    << ", BlockCountMismatch: source="
+                    << device.GetBlocksCount()
+                    << ", target=" << target.GetBlocksCount());
                 return {};
             }
 
@@ -288,7 +295,9 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
             FormatError(error).c_str());
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-            ReportMigrationFailed();
+            ReportMigrationFailed(
+                TStringBuilder()
+                << "SrcConfig=" << SrcConfig->GetName());
             return;
         }
     }

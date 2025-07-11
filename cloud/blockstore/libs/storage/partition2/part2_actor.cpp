@@ -176,7 +176,10 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         ui64 value = stats.Get##category##Counters().Get##name();              \
         Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                                \
         if (value < counter.Get()) {                                           \
-            ReportCounterUpdateRace();                                         \
+            ReportCounterUpdateRace(                                           \
+                TStringBuilder()                                               \
+                    << "category=" << #category                                \
+                    << ", counter=" << #name);                                 \
         }                                                                      \
         counter.Increment(value - counter.Get());                              \
     }                                                                          \
@@ -227,9 +230,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
             TabletID(),
             timeout.MilliSeconds());
     }
-
+    TStringBuilder sb;
     {
-        TStringBuilder sb;
+
         for (const auto channel: channels) {
             if (sb.size()) {
                 sb << ", ";
@@ -251,7 +254,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         TabletID(),
         std::move(channels));
 
-    ReportReassignTablet();
+    ReportReassignTablet(
+        TStringBuilder() << TabletID()
+                         << " Reassign request sent for channels: " << sb);
     ReassignRequestSentTs = ctx.Now();
 }
 

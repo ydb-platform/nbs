@@ -378,7 +378,9 @@ void TPartitionActor::HandlePatchBlobCompleted(
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
-        ReportTabletBSFailure();
+        ReportTabletBSFailure(
+            TStringBuilder()
+            << TabletID() << " tablet stop because of PatchBlob error");
         Suicide(ctx);
         return;
     }

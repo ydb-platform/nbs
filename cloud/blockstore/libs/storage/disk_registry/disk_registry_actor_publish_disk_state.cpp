@@ -139,7 +139,9 @@ void TDiskRegistryActor::HandlePublishDiskStatesResponse(
             TabletID(),
             FormatError(msg->GetError()).c_str());
 
-        ReportPublishDiskStateError();
+        ReportPublishDiskStateError(
+            TStringBuilder()
+            << "[" << TabletID() << "] Failed to publish disk state");
 
         DiskStatesPublicationInProgress = false;
         PublishDiskStates(ctx);

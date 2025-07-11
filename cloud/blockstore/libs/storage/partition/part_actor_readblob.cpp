@@ -162,7 +162,11 @@ void TPartitionActor::HandleReadBlobCompleted(
                 msg->GroupId,
                 FormatError(msg->GetError()).c_str());
 
-            ReportTabletBSFailure();
+            ReportTabletBSFailure(
+                TStringBuilder()
+                << "tablet stop because of too many ReadBlob errors"
+                << TabletID()
+                << ", group " << groupId);
             Suicide(ctx);
             return;
         }

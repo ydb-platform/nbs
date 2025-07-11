@@ -42,7 +42,9 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
             "%s LoadFreshBlobs failed. error: %s",
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
-        ReportInitFreshBlocksError();
+        ReportInitFreshBlocksError(
+            TStringBuilder() << "LoadFreshBlobs failed, tabletId=" << TabletID()
+                             << ", status=" << msg->GetStatus());
         Suicide(ctx);
         return;
     }
@@ -71,7 +73,11 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
                 LogTitle.GetWithTime().c_str(),
                 blob.CommitId,
                 FormatError(error).c_str());
-            ReportInitFreshBlocksError();
+            ReportInitFreshBlocksError(
+                TStringBuilder()
+                << "TabletID=" << TabletID()
+                << " Failed to parse fresh blob (blob commitId="
+                << blob.CommitId << ")");
             Suicide(ctx);
             return;
         }

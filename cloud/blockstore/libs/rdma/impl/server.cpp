@@ -692,7 +692,10 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
             << NVerbs::GetStatusString(status));
 
         Counters->RecvRequestError();
-        ReportRdmaError();
+        ReportRdmaError(
+            TStringBuilder()
+            << "RECV " << TWorkRequestId(recv->wr.wr_id)
+            << " failed");
         RecvRequest(recv);  // should always be posted
         return;
     }
@@ -706,7 +709,9 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
             << version << " != "<< int(RDMA_PROTO_VERSION));
 
         Counters->RecvRequestError();
-        ReportRdmaError();
+        ReportRdmaError(
+            TStringBuilder() << "RECV " << TWorkRequestId(recv->wr.wr_id)
+                             << " incompatible protocol version");
         RecvRequest(recv);  // should always be posted
         return;
     }
@@ -850,7 +855,10 @@ void TServerSession::ReadRequestDataCompleted(
             << NVerbs::GetStatusString(status));
 
         Counters->ReadRequestError();
-        ReportRdmaError();
+        ReportRdmaError(
+            TStringBuilder()
+            << "READ " << TWorkRequestId(send->wr.wr_id)
+            << " failed");
         FreeRequest(std::move(req), send);
         return;
     }
@@ -943,7 +951,10 @@ void TServerSession::WriteResponseDataCompleted(
         }
 
         Counters->WriteResponseError();
-        ReportRdmaError();
+        ReportRdmaError(
+            TStringBuilder()
+            << "WRITE " << TWorkRequestId(send->wr.wr_id)
+            << " failed");
         FreeRequest(std::move(req), send);
         return;
     }
@@ -1000,7 +1011,9 @@ void TServerSession::SendResponseCompleted(TSendWr* send, ibv_wc_status status)
             << ": " << NVerbs::GetStatusString(status));
 
         Counters->SendResponseError();
-        ReportRdmaError();
+        ReportRdmaError(
+            TStringBuilder()
+            << "SEND " << TWorkRequestId(send->wr.wr_id) << " failed");
         FreeRequest(std::move(req), send);
         return;
     }

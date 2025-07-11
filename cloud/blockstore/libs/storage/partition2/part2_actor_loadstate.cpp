@@ -160,7 +160,12 @@ void TPartitionActor::CompleteLoadState(
             << "tablet info differs from config: "
             << "tabletChannelCount != configChannelCount ("
             << tabletChannelCount << " != " << configChannelCount << ")");
-        ReportInvalidTabletConfig();
+        ReportInvalidTabletConfig(
+            TStringBuilder()
+            << "[" << TabletID() << "] "
+            << "tablet info differs from config: "
+            << "tabletChannelCount != configChannelCount ("
+            << tabletChannelCount << " != " << configChannelCount << ")");
 
         // FIXME(NBS-2088): do suicide
         // Suicide(ctx);
