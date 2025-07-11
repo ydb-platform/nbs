@@ -6,5 +6,5 @@ RECURSE_FOR_TESTS(
     qemu-kikimr-nemesis-test
     qemu-kikimr-test
     qemu-local-test
-    qemu-xattrs-test
+    qemu_xattrs_test
 )

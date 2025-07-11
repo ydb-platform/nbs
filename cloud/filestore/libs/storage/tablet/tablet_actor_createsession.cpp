@@ -18,6 +18,7 @@ namespace {
 
 void FillFeatures(
     const NProto::TFileSystem& fileSystem,
+    const NProto::TFileSystemStats& fileSystemStats,
     const TStorageConfig& config,
     NProto::TFileStore& fileStore)
 {
@@ -63,9 +64,13 @@ void FillFeatures(
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
 
-    // as for now it's alway true
-    // later it will be set 'true' when the first XAttr appears in the file system
-    features->SetHasXAttrs(true);
+    if (config.GetHasXAttrsFlagAllowed()) {
+        features->SetHasXAttrs(fileSystemStats.GetHasXAttrs());
+    } else {
+        // by defualt it's true and all the requests for XAttrs are forwareded
+        // to shards
+        features->SetHasXAttrs(true);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -365,7 +370,14 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     response->Record.SetSessionState(session->GetSessionState());
     auto& fileStore = *response->Record.MutableFileStore();
     Convert(GetFileSystem(), fileStore);
-    FillFeatures(GetFileSystem(), *Config, fileStore);
+    FillFeatures(GetFileSystem(), GetFileSystemStats(), *Config, fileStore);
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s New session TFileStoreFeatures '%s'",
+        LogTag.c_str(),
+        fileStore.GetFeatures().ShortDebugString().c_str());
 
     TVector<TString> shardIds;
     // there's no point in returning shard list unless it's main filesystem

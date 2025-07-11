@@ -561,6 +561,8 @@ public:
         ui64 maxCommitId,
         const IIndexTabletDatabase::TNodeAttr& attr);
 
+    void WriteHasXAttrs(TIndexTabletDatabase& db, bool value);
+
     //
     // NodeRefs
     //
