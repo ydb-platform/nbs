@@ -466,8 +466,20 @@ bool TBootstrap::InitKikimrService()
             case NProto::DISK_AGENT_BACKEND_AIO: {
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
 
-                auto factory = [events = config.GetMaxAIOContextEvents()] {
-                    return CreateAIOService(events);
+                auto factory = [events = config.GetMaxAIOContextEvents(),
+                                useSubmissionThread =
+                                    config.GetUseFileIOSubmissionThread(),
+                                index = ui32()]() mutable
+                {
+                    auto fileIO = CreateAIOService(events);
+
+                    if (useSubmissionThread) {
+                        fileIO = CreateConcurrentFileIOService(
+                            TStringBuilder() << "AIO.SQ" << index++,
+                            std::move(fileIO));
+                    }
+
+                    return fileIO;
                 };
 
                 FileIOServiceProvider =
