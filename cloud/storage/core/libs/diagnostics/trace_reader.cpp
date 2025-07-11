@@ -2,7 +2,6 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/containers/ring_buffer/ring_buffer.h>
 #include <library/cpp/json/writer/json.h>
 #include <library/cpp/lwtrace/log.h>
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -81,28 +80,8 @@ TString SerializeTraceToString(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTraceReaderWithRingBuffer
-    : public ITraceReader
-{
-    TSimpleRingBuffer<TEntry> RingBuffer;
-
-    explicit TTraceReaderWithRingBuffer(TString id)
-        : ITraceReader(std::move(id))
-        , RingBuffer(1000)
-    {}
-
-    void ForEach(std::function<void(const TEntry&)> fn) override
-    {
-        for (ui64 i = RingBuffer.FirstIndex(); i < RingBuffer.TotalSize(); ++i) {
-            fn(RingBuffer[i]);
-        }
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TTraceLogger final
-    : public TTraceReaderWithRingBuffer
+    : public ITraceReaderWithRingBuffer
 {
 private:
     TLog Log;
@@ -113,7 +92,7 @@ public:
             TString id,
             ILoggingServicePtr logging,
             const TString& componentName)
-        : TTraceReaderWithRingBuffer(std::move(id))
+        : ITraceReaderWithRingBuffer(std::move(id))
     {
         Log = logging->CreateLog(componentName);
     }
@@ -145,7 +124,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSlowRequestsFilter final
-    : public TTraceReaderWithRingBuffer
+    : public ITraceReaderWithRingBuffer
 {
 private:
     TLog Log;
@@ -162,7 +141,7 @@ public:
             ILoggingServicePtr logging,
             const TString& componentName,
             TRequestThresholds requestThresholds)
-        : TTraceReaderWithRingBuffer(std::move(id))
+        : ITraceReaderWithRingBuffer(std::move(id))
         , RequestThresholds(std::move(requestThresholds))
     {
         Log = logging->CreateLog(componentName);

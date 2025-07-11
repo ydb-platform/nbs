@@ -25,6 +25,7 @@
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
 #include <cloud/blockstore/libs/ydbstats/config.h>
 
+#include <cloud/storage/core/config/opentelemetry_client.pb.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
@@ -62,6 +63,7 @@ struct TConfigInitializerYdb final
     NProto::TGrpcClientConfig KmsClientConfig;
     NProto::TGrpcClientConfig ComputeClientConfig;
     NProto::TRootKmsConfig RootKmsConfig;
+    NProto::TOpentelemetryTraceConfig TraceServiceClientConfig;
 
     TConfigInitializerYdb(TOptionsYdbPtr options);
 
@@ -74,6 +76,7 @@ struct TConfigInitializerYdb final
     void InitKmsClientConfig();
     void InitRootKmsConfig();
     void InitComputeClientConfig();
+    void InitTraceServiceClientConfig();
 
     bool GetUseNonreplicatedRdmaActor() const override;
     TDuration GetInactiveClientsTimeout() const override;
@@ -98,6 +101,7 @@ private:
     void ApplyKmsClientConfig(const TString& text);
     void ApplyRootKmsConfig(const TString& text);
     void ApplyComputeClientConfig(const TString& text);
+    void ApplyTraceServiceClientConfig(const TString& text);
 };
 
 }   // namespace NCloud::NBlockStore::NServer

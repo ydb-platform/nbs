@@ -172,6 +172,17 @@ void TConfigInitializerYdb::InitComputeClientConfig()
     ComputeClientConfig = std::move(config);
 }
 
+void TConfigInitializerYdb::InitTraceServiceClientConfig()
+{
+    NProto::TOpentelemetryTraceConfig config;
+
+    if (Options->TraceServiceConfig) {
+        ParseProtoTextFromFile(Options->TraceServiceConfig, config);
+    }
+
+    TraceServiceClientConfig = std::move(config);
+}
+
 bool TConfigInitializerYdb::GetUseNonreplicatedRdmaActor() const
 {
     if (!StorageConfig) {
@@ -372,6 +383,14 @@ void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
     ComputeClientConfig = std::move(config);
 }
 
+void TConfigInitializerYdb::ApplyTraceServiceClientConfig(const TString& text)
+{
+    NProto::TOpentelemetryTraceConfig config;
+    ParseProtoTextFromString(text, config);
+
+    TraceServiceClientConfig = std::move(config);
+}
+
 void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config)
 {
     THashMap<TString, ui32> configs;
@@ -410,6 +429,7 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
         { "KmsClientConfig",         &TSelf::ApplyKmsClientConfig         },
         { "RootKmsConfig",           &TSelf::ApplyRootKmsConfig           },
         { "ComputeClientConfig",     &TSelf::ApplyComputeClientConfig     },
+        { "TraceServiceClientConfig", &TSelf::ApplyTraceServiceClientConfig },
     };
 
     for (const auto& handler: configHandlers) {
