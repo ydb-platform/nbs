@@ -175,6 +175,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IFileIOServiceFactory
+{
+    virtual ~IFileIOServiceFactory() = default;
+    virtual IFileIOServicePtr CreateFileIOService() = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IFileIOServicePtr CreateFileIOServiceStub();
 
 IFileIOServicePtr CreateRoundRobinFileIOService(
