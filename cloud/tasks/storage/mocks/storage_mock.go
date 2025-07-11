@@ -225,10 +225,9 @@ func (s *StorageMock) SendEvent(
 func (s *StorageMock) ClearEndedTasks(
 	ctx context.Context,
 	endedBefore time.Time,
-	limit int,
 ) error {
 
-	args := s.Called(ctx, endedBefore, limit)
+	args := s.Called(ctx, endedBefore)
 	return args.Error(0)
 }
 

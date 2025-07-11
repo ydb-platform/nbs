@@ -386,7 +386,7 @@ type Storage interface {
 	SendEvent(ctx context.Context, taskID string, event int64) error
 
 	// Used for garbage collecting of ended and outdated tasks.
-	ClearEndedTasks(ctx context.Context, endedBefore time.Time, limit int) error
+	ClearEndedTasks(ctx context.Context, endedBefore time.Time) error
 
 	// NOTE: used for SRE operations only.
 	// Forcefully finishes task by setting "finished" status.

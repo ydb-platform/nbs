@@ -587,7 +587,6 @@ func (s *scheduler) registerAndScheduleRegularSystemTasks(
 			return &clearEndedTasksTask{
 				storage:           s.storage,
 				expirationTimeout: endedTaskExpirationTimeout,
-				limit:             int(config.GetClearEndedTasksLimit()),
 			}
 		},
 	)

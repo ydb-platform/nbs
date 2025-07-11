@@ -3341,19 +3341,18 @@ func TestStorageYDBUpdateTask(t *testing.T) {
 	metricsRegistry.AssertAllExpectations(t)
 
 	_, err = storage.UpdateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		ID:             taskID,
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
-		GenerationID:   0,
-		Status:         TaskStatusReadyToRun,
-		ErrorCode:      grpc_codes.InvalidArgument,
-		ErrorMessage:   "invalid argument",
-		State:          []byte{1},
-		Dependencies:   NewStringSet(taskIDDependent1, taskIDDependent2),
+		ID:           taskID,
+		TaskType:     "task1",
+		Description:  "Some task",
+		CreatedAt:    createdAt,
+		CreatedBy:    "some_user",
+		ModifiedAt:   modifiedAt,
+		GenerationID: 0,
+		Status:       TaskStatusReadyToRun,
+		ErrorCode:    grpc_codes.InvalidArgument,
+		ErrorMessage: "invalid argument",
+		State:        []byte{1},
+		Dependencies: NewStringSet(taskIDDependent1, taskIDDependent2),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3442,18 +3441,17 @@ func TestStorageYDBUpdateTaskStatus(t *testing.T) {
 	metricsRegistry.AssertAllExpectations(t)
 
 	_, err = storage.UpdateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		ID:             taskID,
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     createdAt.Add(firstUpdatePause),
-		GenerationID:   0,
-		Status:         TaskStatusReadyToRun,
-		State:          []byte{1},
-		Dependencies:   NewStringSet(),
-		LastRunner:     "runner_42",
+		ID:           taskID,
+		TaskType:     "task1",
+		Description:  "Some task",
+		CreatedAt:    createdAt,
+		CreatedBy:    "some_user",
+		ModifiedAt:   createdAt.Add(firstUpdatePause),
+		GenerationID: 0,
+		Status:       TaskStatusReadyToRun,
+		State:        []byte{1},
+		Dependencies: NewStringSet(),
+		LastRunner:   "runner_42",
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3470,17 +3468,16 @@ func TestStorageYDBUpdateTaskStatus(t *testing.T) {
 	).On("Add", int64(1)).Maybe().Panic("shouldn't create new task in UpdateTask")
 
 	_, err = storage.UpdateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		ID:             taskID,
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     createdAt.Add(firstUpdatePause + secondUpdatePause),
-		GenerationID:   0,
-		Status:         TaskStatusRunning,
-		State:          []byte{2},
-		Dependencies:   NewStringSet(),
+		ID:           taskID,
+		TaskType:     "task1",
+		Description:  "Some task",
+		CreatedAt:    createdAt,
+		CreatedBy:    "some_user",
+		ModifiedAt:   createdAt.Add(firstUpdatePause + secondUpdatePause),
+		GenerationID: 0,
+		Status:       TaskStatusRunning,
+		State:        []byte{2},
+		Dependencies: NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -4489,7 +4486,7 @@ func TestStorageYDBClearEndedTasks(t *testing.T) {
 
 	metricsRegistry.AssertAllExpectations(t)
 
-	err = storage.ClearEndedTasks(ctx, endedBefore, 100500)
+	err = storage.ClearEndedTasks(ctx, endedBefore)
 	require.NoError(t, err)
 
 	_, err = storage.GetTask(ctx, taskID1)

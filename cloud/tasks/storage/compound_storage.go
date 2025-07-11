@@ -410,11 +410,10 @@ func (s *compoundStorage) SendEvent(
 func (s *compoundStorage) ClearEndedTasks(
 	ctx context.Context,
 	endedBefore time.Time,
-	limit int,
 ) error {
 
 	// Don't need to use legacyStorage here.
-	return s.storage.ClearEndedTasks(ctx, endedBefore, limit)
+	return s.storage.ClearEndedTasks(ctx, endedBefore)
 }
 
 func (s *compoundStorage) ForceFinishTask(ctx context.Context, taskID string) error {
