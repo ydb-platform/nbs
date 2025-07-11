@@ -1215,46 +1215,41 @@ void DumpLatency(
     const TTransactionTimeTracker& transactionTimeTracker,
     size_t columnCount)
 {
-    const TString script = R"(
-        <script>
-            function renderTransactionsLatency(stat) {
-                for (let key in stat) {
-                    const element = document.getElementById(key);
+    const TString containerId = "transactions-latency-container";
+    const TString toggleId = "transactions-auto-refresh-toggle";
+
+    HTML (out) {
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
+
+        DIV_CLASS_ID(" ", containerId) {
+            TAG (TH3) { out << "Transactions"; }
+            DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
+            TAG (TH3) { out << "Groups"; }
+        }
+
+        out << R"(<script>
+            function updateTransactionsData(result, container) {
+                if (!result.stat) {
+                    return;
+                }
+                for (let key in result.stat) {
+                    const element = container.querySelector('#' + key);
                     if (element) {
-                        element.textContent = stat[key];
+                        element.textContent = result.stat[key];
                     }
                 }
             }
-            function loadTransactionsLatency() {
-                var url = '?action=getTransactionsLatency';
-                url += '&TabletID=)" +
-                           ToString(tabletId) + R"(';
-                $.ajax({
-                    url: url,
-                    success: function(result) {
-                        renderTransactionsLatency(result.stat);
-                    },
-                    error: function(jqXHR, status) {
-                        console.log('error');
-                    }
-                });
-            }
-            setInterval(function() { loadTransactionsLatency(); }, 1000);
-            loadTransactionsLatency();
-        </script>
-        )";
+        </script>)";
 
-    HTML (out) {
-        out << script;
-
-        TAG (TH3) {
-            out << "Transactions";
-        }
-        DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
-
-        TAG (TH3) {
-            out << "Groups";
-        }
+        RenderAutoRefreshScript(
+            out,
+            containerId,
+            toggleId,
+            "getTransactionsLatency",
+            tabletId,
+            1000,
+            "updateTransactionsData"
+        );
     }
 }
 
@@ -1296,6 +1291,145 @@ HTTP_METHOD GetHttpMethodType(const NActors::NMon::TEvRemoteHttpInfo& msg)
         return static_cast<HTTP_METHOD>(ext->GetMethod());
     }
     return msg.GetMethod();
+}
+
+void RenderAutoRefreshToggle(
+    IOutputStream& out,
+    const TString& toggleId,
+    const TString& labelText,
+    bool isCheckedByDefault)
+{
+    out << R"(<div style="margin: 10px 0;">)"
+        << R"(<label style="cursor: pointer; user-select: none;">)"
+        << R"(<input type="checkbox" id=")" << toggleId << R"(")"
+        << (isCheckedByDefault ? " checked" : "") << R"(> )" << labelText
+        << "</label></div>";
+}
+
+void RenderAutoRefreshScript(
+    IOutputStream& out,
+    const TString& containerId,
+    const TString& toggleId,
+    const TString& ajaxAction,
+    ui64 tabletId,
+    int intervalMs,
+    const TString& jsUpdateFunctionName)
+{
+    out << R"(<script>
+(function() {
+    const currentScript = document.currentScript;
+
+    document.addEventListener('DOMContentLoaded', function() {
+
+        if (!currentScript) {
+            console.error("Auto-refresh: could not determine currentScript.");
+            return;
+        }
+        const tabPane = currentScript.closest('.tab-pane');
+
+        const CONTAINER_ID = ')"
+        << containerId << R"(';
+        const TOGGLE_ID = ')"
+        << toggleId << R"(';
+        const TABLET_ID = ')"
+        << ToString(tabletId) << R"(';
+        const INTERVAL_MS = )"
+        << intervalMs << R"(;
+
+        const container = document.getElementById(CONTAINER_ID);
+        const toggle = document.getElementById(TOGGLE_ID);
+        let intervalId = null;
+
+        if (!container || !toggle) {
+            console.error('Auto-refresh aborted: missing container or toggle element.');
+            return;
+        }
+
+        function isContentActive() {
+            if (tabPane) {
+                return tabPane.classList.contains('active');
+            } else {
+                return true;
+            }
+        }
+
+        function loadData() {
+            if (intervalId === null || document.hidden || !isContentActive()) {
+                stopAutoRefresh();
+                return;
+            }
+            var url = '?action=)"
+        << ajaxAction << R"(&TabletID=' + TABLET_ID;
+            $.ajax({
+                url: url,
+                success: function(result) {
+                    )"
+        << jsUpdateFunctionName << R"((result, container);
+                },
+                error: function(jqXHR, status) {
+                    console.error('Error fetching data for ' + CONTAINER_ID + ':', status);
+                    stopAutoRefresh();
+                }
+            });
+        }
+
+        function startAutoRefresh() {
+            if (intervalId !== null || !toggle.checked) {
+                return;
+            }
+            loadData();
+            intervalId = setInterval(loadData, INTERVAL_MS);
+        }
+
+        function stopAutoRefresh() {
+            if (intervalId === null) {
+                return;
+            }
+            clearInterval(intervalId);
+            intervalId = null;
+        }
+
+        if (tabPane) {
+            const observer = new MutationObserver(mutations => {
+                mutations.forEach(mutation => {
+                    if (mutation.attributeName === 'class') {
+                        if (tabPane.classList.contains('active')) {
+                            startAutoRefresh();
+                        } else {
+                            stopAutoRefresh();
+                        }
+                    }
+                });
+            });
+            observer.observe(tabPane, { attributes: true });
+        }
+
+        toggle.addEventListener('change', e => {
+            if (e.target.checked) {
+                if (isContentActive()) {
+                    startAutoRefresh();
+                }
+            } else {
+                stopAutoRefresh();
+            }
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                if (isContentActive()) {
+                    startAutoRefresh();
+                }
+            } else {
+                stopAutoRefresh();
+            }
+        });
+
+        if (isContentActive() && toggle.checked) {
+            startAutoRefresh();
+        }
+    });
+})();
+</script>)";
 }
 
 }   // namespace NMonitoringUtils

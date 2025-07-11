@@ -188,4 +188,19 @@ TCgiParameters GatherHttpParameters(const NActors::NMon::TEvRemoteHttpInfo& msg)
 TCgiParameters GetHttpMethodParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
 HTTP_METHOD GetHttpMethodType(const NActors::NMon::TEvRemoteHttpInfo& msg);
 
+void RenderAutoRefreshToggle(
+    IOutputStream& out,
+    const TString& toggleId,
+    const TString& labelText,
+    bool isCheckedByDefault);
+
+void RenderAutoRefreshScript(
+    IOutputStream& out,
+    const TString& containerId,
+    const TString& toggleId,
+    const TString& ajaxAction,
+    ui64 tabletId,
+    int intervalMs,
+    const TString& jsUpdateFunctionName);
+
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils
