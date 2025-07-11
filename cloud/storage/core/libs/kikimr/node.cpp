@@ -375,8 +375,16 @@ INodeRegistrantPtr CreateNodeRegistrant(
     const auto& hostName = FQDNHostName();
     const auto& hostAddress = GetNetworkAddress(hostName);
 
+    const TNodeLocation location(
+        options.DataCenter,
+        {},
+        options.Rack,
+        ToString(options.Body));
+
     if (options.UseNodeBrokerSsl) {
-        STORAGE_WARN("Trying to register with discovery service: ");
+        STORAGE_WARN("Trying to register with discovery service: "
+            << location.ToString());
+
         return std::make_unique<TDiscoveryNodeRegistrant>(
             hostName,
             hostAddress,
@@ -384,13 +392,10 @@ INodeRegistrantPtr CreateNodeRegistrant(
             nsConfig,
             dnConfig);
     }
-    const TNodeLocation location(
-        options.DataCenter,
-        {},
-        options.Rack,
-        ToString(options.Body));
+
     STORAGE_WARN(
         "Trying to register with legacy service: " << location.ToString());
+
     return std::make_unique<TLegacyNodeRegistrant>(
         hostName,
         hostAddress,
