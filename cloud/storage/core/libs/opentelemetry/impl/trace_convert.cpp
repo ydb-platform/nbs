@@ -201,7 +201,7 @@ public:
 
     void AddSpanSubTree(TSpanTree subtree)
     {
-        subtree.GetParentSpan().Setparent_span_id(ToHexString8(RootSpanId));
+        subtree.GetParentSpan().set_parent_span_id(ToHexString8(RootSpanId));
         std::ranges::move(subtree.Spans, std::back_inserter(Spans));
     }
 

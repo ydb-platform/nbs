@@ -64,11 +64,13 @@ struct ITraceReader
 struct ITraceReaderWithRingBuffer
     : public ITraceReader
 {
+    static constexpr size_t DefaultRingBufferSize = 1000;
+
     TSimpleRingBuffer<TEntry> RingBuffer;
 
     explicit ITraceReaderWithRingBuffer(TString id)
         : ITraceReader(std::move(id))
-        , RingBuffer(1000)
+        , RingBuffer(DefaultRingBufferSize)
     {}
 
     void ForEach(std::function<void(const TEntry&)> fn) override

@@ -8,6 +8,8 @@
 
 namespace NCloud {
 
+////////////////////////////////////////////////////////////////////////////////
+
 TString ToHexString8(ui64 value)
 {
     // std::stringstream is used here, because StringStream from util doesn't

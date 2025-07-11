@@ -2,7 +2,6 @@
 
 #include "trace_convert.h"
 
-
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 
@@ -59,13 +58,13 @@ public:
         auto spans = ConvertToOpenTelemetrySpans(tl);
 
         ExportTraceServiceRequest traces;
-        auto* resourceSpans = traces.Addresource_spans();
+        auto* resourceSpans = traces.add_resource_spans();
         auto* attribute =
-            resourceSpans->Mutableresource()->mutable_attributes()->Add();
+            resourceSpans->mutable_resource()->mutable_attributes()->Add();
         attribute->set_key("service.name");
         attribute->mutable_value()->set_string_value(ServiceName);
 
-        auto* scopedSpans = resourceSpans->Addscope_spans();
+        auto* scopedSpans = resourceSpans->add_scope_spans();
         for (const auto& span: spans) {
             *scopedSpans->Addspans() = span;
         }

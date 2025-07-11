@@ -1,6 +1,5 @@
 #include "trace_service_client.h"
 
-
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
@@ -122,7 +121,6 @@ public:
 
     void Start() override
     {
-
         STORAGE_INFO("Connecting to " << Config.GetAddress());
 
         auto creds = Config.GetInsecure()
@@ -188,10 +186,9 @@ ITraceServiceClientPtr CreateTraceServiceClient(
     ILoggingServicePtr logging,
     NProto::TGrpcClientConfig config)
 {
-    auto a = std::make_shared<TTraceServiceClient>(
+    return std::make_shared<TTraceServiceClient>(
         std::move(logging),
         std::move(config));
-    return a;
 }
 
 }   // namespace NCloud
