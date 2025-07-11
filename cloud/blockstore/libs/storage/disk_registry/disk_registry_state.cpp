@@ -7630,7 +7630,10 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
         StorageConfig->GetMaxAutomaticDeviceReplacementsPerHour();
     if (rateLimit
             && rateLimit <= AutomaticReplacementTimestamps.size()) {
-        ReportMirroredDiskDeviceReplacementRateLimitExceeded();
+        ReportMirroredDiskDeviceReplacementRateLimitExceeded(
+            TStringBuilder()
+            << "DiskId=" << masterDiskId << ", DeviceId=" << deviceId
+            << ", automatic device replacement cancelled due to rate limit");
 
         STORAGE_ERROR(
             "Automatic device replacement cancelled due to high"
@@ -7646,7 +7649,10 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
         deviceId);
 
     if (!canReplaceDevice) {
-        ReportMirroredDiskDeviceReplacementForbidden();
+        ReportMirroredDiskDeviceReplacementForbidden(
+            TStringBuilder()
+            << "DiskId=" << masterDiskId << ", DeviceId=" << deviceId
+            << " automatic device replacement forbidden by ReplicaTable");
 
         STORAGE_ERROR(
             "Automatic device replacement not allowed by ReplicaTable"

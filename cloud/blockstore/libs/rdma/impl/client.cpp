@@ -1110,7 +1110,9 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
         RDMA_ERROR(
             "SEND " << TWorkRequestId(send->wr.wr_id) << ": " << e.what());
         SendQueue.Push(send);
-        ReportRdmaError();
+        ReportRdmaError(
+            TStringBuilder() << "ReqId=" << req->ReqId << " WorkRequestId="
+                             << send->wr.wr_id << " RDMA send error");
         Disconnect();
 
         Counters->RequestEnqueued();
@@ -1144,7 +1146,9 @@ void TClientEndpoint::SendRequestCompleted(
             << ": " << NVerbs::GetStatusString(status));
 
         Counters->SendRequestError();
-        ReportRdmaError();
+        ReportRdmaError(
+            TStringBuilder()
+            << "SEND " << TWorkRequestId(send->wr.wr_id) << " failed");
         Disconnect();
         return;
     }
@@ -1190,7 +1194,9 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv)
         RDMA_ERROR(
             "RECV " << TWorkRequestId(recv->wr.wr_id) << ": " << e.what());
         RecvQueue.Push(recv);
-        ReportRdmaError();
+        ReportRdmaError(
+            TStringBuilder() << "RECV " << TWorkRequestId(recv->wr.wr_id)
+                             << " failed to post receive request");
         Disconnect();
         return;
     }
@@ -1208,7 +1214,10 @@ void TClientEndpoint::RecvResponseCompleted(
 
         Counters->RecvResponseError();
         RecvQueue.Push(recv);
-        ReportRdmaError();
+        ReportRdmaError(
+            TStringBuilder()
+            << "RECV " << TWorkRequestId(recv->wr.wr_id)
+            << " failed");
         Disconnect();
         return;
     }

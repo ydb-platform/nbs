@@ -84,7 +84,8 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
         LOG_DEBUG_S(ctx, TBlockStoreComponents::SS_PROXY,
             "PathDescriptionBackup: backup completed");
     } else {
-        ReportBackupPathDescriptionsFailure();
+        ReportBackupPathDescriptionsFailure(
+            TStringBuilder() << "Backup failed for file: " << BackupFilePath);
 
         LOG_ERROR_S(ctx, TBlockStoreComponents::SS_PROXY,
             "PathDescriptionBackup: backup failed: "

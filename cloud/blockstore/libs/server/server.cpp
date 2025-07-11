@@ -1146,7 +1146,8 @@ void TServer::StartListenUnixSocket(
         SessionStorage->CreateClientStorage(UdsService));
 
     if (HasError(error)) {
-        ReportEndpointStartingError();
+        ReportEndpointStartingError(
+            TStringBuilder() << "unixSocketPath=" << unixSocketPath.Quote());
         STORAGE_ERROR("Failed to start (control) endpoint: " << FormatError(error));
         StopListenUnixSocket();
     }
