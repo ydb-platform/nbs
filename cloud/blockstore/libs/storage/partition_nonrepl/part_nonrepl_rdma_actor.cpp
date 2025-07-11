@@ -641,13 +641,8 @@ void TNonreplicatedPartitionRdmaActor::ReplyAndDie(const NActors::TActorContext&
         "[%s] Reply and die",
         SelfId().ToString().c_str());
 
-    for (auto& [_, endpoint]: AgentId2EndpointFuture) {
-        endpoint.Subscribe([](auto& future) {
-            if (future.HasValue()) {
-                future.GetValue()->Stop();
-            }
-        });
-    }
+    new TEndpointReaper(AgentId2EndpointFuture);
+
     NCloud::Reply(ctx, *Poisoner, std::make_unique<TEvents::TEvPoisonTaken>());
     Die(ctx);
 }
