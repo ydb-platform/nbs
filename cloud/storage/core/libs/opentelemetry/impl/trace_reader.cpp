@@ -66,7 +66,7 @@ public:
 
         auto* scopedSpans = resourceSpans->add_scope_spans();
         for (const auto& span: spans) {
-            *scopedSpans->Addspans() = span;
+            *scopedSpans->add_spans() = span;
         }
 
         TraceServiceClient->Export(std::move(traces), "")
