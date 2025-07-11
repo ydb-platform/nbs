@@ -2,7 +2,7 @@ MultiTabletForwardingEnabled: true
 LargeDeletionMarkersEnabled: true
 MaxFileBlocks: 536870912
 AutomaticShardCreationEnabled: true
-ShardAllocationUnit: 1073741824
-AutomaticallyCreatedShardSize: 1073741824
+ShardAllocationUnitBlocks: 262144
+AutomaticallyCreatedShardBlocks: 262144
 ShardIdSelectionInLeaderEnabled: true
 DirectoryCreationInShardsEnabled: true
