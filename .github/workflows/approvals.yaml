@@ -14,93 +14,126 @@ jobs:
           with:
             github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
             script: |
-                var org = 'ydb-platform';
-                var nebiusTeamSlug = 'nbs_nebius';
-                var yandexTeamSlug = 'nbs_yandex';
-                const leftUsersData = await github.paginate(
-                    github.rest.teams.listMembersInOrg,
-                    {
-                      org,
-                      team_slug: nebiusTeamSlug,
-                    }
+                const org            = 'ydb-platform';
+                const nebiusTeamSlug = 'nbs_nebius';
+                const yandexTeamSlug = 'nbs_yandex';
+
+                const exemptLeftFolders  = [
+                    /* paths that remove the *left-team* requirement */
+                ];
+
+                const exemptRightFolders = [
+                    /* paths that remove the *right-team* requirement */
+                    'cloud/blockstore/tools/csi_driver/',
+                    'cloud/blockstore/tests/csi_driver/',
+                    '.github/',
+                ];
+
+                const alwaysBothPaths = [
+                    '.github/workflows/approvals.yaml',
+                    '.github/workflows/pr.yaml',
+                ];
+
+                const leftUsersData  = await github.paginate(
+                    github.rest.teams.listMembersInOrg, { org, team_slug: nebiusTeamSlug }
                 );
                 const rightUsersData = await github.paginate(
-                    github.rest.teams.listMembersInOrg,
-                    {
-                      org,
-                      team_slug: yandexTeamSlug,
-                    }
+                    github.rest.teams.listMembersInOrg, { org, team_slug: yandexTeamSlug }
                 );
-                const leftUsers = leftUsersData.map(user => user.login);
-                const rightUsers = rightUsersData.map(user => user.login);
-                console.log("Left team members: " + leftUsers.join(', '));
-                console.log("Right team members: " + rightUsers.join(', '));
-                // users that can approve PRs without any restrictions by commenting /approve
+
+                const leftUsers  = leftUsersData .map(u => u.login);
+                const rightUsers = rightUsersData.map(u => u.login);
+
                 const superUsers = ['SvartMetal', 'EvgeniyKozev'];
-                const prNumber = context.issue.number;
-                const owner = context.repo.owner;
-                const repo = context.repo.repo;
 
-                // Function to check if user is in list
-                const isInList = (username, list) => list.includes(username);
+                const { owner, repo } = context.repo;
+                const prNumber        = context.issue.number;
 
-                let approvalState = false;
-                console.log("Checking approvals for PR #" + prNumber);
-                console.log("Event name: " + context.eventName);
-                console.log("Actor: " + context.actor);
-                if (context.eventName === 'issue_comment') {
-                    console.log("Comment: " + context.payload.comment.body);
+                const changedFiles = await github.paginate(
+                    github.rest.pulls.listFiles,
+                    { owner, repo, pull_number: prNumber, per_page: 100 },
+                    res => res.data
+                );
+
+                // show the changed files and whether they require left/right approval
+                console.log(`PR #${prNumber} changed files count: ${changedFiles.length}`);
+                changedFiles.forEach(f => {
+                    const leftExempt  = exemptLeftFolders .some(folder => f.filename.startsWith(folder));
+                    const rightExempt = exemptRightFolders.some(folder => f.filename.startsWith(folder));
+                    console.log(`  • ${f.filename} → left-exempt: ${leftExempt}, right-exempt: ${rightExempt}`);
+                });
+
+                let needsLeftApproval = changedFiles.some(f =>
+                    !exemptLeftFolders.some(folder => f.filename.startsWith(folder))
+                );
+
+                let needsRightApproval = changedFiles.some(f =>
+                    !exemptRightFolders.some(folder => f.filename.startsWith(folder))
+                );
+
+                const touchesAlwaysBoth = changedFiles.some(f =>
+                    alwaysBothPaths.some(p => f.filename.startsWith(p))
+                );
+                if (touchesAlwaysBoth) {
+                    needsLeftApproval  = true;
+                    needsRightApproval = true;
                 }
+
+                console.log(
+                    `PR #${prNumber} touches:` +
+                    `\n  • Any left-exempt paths?  ${needsLeftApproval  ? 'NO' : 'YES'} ` +
+                    `\n  • Any right-exempt paths? ${needsRightApproval ? 'NO' : 'YES'} ` +
+                    `\n→ Left approval ${needsLeftApproval  ? 'REQUIRED' : 'NOT required'}` +
+                    `\n→ Right approval ${needsRightApproval ? 'REQUIRED' : 'NOT required'}`
+                );
+
+                const isInList = (user, list) => list.includes(user);
+
                 if (
-                    context.eventName === 'issue_comment'
-                    && isInList(context.actor, superUsers)
-                    && context.payload.comment.body.trim() === '/approve'
+                    context.eventName === 'issue_comment' &&
+                    isInList(context.actor, superUsers) &&
+                    context.payload.comment.body.trim() === '/approve'
                 ) {
-                    console.log("Approval bypassed by super user.");
-                    approvalState = true;
-                } else if (context.eventName === 'pull_request_review') {
-                    // Fetch PR reviews
-                    const reviews = await github.paginate(
-                        github.rest.pulls.listReviews,
-                        {
-                            owner,
-                            repo,
-                            pull_number: prNumber
-                        },
-                        response => response.data  // Collect data from each page
-                    );
+                    console.log('Approval bypassed by super user.');
+                    return;
+                }
 
-                    // Track unique approvers
-                    let leftApprovals = new Set();
-                    let rightApprovals = new Set();
+                if (context.eventName !== 'pull_request_review') {
+                    core.setFailed('Not enough approvals');
+                    return;
+                }
 
-                    for (const review of reviews) {
-                        console.log("Review by " + review.user.login + ": " + review.state);
-                        if (review.state === 'APPROVED') {
-                            if (isInList(review.user.login, leftUsers)) {
-                                leftApprovals.add(review.user.login);
-                            } else if (isInList(review.user.login, rightUsers)) {
-                                rightApprovals.add(review.user.login);
-                            } else {
-                                console.log("User " + review.user.login + " is not in any list.");
-                            }
-                        } else if (review.state === 'DISMISSED') {
-                            leftApprovals.delete(review.user.login);
-                            rightApprovals.delete(review.user.login);
-                        }
+                const reviews = await github.paginate(
+                    github.rest.pulls.listReviews,
+                    { owner, repo, pull_number: prNumber },
+                    r => r.data
+                );
+
+                const leftApprovals  = new Set();
+                const rightApprovals = new Set();
+
+                for (const r of reviews) {
+                    if (r.state === 'APPROVED') {
+                        if (isInList(r.user.login, leftUsers))  leftApprovals.add(r.user.login);
+                        if (isInList(r.user.login, rightUsers)) rightApprovals.add(r.user.login);
                     }
-
-                    // Check if there is at least one approval from each list
-                    if (leftApprovals.size >= 1 && rightApprovals.size >= 1) {
-                        console.log("PR has the required approvals from both lists.");
-                        approvalState = true;
-                    } else {
-                        console.log("PR does not have the required approvals from both lists.");
-                        console.log("Left approvals: " + Array.from(leftApprovals).join(', '));
-                        console.log("Right approvals: " + Array.from(rightApprovals).join(', '));
-                        core.setFailed("PR does not meet approval requirements.");
+                    if (r.state === 'DISMISSED') {
+                        leftApprovals.delete(r.user.login);
+                        rightApprovals.delete(r.user.login);
                     }
+                }
+
+                const requiredLeftCount  = needsLeftApproval  ? (needsRightApproval ? 1 : 2) : 0;
+                const requiredRightCount = needsRightApproval ? (needsLeftApproval ? 1 : 2) : 0;
+
+                const hasLeft  = leftApprovals.size  >= requiredLeftCount;
+                const hasRight = rightApprovals.size >= requiredRightCount;
+
+                if (hasLeft && hasRight) {
+                    console.log('✅ PR meets approval requirements.');
                 } else {
-                    console.log("Not enough approvals");
-                    core.setFailed("Not enough approvals");
+                    console.log('❌ PR does not meet approval requirements.');
+                    console.log(`Left approvals : ${[...leftApprovals ].join(', ') || 'none'}`);
+                    console.log(`Right approvals: ${[...rightApprovals].join(', ') || 'none'}`);
+                    core.setFailed('PR does not meet approval requirements.');
                 }
