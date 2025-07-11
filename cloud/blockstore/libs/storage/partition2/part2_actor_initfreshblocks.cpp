@@ -135,8 +135,7 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
         ReportInitFreshBlocksError(
             TStringBuilder()
             << "[" << TabletID()
-            << "] LoadFreshBlobs failed: " << msg->GetStatus()
-            << " reason: " << msg->GetError().GetMessage().Quote());
+            << "] LoadFreshBlobs failed: " << msg->GetStatus());
         Suicide(ctx);
         return;
     }
@@ -168,8 +167,7 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
             ReportInitFreshBlocksError(
                 TStringBuilder()
                 << "[" << TabletID() << "] Failed to parse fresh blob "
-                << "(blob commitId: " << blob.CommitId
-                << "): " << error.GetMessage());
+                << "(blob commitId: " << blob.CommitId);
             Suicide(ctx);
             return;
         }

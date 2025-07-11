@@ -452,7 +452,7 @@ void TNonreplicatedPartitionMigrationCommonActor::OnMigrationNonRetriableError(
 {
     ReportMigrationFailed(
     TStringBuilder()
-        << "Non-retriable migration error occurred");
+        << "Non-retriable migration error occurred; disk " << DiskId);
     MigrationOwner->OnMigrationError(ctx);
     MigrationEnabled = false;
 }

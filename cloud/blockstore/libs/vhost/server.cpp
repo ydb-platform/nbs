@@ -523,8 +523,8 @@ private:
                 if (res < 0) {
                     ReportVhostQueueRunningError(
                         TStringBuilder()
-                        << "Failed to run vhost request queue. Return code: "
-                        << -res);
+                        << "ExecutorName=" << Name
+                        << " Failed to run vhost request queue");
                     STORAGE_ERROR(
                         "Failed to run vhost request queue. Return code: " << -res);
                 }
