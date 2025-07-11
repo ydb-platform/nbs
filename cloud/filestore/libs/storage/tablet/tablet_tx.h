@@ -112,6 +112,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(SetNodeAttr,                        __VA_ARGS__)                       \
     xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
     xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
+    xxx(SetHasXAttrs,                    __VA_ARGS__)                       \
                                                                                \
     xxx(CreateHandle,                       __VA_ARGS__)                       \
     xxx(DestroyHandle,                      __VA_ARGS__)                       \
@@ -1366,6 +1367,34 @@ struct TTxIndexTablet
             CommitId = InvalidCommitId;
             Node.Clear();
             Attr.Clear();
+        }
+    };
+
+    //
+    // SetHasXAttrs
+    //
+
+    struct TSetHasXAttrs
+        : TSessionAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TSetHasXAttrsRequest Request;
+        // the flag is set if Request.GetValue() is different from
+        // TIndexTabletState::GetHasXAttrs()
+        bool IsToBeChanged{};
+
+        TSetHasXAttrs(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TSetHasXAttrsRequest request)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
         }
     };
 

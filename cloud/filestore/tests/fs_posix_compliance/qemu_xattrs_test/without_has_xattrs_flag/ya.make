@@ -8,8 +8,7 @@ TEST_SRCS(
 )
 
 PEERDIR(
-    cloud/filestore/tests/python/lib
-    cloud/storage/core/tools/testing/qemu/lib
+    cloud/filestore/tests/fs_posix_compliance/qemu_xattrs_test/lib
 )
 
 SET(QEMU_VIRTIO fs)

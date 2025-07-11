@@ -2,8 +2,11 @@
 
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
-#include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/api/tablet.h>
+
+#include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -21,13 +24,6 @@ TSessionInfo* TStorageServiceActor::GetAndValidateSession(
     const auto& clientId = GetClientId(msg->Record);
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
-
-    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
-        "[%s][%lu] forward %s #%lu",
-        sessionId.Quote().c_str(),
-        seqNo,
-        TMethod::Name,
-        msg->CallContext->RequestId);
 
     TSessionInfo* session = State->FindSession(sessionId, seqNo);
     if (!session || session->ClientId != clientId || !session->SessionActor) {
@@ -51,7 +47,14 @@ void TStorageServiceActor::ForwardXAttrRequest(
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
     const auto shardNo = ExtractShardNo(ev->Get()->Record.GetNodeId());
 
-    const NProto::TFileStore& filestore = session->FileStore;
+    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+        "[%s][%lu] forward %s #%lu",
+        session->SessionId.Quote().c_str(),
+        seqNo,
+        TMethod::Name,
+        msg->CallContext->RequestId);
+
+        const NProto::TFileStore& filestore = session->FileStore;
 
     auto [fsId, error] = SelectShard(
         ctx,
@@ -115,6 +118,36 @@ void TStorageServiceActor::HandleGetNodeXAttr(
             std::make_unique<TEvService::TGetNodeXAttrMethod::TResponse>(
                 ErrorAttributeDoesNotExist(
                     TEvService::TGetNodeXAttrMethod::Name));
+
+        auto* msg = ev->Get();
+
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s][%lu] reply imediately to %s #%lu because there are no XAttrs",
+            session->SessionId.Quote().c_str(),
+            GetSessionSeqNo(msg->Record),
+            TEvService::TGetNodeXAttrMethod::Name,
+            msg->CallContext->RequestId);
+
+        TInFlightRequest dummyRequest(
+            TRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
+            ProfileLog,
+            session->MediaKind,
+            session->RequestStats);
+
+        InitProfileLogRequestInfo(dummyRequest.ProfileLogRequest, msg->Record);
+        dummyRequest.Start(ctx.Now());
+
+        FinalizeProfileLogRequestInfo(
+            dummyRequest.ProfileLogRequest,
+            response->Record);
+        dummyRequest.Complete(ctx.Now(), response->GetError());
+
+        TraceSerializer->BuildTraceRequest(
+            *(msg->Record.MutableHeaders()->MutableInternal()->MutableTrace()),
+            msg->CallContext->LWOrbit);
+
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -139,6 +172,36 @@ void TStorageServiceActor::HandleListNodeXAttr(
     if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
         auto response =
             std::make_unique<TEvService::TEvListNodeXAttrResponse>();
+
+        auto* msg = ev->Get();
+
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s][%lu] reply imediately to %s #%lu because there are no XAttrs",
+            session->SessionId.Quote().c_str(),
+            GetSessionSeqNo(msg->Record),
+            TEvService::TGetNodeXAttrMethod::Name,
+            msg->CallContext->RequestId);
+
+        TInFlightRequest dummyRequest(
+            TRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
+            ProfileLog,
+            session->MediaKind,
+            session->RequestStats);
+
+        InitProfileLogRequestInfo(dummyRequest.ProfileLogRequest, msg->Record);
+        dummyRequest.Start(ctx.Now());
+
+        FinalizeProfileLogRequestInfo(
+            dummyRequest.ProfileLogRequest,
+            response->Record);
+        dummyRequest.Complete(ctx.Now(), response->GetError());
+
+        TraceSerializer->BuildTraceRequest(
+            *(msg->Record.MutableHeaders()->MutableInternal()->MutableTrace()),
+            msg->CallContext->LWOrbit);
+
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -158,9 +221,24 @@ void TStorageServiceActor::HandleSetNodeXAttr(
         return;
     }
 
-    // https://github.com/ydb-platform/nbs/issues/3777
-    // message to TIndexTabletState notifying that XAttrs appeared should be
-    // placed here
+    // if there are no XAttrs in the file system
+    if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "Send TSetHasXAttrsRequest to index tablet");
+
+        auto requestToTablet =
+            std::make_unique<TEvIndexTablet::TEvSetHasXAttrsRequest>();
+        auto& record = requestToTablet->Record;
+        record.SetFileSystemId(session->FileStore.GetFileSystemId());
+        record.SetValue(true);
+
+        NCloud::Send(
+            ctx,
+            MakeIndexTabletProxyServiceId(),
+            std::move(requestToTablet));
+    }
 
     ForwardXAttrRequest<TEvService::TSetNodeXAttrMethod>(ctx, ev, session);
 }

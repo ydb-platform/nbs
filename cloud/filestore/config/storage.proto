@@ -625,4 +625,11 @@ message TStorageConfig
     // Meaning that one will not need to open a file handle to read or write
     // data.
     optional bool AllowHandlelessIO = 435;
+
+    // If HasXAttrs flag is allowed, IndexTablet klnows whether at least one
+    // XAttr exists in thefile system.
+    // If the file system doesn't have XAttrs,
+    // TServiceActor responds fast to XAttrs requests without sending
+    // actual requests to the shards.
+    optional bool HasXAttrsFlagAllowed = 436;
 }

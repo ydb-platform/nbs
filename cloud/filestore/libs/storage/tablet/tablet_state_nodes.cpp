@@ -428,6 +428,11 @@ void TIndexTabletState::RewriteNodeAttr(
     InvalidateNodeIndexCache(nodeId);
 }
 
+void TIndexTabletState::WriteHasXAttrs(TIndexTabletDatabase& db, bool value)
+{
+    SetHasXAttrs(db, static_cast<ui64>(value ? 1 : 0));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // NodeRefs
 

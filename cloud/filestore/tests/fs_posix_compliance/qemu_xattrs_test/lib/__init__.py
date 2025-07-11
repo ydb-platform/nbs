@@ -43,7 +43,7 @@ def list_xattr(ssh: SshToGuest, file: str):
 
 
 @retry(stop_max_attempt_number=RETRY_COUNT, wait_fixed=WAIT_TIMEOUT)
-def del_xattr(ssh: SshToGuest, file: str, xattr_name: str):
+def delete_xattr(ssh: SshToGuest, file: str, xattr_name: str):
     return ssh(f"xattr -d {xattr_name} {file}")
 
 
@@ -56,15 +56,15 @@ def check_dir_default_acl(ssh: SshToGuest, dir_name: str):
     create_dir(ssh, dir_name)
     set_default_acl(ssh, dir_name)
     out = get_str(get_acl(ssh, dir_name))
-    assert out.find("default:user::rwx") != -1
-    assert out.find("default:group::rwx") != -1
-    assert out.find("default:other::rwx") != -1
+    assert out.find("default:user::rwx") != -1\
+        and out.find("default:group::rwx") != -1\
+        and out.find("default:other::rwx") != -1
 
     delete_all_acl(ssh, dir_name)
     out = get_str(get_acl(ssh, dir_name))
-    assert out.find("default:user::rwx") == -1
-    assert out.find("default:group::rwx") == -1
-    assert out.find("default:other::rwx") == -1
+    assert out.find("default:user::rwx") == -1\
+        and out.find("default:group::rwx") == -1\
+        and out.find("default:other::rwx") == -1
 
 
 # test setting, changing, deleting xattrs for a file
@@ -79,14 +79,14 @@ def check_xattrs(ssh: SshToGuest, file: str):
     set_xattr(ssh, file, xattr_names[0], xattr_values[0])
     set_xattr(ssh, file, xattr_names[1], xattr_values[1])
     out = get_str(list_xattr(ssh, file))
-    assert out.find(f"{xattr_names[0]}: {xattr_values[0]}") != -1
-    assert out.find(f"{xattr_names[1]}: {xattr_values[1]}") != -1
+    assert out.find(f"{xattr_names[0]}: {xattr_values[0]}") != -1\
+        and out.find(f"{xattr_names[1]}: {xattr_values[1]}") != -1
 
     # delete the first one
-    del_xattr(ssh, file, xattr_names[0])
+    delete_xattr(ssh, file, xattr_names[0])
     out = get_str(list_xattr(ssh, file))
-    assert out.find(f"{xattr_names[0]}: {xattr_values[0]}") == -1
-    assert out.find(f"{xattr_names[1]}: {xattr_values[1]}") != -1
+    assert out.find(f"{xattr_names[0]}: {xattr_values[0]}") == -1\
+        and out.find(f"{xattr_names[1]}: {xattr_values[1]}") != -1
 
     # change value
     set_xattr(ssh, file, xattr_names[1], xattr_values[0])
@@ -94,12 +94,12 @@ def check_xattrs(ssh: SshToGuest, file: str):
     assert out.find(f"{xattr_names[1]}: {xattr_values[0]}") != -1
 
     # and finally delete everything
-    del_xattr(ssh, file, xattr_names[1])
+    delete_xattr(ssh, file, xattr_names[1])
     out = get_str(list_xattr(ssh, file))
     assert len(out) == 0
 
 
-def test():
+def test_xattrs():
     port = int(os.getenv("QEMU_FORWARDING_PORT"))
     ssh_key = os.getenv("QEMU_SSH_KEY")
     mount_dir = os.getenv("NFS_MOUNT_PATH")
