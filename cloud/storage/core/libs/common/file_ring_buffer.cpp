@@ -15,7 +15,7 @@ namespace {
 
 constexpr ui32 VERSION = 2;
 constexpr ui64 INVALID_POS = Max<ui64>();
-constexpr TStringBuf INVALID_MARKER = "invalid_entry_marker";
+constexpr TStringBuf INVALID_MARKER = {};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -119,6 +119,7 @@ private:
 
     TEntriesData Data;
     ui64 Count = 0;
+    bool Corrupted = false;
 
 private:
     THeader* Header()
@@ -161,6 +162,11 @@ private:
         return pos + sizeof(TEntryHeader) + eh->Size;
     }
 
+    void SetCorrupted()
+    {
+        Corrupted = true;
+    }
+
 public:
     TImpl(const TString& filePath, ui64 capacity)
         : Map(filePath, TMemoryMapCommon::oRdWr)
@@ -188,14 +194,22 @@ public:
         SkipSlackSpace();
         Visit([this] (ui32 checksum, TStringBuf entry) {
             Y_UNUSED(checksum);
-            Y_UNUSED(entry);
-            ++Count;
+            if (entry) {
+                ++Count;
+            } else {
+                SetCorrupted();
+            }
         });
     }
 
 public:
     bool PushBack(TStringBuf data)
     {
+        if (IsCorrupted()) {
+            // TODO: should return error code
+            return false;
+        }
+
         if (data.empty()) {
             return false;
         }
@@ -347,6 +361,15 @@ public:
                 break;
             }
         }
+
+        if (pos != Header()->WritePos && pos != INVALID_POS) {
+            visitor(0, INVALID_MARKER);
+        }
+    }
+
+    bool IsCorrupted() const
+    {
+        return Corrupted;
     }
 };
 
@@ -397,7 +420,16 @@ TVector<TFileRingBuffer::TBrokenFileEntry> TFileRingBuffer::Validate() const
 
 void TFileRingBuffer::Visit(const TVisitor& visitor) const
 {
-    return Impl->Visit(visitor);
+    Impl->Visit([&] (ui32 checksum, TStringBuf entry) {
+        if (entry) {
+            visitor(checksum, entry);
+        }
+    });
+}
+
+bool TFileRingBuffer::IsCorrupted() const
+{
+    return Impl->IsCorrupted();
 }
 
 }   // namespace NCloud
