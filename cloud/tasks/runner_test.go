@@ -542,8 +542,8 @@ func TestRunnerForRunGotRetriableError(t *testing.T) {
 	runnerMetrics.On("OnExecutionError", err).Return().Once()
 
 	runner := runnerForRun{
-		metrics:                runnerMetrics,
-		maxRetriableErrorCount: 1,
+		metrics:                       runnerMetrics,
+		maxRetriableErrorCountDefault: 1,
 	}
 	runner.executeTask(ctx, execCtx, task)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, runnerMetrics)
@@ -585,8 +585,8 @@ func TestRunnerForRunRetriableErrorCountExceeded(t *testing.T) {
 	runnerMetrics.On("OnExecutionError", mock.AnythingOfType("*errors.NonRetriableError")).Return().Once()
 
 	runner := runnerForRun{
-		metrics:                runnerMetrics,
-		maxRetriableErrorCount: 1,
+		metrics:                       runnerMetrics,
+		maxRetriableErrorCountDefault: 1,
 	}
 	runner.executeTask(ctx, execCtx, task)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, runnerMetrics)
@@ -625,8 +625,8 @@ func TestRunnerForRunIgnoreRetryLimit(t *testing.T) {
 	runnerMetrics.On("OnExecutionError", err).Return().Once()
 
 	runner := runnerForRun{
-		metrics:                runnerMetrics,
-		maxRetriableErrorCount: 1,
+		metrics:                       runnerMetrics,
+		maxRetriableErrorCountDefault: 1,
 	}
 	runner.executeTask(ctx, execCtx, task)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, runnerMetrics)
@@ -795,8 +795,8 @@ func TestRunnerForRunWrongGenerationWrappedIntoRetriableError(t *testing.T) {
 	runnerMetrics.On("OnExecutionError", err).Return().Once()
 
 	runner := runnerForRun{
-		metrics:                runnerMetrics,
-		maxRetriableErrorCount: 0,
+		metrics:                       runnerMetrics,
+		maxRetriableErrorCountDefault: 0,
 	}
 	runner.executeTask(ctx, execCtx, task)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, runnerMetrics)
@@ -855,8 +855,8 @@ func TestRunnerForRunInterruptExecutionWrappedIntoRetriableError(t *testing.T) {
 	runnerMetrics.On("OnExecutionError", err).Return().Once()
 
 	runner := runnerForRun{
-		metrics:                runnerMetrics,
-		maxRetriableErrorCount: 0,
+		metrics:                       runnerMetrics,
+		maxRetriableErrorCountDefault: 0,
 	}
 	runner.executeTask(ctx, execCtx, task)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, runnerMetrics)
