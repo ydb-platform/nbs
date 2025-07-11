@@ -145,10 +145,10 @@ Y_UNIT_TEST_SUITE(TAioTest)
 
     Y_UNIT_TEST(ShouldRetryIoSetupErrors)
     {
-        const auto eventCountLimit =
-            FromString<size_t>(TIFStream("/proc/sys/fs/aio-max-nr").ReadLine());
-        const auto service1EventCount = eventCountLimit / 2;
-        auto service1 = CreateAIOService(service1EventCount);
+        const ui32 eventCountLimit =
+            FromString<ui32>(TIFStream("/proc/sys/fs/aio-max-nr").ReadLine());
+        const ui32 service1EventCount = eventCountLimit / 2;
+        auto service1 = CreateAIOService({.MaxEvents = service1EventCount});
         auto promise1 = NThreading::NewPromise<void>();
         auto promise2 = NThreading::NewPromise<void>();
         SystemThreadFactory()->Run([=] () mutable {
@@ -157,7 +157,7 @@ Y_UNIT_TEST_SUITE(TAioTest)
             const auto service2EventCount =
                 eventCountLimit - service1EventCount + 1;
             // should cause EAGAIN from io_setup until service1 is destroyed
-            auto service2 = CreateAIOService(service2EventCount);
+            auto service2 = CreateAIOService({.MaxEvents = service2EventCount});
             Y_UNUSED(service2);
             promise2.SetValue();
         });

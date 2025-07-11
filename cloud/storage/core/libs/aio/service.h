@@ -6,8 +6,20 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServicePtr CreateAIOService(size_t maxEvents = 1024);
+struct TAioServiceParams
+{
+    static constexpr ui32 DefaultMaxEvents = 1024;
 
-IFileIOServicePtr CreateThreadedAIOService(ui32 threadCount, size_t maxEvents = 1024);
+    ui32 MaxEvents = DefaultMaxEvents;
+
+    TString CompletionThreadName = "AIO";
+};
+
+IFileIOServicePtr CreateAIOService(TAioServiceParams params = {});
+IFileIOServiceFactoryPtr CreateAIOServiceFactory(TAioServiceParams params = {});
+
+IFileIOServicePtr CreateThreadedAIOService(
+    ui32 threadCount,
+    TAioServiceParams params = {});
 
 }   // namespace NCloud

@@ -129,9 +129,13 @@ private:
     std::atomic_flag ShouldStop = false;
 
 public:
-    explicit TAIOService(size_t maxEvents)
-        : IOContext(maxEvents)
-        , PollerThread(ThreadProc, this)
+    explicit TAIOService(TAioServiceParams params)
+        : IOContext(params.MaxEvents)
+        , PollerThread(
+              std::bind_front(
+                  &TAIOService::Run,
+                  this,
+                  std::move(params.CompletionThreadName)))
     {}
 
     // IStartable
@@ -283,18 +287,10 @@ private:
         }
     }
 
-    static void* ThreadProc(void* arg)
-    {
-        static_cast<TAIOService*>(arg)->Run();
-        return nullptr;
-    }
-
-    void Run()
+    void Run(const TString& threadName)
     {
         SetHighestThreadPriority();
-
-        static std::atomic<ui64> index = 0;
-        NCloud::SetCurrentThreadName("AIO" + ToString(index++));
+        NCloud::SetCurrentThreadName(threadName);
 
         timespec timeout = WAIT_TIMEOUT;
 
@@ -319,27 +315,62 @@ private:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TAIOServiceFactory final
+    : public IFileIOServiceFactory
+{
+private:
+    const TAioServiceParams Params;
+    ui32 Index = 0;
+
+public:
+    explicit TAIOServiceFactory(TAioServiceParams params)
+        : Params(std::move(params))
+    {}
+
+    IFileIOServicePtr CreateFileIOService() final
+    {
+        const ui32 index = Index++;
+        TAioServiceParams params = Params;
+        params.CompletionThreadName = TStringBuilder()
+                                      << params.CompletionThreadName << index;
+
+        return std::make_shared<TAIOService>(std::move(params));
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServicePtr CreateAIOService(size_t maxEvents)
+IFileIOServicePtr CreateAIOService(TAioServiceParams params)
 {
-    return std::make_shared<TAIOService>(maxEvents);
+    TAIOServiceFactory factory(std::move(params));
+    return factory.CreateFileIOService();
 }
 
-IFileIOServicePtr CreateThreadedAIOService(ui32 threadCount, size_t maxEvents)
+IFileIOServicePtr CreateThreadedAIOService(
+    ui32 threadCount,
+    TAioServiceParams params)
 {
+    TAIOServiceFactory factory(std::move(params));
+
     Y_ABORT_UNLESS(threadCount > 0);
 
     TVector<IFileIOServicePtr> fileIOs;
     fileIOs.reserve(threadCount);
 
     for (ui32 i = 0; i < threadCount; i++) {
-        fileIOs.push_back(CreateAIOService(maxEvents));
+        fileIOs.push_back(factory.CreateFileIOService());
     }
 
     return CreateRoundRobinFileIOService(std::move(fileIOs));
+}
+
+IFileIOServiceFactoryPtr CreateAIOServiceFactory(TAioServiceParams params)
+{
+    return std::make_shared<TAIOServiceFactory>(std::move(params));
 }
 
 }   // namespace NCloud

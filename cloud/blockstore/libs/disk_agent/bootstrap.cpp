@@ -466,16 +466,16 @@ bool TBootstrap::InitKikimrService()
             case NProto::DISK_AGENT_BACKEND_AIO: {
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
 
-                auto factory = [events = config.GetMaxAIOContextEvents()] {
-                    return CreateAIOService(events);
-                };
+                auto factory = CreateAIOServiceFactory(
+                    {.MaxEvents = config.GetMaxAIOContextEvents()});
 
                 FileIOServiceProvider =
                     config.GetPathsPerFileIOService()
                         ? CreateFileIOServiceProvider(
                               config.GetPathsPerFileIOService(),
-                              factory)
-                        : CreateSingleFileIOServiceProvider(factory());
+                              std::move(factory))
+                        : CreateSingleFileIOServiceProvider(
+                              factory->CreateFileIOService());
 
                 LocalStorageProvider = CreateLocalStorageProvider(
                     FileIOServiceProvider,

@@ -17,7 +17,7 @@ class TFileIOServiceProvider final
 {
 private:
     const ui32 PathsPerServices;
-    std::function<IFileIOServicePtr()> Factory;
+    IFileIOServiceFactoryPtr Factory;
 
     TVector<std::pair<TString, size_t>> PathToFileIOIndex;
     TVector<IFileIOServicePtr> FileIOs;
@@ -25,7 +25,7 @@ private:
 public:
     explicit TFileIOServiceProvider(
             ui32 pathsPerServices,
-            std::function<IFileIOServicePtr()> factory)
+            IFileIOServiceFactoryPtr factory)
         : PathsPerServices{Max(pathsPerServices, 1U)}
         , Factory(std::move(factory))
     {}
@@ -50,7 +50,7 @@ public:
         }
 
         if (PathToFileIOIndex.size() + 1 > PathsPerServices * FileIOs.size()) {
-            auto service = Factory();
+            auto service = Factory->CreateFileIOService();
             Y_DEBUG_ABORT_UNLESS(service);
             service->Start();
             FileIOs.push_back(service);
@@ -104,7 +104,7 @@ IFileIOServiceProviderPtr CreateSingleFileIOServiceProvider(
 
 IFileIOServiceProviderPtr CreateFileIOServiceProvider(
     ui32 filePathsPerServices,
-    std::function<IFileIOServicePtr()> factory)
+    IFileIOServiceFactoryPtr factory)
 {
     return std::make_shared<TFileIOServiceProvider>(
         filePathsPerServices,
