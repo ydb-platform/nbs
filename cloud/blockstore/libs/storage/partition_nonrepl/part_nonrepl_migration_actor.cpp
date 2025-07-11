@@ -297,9 +297,7 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
             ReportMigrationFailed(
                 TStringBuilder()
-                << "SrcConfig=" << SrcConfig->GetName()
-                << " VolumeInfo=" << SrcConfig->GetVolumeInfo()
-                << " Finish migration failed: " << FormatError(error));
+                << "SrcConfig=" << SrcConfig->GetName());
             return;
         }
     }
