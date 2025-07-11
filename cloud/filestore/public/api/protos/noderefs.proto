@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// ReadNodeRefs request/response
+
+message TReadNodeRefsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+    // FileSystem identifier.
+    string FileSystemId = 2;
+    // Parent node ID, we select nodes with parent node id greater
+    // to the one in the request.
+    uint64 NodeId = 3;
+    // File name, we obtain nodes with file name greater alphabetically.
+    string Cookie = 4;
+    // Limit on the number of entries within the response.
+    uint32 Limit = 5;
+}
+
+
+message TReadNodeRefsResponse
+{
+    NCloud.NProto.TError Error = 1;
+    // List of node refs.
+    repeated TNodeRef NodeRefs = 2;
+    // Parent node ID to start the next request from.
+    uint64 NextNodeId = 3;
+    // Optional cookie passed by server to continue listing.
+    string NextCookie = 4;
+}
+
+message TNodeRef
+{
+    // Parent node ID.
+    uint64 NodeId = 1;
+    // Commit ID (id of the checkpoint the file is present in).
+    uint64 CommitId = 2;
+    // File name.
+    string Name = 3;
+    // File node ID.
+    uint64 ChildId = 4;
+    // ID of a shard.
+    string ShardId = 5;
+    // Node ID within the shard.
+    string ShardNodeName = 6;
+}

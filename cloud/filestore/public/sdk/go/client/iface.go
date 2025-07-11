@@ -62,6 +62,11 @@ type ClientIface interface {
 		ctx context.Context,
 		req *protos.TDescribeFileStoreModelRequest,
 	) (*protos.TDescribeFileStoreModelResponse, error)
+
+	ReadNodeRefs(
+		ctx context.Context,
+		req *protos.TReadNodeRefsRequest,
+	) (*protos.TReadNodeRefsResponse, error)
 }
 
 type EndpointClientIface interface {

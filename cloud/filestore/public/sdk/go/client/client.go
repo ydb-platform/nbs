@@ -194,6 +194,28 @@ func (client *Client) DescribeFileStoreModel(
 	return model.FileStoreModel, nil
 }
 
+func (client *Client) ReadNodeRefs(
+	ctx context.Context,
+	fileSystemID string,
+	nodeID uint64,
+	cookie string,
+	limit uint32,
+) (*protos.TReadNodeRefsResponse, error) {
+
+	req := &protos.TReadNodeRefsRequest{
+		FileSystemId: fileSystemID,
+		NodeId:       nodeID,
+		Cookie:       cookie,
+		Limit:        limit,
+	}
+	resp, err := client.Impl.ReadNodeRefs(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type StartEndpointOpts struct {
