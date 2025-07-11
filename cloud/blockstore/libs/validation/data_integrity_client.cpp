@@ -33,69 +33,61 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-bool IsRequestFailed(const TFuture<T>& future)
-{
-    if (!future.HasException()) {
-        return HasError(future.GetValue());
-    }
+// template <typename T>
+// bool IsRequestFailed(const TFuture<T>& future)
+// {
+//     if (!future.HasException()) {
+//         return HasError(future.GetValue());
+//     }
 
-    return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-enum class EOperation
-{
-    Read,
-    Write,
-    Zero
-};
-
-TStringBuf GetOperationString(EOperation op)
-{
-    switch (op) {
-        case EOperation::Read:  return "read";
-        case EOperation::Write: return "write";
-        case EOperation::Zero:  return "zero";
-    }
-}
+//     return true;
+// }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOperationRange
-{
-    ui64 Begin;
-    ui64 End;
-    EOperation Op;
+// struct TOperationRange
+// {
+//     ui64 Begin;
+//     ui64 End;
+//     EOperation Op;
 
-    ui32 Size() const
-    {
-        return SafeIntegerCast<ui32>(End - Begin + 1);
-    }
+//     ui32 Size() const
+//     {
+//         return SafeIntegerCast<ui32>(End - Begin + 1);
+//     }
 
-    bool Overlaps(const TOperationRange& other) const
-    {
-        return Begin <= other.End && other.Begin <= End;
-    }
+//     bool Overlaps(const TOperationRange& other) const
+//     {
+//         return Begin <= other.End && other.Begin <= End;
+//     }
 
-    bool operator ==(const TOperationRange& other) const
-    {
-        return Begin == other.Begin && End == other.End && Op == other.Op;
-    }
-};
+//     bool operator ==(const TOperationRange& other) const
+//     {
+//         return Begin == other.Begin && End == other.End && Op == other.Op;
+//     }
+// };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TVector<ui32> CalculateChecksumsForWriteRequest(
     const TSgList& sgList,
-    size_t splitLength)
+    size_t firstChecksumLength)
 {
     TVector<ui32> result;
-    for (size_t i = 0; i < sgList.size() / splitLength; i++) {
+    firstChecksumLength = Min(firstChecksumLength, sgList.size());
+    size_t i = 0;
+    TBlockChecksum checksum;
+    for (; i < firstChecksumLength; i++) {
+        auto blockData = sgList[i];
+        checksum.Extend(blockData.Data(), blockData.Size());
+    }
+    result.push_back(checksum.GetValue());
+
+    if (firstChecksumLength < sgList.size()) {
         TBlockChecksum checksum;
-        for (size_t j = i * splitLength; j < (i + 1) * splitLength; j++) {
-            auto blockData = sgList[j];
+        for (; i < sgList.size(); i++) {
+            TVector<ui32> result;
+            auto blockData = sgList[i];
             checksum.Extend(blockData.Data(), blockData.Size());
         }
         result.push_back(checksum.GetValue());
@@ -334,6 +326,7 @@ TDataIntegrityClient::TDataIntegrityClient(
     , StorageMediaKind(mediaKind)
     , BlockSize(blockSize)
 {
+    Y_UNUSED(StorageMediaKind);
     auto counters = monitoring->GetCounters();
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
     Counters = rootGroup->GetSubgroup("component", "data_integrity");
@@ -529,7 +522,7 @@ bool TDataIntegrityClient::HandleRequest(
         Client->ReadBlocksLocal(std::move(callContext), std::move(request));
 
     response = result.Apply(
-        [guaredSgList = std::move(sgList), result, this](const auto&) mutable
+        [guaredSgList = std::move(sgList), result](const auto&) mutable
             -> NProto::TReadBlocksLocalResponse
         {
             NProto::TReadBlocksLocalResponse response = result.ExtractValue();
@@ -582,8 +575,15 @@ bool TDataIntegrityClient::HandleRequest(
 {
     RequestCounters.WriteRequests->Inc();
 
+    const ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
+    // Calculate the point where we should split the checksums calculation
+    const ui64 splitChecksumsIndex =
+        AlignUp<ui64>(request->GetStartIndex() + 1, maxBlockCount);
+
     TSgList sgList = GetSgList(*request);
-    auto checksums = CalculateChecksumsForWriteRequest(sgList, );
+    auto checksums = CalculateChecksumsForWriteRequest(
+        sgList,
+        splitChecksumsIndex - request->GetStartIndex());
     for (ui32 checksum: checksums) {
         request->MutableChecksum()->AddChecksums(checksum);
     }
@@ -599,55 +599,29 @@ bool TDataIntegrityClient::HandleRequest(
 {
     RequestCounters.WriteRequests->Inc();
 
-    auto volume = GetVolume(request->GetDiskId());
-    if (!volume) {
-        // ignore unknown volume
-        return false;
-    }
-
-    EnsureZeroBlockDigestInitialized(*volume);
-
-    auto range = CreateRange(
-        request->GetStartIndex(),
-        request->BlocksCount,
-        EOperation::Write);
-
-    if (!range) {
-        // ignore invalid range
-        return false;
-    }
-
     auto guard = request->Sglist.Acquire();
-    if (guard) {
-        auto blocks = CalculateBlocksDigest(
-            guard.Get(),
-            *DigestCalculator,
-            volume->Info.GetBlockSize(),
-            range->Begin,
-            range->Size(),
-            AtomicGet(volume->ZeroBlockDigest)
-        );
-
-        PrepareWrite(*volume, *range);
-
-        response = Client->WriteBlocksLocal(
-            std::move(callContext), std::move(request)
-        ).Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
-            if (!IsRequestFailed(future)) {
-                CompleteWrite(*volume, *range, blocks_);
-            } else {
-                OnError(*volume, *range);
-            }
-        });
-    } else {
-        NProto::TWriteBlocksLocalResponse record;
-        *record.MutableError() = MakeError(
+    if (!guard) {
+        MakeFuture<NProto::TWriteBlocksLocalResponse>(TErrorResponse{MakeError(
             E_CANCELLED,
-            "failed to acquire sglist in ValidationClient");
-        response =
-            MakeFuture<NProto::TWriteBlocksLocalResponse>(std::move(record));
+            "failed to acquire sglist in DataIntegrityClient")});
+        return true;
     }
 
+    const ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
+    // Calculate the point where we should split the checksums calculation
+    const ui64 splitChecksumsIndex =
+        AlignUp<ui64>(request->GetStartIndex() + 1, maxBlockCount);
+
+    const auto& sgList = guard.Get();
+    auto checksums = CalculateChecksumsForWriteRequest(
+        sgList,
+        splitChecksumsIndex - request->GetStartIndex());
+    for (ui32 checksum: checksums) {
+        request->MutableChecksum()->AddChecksums(checksum);
+    }
+
+    response =
+        Client->WriteBlocksLocal(std::move(callContext), std::move(request));
     return true;
 }
 
@@ -710,14 +684,3 @@ IBlockStorePtr CreateDataIntegrityClient(
 }
 
 }   // namespace NCloud::NBlockStore::NClient
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <>
-void Out<NCloud::NBlockStore::NClient::TOperationRange>(
-    IOutputStream& out,
-    const NCloud::NBlockStore::NClient::TOperationRange& range)
-{
-    out << NCloud::NBlockStore::NClient::GetOperationString(range.Op)
-        << "[" << range.Begin << ".." << range.End << "]";
-}

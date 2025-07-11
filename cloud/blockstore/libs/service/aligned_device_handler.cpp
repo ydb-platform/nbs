@@ -299,25 +299,25 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     request->BlocksCount = requestBlockCount;
     request->BlockSize = BlockSize;
 
-    // For reliable DiskRegistry disks checksums are calculated by disk agents
-    // and returned in the response.
-    if (IsNonReliableDiskRegistryMediaKind(StorageMediaKind)) {
-        TBlockChecksum checksum;
-        if (auto guard = sgList.Acquire()) {
-            const TSgList& sgList = guard.Get();
+    // // For reliable DiskRegistry disks checksums are calculated by disk agents
+    // // and returned in the response.
+    // if (IsNonReliableDiskRegistryMediaKind(StorageMediaKind)) {
+    //     TBlockChecksum checksum;
+    //     if (auto guard = sgList.Acquire()) {
+    //         const TSgList& sgList = guard.Get();
 
-            const ui64 end =
-                Min(AlignUp<ui64>(blocksInfo.Range.Start + 1, MaxBlockCount),
-                    blocksInfo.Range.End);
-            const ui64 len = end - blocksInfo.Range.Start;
-            for (ui64 i = 0; i < len; i++) {
-                auto blockData = sgList[i];
-                checksum.Extend(blockData.Data(), blockData.Size());
-            }
-        }
+    //         const ui64 end =
+    //             Min(AlignUp<ui64>(blocksInfo.Range.Start + 1, MaxBlockCount),
+    //                 blocksInfo.Range.End);
+    //         const ui64 len = end - blocksInfo.Range.Start;
+    //         for (ui64 i = 0; i < len; i++) {
+    //             auto blockData = sgList[i];
+    //             checksum.Extend(blockData.Data(), blockData.Size());
+    //         }
+    //     }
 
-        request->SetChecksum(CalculateChecksum(request->Sglist));
-    }
+    //     request->SetChecksum(CalculateChecksum(request->Sglist));
+    // }
 
     if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.

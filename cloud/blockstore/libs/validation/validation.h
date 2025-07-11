@@ -55,8 +55,7 @@ namespace NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IBlockStoreValidationClient
-    : public IBlockStore
+struct IBlockStoreValidationClient: public IBlockStore
 {
     virtual void InitializeBlockChecksums(const TString& volumeName) = 0;
     virtual void SetBlockChecksums(
@@ -73,8 +72,6 @@ IBlockStoreValidationClientPtr CreateValidationClient(
     TString loggingTag = {},
     const TBlockRange64& validationRange = DefaultValidationRange);
 
-}   // namespace NClient
-
 ////////////////////////////////////////////////////////////////////////////////
 
 IBlockStorePtr CreateDataIntegrityClient(
@@ -83,6 +80,8 @@ IBlockStorePtr CreateDataIntegrityClient(
     IBlockStorePtr client,
     NProto::EStorageMediaKind mediaKind,
     ui32 blockSize);
+
+}   // namespace NClient
 
 ////////////////////////////////////////////////////////////////////////////////
 
