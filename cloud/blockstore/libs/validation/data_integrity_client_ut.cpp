@@ -12,10 +12,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
-#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
-
-#include <array>
 
 namespace NCloud::NBlockStore {
 
@@ -96,25 +93,26 @@ std::shared_ptr<NProto::TWriteBlocksLocalRequest> CreateWriteBlocksLocalRequest(
     return request;
 }
 
-// std::shared_ptr<NProto::TReadBlocksLocalRequest> CreateReadBlocksLocalRequest(
-//     TVector<TBlocksHolder>& blocksHolderList,
-//     const TString& diskId,
-//     ui32 blockSize,
-//     ui64 startIndex,
-//     ui32 blocksCount)
-// {
-//     TSgList sglist;
-//     auto blocksHolder = FillBlocks(sglist, blockSize, blocksCount);
-//     blocksHolderList.push_back(blocksHolder);
+std::shared_ptr<NProto::TReadBlocksLocalRequest> CreateReadBlocksLocalRequest(
+    TVector<TBlocksHolder>& blocksHolderList,
+    const TString& diskId,
+    ui32 blockSize,
+    ui64 startIndex,
+    ui32 blocksCount)
+{
+    TSgList sglist;
+    auto blocksHolder =
+        ResizeAndFillBlocksWithRandomData(sglist, blockSize, blocksCount);
+    blocksHolderList.push_back(blocksHolder);
 
-//     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
-//     request->SetDiskId(diskId);
-//     request->SetStartIndex(startIndex);
-//     request->SetBlocksCount(blocksCount);
-//     request->BlockSize = blockSize;
-//     request->Sglist = TGuardedSgList(std::move(sglist));
-//     return request;
-// }
+    auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
+    request->SetDiskId(diskId);
+    request->SetStartIndex(startIndex);
+    request->SetBlocksCount(blocksCount);
+    request->BlockSize = blockSize;
+    request->Sglist = TGuardedSgList(std::move(sglist));
+    return request;
+}
 
 std::shared_ptr<NProto::TWriteBlocksRequest> CreateWriteBlocksRequest(
     const TString& diskId,
@@ -129,25 +127,16 @@ std::shared_ptr<NProto::TWriteBlocksRequest> CreateWriteBlocksRequest(
     return request;
 }
 
-// std::shared_ptr<NProto::TReadBlocksRequest> CreateReadBlocksRequest(
-//     const TString& diskId,
-//     ui64 startIndex,
-//     ui32 blocksCount)
-// {
-//     auto request = std::make_shared<NProto::TReadBlocksRequest>();
-//     request->SetDiskId(diskId);
-//     request->SetStartIndex(startIndex);
-//     request->SetBlocksCount(blocksCount);
-//     return request;
-// }
-
-NProto::TReadBlocksResponse CreateReadBlocksResponse(
-    ui32 blockSize,
+std::shared_ptr<NProto::TReadBlocksRequest> CreateReadBlocksRequest(
+    const TString& diskId,
+    ui64 startIndex,
     ui32 blocksCount)
 {
-    NProto::TReadBlocksResponse response;
-    ResizeAndFillBlocksWithRandomData(*response.MutableBlocks(), blockSize, blocksCount);
-    return response;
+    auto request = std::make_shared<NProto::TReadBlocksRequest>();
+    request->SetDiskId(diskId);
+    request->SetStartIndex(startIndex);
+    request->SetBlocksCount(blocksCount);
+    return request;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -286,26 +275,64 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
         {
             NProto::TReadBlocksResponse response;
+            FillBlocksWithDeterministicData(
+                *response.MutableBlocks(),
+                BlockSize,
+                request->GetBlocksCount());
+            response.MutableChecksum()->AddChecksums(675155616);
             return MakeFuture(std::move(response));
         };
 
-        auto request = CreateWriteBlocksRequest(
+        auto request = CreateReadBlocksRequest(
+            env.DiskId,
+            42,   // startIndex
+            maxBlockCount);
+
+        auto future = dataIntegrityClient->ReadBlocks(
+            MakeIntrusive<TCallContext>(),
+            request);
+        auto response = future.GetValueSync();
+        UNIT_ASSERT_C(
+            !HasError(response.GetError()),
+            TStringBuilder() << FormatError(response.GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldCalculateChecksumsForReadLocalRequests)
+    {
+        constexpr ui32 BlockSize = 4_KB;
+        TTestEnv env{};
+        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
+            env.Logging,
+            env.Monitoring,
+            env.TestClient,
+            NProto::STORAGE_MEDIA_SSD,
+            BlockSize);
+
+        constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
+
+        env.TestClient->ReadBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest>)
+        {
+            NProto::TReadBlocksLocalResponse response;
+            response.MutableChecksum()->AddChecksums(675155616);
+            return MakeFuture(std::move(response));
+        };
+
+        auto request = CreateReadBlocksLocalRequest(
+            env.BlocksHolderList,
             env.DiskId,
             BlockSize,
             42,   // startIndex
             maxBlockCount);
+        FillBlocksWithDeterministicData(env.BlocksHolderList.back());
 
-        ui8 value = 0;
-        for (auto& buffer: *request->MutableBlocks()->MutableBuffers()) {
-            for (char& byte: buffer) {
-                byte = static_cast<char>(++value % 128);
-            }
-        }
-        auto future = dataIntegrityClient->WriteBlocks(
+        auto future = dataIntegrityClient->ReadBlocksLocal(
             MakeIntrusive<TCallContext>(),
             request);
         auto response = future.GetValueSync();
-        UNIT_ASSERT(!HasError(response.GetError()));
+        UNIT_ASSERT_C(
+            !HasError(response.GetError()),
+            TStringBuilder() << FormatError(response.GetError()));
     }
 
     void ShouldCalculateChecksumsForWriteRequests(ui32 blockSize)
