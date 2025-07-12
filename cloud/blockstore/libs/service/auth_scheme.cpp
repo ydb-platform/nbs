@@ -64,6 +64,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::DiscoverInstances:
         case EBlockStoreRequest::QueryAvailableStorage:
         case EBlockStoreRequest::QueryAgentsInfo:
+        case EBlockStoreRequest::DescribeVolume:
             return CreatePermissionList({});
         // UnmountVolume can't expose or corrupt any user data.
         case EBlockStoreRequest::UnmountVolume:
@@ -106,7 +107,6 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::GetChangedBlocks:
         case EBlockStoreRequest::GetCheckpointStatus:
             return CreatePermissionList({EPermission::Read});
-        case EBlockStoreRequest::DescribeVolume:
         case EBlockStoreRequest::DescribeVolumeModel:
         case EBlockStoreRequest::DescribePlacementGroup:
         case EBlockStoreRequest::DescribeEndpoint:
