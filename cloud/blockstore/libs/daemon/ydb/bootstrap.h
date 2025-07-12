@@ -131,6 +131,8 @@ protected:
 
 private:
     void InitConfigs();
+    void InitDiskAgentBackend();
+    void InitLocalStorageProvider(TString submissionThreadName);
 };
 
 }   // namespace NCloud::NBlockStore::NServer
