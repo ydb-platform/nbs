@@ -32,6 +32,27 @@ bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
     return !disabledAsHdd && fs.GetFeatures().GetTwoStageReadEnabled();
 }
 
+void CopyFileDataFromContiguousBuffer(
+    const TString& logTag,
+    const TByteRange origin,
+    const TByteRange aligned,
+    const ui64 fileSize,
+    IBlockBuffer& buffer,
+    TString* out)
+{
+    Y_UNUSED(logTag);
+    const auto end = Min(fileSize, origin.End());
+    if (end <= origin.Offset) {
+        return;
+    }
+
+    out->ReserveAndResize(end - origin.Offset);
+    char* outPtr = out->begin();
+    const auto block = buffer.GetBlock(0);
+    const auto shift = origin.Offset - aligned.Offset;
+    memcpy(outPtr, block.data() + shift, end - origin.Offset);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TReadDataActor final: public TActorBootstrapped<TReadDataActor>
@@ -594,7 +615,7 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             offset);
     }
 
-    CopyFileData(
+    CopyFileDataFromContiguousBuffer(
         LogTag,
         OriginByteRange,
         AlignedByteRange,
