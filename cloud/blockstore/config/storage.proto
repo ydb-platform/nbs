@@ -1270,5 +1270,5 @@ message TStorageServiceConfig
     // Bandwidth quota for direct write requests to mirror disks.
     // If a disk starts sending more than the DirectWriteBandwidthQuota bytes per second,
     // we start using MultiAgent write requests.
-    optional uint32 DirectWriteBandwidthQuota = 440;
+    optional uint64 DirectWriteBandwidthQuota = 440;
 }
