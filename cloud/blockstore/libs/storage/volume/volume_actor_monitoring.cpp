@@ -1181,37 +1181,6 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         return;
     }
 
-    const TString script = R"(
-        <script>
-            function applyRequestsValues(stat) {
-                for (let key in stat) {
-                    const element = document.getElementById(key);
-                    if (element) {
-                        element.textContent = stat[key];
-                    }
-                }
-            }
-
-            function loadRequestsLatency() {
-                var url = '?action=getRequestsLatency';
-                url += '&TabletID=)" + ToString(TabletID()) + R"(';
-                $.ajax({
-                    url: url,
-                    success: function(result) {
-                        applyRequestsValues(result.stat);
-                        applyRequestsValues(result.percentiles);
-                    },
-                    error: function(jqXHR, status) {
-                        console.log('error');
-                    }
-                });
-            }
-
-            setInterval(function() { loadRequestsLatency(); }, 1000);
-            loadRequestsLatency();
-        </script>
-        )";
-
  const TString style = R"(
         <style>
             .table-latency {
@@ -1264,13 +1233,41 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         </style>
         )";
 
+    const TString containerId = "requests-latency-container";
+    const TString toggleId = "requests-auto-refresh-toggle";
+
     HTML (out) {
-        out << script;
         out << style;
 
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
+
+        out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
             RenderSizeTable(out, State->GetBlockSize());
         }
+        out << "</div>";
+
+        out << R"(<script>
+            function updateRequestsData(result, container) {
+                const data = { ...result.stat, ...result.percentiles };
+                for (let key in data) {
+                    const element = container.querySelector('#' + key);
+                    if (element) {
+                        element.textContent = data[key];
+                    }
+                }
+            }
+        </script>)";
+
+        RenderAutoRefreshScript(
+            out,
+            containerId,
+            toggleId,
+            "getRequestsLatency",
+            TabletID(),
+            1000,
+            "updateRequestsData"
+        );
     }
 }
 
