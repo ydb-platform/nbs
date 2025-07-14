@@ -1090,7 +1090,6 @@ func TestTasksShouldFailRunningAfterRetriableErrorCountForTaskTypeExceeded(
 	failsCount, err := getTaskMetadata(ctx, s.scheduler, id)
 	require.NoError(t, err)
 	require.EqualValues(t, unstableTaskMaxRetriesCount+1, failsCount)
-
 }
 
 func TestTasksShouldNotRestoreRunningAfterNonRetriableError(t *testing.T) {
