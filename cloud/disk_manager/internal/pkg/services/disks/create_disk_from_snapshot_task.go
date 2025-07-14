@@ -9,6 +9,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -66,7 +67,7 @@ func (t *createDiskFromSnapshotTask) Run(
 		SrcSnapshotID: t.request.SrcSnapshotId,
 		BlocksCount:   params.BlocksCount,
 		BlockSize:     params.BlockSize,
-		Kind:          diskKindToString(params.Kind),
+		Kind:          common.DiskKindToString(params.Kind),
 		CloudID:       params.CloudId,
 		FolderID:      params.FolderId,
 
