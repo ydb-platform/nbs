@@ -81,6 +81,8 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 
 	storage := newStorage(t, ctx, db)
 
+	zeroTime := time.Time{}
+
 	capacity1 := ClusterCapacity{
 		ZoneID:     "zone-a",
 		CellID:     "zone-a",
@@ -129,11 +131,11 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		FreeBytes:  2048,
 	}
 
-	err = storage.AddClusterCapacities(ctx, []ClusterCapacity{
-		capacity1,
-		cellCapacity1,
-		cellCapacitySsd1,
-	})
+	err = storage.UpdateClusterCapacities(
+		ctx,
+		[]ClusterCapacity{capacity1, cellCapacity1, cellCapacitySsd1},
+		zeroTime, // deleteBefore
+	)
 	require.NoError(t, err)
 
 	capacities, err := storage.GetRecentClusterCapacities(
@@ -155,7 +157,11 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, []ClusterCapacity{cellCapacitySsd1}, capacities)
 
-	err = storage.AddClusterCapacities(ctx, []ClusterCapacity{capacity2})
+	err = storage.UpdateClusterCapacities(
+		ctx,
+		[]ClusterCapacity{capacity2},
+		zeroTime, // deleteBefore
+	)
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
@@ -169,10 +175,11 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		cellCapacity1,
 	}, capacities)
 
-	err = storage.AddClusterCapacities(ctx, []ClusterCapacity{
-		cellCapacity2,
-		cellCapacitySsd2,
-	})
+	err = storage.UpdateClusterCapacities(
+		ctx,
+		[]ClusterCapacity{cellCapacity2, cellCapacitySsd2},
+		zeroTime, // deleteBefore
+	)
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
@@ -195,7 +202,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 	require.ElementsMatch(t, []ClusterCapacity{cellCapacitySsd2}, capacities)
 }
 
-func TestClearOldClusterCapacities(t *testing.T) {
+func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -205,23 +212,23 @@ func TestClearOldClusterCapacities(t *testing.T) {
 
 	storage := newStorage(t, ctx, db)
 
-	createdBefore := time.Now()
-
-	err = storage.ClearOldClusterCapacities(ctx, createdBefore)
-	require.NoError(t, err)
-
-	capacity := ClusterCapacity{
+	deleteBefore := time.Now()
+	capacity1 := ClusterCapacity{
 		ZoneID:     "zone-a",
 		CellID:     "zone-a",
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
 	}
+	capacity2 := ClusterCapacity{
+		ZoneID:     "zone-a",
+		CellID:     "zone-a-shard1",
+		Kind:       types.DiskKind_DISK_KIND_HDD,
+		TotalBytes: 1024,
+		FreeBytes:  1024,
+	}
 
-	err = storage.AddClusterCapacities(ctx, []ClusterCapacity{capacity})
-	require.NoError(t, err)
-
-	err = storage.ClearOldClusterCapacities(ctx, createdBefore)
+	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity1}, deleteBefore)
 	require.NoError(t, err)
 
 	capacities, err := storage.GetRecentClusterCapacities(
@@ -230,12 +237,9 @@ func TestClearOldClusterCapacities(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.Len(t, capacities, 1)
-	require.Equal(t, capacity, capacities[0])
+	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity1})
 
-	createdBefore = time.Now()
-
-	err = storage.ClearOldClusterCapacities(ctx, createdBefore)
+	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity2}, deleteBefore)
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
@@ -244,5 +248,25 @@ func TestClearOldClusterCapacities(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.Empty(t, capacities)
+	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity1, capacity2})
+
+	deleteBefore = time.Now()
+	capacity3 := ClusterCapacity{
+		ZoneID:     "zone-a",
+		CellID:     "zone-a",
+		Kind:       types.DiskKind_DISK_KIND_HDD,
+		TotalBytes: 2048,
+		FreeBytes:  2048,
+	}
+
+	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity3}, deleteBefore)
+	require.NoError(t, err)
+
+	capacities, err = storage.GetRecentClusterCapacities(
+		ctx,
+		"zone-a",
+		types.DiskKind_DISK_KIND_HDD,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity3})
 }

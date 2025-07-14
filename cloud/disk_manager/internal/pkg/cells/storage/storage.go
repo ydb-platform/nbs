@@ -29,7 +29,7 @@ type clusterCapacityState struct {
 	Kind       string
 	TotalBytes uint64
 	FreeBytes  uint64
-	AddedAt    time.Time
+	CreatedAt  time.Time
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,7 +57,7 @@ func (c *clusterCapacityState) structValue() persistence.Value {
 		persistence.StructFieldValue("kind", persistence.UTF8Value(c.Kind)),
 		persistence.StructFieldValue("total_bytes", persistence.Uint64Value(c.TotalBytes)),
 		persistence.StructFieldValue("free_bytes", persistence.Uint64Value(c.FreeBytes)),
-		persistence.StructFieldValue("added_at", persistence.TimestampValue(c.AddedAt)),
+		persistence.StructFieldValue("created_at", persistence.TimestampValue(c.CreatedAt)),
 	)
 }
 
@@ -70,7 +70,7 @@ func clusterCapacityStateStructTypeString() string {
 		kind: Utf8,
 		total_bytes: Uint64,
 		free_bytes: Uint64,
-		added_at: Timestamp>`
+		created_at: Timestamp>`
 }
 
 func clusterCapacityStateTableDescription() persistence.CreateTableDescription {
@@ -81,9 +81,9 @@ func clusterCapacityStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("total_bytes", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("free_bytes", persistence.Optional(persistence.TypeUint64)),
 
-		persistence.WithColumn("added_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
 
-		persistence.WithPrimaryKeyColumn("kind", "cell_id", "added_at"),
+		persistence.WithPrimaryKeyColumn("kind", "cell_id", "created_at"),
 	)
 }
 
@@ -131,9 +131,10 @@ func scanClusterCapacities(
 ////////////////////////////////////////////////////////////////////////////////
 
 type Storage interface {
-	AddClusterCapacities(
+	UpdateClusterCapacities(
 		ctx context.Context,
 		capacities []ClusterCapacity,
+		deleteBefore time.Time,
 	) error
 
 	GetRecentClusterCapacities(
@@ -141,11 +142,6 @@ type Storage interface {
 		zone_id string,
 		kind types.DiskKind,
 	) ([]ClusterCapacity, error)
-
-	ClearOldClusterCapacities(
-		ctx context.Context,
-		createdBefore time.Time,
-	) error
 }
 
 ////////////////////////////////////////////////////////////////////////////////
