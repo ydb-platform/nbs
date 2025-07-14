@@ -490,21 +490,12 @@ void TPartitionActor::HandleWriteBlobCompleted(
         if (State->IncrementWriteBlobErrorCount()
                 >= Config->GetMaxWriteBlobErrorsBeforeSuicide())
         {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "%s Stop tablet because of too many WritedBlob errors (actor "
-                "%s, group %u): %s",
-                LogTitle.GetWithTime().c_str(),
-                ev->Sender.ToString().c_str(),
-                groupId,
-                FormatError(msg->GetError()).c_str());
-
             ReportTabletBSFailure(
                 TStringBuilder()
-                << TabletID()
-                << "tablet stop because of too many WritedBlob errors"
-                << ", group " << groupId);
+                << LogTitle.GetWithTime()
+                << "Stop tablet because of too many WriteBlob errors (actor "
+                << ev->Sender.ToString() << " group " << groupId << "): "
+                << FormatError(msg->GetError()));
             Suicide(ctx);
             return;
         }

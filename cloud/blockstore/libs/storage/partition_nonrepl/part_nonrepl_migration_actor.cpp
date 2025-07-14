@@ -224,26 +224,13 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             const auto& target = migration->GetTargetDevice();
 
             if (device.GetBlocksCount() != target.GetBlocksCount()) {
-                LOG_ERROR(
-                    ctx,
-                    TBlockStoreComponents::PARTITION,
-                    "[%s] source (%s) block count (%lu)"
-                    " != target (%s) block count (%lu)",
-                    SrcConfig->GetName().c_str(),
-                    device.GetDeviceUUID().c_str(),
-                    device.GetBlocksCount(),
-                    target.GetDeviceUUID().c_str(),
-                    target.GetBlocksCount());
-
                 ReportBadMigrationConfig(
                     TStringBuilder()
-                    << "Disk=" << SrcConfig->GetName()
-                    << ", SourceDevice=" << device.GetDeviceUUID()
-                    << ", TargetDevice=" << target.GetDeviceUUID()
-                    << ", BlockCountMismatch: source="
-                    << device.GetBlocksCount()
-                    << ", target=" << target.GetBlocksCount());
-                return {};
+                    << "[" << SrcConfig->GetName() << "] "
+                    << "source (" << device.GetDeviceUUID() << ") block count ("
+                    << device.GetBlocksCount() << ") "
+                    << "!= target (" << target.GetDeviceUUID()
+                    << ") block count (" << target.GetBlocksCount() << ")");
             }
 
             device.CopyFrom(migration->GetTargetDevice());
@@ -296,8 +283,8 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
             ReportMigrationFailed(
-                TStringBuilder()
-                << "SrcConfig=" << SrcConfig->GetName());
+                TStringBuilder() << "Finish migration failed, diskId: "
+                                 << SrcConfig->GetName().Quote());
             return;
         }
     }

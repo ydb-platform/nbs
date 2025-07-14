@@ -515,8 +515,6 @@ private:
 
         ::NCloud::SetCurrentThreadName(Name);
 
-        TLog& Log = AppCtx.Log;
-
         while (true) {
             int res = RunRequestQueue();
             if (res != -EAGAIN) {
@@ -524,9 +522,8 @@ private:
                     ReportVhostQueueRunningError(
                         TStringBuilder()
                         << "ExecutorName=" << Name
-                        << " Failed to run vhost request queue");
-                    STORAGE_ERROR(
-                        "Failed to run vhost request queue. Return code: " << -res);
+                        << " Failed to run vhost request queue. Return code: "
+                        << -res);
                 }
                 break;
             }

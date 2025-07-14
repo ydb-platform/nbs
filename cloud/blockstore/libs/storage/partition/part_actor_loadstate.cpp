@@ -167,19 +167,10 @@ void TPartitionActor::CompleteLoadState(
         // example: CLOUDINC-2027
         ReportInvalidTabletConfig(
             TStringBuilder()
-            << "DiskId" << partitionConfig.diskid()
-            << ";tablet info differs from config: tabletChannelCount < "
+            << LogTitle.GetWithTime()
+            << " tablet info differs from config: tabletChannelCount < "
                "configChannelCount ("
             << tabletChannelCount << " < " << configChannelCount << ")");
-
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s tablet info differs from config: tabletChannelCount < "
-            "configChannelCount (%u < %u)",
-            LogTitle.GetWithTime().c_str(),
-            tabletChannelCount,
-            configChannelCount);
     } else if (tabletChannelCount > configChannelCount) {
         // legacy channel configuration
         LOG_WARN(

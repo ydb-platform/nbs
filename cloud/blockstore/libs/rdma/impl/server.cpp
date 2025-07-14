@@ -688,14 +688,12 @@ void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
 void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
 {
     if (status != IBV_WC_SUCCESS) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id) << ": "
-            << NVerbs::GetStatusString(status));
-
         Counters->RecvRequestError();
+
         ReportRdmaError(
-            TStringBuilder()
-            << "RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " failed");
+            TStringBuilder() << "RECV " << TWorkRequestId(recv->wr.wr_id)
+                             << " failed: " << NVerbs::GetStatusString(status));
+
         RecvRequest(recv);  // should always be posted
         return;
     }
@@ -704,14 +702,13 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
     const int version = ParseMessageHeader(msg);
 
     if (version != RDMA_PROTO_VERSION) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": incompatible protocol version "
-            << version << " != "<< int(RDMA_PROTO_VERSION));
-
         Counters->RecvRequestError();
+
         ReportRdmaError(
             TStringBuilder() << "RECV " << TWorkRequestId(recv->wr.wr_id)
-                             << " incompatible protocol version");
+                             << " incompatible protocol version " << version
+                             << " != " << static_cast<int>(RDMA_PROTO_VERSION));
+
         RecvRequest(recv);  // should always be posted
         return;
     }
@@ -851,14 +848,12 @@ void TServerSession::ReadRequestDataCompleted(
     }
 
     if (status != IBV_WC_SUCCESS) {
-        RDMA_ERROR("READ " << TWorkRequestId(send->wr.wr_id) << ": "
-            << NVerbs::GetStatusString(status));
-
         Counters->ReadRequestError();
+
         ReportRdmaError(
-            TStringBuilder()
-            << "READ " << TWorkRequestId(send->wr.wr_id)
-            << " failed");
+            TStringBuilder() << "READ " << TWorkRequestId(send->wr.wr_id)
+                             << " failed: " << NVerbs::GetStatusString(status));
+
         FreeRequest(std::move(req), send);
         return;
     }
@@ -945,16 +940,12 @@ void TServerSession::WriteResponseDataCompleted(
     }
 
     if (status != IBV_WC_SUCCESS) {
-        if (status != IBV_WC_SUCCESS) {
-            RDMA_ERROR("WRITE " << TWorkRequestId(send->wr.wr_id)
-                << ": " << NVerbs::GetStatusString(status));
-        }
-
         Counters->WriteResponseError();
+
         ReportRdmaError(
-            TStringBuilder()
-            << "WRITE " << TWorkRequestId(send->wr.wr_id)
-            << " failed");
+            TStringBuilder() << "WRITE " << TWorkRequestId(send->wr.wr_id)
+                             << " failed: " << NVerbs::GetStatusString(status));
+
         FreeRequest(std::move(req), send);
         return;
     }
@@ -1007,13 +998,12 @@ void TServerSession::SendResponseCompleted(TSendWr* send, ibv_wc_status status)
     }
 
     if (status != IBV_WC_SUCCESS) {
-        RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
-            << ": " << NVerbs::GetStatusString(status));
-
         Counters->SendResponseError();
+
         ReportRdmaError(
-            TStringBuilder()
-            << "SEND " << TWorkRequestId(send->wr.wr_id) << " failed");
+            TStringBuilder() << "SEND " << TWorkRequestId(send->wr.wr_id)
+                             << " failed: " << NVerbs::GetStatusString(status));
+
         FreeRequest(std::move(req), send);
         return;
     }

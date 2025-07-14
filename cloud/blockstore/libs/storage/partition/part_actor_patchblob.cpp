@@ -371,16 +371,10 @@ void TPartitionActor::HandlePatchBlobCompleted(
     }
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s Stop tablet because of PatchBlob error: %s",
-            LogTitle.GetWithTime().c_str(),
-            FormatError(msg->GetError()).c_str());
-
         ReportTabletBSFailure(
-            TStringBuilder()
-            << TabletID() << " tablet stop because of PatchBlob error");
+            TStringBuilder() << LogTitle.GetWithTime()
+                             << " Stop tablet because of PatchBlob error: "
+                             << FormatError(msg->GetError()));
         Suicide(ctx);
         return;
     }

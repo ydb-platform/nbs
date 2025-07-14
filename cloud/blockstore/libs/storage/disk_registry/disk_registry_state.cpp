@@ -7634,13 +7634,6 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
             TStringBuilder()
             << "DiskId=" << masterDiskId << ", DeviceId=" << deviceId
             << ", automatic device replacement cancelled due to rate limit");
-
-        STORAGE_ERROR(
-            "Automatic device replacement cancelled due to high"
-            " replacement rate, diskId: %s, deviceId: %s",
-            masterDiskId.c_str(),
-            deviceId.c_str());
-
         return false;
     }
 
@@ -7653,13 +7646,6 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
             TStringBuilder()
             << "DiskId=" << masterDiskId << ", DeviceId=" << deviceId
             << " automatic device replacement forbidden by ReplicaTable");
-
-        STORAGE_ERROR(
-            "Automatic device replacement not allowed by ReplicaTable"
-            ", diskId: %s, deviceId: %s",
-            masterDiskId.c_str(),
-            deviceId.c_str());
-
         return false;
     }
 

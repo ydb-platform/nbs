@@ -152,21 +152,12 @@ void TPartitionActor::HandleReadBlobCompleted(
         if (State->IncrementReadBlobErrorCount()
                 >= Config->GetMaxReadBlobErrorsBeforeSuicide())
         {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "%s Stop tablet because of too many ReadBlob errors (actor %s, "
-                "group %u): %s",
-                LogTitle.GetWithTime().c_str(),
-                ev->Sender.ToString().c_str(),
-                msg->GroupId,
-                FormatError(msg->GetError()).c_str());
-
             ReportTabletBSFailure(
                 TStringBuilder()
-                << "tablet stop because of too many ReadBlob errors"
-                << TabletID()
-                << ", group " << groupId);
+                << LogTitle.GetWithTime()
+                << "Stop tablet because of too many ReadBlob errors (actor "
+                << ev->Sender.ToString() << " group " << groupId
+                << "): " << FormatError(msg->GetError()));
             Suicide(ctx);
             return;
         }

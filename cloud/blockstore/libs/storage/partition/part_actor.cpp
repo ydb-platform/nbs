@@ -227,7 +227,7 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                         \
         if (value < counter.Get()) {                                          \
             ReportCounterUpdateRace(                                          \
-                TStringBuilder() << "CounterUpdateRace: category="            \
+                TStringBuilder() << "category="                               \
                 << #category  << " name=" << #name);                          \
             LOG_ERROR(                                                        \
                 ctx,                                                          \
@@ -290,9 +290,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
             LogTitle.GetWithTime().c_str(),
             FormatDuration(timeout).c_str());
     }
+
     TStringBuilder sb;
     {
-
         for (const auto channel: channels) {
             if (sb.size()) {
                 sb << ", ";

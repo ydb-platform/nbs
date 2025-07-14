@@ -155,11 +155,6 @@ void TPartitionActor::CompleteLoadState(
     ui32 configChannelCount = args.Meta->GetConfig().ExplicitChannelProfilesSize();
 
     if (tabletChannelCount != configChannelCount) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-            << "tablet info differs from config: "
-            << "tabletChannelCount != configChannelCount ("
-            << tabletChannelCount << " != " << configChannelCount << ")");
         ReportInvalidTabletConfig(
             TStringBuilder()
             << "[" << TabletID() << "] "

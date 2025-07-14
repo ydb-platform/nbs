@@ -347,8 +347,9 @@ void TVolumeActor::HandleAllocateDiskError(
     if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED && !localDiskAllocationRetry)
     {
         ReportDiskAllocationFailure(
-            TStringBuilder() << "Disk " << GetNewestConfig().GetDiskId().Quote()
-                             << ": disk allocation failed");
+            TStringBuilder()
+            << "Disk: " << GetNewestConfig().GetDiskId().Quote()
+            << " allocation failed");
     }
     LOG_ERROR(
         ctx,

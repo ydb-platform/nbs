@@ -1107,12 +1107,14 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     try {
         Verbs->PostSend(Connection->qp, &send->wr);
     } catch (const TServiceError& e) {
-        RDMA_ERROR(
-            "SEND " << TWorkRequestId(send->wr.wr_id) << ": " << e.what());
         SendQueue.Push(send);
+
         ReportRdmaError(
-            TStringBuilder() << "ReqId=" << req->ReqId << " WorkRequestId="
-                             << send->wr.wr_id << " RDMA send error");
+            TStringBuilder()
+            << "SEND " << TWorkRequestId(send->wr.wr_id)
+            << ": ReqId=" << req->ReqId << " WorkRequestId=" << send->wr.wr_id
+            << " RDMA send error: " << e.what());
+
         Disconnect();
 
         Counters->RequestEnqueued();
@@ -1142,13 +1144,12 @@ void TClientEndpoint::SendRequestCompleted(
     };
 
     if (status != IBV_WC_SUCCESS) {
-        RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
-            << ": " << NVerbs::GetStatusString(status));
-
         Counters->SendRequestError();
+
         ReportRdmaError(
-            TStringBuilder()
-            << "SEND " << TWorkRequestId(send->wr.wr_id) << " failed");
+            TStringBuilder() << "SEND " << TWorkRequestId(send->wr.wr_id)
+                             << " failed: " << NVerbs::GetStatusString(status));
+
         Disconnect();
         return;
     }
@@ -1191,12 +1192,13 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv)
     try {
         Verbs->PostRecv(Connection->qp, &recv->wr);
     } catch (const TServiceError& e) {
-        RDMA_ERROR(
-            "RECV " << TWorkRequestId(recv->wr.wr_id) << ": " << e.what());
         RecvQueue.Push(recv);
+
         ReportRdmaError(
-            TStringBuilder() << "RECV " << TWorkRequestId(recv->wr.wr_id)
-                             << " failed to post receive request");
+            TStringBuilder()
+            << "RECV " << TWorkRequestId(recv->wr.wr_id)
+            << " failed to post receive request: " << e.what());
+
         Disconnect();
         return;
     }
@@ -1209,15 +1211,14 @@ void TClientEndpoint::RecvResponseCompleted(
     ibv_wc_status wc_status)
 {
     if (wc_status != IBV_WC_SUCCESS) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": " << NVerbs::GetStatusString(wc_status));
-
         Counters->RecvResponseError();
         RecvQueue.Push(recv);
+
         ReportRdmaError(
             TStringBuilder()
             << "RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " failed");
+            << " failed: " << NVerbs::GetStatusString(wc_status));
+
         Disconnect();
         return;
     }
