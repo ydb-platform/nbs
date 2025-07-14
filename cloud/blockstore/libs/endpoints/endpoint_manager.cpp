@@ -1820,7 +1820,7 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
             ReportEndpointRestoringError(
                 TStringBuilder()
                 << "Failed to deserialize request. ID: " << endpointId
-                << ", DiskId: " << request->GetDiskId());
+                << ", error: " << FormatError(error));
             continue;
         }
 
