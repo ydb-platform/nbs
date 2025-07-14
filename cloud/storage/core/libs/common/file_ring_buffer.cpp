@@ -15,7 +15,6 @@ namespace {
 
 constexpr ui32 VERSION = 2;
 constexpr ui64 INVALID_POS = Max<ui64>();
-constexpr TStringBuf INVALID_MARKER = {};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -155,7 +154,7 @@ private:
 
         const auto* data = Data.GetEntryData(eh);
         if (data == nullptr) {
-            visitor(eh->Checksum, INVALID_MARKER);
+            visitor(eh->Checksum, {});
             return INVALID_POS;
         }
         visitor(eh->Checksum, {data, eh->Size});
@@ -363,7 +362,7 @@ public:
         }
 
         if (pos != Header()->WritePos && pos != INVALID_POS) {
-            visitor(0, INVALID_MARKER);
+            visitor(0, {});
         }
     }
 
