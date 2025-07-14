@@ -138,7 +138,8 @@ ITraceReaderPtr SetupTraceReaderWithOpentelemetryExport(
     TString componentName,
     TString tag,
     ITraceServiceClientPtr traceServiceClient,
-    TString serviceName)
+    TString serviceName,
+    ELogPriority priority)
 {
     ITraceReaderPtr traceReader =
         std::make_shared<TTraceReaderWithRingBuffer>(id, tag);
@@ -155,7 +156,8 @@ ITraceReaderPtr SetupTraceReaderWithOpentelemetryExport(
         std::move(traceReader),
         std::move(logging),
         std::move(componentName),
-        std::move(tag));
+        std::move(tag),
+        priority);
     return traceReader;
 }
 
@@ -173,7 +175,8 @@ ITraceReaderPtr SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
         componentName,
         "SlowRequests",
         std::move(traceServiceClient),
-        std::move(serviceName));
+        std::move(serviceName),
+        ELogPriority::TLOG_WARNING);
 
     return CreateSlowRequestsFilter(
         std::move(id),
