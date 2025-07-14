@@ -160,9 +160,9 @@ private:
         return pos + sizeof(TEntryHeader) + eh->Size;
     }
 
-    void SetCorruptedIf(bool condition)
+    void SetCorrupted()
     {
-        Corrupted |= condition;
+        Corrupted = true;
     }
 
 public:
@@ -358,7 +358,10 @@ public:
             }
         }
 
-        SetCorruptedIf(pos == INVALID_POS || pos != Header()->WritePos);
+        if (pos == INVALID_POS || pos != Header()->WritePos)
+        {
+            SetCorrupted();
+        }
     }
 
     bool IsCorrupted() const
