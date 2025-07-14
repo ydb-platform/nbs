@@ -20,8 +20,10 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
+
 #include <library/cpp/logger/log.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -115,6 +117,8 @@ protected:
     virtual IStartable* GetKmsClient() = 0;
     virtual IStartable* GetRootKmsClient() = 0;
 
+    virtual ITraceServiceClientPtr GetTraceServiceClient() = 0;
+
     virtual void InitSpdk() = 0;
     virtual void InitRdmaClient() = 0;
     virtual void InitRdmaServer() = 0;
@@ -123,7 +127,7 @@ protected:
 
     virtual void WarmupBSGroupConnections() = 0;
 
-    void InitLWTrace();
+    void InitLWTrace(const TString& serviceNameForExporter);
     void InitProfileLog();
     void InitLogs();
 
