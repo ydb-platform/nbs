@@ -942,129 +942,140 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldSetHasXAttrsFlagOnFirstSetNodeXAttr)
     {
-        config.SetHasXAttrsFlagAllowed(true);
-        config.SetMultiTabletForwardingEnabled(true);
+        for(int i = 0; i < 2; ++i) {
+            const bool hasXAttrsFlagAllowed = static_cast<bool>(i);
+            config.SetHasXAttrsFlagAllowed(hasXAttrsFlagAllowed);
+            config.SetMultiTabletForwardingEnabled(true);
 
-        TShardedFileSystemConfig fsConfig;
-        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+            TShardedFileSystemConfig fsConfig;
+            CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-        // counters
-        auto counters = env.GetCounters()->FindSubgroup("component", "service");
+            // counters
+            auto counters = env.GetCounters()->FindSubgroup("component", "service");
 
-        auto getCount = [&counters](const char* name)
-        {
-            return counters->FindSubgroup("request", name)
-                ->GetCounter("Count")
-                ->GetAtomic();
-        };
-        auto getErrorCount = [&counters](const char* name)
-        {
-            return counters->FindSubgroup("request", name)
-                ->GetCounter("Errors")
-                ->GetAtomic();
-        };
+            auto getCount = [&counters](const char* name)
+            {
+                return counters->FindSubgroup("request", name)
+                    ->GetCounter("Count")
+                    ->GetAtomic();
+            };
+            auto getErrorCount = [&counters](const char* name)
+            {
+                return counters->FindSubgroup("request", name)
+                    ->GetCounter("Errors")
+                    ->GetAtomic();
+            };
 
-        // create initial session
-        THeaders headers;
-        auto session = service.InitSession(headers, fsConfig.FsId, "client");
-        // there should be no XAttrs at the begining
-        UNIT_ASSERT(
-            !session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+            // create initial session
+            THeaders headers;
+            auto session = service.InitSession(headers, fsConfig.FsId, "client");
+            if (hasXAttrsFlagAllowed) {
+                // there should be no XAttrs at the begining if the flag is allowed 
+                UNIT_ASSERT(
+                    !session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+            } else {
+                // otherwise it's always true
+                UNIT_ASSERT(
+                    session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+            }
 
-        // create two files: "file1", "file2"
-        const auto createNodeResponse1 = service
-            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
-            ->Record;
-        const auto nodeId1 = createNodeResponse1.GetNode().GetId();
+            // create two files: "file1", "file2"
+            const auto createNodeResponse1 = service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
+                ->Record;
+            const auto nodeId1 = createNodeResponse1.GetNode().GetId();
 
-        const auto createNodeResponse2 = service
-            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file2"))
-            ->Record;
-        const auto nodeId2 = createNodeResponse2.GetNode().GetId();
+            const auto createNodeResponse2 = service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file2"))
+                ->Record;
+            const auto nodeId2 = createNodeResponse2.GetNode().GetId();
 
-        // check that GetNodeXAttr returns error 'E_FS_NOXATTR' in case when
-        // 'HasXAttrs' is false
-        auto getXAttrResponse = service
-            .AssertGetNodeXAttrFailed(
+            // check that GetNodeXAttr returns error 'E_FS_NOXATTR' in case when
+            // 'HasXAttrs' is false
+            auto getXAttrResponse = service
+                .AssertGetNodeXAttrFailed(
+                    headers,
+                    fsConfig.FsId,
+                    nodeId1,
+                    "user.some_attr")
+                ->Record;
+            UNIT_ASSERT_VALUES_EQUAL(
+                STATUS_FROM_CODE(getXAttrResponse.GetError().GetCode()),
+                ui32(NProto::E_FS_NOXATTR));
+            UNIT_ASSERT_VALUES_EQUAL(getErrorCount("GetNodeXAttr"), 1);
+
+            auto listXAttrResponse =
+                service.ListNodeXAttr(headers, fsConfig.FsId, nodeId1)->Record;
+            UNIT_ASSERT(listXAttrResponse.GetNames().empty());
+            UNIT_ASSERT_VALUES_EQUAL(getCount("ListNodeXAttr"), 1);
+
+            service.SetNodeXAttr(
                 headers,
                 fsConfig.FsId,
                 nodeId1,
-                "user.some_attr")
-            ->Record;
-        UNIT_ASSERT_VALUES_EQUAL(
-            STATUS_FROM_CODE(getXAttrResponse.GetError().GetCode()),
-            ui32(NProto::E_FS_NOXATTR));
-        UNIT_ASSERT_VALUES_EQUAL(getErrorCount("GetNodeXAttr"), 1);
+                "user.some_attr1",
+                "some_value1");
+            UNIT_ASSERT(getCount("SetNodeXAttr") == 1);
 
-        auto listXAttrResponse =
-            service.ListNodeXAttr(headers, fsConfig.FsId, nodeId1)->Record;
-        UNIT_ASSERT(listXAttrResponse.GetNames().empty());
-        UNIT_ASSERT_VALUES_EQUAL(getCount("ListNodeXAttr"), 1);
+            // wait for the main tablet to restart in case hasXAttrsFlagAllowed == true
+            if(hasXAttrsFlagAllowed) {
+                WaitForTabletStart(service);
+                session = service.InitSession(headers, fsConfig.FsId, "client");
+                // after first XAttr is set the flag HasXAttrs should be true
+                UNIT_ASSERT(
+                    session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+            }
 
-        service.SetNodeXAttr(
-            headers,
-            fsConfig.FsId,
-            nodeId1,
-            "user.some_attr1",
-            "some_value1");
-        UNIT_ASSERT(getCount("SetNodeXAttr") == 1);
+            // check that XAttr was seccessfully set
+            auto getXAttrResponse1 = service
+                .GetNodeXAttr(
+                    headers,
+                    fsConfig.FsId,
+                    nodeId1,
+                    "user.some_attr1")
+                ->Record;
+            UNIT_ASSERT_VALUES_EQUAL("some_value1", getXAttrResponse1.GetValue());
 
-        // wait for the main tablet to restart
-        WaitForTabletStart(service);
-        session = service.InitSession(headers, fsConfig.FsId, "client");
-        // after first XAttr is set the flag HasXAttrs should be true
-        UNIT_ASSERT(
-            session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
-
-        // check that XAttr was seccessfully set
-        auto getXAttrResponse1 = service
-            .GetNodeXAttr(
-                headers,
-                fsConfig.FsId,
-                nodeId1,
-                "user.some_attr1")
-            ->Record;
-        UNIT_ASSERT_VALUES_EQUAL("some_value1", getXAttrResponse1.GetValue());
-
-        // the same check with "file2"
-        // as this time the IndexTablet should not restart we don't need to
-        // create a new session
-        service.SetNodeXAttr(
-            headers,
-            fsConfig.FsId,
-            nodeId2,
-            "user.some_attr2",
-            "some_value2");
-        UNIT_ASSERT(getCount("SetNodeXAttr") == 2);
-
-        auto getXAttrResponse2 = service
-            .GetNodeXAttr(
+            // the same check with "file2"
+            // as this time the IndexTablet should not restart we don't need to
+            // create a new session
+            service.SetNodeXAttr(
                 headers,
                 fsConfig.FsId,
                 nodeId2,
-                "user.some_attr2")
-            ->Record;
-        UNIT_ASSERT_VALUES_EQUAL("some_value2", getXAttrResponse2.GetValue());
-        UNIT_ASSERT_VALUES_EQUAL(getCount("GetNodeXAttr"), 2);
+                "user.some_attr2",
+                "some_value2");
+            UNIT_ASSERT(getCount("SetNodeXAttr") == 2);
 
-        service.RemoveNodeXAttr(
-            headers,
-            fsConfig.FsId,
-            nodeId1,
-            "user.some_attr1");
-        UNIT_ASSERT_VALUES_EQUAL(getCount("RemoveNodeXAttr"), 1);
+            auto getXAttrResponse2 = service
+                .GetNodeXAttr(
+                    headers,
+                    fsConfig.FsId,
+                    nodeId2,
+                    "user.some_attr2")
+                ->Record;
+            UNIT_ASSERT_VALUES_EQUAL("some_value2", getXAttrResponse2.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(getCount("GetNodeXAttr"), 2);
 
-        listXAttrResponse =
-            service.ListNodeXAttr(headers, fsConfig.FsId, nodeId2)->Record;
-        const auto& names = listXAttrResponse.GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(names[0], "user.some_attr2");
+            service.RemoveNodeXAttr(
+                headers,
+                fsConfig.FsId,
+                nodeId1,
+                "user.some_attr1");
+            UNIT_ASSERT_VALUES_EQUAL(getCount("RemoveNodeXAttr"), 1);
 
-        listXAttrResponse =
-            service.ListNodeXAttr(headers, fsConfig.FsId, nodeId1)->Record;
-        UNIT_ASSERT(names.empty());
+            listXAttrResponse =
+                service.ListNodeXAttr(headers, fsConfig.FsId, nodeId2)->Record;
+            const auto& names = listXAttrResponse.GetNames();
+            UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(names[0], "user.some_attr2");
 
-        UNIT_ASSERT_VALUES_EQUAL(getCount("ListNodeXAttr"), 3);
+            listXAttrResponse =
+                service.ListNodeXAttr(headers, fsConfig.FsId, nodeId1)->Record;
+            UNIT_ASSERT(names.empty());
+
+            UNIT_ASSERT_VALUES_EQUAL(getCount("ListNodeXAttr"), 3);
+        }
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldCreateDirectoryStructureInLeader)

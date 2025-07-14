@@ -101,6 +101,47 @@ void TStorageServiceActor::ForwardXAttrRequest(
 
 ///////////////////////////////////////////////////////////////////////////////
 
+template <typename TMethod>
+void TStorageServiceActor::ReplyToXAttrRequest(
+    const NActors::TActorContext& ctx,
+    const typename TMethod::TRequest::TPtr& ev,
+    std::unique_ptr<typename TMethod::TResponse> response,
+    const TSessionInfo* session)
+{
+    auto* msg = ev->Get();
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s][%lu] reply immediately to %s #%lu because there are no XAttrs",
+        session->SessionId.Quote().c_str(),
+        GetSessionSeqNo(msg->Record),
+        TEvService::TGetNodeXAttrMethod::Name,
+        msg->CallContext->RequestId);
+
+    TInFlightRequest dummyRequest(
+        TRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
+        ProfileLog,
+        session->MediaKind,
+        session->RequestStats);
+
+    InitProfileLogRequestInfo(dummyRequest.ProfileLogRequest, msg->Record);
+    dummyRequest.Start(ctx.Now());
+
+    FinalizeProfileLogRequestInfo(
+        dummyRequest.ProfileLogRequest,
+        response->Record);
+    dummyRequest.Complete(ctx.Now(), response->GetError());
+
+    TraceSerializer->BuildTraceRequest(
+        *(msg->Record.MutableHeaders()->MutableInternal()->MutableTrace()),
+        msg->CallContext->LWOrbit);
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 void TStorageServiceActor::HandleGetNodeXAttr(
     const TEvService::TEvGetNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -119,36 +160,8 @@ void TStorageServiceActor::HandleGetNodeXAttr(
                 ErrorAttributeDoesNotExist(
                     TEvService::TGetNodeXAttrMethod::Name));
 
-        auto* msg = ev->Get();
+        ReplyToXAttrRequest<TEvService::TGetNodeXAttrMethod>(ctx, ev, std::move(response), session);
 
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s][%lu] reply imediately to %s #%lu because there are no XAttrs",
-            session->SessionId.Quote().c_str(),
-            GetSessionSeqNo(msg->Record),
-            TEvService::TGetNodeXAttrMethod::Name,
-            msg->CallContext->RequestId);
-
-        TInFlightRequest dummyRequest(
-            TRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
-            ProfileLog,
-            session->MediaKind,
-            session->RequestStats);
-
-        InitProfileLogRequestInfo(dummyRequest.ProfileLogRequest, msg->Record);
-        dummyRequest.Start(ctx.Now());
-
-        FinalizeProfileLogRequestInfo(
-            dummyRequest.ProfileLogRequest,
-            response->Record);
-        dummyRequest.Complete(ctx.Now(), response->GetError());
-
-        TraceSerializer->BuildTraceRequest(
-            *(msg->Record.MutableHeaders()->MutableInternal()->MutableTrace()),
-            msg->CallContext->LWOrbit);
-
-        NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
@@ -171,41 +184,12 @@ void TStorageServiceActor::HandleListNodeXAttr(
     // list
     if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
         auto response =
-            std::make_unique<TEvService::TEvListNodeXAttrResponse>();
+            std::make_unique<TEvService::TListNodeXAttrMethod::TResponse>();
 
-        auto* msg = ev->Get();
+        ReplyToXAttrRequest<TEvService::TListNodeXAttrMethod>(ctx, ev, std::move(response), session);
 
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s][%lu] reply imediately to %s #%lu because there are no XAttrs",
-            session->SessionId.Quote().c_str(),
-            GetSessionSeqNo(msg->Record),
-            TEvService::TGetNodeXAttrMethod::Name,
-            msg->CallContext->RequestId);
-
-        TInFlightRequest dummyRequest(
-            TRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
-            ProfileLog,
-            session->MediaKind,
-            session->RequestStats);
-
-        InitProfileLogRequestInfo(dummyRequest.ProfileLogRequest, msg->Record);
-        dummyRequest.Start(ctx.Now());
-
-        FinalizeProfileLogRequestInfo(
-            dummyRequest.ProfileLogRequest,
-            response->Record);
-        dummyRequest.Complete(ctx.Now(), response->GetError());
-
-        TraceSerializer->BuildTraceRequest(
-            *(msg->Record.MutableHeaders()->MutableInternal()->MutableTrace()),
-            msg->CallContext->LWOrbit);
-
-        NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
-
     ForwardXAttrRequest<TEvService::TListNodeXAttrMethod>(ctx, ev, session);
 }
 
