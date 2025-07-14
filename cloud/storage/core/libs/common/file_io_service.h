@@ -175,6 +175,21 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IFileIOServiceFactory
+{
+    virtual ~IFileIOServiceFactory() = default;
+    virtual IFileIOServicePtr CreateFileIOService() = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IFileIOServicePtr CreateFileIOServiceStub();
+
+IFileIOServicePtr CreateRoundRobinFileIOService(
+    TVector<IFileIOServicePtr> fileIOs);
+
+IFileIOServicePtr CreateConcurrentFileIOService(
+    const TString& submissionThreadName,
+    IFileIOServicePtr fileIO);
 
 }   // namespace NCloud

@@ -502,20 +502,13 @@ public:
     CreateGracefulShutdownRequest();
 
     std::unique_ptr<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>
-    CreateLinkLeaderVolumeToFollowerRequest(
-        const TString& leaderDiskId,
-        const TString& followerDiskId);
+    CreateLinkLeaderVolumeToFollowerRequest(const TLeaderFollowerLink& link);
 
     std::unique_ptr<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>
-    CreateUnlinkLeaderVolumeFromFollowerRequest(
-        const TString& leaderDiskId,
-        const TString& followerDiskId);
+    CreateUnlinkLeaderVolumeFromFollowerRequest(const TLeaderFollowerLink& link);
 
     std::unique_ptr<TEvVolumePrivate::TEvUpdateFollowerStateRequest>
-    CreateUpdateFollowerStateRequest(
-        TString followerUuid,
-        TEvVolumePrivate::TUpdateFollowerStateRequest::EReason reason,
-        std::optional<ui64> migratedBytes);
+    CreateUpdateFollowerStateRequest(TFollowerDiskInfo followerDiskInfo);
 
     void SendRemoteHttpInfo(
         const TString& params,

@@ -285,7 +285,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
         m.Map(0, len);
         char* data = static_cast<char*>(m.Ptr());
-        data[24] = 'A';
+        data[44] = 'A';
 
         UNIT_ASSERT_VALUES_EQUAL(
             "data=vasya ecsum=3387363649 csum=3387363646",
@@ -319,12 +319,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
     }
 
-    Y_UNIT_TEST(RandomizedPushPopRestore)
+    void DoRandomizedPushPopRestore(
+        ui32 len,
+        ui32 testBytes,
+        ui32 testUpToEntrySize)
     {
         const auto f = TTempFileHandle();
-        const ui32 len = 1_MB;
-        const ui32 testBytes = 16_MB;
-        const ui32 testUpToEntrySize = 5_KB;
         const double restoreProbability = 0.05;
         std::unique_ptr<TFileRingBuffer> rb;
         TReferenceImplementation ri(len);
@@ -369,6 +369,59 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(ri.Empty(), rb->Empty());
             UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
         }
+    }
+
+    Y_UNIT_TEST(RandomizedPushPopRestore)
+    {
+        DoRandomizedPushPopRestore(1_MB, 16_MB, 5_KB);
+    }
+
+    Y_UNIT_TEST(RandomizedPushPopRestoreSmall)
+    {
+        DoRandomizedPushPopRestore(4_KB, 1_MB, 16);
+    }
+
+    Y_UNIT_TEST(ShouldFullyUtilizeCapacity)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        const ui32 entryHeaderSize = 8;
+        const ui32 entryLen = 32;
+        const ui32 entryDataLen = entryLen - entryHeaderSize;
+        const TString data(entryDataLen, 'a');
+        const TString data2(entryDataLen, 'b');
+        const TString data3(entryDataLen, 'c');
+        const TString data4(entryDataLen, 'd');
+
+        UNIT_ASSERT(rb.PushBack(data));
+        UNIT_ASSERT(rb.PushBack(data2));
+        UNIT_ASSERT(!rb.PushBack(data3));
+        rb.PopFront();
+        UNIT_ASSERT(!rb.PushBack(data3));
+        rb.PopFront();
+        UNIT_ASSERT(rb.PushBack(data3));
+        UNIT_ASSERT(rb.PushBack(data4));
+    }
+
+    Y_UNIT_TEST(ShouldNotAccessMemoryOutsideMappedBuffer)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 32;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+        m.Map(0, len + 40); // len + sizeof(THeader)
+        char* data = static_cast<char*>(m.Ptr());
+        data[len + 40] = 'A';
+
+        UNIT_ASSERT(rb.PushBack("01234567"));
+        UNIT_ASSERT(rb.PushBack("89abcde"));
+        rb.PopFront();
+        UNIT_ASSERT(rb.PushBack("01"));
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL("01", rb.Front());
     }
 }
 

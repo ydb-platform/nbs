@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore {
@@ -97,7 +99,7 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
         ui32 maxSubRequestSize,
         ui32 maxZeroBlocksSubRequestSize,
         bool checkBufferModificationDuringWriting,
-        bool isReliableMediaKind)
+        NProto::EStorageMediaKind storageMediaKind)
     : Storage(
           checkBufferModificationDuringWriting
               ? CreateChecksumStorageWrapper(std::move(storage), diskId)
@@ -107,7 +109,7 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
     , BlockSize(blockSize)
     , MaxBlockCount(maxSubRequestSize / BlockSize)
     , MaxBlockCountForZeroBlocksRequest(maxZeroBlocksSubRequestSize / BlockSize)
-    , IsReliableMediaKind(isReliableMediaKind)
+    , StorageMediaKind(storageMediaKind)
 {
     Y_ABORT_UNLESS(MaxBlockCount > 0);
     Y_ABORT_UNLESS(MaxBlockCountForZeroBlocksRequest > 0);
@@ -459,7 +461,7 @@ void TAlignedDeviceHandler::ReportCriticalError(
         return;
     }
 
-    if (IsReliableMediaKind) {
+    if (IsReliableMediaKind(StorageMediaKind)) {
         CriticalErrorReported.store(true);
     } else {
         // For non-reliable disks report crit event only once.
@@ -476,7 +478,7 @@ void TAlignedDeviceHandler::ReportCriticalError(
     auto message = TStringBuilder()
                    << "disk: " << DiskId.Quote() << ", op: " << operation
                    << ", range: " << range << ", error: " << FormatError(error);
-    if (IsReliableMediaKind) {
+    if (IsReliableMediaKind(StorageMediaKind)) {
         ReportErrorWasSentToTheGuestForReliableDisk(message);
     } else {
         ReportErrorWasSentToTheGuestForNonReliableDisk(message);

@@ -11,46 +11,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-namespace {
-
 ////////////////////////////////////////////////////////////////////////////////
-
-NProto::EVolumeMountMode AdvanceMountMode(
-    NProto::EVolumeMountMode curMode,
-    NProto::EVolumeMountMode newMode)
-{
-    switch (curMode) {
-        case NProto::VOLUME_MOUNT_REMOTE: {
-            if (newMode == NProto::VOLUME_MOUNT_LOCAL) {
-                curMode = NProto::VOLUME_MOUNT_LOCAL;
-            }
-        }
-        case NProto::VOLUME_MOUNT_LOCAL: {
-            break;
-        }
-        default: {
-            Y_ABORT_UNLESS(0);
-        }
-    }
-    return curMode;
-}
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TVolumeClientState::UpdateClientInfo()
-{
-    NProto::EVolumeMountMode mountMode = NProto::VOLUME_MOUNT_REMOTE;
-
-    for (const auto& pipe: Pipes) {
-        if (pipe.second.State != TVolumeClientState::EPipeState::DEACTIVATED) {
-            mountMode = AdvanceMountMode(mountMode, pipe.second.MountMode);
-        }
-    }
-
-    VolumeClientInfo.SetVolumeMountMode(mountMode);
-}
 
 void TVolumeClientState::SetLastActivityTimestamp(TInstant ts)
 {
@@ -64,18 +25,16 @@ void TVolumeClientState::SetDisconnectTimestamp(TInstant ts)
 
 bool TVolumeClientState::IsPreempted(ui64 hostNodeId) const
 {
-    for (const auto& pipe: Pipes) {
-        if (pipe.second.State == TVolumeClientState::EPipeState::DEACTIVATED
-            && pipe.second.MountMode == NProto::VOLUME_MOUNT_LOCAL
-            && hostNodeId != pipe.second.SenderNodeId)
+    return AnyOf(
+        Pipes,
+        [&](const auto& pipe)
         {
-            return true;
-        }
-    }
-    return false;
+            return pipe.second.State ==
+                       TVolumeClientState::EPipeState::DEACTIVATED &&
+                   pipe.second.MountMode == NProto::VOLUME_MOUNT_LOCAL &&
+                   hostNodeId != pipe.second.SenderNodeId;
+        });
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeClientState::RemovePipe(
     NActors::TActorId serverId,
@@ -83,15 +42,11 @@ void TVolumeClientState::RemovePipe(
 {
     if (!serverId) {
         Pipes.clear();
-        LocalPipeInfo = Pipes.end();
-    } else if (auto it = Pipes.find(serverId); it != Pipes.end()) {
-        if (LocalPipeInfo == it) {
-            LocalPipeInfo = Pipes.end();
-        }
-        Pipes.erase(it);
+    } else {
+        Pipes.erase(serverId);
     }
 
-    UpdateClientInfo();
+    UpdateState();
 
     if (!AnyPipeAlive() && ts) {
         VolumeClientInfo.SetDisconnectTimestamp(ts.MicroSeconds());
@@ -106,56 +61,54 @@ TAddPipeResult TVolumeClientState::AddPipe(
     ui32 mountFlags)
 {
     VolumeClientInfo.SetDisconnectTimestamp(0);
-    auto it = Pipes.find(serverId);
 
-    if (it == Pipes.end()) {
+    TPipeInfo* pipe = Pipes.FindPtr(serverId);
+
+    if (!pipe) {
         Pipes.emplace(
             serverId,
             TPipeInfo{
-                mountMode,
-                EPipeState::WAIT_START,
-                senderNodeId});
+                .MountMode = mountMode,
+                .State = EPipeState::WAIT_START,
+                .SenderNodeId = senderNodeId});
 
         VolumeClientInfo.SetVolumeAccessMode(accessMode);
         VolumeClientInfo.SetMountFlags(mountFlags);
 
-        UpdateClientInfo();
+        UpdateState();
 
-        return true;
-    } else {
-        if (it->second.State == EPipeState::DEACTIVATED) {
-            return TAddPipeResult(MakeError(
-                E_REJECTED,
-                "Pipe is already deactivated"));
-        }
-
-        auto oldMountMode = it->second.MountMode;
-        auto oldAccessMode = VolumeClientInfo.GetVolumeAccessMode();
-        ui32 oldMountFlags = VolumeClientInfo.GetMountFlags();
-        it->second =
-            TPipeInfo{mountMode, it->second.State, senderNodeId};
-
-        VolumeClientInfo.SetVolumeAccessMode(accessMode);
-        VolumeClientInfo.SetMountFlags(mountFlags);
-
-        UpdateClientInfo();
-
-        bool isNew = (oldMountMode != mountMode
-            || oldAccessMode != accessMode
-            || oldMountFlags != mountFlags);
-
-        return isNew;
+        return TAddPipeResult(true);
     }
+
+    if (pipe->State == EPipeState::DEACTIVATED) {
+        return TAddPipeResult(
+            MakeError(E_REJECTED, "Pipe is already deactivated"));
+    }
+
+    const bool isNew = pipe->MountMode != mountMode ||
+                       VolumeClientInfo.GetVolumeAccessMode() != accessMode ||
+                       VolumeClientInfo.GetMountFlags() != mountFlags;
+
+    pipe->MountMode = mountMode;
+    pipe->SenderNodeId = senderNodeId;
+
+    VolumeClientInfo.SetVolumeAccessMode(accessMode);
+    VolumeClientInfo.SetMountFlags(mountFlags);
+
+    UpdateState();
+
+    return TAddPipeResult(isNew);
 }
 
 bool TVolumeClientState::AnyPipeAlive() const
 {
-    for (const auto& p: Pipes) {
-        if (p.second.State != TVolumeClientState::EPipeState::DEACTIVATED) {
-            return true;
-        }
-    }
-    return false;
+    return AnyOf(
+        Pipes,
+        [&](const auto& p)
+        {
+            return p.second.State !=
+                   TVolumeClientState::EPipeState::DEACTIVATED;
+        });
 }
 
 const TVolumeClientState::TPipes& TVolumeClientState::GetPipes() const
@@ -172,36 +125,74 @@ std::optional<TVolumeClientState::TPipeInfo> TVolumeClientState::GetPipeInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeClientState::ActivatePipe(
-    TVolumeClientState::TPipes::iterator active,
-    bool isLocal)
+bool TVolumeClientState::IsLocalPipeActive() const
 {
-    Y_ABORT_UNLESS(active != Pipes.end());
-
-    for (auto it = Pipes.begin(); it != Pipes.end(); ++it) {
-        if (it != active && it->second.State == EPipeState::ACTIVE) {
-            it->second.State = EPipeState::DEACTIVATED;
-        }
-    }
-
-    UpdateClientInfo();
-
-    active->second.State = EPipeState::ACTIVE;
-    LocalPipeInfo = isLocal ? active : Pipes.end();
+    return ActivePipe && ActivePipe->IsLocal;
 }
 
-NProto::TError TVolumeClientState::GetWriteError(
-    NProto::EVolumeAccessMode accessMode,
+void TVolumeClientState::UpdateState()
+{
+    // Update ActivePipe
+    const auto it = FindIf(
+        Pipes,
+        [](const auto& p)
+        { return p.second.State == TVolumeClientState::EPipeState::ACTIVE; });
+    ActivePipe = it == Pipes.end() ? nullptr : &it->second;
+
+    // Update VolumeClientInfo
+    bool hasAliveLocalPipe = AnyOf(
+        Pipes,
+        [](const auto& p)
+        {
+            return p.second.State !=
+                       TVolumeClientState::EPipeState::DEACTIVATED &&
+                   p.second.MountMode == NProto::VOLUME_MOUNT_LOCAL;
+        });
+    VolumeClientInfo.SetVolumeMountMode(
+        hasAliveLocalPipe ? NProto::VOLUME_MOUNT_LOCAL
+                          : NProto::VOLUME_MOUNT_REMOTE);
+}
+
+void TVolumeClientState::ActivatePipe(TPipeInfo* pipe, bool isLocal)
+{
+    Y_DEBUG_ABORT_UNLESS(pipe->State == EPipeState::WAIT_START);
+
+    if (ActivePipe) {
+        ActivePipe->State = EPipeState::DEACTIVATED;
+    }
+
+    pipe->State = EPipeState::ACTIVE;
+    pipe->IsLocal = isLocal;
+
+    UpdateState();
+}
+
+bool TVolumeClientState::CanWrite() const
+{
+    const auto accessMode = VolumeClientInfo.GetVolumeAccessMode();
+    const auto mountFlags = VolumeClientInfo.GetMountFlags();
+    return IsReadWriteMode(accessMode) ||
+           HasProtoFlag(mountFlags, NProto::MF_FORCE_WRITE);
+}
+
+NProto::TError TVolumeClientState::CheckWritePermission(
+    bool isWrite,
     const TString& methodName,
     const TString& diskId) const
 {
+    if (!isWrite || CanWrite()) {
+        return MakeError(S_OK);
+    }
+
     ui32 flags = 0;
     ui32 code = E_ARGUMENT;
+    const auto accessMode = VolumeClientInfo.GetVolumeAccessMode();
     if (accessMode == NProto::VOLUME_ACCESS_USER_READ_ONLY) {
         SetProtoFlag(flags, NProto::EF_SILENT);
         // for legacy clients
         code = E_IO_SILENT;
     }
+
     // Keep in sync with TAlignedDeviceHandler::ReportCriticalError()
     return MakeError(
         code,
@@ -218,33 +209,28 @@ NProto::TError TVolumeClientState::CheckPipeRequest(
     const TString& methodName,
     const TString& diskId)
 {
-    auto accessMode = VolumeClientInfo.GetVolumeAccessMode();
-    auto mountFlags = VolumeClientInfo.GetMountFlags();
-    if (Pipes.size()) {
-        bool checkOk = false;
-        auto it = Pipes.find(serverId);
-        if (it != Pipes.end() && it->second.State != EPipeState::DEACTIVATED) {
-            if (it->second.State == EPipeState::WAIT_START) {
-                ActivatePipe(it, false);
-            }
-            checkOk = true;
-        }
-
-        if (!checkOk) {
+    // Don't check if there is not a single pipe.
+    if (!Pipes.empty()) {
+        TPipeInfo* pipe = Pipes.FindPtr(serverId);
+        if (!pipe || pipe->State == EPipeState::DEACTIVATED) {
             return MakeError(
                 E_BS_INVALID_SESSION,
                 TStringBuilder() << "No mounter found");
         }
+        if (IsLocalPipeActive()) {
+            // When the local pipe is ACTIVE response with retriable error
+            // E_REJECTED because the local pipe may disconnect and then the
+            // request from remote pipe can be executed later.
+            return MakeError(
+                E_REJECTED,
+                TStringBuilder() << "Local mounter is active");
+        }
+        if (ActivePipe != pipe) {
+            ActivatePipe(pipe, false);
+        }
     }
 
-    if (isWrite
-            && !IsReadWriteMode(accessMode)
-            && !HasProtoFlag(mountFlags, NProto::MF_FORCE_WRITE))
-    {
-        return GetWriteError(accessMode, methodName, diskId);
-    }
-
-    return {};
+    return CheckWritePermission(isWrite, methodName, diskId);
 }
 
 NProto::TError TVolumeClientState::CheckLocalRequest(
@@ -253,44 +239,28 @@ NProto::TError TVolumeClientState::CheckLocalRequest(
     const TString& methodName,
     const TString& diskId)
 {
-    auto accessMode = VolumeClientInfo.GetVolumeAccessMode();
-    auto mountFlags = VolumeClientInfo.GetMountFlags();
-    bool checkOk = false;
-    if (LocalPipeInfo == Pipes.end()) {
-        if (Pipes.size()) {
-            auto it = std::find_if(
-                Pipes.begin(),
-                Pipes.end(),
-                [&] (const auto& p) {
-                    return p.second.SenderNodeId == nodeId
-                        && p.second.State != EPipeState::DEACTIVATED;
-                });
+    // Don't check if there is not a single pipe or if the local pipe is already
+    // active.
+    if (!Pipes.empty() && !IsLocalPipeActive()) {
+        // Find alive local pipe to activate.
+        const auto it = FindIf(
+            Pipes,
+            [&](const auto& p)
+            {
+                return p.second.SenderNodeId == nodeId &&
+                       p.second.State != EPipeState::DEACTIVATED;
+            });
 
-            if (it != Pipes.end()) {
-                if (it->second.State == EPipeState::WAIT_START) {
-                    ActivatePipe(it, true);
-                } else {
-                    LocalPipeInfo = it;
-                }
-
-                checkOk = true;
-            }
-            if (!checkOk) {
-                return MakeError(
-                    E_BS_INVALID_SESSION,
-                    TStringBuilder() << "No local mounter found");
-            }
+        if (it == Pipes.end()) {
+            return MakeError(
+                E_BS_INVALID_SESSION,
+                TStringBuilder() << "No local mounter found");
         }
+
+        ActivatePipe(&it->second, true);
     }
 
-    if (isWrite
-            && !IsReadWriteMode(accessMode)
-            && !HasProtoFlag(mountFlags, NProto::MF_FORCE_WRITE))
-    {
-        return GetWriteError(accessMode, methodName, diskId);
-    }
-
-    return {};
+    return CheckWritePermission(isWrite, methodName, diskId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

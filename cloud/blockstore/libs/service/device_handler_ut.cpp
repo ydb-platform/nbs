@@ -146,7 +146,7 @@ public:
             BlockSize,
             unalignedRequestsDisabled,   // unalignedRequestsDisabled,
             false,                       // checkBufferModificationDuringWriting
-            false,                       // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             maxZeroBlocksSubRequestSize);
     }
 
@@ -370,7 +370,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             false,   // checkBufferModificationDuringWriting
-            false,   // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             maxZeroBlocksSubRequestSize);
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
@@ -441,7 +441,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             false,   // checkBufferModificationDuringWriting
-            false,   // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             maxZeroBlocksSubRequestSize);
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
@@ -487,7 +487,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             true,    // unalignedRequestsDisabled,
             false,   // checkBufferModificationDuringWriting
-            false,   // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             maxZeroBlocksSubRequestSize);
 
         ui32 startIndex = 42;
@@ -579,7 +579,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             true,    // unalignedRequestsDisabled,
             false,   // checkBufferModificationDuringWriting
-            false,   // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             maxZeroBlocksSubRequestSize);
 
         {
@@ -721,7 +721,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             unalignedRequestDisabled,   // unalignedRequestsDisabled,
             false,                      // checkBufferModificationDuringWriting
-            false,                      // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             maxZeroBlocksSubRequestSize);
 
         storage->ZeroBlocksHandler = [&] (
@@ -842,7 +842,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
                 blockSize,
                 false,   // unalignedRequestsDisabled,
                 false,   // checkBufferModificationDuringWriting
-                false,   // isReliableMediaKind
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 maxZeroBlocksSubRequestSize);
 
         storage->WriteBlocksLocalHandler = [&] (
@@ -912,7 +912,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
                 blockSize,
                 false,   // unalignedRequestsDisabled,
                 false,   // checkBufferModificationDuringWriting
-                false,   // isReliableMediaKind
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 maxZeroBlocksSubRequestSize);
 
         storage->WriteBlocksLocalHandler = [&] (
@@ -1041,7 +1041,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            false,   // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             maxZeroBlocksSubRequestSize);
 
         ui32 writeAttempts  = 0;
@@ -1126,7 +1126,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            true,    // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD_MIRROR3,
             maxZeroBlocksSubRequestSize);
         auto deviceHandlerForNonReliableDisk = factory->CreateDeviceHandler(
             storage,
@@ -1135,7 +1135,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            false,   // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             maxZeroBlocksSubRequestSize);
 
         auto buffer = TString(DefaultBlockSize, 'g');
@@ -1281,7 +1281,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            true,    // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD,
             maxZeroBlocksSubRequestSize);
         auto deviceHandlerForNonReliableDisk = factory->CreateDeviceHandler(
             storage,
@@ -1290,7 +1290,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            false,   // isReliableMediaKind
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             maxZeroBlocksSubRequestSize);
 
         auto buffer = TString(DefaultBlockSize, 'g');

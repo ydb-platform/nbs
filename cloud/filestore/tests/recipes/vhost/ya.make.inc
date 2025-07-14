@@ -6,6 +6,7 @@ PY_SRCS(
 
 PEERDIR(
     cloud/filestore/tests/python/lib
+    cloud/storage/core/tests/common
 
     library/python/testing/recipe
     library/python/testing/yatest_common

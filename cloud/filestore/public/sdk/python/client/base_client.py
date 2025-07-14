@@ -21,11 +21,20 @@ CLIENT_METHODS = [
     "create_checkpoint",
     "destroy_checkpoint",
     "describe_filestore_model",
+    "execute_action",
+
+    # session methods
     "create_session",
+
+    # node methods
     "create_node",
     "list_nodes",
     "unlink_node",
-    "execute_action",
+
+    # read/write methods
+    "create_handle",
+    "read_data",
+    "write_data",
 ]
 
 ENDPOINT_METHODS = [

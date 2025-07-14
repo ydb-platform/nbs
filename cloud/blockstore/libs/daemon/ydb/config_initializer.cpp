@@ -17,7 +17,7 @@
 #include <cloud/storage/core/config/features.pb.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
-#include <cloud/storage/core/libs/grpc/threadpool.h>
+#include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -172,6 +172,17 @@ void TConfigInitializerYdb::InitComputeClientConfig()
     ComputeClientConfig = std::move(config);
 }
 
+void TConfigInitializerYdb::InitTraceServiceClientConfig()
+{
+    NProto::TOpentelemetryTraceConfig config;
+
+    if (Options->TraceServiceConfig) {
+        ParseProtoTextFromFile(Options->TraceServiceConfig, config);
+    }
+
+    TraceServiceClientConfig = std::move(config);
+}
+
 bool TConfigInitializerYdb::GetUseNonreplicatedRdmaActor() const
 {
     if (!StorageConfig) {
@@ -264,7 +275,7 @@ void TConfigInitializerYdb::ApplyServerAppConfig(const TString& text)
     SetupServerPorts(serverConfig);
 
     ServerConfig = std::make_shared<TServerAppConfig>(appConfig);
-    SetupGrpcThreadsLimit();
+    SetGrpcThreadsLimit(ServerConfig->GetGrpcThreadsLimit());
 }
 
 void TConfigInitializerYdb::ApplyDiagnosticsConfig(const TString& text)
@@ -372,6 +383,14 @@ void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
     ComputeClientConfig = std::move(config);
 }
 
+void TConfigInitializerYdb::ApplyTraceServiceClientConfig(const TString& text)
+{
+    NProto::TOpentelemetryTraceConfig config;
+    ParseProtoTextFromString(text, config);
+
+    TraceServiceClientConfig = std::move(config);
+}
+
 void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config)
 {
     THashMap<TString, ui32> configs;
@@ -410,6 +429,7 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
         { "KmsClientConfig",         &TSelf::ApplyKmsClientConfig         },
         { "RootKmsConfig",           &TSelf::ApplyRootKmsConfig           },
         { "ComputeClientConfig",     &TSelf::ApplyComputeClientConfig     },
+        { "TraceServiceClientConfig", &TSelf::ApplyTraceServiceClientConfig },
     };
 
     for (const auto& handler: configHandlers) {

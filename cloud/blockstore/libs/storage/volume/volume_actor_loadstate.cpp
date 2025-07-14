@@ -50,6 +50,7 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadThrottlerState(args.ThrottlerStateInfo),
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadFollowers(args.FollowerDisks),
+        db.ReadLeaders(args.LeaderDisks),
     };
 
     if (args.Meta) {
@@ -139,6 +140,7 @@ void TVolumeActor::CompleteLoadState(
             std::move(volumeHistory),
             std::move(args.CheckpointRequests),
             std::move(args.FollowerDisks),
+            std::move(args.LeaderDisks),
             startPartitionsNeeded);
 
         HasPerformanceProfileModifications =

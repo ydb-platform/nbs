@@ -205,6 +205,24 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             childLogTitle.GetWithTime(),
             "[v:12345 g:5 d:disk1 t:1.001s + 1.");
     }
+
+    Y_UNIT_TEST(GetChildWithTagsLogger)
+    {
+        const ui64 startTime =
+            GetCycleCount() - GetCyclesPerMillisecond() * 2001;
+        TLogTitle logTitle1(12345, "disk1", startTime);
+        logTitle1.SetGeneration(5);
+
+        std::vector<std::pair<TString, TString>> tags = {{"cp", "123"}};
+
+        auto childLogTitle = logTitle1.GetChildWithTags(
+            startTime + GetCyclesPerMillisecond() * 1001,
+            tags);
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            childLogTitle.GetWithTime(),
+            "[v:12345 g:5 d:disk1 cp:123 t:1.001s + 1.");
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

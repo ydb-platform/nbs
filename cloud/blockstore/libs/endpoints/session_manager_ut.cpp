@@ -1,6 +1,9 @@
 #include "session_manager.h"
 
 #include <cloud/blockstore/libs/client/session.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/diagnostics/dumpable.h>
+#include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -8,7 +11,9 @@
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+
 #include <cloud/storage/core/libs/common/scheduler_test.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -23,6 +28,22 @@ namespace NCloud::NBlockStore::NServer {
 using namespace NThreading;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestDumpable
+    : public IDumpable
+{
+    void Dump(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    };
+
+    void DumpHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -122,7 +143,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
 
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         auto sessionManager = CreateSessionManager(
             CreateWallClockTimer(),
@@ -237,7 +259,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
 
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         auto sessionManager = CreateSessionManager(
             CreateWallClockTimer(),
@@ -292,6 +315,164 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
     Y_UNIT_TEST(ShouldNotTransformFatalErrorsForNotTemporaryServer)
     {
         ShouldTransformFatalErrorsForTemporaryServer(false);
+    }
+
+    void ShouldDisableClientThrottler(bool disableClientThrottler)
+    {
+        TString socketPath = "testSocket";
+        TString diskId = "testDiskId";
+        TString clientId = "testClientId";
+        TString folderId = "testFolderId";
+        TString cloudId = "testCloudId";
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&](std::shared_ptr<NProto::TDescribeVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TDescribeVolumeResponse());
+        };
+        service->MountVolumeHandler =
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            response.MutableVolume()->SetFolderId(folderId);
+            response.MutableVolume()->SetCloudId(cloudId);
+            response.SetInactiveClientsTimeout(100);
+            return MakeFuture(response);
+        };
+        service->UnmountVolumeHandler =
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TUnmountVolumeResponse());
+        };
+        service->ReadBlocksLocalHandler =
+            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
+                Y_UNUSED(request);
+                return MakeFuture<NProto::TReadBlocksLocalResponse>();
+            };
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto timer = CreateCpuCycleTimer();
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        auto serverStats = CreateServerStats(
+            std::make_shared<TTestDumpable>(),
+            std::make_shared<TDiagnosticsConfig>(),
+            monitoring,
+            CreateProfileLogStub(),
+            CreateRequestStatsStub(),
+            volumeStats);
+
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+        Y_DEFER
+        {
+            scheduler->Stop();
+        };
+
+        auto executor = TExecutor::Create("TestService");
+        auto logging = CreateLoggingService("console");
+        auto encryptionClientFactory = CreateEncryptionClientFactory(
+            logging,
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
+
+        TSessionManagerOptions options;
+        options.DisableClientThrottler = disableClientThrottler;
+        options.DisableDurableClient = true;
+        auto sessionManager = CreateSessionManager(
+            timer,
+            scheduler,
+            logging,
+            monitoring,
+            CreateRequestStatsStub(),
+            volumeStats,
+            serverStats,
+            service,
+            CreateDefaultStorageProvider(service),
+            encryptionClientFactory,
+            executor,
+            options);
+
+        executor->Start();
+        Y_DEFER
+        {
+            executor->Stop();
+        };
+
+        NProto::TStartEndpointRequest request;
+        request.SetUnixSocketPath(socketPath);
+        request.SetDiskId(diskId);
+        request.SetClientId(clientId);
+
+        // Set client profile to something that would normally trigger
+        // throttling
+        auto* clientProfile = request.MutableClientProfile();
+        clientProfile->SetCpuUnitCount(1);
+
+        auto* perfProfile =
+            request.MutableClientPerformanceProfile()->MutableHDDProfile();
+        perfProfile->SetMaxReadIops(1);
+        perfProfile->SetMaxWriteIops(1);
+        perfProfile->SetMaxReadBandwidth(100_MB);
+        perfProfile->SetMaxWriteBandwidth(100_MB);
+
+        auto future = sessionManager->CreateSession(
+            MakeIntrusive<TCallContext>(),
+            request);
+
+        const auto& sessionOrError = future.GetValue(TDuration::Max());
+        UNIT_ASSERT_C(!HasError(sessionOrError), sessionOrError.GetError());
+        auto session = sessionOrError.GetResult().Session;
+
+        TVector<TFuture<NProto::TReadBlocksLocalResponse>> futures;
+        for (int i = 0; i < 3; i++) {
+            auto readRequest =
+                std::make_shared<NProto::TReadBlocksLocalRequest>();
+            readRequest->SetDiskId(diskId);
+            readRequest->SetBlocksCount(1);
+            readRequest->SetStartIndex(i * 100);
+            *readRequest->MutableHeaders()->MutableClientId() = clientId;
+            futures.push_back(session->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                std::move(readRequest)));
+        }
+        WaitAll(futures).Wait();
+
+        auto counters = monitoring->GetCounters();
+        auto diskCounters = counters->GetSubgroup("counters", "blockstore")
+                                ->GetSubgroup("component", "server_volume")
+                                ->GetSubgroup("host", "cluster")
+                                ->GetSubgroup("volume", diskId)
+                                ->GetSubgroup("instance", clientId)
+                                ->GetSubgroup("cloud", cloudId)
+                                ->GetSubgroup("folder", folderId);
+
+        auto postponedCount = diskCounters->GetSubgroup("request", "ReadBlocks")
+                                 ->FindCounter("PostponedCount")
+                                 ->Val();
+        if (disableClientThrottler) {
+            UNIT_ASSERT_VALUES_EQUAL(0, postponedCount);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(2, postponedCount);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotThrottleWhenDisableClientThrottlerIsTrue)
+    {
+        ShouldDisableClientThrottler(true);
+    }
+
+    Y_UNIT_TEST(ShouldThrottleWhenDisableClientThrottlerIsFalse)
+    {
+        ShouldDisableClientThrottler(false);
     }
 }
 

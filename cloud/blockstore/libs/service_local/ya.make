@@ -6,7 +6,7 @@ SRCS(
     file_io_service_provider.cpp
     rdma_protocol.cpp
     service_local.cpp
-    storage_aio.cpp
+    storage_local.cpp
     storage_null.cpp
     storage_rdma.cpp
     storage_spdk.cpp

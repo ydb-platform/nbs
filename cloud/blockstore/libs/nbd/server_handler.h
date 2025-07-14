@@ -8,7 +8,9 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/request.h>
+
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/protos/media.pb.h>
 
 #include <library/cpp/coroutine/engine/network.h>
 #include <library/cpp/threading/future/future.h>
@@ -125,7 +127,7 @@ struct TStorageOptions
     bool UnalignedRequestsDisabled = false;
     bool SendMinBlockSize = false;
     bool CheckBufferModificationDuringWriting = false;
-    bool IsReliableMediaKind = false;
+    NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
     ui32 MaxZeroBlocksSubRequestSize = 0;
 };
 

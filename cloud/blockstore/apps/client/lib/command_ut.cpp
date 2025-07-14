@@ -359,9 +359,48 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT(!ExecuteRequest("readblocks", argv, client));
     }
 
-    Y_UNIT_TEST(ShouldRequireStartIndexIfReadBlocksRequestHasNoReadAllFlag)
+    Y_UNIT_TEST(ShouldNotRequireStartIndexIfReadBlocksRequestHasNoReadAllFlag)
     {
         auto client = std::make_shared<TTestService>();
+
+        TString sessionId = CreateGuidAsString();
+        constexpr ui64 VolumeBlocksCount = 4096;
+        client->MountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+
+                NProto::TMountVolumeResponse response;
+                response.SetSessionId(sessionId);
+
+                auto& volume = *response.MutableVolume();
+                volume.SetDiskId(DefaultDiskId);
+                volume.SetBlockSize(DefaultBlockSize);
+                volume.SetBlocksCount(VolumeBlocksCount);
+
+                return MakeFuture(response);
+            };
+        client->UnmountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
+                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+                UNIT_ASSERT(request->GetSessionId() == sessionId);
+                return MakeFuture<NProto::TUnmountVolumeResponse>();
+            };
+        client->ReadBlocksLocalHandler =
+            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
+                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+                UNIT_ASSERT(request->GetSessionId() == sessionId);
+
+                auto guard = request->Sglist.Acquire();
+                UNIT_ASSERT(guard);
+                const auto& sglist = guard.Get();
+
+                for(ui64 i = 0; i < sglist.size(); ++i) {
+                    auto* dstPtr = const_cast<char*>(sglist[i].Data());
+                    memset(dstPtr, 0, sglist[i].Size());
+                }
+
+                return MakeFuture(NProto::TReadBlocksLocalResponse());
+            };
 
         TVector<TString> argv;
         argv.reserve(4);
@@ -370,7 +409,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
         argv.emplace_back("--blocks-count=1");
 
-        UNIT_ASSERT(!ExecuteRequest("readblocks", argv, client));
+        UNIT_ASSERT(ExecuteRequest("readblocks", argv, client));
     }
 
     Y_UNIT_TEST(ShouldRefuseToReadBlocksIfReadAllFlagIsSpecifiedAlongWithProtoFlag)

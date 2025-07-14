@@ -1539,6 +1539,41 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.StatPartition();
     }
 
+    Y_UNIT_TEST(ShouldDieIfBootingTakesTooMuchTime)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetPartitionBootTimeout(TDuration::Seconds(10).MilliSeconds());
+        auto runtime = PrepareTestActorRuntime(std::move(config));
+
+        bool tabletWasKilled = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvTablet::EvRestored) {
+                    return true;
+                } else if (
+                    ev->GetTypeRewrite() == TEvents::TEvPoisonPill::EventType)
+                {
+                    tabletWasKilled = true;
+                }
+                return false;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.SendWaitReadyRequest();
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+
+        // Wait for partition to die
+        auto options = TDispatchOptions();
+        options.FinalEvents.emplace_back(TEvents::TEvPoisonPill::EventType);
+        runtime->DispatchEvents(options, TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT(tabletWasKilled);
+    }
+
     Y_UNIT_TEST(ShouldRecoverStateOnReboot)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -7723,6 +7758,56 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotReleaseTrimBarriersOnFlushError)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelCount(1);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetMaxWriteBlobErrorsBeforeSuicide(10);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(1, 2));
+        partition.WriteBlocks(TBlockRange32::WithLength(1, 2));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetFreshBlocksCount());
+        }
+
+        bool flush = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPutResult: {
+                        if (flush) {
+                            auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                            msg->Status = NKikimrProto::ERROR;
+                            flush = false;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            }
+        );
+
+        flush = true;
+        partition.SendFlushRequest();
+        auto response = partition.RecvFlushResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+
+        partition.WriteBlocks(TBlockRange32::WithLength(1, 2));
+
+        partition.Flush();
+    }
+
     Y_UNIT_TEST(ShouldHandleFlushCorrectlyWhileBlockFromFreshChannelIsBeingDeleted)
     {
         auto config = DefaultConfig();
@@ -12923,6 +13008,94 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(100, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
+    }
+
+    Y_UNIT_TEST(ShouldSendCorrectBarriersInfoAfterReboot)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            4096,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+
+        using TBarrierKey = std::tuple<ui32, ui32, ui32>;
+        using TBarrierValue = std::pair<ui32, ui32>;
+        using TBarriers = std::map<TBarrierKey, TBarrierValue>;
+        TBarriers barriers;
+
+        bool rejectWrite = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvWriteBlobResponse: {
+                        if (rejectWrite) {
+                            auto* msg = ev->Get<
+                                TEvPartitionPrivate::TEvWriteBlobResponse>();
+                            auto& e = const_cast<NProto::TError&>(msg->Error);
+                            e.SetCode(E_REJECTED);
+                        }
+                        return false;
+                    }
+                    case TEvBlobStorage::EvCollectGarbage: {
+                        auto* msg =
+                            ev->Get<TEvBlobStorage::TEvCollectGarbage>();
+                        TBarrierKey key = std::tie(
+                            msg->RecordGeneration,
+                            msg->PerGenerationCounter,
+                            msg->Channel);
+                        TBarrierValue value = std::make_pair(
+                            msg->CollectGeneration,
+                            msg->CollectStep);
+                        const auto it = barriers.insert(TBarriers::value_type(key, value));
+                        UNIT_ASSERT(it.second || it.first->second == value);
+                        return false;
+                    }
+                };
+                return false;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(11, 1), 0);
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(10, 1), 1);
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+        }
+
+        rejectWrite = true;
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(11, 1), 0);
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(10, 1), 1);
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUnconfirmedBlobCount());
+        }
+
+        rejectWrite = false;
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+        }
+
+        UNIT_ASSERT(!barriers.empty());
     }
 }
 

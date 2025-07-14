@@ -40,3 +40,10 @@ ScrubbingResyncPolicy: RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK
 MultiAgentWriteEnabled: true
 UseRdma: true
 UseNonreplicatedRdmaActor: true
+
+# SchemeShard proxy
+PathDescriptionBackupFilePath: "backups/nbs-path-description-backup.txt"
+#SSProxyFallbackMode: true
+
+# Hive proxy
+TabletBootInfoBackupFilePath: "backups/nbs-tablet-boot-info-backup.txt"

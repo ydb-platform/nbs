@@ -281,6 +281,8 @@ TChild SpawnChild(
     const TString& binaryPath,
     TVector<TString> args)
 {
+    args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
+
     TPipe stdOut;
     TPipe stdErr;
 

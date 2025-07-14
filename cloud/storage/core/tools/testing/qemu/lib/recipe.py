@@ -14,6 +14,10 @@ import library.python.testing.recipe
 
 from .qemu import Qemu
 from .common import SshToGuest, get_mount_paths, env_with_guest_index
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +28,7 @@ QEMU_NET = "10.0.2.0/24"
 QEMU_HOST = "10.0.2.2"
 
 PID_FILE = "qemu.pid"
+ERR_LOG_FILE_NAMES_FILE = "qemu.err_log_files"
 
 
 class QemuKvmRecipeException(Exception):
@@ -94,6 +99,8 @@ def start_instance(args, inst_index):
     qemu.set_mount_paths(mount_paths)
     qemu.start()
 
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, qemu.qemu_bin.stderr_file_name)
+
     with open(PID_FILE, "a+") as f:
         print(qemu.qemu_bin.daemon.process.pid, file=f)
 
@@ -146,6 +153,12 @@ def stop(argv):
                 raise
     if os.path.exists(PID_FILE):
         os.remove(PID_FILE)
+
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError(
+            "Errors occurred during qemu-kvm execution: {}".format(errors)
+        )
 
 
 def _parse_args(argv):

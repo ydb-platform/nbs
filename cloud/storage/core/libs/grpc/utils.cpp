@@ -1,5 +1,7 @@
 #include "utils.h"
 
+#include <cloud/storage/core/libs/grpc/threadpool.h>
+
 #include <contrib/libs/grpc/src/core/lib/iomgr/executor.h>
 
 #include <util/string/cast.h>
@@ -20,9 +22,10 @@ bool TryParseSourceFd(const TStringBuf& peer, ui32* fd)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-size_t SetExecutorThreadsLimit(size_t count)
+void SetGrpcThreadsLimit(ui32 maxThreads)
 {
-    return grpc_core::Executor::SetThreadsLimit(count);
+    grpc_core::Executor::SetThreadsLimit(maxThreads);
+    SetDefaultThreadPoolLimit(maxThreads);
 }
 
 }   // namespace NCloud

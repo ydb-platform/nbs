@@ -13,6 +13,7 @@ END()
 
 RECURSE(
     config
+    storage
 )
 
 RECURSE_FOR_TESTS(

@@ -36,6 +36,14 @@ message TChecksumFlags
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EEncryptZeroPolicy
+{
+    EZP_WRITE_ENCRYPTED_ZEROS = 0;
+    EZP_WRITE_ZERO_BLOCKS = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TServerConfig
 {
     // Host name or address to listen on.
@@ -239,6 +247,12 @@ message TServerConfig
 
     // Ask system to provide a free nbd device
     optional bool AutomaticNbdDeviceManagement = 124;
+
+    // Disables per-client throttlers.
+    optional bool DisableClientThrottlers = 125;
+
+    // Policy for encryption of zeroed blocks.
+    optional EEncryptZeroPolicy EncryptZeroPolicy = 126;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

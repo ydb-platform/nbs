@@ -104,8 +104,8 @@ void TPartitionActor::HandleTrimFreshLog(
 
     const ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
 
-    auto collectCounter = State->NextCollectCounter();
-    if (collectCounter == InvalidCollectCounter) {
+    auto nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
+    if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
         RebootPartitionOnCollectCounterOverflow(ctx, "TrimFreshLog");
         return;
     }
@@ -114,7 +114,7 @@ void TPartitionActor::HandleTrimFreshLog(
         "[%lu] Start TrimFreshLog @%lu @%lu",
         TabletID(),
         trimFreshLogToCommitId,
-        collectCounter);
+        nextPerGenerationCounter);
 
     State->GetTrimFreshLogState().SetStatus(EOperationStatus::Started);
 
@@ -129,7 +129,7 @@ void TPartitionActor::HandleTrimFreshLog(
         Info(),
         trimFreshLogToCommitId,
         ParseCommitId(State->GetLastCommitId()).first,
-        collectCounter,
+        nextPerGenerationCounter,
         std::move(freshChannels));
 
     Actors.insert(actor);

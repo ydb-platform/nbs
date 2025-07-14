@@ -101,12 +101,13 @@ void TPartitionActor::DescribeBlocks(
 {
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Start describe blocks @%lu (range: %s)",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start describe blocks @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
         commitId,
-        DescribeRange(describeRange).data());
+        DescribeRange(describeRange).c_str());
 
     AddTransaction<TEvVolume::TDescribeBlocksMethod>(*requestInfo);
 
@@ -252,10 +253,11 @@ void TPartitionActor::CompleteDescribeBlocks(
     RemoveTransaction(*args.RequestInfo);
 
     const ui64 commitId = args.CommitId;
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Complete describe blocks @%lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete DescribeBlocks transaction @%lu",
+        LogTitle.GetWithTime().c_str(),
         commitId);
 
     LWTRACK(

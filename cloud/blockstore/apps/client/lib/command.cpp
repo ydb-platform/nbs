@@ -445,9 +445,7 @@ void TCommand::Init()
     Logging = CreateLoggingService("console", logSettings);
     Log = Logging->CreateLog("BLOCKSTORE_CLIENT");
 
-    ui32 maxThreads = ClientConfig->GetGrpcThreadsLimit();
-    SetExecutorThreadsLimit(maxThreads);
-    SetDefaultThreadPoolLimit(maxThreads);
+    SetGrpcThreadsLimit(ClientConfig->GetGrpcThreadsLimit());
 
     ui32 monPort = monConfig.GetPort();
     if (monPort) {
@@ -481,7 +479,8 @@ void TCommand::Init()
 
     EncryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
-        CreateDefaultEncryptionKeyProvider());
+        CreateDefaultEncryptionKeyProvider(),
+        NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
     if (!ClientEndpoint) {
         ClientStats = CreateClientStats(

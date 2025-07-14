@@ -188,8 +188,14 @@ void TCreateNodeInShardActor::ProcessNodeAttr(NProto::TNodeAttr attr)
     InitAttrs(requestAttrs, Request);
     // by the time of the request, the node may be already modified and thus we
     // can ignore those nodes that mismatch in size, but have updated mtime
+    //
+    // This MTime condition also takes into account the fact that the times in
+    // shard and leader can drift off and thus uses a 1-minute tolerance for
+    // this comparsion
+    const TDuration mtimeTolerance = TDuration::Minutes(1);
     if ((attr.GetSize() != requestAttrs.GetSize() &&
-         attr.GetMTime() <= requestAttrs.GetMTime()) ||
+         attr.GetMTime() + mtimeTolerance.MicroSeconds() <=
+             requestAttrs.GetMTime()) ||
         attr.GetType() != requestAttrs.GetType())
     {
         ReportCreateNodeRequestResponseMismatchInShard(TStringBuilder()

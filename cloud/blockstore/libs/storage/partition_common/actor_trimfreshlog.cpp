@@ -24,14 +24,14 @@ TTrimFreshLogActor::TTrimFreshLogActor(
         TTabletStorageInfoPtr tabletInfo,
         ui64 trimFreshLogToCommitId,
         ui32 recordGeneration,
-        ui32 collectCounter,
+        ui32 perGenerationCounter,
         TVector<ui32> freshChannels)
     : RequestInfo(std::move(requestInfo))
     , PartitionActorId(partitionActorId)
     , TabletInfo(std::move(tabletInfo))
     , TrimFreshLogToCommitId(trimFreshLogToCommitId)
     , RecordGeneration(recordGeneration)
-    , CollectCounter(collectCounter)
+    , PerGenerationCounter(perGenerationCounter)
     , FreshChannels(std::move(freshChannels))
 {}
 
@@ -65,18 +65,18 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
             auto [barrierGen, barrierStep] = ParseCommitId(barrier.CollectCommitId);
 
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
-                tabletId,         // tabletId
-                RecordGeneration, // record generation
-                CollectCounter,   // per generation counter
-                channelId,        // channel
-                true,             // yes, collect
-                barrierGen,       // barrier gen
-                barrierStep,      // barrier step
-                nullptr,          // keep
-                nullptr,          // do not keep
-                TInstant::Max(),  // deadline
-                false,            // multicollect not allowed
-                false);           // soft barrier
+                tabletId,               // tabletId
+                RecordGeneration,       // record generation
+                PerGenerationCounter,   // per generation counter
+                channelId,              // channel
+                true,                   // yes, collect
+                barrierGen,             // barrier gen
+                barrierStep,            // barrier step
+                nullptr,                // keep
+                nullptr,                // do not keep
+                TInstant::Max(),        // deadline
+                false,                  // multicollect not allowed
+                false);                 // soft barrier
 
             LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
                 "[%lu] %s",

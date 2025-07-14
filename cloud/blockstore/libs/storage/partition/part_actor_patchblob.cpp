@@ -39,6 +39,7 @@ private:
     const ui64 TabletId;
     const TString DiskId;
     const std::unique_ptr<TRequest> Request;
+    TChildLogTitle LogTitle;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -54,7 +55,8 @@ public:
         ui64 tabletId,
         TString diskId,
         std::unique_ptr<TRequest> request,
-        ui32 originalGroupId);
+        ui32 originalGroupId,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -92,12 +94,14 @@ TPatchBlobActor::TPatchBlobActor(
         ui64 tabletId,
         TString diskId,
         std::unique_ptr<TRequest> request,
-        ui32 originalGroupId)
+        ui32 originalGroupId,
+        TChildLogTitle logTitle)
     : TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , DiskId(std::move(diskId))
     , Request(std::move(request))
+    , LogTitle(std::move(logTitle))
     , OriginalGroupId(originalGroupId)
 {}
 
@@ -174,12 +178,13 @@ void TPatchBlobActor::ReplyError(
     const TEvBlobStorage::TEvPatchResult& response,
     const TString& description)
 {
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] TEvBlobStorage::TEvPatch failed: %s\n%s",
-        TabletId,
-        DiskId.c_str(),
-        description.data(),
-        response.Print(false).data());
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s TEvBlobStorage::TEvPatch failed: %s\n%s",
+        LogTitle.GetWithTime().c_str(),
+        description.c_str(),
+        response.Print(false).c_str());
 
     auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvPatch failed: " + description);
     ReplyAndDie(ctx, std::make_unique<TResponse>(error));
@@ -311,13 +316,17 @@ void TPartitionActor::HandlePatchBlob(
     ui32 channel = msg->PatchedBlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->PatchedBlobId.Generation());
 
-    State->EnqueueIORequest(channel, std::make_unique<TPatchBlobActor>(
-        SelfId(),
-        requestInfo,
-        TabletID(),
-        PartitionConfig.GetDiskId(),
-        std::unique_ptr<TEvPartitionPrivate::TEvPatchBlobRequest>(msg.Release()),
-        originalGroupId));
+    State->EnqueueIORequest(
+        channel,
+        std::make_unique<TPatchBlobActor>(
+            SelfId(),
+            requestInfo,
+            TabletID(),
+            PartitionConfig.GetDiskId(),
+            std::unique_ptr<TEvPartitionPrivate::TEvPatchBlobRequest>(
+                msg.Release()),
+            originalGroupId,
+            LogTitle.GetChild(GetCycleCount())));
 
     ProcessIOQueue(ctx, channel);
 }
@@ -348,10 +357,11 @@ void TPartitionActor::HandlePatchBlobCompleted(
             msg->ApproximateFreeSpaceShare);
 
         if (msg->StorageStatusFlags.Check(yellowMoveFlag)) {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Yellow move flag received for channel %u and group %u",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Yellow move flag received for channel %u and group %u",
+                LogTitle.GetWithTime().c_str(),
                 patchedChannel,
                 patchedGroup);
 
@@ -361,11 +371,12 @@ void TPartitionActor::HandlePatchBlobCompleted(
     }
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Stop tablet because of PatchBlob error: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            FormatError(msg->GetError()).data());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Stop tablet because of PatchBlob error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
 
         ReportTabletBSFailure();
         Suicide(ctx);

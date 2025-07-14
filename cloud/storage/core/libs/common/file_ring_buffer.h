@@ -26,7 +26,7 @@ private:
     std::unique_ptr<TImpl> Impl;
 
 public:
-    TFileRingBuffer(const TString& filePath, ui32 capacity);
+    TFileRingBuffer(const TString& filePath, ui64 capacity);
     ~TFileRingBuffer();
 
 public:
@@ -34,7 +34,7 @@ public:
     TStringBuf Front() const;
     TStringBuf Back() const;
     void PopFront();
-    ui32 Size() const;
+    ui64 Size() const;
     bool Empty() const;
     TVector<TBrokenFileEntry> Validate() const;
     void Visit(const TVisitor& visitor) const;

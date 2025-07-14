@@ -298,7 +298,7 @@ public:
                 Args.RdmaConfig,
                 Args.Spdk,
                 Args.Allocator,
-                Args.AioStorageProvider,
+                Args.LocalStorageProvider,
                 Args.ProfileLog,
                 Args.BlockDigestGenerator,
                 Args.Logging,

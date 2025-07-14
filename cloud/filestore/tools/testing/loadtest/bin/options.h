@@ -16,6 +16,7 @@ struct TOptions
     TString Host;
     ui32 InsecurePort = 0;
     ui32 SecurePort = 0;
+    TString UnixSocketPath;
 
     TString MonitoringConfig;
     TString MonitoringAddress;

@@ -27,9 +27,12 @@ void TVolumeActor::HandleWaitReady(
         StartPartitionsIfNeeded(ctx);
 
         if (!State || !State->Ready()) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] WaitReady request delayed until volume and partitions are ready",
-                TabletID());
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s WaitReady request delayed until volume and partitions are "
+                "ready",
+                LogTitle.GetWithTime().c_str());
 
             auto requestInfo = CreateRequestInfo<TEvVolume::TWaitReadyMethod>(
                 ev->Sender,
@@ -43,9 +46,11 @@ void TVolumeActor::HandleWaitReady(
 
     BLOCKSTORE_VOLUME_COUNTER(WaitReady);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Received WaitReady request",
-        TabletID());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Received WaitReady request",
+        LogTitle.GetWithTime().c_str());
 
     const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
 

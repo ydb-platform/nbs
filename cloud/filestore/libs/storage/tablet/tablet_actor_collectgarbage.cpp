@@ -40,7 +40,8 @@ private:
     const TVector<TPartialBlobId> GarbageBlobs;
     const ui64 LastCollectCommitId;
     const ui64 CollectCommitId;
-    const ui32 CollectCounter;
+    const ui32 RecordGeneration;
+    const ui32 PerGenerationCounter;
     const bool CleanupWholeHistory;
     ui32 OperationSize = 0;
 
@@ -62,7 +63,8 @@ public:
         TVector<TPartialBlobId> garbageBlobs,
         ui64 lastCollectCommitId,
         ui64 collectCommitId,
-        ui32 collectCounter,
+        ui32 recordGeneration,
+        ui32 perGenerationCounter,
         bool cleanupWholeHistory,
         NProto::TProfileLogRequestInfo profileLogRequest);
 
@@ -112,7 +114,8 @@ TCollectGarbageActor::TCollectGarbageActor(
         TVector<TPartialBlobId> garbageBlobs,
         ui64 lastCollectCommitId,
         ui64 collectCommitId,
-        ui32 collectCounter,
+        ui32 recordGeneration,
+        ui32 perGenerationCounter,
         bool cleanupWholeHistory,
         NProto::TProfileLogRequestInfo profileLogRequest)
     : LogTag(std::move(logTag))
@@ -126,7 +129,8 @@ TCollectGarbageActor::TCollectGarbageActor(
     , GarbageBlobs(std::move(garbageBlobs))
     , LastCollectCommitId(lastCollectCommitId)
     , CollectCommitId(collectCommitId)
-    , CollectCounter(collectCounter)
+    , RecordGeneration(recordGeneration)
+    , PerGenerationCounter(perGenerationCounter)
     , CleanupWholeHistory(cleanupWholeHistory)
     , ProfileLogRequest(std::move(profileLogRequest))
 {
@@ -175,15 +179,15 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
         CleanupWholeHistory,
         LastCollectCommitId,
         CollectCommitId,
-        CollectCounter);
+        PerGenerationCounter);
 
     auto [collectGen, collectStep] = ParseCommitId(CollectCommitId);
     for (ui32 channel: Channels) {
         for (auto& [proxyId, req]: requests.GetRequests(channel)) {
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
                 TabletInfo->TabletID,       // tablet
-                collectGen,                 // record generation
-                CollectCounter,             // per generation counter
+                RecordGeneration,           // record generation
+                PerGenerationCounter,       // per generation counter
                 channel,                    // collect channel
                 true,                       // yes, collect
                 collectGen,                 // collect generation
@@ -410,7 +414,7 @@ void TIndexTabletActor::HandleCollectGarbage(
         return;
     }
 
-    ui64 collectCommitId = GetCollectCommitId();
+    const ui64 collectCommitId = GetCollectCommitId();
 
     auto newBlobs = GetNewBlobs(collectCommitId);
     auto garbageBlobs = GetGarbageBlobs(collectCommitId);
@@ -426,8 +430,10 @@ void TIndexTabletActor::HandleCollectGarbage(
         return;
     }
 
-    ui64 lastCollectCommitId = GetLastCollectCommitId();
-    ui32 collectCounter = NextCollectCounter();
+    const ui64 lastCollectCommitId = GetLastCollectCommitId();
+    const ui32 nextPerGenerationCounter = NextCollectPerGenerationCounter();
+    // use tablet generation as record generation
+    const ui32 recordGeneration = Executor()->Generation();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s CollectGarbage started (collect: %lu, new: %u, garbage: %u)",
@@ -456,7 +462,8 @@ void TIndexTabletActor::HandleCollectGarbage(
         std::move(garbageBlobs),
         lastCollectCommitId,
         collectCommitId,
-        collectCounter,
+        recordGeneration,
+        nextPerGenerationCounter,
         !GetStartupGcExecuted(),
         std::move(profileLogRequest));
 
