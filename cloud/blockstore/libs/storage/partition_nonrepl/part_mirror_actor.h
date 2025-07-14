@@ -21,6 +21,8 @@
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
 
+#include <cloud/storage/core/libs/throttling/leaky_bucket.h>
+
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -45,6 +47,12 @@ TDuration CalculateScrubbingInterval(
 class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
+
+    enum class EWriteRequestType {
+        DirectWrite,
+        MultiAgentWrite,
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -74,6 +82,8 @@ private:
         &RequestsInProgress.GetRequestBoundsTracker()};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::Read};
+
+    TLeakyBucket DirectWriteBandwidthQuota{1.0, 1.0, 1.0};
 
     TRequestInfoPtr Poisoner;
     size_t AliveReplicas = 0;
@@ -135,7 +145,9 @@ private:
     void StartResyncRange(const NActors::TActorContext& ctx, bool isMinor);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
     ui64 TakeNextRequestIdentifier();
-    bool CanMakeMultiAgentWrite(TBlockRange64 range) const;
+    EWriteRequestType SuggestWriteRequestType(
+        const NActors::TActorContext& ctx,
+        TBlockRange64 range);
 
 private:
     STFUNC(StateWork);

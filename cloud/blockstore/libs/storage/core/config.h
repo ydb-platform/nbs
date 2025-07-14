@@ -695,6 +695,8 @@ public:
     [[nodiscard]] ui32 GetMaxOutOfOrderCompactionMapChunksInflight() const;
 
     [[nodiscard]] TDuration GetPartitionBootTimeout() const;
+
+    [[nodiscard]] ui32 GetDirectWriteBandwidthQuota() const;
 };
 
 ui64 GetAllocationUnit(

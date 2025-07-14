@@ -339,10 +339,32 @@ auto TMirrorPartitionActor::TakeNextRequestIdentifier() -> ui64
     return RequestIdentifierCounter++;
 }
 
-bool TMirrorPartitionActor::CanMakeMultiAgentWrite(TBlockRange64 range) const
+TMirrorPartitionActor::EWriteRequestType
+TMirrorPartitionActor::SuggestWriteRequestType(
+    const TActorContext& ctx,
+    TBlockRange64 range)
 {
-    return MultiAgentWriteEnabled && range.Size() * State.GetBlockSize() >=
-                                         MultiAgentWriteRequestSizeThreshold;
+    if (!MultiAgentWriteEnabled || range.Size() * State.GetBlockSize() <
+                                       MultiAgentWriteRequestSizeThreshold)
+    {
+        return EWriteRequestType::DirectWrite;
+    }
+
+    if (!Config->GetDirectWriteBandwidthQuota()) {
+        return EWriteRequestType::MultiAgentWrite;
+    }
+
+    auto notEnoughBudget =
+        DirectWriteBandwidthQuota.Register(
+            ctx.Now(),
+            static_cast<double>(range.Size() * State.GetBlockSize()) /
+                Config->GetDirectWriteBandwidthQuota()) != 0;
+
+    if (notEnoughBudget) {
+        return EWriteRequestType::MultiAgentWrite;
+    }
+
+    return EWriteRequestType::DirectWrite;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
