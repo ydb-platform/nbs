@@ -219,8 +219,7 @@ void TCollectGarbageActor::HandleError(NProto::TError error)
     if (FAILED(error.GetCode())) {
         ReportCollectGarbageError(
             TStringBuilder()
-            << "Collect garbage error: " << FormatError(error));
-
+            << "Failed to collect garbage for " << SelfId());
         Error = std::move(error);
     }
 }
@@ -453,9 +452,7 @@ void TCollectGarbageHardActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
         ReportCollectGarbageError(
-            TStringBuilder()
-            << "Collect garbage error: " << FormatError(error));
-
+            TStringBuilder() << "Failed to collect garbage for " << SelfId());
         Error = std::move(error);
     }
 }

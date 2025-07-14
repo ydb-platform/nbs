@@ -1837,7 +1837,8 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
                     ReportEndpointRestoringError(
                         TStringBuilder() << "Failed to acquire nbd device"
                                          << ", endpoint: "
-                                         << request->GetUnixSocketPath().Quote());
+                                         << request->GetUnixSocketPath().Quote()
+                                         << ", Diskid" << request->GetDiskId());
 
                     STORAGE_ERROR("Failed to acquire nbd device"
                         << ", endpoint: " << request->GetUnixSocketPath().Quote()
