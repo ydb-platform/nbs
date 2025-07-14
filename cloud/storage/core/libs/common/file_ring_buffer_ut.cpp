@@ -448,10 +448,29 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     Y_UNIT_TEST(ShouldSetIsCorruptedFlagWhenEntryLengthIsAltered)
     {
         for (int i = 0; i <= 32; i++) {
-            // Detect corruption in Visit
             TStateWithCorruptedEntryLength s(i);
             TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
             UNIT_ASSERT_VALUES_EQUAL(i != 2, rb.IsCorrupted());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSetIsCorruptedFlagInVisitWhenEntryLengthIsAltered)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
+            s.RingBuffer.Visit([] (ui32, TStringBuf) {});
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSetIsCorruptedFlagInValidateWhenEntryLengthIsAltered)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
+            s.RingBuffer.Validate();
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
         }
     }
 

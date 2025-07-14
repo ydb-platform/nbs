@@ -154,16 +154,15 @@ private:
 
         const auto* data = Data.GetEntryData(eh);
         if (data == nullptr) {
-            visitor(eh->Checksum, {});
             return INVALID_POS;
         }
         visitor(eh->Checksum, {data, eh->Size});
         return pos + sizeof(TEntryHeader) + eh->Size;
     }
 
-    void SetCorrupted()
+    void SetCorruptedIf(bool condition)
     {
-        Corrupted = true;
+        Corrupted |= condition;
     }
 
 public:
@@ -193,11 +192,8 @@ public:
         SkipSlackSpace();
         Visit([this] (ui32 checksum, TStringBuf entry) {
             Y_UNUSED(checksum);
-            if (entry) {
-                ++Count;
-            } else {
-                SetCorrupted();
-            }
+            Y_UNUSED(entry);
+            ++Count;
         });
     }
 
@@ -329,7 +325,7 @@ public:
         return result;
     }
 
-    auto Validate() const
+    auto Validate()
     {
         TVector<TBrokenFileEntry> entries;
 
@@ -346,7 +342,7 @@ public:
         return entries;
     }
 
-    void Visit(const TVisitor& visitor) const
+    void Visit(const TVisitor& visitor)
     {
         ui64 pos = Header()->ReadPos;
         while (pos > Header()->WritePos && pos != INVALID_POS) {
@@ -357,13 +353,12 @@ public:
             pos = VisitEntry(visitor, pos);
             if (!pos) {
                 // can happen if the buffer is corrupted
+                pos = INVALID_POS;
                 break;
             }
         }
 
-        if (pos != Header()->WritePos && pos != INVALID_POS) {
-            visitor(0, {});
-        }
+        SetCorruptedIf(pos == INVALID_POS || pos != Header()->WritePos);
     }
 
     bool IsCorrupted() const
@@ -412,18 +407,14 @@ bool TFileRingBuffer::Empty() const
     return Impl->Empty();
 }
 
-TVector<TFileRingBuffer::TBrokenFileEntry> TFileRingBuffer::Validate() const
+TVector<TFileRingBuffer::TBrokenFileEntry> TFileRingBuffer::Validate()
 {
     return Impl->Validate();
 }
 
-void TFileRingBuffer::Visit(const TVisitor& visitor) const
+void TFileRingBuffer::Visit(const TVisitor& visitor)
 {
-    Impl->Visit([&] (ui32 checksum, TStringBuf entry) {
-        if (entry) {
-            visitor(checksum, entry);
-        }
-    });
+    Impl->Visit(visitor);
 }
 
 bool TFileRingBuffer::IsCorrupted() const
