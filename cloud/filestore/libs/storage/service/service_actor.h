@@ -98,7 +98,7 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
         ui32 shardNo);
-    
+
     template <typename TMethod>
     TSessionInfo* GetAndValidateSession(
         const NActors::TActorContext& ctx,
