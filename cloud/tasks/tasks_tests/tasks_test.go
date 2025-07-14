@@ -1527,3 +1527,41 @@ func TestListerMetricsCleanup(t *testing.T) {
 
 	registry.AssertAllExpectations(t)
 }
+
+func TestTaskInflightDuration(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 2)
+
+	pingPeriod, err := time.ParseDuration(*s.config.TaskPingPeriod)
+	if err != nil {
+		t.Fatalf("failed to parse taskPingPeriod: %v", err)
+	}
+
+	err = registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.NoError(t, err)
+
+	taskState, err := s.storage.GetTask(ctx, id)
+	require.NoError(t, err)
+
+	require.True(t, tasks_storage.IsEnded(taskState.Status))
+
+	expectedDuration := 10 * time.Second
+	actualDuration := taskState.InflightDuration
+	threshold := 2 * pingPeriod
+	require.InDelta(t, expectedDuration, actualDuration, float64(threshold))
+}

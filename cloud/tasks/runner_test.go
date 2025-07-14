@@ -3,7 +3,6 @@ package tasks
 import (
 	"context"
 	"fmt"
-	"math"
 	"math/rand"
 	"sync"
 	"testing"
@@ -116,10 +115,14 @@ func matchesState(
 		ok := true
 
 		if expected.ModifiedAt.After(time.Time{}) {
-			ok = assert.WithinDuration(t, actual.ModifiedAt, expected.ModifiedAt, threshold) && ok
+			ok = assert.WithinDuration(
+				t, actual.ModifiedAt, expected.ModifiedAt, threshold,
+			) && ok
 		} else {
 			modifiedAtHighBound := time.Now()
-			ok = assert.WithinRange(t, actual.ModifiedAt, modifiedAtLowBound, modifiedAtHighBound) && ok
+			ok = assert.WithinRange(
+				t, actual.ModifiedAt, modifiedAtLowBound, modifiedAtHighBound,
+			) && ok
 		}
 
 		ok = assert.Contains(t, actual.ErrorMessage, expected.ErrorMessage) && ok
@@ -128,8 +131,12 @@ func matchesState(
 
 		if actual.ID == pingerTaskId {
 			// ping takes <1ms to complete
-			diff := actual.InflightDuration - expected.InflightDuration
-			ok = assert.Less(t, math.Abs(float64(diff)), float64(threshold)) && ok
+			ok = assert.InDelta(
+				t,
+				expected.InflightDuration,
+				actual.InflightDuration,
+				float64(threshold),
+			) && ok
 		}
 
 		actual.InflightDuration = expected.InflightDuration
@@ -147,7 +154,7 @@ func matchesStateArguments(
 	callback := matchesState(t, expected)
 	return func(args mock.Arguments) {
 		state := args[1].(storage.TaskState)
-		assert.True(t, callback(state))
+		require.True(t, callback(state))
 	}
 }
 
@@ -1332,12 +1339,16 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 	)
 
 	for i := 0; i < pingsCount; i++ {
+		spent := time.Duration(i) * pingPeriod
 		state := storage.TaskState{
 			ID:               pingerTaskId,
-			ModifiedAt:       time.Now().Add(time.Duration(i) * pingPeriod),
-			InflightDuration: initialInflightDuration + time.Duration(i)*pingPeriod,
+			ModifiedAt:       time.Now().Add(spent),
+			InflightDuration: initialInflightDuration + spent,
 		}
-		taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state)).Return(state, nil).Once()
+
+		taskStorage.On(
+			"UpdateTask", mock.Anything, mock.Anything,
+		).Run(matchesStateArguments(t, state)).Return(state, nil).Once()
 	}
 
 	go func() {
@@ -1348,6 +1359,7 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 	}()
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
+	// Calls order is checked by matchesStateArguments
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
 }
 
