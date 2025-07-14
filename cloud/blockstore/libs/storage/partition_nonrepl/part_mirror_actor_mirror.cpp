@@ -31,12 +31,7 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
         return;
     }
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    auto [volumeRequestId, _, range] = completeRequest.value();
-    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.BlockRange)) {
-            DirtyReadRequestIds.insert(id);
-        }
-    }
+    auto [volumeRequestId, _, __] = completeRequest.value();
 
     if (ResyncActorId) {
         auto completion = std::make_unique<
