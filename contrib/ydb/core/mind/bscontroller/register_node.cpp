@@ -316,7 +316,7 @@ public:
 
         Response->Record.SetInstanceId(Self->InstanceId);
         Response->Record.SetComprehensive(true);
-        Response->Record.SetAvailDomain(AppData()->DomainsInfo->GetDomainUidByTabletId(Self->TabletID()));
+        Response->Record.SetAvailDomain(AppData()->DomainsInfo->GetDomain()->DomainUid);
 
         NIceDb::TNiceDb db(txc.DB);
         auto& node = Self->GetNode(nodeId);
