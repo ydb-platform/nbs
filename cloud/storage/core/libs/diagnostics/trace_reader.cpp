@@ -90,6 +90,7 @@ private:
     TLog Log;
     ui64 TracksCount = 0;
     TString Tag;
+    const ELogPriority Priority = ELogPriority::TLOG_INFO;
 
 public:
     TTraceLogger(
@@ -97,10 +98,12 @@ public:
             ITraceReaderPtr consumer,
             TString tag,
             ILoggingServicePtr logging,
-            const TString& componentName)
+            const TString& componentName,
+            ELogPriority priority = ELogPriority::TLOG_INFO)
         : ITraceReader(std::move(id))
         , Consumer(std::move(consumer))
         , Tag(std::move(tag))
+        , Priority(priority)
     {
         Log = logging->CreateLog(componentName);
     }
@@ -115,9 +118,7 @@ public:
 
         ui64 minSeenTimestamp = tl.Items[0].TimestampCycles;
 
-        Log.Write(
-            ELogPriority::TLOG_INFO,
-            SerializeTraceToString(tl, minSeenTimestamp, Tag));
+        Log.Write(Priority, SerializeTraceToString(tl, minSeenTimestamp, Tag));
         Consumer->Push(tid, tl);
     }
 
@@ -283,14 +284,16 @@ ITraceReaderPtr CreateTraceLogger(
     ITraceReaderPtr consumer,
     ILoggingServicePtr logging,
     TString componentName,
-    TString tag)
+    TString tag,
+    ELogPriority priority)
 {
     return std::make_shared<TTraceLogger>(
         std::move(id),
         std::move(consumer),
         std::move(tag),
         std::move(logging),
-        std::move(componentName));
+        std::move(componentName),
+        priority);
 }
 
 ITraceReaderPtr CreateSlowRequestsFilter(
@@ -312,7 +315,8 @@ ITraceReaderPtr SetupTraceReaderWithLog(
     TString id,
     ILoggingServicePtr logging,
     TString componentName,
-    TString tag)
+    TString tag,
+    ELogPriority priority)
 {
     auto traceStorage = std::make_shared<TTraceReaderWithRingBuffer>(id, tag);
     return CreateTraceLogger(
@@ -320,7 +324,8 @@ ITraceReaderPtr SetupTraceReaderWithLog(
         std::move(traceStorage),
         std::move(logging),
         std::move(componentName),
-        std::move(tag));
+        std::move(tag),
+        priority);
 }
 
 ITraceReaderPtr SetupTraceReaderForSlowRequests(
@@ -330,10 +335,11 @@ ITraceReaderPtr SetupTraceReaderForSlowRequests(
     TRequestThresholds requestThresholds)
 {
     auto readerWithLog = SetupTraceReaderWithLog(
-        std::move(id),
-        std::move(logging),
-        std::move(componentName),
-        "SlowRequests");
+        id,
+        logging,
+        componentName,
+        "SlowRequests",
+        TLOG_WARNING);
     return CreateSlowRequestsFilter(
         std::move(id),
         std::move(readerWithLog),

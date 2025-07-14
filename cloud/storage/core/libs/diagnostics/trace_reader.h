@@ -6,6 +6,7 @@
 #include <cloud/storage/core/protos/trace.pb.h>
 
 #include <library/cpp/containers/ring_buffer/ring_buffer.h>
+#include <library/cpp/logger/priority.h>
 #include <library/cpp/lwtrace/log.h>
 
 #include <util/generic/hash.h>
@@ -89,7 +90,8 @@ ITraceReaderPtr CreateTraceLogger(
     ITraceReaderPtr consumer,
     ILoggingServicePtr logging,
     TString componentName,
-    TString tag);
+    TString tag,
+    ELogPriority priority = ELogPriority::TLOG_INFO);
 
 ITraceReaderPtr CreateSlowRequestsFilter(
     TString id,
@@ -102,7 +104,8 @@ ITraceReaderPtr SetupTraceReaderWithLog(
     TString id,
     ILoggingServicePtr logging,
     TString componentName,
-    TString tag);
+    TString tag,
+    ELogPriority priority = ELogPriority::TLOG_INFO);
 
 ITraceReaderPtr SetupTraceReaderForSlowRequests(
     TString id,

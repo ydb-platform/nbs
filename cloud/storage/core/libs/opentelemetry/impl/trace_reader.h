@@ -22,7 +22,8 @@ ITraceReaderPtr SetupTraceReaderWithOpentelemetryExport(
     TString componentName,
     TString tag,
     ITraceServiceClientPtr traceServiceClient,
-    TString serviceName);
+    TString serviceName,
+    ELogPriority priority = ELogPriority::TLOG_INFO);
 
 ITraceReaderPtr SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
     TString id,
