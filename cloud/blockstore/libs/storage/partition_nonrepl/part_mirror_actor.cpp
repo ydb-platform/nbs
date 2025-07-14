@@ -354,17 +354,14 @@ TMirrorPartitionActor::SuggestWriteRequestType(
         return EWriteRequestType::MultiAgentWrite;
     }
 
-    auto notEnoughBudget =
+    const bool hasEnoughBudget =
         DirectWriteBandwidthQuota.Register(
             ctx.Now(),
             static_cast<double>(range.Size() * State.GetBlockSize()) /
-                Config->GetDirectWriteBandwidthQuota()) != 0;
+                Config->GetDirectWriteBandwidthQuota()) == 0;
 
-    if (notEnoughBudget) {
-        return EWriteRequestType::MultiAgentWrite;
-    }
-
-    return EWriteRequestType::DirectWrite;
+    return hasEnoughBudget ? EWriteRequestType::DirectWrite
+                           : EWriteRequestType::MultiAgentWrite;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
