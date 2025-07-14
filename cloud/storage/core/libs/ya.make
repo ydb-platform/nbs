@@ -14,6 +14,7 @@ RECURSE(
     http
     kikimr
     netlink
+    opentelemetry
     ss_proxy
     tablet
     throttling

@@ -14,6 +14,7 @@ PEERDIR(
     contrib/libs/opentelemetry-proto
 
     library/cpp/threading/future
+    library/cpp/lwtrace
 )
 
 END()
