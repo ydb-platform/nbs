@@ -1147,8 +1147,9 @@ void TServer::StartListenUnixSocket(
 
     if (HasError(error)) {
         ReportEndpointStartingError(
-            TStringBuilder() << "unixSocketPath=" << unixSocketPath.Quote());
-        STORAGE_ERROR("Failed to start (control) endpoint: " << FormatError(error));
+            TStringBuilder()
+            << "Failed to start (control) endpoint: " << FormatError(error)
+            << "; unixSocketPath=" << unixSocketPath.Quote());
         StopListenUnixSocket();
     }
 }

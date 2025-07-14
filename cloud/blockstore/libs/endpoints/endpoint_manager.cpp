@@ -1791,10 +1791,9 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
 {
     auto [endpointIds, error] = EndpointStorage->GetEndpointIds();
     if (HasError(error) && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT)) {
-        STORAGE_ERROR("Failed to get endpoints from storage: "
-            << FormatError(error));
         ReportEndpointRestoringError(
-            TStringBuilder() << "Failed to get endpoints from storage");
+            TStringBuilder()
+            << "Failed to get endpoints from storage: " << FormatError(error));
         return MakeFuture();
     }
 
@@ -1822,8 +1821,6 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
                 TStringBuilder()
                 << "Failed to deserialize request. ID: " << endpointId
                 << ", DiskId: " << request->GetDiskId());
-
-            STORAGE_ERROR("Failed to deserialize request. ID: " << endpointId);
             continue;
         }
 
@@ -1839,10 +1836,6 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
                                          << ", endpoint: "
                                          << request->GetUnixSocketPath().Quote()
                                          << ", Diskid" << request->GetDiskId());
-
-                    STORAGE_ERROR("Failed to acquire nbd device"
-                        << ", endpoint: " << request->GetUnixSocketPath().Quote()
-                        << ", error: " << FormatError(error));
                     continue;
                 }
             }

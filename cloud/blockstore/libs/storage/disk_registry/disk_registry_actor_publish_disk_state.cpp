@@ -134,14 +134,10 @@ void TDiskRegistryActor::HandlePublishDiskStatesResponse(
     auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Failed to publish disk state. Error=%s",
-            TabletID(),
-            FormatError(msg->GetError()).c_str());
-
         ReportPublishDiskStateError(
             TStringBuilder()
-            << "[" << TabletID() << "] Failed to publish disk state");
+            << TabletID() << " Failed to publish disk state. Error="
+            << FormatError(msg->GetError()));
 
         DiskStatesPublicationInProgress = false;
         PublishDiskStates(ctx);
