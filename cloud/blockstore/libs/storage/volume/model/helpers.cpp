@@ -198,7 +198,7 @@ TVector<NProto::TLaggingDevice> CollectLaggingDevices(
                     << migration.GetSourceDeviceId() << " not found on disk "
                     << meta.GetConfig().GetDiskId()
                     << ", although target device "
-                    << targetDevice.GetDeviceUUID() << " is present.");
+                    << targetDevice.GetDeviceUUID() << " is present");
                 continue;
             }
             auto& laggingDevice = result.emplace_back();

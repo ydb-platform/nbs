@@ -521,7 +521,7 @@ private:
                 if (res < 0) {
                     ReportVhostQueueRunningError(
                         TStringBuilder()
-                        << " Failed to run vhost request queue. Return code: "
+                        << "Failed to run vhost request queue. Return code: "
                         << -res);
                 }
                 break;

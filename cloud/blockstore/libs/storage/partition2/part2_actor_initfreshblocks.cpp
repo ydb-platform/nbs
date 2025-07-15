@@ -167,7 +167,7 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
             ReportInitFreshBlocksError(
                 TStringBuilder()
                 << "[" << TabletID() << "] Failed to parse fresh blob "
-                << "(blob commitId: " << blob.CommitId);
+                << "(blob commitId: " << blob.CommitId << ")");
             Suicide(ctx);
             return;
         }
