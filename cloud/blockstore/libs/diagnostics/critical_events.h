@@ -119,6 +119,7 @@ using TValue =
     xxx(LaggingAgentsProxyWrongRecipientActor)                                 \
     xxx(UnexpectedCookie)                                                      \
     xxx(MultiAgentRequestAffectsTwoDevices)                                    \
+    xxx(ChecksumCalculationError)                                              \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

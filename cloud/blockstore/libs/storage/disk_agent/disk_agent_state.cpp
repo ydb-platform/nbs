@@ -631,6 +631,7 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
 
             *response.MutableError() = data.GetError();
             response.MutableBlocks()->Swap(data.MutableBlocks());
+            response.MutableChecksum()->CopyFrom(data.GetChecksum());
 
             return response;
         });
