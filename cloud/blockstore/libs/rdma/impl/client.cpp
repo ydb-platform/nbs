@@ -1145,8 +1145,9 @@ void TClientEndpoint::SendRequestCompleted(
         Counters->SendRequestError();
 
         ReportRdmaError(
-            TStringBuilder() << "SEND " << TWorkRequestId(send->wr.wr_id)
-                             << " failed: " << NVerbs::GetStatusString(status));
+            TStringBuilder()
+            << "SEND request completed " << TWorkRequestId(send->wr.wr_id)
+            << " failed: " << NVerbs::GetStatusString(status));
 
         Disconnect();
         return;

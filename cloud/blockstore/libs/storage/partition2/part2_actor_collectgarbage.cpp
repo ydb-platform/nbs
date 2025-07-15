@@ -453,7 +453,7 @@ void TCollectGarbageHardActor::HandleError(NProto::TError error)
     if (FAILED(error.GetCode())) {
         ReportCollectGarbageError(
             TStringBuilder()
-            << "Garbage collection failed: " << FormatError(error));
+            << "Hard garbage collection failed: " << FormatError(error));
         Error = std::move(error);
     }
 }

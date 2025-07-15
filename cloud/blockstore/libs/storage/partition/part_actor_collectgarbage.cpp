@@ -476,7 +476,7 @@ void TCollectGarbageHardActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
         ReportCollectGarbageError(
-            TStringBuilder() << "Garbage collection error on disk "
+            TStringBuilder() << "Hard garbage collection error on disk "
                              << DiskId.Quote() << ": " << FormatError(error));
 
         Error = std::move(error);
