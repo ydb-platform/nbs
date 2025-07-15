@@ -3801,6 +3801,65 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, multiAgentRequestCount);
     }
 
+    Y_UNIT_TEST(ShouldSendMultiAgentRequestsIfNoQuotaForDirectRequests)
+    {
+        TTestRuntime runtime;
+
+        size_t multiAgentWriteRequestCount = 0;
+
+        auto countWrites =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                    using TRequest = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
+
+                    const auto& record = event->Get<TRequest>()->Record;
+                    if (!record.GetReplicationTargets().empty()) {
+                        ++multiAgentWriteRequestCount;
+                    }
+
+                    break;
+                }
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(countWrites);
+
+        NProto::TStorageServiceConfig config;
+        config.SetMultiAgentWriteEnabled(true);
+        config.SetDirectWriteBandwidthQuota(DefaultBlockSize * 10);
+        TTestEnv env(runtime, std::move(config));
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 5), 'A');
+        UNIT_ASSERT_VALUES_EQUAL(0, multiAgentWriteRequestCount);
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 4), 'A');
+        UNIT_ASSERT_VALUES_EQUAL(0, multiAgentWriteRequestCount);
+
+        // DefaultBlockSize * 9 quota used. There is no quota for direct
+        // requests with size more than one block.
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 2), 'A');
+        UNIT_ASSERT_VALUES_EQUAL(1, multiAgentWriteRequestCount);
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 10), 'A');
+        UNIT_ASSERT_VALUES_EQUAL(2, multiAgentWriteRequestCount);
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+
+        // Quota regenerated, we can do direct requests.
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 10), 'A');
+        UNIT_ASSERT_VALUES_EQUAL(2, multiAgentWriteRequestCount);
+    }
+
     Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
     {
         constexpr ui64 blockCount = 2500;   // in DefaultDevices
