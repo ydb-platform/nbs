@@ -823,6 +823,10 @@ func WithDetails(details trace.Details) option {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func getIndexName(columnName string) string {
+	return columnName + "_index"
+}
+
 func createTable(
 	ctx context.Context,
 	session ydb_table.Session,
@@ -841,7 +845,7 @@ func createTable(
 		options = append(
 			options,
 			ydb_options.WithIndex(
-				key+"_index",
+				getIndexName(key),
 				ydb_options.WithIndexType(ydb_options.GlobalIndex()),
 				ydb_options.WithIndexColumns(key),
 			),
@@ -928,23 +932,20 @@ func splitColumns(
 	return
 }
 
-func alterTable(
-	ctx context.Context,
-	session ydb_table.Session,
-	fullPath string,
+func buildAlterColumnsOptions(
 	currentDescription ydb_options.Description,
 	description CreateTableDescription,
 	dropUnusedColumns bool,
-) error {
-
+) (alterTableOptions []ydb_options.AlterTableOption, err error) {
 	currentPrimaryKey := currentDescription.PrimaryKey
 	primaryKey := description.PrimaryKey
 	if !primaryKeysMatch(currentPrimaryKey, primaryKey) {
-		return errors.NewNonRetriableErrorf(
+		err = errors.NewNonRetriableErrorf(
 			"cannot change primary key. Current=%v, Requested=%v",
 			currentPrimaryKey,
 			primaryKey,
 		)
+		return
 	}
 
 	currentColumns := currentDescription.Columns
@@ -958,14 +959,8 @@ func alterTable(
 
 	unusedColumns, addedColumns, err := splitColumns(currentColumns, columns)
 	if err != nil {
-		return err
+		return
 	}
-
-	if len(addedColumns) == 0 {
-		return nil
-	}
-
-	alterTableOptions := make([]ydb_options.AlterTableOption, 0)
 
 	for _, column := range addedColumns {
 		alterTableOptions = append(alterTableOptions, ydb_options.WithAddColumn(column.Name, column.Type))
@@ -977,7 +972,120 @@ func alterTable(
 		}
 	}
 
-	return session.AlterTable(ctx, fullPath, alterTableOptions...)
+	return
+}
+
+func splitNames[T any, K comparable](lhs, rhs []T, keyFunc func(T) K) (lhsOnly, rhsOnly []T) {
+	lhsMap := make(map[K]struct{})
+	for _, item := range lhs {
+		lhsMap[keyFunc(item)] = struct{}{}
+	}
+
+	rhsMap := make(map[K]struct{})
+	for _, item := range rhs {
+		rhsMap[keyFunc(item)] = struct{}{}
+		if _, ok := lhsMap[keyFunc(item)]; !ok {
+			rhsOnly = append(rhsOnly, item)
+		}
+	}
+
+	for _, item := range lhs {
+		if _, ok := rhsMap[keyFunc(item)]; !ok {
+			lhsOnly = append(lhsOnly, item)
+		}
+	}
+
+	return
+}
+
+func getUnusedAndAddedIndexes(
+	currentDescription ydb_options.Description,
+	description CreateTableDescription,
+) (unusedIndexes, addedIndexes []string, err error) {
+	currentIndexes := make([]string, len(currentDescription.Indexes))
+	for i := 0; i < len(currentIndexes); i++ {
+		columns := currentDescription.Indexes[i].IndexColumns
+		if len(columns) != 1 {
+			err = errors.NewNonRetriableErrorf("indexes with more than one column are not supported")
+			return
+		}
+		currentIndexes[i] = columns[0]
+	}
+
+	unusedIndexes, addedIndexes = splitNames(currentIndexes, description.SecondaryKeys, func(key string) string {
+		return key
+	})
+	return
+}
+
+func buildAddIndexesOptions(
+	addedIndexes []string,
+) (alterTableOptions []ydb_options.AlterTableOption) {
+	for _, key := range addedIndexes {
+		alterTableOptions = append(alterTableOptions, ydb_options.WithAddIndex(
+			getIndexName(key),
+			ydb_options.WithIndexType(ydb_options.GlobalIndex()),
+			ydb_options.WithIndexColumns(key),
+		))
+	}
+	return
+}
+
+func buildDropIndexesOptions(
+	unusedIndexes []string,
+) (alterTableOptions []ydb_options.AlterTableOption) {
+	for _, key := range unusedIndexes {
+		alterTableOptions = append(alterTableOptions, ydb_options.WithDropIndex(getIndexName(key)))
+	}
+	return
+}
+
+func alterTable(
+	ctx context.Context,
+	session ydb_table.Session,
+	fullPath string,
+	currentDescription ydb_options.Description,
+	description CreateTableDescription,
+	dropUnusedColumns bool,
+) error {
+
+	alterColumnsOptions, err := buildAlterColumnsOptions(currentDescription, description, dropUnusedColumns)
+	if err != nil {
+		return err
+	}
+
+	unusedIndexes, addedIndexes, err := getUnusedAndAddedIndexes(currentDescription, description)
+	if err != nil {
+		return err
+	}
+
+	// Indexes must be created and deleted one-by-one
+
+	addIndexesOptions := buildAddIndexesOptions(addedIndexes)
+	dropIndexesOptions := buildDropIndexesOptions(unusedIndexes)
+
+	for _, option := range dropIndexesOptions {
+		err = session.AlterTable(ctx, fullPath, option)
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(alterColumnsOptions) != 0 {
+		err = session.AlterTable(ctx, fullPath, alterColumnsOptions...)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, option := range addIndexesOptions {
+		err = session.AlterTable(ctx, fullPath, option)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func createOrAlterTable(

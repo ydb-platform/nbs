@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
+	"github.com/ydb-platform/ydb-go-sdk/v3/table/options"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,6 +91,7 @@ func tableV1TableDescription() CreateTableDescription {
 		WithColumn("id", Optional(TypeUTF8)),
 		WithColumn("val1", Optional(TypeUTF8)),
 		WithPrimaryKeyColumn("id"),
+		WithSecondaryKeyColumn("val1"),
 	)
 }
 
@@ -186,6 +188,7 @@ func tableV2TableDescription() CreateTableDescription {
 		WithColumn("val1", Optional(TypeUTF8)),
 		WithColumn("val2", Optional(TypeUTF8)),
 		WithPrimaryKeyColumn("id"),
+		WithSecondaryKeyColumn("val2"),
 	)
 }
 
@@ -534,4 +537,119 @@ func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
 	require.True(t, ydb.IsOperationErrorSchemeError(err))
 
 	metricsRegistry.AssertAllExpectations(t)
+}
+
+func migrateAndValidate(
+	ctx context.Context,
+	folder string,
+	table string,
+	db *YDBClient,
+	t *testing.T,
+	newDescription CreateTableDescription,
+	validate func(options.Description),
+) {
+	err := db.CreateOrAlterTable(
+		ctx,
+		folder,
+		table,
+		newDescription,
+		false, // dropUnusedColumns
+	)
+	require.NoError(t, err)
+
+	err = db.Execute(ctx, func(ctx context.Context, session *Session) error {
+		description, err := session.session.DescribeTable(ctx, db.AbsolutePath(folder, table))
+		require.NoError(t, err)
+		validate(description)
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func TestYDBSecondaryKeysMigration(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx, empty.NewRegistry())
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	folder := fmt.Sprintf("ydb_test/%v", t.Name())
+	table := "table"
+
+	// Create table with index on val1
+
+	migrateAndValidate(
+		ctx,
+		folder,
+		table,
+		db,
+		t,
+		tableV1TableDescription(),
+		func(description options.Description) {
+			require.Equal(t, 1, len(description.Indexes))
+			require.Equal(t, "val1_index", description.Indexes[0].Name)
+			require.Equal(t, []string{"val1"}, description.Indexes[0].IndexColumns)
+		},
+	)
+
+	// Migrate to v2 (delete index on val1 and create index on val2)
+
+	migrateAndValidate(
+		ctx,
+		folder,
+		table,
+		db,
+		t,
+		tableV2TableDescription(),
+		func(description options.Description) {
+			require.Equal(t, 1, len(description.Indexes))
+			require.Equal(t, "val2_index", description.Indexes[0].Name)
+			require.Equal(t, []string{"val2"}, description.Indexes[0].IndexColumns)
+		},
+	)
+
+	// Create index on val1 again
+
+	migrateAndValidate(
+		ctx,
+		folder,
+		table,
+		db,
+		t,
+		NewCreateTableDescription(
+			WithColumn("id", Optional(TypeUTF8)),
+			WithColumn("val1", Optional(TypeUTF8)),
+			WithColumn("val2", Optional(TypeUTF8)),
+			WithPrimaryKeyColumn("id"),
+			WithSecondaryKeyColumn("val1", "val2"),
+		),
+		func(description options.Description) {
+			require.Equal(t, 2, len(description.Indexes))
+			// Indexes are sorted alphabetically
+			require.Equal(t, "val1_index", description.Indexes[0].Name)
+			require.Equal(t, []string{"val1"}, description.Indexes[0].IndexColumns)
+			require.Equal(t, "val2_index", description.Indexes[1].Name)
+			require.Equal(t, []string{"val2"}, description.Indexes[1].IndexColumns)
+		},
+	)
+
+	// Remove both indexes
+
+	migrateAndValidate(
+		ctx,
+		folder,
+		table,
+		db,
+		t,
+		NewCreateTableDescription(
+			WithColumn("id", Optional(TypeUTF8)),
+			WithColumn("val1", Optional(TypeUTF8)),
+			WithColumn("val2", Optional(TypeUTF8)),
+			WithPrimaryKeyColumn("id"),
+		),
+		func(description options.Description) {
+			require.Equal(t, 0, len(description.Indexes))
+		},
+	)
 }
