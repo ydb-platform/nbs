@@ -684,6 +684,10 @@ void TPartitionActor::HandleHttpInfo_Default(
                     DumpDescribeHeader(out, *Info());
                     DumpCheckHeader(out, *Info());
                 }
+
+                DIV_CLASS_ID("tab-pane", "GroupLatency") {
+
+                }
             }
         }
 
