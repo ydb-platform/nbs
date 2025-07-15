@@ -112,38 +112,36 @@ func matchesState(
 
 	modifiedAtLowBound := time.Now()
 	return func(actual storage.TaskState) bool {
-		ok := true
-
 		if expected.ModifiedAt.After(time.Time{}) {
-			ok = assert.WithinDuration(
+			require.WithinDuration(
 				t, actual.ModifiedAt, expected.ModifiedAt, threshold,
-			) && ok
+			)
 		} else {
 			modifiedAtHighBound := time.Now()
-			ok = assert.WithinRange(
+			require.WithinRange(
 				t, actual.ModifiedAt, modifiedAtLowBound, modifiedAtHighBound,
-			) && ok
+			)
 		}
 
-		ok = assert.Contains(t, actual.ErrorMessage, expected.ErrorMessage) && ok
+		require.Contains(t, actual.ErrorMessage, expected.ErrorMessage)
 		expected.ErrorMessage = ""
 		actual.ErrorMessage = ""
 
 		if actual.ID == pingerTaskId {
 			// ping takes <1ms to complete
-			ok = assert.InDelta(
+			require.InDelta(
 				t,
 				expected.InflightDuration,
 				actual.InflightDuration,
 				float64(threshold),
-			) && ok
+			)
 		}
 
 		actual.InflightDuration = expected.InflightDuration
 		actual.ModifiedAt = expected.ModifiedAt
-		ok = assert.Equal(t, expected, actual) && ok
+		require.Equal(t, expected, actual)
 
-		return ok
+		return true
 	}
 }
 
@@ -154,7 +152,7 @@ func matchesStateArguments(
 	callback := matchesState(t, expected)
 	return func(args mock.Arguments) {
 		state := args[1].(storage.TaskState)
-		require.True(t, callback(state))
+		callback(state)
 	}
 }
 
@@ -1359,7 +1357,9 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 	}()
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
-	// Calls order is checked by matchesStateArguments
+	// There is no need to additionally ensure order,
+	// since code provided in On().Run() argument is executed in the order On() function were called.
+	// https://github.com/stretchr/testify/blob/a53be35c3b0cfcd5189cffcfd75df60ea581104c/mock/mock.go#L531
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
 }
 

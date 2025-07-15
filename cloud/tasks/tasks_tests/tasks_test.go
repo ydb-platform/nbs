@@ -417,6 +417,68 @@ func scheduleHangingTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type waitingTask struct {
+	request   *wrappers.StringValue
+	scheduler tasks.Scheduler
+}
+
+func (t *waitingTask) Save() ([]byte, error) {
+	return proto.Marshal(t.request)
+}
+
+func (t *waitingTask) Load(request, state []byte) error {
+	t.request = &wrappers.StringValue{}
+	return proto.Unmarshal(request, t.request)
+}
+
+func (t *waitingTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	_, err := waitTaskAsync(ctx, execCtx, t.scheduler, t.request.Value)
+	if err != nil {
+		return err
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(5 * time.Second):
+		return nil
+	}
+}
+
+func (t *waitingTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	return nil
+}
+
+func (t *waitingTask) GetMetadata(ctx context.Context) (proto.Message, error) {
+	return &empty.Empty{}, nil
+}
+
+func (t *waitingTask) GetResponse() proto.Message {
+	return &wrappers.UInt64Value{
+		Value: 1,
+	}
+}
+
+func registerWaitingTask(registry *tasks.Registry, scheduler tasks.Scheduler) error {
+	return registry.RegisterForExecution(
+		"waiting",
+		func() tasks.Task {
+			return &waitingTask{scheduler: scheduler}
+		},
+	)
+}
+
+func scheduleWaitingTask(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+	depTaskId string,
+) (string, error) {
+
+	return scheduler.ScheduleTask(ctx, "waiting", "Waiting task", &wrappers.StringValue{Value: depTaskId})
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Fails exactly n times in a row.
 type unstableTask struct {
 	// Represents 'number of failures until success'.
@@ -692,6 +754,21 @@ func waitTask(
 ) (uint64, error) {
 
 	return waitTaskWithTimeout(ctx, scheduler, id, defaultTimeout)
+}
+
+func waitTaskAsync(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	scheduler tasks.Scheduler,
+	id string,
+) (uint64, error) {
+
+	response, err := scheduler.WaitTask(ctx, execCtx, id)
+	if err != nil {
+		return 0, err
+	}
+
+	return response.(*wrappers.UInt64Value).GetValue(), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1564,4 +1641,50 @@ func TestTaskInflightDuration(t *testing.T) {
 	actualDuration := taskState.InflightDuration
 	threshold := 2 * pingPeriod
 	require.InDelta(t, expectedDuration, actualDuration, float64(threshold))
+}
+
+func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 2)
+
+	err := registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = registerWaitingTask(s.registry, s.scheduler)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	depTaskID, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	reqCtx = getRequestContext(t, ctx)
+	waitingTaskID, err := scheduleWaitingTask(reqCtx, s.scheduler, depTaskID)
+	require.NoError(t, err)
+
+	timeout := 30 * time.Second
+
+	_, err = waitTaskWithTimeout(ctx, s.scheduler, waitingTaskID, timeout)
+	require.NoError(t, err)
+	_, err = waitTaskWithTimeout(ctx, s.scheduler, depTaskID, timeout)
+	require.NoError(t, err)
+
+	waitingState, err := s.storage.GetTask(ctx, waitingTaskID)
+	require.NoError(t, err)
+
+	inflightDuration := waitingState.InflightDuration
+	inflightThreshold := 500 * time.Millisecond
+
+	totalDuration := waitingState.EndedAt.Sub(waitingState.CreatedAt)
+	totalThreshold := 2 * time.Second
+
+	require.InDelta(t, 5*time.Second, inflightDuration, float64(inflightThreshold))
+	require.InDelta(t, 15*time.Second, totalDuration, float64(totalThreshold))
 }
