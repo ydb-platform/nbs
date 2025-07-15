@@ -47,8 +47,8 @@ TDuration CalculateScrubbingInterval(
 class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
-
-    enum class EWriteRequestType {
+    enum class EWriteRequestType
+    {
         DirectWrite,
         MultiAgentWrite,
     };
