@@ -19,6 +19,7 @@ void SetupConfigDispatcher(
 {
     config->Labels.emplace(tenantLabel, tenantName);
     config->Labels.emplace(nodeNameLabel, nodeType);
+    config->Labels.emplace("nbs", "true");
 
     if (!settings.HasAllowList() && !settings.HasDenyList()) {
         return;

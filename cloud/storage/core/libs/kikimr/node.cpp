@@ -7,6 +7,7 @@
 
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/core/base/location.h>
+#include <contrib/ydb/core/config/init/init.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
@@ -15,6 +16,7 @@
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/yaml_config/yaml_config.h>
 
 #include <util/generic/vector.h>
 #include <util/network/address.h>
@@ -106,6 +108,28 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO: this function is a copy-paste of not synced function from ydb repo
+NKikimrConfig::TAppConfig GetYamlConfigFromResult(
+    const NKikimr::NClient::TConfigurationResult& result,
+    const TMap<TString, TString>& labels)
+{
+    NKikimrConfig::TAppConfig appConfig;
+    if (result.HasYamlConfig() && !result.GetYamlConfig().empty()) {
+        NYamlConfig::ResolveAndParseYamlConfig(
+            result.GetYamlConfig(),
+            result.GetVolatileYamlConfigs(),
+            labels,
+            appConfig,
+            nullptr,
+            nullptr);
+    } else {
+        // TODO: for testing purposes. Rethink later
+        ythrow TServiceError(E_FAIL)
+            << "no yaml " << result.GetVolatileYamlConfigs().size();
+    }
+    return appConfig;
+}
+
 TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     ui32 nodeId,
     const TString& hostName,
@@ -115,12 +139,17 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     NKikimrConfig::TStaticNameserviceConfig& nsConfig)
 {
     auto configurator = kikimr.GetNodeConfigurator();
+
+    // TODO: why version=1, why empty token
     auto configResult = configurator.SyncGetNodeConfig(
         nodeId,
         hostName,
         options.SchemeShardDir,
         options.Settings.NodeType,
-        options.Domain);
+        options.Domain,
+        "",
+        true,
+        1);
 
     if (!configResult.IsSuccess()) {
         return MakeError(
@@ -129,6 +158,14 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
                 configResult.GetErrorMessage());
     }
 
+    // TODO: labels should be consistent with
+    // cloud/storage/core/libs/kikimr/config_dispatcher_helpers.cpp
+    // (SetupConfigDispatcher)
+    const TMap<TString, TString> labels{{"nbs", "true"}};
+    NKikimrConfig::TAppConfig yamlConfig =
+        GetYamlConfigFromResult(configResult, labels);
+    NYamlConfig::ReplaceUnmanagedKinds(configResult.GetConfig(), yamlConfig);
+
     auto cmsConfig = configResult.GetConfig();
 
     if (cmsConfig.HasNameserviceConfig()) {
@@ -136,7 +173,10 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
             nsConfig.GetSuppressVersionCheck());
     }
 
-    return cmsConfig;
+    // TODO: merge with other config via GetActualDynConfig
+    cmsConfig.MergeFrom(yamlConfig);
+
+    return yamlConfig;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -195,11 +235,11 @@ struct TLegacyNodeRegistrant
     TNodeLocation Location;
 
     TLegacyNodeRegistrant(
-            TString hostName,
-            TString hostAddress,
-            const TRegisterDynamicNodeOptions& options,
-            NKikimrConfig::TStaticNameserviceConfig& nsConfig,
-            NKikimrConfig::TDynamicNodeConfig& dnConfig)
+        TString hostName,
+        TString hostAddress,
+        const TRegisterDynamicNodeOptions& options,
+        NKikimrConfig::TStaticNameserviceConfig& nsConfig,
+        NKikimrConfig::TDynamicNodeConfig& dnConfig)
         : HostName(std::move(hostName))
         , HostAddress(std::move(hostAddress))
         , Options(options)
@@ -284,11 +324,11 @@ struct TDiscoveryNodeRegistrant
     NDiscovery::TNodeRegistrationSettings Settings;
 
     TDiscoveryNodeRegistrant(
-            TString hostName,
-            TString hostAddress,
-            const TRegisterDynamicNodeOptions& options,
-            NKikimrConfig::TStaticNameserviceConfig& nsConfig,
-            NKikimrConfig::TDynamicNodeConfig& dnConfig)
+        TString hostName,
+        TString hostAddress,
+        const TRegisterDynamicNodeOptions& options,
+        NKikimrConfig::TStaticNameserviceConfig& nsConfig,
+        NKikimrConfig::TDynamicNodeConfig& dnConfig)
         : HostName(std::move(hostName))
         , HostAddress(std::move(hostAddress))
         , Options(options)
@@ -331,7 +371,7 @@ struct TDiscoveryNodeRegistrant
                     node,
                     result.HasNodeName()
                         ? result.GetNodeName()
-                        : std::optional<TString>{});
+                                         : std::optional<TString>{});
             } else {
                 *NsConfig.AddNode() = CreateStaticNodeInfo(node);
             }
@@ -433,8 +473,8 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         addrs.push_back(options.NodeBrokerAddress);
     } else {
         auto port = options.UseNodeBrokerSsl && options.NodeBrokerSecurePort
-            ? options.NodeBrokerSecurePort
-            : options.NodeBrokerPort;
+                        ? options.NodeBrokerSecurePort
+                        : options.NodeBrokerPort;
         if (port) {
             for (const auto& node: nsConfig.GetNode()) {
                 addrs.emplace_back(Join(":", node.GetHost(), port));

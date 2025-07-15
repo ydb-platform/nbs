@@ -454,6 +454,11 @@ void TBootstrapYdb::InitKikimrService()
 
     if (cmsConfig) {
         Configs->ApplyCMSConfigs(std::move(*cmsConfig));
+        TString message;
+        google::protobuf::util::MessageToJsonString(
+            Configs->KikimrConfig->GetBlockstoreConfig(),
+            &message);
+        STORAGE_INFO("Got Blockstore Configs on init:\n" << message.c_str());
     }
 
     STORAGE_INFO("CMS configs initialized");

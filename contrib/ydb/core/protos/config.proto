@@ -1728,6 +1728,13 @@ message TLabel {
     optional string Value = 2;
 }
 
+// TODO: move it to file which will be empty in ydb repo and not empty in nbs
+message TBlockstoreConfig {
+    optional string TestString = 1;
+    optional bool TestBool = 2;
+    repeated int32 TestList = 3;
+}
+
 message TAppConfig {
     optional TActorSystemConfig ActorSystemConfig = 1;
     optional TLogConfig LogConfig = 2;
@@ -1800,6 +1807,7 @@ message TAppConfig {
     optional TS3ProxyResolverConfig S3ProxyResolverConfig = 76;
     optional TBackgroundCleaningConfig BackgroundCleaningConfig = 77;
 
+    optional TBlockstoreConfig BlockstoreConfig = 99;
     repeated TNamedConfig NamedConfigs = 100;
     optional string ClusterYamlConfig = 101;
 

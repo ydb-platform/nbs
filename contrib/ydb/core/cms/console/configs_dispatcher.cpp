@@ -59,7 +59,8 @@ const THashSet<ui32> DYNAMIC_KINDS({
     (ui32)NKikimrConsole::TConfigItem::TenantPoolConfigItem,
     (ui32)NKikimrConsole::TConfigItem::TenantSlotBrokerConfigItem,
     (ui32)NKikimrConsole::TConfigItem::AllowEditYamlInUiItem,
-    (ui32)NKikimrConsole::TConfigItem::BackgroundCleaningConfigItem
+    (ui32)NKikimrConsole::TConfigItem::BackgroundCleaningConfigItem,
+    (ui32)NKikimrConsole::TConfigItem::BlockstoreConfigItem
 });
 
 const THashSet<ui32> NON_YAML_KINDS({

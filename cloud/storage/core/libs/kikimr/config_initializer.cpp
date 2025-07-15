@@ -2,6 +2,7 @@
 #include "options.h"
 
 #include <cloud/storage/core/libs/common/affinity.h>
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -92,6 +93,13 @@ void TConfigInitializerYdbBase::ApplyCMSConfigs(
     if (cmsConfig.HasDynamicNameserviceConfig()) {
         KikimrConfig->MutableDynamicNameserviceConfig()
             ->Swap(cmsConfig.MutableDynamicNameserviceConfig());
+    }
+
+    if (cmsConfig.HasBlockstoreConfig()) {
+        // NOTE: here we apply yaml configs. Should change this to being
+        // configurable
+        KikimrConfig->MutableBlockstoreConfig()->Swap(
+            cmsConfig.MutableBlockstoreConfig());
     }
 
     ApplyCustomCMSConfigs(cmsConfig);

@@ -12,6 +12,7 @@ PEERDIR(
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
+    cloud/blockstore/libs/storage/config_printer
     cloud/blockstore/libs/storage/disk_agent
     cloud/blockstore/libs/storage/disk_agent/model
     cloud/blockstore/libs/storage/disk_registry

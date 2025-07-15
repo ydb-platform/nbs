@@ -28,6 +28,7 @@
 #include <cloud/blockstore/libs/storage/volume/volume_actor.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/config_printer/config_printer.h>
 
 #include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -343,6 +344,15 @@ public:
                     TMailboxType::HTSwap,
                     appData->UserPoolId));
         }
+
+        auto configReader = CreateConfigPrinter();
+
+        setup->LocalServices.emplace_back(
+            TActorId(0, "blk-printcfg"),
+            TActorSetupCmd(
+                configReader.release(),
+                TMailboxType::Revolving,
+                appData->UserPoolId));
     }
 };
 

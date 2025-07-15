@@ -40,3 +40,9 @@ ScrubbingResyncPolicy: RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK
 MultiAgentWriteEnabled: true
 UseRdma: true
 UseNonreplicatedRdmaActor: true
+ConfigsDispatcherServiceEnabled: true
+ConfigDispatcherSettings {
+  AllowList {
+    Names: "BlockstoreConfigItem"
+  }
+}

@@ -30,3 +30,5 @@ echo "AllowNamedConfigs"
 ydbd -s grpc://localhost:$GRPC_PORT admin console config set --merge "$ALLOW_NAMED_CONFIGS_REQ"
 echo "SetUserAttributes(set unlimited for nonrepl disks)"
 ydbd -s grpc://localhost:$GRPC_PORT db schema user-attribute set /Root/NBS __volume_space_limit_ssd_nonrepl=$(( 999 * 1024**5 ))
+echo "Set Console Config"
+ydb -e grpc://localhost:$GRPC_PORT -d /Root admin config replace -f ydb-console/config.yaml --allow-unknown-fields
