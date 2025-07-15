@@ -86,7 +86,7 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
         PartConfig->GetBlockSize(),
         Request);
 
-    ui32 cookie = 0;
+    ui32 index = 0;
     for (const auto& deviceRequest: DeviceRequests) {
         auto request =
             std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
@@ -99,6 +99,23 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
                 Request.GetHeaders().GetVolumeRequestId());
             request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
         }
+        if (index < Request.ChecksumsSize()) {
+            const auto& checksum = Request.GetChecksums(index);
+            if (checksum.GetByteCount() ==
+                deviceRequest.BlockRange.Size() * PartConfig->GetBlockSize())
+            {
+                *request->Record.MutableChecksum() = checksum;
+            } else {
+                ReportChecksumCalculationError(
+                    TStringBuilder()
+                    << "Incorrectly calculated checksum for block range "
+                    << DescribeRange(deviceRequest.BlockRange)
+                    << ": request range length="
+                    << deviceRequest.BlockRange.Size() << ", checksum length="
+                    << checksum.GetByteCount() / PartConfig->GetBlockSize()
+                    << ", diskId=" << PartConfig->GetName().Quote());
+            }
+        }
 
         builder.BuildNextRequest(request->Record);
 
@@ -107,7 +124,7 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
             ctx.SelfID,
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
-            cookie++,
+            index++,
             &ctx.SelfID // forwardOnNondelivery
         );
 

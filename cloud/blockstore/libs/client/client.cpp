@@ -72,7 +72,7 @@ const char AUTH_METHOD[] = "Bearer";
 
 NProto::TError CompleteReadBlocksLocalRequest(
     NProto::TReadBlocksLocalRequest& request,
-    const NProto::TReadBlocksLocalResponse& response)
+    const NProto::TReadBlocksResponse& response)
 {
     if (request.BlockSize == 0) {
         return TErrorResponse(E_ARGUMENT, "block size is zero");
