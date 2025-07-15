@@ -231,6 +231,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
                     << device.GetBlocksCount() << ") "
                     << "!= target (" << target.GetDeviceUUID()
                     << ") block count (" << target.GetBlocksCount() << ")");
+                return {};
             }
 
             device.CopyFrom(migration->GetTargetDevice());
