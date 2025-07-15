@@ -1,4 +1,4 @@
-#include "write_back_cache.h"
+#include "write_back_cache_impl.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -108,8 +108,8 @@ IOutputStream& operator<<(
 
 struct TCalculateDataPartsToReadTestBootstrap
 {
-    using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
-    using TWriteDataEntryPart = TWriteBackCache::TWriteDataEntryPart;
+    using TWriteDataEntry = TWriteBackCache::TImpl::TWriteDataEntry;
+    using TWriteDataEntryPart = TWriteBackCache::TImpl::TWriteDataEntryPart;
 
     ILoggingServicePtr Logging;
     TLog Log;
@@ -128,7 +128,7 @@ struct TCalculateDataPartsToReadTestBootstrap
         ui64 startingFromOffset,
         ui64 length)
     {
-        return TWriteBackCache::CalculateDataPartsToRead(
+        return TWriteBackCache::TImpl::CalculateDataPartsToRead(
             entries,
             startingFromOffset,
             length);
