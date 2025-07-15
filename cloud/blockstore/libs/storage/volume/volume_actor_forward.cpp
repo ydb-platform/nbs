@@ -731,16 +731,14 @@ void TVolumeActor::ForwardRequest(
     }
 
     const auto& clientId = GetClientId(*msg);
-    auto& clients = State->AccessClients();
-    auto clientsIt = clients.end();
 
     bool throttlingDisabled = false;
     bool forceWrite = false;
     bool predefinedClient = false;
     if constexpr (RequiresMount<TMethod>) {
-        clientsIt = clients.find(clientId);
-        if (clientsIt == clients.end()) {
-            if (clientId == CopyVolumeClientId && clients.empty()) {
+        auto clientInfo = State->GetClient(clientId);
+        if (!clientInfo) {
+            if (clientId == CopyVolumeClientId && !State->HasClients()) {
                 predefinedClient = true;
                 throttlingDisabled = true;
                 VolumeSelfCounters->Cumulative.ThrottlerSkippedRequests
@@ -753,10 +751,8 @@ void TVolumeActor::ForwardRequest(
                 return;
             }
         } else {
-            const auto& clientInfo = clientsIt->second;
-
             throttlingDisabled = HasProtoFlag(
-                clientInfo.GetVolumeClientInfo().GetMountFlags(),
+                clientInfo->GetMountFlags(),
                 NProto::MF_THROTTLING_DISABLED);
 
             if (RequiresThrottling<TMethod> && throttlingDisabled) {
@@ -765,7 +761,7 @@ void TVolumeActor::ForwardRequest(
             }
 
             forceWrite = HasProtoFlag(
-                clientInfo.GetVolumeClientInfo().GetMountFlags(),
+                clientInfo->GetMountFlags(),
                 NProto::MF_FORCE_WRITE);
         }
     }
