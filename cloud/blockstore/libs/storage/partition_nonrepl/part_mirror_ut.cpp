@@ -2143,6 +2143,177 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             mirroredDiskChecksumMismatchUponRead->Val());
     }
 
+    Y_UNIT_TEST(ShouldNotFireMismatchUponReadErrorWhenThereAreOverlappingWritesAndRead2IsEnabled)
+    {
+        using namespace NMonitoring;
+
+        TTestBasicRuntime runtime;
+
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto&, const auto& actorId)
+        {
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TAutoPtr<IEventHandle> toSend;
+        bool interceptReadDeviceBlocks = false;
+        bool interceptWriteDeviceBlocks = false;
+
+        runtime.SetEventFilter([&] (auto&, auto& event) {
+            if (!toSend) {
+                if (
+                    (
+                        interceptReadDeviceBlocks &&
+                        event->GetTypeRewrite() == TEvDiskAgent::EvReadDeviceBlocksRequest
+                    ) ||
+                    (
+                        interceptWriteDeviceBlocks &&
+                        event->GetTypeRewrite() == TEvDiskAgent::EvWriteDeviceBlocksRequest
+                    )
+                ) {
+                    toSend = event;
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
+        InitCriticalEventsCounter(critEventsCounters);
+
+        auto mirroredDiskChecksumMismatchUponRead =
+            critEventsCounters->GetCounter(
+                "AppCriticalEvents/MirroredDiskChecksumMismatchUponRead",
+                true);
+
+        NProto::TStorageServiceConfig config;
+        config.SetMirrorReadReplicaCount(2);
+        TTestEnv env(runtime, config);
+
+        // Write different data to all replicas.
+        const auto range = TBlockRange64::WithLength(2049, 50);
+        env.WriteReplica(0, range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'C');
+
+        auto overlappingRange = range;
+        overlappingRange.Start += 10;
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        {
+            client.SendReadBlocksRequest(range);
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            mirroredDiskChecksumMismatchUponRead->Val());
+
+        interceptReadDeviceBlocks = true;
+        client.SendReadBlocksRequest(range);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        interceptReadDeviceBlocks = false;
+
+        client.WriteBlocks(overlappingRange, 'D');
+        runtime.Send(toSend);
+        toSend.Reset();
+        {
+            // Read request should cause E_REJECTED error since data checksums in
+            // replicas are different.
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // write request made block range dirty => no crit event
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            mirroredDiskChecksumMismatchUponRead->Val());
+
+        // start WriteBlocks
+        interceptWriteDeviceBlocks = true;
+        client.SendWriteBlocksRequest(overlappingRange, 'E');
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        auto writeDeviceBlocksEvent = toSend;
+        toSend.Reset();
+        interceptWriteDeviceBlocks = false;
+
+        client.SendReadBlocksRequest(range);
+        {
+            auto response = client.RecvReadBlocksResponse();
+            // ReadBlocks should be finished before WriteBlocks is finished
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // finish WriteBlocks
+        runtime.Send(writeDeviceBlocksEvent);
+        {
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+        }
+
+        // write request made block range dirty => no crit event
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            mirroredDiskChecksumMismatchUponRead->Val());
+
+        // start WriteBlocks
+        interceptWriteDeviceBlocks = true;
+        client.SendWriteBlocksRequest(overlappingRange, 'F');
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        writeDeviceBlocksEvent = toSend;
+        toSend.Reset();
+        interceptWriteDeviceBlocks = false;
+
+        // start ReadBlocks
+        interceptReadDeviceBlocks = true;
+        client.SendReadBlocksRequest(range);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        interceptReadDeviceBlocks = false;
+
+        // finish WriteBlocks before ReadBlocks is finished
+        runtime.Send(writeDeviceBlocksEvent);
+        {
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+        }
+
+        // finish ReadBlocks
+        runtime.Send(toSend);
+        toSend.Reset();
+        {
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // write request made block range dirty => no crit event
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            mirroredDiskChecksumMismatchUponRead->Val());
+    }
+
     Y_UNIT_TEST(ShouldHandleGetDeviceForRangeRequest)
     {
         using TEvGetDeviceForRangeRequest =
