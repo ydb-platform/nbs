@@ -12,11 +12,10 @@ NCloud::NProto::TError ValidateBlockSize(
                                   ? DefaultBlockSize
                                   : DefaultLocalSSDBlockSize;
 
-    const auto maxBlockSize = 128_KB;
-    if (blockSize < minBlockSize || blockSize > maxBlockSize) {
+    if (blockSize < minBlockSize || blockSize > MaxBlockSize) {
         return MakeError(NCloud::E_ARGUMENT,
             TStringBuilder() << "block size should be >= " << minBlockSize
-            << " and <= " << maxBlockSize);
+            << " and <= " << MaxBlockSize);
     }
 
     if ((blockSize & (blockSize - 1)) != 0) {
