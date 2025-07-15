@@ -691,7 +691,7 @@ void TVolumeActor::HandleServerConnected(
 {
     const auto* msg = ev->Get();
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Pipe client %s server %s connected to volume",
@@ -707,7 +707,7 @@ void TVolumeActor::HandleServerDisconnected(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Pipe client %s server %s disconnected from volume",
