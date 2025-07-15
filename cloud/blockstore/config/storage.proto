@@ -1266,4 +1266,9 @@ message TStorageServiceConfig
     // In emergency (SSProxy/HiveProxy fallback mode), don't pass SchemeShardDir
     // when registering node in Node Broker
     optional bool DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = 439;
+
+    // Bandwidth quota for direct write requests to mirror disks.
+    // If a disk starts sending more than the DirectWriteBandwidthQuota bytes per second,
+    // we start using MultiAgent write requests.
+    optional uint64 DirectWriteBandwidthQuota = 440;
 }

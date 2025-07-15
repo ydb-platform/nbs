@@ -611,6 +611,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxOutOfOrderCompactionMapChunksInflight,          ui32,   5          )\
                                                                                \
     xxx(PartitionBootTimeout,                 TDuration,   Seconds(0)         )\
+    xxx(DirectWriteBandwidthQuota,            ui64,        0                  )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
