@@ -4,6 +4,7 @@
 #include "safe_deallocator.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -28,6 +29,8 @@
 #include <util/system/sanitizers.h>
 #include <util/system/spinlock.h>
 #include <util/system/thread.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 #include <limits>
 #include <memory>
@@ -585,12 +588,25 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
 
     TReadGuard readGuard(WriteSubmissionLock);
 
-    return SendAsyncRequest<TAsyncReadRequest>(
-        this->weak_from_this(),
-        std::move(callContext),
-        std::move(request->Sglist),
-        fileOffset,
-        byteCount);
+    auto sglist = request->Sglist;
+    TFuture<NProto::TReadBlocksLocalResponse> future =
+        SendAsyncRequest<TAsyncReadRequest>(
+            this->weak_from_this(),
+            std::move(callContext),
+            std::move(request->Sglist),
+            fileOffset,
+            byteCount)
+            .GetFuture();
+    return future.Apply(
+        [future, sglist = std::move(sglist)](const auto&) mutable
+        {
+            NProto::TReadBlocksLocalResponse response =
+                future.ExtractValueSync();
+            if (auto guard = sglist.Acquire()) {
+                *response.MutableChecksum() = CalculateChecksum(guard.Get());
+            }
+            return response;
+        });
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
@@ -616,6 +632,42 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
             request->BlocksCount,
             MaxRequestSize / BlockSize);
         return MakeFuture(response);
+    }
+
+    if (request->ChecksumsSize() > 0) {
+        if (request->ChecksumsSize() != 1) {
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Invalid checksums count: " << request->ChecksumsSize());
+            return MakeFuture(response);
+        }
+
+        auto guard = request->Sglist.Acquire();
+        if (!guard) {
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in Local Storage");
+            return MakeFuture(response);
+        }
+
+        auto calculatedChecksum = CalculateChecksum(guard.Get());
+        if (!google::protobuf::util::MessageDifferencer::Equals(
+                request->GetChecksums(0),
+                calculatedChecksum))
+        {
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Data integrity violation. Current checksum: "
+                    << calculatedChecksum.ShortUtf8DebugString()
+                    << "; Incoming checksum: "
+                    << request->GetChecksums(0).ShortUtf8DebugString());
+            return MakeFuture(response);
+        }
     }
 
     const ui64 fileOffset = StorageStartIndex * BlockSize
