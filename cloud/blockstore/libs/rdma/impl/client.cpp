@@ -1111,9 +1111,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
 
         ReportRdmaError(
             TStringBuilder()
-            << "SEND " << TWorkRequestId(send->wr.wr_id)
-            << ": ReqId=" << req->ReqId << " WorkRequestId=" << send->wr.wr_id
-            << " RDMA send error: " << e.what());
+            << "SEND " << TWorkRequestId(send->wr.wr_id) << ": " << e.what());
 
         Disconnect();
 

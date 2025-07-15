@@ -134,8 +134,7 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
         ReportTrimFreshLogError(
             TStringBuilder()
             << "[" << TabletInfo->TabletID
-            << "] Fresh blobs collect request failed: " << error.GetCode()
-            << " reason: " << error.GetMessage().Quote());
+            << "] Fresh blobs collect request failed: " << FormatError(error));
 
         Error = std::move(error);
     }
