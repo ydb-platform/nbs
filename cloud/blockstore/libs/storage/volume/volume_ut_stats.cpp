@@ -1259,7 +1259,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         NProto::TStorageServiceConfig storageServiceConfig;
 
         // Enable pull scheme
-        storageServiceConfig.SetPullPartitionStatisticsFromVolume(true);
+        storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
 
@@ -1306,7 +1306,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         NProto::TStorageServiceConfig storageServiceConfig;
 
         // Enable pull scheme
-        storageServiceConfig.SetPullPartitionStatisticsFromVolume(true);
+        storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
 

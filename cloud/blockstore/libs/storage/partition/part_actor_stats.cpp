@@ -142,9 +142,9 @@ TPartitionStatisticsCounters TPartitionActor::GetStats(const TActorContext& ctx)
     TPartitionStatisticsCounters counters(
         sysCpuConsumption - SysCPUConsumption,
         UserCPUConsumption,
-        PartCounters,
-        offsetLoadMetrics,
-        metrics);
+        std::move(PartCounters),
+        std::move(offsetLoadMetrics),
+        std::move(metrics));
 
     PrevMetrics = std::move(blobLoadMetrics);
     OverlayMetrics = {};
@@ -165,12 +165,8 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         return;
     }
 
-    auto
-        [diffSysCpuConsumption,
-         userCpuConsumption,
-         partCounters,
-         offsetLoadMetrics,
-         metrics] = GetStats(ctx);
+    auto&& [diffSysCpuConsumption, userCpuConsumption, partCounters, offsetLoadMetrics, metrics] =
+        GetStats(ctx);
 
     auto request = std::make_unique<TEvStatsService::TEvVolumePartCounters>(
         MakeIntrusive<TCallContext>(),
@@ -201,13 +197,8 @@ void TPartitionActor::HandleGetPartCountersRequest(
         return;
     }
 
-    auto
-        [diffSysCpuConsumption,
-         userCpuConsumption,
-         partCounters,
-         offsetLoadMetrics,
-         metrics] = GetStats(ctx);
-
+    auto&& [diffSysCpuConsumption, userCpuConsumption, partCounters, offsetLoadMetrics, metrics] =
+        GetStats(ctx);
 
     auto response =
         std::make_unique<TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(

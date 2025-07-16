@@ -13103,7 +13103,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
 
         // Enable push scheme
-        config.SetPullPartitionStatisticsFromVolume(true);
+        config.SetUsePullSchemeForVolumeStatistics(true);
 
         auto runtime = PrepareTestActorRuntime(config);
 
