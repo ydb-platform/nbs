@@ -6,7 +6,7 @@
 
 #include <cloud/storage/core/libs/common/file_ring_buffer.h>
 
-#include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -17,10 +17,12 @@ class TWriteBackCache::TImpl final
     : public std::enable_shared_from_this<TImpl>
 {
 private:
-    enum class EFlushStatus;
+    enum class EWriteDataEntryStatus;
     class TWriteDataEntry;
     struct TWriteDataEntryPart;
-    struct TPendingWriteDataRequest;
+    struct THandleEntry;
+    class TFlushOperation;
+    struct TPendingOperations;
 
     const TSessionSequencerPtr Session;
     const ISchedulerPtr Scheduler;
@@ -39,41 +41,26 @@ private:
         void CompleteAllocation(char* ptr);
     };
 
-    struct TPendingWriteDataRequest
-        : public TIntrusiveListItem<TPendingWriteDataRequest>
-    {
-        std::unique_ptr<TWriteDataEntry> Entry;
-        NThreading::TPromise<NProto::TWriteDataResponse> Promise;
-
-        TPendingWriteDataRequest(
-                std::unique_ptr<TWriteDataEntry> entry,
-                NThreading::TPromise<NProto::TWriteDataResponse> promise)
-            : Entry(std::move(entry))
-            , Promise(std::move(promise))
-        {}
-    };
-
-    // all fields below should be protected by this lock
+    // All fields below should be protected by this lock
     TMutex Lock;
 
-    // used as an index for |WriteDataRequestsQueue| to speed up lookups
-    THashMap<ui64, TVector<TWriteDataEntry*>> WriteDataEntriesByHandle;
-    TIntrusiveListWithAutoDelete<TWriteDataEntry, TDelete> WriteDataEntries;
+    // Entries with statues Cached and CachedFlushRequested
+    TIntrusiveListWithAutoDelete<TWriteDataEntry, TDelete> CachedEntries;
 
-    TFileRingBuffer WriteDataRequestsQueue;
+    // Entries with statues Pending and PendingFlushRequested
+    TIntrusiveList<TWriteDataEntry> PendingEntries;
 
-    TIntrusiveListWithAutoDelete<TPendingWriteDataRequest, TDelete>
-        PendingWriteDataRequests;
+    // Serialized entries from CachedEntries with one-by-one correspondence.
+    TFileRingBuffer CachedEntriesPersistentQueue;
 
-    struct TFlushInfo
-    {
-        NThreading::TFuture<void> Future;
-        ui64 FlushId = 0;
-    };
+    // Cached and pending WriteData entries grouped by handle
+    THashMap<ui64, THandleEntry> EntriesByHandle;
 
-    THashMap<ui64, TFlushInfo> LastFlushInfoByHandle;
-    TFlushInfo LastFlushAllDataInfo;
-    ui64 NextFlushId = 0;
+    // Handles with new cached WriteData entries since last FlushAll
+    THashSet<ui64> HandlesWithNewCachedEntries;
+
+    // Pending and executing flush operations
+    THashMap<ui64, std::unique_ptr<TFlushOperation>> FlushStateByHandle;
 
 public:
     TImpl(
@@ -99,8 +86,6 @@ public:
     NThreading::TFuture<void> FlushAllData();
 
 private:
-    void AddWriteDataEntry(std::unique_ptr<TWriteDataEntry> entry);
-
     TVector<TWriteDataEntryPart> CalculateCachedDataPartsToRead(
         ui64 handle,
         ui64 startingFromOffset,
@@ -113,13 +98,29 @@ private:
         ui64 startingFromOffset,
         TString* out);
 
-    void OnEntriesFlushed(const TVector<TWriteDataEntry*>& entries);
+    void RequestFlush(ui64 handle, TPendingOperations& pendingOperations);
+    void RequestFlushAll(TPendingOperations& pendingOperations);
+
+    void StartPendingOperations(TPendingOperations& pendingOperations);
+
+    void OnEntriesFlushed(
+        ui64 handle,
+        size_t entriesCount,
+        TPendingOperations& pendingOperations);
+
+    void ClearFinishedEntries(TPendingOperations& pendingOperations);
 
     auto MakeWriteDataRequestsForFlush(
-        ui64 handle) -> TVector<std::shared_ptr<NProto::TWriteDataRequest>>;
+        ui64 handle,
+        const TVector<TWriteDataEntryPart>& parts)
+        -> TVector<std::shared_ptr<NProto::TWriteDataRequest>>;
+
+    NThreading::TFuture<void> RequestFlushData(
+        ui64 handle,
+        TPendingOperations& pendingOperations);
 
     static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TVector<TWriteDataEntry*>& entries,
+        const TDeque<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
         ui64 length);
 
@@ -134,10 +135,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class TWriteBackCache::TImpl::EFlushStatus
+enum class TWriteBackCache::TImpl::EWriteDataEntryStatus
 {
-    NotStarted,
-    Started,
+    Invalid,
+    Pending,
+    PendingFlushRequested,
+    Cached,
+    CachedFlushRequested,
     Finished
 };
 
@@ -152,16 +156,26 @@ private:
     // directly in the cache if the request is cached.
     std::shared_ptr<NProto::TWriteDataRequest> Request;
     TString RequestBuffer;
+    char* CachePtr = nullptr;
 
     // Reference to either RequestBuffer or a memory region
-    // in WriteDataRequestsQueue
+    // in CachedEntriesPersistentQueue
     TStringBuf Buffer;
+
+    NThreading::TPromise<NProto::TWriteDataResponse> Promise;
+    NThreading::TPromise<void> FinishedPromise;
+    EWriteDataEntryStatus Status = EWriteDataEntryStatus::Invalid;
 
 public:
     explicit TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     explicit TWriteDataEntry(TStringBuf serializedRequest);
+
+    EWriteDataEntryStatus GetStatus() const
+    {
+        return Status;
+    }
 
     const NProto::TWriteDataRequest* GetRequest() const
     {
@@ -188,10 +202,27 @@ public:
         return Request->GetOffset() + Buffer.size();
     }
 
-    size_t GetSerializedSize() const;
-    void SerializeToCache(char* cachePtr);
+    bool IsCached() const
+    {
+        return Status == EWriteDataEntryStatus::Cached ||
+               Status == EWriteDataEntryStatus::CachedFlushRequested;
+    }
 
-    EFlushStatus FlushStatus = EFlushStatus::NotStarted;
+    bool CanBeCleared() const
+    {
+        return Status == EWriteDataEntryStatus::Finished;
+    }
+
+    size_t GetSerializedSize() const;
+    void MoveToCache(char* cachePtr, TPendingOperations& pendingOperations);
+
+    void Finish(TPendingOperations& pendingOperations);
+
+    bool FlushRequested() const;
+    bool RequestFlush();
+
+    NThreading::TFuture<NProto::TWriteDataResponse> GetFuture();
+    NThreading::TFuture<void> GetFinishedFuture();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -213,6 +244,66 @@ struct TWriteBackCache::TImpl::TWriteDataEntryPart
         return std::tie(Source, OffsetInSource, Offset, Length) ==
             std::tie(p.Source, p.OffsetInSource, p.Offset, p.Length);
     }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TWriteBackCache::TImpl::THandleEntry
+{
+    // Entries from TWriteBackCache::TImpl::CachedEntries
+    // with statues Cached and CachedFlushRequested filtered by handle
+    // The order is preserved
+    TDeque<TWriteDataEntry*> CachedEntries;
+
+    // Entries from TWriteBackCache::TImpl::PendingEntries
+    // with statues Pending and PendingFlushRequested filtered by handle
+    // The order is preserved
+    TDeque<TWriteDataEntry*> PendingEntries;
+
+    // Count entries with statues CachedFlushRequested and PendingFlushRequested
+    size_t EntriesWithFlushRequested = 0;
+
+    bool Empty() const;
+    bool ShouldFlush() const;
+    TWriteDataEntry* GetLastEntry() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TWriteBackCache::TImpl::TFlushOperation
+{
+private:
+    const ui64 Handle = 0;
+    TVector<std::shared_ptr<NProto::TWriteDataRequest>> WriteRequests;
+    TVector<std::shared_ptr<NProto::TWriteDataRequest>> FailedWriteRequests;
+    size_t AffectedWriteDataEntriesCount = 0;
+    size_t RemainingWriteRequestsCount = 0;
+
+public:
+    explicit TFlushOperation(ui64 handle)
+        : Handle(handle)
+    {}
+
+    void Start(TImpl* impl);
+
+private:
+    bool Prepare(TImpl* impl);
+    void WriteDataRequestCompleted(
+        TImpl* impl,
+        size_t index,
+        const NProto::TWriteDataResponse& response);
+    void ScheduleRetry(TImpl* impl);
+    void Complete(TImpl* impl);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Accumulate operations to be executed ouside |Lock|
+struct TWriteBackCache::TImpl::TPendingOperations
+{
+    TVector<TFlushOperation*> FlushOperations;
+    TVector<NThreading::TPromise<NProto::TWriteDataResponse>> PromisesToSet;
+    TVector<NThreading::TPromise<void>> FinishedPromisesToSet;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

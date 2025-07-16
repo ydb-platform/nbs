@@ -35,22 +35,25 @@ TWriteBackCache::TImpl::TImpl(
     , Scheduler(std::move(scheduler))
     , Timer(std::move(timer))
     , AutomaticFlushPeriod(automaticFlushPeriod)
-    , WriteDataRequestsQueue(filePath, capacityBytes)
+    , CachedEntriesPersistentQueue(filePath, capacityBytes)
 {
     // should fit 1 MiB of data plus some headers (assume 1 KiB is enough)
     Y_ABORT_UNLESS(capacityBytes >= 1024*1024 + 1024);
 
-    WriteDataRequestsQueue.Visit([&] (auto, auto serializedRequest) {
+    CachedEntriesPersistentQueue.Visit([&](auto, TStringBuf serializedRequest) {
         auto entry = std::make_unique<TWriteDataEntry>(serializedRequest);
 
-        if (entry->GetBuffer().Empty()) {
-            // This may happen when a buffer was corrupted
-            // Skip this entry from processing
+        if (entry->GetStatus() == EWriteDataEntryStatus::Invalid) {
+            // This may happen when a buffer was corrupted.
+            // We should add this entry to a queue like a normal entry because
+            // there is 1-by-1 correspondence between
+            // CachedEntriesPersistentQueue and CachedEntries.
             // TODO(nasonov): report it
-            entry->FlushStatus = EFlushStatus::Finished;
         }
 
-        AddWriteDataEntry(std::move(entry));
+        auto& handleEntry = EntriesByHandle[entry->GetHandle()];
+        handleEntry.CachedEntries.emplace_back(entry.get());
+        CachedEntries.PushBack(entry.release());
     });
 }
 
@@ -74,27 +77,19 @@ void TWriteBackCache::TImpl::ScheduleAutomaticFlushIfNeeded()
         });
 }
 
-void TWriteBackCache::TImpl::AddWriteDataEntry(
-    std::unique_ptr<TWriteDataEntry> entry)
-{
-    WriteDataEntriesByHandle[entry->GetHandle()].emplace_back(
-        entry.get());
-    WriteDataEntries.PushBack(entry.release());
-}
-
 // should be protected by |Lock|
 auto TWriteBackCache::TImpl::CalculateCachedDataPartsToRead(
     ui64 handle,
     ui64 startingFromOffset,
     ui64 length) -> TVector<TWriteDataEntryPart>
 {
-    auto entriesIter = WriteDataEntriesByHandle.find(handle);
-    if (entriesIter == WriteDataEntriesByHandle.end()) {
+    auto entriesIter = EntriesByHandle.find(handle);
+    if (entriesIter == EntriesByHandle.end()) {
         return {};
     }
 
     return CalculateDataPartsToRead(
-        entriesIter->second,
+        entriesIter->second.CachedEntries,
         startingFromOffset,
         length);
 }
@@ -254,79 +249,206 @@ TFuture<NProto::TWriteDataResponse> TWriteBackCache::TImpl::WriteData(
     auto serializedSize = entry->GetSerializedSize();
 
     Y_ABORT_UNLESS(
-        serializedSize <= WriteDataRequestsQueue.MaxAllocationSize(),
+        serializedSize <= CachedEntriesPersistentQueue.MaxAllocationSize(),
         "Serialized request size %lu is expected to be <= %lu",
         serializedSize,
-        WriteDataRequestsQueue.MaxAllocationSize());
+        CachedEntriesPersistentQueue.MaxAllocationSize());
 
-    auto promise = NewPromise<NProto::TWriteDataResponse>();
-    auto future = promise.GetFuture();
+    auto future = entry->GetFuture();
+
+    TPendingOperations pendingOperations;
 
     with_lock (Lock) {
+        auto& handleEntry = EntriesByHandle[entry->GetHandle()];
         char* cachePtr = nullptr;
-        bool allocatedInCache =
-            WriteDataRequestsQueue.AllocateBack(serializedSize, &cachePtr);
+        bool allocatedInCache = handleEntry.PendingEntries.empty() &&
+            CachedEntriesPersistentQueue.AllocateBack(serializedSize, &cachePtr);
 
         if (allocatedInCache) {
             Y_ABORT_UNLESS(cachePtr != nullptr);
-            entry->SerializeToCache(cachePtr);
-            WriteDataRequestsQueue.CompleteAllocation(cachePtr);
-            AddWriteDataEntry(std::move(entry));
-            promise.SetValue({});
+            entry->MoveToCache(cachePtr, pendingOperations);
+            CachedEntriesPersistentQueue.CompleteAllocation(cachePtr);
+            handleEntry.CachedEntries.emplace_back(entry.get());
+            CachedEntries.PushBack(entry.release());
         } else {
-            auto pending = std::make_unique<TPendingWriteDataRequest>(
-                std::move(entry),
-                std::move(promise));
-            PendingWriteDataRequests.PushBack(pending.release());
-            FlushAllData(); // flushes asynchronously
+            handleEntry.PendingEntries.emplace_back(entry.get());
+            PendingEntries.PushBack(entry.release());
+            RequestFlushAll(pendingOperations);
         }
     }
+
+    StartPendingOperations(pendingOperations);
 
     return future;
 }
 
-void TWriteBackCache::TImpl::OnEntriesFlushed(
-    const TVector<TWriteDataEntry*>& entries)
+TFuture<void> TWriteBackCache::TImpl::FlushData(ui64 handle)
 {
+    TFuture<void> result;
+    TPendingOperations pendingOperations;
+
     with_lock (Lock) {
-        for (auto* entry: entries) {
-            entry->FlushStatus = EFlushStatus::Finished;
+        result = RequestFlushData(handle, pendingOperations);
+    }
+    StartPendingOperations(pendingOperations);
+    return result;
+}
+
+TFuture<void> TWriteBackCache::TImpl::FlushAllData()
+{
+    TVector<TFuture<void>> futures;
+    TPendingOperations pendingOperations;
+
+    with_lock (Lock) {
+        for (const auto& [handle, _]: EntriesByHandle) {
+            futures.push_back(RequestFlushData(handle, pendingOperations));
+        }
+    }
+    StartPendingOperations(pendingOperations);
+    return NWait::WaitAll(futures);
+}
+
+// should be protected by |Lock|
+void TWriteBackCache::TImpl::RequestFlush(
+    ui64 handle,
+    TPendingOperations& pendingOperations)
+{
+    auto& flushState = FlushStateByHandle[handle];
+    if (!flushState) {
+        flushState = std::make_unique<TFlushOperation>(handle);
+        pendingOperations.FlushOperations.push_back(flushState.get());
+    }
+}
+
+// should be protected by |Lock|
+void TWriteBackCache::TImpl::RequestFlushAll(
+    TPendingOperations& pendingOperations)
+{
+    for (auto handle: HandlesWithNewCachedEntries) {
+        auto handleEntryIter = EntriesByHandle.find(handle);
+        if (handleEntryIter == EntriesByHandle.end()) {
+            continue;
+        }
+        auto& handleEntry = handleEntryIter->second;
+        if (handleEntry.CachedEntries.empty()) {
+            continue;
+        }
+        auto* entry = handleEntry.CachedEntries.back();
+        if (entry->RequestFlush()) {
+            handleEntry.EntriesWithFlushRequested++;
+        }
+        RequestFlush(handle, pendingOperations);
+    }
+    HandlesWithNewCachedEntries.clear();
+}
+
+// should be executed outside |Lock|
+// TODO(nasonov): research possibity to execute asynchonously
+void TWriteBackCache::TImpl::StartPendingOperations(
+    TPendingOperations& pendingOperations)
+{
+    for (auto* flushState: pendingOperations.FlushOperations) {
+        flushState->Start(this);
+    }
+
+    for (auto& promise: pendingOperations.PromisesToSet) {
+        promise.SetValue({});
+    }
+
+    for (auto& promise: pendingOperations.FinishedPromisesToSet) {
+        promise.SetValue();
+    }
+}
+
+// should be protected by |Lock|
+void TWriteBackCache::TImpl::OnEntriesFlushed(
+    ui64 handle,
+    size_t entriesCount,
+    TPendingOperations& pendingOperations)
+{
+    auto handleEntry = EntriesByHandle[handle];
+    Y_ABORT_UNLESS(entriesCount <= handleEntry.CachedEntries.size());
+
+    while (entriesCount-- > 0) {
+        auto* entry = handleEntry.CachedEntries.front();
+        handleEntry.CachedEntries.pop_front();
+
+        if (entry->FlushRequested()) {
+            Y_ABORT_UNLESS(handleEntry.EntriesWithFlushRequested > 0);
+            handleEntry.EntriesWithFlushRequested--;
         }
 
-        while (!WriteDataEntries.Empty()) {
-            auto* entry = WriteDataEntries.Front();
-            if (entry->FlushStatus != EFlushStatus::Finished) {
-                return;
-            }
+        entry->Finish(pendingOperations);
+    }
 
-            WriteDataRequestsQueue.PopFront();
+    ClearFinishedEntries(pendingOperations);
 
-            auto& entries = WriteDataEntriesByHandle[entry->GetHandle()];
-            Erase(entries, entry);
-            if (entries.empty()) {
-                WriteDataEntriesByHandle.erase(entry->GetHandle());
-            }
+    if (handleEntry.Empty()) {
+        EntriesByHandle.erase(handle);
+    }
 
-            std::unique_ptr<TWriteDataEntry> holder(entry);
-            entry->Unlink();
+    if (handleEntry.ShouldFlush()) {
+        RequestFlush(handle, pendingOperations);
+    }
+}
+
+void TWriteBackCache::TImpl::ClearFinishedEntries(
+    TPendingOperations& pendingOperations)
+{
+    bool hasClearedEntries = false;
+
+    while (!CachedEntries.Empty() && CachedEntries.Front()->CanBeCleared())
+    {
+        CachedEntries.PopFront();
+        CachedEntriesPersistentQueue.PopFront();
+        hasClearedEntries = true;
+    }
+
+    if (!hasClearedEntries) {
+        return;
+    }
+
+    bool isWriteDataEntriesPersistentQueueFull = false;
+
+    while (!PendingEntries.Empty()) {
+        auto* entry = PendingEntries.Front();
+        char* cachePtr = nullptr;
+        bool allocatedInCache = CachedEntriesPersistentQueue.AllocateBack(
+            entry->GetSerializedSize(), &cachePtr);
+
+        if (!allocatedInCache) {
+            isWriteDataEntriesPersistentQueueFull = true;
+            break;
         }
+
+        Y_ABORT_UNLESS(cachePtr != nullptr);
+
+        entry->MoveToCache(cachePtr, pendingOperations);
+        CachedEntriesPersistentQueue.CompleteAllocation(cachePtr);
+
+        auto handleEntry = EntriesByHandle[entry->GetHandle()];
+
+        handleEntry.PendingEntries.pop_front();
+        handleEntry.CachedEntries.push_back(entry);
+
+        PendingEntries.PopFront();
+        CachedEntries.PushFront(entry);
+
+        HandlesWithNewCachedEntries.insert(entry->GetHandle());
+    }
+
+    if (isWriteDataEntriesPersistentQueueFull) {
+        RequestFlushAll(pendingOperations);
     }
 }
 
 // should be protected by |Lock|
 auto TWriteBackCache::TImpl::MakeWriteDataRequestsForFlush(
-    ui64 handle) -> TVector<std::shared_ptr<NProto::TWriteDataRequest>>
+    ui64 handle,
+    const TVector<TWriteDataEntryPart>& parts)
+    -> TVector<std::shared_ptr<NProto::TWriteDataRequest>>
 {
     TVector<std::shared_ptr<NProto::TWriteDataRequest>> res;
-
-    auto parts = CalculateCachedDataPartsToRead(handle);
-    EraseIf(
-        parts,
-        [=] (const auto& part) {
-            const auto* entry = part.Source;
-            return entry->FlushStatus == EFlushStatus::Started ||
-                entry->FlushStatus == EFlushStatus::Finished;
-        });
 
     size_t partIndex = 0;
     while (partIndex < parts.size()) {
@@ -370,236 +492,28 @@ auto TWriteBackCache::TImpl::MakeWriteDataRequestsForFlush(
     return res;
 }
 
-TFuture<void> TWriteBackCache::TImpl::FlushData(ui64 handle)
+// should be protected by |Lock|
+TFuture<void> TWriteBackCache::TImpl::RequestFlushData(
+    ui64 handle,
+    TPendingOperations& pendingOperations)
 {
-    struct TState
-    {
-        TPromise<void> Promise = NewPromise();
-        std::atomic<int> WriteRequestsRemaining = 0;
-    };
+    auto handleEntryIter = EntriesByHandle.find(handle);
+    if (handleEntryIter == EntriesByHandle.end()) {
+        return NThreading::MakeFuture();
+    }
+    auto& handleEntry = handleEntryIter->second;
 
-    auto state = std::make_shared<TState>();
-
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> writeRequests;
-    TVector<TWriteDataEntry*> entriesToFlush;
-    TFuture<void> lastFlushFuture;
-    ui64 currFlushId = 0;
-
-    with_lock (Lock) {
-        auto entriesIter = WriteDataEntriesByHandle.find(handle);
-        if (entriesIter == WriteDataEntriesByHandle.end()) {
-            state->Promise.SetValue();
-            return state->Promise.GetFuture();
-        }
-
-        auto& entries = entriesIter->second;
-
-        const auto alreadyFlushingOrFlushed = [] (const TWriteDataEntry* e)
-        {
-            return e->FlushStatus == EFlushStatus::Started ||
-                e->FlushStatus == EFlushStatus::Finished;
-        };
-
-        // TODO(svartmetal): optimise, can be done in O(1)
-        if (AllOf(entries, alreadyFlushingOrFlushed)) {
-            auto flushInfoIter = LastFlushInfoByHandle.find(handle);
-            if (flushInfoIter == LastFlushInfoByHandle.end()) {
-                state->Promise.SetValue();
-                return state->Promise.GetFuture();
-            }
-
-            return flushInfoIter->second.Future;
-        }
-
-        currFlushId = ++NextFlushId;
-
-        lastFlushFuture = LastFlushInfoByHandle[handle].Future;
-        LastFlushInfoByHandle[handle] = {
-            state->Promise.GetFuture(),
-            currFlushId
-        };
-
-        writeRequests = MakeWriteDataRequestsForFlush(handle);
-
-        for (auto* entry: entries) {
-            if (alreadyFlushingOrFlushed(entry)) {
-                continue;
-            }
-
-            entry->FlushStatus = EFlushStatus::Started;
-            entriesToFlush.push_back(entry);
-        }
+    auto* entry = handleEntry.GetLastEntry();
+    if (entry == nullptr) {
+        return NThreading::MakeFuture();
     }
 
-    auto future = state->Promise.GetFuture();
-
-    if (lastFlushFuture.Initialized()) {
-        future = NWait::WaitAll(lastFlushFuture, future);
+    if (entry->RequestFlush()) {
+        handleEntry.EntriesWithFlushRequested++;
+        RequestFlush(handle, pendingOperations);
     }
 
-    future.Subscribe([=, ptr = weak_from_this()] (auto) {
-        if (auto self = ptr.lock()) {
-            with_lock (self->Lock) {
-                auto flushInfoIter =
-                    self->LastFlushInfoByHandle.find(handle);
-                if (flushInfoIter == self->LastFlushInfoByHandle.end()) {
-                    return;
-                }
-
-                const auto& flushInfo = flushInfoIter->second;
-                if (flushInfo.FlushId == currFlushId) {
-                    self->LastFlushInfoByHandle.erase(handle);
-                }
-            }
-        }
-    });
-
-    if (writeRequests.empty()) {
-        state->Promise.SetValue();
-        return future;
-    }
-
-    state->Promise.GetFuture().Subscribe(
-        [ptr = weak_from_this(),
-            entriesToFlush = std::move(entriesToFlush)] (auto)
-        {
-            if (auto self = ptr.lock()) {
-                self->OnEntriesFlushed(entriesToFlush);
-            }
-        });
-
-    state->WriteRequestsRemaining = writeRequests.size();
-
-    for (auto& request: writeRequests) {
-        auto callContext = MakeIntrusive<TCallContext>(
-            request->GetFileSystemId());
-        Session->WriteData(
-            std::move(callContext),
-            std::move(request)).Subscribe(
-                [state] (auto)
-                {
-                    // TODO(svartmetal): handle response error
-                    if (--state->WriteRequestsRemaining == 0) {
-                        state->Promise.SetValue();
-                    }
-                });
-    }
-
-    return future;
-}
-
-TFuture<void> TWriteBackCache::TImpl::FlushAllData()
-{
-    struct TState
-    {
-        TPromise<void> Promise = NewPromise();
-        std::atomic<int> FlushRequestsRemaining = 0;
-    };
-
-    auto state = std::make_shared<TState>();
-
-    TVector<ui64> handlesToFlush;
-    TFuture<void> lastFlushFuture;
-    ui64 currFlushId = 0;
-
-    with_lock (Lock) {
-        const auto alreadyFlushingOrFlushed = [] (const TWriteDataEntry& e)
-        {
-            return e.FlushStatus == EFlushStatus::Started ||
-                e.FlushStatus == EFlushStatus::Finished;
-        };
-
-        // TODO(svartmetal): optimise, can be done in O(1)
-        if (AllOf(WriteDataEntries, alreadyFlushingOrFlushed)) {
-            if (LastFlushAllDataInfo.Future.Initialized()) {
-                return LastFlushAllDataInfo.Future;
-            }
-
-            state->Promise.SetValue();
-            return state->Promise.GetFuture();
-        }
-
-        currFlushId = ++NextFlushId;
-
-        lastFlushFuture = LastFlushAllDataInfo.Future;
-        LastFlushAllDataInfo = {
-            state->Promise.GetFuture(),
-            currFlushId,
-        };
-
-        for (const auto& [handle, entries]: WriteDataEntriesByHandle) {
-            handlesToFlush.push_back(handle);
-        }
-    }
-
-    auto future = state->Promise.GetFuture();
-
-    if (lastFlushFuture.Initialized()) {
-        future = NWait::WaitAll(lastFlushFuture, future);
-    }
-
-    future.Subscribe([=, ptr = weak_from_this()] (auto) {
-        if (auto self = ptr.lock()) {
-            with_lock (self->Lock) {
-                if (self->LastFlushAllDataInfo.Future.Initialized() &&
-                    currFlushId == self->LastFlushAllDataInfo.FlushId)
-                {
-                    self->LastFlushAllDataInfo.Future = {};
-                }
-            }
-        }
-    });
-
-    if (handlesToFlush.empty()) {
-        state->Promise.SetValue();
-        return state->Promise.GetFuture();
-    }
-
-    state->FlushRequestsRemaining = handlesToFlush.size();
-
-    for (const auto& handle: handlesToFlush) {
-        FlushData(handle).Subscribe([state] (auto) {
-            if (--state->FlushRequestsRemaining == 0) {
-                state->Promise.SetValue();
-            }
-        });
-    }
-
-    future.Subscribe([ptr = weak_from_this()] (auto) {
-        auto self = ptr.lock();
-        if (!self) {
-            return;
-        }
-
-        with_lock (self->Lock) {
-            while (!self->PendingWriteDataRequests.Empty()) {
-                auto* pending = self->PendingWriteDataRequests.Front();
-                auto serializedSize = pending->Entry->GetSerializedSize();
-                char* cachePtr = nullptr;
-                bool allocatedInCache =
-                    self->WriteDataRequestsQueue.AllocateBack(
-                        serializedSize,
-                        &cachePtr);
-
-                if (!allocatedInCache) {
-                    self->FlushAllData(); // flushes asynchronously
-                    return;
-                }
-
-                Y_ABORT_UNLESS(cachePtr != nullptr);
-                pending->Entry->SerializeToCache(cachePtr);
-                self->WriteDataRequestsQueue.CompleteAllocation(cachePtr);
-                self->AddWriteDataEntry(std::move(pending->Entry));
-
-                pending->Promise.SetValue({});
-
-                std::unique_ptr<TPendingWriteDataRequest> holder(pending);
-                pending->Unlink();
-            }
-        }
-    });
-
-    return future;
+    return entry->GetFinishedFuture();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -682,6 +596,7 @@ void TWriteBackCache::TImpl::TFileRingBuffer::CompleteAllocation(char* ptr)
 TWriteBackCache::TImpl::TWriteDataEntry::TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request)
     : Request(std::move(request))
+    , Status(EWriteDataEntryStatus::Pending)
 {
     RequestBuffer.swap(*Request->MutableBuffer());
     Buffer = TStringBuf(RequestBuffer).Skip(Request->GetBufferOffset());
@@ -718,6 +633,7 @@ TWriteBackCache::TImpl::TWriteDataEntry::TWriteDataEntry(
 
     Request.swap(parsedRequest);
     Buffer = TStringBuf(bufferPtr, bufferSize);
+    Status = EWriteDataEntryStatus::Cached;
 }
 
 size_t TWriteBackCache::TImpl::TWriteDataEntry::GetSerializedSize() const
@@ -725,10 +641,16 @@ size_t TWriteBackCache::TImpl::TWriteDataEntry::GetSerializedSize() const
     return Request->ByteSizeLong() + sizeof(ui32) + Buffer.size();
 }
 
-void TWriteBackCache::TImpl::TWriteDataEntry::SerializeToCache(char* cachePtr)
+// should be protected by |Lock|
+void TWriteBackCache::TImpl::TWriteDataEntry::MoveToCache(
+    char* cachePtr,
+    TPendingOperations& pendingOperations)
 {
+    Y_ABORT_UNLESS(CachePtr == nullptr);
     Y_ABORT_UNLESS(cachePtr != nullptr);
     Y_ABORT_UNLESS(Buffer.size() <= Max<ui32>());
+
+    CachePtr = cachePtr;
 
     ui32 bufferSize = static_cast<ui32>(Buffer.size());
     auto serializedSize = GetSerializedSize();
@@ -742,6 +664,250 @@ void TWriteBackCache::TImpl::TWriteDataEntry::SerializeToCache(char* cachePtr)
 
     Buffer = TStringBuf(cachePtr + sizeof(ui32), bufferSize);
     RequestBuffer.clear();
+
+    switch (Status) {
+        case EWriteDataEntryStatus::Pending:
+            Status = EWriteDataEntryStatus::Cached;
+            break;
+        case EWriteDataEntryStatus::PendingFlushRequested:
+            Status = EWriteDataEntryStatus::CachedFlushRequested;
+            break;
+        default:
+            Y_ABORT();
+    }
+
+    if (Promise.Initialized()) {
+        pendingOperations.PromisesToSet.push_back(std::move(Promise));
+    }
+}
+
+void TWriteBackCache::TImpl::TWriteDataEntry::Finish(
+    TWriteBackCache::TImpl::TPendingOperations& pendingOperations)
+{
+    Y_ABORT_UNLESS(
+        Status == EWriteDataEntryStatus::Cached ||
+        Status == EWriteDataEntryStatus::CachedFlushRequested);
+
+    Status = EWriteDataEntryStatus::Finished;
+    Buffer.Clear();
+
+    if (FinishedPromise.Initialized()) {
+        pendingOperations.FinishedPromisesToSet.push_back(
+            std::move(FinishedPromise));
+    }
+}
+
+bool TWriteBackCache::TImpl::TWriteDataEntry::FlushRequested() const
+{
+    return Status == EWriteDataEntryStatus::CachedFlushRequested ||
+           Status == EWriteDataEntryStatus::PendingFlushRequested;
+}
+
+bool TWriteBackCache::TImpl::TWriteDataEntry::RequestFlush()
+{
+    switch (Status) {
+        case EWriteDataEntryStatus::Cached:
+            Status = EWriteDataEntryStatus::CachedFlushRequested;
+            return true;
+
+        case EWriteDataEntryStatus::Pending:
+            Status = EWriteDataEntryStatus::PendingFlushRequested;
+            return true;
+
+        case EWriteDataEntryStatus::CachedFlushRequested:
+        case EWriteDataEntryStatus::PendingFlushRequested:
+            return false;
+
+        default:
+            Y_ABORT();
+    }
+}
+
+auto TWriteBackCache::TImpl::TWriteDataEntry::GetFuture()
+    -> NThreading::TFuture<NProto::TWriteDataResponse>
+{
+    if (!Promise.Initialized()) {
+        switch (Status) {
+            case EWriteDataEntryStatus::Cached:
+            case EWriteDataEntryStatus::CachedFlushRequested:
+            case EWriteDataEntryStatus::Finished:
+                return MakeFuture<NProto::TWriteDataResponse>({});
+
+            case EWriteDataEntryStatus::Pending:
+            case EWriteDataEntryStatus::PendingFlushRequested:
+                Promise = NewPromise<NProto::TWriteDataResponse>();
+                break;
+
+            default:
+                Y_ABORT();
+        }
+    }
+    return Promise.GetFuture();
+}
+
+auto TWriteBackCache::TImpl::TWriteDataEntry::GetFinishedFuture()
+    -> NThreading::TFuture<void>
+{
+    if (!FinishedPromise.Initialized()) {
+        if (Status == EWriteDataEntryStatus::Finished) {
+            return MakeFuture();
+        }
+        FinishedPromise = NewPromise();
+    }
+    return FinishedPromise.GetFuture();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TWriteBackCache::TImpl::THandleEntry::Empty() const
+{
+    return CachedEntries.empty() && PendingEntries.empty();
+}
+
+bool TWriteBackCache::TImpl::THandleEntry::ShouldFlush() const
+{
+    return !CachedEntries.empty() && EntriesWithFlushRequested > 0;
+}
+
+auto TWriteBackCache::TImpl::THandleEntry::GetLastEntry() const
+    -> TWriteBackCache::TImpl::TWriteDataEntry*
+{
+    if (!PendingEntries.empty()) {
+        return PendingEntries.back();
+    }
+    if (!CachedEntries.empty()) {
+        return CachedEntries.back();
+    }
+    return nullptr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TWriteBackCache::TImpl::TFlushOperation::Start(TImpl* impl)
+{
+    if (!Prepare(impl)) {
+        return;
+    }
+
+    Y_ABORT_UNLESS(!WriteRequests.empty());
+
+    RemainingWriteRequestsCount = WriteRequests.size();
+
+    for (size_t i = 0; i < WriteRequests.size(); i++) {
+        auto callContext =
+            MakeIntrusive<TCallContext>(WriteRequests[i]->GetFileSystemId());
+
+        impl->Session->WriteData(std::move(callContext), WriteRequests[i])
+            .Subscribe(
+                [this, i, ptr = impl->weak_from_this()](auto future)
+                {
+                    auto impl = ptr.lock();
+                    if (impl) {
+                        WriteDataRequestCompleted(
+                            impl.get(),
+                            i,
+                            future.GetValue());
+                    }
+                });
+    }
+}
+
+bool TWriteBackCache::TImpl::TFlushOperation::Prepare(TImpl* impl)
+{
+    if (!WriteRequests.empty()) {
+        return true;
+    }
+
+    TVector<TWriteDataEntryPart> parts;
+
+    with_lock (impl->Lock) {
+        auto entriesIter = impl->EntriesByHandle.find(Handle);
+        if (entriesIter == impl->EntriesByHandle.end()) {
+            impl->FlushStateByHandle.erase(Handle);
+            return false;
+        }
+
+        auto& handleEntry = entriesIter->second;
+        if (handleEntry.CachedEntries.empty()) {
+            impl->FlushStateByHandle.erase(Handle);
+            return false;
+        }
+
+        parts = impl->CalculateCachedDataPartsToRead(Handle);
+        AffectedWriteDataEntriesCount = handleEntry.CachedEntries.size();
+    }
+
+    WriteRequests = impl->MakeWriteDataRequestsForFlush(Handle, parts);
+
+    if (WriteRequests.empty()) {
+        Complete(impl);
+        return false;
+    }
+
+    return true;
+}
+
+void TWriteBackCache::TImpl::TFlushOperation::WriteDataRequestCompleted(
+    TImpl* impl,
+    size_t index,
+    const NProto::TWriteDataResponse& response)
+{
+    with_lock (impl->Lock) {
+        if (FAILED(response.GetError().GetCode())) {
+            FailedWriteRequests.push_back(
+                std::move(WriteRequests[index]));
+        }
+
+        Y_ABORT_UNLESS(RemainingWriteRequestsCount > 0);
+        if (--RemainingWriteRequestsCount > 0) {
+            return;
+        }
+    }
+
+    if (!FailedWriteRequests.empty()) {
+        swap(WriteRequests, FailedWriteRequests);
+        FailedWriteRequests.clear();
+        ScheduleRetry(impl);
+        return;
+    }
+
+    Complete(impl);
+}
+
+void TWriteBackCache::TImpl::TFlushOperation::ScheduleRetry(TImpl* impl)
+{
+    // TODO(nasonov): use retry policy
+    impl->Scheduler->Schedule(
+        impl->Timer->Now() + TDuration::MilliSeconds(100),
+        [this, ptr = impl->weak_from_this()]()
+        {
+            auto self = ptr.lock();
+            if (self) {
+                Start(self.get());
+            }
+        });
+}
+
+// |this| becomes unusable after this call
+void TWriteBackCache::TImpl::TFlushOperation::Complete(TImpl* impl)
+{
+    TPendingOperations pendingOperations;
+
+    with_lock (impl->Lock) {
+        auto iter = impl->FlushStateByHandle.find(Handle);
+        Y_ABORT_UNLESS(iter != impl->FlushStateByHandle.end());
+
+        // Keep alive for |this|
+        auto ptr = std::move(iter->second);
+        impl->FlushStateByHandle.erase(iter);
+
+        impl->OnEntriesFlushed(
+            Handle,
+            AffectedWriteDataEntriesCount,
+            pendingOperations);
+    }
+
+    impl->StartPendingOperations(pendingOperations);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

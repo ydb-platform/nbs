@@ -124,7 +124,7 @@ struct TCalculateDataPartsToReadTestBootstrap
     ~TCalculateDataPartsToReadTestBootstrap() = default;
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TVector<TWriteDataEntry*>& entries,
+        const TDeque<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
         ui64 length)
     {
@@ -135,7 +135,7 @@ struct TCalculateDataPartsToReadTestBootstrap
     }
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToReadReferenceImpl(
-        const TVector<TWriteDataEntry*>& entries,
+        const TDeque<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
         ui64 length)
     {
@@ -242,7 +242,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             entries.PushBack(entry.release());
         }
 
-        TVector<TWriteDataEntry*> entryPtrs;
+        TDeque<TWriteDataEntry*> entryPtrs;
         for (auto& entry: entries) {
             entryPtrs.push_back(&entry);
         }
@@ -295,7 +295,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             entries.PushBack(entry.release());
         }
 
-        TVector<TWriteDataEntry*> entryPtrs;
+        TDeque<TWriteDataEntry*> entryPtrs;
         for (auto& entry: entries) {
             entryPtrs.push_back(&entry);
         }
