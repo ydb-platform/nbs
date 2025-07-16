@@ -2,6 +2,8 @@
 
 #include "config.h"
 
+#include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
+
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
@@ -12,42 +14,31 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::function<IFileIOServicePtr()> CreateAIOServiceFactory(
-    const TDiskAgentConfig& config)
+IFileIOServiceFactoryPtr CreateAIOServiceFactory(const TDiskAgentConfig& config)
 {
-    return [events = config.GetMaxAIOContextEvents()]
-    {
-        return CreateAIOService(events);
-    };
+    return NCloud::CreateAIOServiceFactory(
+        {.MaxEvents = config.GetMaxAIOContextEvents()});
 }
 
-std::function<IFileIOServicePtr()> CreateIoUringServiceFactory(
+IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
     const TDiskAgentConfig& config)
 {
-    const ui32 events = config.GetMaxAIOContextEvents();
-    // io_uring service is not thread-safe, so it should be
-    // used with a submission thread anyway
-    const bool useSubmissionThread =
-        !config.GetUseLocalStorageSubmissionThread();
-    const bool isNull =
-        config.GetBackend() == NProto::DISK_AGENT_BACKEND_IO_URING_NULL;
-    return [events, useSubmissionThread, isNull, nextIndex = ui32()]() mutable
-    {
-        const ui32 index = nextIndex++;
-        TString cqName = TStringBuilder() << "RNG" << index;
+    return NCloud::CreateIoUringServiceFactory(
+        {.SubmissionQueueEntries = config.GetMaxAIOContextEvents()});
+}
 
-        IFileIOServicePtr fileIO =
-            isNull ? CreateIoUringServiceNull(std::move(cqName), events)
-                   : CreateIoUringService(std::move(cqName), events);
+NServer::IFileIOServiceProviderPtr CreateFileIOServiceProvider(
+    const TDiskAgentConfig& config,
+    IFileIOServiceFactoryPtr factory)
+{
+    if (config.GetPathsPerFileIOService()) {
+        return NServer::CreateFileIOServiceProvider(
+            config.GetPathsPerFileIOService(),
+            std::move(factory));
+    }
 
-        if (useSubmissionThread) {
-            fileIO = CreateConcurrentFileIOService(
-                TStringBuilder() << "RNG.SQ" << index,
-                std::move(fileIO));
-        }
-
-        return fileIO;
-    };
+    return NServer::CreateSingleFileIOServiceProvider(
+        factory->CreateFileIOService());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
