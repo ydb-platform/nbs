@@ -75,6 +75,12 @@ message TIoUringConfig
 {
     // Min. size of the submission queue.
     optional uint32 Entries = 1;
+
+    // Share asynchronous worker thread backend.
+    optional bool ShareKernelWorkers = 2;
+
+    // Max. number of kernel workers.
+    optional uint32 KernelWorkersCount = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

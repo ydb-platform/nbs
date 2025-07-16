@@ -358,14 +358,7 @@ IFileIOServicePtr CreateThreadedAIOService(
 
     Y_ABORT_UNLESS(threadCount > 0);
 
-    TVector<IFileIOServicePtr> fileIOs;
-    fileIOs.reserve(threadCount);
-
-    for (ui32 i = 0; i < threadCount; i++) {
-        fileIOs.push_back(factory.CreateFileIOService());
-    }
-
-    return CreateRoundRobinFileIOService(std::move(fileIOs));
+    return CreateRoundRobinFileIOService(threadCount, factory);
 }
 
 IFileIOServiceFactoryPtr CreateAIOServiceFactory(TAioServiceParams params)
