@@ -6,6 +6,7 @@
 #include "part_mirror_resync_state.h"
 #include "part_nonrepl_events_private.h"
 #include "resync_range.h"
+#include "update_counters.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
@@ -15,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/disk_registry_based_part_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
@@ -88,6 +90,7 @@ private:
     ui64 FastPathReadCount = 0;
     THashMap<ui64, TFastPathRecord> FastPathRecords;
 
+    NActors::TActorId DiskRegistryBasedPartitionStatisticsCollectorActorId;
 
 public:
     TMirrorPartitionResyncActor(
@@ -128,6 +131,12 @@ private:
 
     bool IsAnybodyAlive() const;
     void ReplyAndDie(const NActors::TActorContext& ctx);
+
+    void UpdateCounters(
+        const NActors::TActorContext& ctx,
+        TUpdateCounters& args);
+
+    TDiskRegistryBasedPartCounters GetStats();
 
 private:
     STFUNC(StateWork);
@@ -219,6 +228,16 @@ private:
 
     void HandleGetDeviceForRange(
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCountersRequest(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
