@@ -841,7 +841,8 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
                 "BLOCKSTORE_TRACE",
                 "AllRequests",
                 GetTraceServiceClient(),
-                serviceNameForExporter);
+                serviceNameForExporter,
+                TLOG_INFO);
         } else {
             reader = SetupTraceReaderWithLog(
                 TraceLoggerId,
@@ -868,13 +869,15 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
                 "BLOCKSTORE_TRACE",
                 GetTraceServiceClient(),
                 serviceNameForExporter,
-                diagnosticsConfig->GetRequestThresholds());
+                diagnosticsConfig->GetRequestThresholds(),
+                "SlowRequests");
         } else {
             reader = SetupTraceReaderForSlowRequests(
                 SlowRequestsFilterId,
                 traceLog,
                 "BLOCKSTORE_TRACE",
-                diagnosticsConfig->GetRequestThresholds());
+                diagnosticsConfig->GetRequestThresholds(),
+                "SlowRequests");
         }
 
         TraceReaders.push_back(std::move(reader));

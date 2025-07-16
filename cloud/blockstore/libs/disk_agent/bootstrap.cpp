@@ -619,7 +619,8 @@ void TBootstrap::InitLWTrace()
             SlowRequestsFilterId,
             traceLog,
             "BLOCKSTORE_TRACE",
-            diagnosticsConfig->GetRequestThresholds()));
+            diagnosticsConfig->GetRequestThresholds(),
+            "SlowRequests"));
     }
 
     lwManager.RegisterCustomAction(

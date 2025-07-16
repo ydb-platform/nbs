@@ -62,9 +62,7 @@ struct ITraceReader
     virtual void Reset() = 0;
 };
 
-
-class TTraceReaderWithRingBuffer final
-    : public ITraceReader
+class TTraceReaderWithRingBuffer final: public ITraceReader
 {
     static constexpr size_t DefaultRingBufferSize = 1000;
 
@@ -111,7 +109,8 @@ ITraceReaderPtr SetupTraceReaderForSlowRequests(
     TString id,
     ILoggingServicePtr logging,
     TString componentName,
-    TRequestThresholds requestThresholds);
+    TRequestThresholds requestThresholds,
+    TString tag);
 
 NLWTrace::TQuery ProbabilisticQuery(
     const TVector<std::tuple<TString, TString>>& probes,

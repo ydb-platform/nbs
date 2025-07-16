@@ -375,7 +375,8 @@ void TBootstrapCommon::InitLWTrace(
             SlowRequestsFilterId,
             traceLog,
             "NFS_TRACE",
-            Configs->DiagnosticsConfig->GetRequestThresholds()));
+            Configs->DiagnosticsConfig->GetRequestThresholds(),
+            "SlowRequests"));
     }
 
     if (traceReaders.size()) {
