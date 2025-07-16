@@ -46,6 +46,9 @@ namespace {
 
 #define FILESTORE_SERVICE_IO_URING_CONFIG(xxx)                                 \
     xxx(Entries,                     ui32,          1024                      )\
+    xxx(ShareKernelWorkers,          bool,          true                      )\
+    xxx(BoundWorkers,                ui32,          0                         )\
+    xxx(UnboundWorkers,              ui32,          0                         )\
 // FILESTORE_SERVICE_IO_URING_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \

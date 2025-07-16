@@ -75,6 +75,15 @@ message TIoUringConfig
 {
     // Min. size of the submission queue.
     optional uint32 Entries = 1;
+
+    // Share asynchronous worker thread backend.
+    optional bool ShareKernelWorkers = 2;
+
+    // Max. number of bound workers.
+    optional uint32 BoundWorkers = 3;
+
+    // Max. number of unbound workers.
+    optional uint32 UnboundWorkers = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

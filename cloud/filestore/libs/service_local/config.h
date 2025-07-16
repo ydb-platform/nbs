@@ -39,6 +39,9 @@ public:
     {}
 
     [[nodiscard]] ui32 GetEntries() const;
+    [[nodiscard]] bool GetShareKernelWorkers() const;
+    [[nodiscard]] ui32 GetBoundWorkers() const;
+    [[nodiscard]] ui32 GetUnboundWorkers() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
