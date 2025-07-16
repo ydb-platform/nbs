@@ -301,20 +301,22 @@ TReferenceTimeCycle GetReferenceTimeCycle(const NLWTrace::TTrackLog& tl)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<Span> ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
+TTraceInfo ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
 {
-    auto traceId = FindRequestId(tl, {0, tl.Items.size()});
-    if (!traceId) {
-        traceId = RandomNumber<ui64>();
-    }
+    TTraceInfo traceInfo;
 
-    return TSpanTree::ExtractSpans(ProcessItemsToSpanTree(
+    traceInfo.RequestId = FindRequestId(tl, {0, tl.Items.size()});
+    traceInfo.DiskId = FindFirst<TString>(tl, "diskId", {0, tl.Items.size()});
+
+    traceInfo.Spans = TSpanTree::ExtractSpans(ProcessItemsToSpanTree(
         tl,
-        traceId,                    // traceId
+        RandomNumber<ui64>(),       // traceId
         0,                          // currentSpanId
         {0, tl.Items.size()},       // iterationContext
         GetReferenceTimeCycle(tl)   // referenceTimeCycle
         ));
+
+    return traceInfo;
 }
 
 }   // namespace NCloud
