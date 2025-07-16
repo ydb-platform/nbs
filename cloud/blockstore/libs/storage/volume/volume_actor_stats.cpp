@@ -436,7 +436,7 @@ void TVolumeActor::CompleteSavePartStats(
         LogTitle.GetWithTime().c_str(),
         args.PartStats.TabletId);
 
-    if (Config->GetPullPartitionStatisticsFromVolume() &&
+    if (Config->GetUsePullSchemeForVolumeStatistics() &&
         !State->IsDiskRegistryMediaKind())
     {
         UpdateCounters(ctx);

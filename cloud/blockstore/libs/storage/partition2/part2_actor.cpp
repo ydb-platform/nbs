@@ -190,7 +190,7 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
 #undef BLOCKSTORE_PARTITION2_UPDATE_COUNTER
 
     // Send counters to service only when we use push scheme
-    if (!Config->GetPullPartitionStatisticsFromVolume()) {
+    if (!Config->GetUsePullSchemeForVolumeStatistics()) {
         SendStatsToService(ctx);
     }
 }
