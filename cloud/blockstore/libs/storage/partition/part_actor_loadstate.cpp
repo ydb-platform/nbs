@@ -165,16 +165,12 @@ void TPartitionActor::CompleteLoadState(
     if (tabletChannelCount < configChannelCount) {
         // either a race or a bug (if this situation occurs again after tablet restart)
         // example: CLOUDINC-2027
-        ReportInvalidTabletConfig();
-
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s tablet info differs from config: tabletChannelCount < "
-            "configChannelCount (%u < %u)",
-            LogTitle.GetWithTime().c_str(),
-            tabletChannelCount,
-            configChannelCount);
+        ReportInvalidTabletConfig(
+            TStringBuilder()
+            << LogTitle.GetWithTime()
+            << " tablet info differs from config: tabletChannelCount < "
+               "configChannelCount ("
+            << tabletChannelCount << " < " << configChannelCount << ")");
     } else if (tabletChannelCount > configChannelCount) {
         // legacy channel configuration
         LOG_WARN(
