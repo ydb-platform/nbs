@@ -436,72 +436,23 @@ void TVolumeActor::CompleteSavePartStats(
         LogTitle.GetWithTime().c_str(),
         args.PartStats.TabletId);
 
+    if (Config->GetPullPartitionStatisticsFromVolume() &&
+        !State->IsDiskRegistryMediaKind())
+    {
+        UpdateCounters(ctx);
+        CleanUpHistory(
+            ctx,
+            SelfId(),                       // sender
+            0,                              // cookie
+            MakeIntrusive<TCallContext>()   // callContext
+        );
+    }
+
     NCloud::Send(
         ctx,
         SelfId(),
         std::make_unique<TEvVolumePrivate::TEvPartStatsSaved>()
     );
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool TVolumeActor::PrepareSaveMultiplePartStats(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxVolume::TSaveMultiplePartStats& args)
-{
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
-
-    return true;
-}
-
-void TVolumeActor::ExecuteSaveMultiplePartStats(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxVolume::TSaveMultiplePartStats& args)
-{
-    Y_DEBUG_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
-    Y_UNUSED(ctx);
-
-    TVolumeDatabase db(tx.DB);
-
-    for (const auto& stats: args.PartStats) {
-        Y_DEBUG_ABORT_UNLESS(stats.PartStats.TabletId);
-        db.WritePartStats(stats.PartStats.TabletId, stats.PartStats.Stats);
-    }
-}
-
-void TVolumeActor::CompleteSaveMultiplePartStats(
-    const TActorContext& ctx,
-    TTxVolume::TSaveMultiplePartStats& args)
-{
-    TStringBuilder builder;
-
-    for (const auto& stats: args.PartStats) {
-        builder << stats.PartStats.TabletId << " ";
-    }
-
-    LOG_DEBUG(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "[%lu] Parts: %s stats saved",
-        TabletID(),
-        builder.c_str());
-
-    UpdateCounters(ctx);
-    CleanUpHistory(
-        ctx,
-        SelfId(),                       // sender
-        0,                              // cookie
-        MakeIntrusive<TCallContext>()   // callContext
-    );
-
-    NCloud::Send(
-        ctx,
-        SelfId(),
-        std::make_unique<TEvVolumePrivate::TEvPartStatsSaved>());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
