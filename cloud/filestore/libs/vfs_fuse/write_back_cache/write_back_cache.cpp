@@ -122,6 +122,8 @@ TFuture<NProto::TReadDataResponse> TWriteBackCache::TImpl::ReadData(
 {
     TString buffer(request->GetLength(), 0);
     TVector<TWriteDataEntryPart> parts;
+    TPendingOperations pendingOperations;
+    TFuture<NProto::TReadDataResponse> readDataFuture;
 
     auto guard = Guard(Lock);
 
@@ -130,17 +132,16 @@ TFuture<NProto::TReadDataResponse> TWriteBackCache::TImpl::ReadData(
         request->GetOffset(),
         request->GetLength());
 
-    for (const auto& part: parts)  {
-        ReadDataPart(part, request->GetOffset(), &buffer);
+    // Pin the buffers so they can be safely referenced outside lock section
+    for (auto& part: parts) {
+        part.Source->IncrementRefCount();
     }
 
-    if (!parts.empty() &&
-        parts.front().Offset == request->GetOffset() &&
-        parts.back().End() ==
-            request->GetOffset() + request->GetLength()
-    ) {
-        bool sufficient = true;
+    bool sufficient = true;
 
+    if (!parts.empty() && parts.front().Offset == request->GetOffset() &&
+        parts.back().End() == request->GetOffset() + request->GetLength())
+    {
         for (size_t i = 1; i < parts.size(); i++) {
             Y_DEBUG_ABORT_UNLESS(parts[i-1].End() <= parts[i].Offset);
 
@@ -149,27 +150,51 @@ TFuture<NProto::TReadDataResponse> TWriteBackCache::TImpl::ReadData(
                 break;
             }
         }
+    } else {
+        sufficient = false;
+    }
 
-        if (sufficient) {
-            // serve request from cache
+    // It is important to initiate ReadData operation in the same Lock section
+    // in order to ensure that no writes will be done into the read region.
+    // (this is managed by TSessionSequencer)
+    if (!sufficient) {
+        readDataFuture = Session->ReadData(std::move(callContext), request);
+    }
 
-            NProto::TReadDataResponse response;
-            response.SetBuffer(std::move(buffer));
+    {
+        // Copy data from buffers without lock
+        auto unguard = Unguard(guard);
 
-            auto promise = NewPromise<NProto::TReadDataResponse>();
-            promise.SetValue(std::move(response));
-            return promise.GetFuture();
+        for (const auto& part: parts) {
+            ReadDataPart(part, request->GetOffset(), &buffer);
         }
     }
 
+    // Unpin buffers
+    for (const auto& part: parts) {
+        part.Source->DecrementRefCount();
+    }
+    ClearFinishedEntries(pendingOperations);
+
+    guard.Release();
+
+    StartPendingOperations(pendingOperations);
+
+    if (sufficient) {
+        // serve request from cache
+        NProto::TReadDataResponse response;
+        response.SetBuffer(std::move(buffer));
+        return MakeFuture(std::move(response));
+    }
+
     // cache is not sufficient to serve the request - read all the data
-    // and apply cache on top of it
-    return Session->ReadData(std::move(callContext), request).Apply(
+    // and combine the result with cached parts
+    return readDataFuture.Apply(
         [handle = request->GetHandle(),
-            startingFromOffset = request->GetOffset(),
-            length = request->GetLength(),
-            buffer = std::move(buffer),
-            parts = std::move(parts)] (auto future) mutable
+         startingFromOffset = request->GetOffset(),
+         length = request->GetLength(),
+         buffer = std::move(buffer),
+         parts = std::move(parts)](auto future) mutable
         {
             auto response = future.ExtractValue();
 
@@ -266,8 +291,7 @@ TFuture<NProto::TWriteDataResponse> TWriteBackCache::TImpl::WriteData(
 
         if (allocatedInCache) {
             Y_ABORT_UNLESS(cachePtr != nullptr);
-            entry->MoveToCache(cachePtr, pendingOperations);
-            CachedEntriesPersistentQueue.CompleteAllocation(cachePtr);
+            entry->LinkWithCache(cachePtr, pendingOperations);
             handleEntry.CachedEntries.emplace_back(entry.get());
             CachedEntries.PushBack(entry.release());
         } else {
@@ -347,6 +371,24 @@ void TWriteBackCache::TImpl::RequestFlushAll(
 void TWriteBackCache::TImpl::StartPendingOperations(
     TPendingOperations& pendingOperations)
 {
+    if (!pendingOperations.EntriesMovingToCache.empty()) {
+        for (auto* entry: pendingOperations.EntriesMovingToCache) {
+            entry->SerializeToCache();
+        }
+        with_lock(Lock) {
+            for (auto* entry: pendingOperations.EntriesMovingToCache) {
+                auto* ptr = entry->CompleteMovingToCache(pendingOperations);
+                CachedEntriesPersistentQueue.CompleteAllocation(ptr);
+
+                auto& handleEntry = EntriesByHandle[entry->GetHandle()];
+                if (handleEntry.ShouldFlush()) {
+                    RequestFlush(entry->GetHandle(), pendingOperations);
+                }
+                HandlesWithNewCachedEntries.insert(entry->GetHandle());
+            }
+        }
+    }
+
     for (auto* flushState: pendingOperations.FlushOperations) {
         flushState->Start(this);
     }
@@ -423,8 +465,7 @@ void TWriteBackCache::TImpl::ClearFinishedEntries(
 
         Y_ABORT_UNLESS(cachePtr != nullptr);
 
-        entry->MoveToCache(cachePtr, pendingOperations);
-        CachedEntriesPersistentQueue.CompleteAllocation(cachePtr);
+        entry->LinkWithCache(cachePtr, pendingOperations);
 
         auto handleEntry = EntriesByHandle[entry->GetHandle()];
 
@@ -636,34 +677,67 @@ TWriteBackCache::TImpl::TWriteDataEntry::TWriteDataEntry(
     Status = EWriteDataEntryStatus::Cached;
 }
 
+// should be protected by |Lock|
+void TWriteBackCache::TImpl::TWriteDataEntry::IncrementRefCount()
+{
+    RefCount++;
+}
+
+// should be protected by |Lock|
+void TWriteBackCache::TImpl::TWriteDataEntry::DecrementRefCount()
+{
+    Y_ABORT_UNLESS(--RefCount >= 0);
+    if (RefCount == 0 && CachePtr != nullptr && !RequestBuffer.Empty()) {
+        Buffer = { CachePtr + sizeof(ui32), RequestBuffer.Size() };
+        RequestBuffer.clear();
+    }
+}
+
 size_t TWriteBackCache::TImpl::TWriteDataEntry::GetSerializedSize() const
 {
     return Request->ByteSizeLong() + sizeof(ui32) + Buffer.size();
 }
 
 // should be protected by |Lock|
-void TWriteBackCache::TImpl::TWriteDataEntry::MoveToCache(
+void TWriteBackCache::TImpl::TWriteDataEntry::LinkWithCache(
     char* cachePtr,
     TPendingOperations& pendingOperations)
 {
     Y_ABORT_UNLESS(CachePtr == nullptr);
     Y_ABORT_UNLESS(cachePtr != nullptr);
-    Y_ABORT_UNLESS(Buffer.size() <= Max<ui32>());
 
     CachePtr = cachePtr;
+
+    ui32 bufferSize = 0;
+    TMemoryOutput mo(cachePtr, sizeof(bufferSize));
+    mo.Write(&bufferSize, sizeof(bufferSize));
+
+    pendingOperations.EntriesMovingToCache.push_back(this);
+
+    IncrementRefCount();
+}
+
+void TWriteBackCache::TImpl::TWriteDataEntry::SerializeToCache()
+{
+    Y_ABORT_UNLESS(CachePtr != nullptr);
+    Y_ABORT_UNLESS(Buffer.size() <= Max<ui32>());
 
     ui32 bufferSize = static_cast<ui32>(Buffer.size());
     auto serializedSize = GetSerializedSize();
 
-    TMemoryOutput mo(cachePtr, serializedSize);
+    TMemoryOutput mo(CachePtr, serializedSize);
     mo.Write(&bufferSize, sizeof(bufferSize));
     mo.Write(Buffer);
 
     Y_ABORT_UNLESS(
         Request->SerializeToArray(mo.Buf(), static_cast<int>(mo.Avail())));
+}
 
-    Buffer = TStringBuf(cachePtr + sizeof(ui32), bufferSize);
-    RequestBuffer.clear();
+// should be protected by |Lock|
+char* TWriteBackCache::TImpl::TWriteDataEntry::CompleteMovingToCache(
+    TPendingOperations& pendingOperations)
+{
+    Y_ABORT_UNLESS(CachePtr != nullptr);
 
     switch (Status) {
         case EWriteDataEntryStatus::Pending:
@@ -679,6 +753,10 @@ void TWriteBackCache::TImpl::TWriteDataEntry::MoveToCache(
     if (Promise.Initialized()) {
         pendingOperations.PromisesToSet.push_back(std::move(Promise));
     }
+
+    DecrementRefCount();
+
+    return CachePtr;
 }
 
 void TWriteBackCache::TImpl::TWriteDataEntry::Finish(
