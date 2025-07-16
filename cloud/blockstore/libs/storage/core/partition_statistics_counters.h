@@ -18,9 +18,9 @@ struct TPartitionStatisticsCounters
     TPartitionStatisticsCounters(
             ui64 diffSysCpuConsumption,
             ui64 userCpuConsumption,
-            TPartitionDiskCountersPtr& partCounters,
-            NBlobMetrics::TBlobLoadMetrics& offsetLoadMetrics,
-            NKikimrTabletBase::TMetrics& metrics)
+            TPartitionDiskCountersPtr partCounters,
+            NBlobMetrics::TBlobLoadMetrics offsetLoadMetrics,
+            NKikimrTabletBase::TMetrics metrics)
         : DiffSysCpuConsumption(diffSysCpuConsumption)
         , UserCpuConsumption(userCpuConsumption)
         , PartCounters(std::move(partCounters))

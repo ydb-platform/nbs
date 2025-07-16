@@ -1274,5 +1274,5 @@ message TStorageServiceConfig
 
     // The volume pulls statistics from the partitions,
     // instead of the partitions pushing statistics to the volume themselves.
-    optional bool PullPartitionStatisticsFromVolume = 441;
+    optional bool UsePullSchemeForVolumeStatistics = 441;
 }
