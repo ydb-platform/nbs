@@ -365,7 +365,8 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
         outdatedVolumeConfigs,
         suspendedDevices,
         automaticallyReplacedDevices,
-        diskRegistryAgentListParams
+        diskRegistryAgentListParams,
+        replicasWithRecentlyReplacedDevices
     ] = newLoadState;
 
     if (backup.DirtyDevicesSize()) {
@@ -553,7 +554,8 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         newOutdatedVolumeConfigs,
         newSuspendedDevices,
         newAutomaticallyReplacedDevices,
-        newDiskRegistryAgentListParams
+        newDiskRegistryAgentListParams,
+        newReplicasWithRecentlyReplacedDevices
     ] = std::move(args.NewState);
 
     auto&& [
@@ -573,7 +575,8 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         currentOutdatedVolumeConfigs,
         currentSuspendedDevices,
         currentAutomaticallyReplacedDevices,
-        currentDiskRegistryAgentListParams
+        currentDiskRegistryAgentListParams,
+        currentReplicasWithRecentlyReplacedDevices
     ] = std::move(args.CurrentState);
 
     RestoreConfig(

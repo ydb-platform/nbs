@@ -346,7 +346,8 @@ public:
         const TString& agentId);
     [[nodiscard]] bool HasLaggingAgents() const;
     [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
-    [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
+    [[nodiscard]] THashSet<TString> GetLaggingDeviceIds() const;
+    [[nodiscard]] TVector<NProto::TLaggingDevice> GetLaggingDevices() const;
     void UpdateLaggingAgentMigrationState(
         const TString& agentId,
         ui64 cleanBlocks,

@@ -543,7 +543,7 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     );
 
     simple.HasLaggingDevices.Set(State->HasLaggingAgents());
-    simple.LaggingDevicesCount.Set(State->GetLaggingDevices().size());
+    simple.LaggingDevicesCount.Set(State->GetLaggingDeviceIds().size());
     {
         const auto& laggingInfos = State->GetLaggingAgentsMigrationInfo();
         ui64 cleanBlockCount = 0;

@@ -193,7 +193,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
             State->GetMeta().GetIOMode(),
             State->GetMeta().GetMuteIOErrors(),
             State->GetFilteredFreshDevices(),
-            State->GetLaggingDevices(),
+            State->GetLaggingDeviceIds(),
             LaggingDevicesAreAllowed(),
             maxTimedOutDeviceStateDuration,
             maxTimedOutDeviceStateDurationOverridden,

@@ -215,12 +215,23 @@ bool TVolumeState::HasLaggingInReplica(ui32 replicaIndex) const
     return false;
 }
 
-THashSet<TString> TVolumeState::GetLaggingDevices() const
+THashSet<TString> TVolumeState::GetLaggingDeviceIds() const
 {
     THashSet<TString> laggingDevices;
     for (const auto& agent: Meta.GetLaggingAgentsInfo().GetAgents()) {
         for (const auto& device: agent.GetDevices()) {
             laggingDevices.insert(device.GetDeviceUUID());
+        }
+    }
+    return laggingDevices;
+}
+
+TVector<NProto::TLaggingDevice> TVolumeState::GetLaggingDevices() const
+{
+    TVector<NProto::TLaggingDevice> laggingDevices;
+    for (const auto& agent: Meta.GetLaggingAgentsInfo().GetAgents()) {
+        for (const auto& device: agent.GetDevices()) {
+            laggingDevices.push_back(device);
         }
     }
     return laggingDevices;

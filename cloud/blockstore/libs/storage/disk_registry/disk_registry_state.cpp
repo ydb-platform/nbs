@@ -5034,13 +5034,30 @@ void TDiskRegistryState::RemoveOutdatedLaggingDevices(
 }
 
 void TDiskRegistryState::DeleteDiskToReallocate(
+    TInstant now,
     TDiskRegistryDatabase& db,
-    const TString& diskId,
-    ui64 seqNo)
+    TDiskNotificationResult notification)
 {
+    const auto& diskId = notification.DiskNotification.DiskId;
+    const ui64 seqNo = notification.DiskNotification.SeqNo;
+
     NotificationSystem.DeleteDiskToReallocate(db, diskId, seqNo);
     RemoveFinishedMigrations(db, diskId, seqNo);
     RemoveOutdatedLaggingDevices(db, diskId, seqNo);
+
+    if (!notification.OutdatedLaggingDevices.empty()) {
+        auto error = AddOutdatedLaggingDevices(
+            now,
+            db,
+            diskId,
+            std::move(notification.OutdatedLaggingDevices));
+        if (HasError(error)) {
+            STORAGE_ERROR(
+                "Failed to add outdated lagging devices: "
+                << FormatError(error));
+        }
+    }
+
     ReplaceNextDevices(now, db, diskId, seqNo);
 }
 
@@ -6868,7 +6885,7 @@ TString TDiskRegistryState::GetAgentId(TNodeId nodeId) const
 NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 {
     static_assert(
-        TTableCount<TDiskRegistrySchema::TTables>::value == 15,
+        TTableCount<TDiskRegistrySchema::TTables>::value == 16,
         "not all fields are processed"
     );
 

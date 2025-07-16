@@ -149,7 +149,8 @@ void TDiskRegistryActor::InitializeState(TDiskRegistryStateSnapshot snapshot)
         std::move(snapshot.OutdatedVolumeConfigs),
         std::move(snapshot.SuspendedDevices),
         std::move(snapshot.AutomaticallyReplacedDevices),
-        std::move(snapshot.DiskRegistryAgentListParams));
+        std::move(snapshot.DiskRegistryAgentListParams),
+        THashMap<TString, NProto::TReplicaWithRecentlyReplacedDevices>());
 }
 
 void TDiskRegistryActor::CompleteLoadState(

@@ -2186,7 +2186,7 @@ void TVolumeActor::RenderLaggingStateForDevice(
 {
     const auto* stateMsg = "ok";
     const auto* color = "green";
-    auto laggingDevices = State->GetLaggingDevices();
+    auto laggingDevices = State->GetLaggingDeviceIds();
 
     if (laggingDevices.contains(d.GetDeviceUUID())) {
         stateMsg = "lagging";
@@ -2433,7 +2433,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
 
                 bool renderLaggingState = IsReliableDiskRegistryMediaKind(
                     State->GetConfig().GetStorageMediaKind());
-                auto laggingDevices = State->GetLaggingDevices();
+                auto laggingDevices = State->GetLaggingDeviceIds();
 
                 auto outputDevices = [&] (const TDevices& devices) {
                     TABLED() {

@@ -578,9 +578,9 @@ public:
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);
 
     void DeleteDiskToReallocate(
+        TInstant now,
         TDiskRegistryDatabase& db,
-        const TString& diskId,
-        ui64 seqNo);
+        TDiskNotificationResult notification);
 
     const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
 
