@@ -113,6 +113,11 @@ private:
         ui64 startingFromOffset,
         ui64 length);
 
+    static TVector<TWriteDataEntryPart> InvertDataParts(
+        const TVector<TWriteDataEntryPart>& parts,
+        ui64 startingFromOffset,
+        ui64 length);
+
     // only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
 };
