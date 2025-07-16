@@ -26,8 +26,8 @@ private:
     const TString ComponentName;
     const TString ServiceName;
     const TString Tag;
+    const ITraceReaderPtr Consumer;
 
-    ITraceReaderPtr Consumer;
     ILoggingServicePtr Logging;
     ITraceServiceClientPtr TraceServiceClient;
 
@@ -59,7 +59,8 @@ public:
             return;
         }
 
-        auto spans = ConvertToOpenTelemetrySpans(tl);
+        auto traceInfo = ConvertToOpenTelemetrySpans(tl);
+        const auto spans = std::move(traceInfo.Spans);
 
         ExportTraceServiceRequest traces;
         auto* resourceSpans = traces.add_resource_spans();
@@ -73,6 +74,22 @@ public:
             resourceSpans->mutable_resource()->mutable_attributes()->Add();
         tagAttribute->set_key("tag");
         tagAttribute->mutable_value()->set_string_value(Tag);
+
+        if (traceInfo.RequestId) {
+            auto* requestIdAttribute =
+                resourceSpans->mutable_resource()->mutable_attributes()->Add();
+            requestIdAttribute->set_key("requestId");
+            requestIdAttribute->mutable_value()->set_string_value(
+                ToString(traceInfo.RequestId));
+        }
+
+        if (traceInfo.DiskId) {
+            auto* diskIdAttribute =
+                resourceSpans->mutable_resource()->mutable_attributes()->Add();
+            diskIdAttribute->set_key("diskId");
+            diskIdAttribute->mutable_value()->set_string_value(
+                std::move(traceInfo.DiskId));
+        }
 
         auto* scopedSpans = resourceSpans->add_scope_spans();
         for (const auto& span: spans) {
@@ -167,13 +184,14 @@ ITraceReaderPtr SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
     TString componentName,
     ITraceServiceClientPtr traceServiceClient,
     TString serviceName,
-    TRequestThresholds requestThresholds)
+    TRequestThresholds requestThresholds,
+    TString tag)
 {
     auto traceReader = SetupTraceReaderWithOpentelemetryExport(
         id,
         logging,
         componentName,
-        "SlowRequests",
+        std::move(tag),
         std::move(traceServiceClient),
         std::move(serviceName),
         ELogPriority::TLOG_WARNING);

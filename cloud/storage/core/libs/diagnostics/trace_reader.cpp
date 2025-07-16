@@ -82,15 +82,15 @@ TString SerializeTraceToString(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTraceLogger final
-    : public ITraceReader
+class TTraceLogger final: public ITraceReader
 {
 private:
-    ITraceReaderPtr Consumer;
+    const ITraceReaderPtr Consumer;
+    const TString Tag;
+    const ELogPriority Priority;
+
     TLog Log;
     ui64 TracksCount = 0;
-    TString Tag;
-    const ELogPriority Priority = ELogPriority::TLOG_INFO;
 
 public:
     TTraceLogger(
@@ -99,7 +99,7 @@ public:
             TString tag,
             ILoggingServicePtr logging,
             const TString& componentName,
-            ELogPriority priority = ELogPriority::TLOG_INFO)
+            ELogPriority priority)
         : ITraceReader(std::move(id))
         , Consumer(std::move(consumer))
         , Tag(std::move(tag))
@@ -332,13 +332,14 @@ ITraceReaderPtr SetupTraceReaderForSlowRequests(
     TString id,
     ILoggingServicePtr logging,
     TString componentName,
-    TRequestThresholds requestThresholds)
+    TRequestThresholds requestThresholds,
+    TString tag)
 {
     auto readerWithLog = SetupTraceReaderWithLog(
         id,
         logging,
         componentName,
-        "SlowRequests",
+        std::move(tag),
         TLOG_WARNING);
     return CreateSlowRequestsFilter(
         std::move(id),
