@@ -119,6 +119,17 @@ test_check()
 	ntest=`expr $ntest + 1`
 }
 
+test_check_quoted()
+{
+	if [ "$@" ]; then
+		echo "ok ${ntest}"
+	else
+		echo "not ok ${ntest}"
+        echo "$(log_tag) check failed -- $@" 1>&2
+	fi
+	ntest=`expr $ntest + 1`
+}
+
 namegen()
 {
 	echo "fstest_`dd if=/dev/urandom bs=1k count=1 2>/dev/null | md5sum  | cut -f1 -d' ' | head -c 10`"
@@ -154,4 +165,40 @@ require()
 		return
 	fi
 	quick_exit
+}
+
+create_nested_dirs() {
+    local path=""
+    for token in "$@"; do
+        if [ -z "$path" ]; then
+            path="$token"
+        else
+            path="$path/$token"
+        fi
+        mkdir "$path"
+    done
+}
+
+rm_nested_dirs() {
+    local path=""
+    
+    for token in "$@"; do
+        if [ -z "$path" ]; then
+            path="$token"
+        else
+            path="$path/$token"
+        fi
+    done
+    
+    while [ -n "$path" ]; do
+        rmdir "$path"
+        case "$path" in
+            */*)
+                path="${path%/*}"
+                ;;
+            *)
+                path=""
+                ;;
+        esac
+    done
 }

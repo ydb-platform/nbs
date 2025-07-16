@@ -3,6 +3,7 @@ RECURSE(
     chmod
     chown
     link
+    ls
     mkdir
     mkfifo
     open
