@@ -385,32 +385,6 @@ void TBootstrapYdb::InitRdmaServer()
         std::move(rdmaConfig));
 }
 
-void TBootstrapYdb::InitFileIOServiceProvider(
-    std::function<IFileIOServicePtr()> factory)
-{
-    const auto& config = *Configs->DiskAgentConfig;
-
-    if (config.GetPathsPerFileIOService()) {
-        FileIOServiceProvider = CreateFileIOServiceProvider(
-            config.GetPathsPerFileIOService(),
-            std::move(factory));
-    } else {
-        FileIOServiceProvider = CreateSingleFileIOServiceProvider(factory());
-    }
-}
-
-void TBootstrapYdb::InitLocalStorageProvider(TString submissionThreadName)
-{
-    const auto& config = *Configs->DiskAgentConfig;
-
-    LocalStorageProvider = CreateLocalStorageProvider(
-        FileIOServiceProvider,
-        NvmeManager,
-        {.DirectIO = !config.GetDirectIoFlagDisabled(),
-         .UseSubmissionThread = config.GetUseLocalStorageSubmissionThread(),
-         .SubmissionThreadName = std::move(submissionThreadName)});
-}
-
 void TBootstrapYdb::InitDiskAgentBackend()
 {
     const auto& config = *Configs->DiskAgentConfig;
@@ -424,18 +398,34 @@ void TBootstrapYdb::InitDiskAgentBackend()
             break;
         case NProto::DISK_AGENT_BACKEND_AIO:
             NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-            InitFileIOServiceProvider(CreateAIOServiceFactory(config));
-            InitLocalStorageProvider("AIO.SQ");
+            FileIOServiceProvider = CreateFileIOServiceProvider(
+                config,
+                CreateAIOServiceFactory(config));
+            LocalStorageProvider = CreateLocalStorageProvider(
+                FileIOServiceProvider,
+                NvmeManager,
+                {
+                    .DirectIO = !config.GetDirectIoFlagDisabled(),
+                    .UseSubmissionThread =
+                        config.GetUseLocalStorageSubmissionThread(),
+                });
             break;
         case NProto::DISK_AGENT_BACKEND_NULL:
             NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
             LocalStorageProvider = CreateNullStorageProvider();
             break;
         case NProto::DISK_AGENT_BACKEND_IO_URING:
-        case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
             NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-            InitFileIOServiceProvider(CreateIoUringServiceFactory(config));
-            InitLocalStorageProvider("RNG.SQ");
+            FileIOServiceProvider = CreateFileIOServiceProvider(
+                config,
+                CreateIoUringServiceFactory(config));
+            LocalStorageProvider = CreateLocalStorageProvider(
+                FileIOServiceProvider,
+                NvmeManager,
+                {
+                    .DirectIO = !config.GetDirectIoFlagDisabled(),
+                    .UseSubmissionThread = false,
+                });
             break;
     }
 
