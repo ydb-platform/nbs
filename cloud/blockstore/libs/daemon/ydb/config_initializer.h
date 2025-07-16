@@ -63,7 +63,6 @@ struct TConfigInitializerYdb final
     NProto::TGrpcClientConfig KmsClientConfig;
     NProto::TGrpcClientConfig ComputeClientConfig;
     NProto::TRootKmsConfig RootKmsConfig;
-    NProto::TOpentelemetryTraceConfig TraceServiceClientConfig;
 
     TConfigInitializerYdb(TOptionsYdbPtr options);
 
@@ -101,7 +100,6 @@ private:
     void ApplyKmsClientConfig(const TString& text);
     void ApplyRootKmsConfig(const TString& text);
     void ApplyComputeClientConfig(const TString& text);
-    void ApplyTraceServiceClientConfig(const TString& text);
 };
 
 }   // namespace NCloud::NBlockStore::NServer
