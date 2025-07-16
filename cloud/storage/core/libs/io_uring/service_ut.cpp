@@ -47,8 +47,10 @@ TFsPath TryGetRamDrivePath()
 
 struct TFixture: public NUnitTest::TBaseFixture
 {
+    static constexpr ui32 ServicesCount = 2;
+
     TFileHandle FileData;
-    IFileIOServicePtr IoUring;
+    TVector<IFileIOServicePtr> Services;
 
     void SetUp(NUnitTest::TTestContext& context) final
     {
@@ -67,15 +69,23 @@ struct TFixture: public NUnitTest::TBaseFixture
              .UnboundWorkers = 1,
              .ShareKernelWorkers = true});
 
-        IoUring = factory->CreateFileIOService();
-        IoUring->Start();
+        Services.reserve(ServicesCount);
+        for (ui32 i = 0; i != ServicesCount; ++i) {
+            Services.push_back(factory->CreateFileIOService());
+        }
+
+        for (const auto& service: Services) {
+            service->Start();
+        }
     }
 
     void TearDown(NUnitTest::TTestContext& context) final
     {
         Y_UNUSED(context);
 
-        IoUring->Stop();
+        for (const auto& service: Services) {
+            service->Stop();
+        }
     }
 };
 
@@ -123,24 +133,28 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
 
         TArrayRef<char> buffer {memory.get(), length};
 
-        std::memset(buffer.data(), 'X', buffer.size());
+        for (int i = 0; i != ServicesCount; ++i) {
+            auto& service = *Services[i];
 
-        {
-            auto result = IoUring->AsyncWrite(FileData, offset, buffer);
+            const int expectedData = 'A' + i;
+            std::memset(buffer.data(), expectedData, buffer.size());
 
-            UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
-        }
+            {
+                auto result = service.AsyncWrite(FileData, offset, buffer);
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+            }
 
-        std::memset(buffer.data(), '.', buffer.size());
+            std::memset(buffer.data(), 0, buffer.size());
 
-        {
-            auto result = IoUring->AsyncRead(FileData, offset, buffer);
+            {
+                auto result = service.AsyncRead(FileData, offset, buffer);
 
-            UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
-        }
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+            }
 
-        for (char val: buffer) {
-            UNIT_ASSERT_VALUES_EQUAL('X', val);
+            for (char val: buffer) {
+                UNIT_ASSERT_VALUES_EQUAL(expectedData, val);
+            }
         }
     }
 
@@ -164,34 +178,43 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             constBuffers.emplace_back(buffer.data(), buffer.size());
         }
 
-        for (auto& buffer: buffers) {
-            std::memset(buffer.data(), 'X', buffer.size());
-        }
+        for (int i = 0; i != ServicesCount; ++i) {
+            auto& service = *Services[i];
 
-        {
-            auto result = IoUring->AsyncWriteV(FileData, offset, constBuffers);
-            UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
-        }
+            const int expectedData = 'A' + i;
 
-        for (auto& buffer: buffers) {
-            std::memset(buffer.data(), '.', buffer.size());
-        }
+            for (auto& buffer: buffers) {
+                std::memset(buffer.data(), expectedData, buffer.size());
+            }
 
-        {
-            auto result = IoUring->AsyncReadV(FileData, offset, buffers);
-            UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
-        }
+            {
+                auto result =
+                    service.AsyncWriteV(FileData, offset, constBuffers);
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+            }
 
-        for (auto& buffer: buffers) {
-            for (char val: buffer) {
-                UNIT_ASSERT_VALUES_EQUAL('X', val);
+            for (auto& buffer: buffers) {
+                std::memset(buffer.data(), 0, buffer.size());
+            }
+
+            {
+                auto result = service.AsyncReadV(FileData, offset, buffers);
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+            }
+
+            for (auto& buffer: buffers) {
+                for (char val: buffer) {
+                    UNIT_ASSERT_VALUES_EQUAL(expectedData, val);
+                }
             }
         }
     }
 
     Y_UNIT_TEST_F(ShouldStop, TFixture)
     {
-        IoUring->Stop();
+        for (const auto& service: Services) {
+            service->Stop();
+        }
     }
 }
 

@@ -519,15 +519,17 @@ public:
 IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
     TIoUringServiceParams params)
 {
-    return std::make_shared<TIoUringServiceFactory<TIoUringService>>(
-        std::move(params));
+    using TFactory = TIoUringServiceFactory<TIoUringService>;
+
+    return std::make_shared<TFactory>(std::move(params));
 }
 
 IFileIOServiceFactoryPtr CreateIoUringServiceNullFactory(
     TIoUringServiceParams params)
 {
-    return std::make_shared<TIoUringServiceFactory<TIoUringServiceNull>>(
-        std::move(params));
+    using TFactory = TIoUringServiceFactory<TIoUringServiceNull>;
+
+    return std::make_shared<TFactory>(std::move(params));
 }
 
 }   // namespace NCloud
