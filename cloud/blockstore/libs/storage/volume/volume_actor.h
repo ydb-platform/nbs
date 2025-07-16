@@ -30,6 +30,8 @@
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/update_counters.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
@@ -605,6 +607,22 @@ private:
 
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
 
+    void SendStatisticRequestForDiskRegistryBasedPartition(
+        const NActors::TActorContext& ctx);
+
+    void CleanUpHistory(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        ui64 cookie,
+        TCallContextPtr callContext);
+
+    void UpdateDiskRegistryBasedPartCounters(
+        const NActors::TActorContext& ctx,
+        const TString& diskId,
+        TUpdateCounters& args,
+        ui64 cookie,
+        TCallContextPtr callContext);
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -1136,6 +1154,11 @@ private:
         const NActors::TActorContext& ctx,
         TPoisonCallback onPartitionStopped);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCountersResponse(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
     BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolumePrivate)
