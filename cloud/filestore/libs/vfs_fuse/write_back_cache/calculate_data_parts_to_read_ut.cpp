@@ -28,6 +28,7 @@ IOutputStream& PrintValues(
             out << ", ";
         }
     }
+    out << "]";
     return out;
 }
 
@@ -106,6 +107,32 @@ IOutputStream& operator<<(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestCaseWriteDataRange
+{
+    ui64 Offset = 0;
+    ui64 Length = 0;
+};
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    const TTestCaseWriteDataRange& e)
+{
+    out << "{"
+        << "Offset: " << e.Offset << ", "
+        << "Length: " << e.Length
+        << "}";
+    return out;
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    const TVector<TTestCaseWriteDataRange>& entries)
+{
+    return PrintValues(out, entries);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TCalculateDataPartsToReadTestBootstrap
 {
     using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
@@ -130,6 +157,17 @@ struct TCalculateDataPartsToReadTestBootstrap
     {
         return TWriteBackCache::TUtil::CalculateDataPartsToRead(
             entries,
+            startingFromOffset,
+            length);
+    }
+
+    TVector<TWriteDataEntryPart> InvertDataParts(
+        const TVector<TWriteDataEntryPart>& parts,
+        ui64 startingFromOffset,
+        ui64 length)
+    {
+        return TWriteBackCache::TUtil::InvertDataParts(
+            parts,
             startingFromOffset,
             length);
     }
@@ -317,6 +355,124 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             "failed for test case with entries: " << testCaseEntries);
     }
 
+    void TestShouldCorrectlyInvertDataParts(
+        const TVector<TTestCaseWriteDataRange>& testCaseEntries,
+        const TVector<TTestCaseWriteDataRange>& expectedResult,
+        int rangeOffset,
+        int rangeLength)
+    {
+        TVector<TWriteDataEntryPart> parts;
+        for (const auto& e: testCaseEntries) {
+            parts.push_back(TWriteDataEntryPart {
+                .Offset = e.Offset,
+                .Length = e.Length
+            });
+        }
+
+        TCalculateDataPartsToReadTestBootstrap b;
+        const auto actualParts = b.InvertDataParts(
+            parts,
+            rangeOffset,
+            rangeLength);
+
+        TVector<TWriteDataEntryPart> expectedParts;
+        for (const auto& e: expectedResult) {
+            expectedParts.push_back(TWriteDataEntryPart {
+                .Offset = e.Offset,
+                .Length = e.Length
+            });
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expectedParts,
+            actualParts,
+            "failed for test case with entries: " << testCaseEntries <<
+            " for offset = " << rangeOffset << ", length = " << rangeLength);
+    }
+
+    void ValidateDataParts(
+        const TVector<TWriteDataEntryPart>& parts,
+        ui64 rangeOffset,
+        ui64 rangeLength)
+    {
+        if (parts.empty()) {
+            return;
+        }
+
+        UNIT_ASSERT_GE(parts.front().Offset, rangeOffset);
+        UNIT_ASSERT_LE(
+            parts.back().Offset + parts.back().Length,
+            rangeOffset + rangeLength);
+
+        for (const auto& part: parts) {
+            UNIT_ASSERT_GT(part.Length, 0);
+        }
+
+        for (size_t i = 1; i < parts.size(); i++) {
+            UNIT_ASSERT_LT(
+                parts[i - 1].Offset + parts[i - 1].Length,
+                parts[i].Offset);
+        }
+    }
+
+    bool IsInAnyOfDataParts(
+        const TVector<TWriteDataEntryPart>& parts,
+        ui64 offset)
+    {
+        return std::ranges::any_of(parts, [offset](const auto& part) {
+            return part.Offset <= offset && offset < part.Offset + part.Length;
+        });
+    }
+
+    void TestShouldCorrectlyInvertDataParts(
+        const TVector<TTestCaseWriteDataEntry>& testCaseEntries,
+        ui64 rangeOffset,
+        ui64 rangeLength)
+    {
+        TIntrusiveListWithAutoDelete<TWriteDataEntry, TDelete> entries;
+        for (const auto& e: testCaseEntries) {
+            Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
+
+            auto entry = std::make_unique<TWriteDataEntry>(
+                e.Handle,
+                e.Offset,
+                e.Length,
+                TStringBuf(),
+                TString(),
+                NProto::THeaders());
+            entries.PushBack(entry.release());
+        }
+
+        TVector<TWriteDataEntry*> entryPtrs;
+        for (auto& entry: entries) {
+            entryPtrs.push_back(&entry);
+        }
+
+        TCalculateDataPartsToReadTestBootstrap b;
+
+        auto parts = b.CalculateDataPartsToReadReferenceImpl(
+            entryPtrs,
+            0,
+            MaxLength);
+
+        const auto invertedParts = b.InvertDataParts(
+            parts,
+            rangeOffset,
+            rangeLength);
+
+        ValidateDataParts(invertedParts, rangeOffset, rangeLength);
+
+        for (ui64 i = 0; i < rangeLength; i++) {
+            ui64 offset = rangeOffset + i;
+            bool isInActualParts = IsInAnyOfDataParts(parts, offset);
+            bool isInInvertedParts = IsInAnyOfDataParts(invertedParts, offset);
+            UNIT_ASSERT_C(
+                isInActualParts != isInInvertedParts,
+                "failed for test case with entries: " << testCaseEntries <<
+                " for offset = " << offset);
+        }
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyCalculateDataPartsToRead)
     {
         TestShouldCorrectlyCalculateDataPartsToRead(
@@ -373,6 +529,111 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         }
 
         TestShouldCorrectlyCalculateDataPartsToReadWithReferenceImpl(entries);
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyInvertDataParts)
+    {
+        TestShouldCorrectlyInvertDataParts(
+            { },
+            {
+                {2, 10}
+            },
+            2,
+            10
+        );
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {2, 10}
+            },
+            { },
+            2,
+            10
+        );
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {0, 14}
+            },
+            { },
+            2,
+            10
+        );
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {4, 6}
+            },
+            {
+                {2, 2}, {10, 2}
+            },
+            2,
+            10
+        );
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {4, 8}
+            },
+            {
+                {2, 2}
+            },
+            2,
+            10
+        );
+
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {2, 8}
+            },
+            {
+                {10, 2}
+            },
+            2,
+            10
+        );
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {2, 4}, {6, 6}
+            },
+            { },
+            2,
+            10
+        );
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {2, 4}, {8, 4}
+            },
+            {
+                {6, 2}
+            },
+            2,
+            10
+        );
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {0, 1}, {1, 3}, {10, 3}, {13, 1}
+            },
+            {
+                {4, 6}
+            },
+            2,
+            10
+        );
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyInvertDataPartsRandomized)
+    {
+        TVector<TTestCaseWriteDataEntry> entries;
+
+        size_t remainingEntries = 111;
+        while (remainingEntries--) {
+            const auto offset = RandomNumber<ui64>(MaxLength);
+            const auto length = RandomNumber<ui64>(MaxLength - offset) + 1;
+            entries.emplace_back(1, offset, length);
+        }
+
+        const auto regionOffset = RandomNumber<ui64>(MaxLength);
+        const auto regionLength =
+            RandomNumber<ui64>(MaxLength - regionOffset) + 1;
+
+        TestShouldCorrectlyInvertDataParts(entries, regionOffset, regionLength);
     }
 }
 

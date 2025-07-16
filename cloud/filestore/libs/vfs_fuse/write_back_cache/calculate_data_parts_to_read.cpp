@@ -125,4 +125,53 @@ auto TWriteBackCache::TUtil::CalculateDataPartsToRead(
     return res;
 }
 
+// static
+auto TWriteBackCache::TUtil::InvertDataParts(
+    const TVector<TWriteDataEntryPart>& sortedParts,
+    ui64 startingFromOffset,
+    ui64 length) -> TVector<TWriteDataEntryPart>
+{
+    if (sortedParts.empty()) {
+        return {{
+            .Offset = startingFromOffset,
+            .Length = length
+        }};
+    }
+
+    const ui64 maxOffset = startingFromOffset + length;
+
+    TVector<TWriteDataEntryPart> res(Reserve(sortedParts.size() + 1));
+
+    if (sortedParts.front().Offset > startingFromOffset) {
+        res.push_back({
+            .Offset = startingFromOffset,
+            .Length =
+                Min(sortedParts.front().Offset, maxOffset) - startingFromOffset
+        });
+    }
+
+    for (size_t i = 1; i < sortedParts.size(); i++) {
+        if (sortedParts[i - 1].End() >= maxOffset) {
+            break;
+        }
+        if (sortedParts[i - 1].End() == sortedParts[i].Offset) {
+            continue;
+        }
+        res.push_back({
+            .Offset = sortedParts[i - 1].End(),
+            .Length =
+                Min(sortedParts[i].Offset, maxOffset) - sortedParts[i - 1].End()
+        });
+    }
+
+    if (sortedParts.back().End() < maxOffset) {
+        res.push_back({
+            .Offset = sortedParts.back().End(),
+            .Length = maxOffset - sortedParts.back().End()
+        });
+    }
+
+    return res;
+}
+
 }   // namespace NCloud::NFileStore::NFuse

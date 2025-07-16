@@ -273,7 +273,7 @@ public:
                  startingFromOffset = request->GetOffset(),
                  length = request->GetLength(),
                  buffer = std::move(buffer),
-                 parts = std::move(parts)] (auto future)
+                 parts = std::move(parts)] (auto future) mutable
                 {
                     auto response = future.ExtractValue();
 
@@ -285,27 +285,58 @@ public:
                         return response;
                     }
 
+                    char* responseBufferData =
+                        response.MutableBuffer()->begin() +
+                        response.GetBufferOffset();
+
+                    auto responseBufferLength =
+                        response.GetBuffer().length() -
+                        response.GetBufferOffset();
+
                     Y_ABORT_UNLESS(
-                        length >= response.GetBuffer().length(),
-                        "expected length %lu to be >= than %lu",
-                        length,
-                        response.GetBuffer().length());
-                    // TODO(svartmetal): get rid of reallocation here
-                    response.MutableBuffer()->resize(length, 0);
+                        responseBufferLength <= length,
+                        "response buffer length %lu is expected to be <= %lu",
+                        responseBufferLength,
+                        length);
 
-                    // TODO(svartmetal): support buffer offsetting
-                    Y_ABORT_UNLESS(0 == response.GetBufferOffset());
+                    // Determine if it is better to apply cached data parts on
+                    // top of the ReadData response or copy non-cached data from
+                    // the response to the buffer with cached data parts
+                    bool useResponseBuffer = responseBufferLength == length;
+                    if (useResponseBuffer) {
+                        size_t sumPartsSize = 0;
+                        for (const auto& part: parts) {
+                            sumPartsSize += part.Length;
+                        }
+                        if (sumPartsSize > responseBufferLength / 2) {
+                            useResponseBuffer = false;
+                        }
+                    }
 
-                    // be careful and don't touch |part.Source| here as it may
-                    // be already deleted
-                    for (const auto& part: parts) {
-                        const char* from = buffer.data();
-                        from += (part.Offset - startingFromOffset);
+                    if (useResponseBuffer) {
+                        // be careful and don't touch |part.Source| here as it
+                        // may be already deleted
+                        for (const auto& part: parts) {
+                            ui64 offset = part.Offset - startingFromOffset;
+                            const char* from = buffer.data() + offset;
+                            char* to = responseBufferData + offset;
+                            MemCopy(to, from, part.Length);
+                        }
+                    } else {
+                        // Note that responseBufferLength may be < length
+                        parts = TUtil::InvertDataParts(
+                            parts,
+                            startingFromOffset,
+                            responseBufferLength);
 
-                        char* to = response.MutableBuffer()->begin();
-                        to += (part.Offset - startingFromOffset);
-
-                        MemCopy(to, from, part.Length);
+                        for (const auto& part: parts) {
+                            ui64 offset = part.Offset - startingFromOffset;
+                            const char* from = responseBufferData + offset;
+                            char* to = buffer.begin() + offset;
+                            MemCopy(to, from, part.Length);
+                        }
+                        response.MutableBuffer()->swap(buffer);
+                        response.ClearBufferOffset();
                     }
 
                     return response;

@@ -102,6 +102,11 @@ public:
         const TVector<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
         ui64 length);
+
+    static TVector<TWriteDataEntryPart> InvertDataParts(
+        const TVector<TWriteDataEntryPart>& sortedParts,
+        ui64 startingFromOffset,
+        ui64 length);
 };
 
 }   // namespace NCloud::NFileStore::NFuse
