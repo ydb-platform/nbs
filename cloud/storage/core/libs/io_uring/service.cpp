@@ -61,14 +61,14 @@ NProto::TError SetMaxWorkers(io_uring* ring, ui32 bound, ui32 unbound)
     return {};
 }
 
-NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* other)
+NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* wqOwner)
 {
     io_uring_params params{
         .flags = IORING_SETUP_R_DISABLED | IORING_SETUP_SINGLE_ISSUER};
 
-    if (other) {
+    if (wqOwner) {
         params.flags |= IORING_SETUP_ATTACH_WQ;
-        params.wq_fd = other->ring_fd;
+        params.wq_fd = wqOwner->ring_fd;
     }
 
     for (;;) {
@@ -115,8 +115,8 @@ private:
     NThreading::TFuture<void> Started;
 
 public:
-    // Share kernel worker threads with `other`
-    TIoUring(TIoUringServiceParams params, TIoUring* other)
+    // Share kernel worker threads with `wqOwner`
+    TIoUring(TIoUringServiceParams params, TIoUring* wqOwner)
         : SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
         , CompletionThread(
               std::bind_front(
@@ -127,14 +127,14 @@ public:
         const auto error = InitRing(
             &Ring,
             params.SubmissionQueueEntries,
-            other ? &other->Ring : nullptr);
+            wqOwner ? &wqOwner->Ring : nullptr);
 
         Y_ABORT_IF(
             HasError(error),
             "can't initialize the ring: %s",
             FormatError(error).c_str());
 
-        if (!other && (params.BoundWorkers || params.UnboundWorkers)) {
+        if (!wqOwner && (params.BoundWorkers || params.UnboundWorkers)) {
             const auto error = SetMaxWorkers(
                 &Ring,
                 params.BoundWorkers,
@@ -339,8 +339,8 @@ struct TIoUringServiceBase
 {
     TIoUring IoUring;
 
-    TIoUringServiceBase(TIoUringServiceParams params, TIoUring* other)
-        : IoUring(std::move(params), other)
+    TIoUringServiceBase(TIoUringServiceParams params, TIoUring* wqOwner)
+        : IoUring(std::move(params), wqOwner)
     {}
 
     void Start() final
@@ -483,7 +483,7 @@ class TIoUringServiceFactory final
 private:
     const TIoUringServiceParams Params;
 
-    std::shared_ptr<TIoUring> IoUring;
+    std::shared_ptr<TIoUring> WqOwner;
     ui32 Index = 0;
 
 public:
@@ -502,10 +502,10 @@ public:
                                       << Params.CompletionThreadName << index;
 
         auto service =
-            std::make_shared<TService>(std::move(params), IoUring.get());
+            std::make_shared<TService>(std::move(params), WqOwner.get());
 
-        if (Params.ShareKernelWorkers && !IoUring) {
-            IoUring = std::shared_ptr<TIoUring>(service, &service->IoUring);
+        if (Params.ShareKernelWorkers && !WqOwner) {
+            WqOwner = std::shared_ptr<TIoUring>(service, &service->IoUring);
         }
 
         return service;
