@@ -23,7 +23,7 @@ ITraceReaderPtr SetupTraceReaderWithOpentelemetryExport(
     TString tag,
     ITraceServiceClientPtr traceServiceClient,
     TString serviceName,
-    ELogPriority priority = ELogPriority::TLOG_INFO);
+    ELogPriority priority);
 
 ITraceReaderPtr SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
     TString id,
@@ -31,6 +31,7 @@ ITraceReaderPtr SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
     TString componentName,
     ITraceServiceClientPtr traceServiceClient,
     TString serviceName,
-    TRequestThresholds requestThresholds);
+    TRequestThresholds requestThresholds,
+    TString tag);
 
 } // namespace NCloud

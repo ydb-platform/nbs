@@ -116,7 +116,8 @@ struct TEnv
                 "filter",
                 logging,
                 "STORAGE_TRACE",
-                requestThresholds
+                requestThresholds,
+                "SlowRequests"
         )};
         return NCloud::CreateTraceProcessorMon(
             monitoring,

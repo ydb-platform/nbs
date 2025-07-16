@@ -26,8 +26,8 @@ private:
     const TString ComponentName;
     const TString ServiceName;
     const TString Tag;
+    const ITraceReaderPtr Consumer;
 
-    ITraceReaderPtr Consumer;
     ILoggingServicePtr Logging;
     ITraceServiceClientPtr TraceServiceClient;
 
@@ -184,13 +184,14 @@ ITraceReaderPtr SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
     TString componentName,
     ITraceServiceClientPtr traceServiceClient,
     TString serviceName,
-    TRequestThresholds requestThresholds)
+    TRequestThresholds requestThresholds,
+    TString tag)
 {
     auto traceReader = SetupTraceReaderWithOpentelemetryExport(
         id,
         logging,
         componentName,
-        "SlowRequests",
+        std::move(tag),
         std::move(traceServiceClient),
         std::move(serviceName),
         ELogPriority::TLOG_WARNING);
