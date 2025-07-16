@@ -193,27 +193,25 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
             {
                 return CreateThreadedAIOService(
                     config.GetNumThreads(),
-                    aio.GetEntries());
+                    {
+                        .MaxEvents = aio.GetEntries(),
+                    });
             },
             [&](const TIoUringConfig& ring)
             {
+                IFileIOServiceFactoryPtr factory = CreateIoUringServiceFactory({
+                    .SubmissionQueueEntries = ring.GetEntries(),
+                    .MaxKernelWorkersCount = ring.GetMaxKernelWorkersCount(),
+                    .ShareKernelWorkers = ring.GetShareKernelWorkers(),
+                });
+
                 if (config.GetNumThreads() <= 1) {
-                    return CreateConcurrentFileIOService(
-                        "RNG.SQ",
-                        CreateIoUringService("RNG", ring.GetEntries()));
+                    return factory->CreateFileIOService();
                 }
 
-                TVector<IFileIOServicePtr> fileIOs;
-                fileIOs.reserve(config.GetNumThreads());
-                for (ui32 i = 0; i != config.GetNumThreads(); ++i) {
-                    fileIOs.push_back(CreateConcurrentFileIOService(
-                        TStringBuilder() << "RNG.SQ" << i,
-                        CreateIoUringService(
-                            TStringBuilder() << "RNG" << i,
-                            ring.GetEntries())));
-                }
-
-                return CreateRoundRobinFileIOService(std::move(fileIOs));
+                return CreateRoundRobinFileIOService(
+                    config.GetNumThreads(),
+                    *factory);
             },
         },
         config.GetFileIOConfig());
