@@ -21,31 +21,23 @@ void TNonreplicatedPartitionActor::UpdateStats(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionActor::SendStats(const TActorContext& ctx)
+TDiskRegistryBasedPartCounters TNonreplicatedPartitionActor::GetStats(
+    const TActorContext& ctx)
 {
-    if (!StatActorId) {
-        return;
-    }
-
     PartCounters->Simple.IORequestsInFlight.Set(
-        RequestsInProgress.GetRequestCount()
-    );
+        RequestsInProgress.GetRequestCount());
     PartCounters->Simple.BytesCount.Set(
-        PartConfig->GetBlockCount() * PartConfig->GetBlockSize()
-    );
+        PartConfig->GetBlockCount() * PartConfig->GetBlockSize());
 
     PartCounters->Simple.HasBrokenDevice.Set(
         CalculateHasBrokenDeviceCounterValue(ctx, false));
     PartCounters->Simple.HasBrokenDeviceSilent.Set(
         CalculateHasBrokenDeviceCounterValue(ctx, true));
 
-    auto request =
-        std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
-            MakeIntrusive<TCallContext>(),
-            std::move(PartCounters),
-            PartConfig->GetName(),
-            NetworkBytes,
-            CpuUsage);
+    TDiskRegistryBasedPartCounters counters(
+        NetworkBytes,
+        CpuUsage,
+        std::move(PartCounters));
 
     NetworkBytes = 0;
     CpuUsage = {};
@@ -54,7 +46,49 @@ void TNonreplicatedPartitionActor::SendStats(const TActorContext& ctx)
         EPublishingPolicy::DiskRegistryBased,
         DiagnosticsConfig->GetHistogramCounterOptions());
 
+    return counters;
+}
+
+void TNonreplicatedPartitionActor::SendStats(const TActorContext& ctx)
+{
+    if (!StatActorId) {
+        return;
+    }
+
+    auto&& [networkBytes, cpuUsage, partCounters] = GetStats(ctx);
+
+    auto request =
+        std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
+            MakeIntrusive<TCallContext>(),
+            std::move(partCounters),
+            PartConfig->GetName(),
+            networkBytes,
+            cpuUsage);
+
     NCloud::Send(ctx, StatActorId, std::move(request));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TNonreplicatedPartitionActor::
+    HandleGetDiskRegistryBasedPartCountersRequest(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const TActorContext& ctx)
+{
+    auto&& [networkBytes, cpuUsage, partCounters] = GetStats(ctx);
+
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersResponse>(
+            MakeError(S_OK),
+            std::move(partCounters),
+            networkBytes,
+            cpuUsage,
+            SelfId(),
+            PartConfig->GetName()));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

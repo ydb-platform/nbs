@@ -90,7 +90,9 @@ TNonreplicatedPartitionMigrationCommonActor::
 void TNonreplicatedPartitionMigrationCommonActor::Bootstrap(
     const TActorContext& ctx)
 {
-    ScheduleCountersUpdate(ctx);
+    if (!Config->GetUsePullSchemeForVolumeStatistics()) {
+        ScheduleCountersUpdate(ctx);
+    }
 
     Become(&TThis::StateWork);
 
@@ -249,6 +251,15 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
             TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse,
             TimeoutCalculator->HandleUpdateBandwidthLimit);
 
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            HandleGetDiskRegistryBasedPartCountersRequest);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvDiskRegistryBasedPartCountersCombined,
+            HandleDiskRegistryBasedPartCountersCombined);
+
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -308,6 +319,10 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvMigrationStateUpdated);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvGetDiskRegistryBasedPartCountersRequest);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvDiskRegistryBasedPartCountersCombined);
 
         IgnoreFunc(TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse);
 
