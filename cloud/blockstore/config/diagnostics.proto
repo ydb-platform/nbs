@@ -4,6 +4,7 @@ package NCloud.NBlockStore.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
+import "cloud/storage/core/config/opentelemetry_client.proto";
 import "cloud/storage/core/protos/diagnostics.proto";
 import "cloud/storage/core/protos/trace.proto";
 
@@ -226,4 +227,6 @@ message TDiagnosticsConfig
 
     // Skip reporting ZeroBlocks metrics as part of WriteBlocks metrics
     optional bool SkipReportingZeroBlocksMetricsForYDBBasedDisks = 53;
+
+    optional NCloud.NProto.TOpentelemetryTraceConfig OpentelemetryTraceConfig = 54;
 }

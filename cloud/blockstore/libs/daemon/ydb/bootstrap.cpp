@@ -307,6 +307,11 @@ ITraceSerializerPtr TBootstrapYdb::GetTraceSerializer()
     return TraceSerializer;
 }
 
+ITraceServiceClientPtr TBootstrapYdb::GetTraceServiceClient()
+{
+    return TraceServiceClient;
+}
+
 void TBootstrapYdb::InitConfigs()
 {
     Configs->InitKikimrConfig();
@@ -790,12 +795,20 @@ void TBootstrapYdb::InitKikimrService()
         *isSpareNode = 1;
     }
 
+    TraceServiceClient = ServerModuleFactories->TraceServiceClientFactory(
+        Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+            .GetClientConfig(),
+        logging);
+
+    STORAGE_INFO("Trace service client initialized");
+
     auto& probes = NLwTraceMonPage::ProbeRegistry();
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_STORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
-    InitLWTrace();
+    InitLWTrace(Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+                    .GetServiceName());
 
     STORAGE_INFO("LWTrace initialized");
 
