@@ -353,7 +353,7 @@ ok 66
 ok 67
 ok 68
 ok 69
-not ok 70
+ok 70
 ok 71
 ok 72
 ok 73
