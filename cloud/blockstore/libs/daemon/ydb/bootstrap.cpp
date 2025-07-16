@@ -332,7 +332,6 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitRootKmsConfig();
     Configs->InitComputeClientConfig();
     Configs->InitCellsConfig();
-    Configs->InitTraceServiceClientConfig();
 }
 
 void TBootstrapYdb::InitSpdk()
@@ -797,7 +796,8 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     TraceServiceClient = ServerModuleFactories->TraceServiceClientFactory(
-        Configs->TraceServiceClientConfig.GetClientConfig(),
+        Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+            .GetClientConfig(),
         logging);
 
     STORAGE_INFO("Trace service client initialized");
@@ -807,7 +807,8 @@ void TBootstrapYdb::InitKikimrService()
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
-    InitLWTrace(Configs->TraceServiceClientConfig.GetServiceName());
+    InitLWTrace(Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+                    .GetServiceName());
 
     STORAGE_INFO("LWTrace initialized");
 
