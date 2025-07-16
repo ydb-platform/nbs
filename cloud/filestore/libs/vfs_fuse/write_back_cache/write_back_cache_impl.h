@@ -159,12 +159,17 @@ private:
     char* CachePtr = nullptr;
 
     // Reference to either RequestBuffer or a memory region
-    // in CachedEntriesPersistentQueue
+    // in CachedEntriesPersistentQueue.
+    // It is guaranteed to be fixed and valid while RefCount > 0.
     TStringBuf Buffer;
 
     NThreading::TPromise<NProto::TWriteDataResponse> Promise;
     NThreading::TPromise<void> FinishedPromise;
     EWriteDataEntryStatus Status = EWriteDataEntryStatus::Invalid;
+
+    // Positive value prevents entry in the Finished state from being
+    // evicted from the CachedEntriesPersistentQueue
+    int RefCount = 0;
 
 public:
     explicit TWriteDataEntry(
@@ -210,11 +215,16 @@ public:
 
     bool CanBeCleared() const
     {
-        return Status == EWriteDataEntryStatus::Finished;
+        return Status == EWriteDataEntryStatus::Finished && RefCount == 0;
     }
 
+    void IncrementRefCount();
+    void DecrementRefCount();
+
     size_t GetSerializedSize() const;
-    void MoveToCache(char* cachePtr, TPendingOperations& pendingOperations);
+    void LinkWithCache(char* cachePtr, TPendingOperations& pendingOperations);
+    void SerializeToCache();
+    char* CompleteMovingToCache(TPendingOperations& pendingOperations);
 
     void Finish(TPendingOperations& pendingOperations);
 
@@ -229,7 +239,7 @@ public:
 
 struct TWriteBackCache::TImpl::TWriteDataEntryPart
 {
-    const TWriteDataEntry* Source = nullptr;
+    TWriteDataEntry* Source = nullptr;
     ui64 OffsetInSource = 0;
     ui64 Offset = 0;
     ui64 Length = 0;
@@ -304,6 +314,7 @@ struct TWriteBackCache::TImpl::TPendingOperations
     TVector<TFlushOperation*> FlushOperations;
     TVector<NThreading::TPromise<NProto::TWriteDataResponse>> PromisesToSet;
     TVector<NThreading::TPromise<void>> FinishedPromisesToSet;
+    TVector<TWriteDataEntry*> EntriesMovingToCache;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -16,7 +16,7 @@ auto TWriteBackCache::TImpl::CalculateDataPartsToRead(
 {
     struct TPoint
     {
-        const TWriteDataEntry* Entry = nullptr;
+        TWriteDataEntry* Entry = nullptr;
         ui64 Offset = 0;
         bool IsEnd = false;
         size_t Order = 0;
@@ -25,7 +25,7 @@ auto TWriteBackCache::TImpl::CalculateDataPartsToRead(
     TVector<TPoint> points(Reserve(2*entries.size()));
 
     for (size_t i = 0; i < entries.size(); i++) {
-        const auto* entry = entries[i];
+        auto* entry = entries[i];
 
         auto pointBegin = entry->Begin();
         auto pointEnd = entry->End();
