@@ -186,7 +186,9 @@ TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
 void TNonreplicatedPartitionActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
-    ScheduleCountersUpdate(ctx);
+    if (!Config->GetUsePullSchemeForVolumeStatistics()) {
+        ScheduleCountersUpdate(ctx);
+    }
 }
 
 bool TNonreplicatedPartitionActor::CheckReadWriteBlockRange(const TBlockRange64& range) const
@@ -723,6 +725,11 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvNonreplPartitionPrivate::TEvAgentIsUnavailable, HandleAgentIsUnavailable);
         HFunc(TEvNonreplPartitionPrivate::TEvAgentIsBackOnline, HandleAgentIsBackOnline);
 
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            HandleGetDiskRegistryBasedPartCountersRequest);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
@@ -778,6 +785,9 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         IgnoreFunc(TEvents::TEvPoisonPill);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
+
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvGetDiskRegistryBasedPartCountersRequest);
 
         default:
             if (!HandleRequests(ev)) {

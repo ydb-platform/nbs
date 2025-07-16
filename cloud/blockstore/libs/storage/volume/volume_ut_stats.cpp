@@ -1423,6 +1423,153 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         // Check that volume got statistics
         UNIT_ASSERT(updated);
     }
+
+    Y_UNIT_TEST(ShouldVolumePullsStatisticsFromDiskRegistryBasedPartWithResync)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetUseMirrorResync(true);
+        config.SetForceMirrorResync(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->ReplicaCount = 2;
+
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        auto isStatUpdated = false;
+        auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
+            [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                isStatUpdated = true;
+            });
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Check that statistics was updated
+        UNIT_ASSERT(isStatUpdated);
+    }
+
+    Y_UNIT_TEST(
+        ShouldVolumePullsStatisticsFromDiskRegistryBasedPartWithMigration)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        config.SetMaxMigrationBandwidth(999'999'999);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->MigrationMode = EMigrationMode::InProgress;
+        state->ReplicaCount = 2;
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        auto isStatUpdated = false;
+        auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
+            [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                isStatUpdated = true;
+            });
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Check that statistics was updated
+        UNIT_ASSERT(isStatUpdated);
+    }
+
+    Y_UNIT_TEST(
+        ShouldVolumePullsStatisticsFromDiskRegistryBasedPartWithFreshDevices)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        config.SetMaxMigrationBandwidth(999'999'999);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->MigrationMode = EMigrationMode::InProgress;
+        state->DeviceReplacementUUIDs = {"uuid1"};
+        state->ReplicaCount = 2;
+
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        auto isStatUpdated = false;
+        auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
+            [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                isStatUpdated = true;
+            });
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Check that statistics was updated
+        UNIT_ASSERT(isStatUpdated);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

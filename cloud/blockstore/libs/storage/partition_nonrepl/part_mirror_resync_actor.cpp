@@ -60,7 +60,9 @@ TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor() = default;
 void TMirrorPartitionResyncActor::Bootstrap(const TActorContext& ctx)
 {
     SetupPartitions(ctx);
-    ScheduleCountersUpdate(ctx);
+    if (!Config->GetUsePullSchemeForVolumeStatistics()) {
+        ScheduleCountersUpdate(ctx);
+    }
     ContinueResyncIfNeeded(ctx);
 
     Become(&TThis::StateWork);
@@ -105,6 +107,10 @@ void TMirrorPartitionResyncActor::KillActors(const TActorContext& ctx)
     for (const auto& replica: Replicas) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, replica.ActorId);
     }
+
+    NCloud::Send<TEvents::TEvPoisonPill>(
+        ctx,
+        DiskRegistryBasedPartitionStatisticsCollectorActorId);
 }
 
 void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
@@ -306,6 +312,14 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
         HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            HandleGetDiskRegistryBasedPartCountersRequest);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvDiskRegistryBasedPartCountersCombined,
+            HandleDiskRegistryBasedPartCountersCombined);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -351,6 +365,10 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvReadResyncFastPathResponse);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvGetDiskRegistryBasedPartCountersRequest);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvDiskRegistryBasedPartCountersCombined);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

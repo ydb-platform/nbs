@@ -6,6 +6,7 @@
 #include "config.h"
 #include "part_mirror_state.h"
 #include "part_nonrepl_events_private.h"
+#include "update_counters.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
@@ -15,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/disk_registry_based_part_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/request_bounds_tracker.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
@@ -112,6 +114,10 @@ private:
     const size_t MultiAgentWriteRequestSizeThreshold = 0;
     size_t MultiAgentWriteRoundRobinSeed = 0;
 
+    NActors::TActorId DiskRegistryBasedPartitionStatisticsCollectorActorId;
+
+    NActors::TActorId StatActorIdInPullScheme;
+
 public:
     TMirrorPartitionActor(
         TStorageConfigPtr config,
@@ -148,6 +154,10 @@ private:
     EWriteRequestType SuggestWriteRequestType(
         const NActors::TActorContext& ctx,
         TBlockRange64 range);
+    TDiskRegistryBasedPartCounters GetStats(const NActors::TActorContext& ctx);
+    void UpdateCounters(
+        const NActors::TActorContext& ctx,
+        TUpdateCounters& args);
 
 private:
     STFUNC(StateWork);
@@ -224,6 +234,16 @@ private:
 
     void HandlePoisonTaken(
         const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCountersRequest(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
