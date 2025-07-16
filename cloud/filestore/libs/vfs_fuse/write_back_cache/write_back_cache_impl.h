@@ -21,36 +21,53 @@ enum class TWriteBackCache::EFlushStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteBackCache::TWriteDataEntry
+class TWriteBackCache::TWriteDataEntry
     : public TIntrusiveListItem<TWriteDataEntry>
 {
-    ui64 Handle;
-    ui64 Offset;
-    ui64 Length;
-    // serialized TWriteDataRequest
-    TStringBuf SerializedRequest;
-    TString FileSystemId;
-    NProto::THeaders RequestHeaders;
+private:
+    // Store request metadata and request buffer separately
+    // The idea is to deduplicate memory and to reference request buffer
+    // directly in the cache if the request is cached.
+    std::shared_ptr<NProto::TWriteDataRequest> Request;
+    TString RequestBuffer;
 
-    TWriteDataEntry(
-            ui64 handle,
-            ui64 offset,
-            ui64 length,
-            TStringBuf serializedRequest,
-            TString fileSystemId,
-            NProto::THeaders requestHeaders)
-        : Handle(handle)
-        , Offset(offset)
-        , Length(length)
-        , SerializedRequest(serializedRequest)
-        , FileSystemId(std::move(fileSystemId))
-        , RequestHeaders(std::move(requestHeaders))
-    {}
+    // Reference to either RequestBuffer or a memory region
+    // in WriteDataRequestsQueue
+    TStringBuf Buffer;
+
+public:
+    explicit TWriteDataEntry(
+        std::shared_ptr<NProto::TWriteDataRequest> request);
+
+    TWriteDataEntry(ui32 checksum, TStringBuf serializedRequest);
+
+    const NProto::TWriteDataRequest* GetRequest() const
+    {
+        return Request.get();
+    }
+
+    ui64 GetHandle() const
+    {
+        return Request->GetHandle();
+    }
+
+    TStringBuf GetBuffer() const
+    {
+        return Buffer;
+    }
+
+    ui64 Offset() const
+    {
+        return Request->GetOffset();
+    }
 
     ui64 End() const
     {
-        return Offset + Length;
+        return Request->GetOffset() + Buffer.size();
     }
+
+    size_t GetSerializedSize() const;
+    void SerializeToCache(char* cachePtr);
 
     EFlushStatus FlushStatus = EFlushStatus::NotStarted;
 };

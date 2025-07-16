@@ -56,7 +56,7 @@ private:
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
     enum class EFlushStatus;
-    struct TWriteDataEntry;
+    class TWriteDataEntry;
     struct TWriteDataEntryPart;
     class TUtil;
 };

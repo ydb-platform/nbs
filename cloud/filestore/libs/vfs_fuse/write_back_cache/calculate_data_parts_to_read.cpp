@@ -27,7 +27,7 @@ auto TWriteBackCache::TUtil::CalculateDataPartsToRead(
     for (size_t i = 0; i < entries.size(); i++) {
         const auto* entry = entries[i];
 
-        auto pointBegin = entry->Offset;
+        auto pointBegin = entry->Offset();
         auto pointEnd = entry->End();
         if (length != 0) {
             // intersect with [startingFromOffset, length)
@@ -66,8 +66,8 @@ auto TWriteBackCache::TUtil::CalculateDataPartsToRead(
         const auto partLength = currOffset - lastOffset;
         const auto& top = heap.front();
 
-        Y_DEBUG_ABORT_UNLESS(lastOffset >= top.Entry->Offset);
-        const auto offsetInSource = lastOffset - top.Entry->Offset;
+        Y_DEBUG_ABORT_UNLESS(lastOffset >= top.Entry->Offset());
+        const auto offsetInSource = lastOffset - top.Entry->Offset();
 
         if (!res.empty() &&
             res.back().Source == top.Entry &&
