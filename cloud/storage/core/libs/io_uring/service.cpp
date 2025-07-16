@@ -71,18 +71,21 @@ NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* other)
         params.wq_fd = other->ring_fd;
     }
 
-    int ret = io_uring_queue_init_params(entries, ring, &params);
-    if (ret == -EINVAL) {
-        // IORING_SETUP_SINGLE_ISSUER is not supported
-        params.flags = params.flags & ~IORING_SETUP_SINGLE_ISSUER;
-        ret = io_uring_queue_init_params(entries, ring, &params);
-    }
+    for (;;) {
+        const int ret = io_uring_queue_init_params(entries, ring, &params);
 
-    if (ret < 0) {
-        return MakeSystemError(-ret, "io_uring_queue_init_params");
-    }
+        if (ret == -EINVAL && params.flags & IORING_SETUP_SINGLE_ISSUER) {
+            // IORING_SETUP_SINGLE_ISSUER is not supported
+            params.flags &= ~IORING_SETUP_SINGLE_ISSUER;
+            continue;
+        }
 
-    return {};
+        if (ret < 0) {
+            return MakeSystemError(-ret, "io_uring_queue_init_params");
+        }
+
+        return {};
+    }
 }
 
 NProto::TError EnableRing(io_uring* ring)
@@ -112,14 +115,36 @@ private:
     NThreading::TFuture<void> Started;
 
 public:
-    explicit TIoUring(TIoUringServiceParams params)
-        : TIoUring(std::move(params), nullptr)
-    {}
-
     // Share kernel worker threads with `other`
-    TIoUring(TIoUringServiceParams params, TIoUring& other)
-        : TIoUring(std::move(params), &other)
-    {}
+    TIoUring(TIoUringServiceParams params, TIoUring* other)
+        : SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
+        , CompletionThread(
+              std::bind_front(
+                  &TIoUring::CompletionThreadProc,
+                  this,
+                  std::move(params.CompletionThreadName)))
+    {
+        const auto error = InitRing(
+            &Ring,
+            params.SubmissionQueueEntries,
+            other ? &other->Ring : nullptr);
+
+        Y_ABORT_IF(
+            HasError(error),
+            "can't initialize the ring: %s",
+            FormatError(error).c_str());
+
+        if (!other && (params.BoundWorkers || params.UnboundWorkers)) {
+            const auto error = SetMaxWorkers(
+                &Ring,
+                params.BoundWorkers,
+                params.UnboundWorkers);
+            Y_ABORT_IF(
+                HasError(error),
+                "can't set max workers: %s",
+                FormatError(error).c_str());
+        }
+    }
 
     ~TIoUring()
     {
@@ -186,36 +211,6 @@ public:
     }
 
 private:
-    TIoUring(TIoUringServiceParams params, TIoUring* other)
-        : SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
-        , CompletionThread(
-              std::bind_front(
-                  &TIoUring::CompletionThreadProc,
-                  this,
-                  std::move(params.CompletionThreadName)))
-    {
-        const auto error = InitRing(
-            &Ring,
-            params.SubmissionQueueEntries,
-            other ? &other->Ring : nullptr);
-
-        Y_ABORT_IF(
-            HasError(error),
-            "can't initialize the ring: %s",
-            FormatError(error).c_str());
-
-        if (!other && (params.BoundWorkers || params.UnboundWorkers)) {
-            const auto error = SetMaxWorkers(
-                &Ring,
-                params.BoundWorkers,
-                params.UnboundWorkers);
-            Y_ABORT_IF(
-                HasError(error),
-                "can't set max workers: %s",
-                FormatError(error).c_str());
-        }
-    }
-
     void SubmitIO(
         int op,
         int fd,
@@ -344,11 +339,7 @@ struct TIoUringServiceBase
 {
     TIoUring IoUring;
 
-    explicit TIoUringServiceBase(TIoUringServiceParams params)
-        : IoUring(std::move(params))
-    {}
-
-    TIoUringServiceBase(TIoUringServiceParams params, TIoUring& other)
+    TIoUringServiceBase(TIoUringServiceParams params, TIoUring* other)
         : IoUring(std::move(params), other)
     {}
 
@@ -485,7 +476,7 @@ struct TIoUringServiceNull final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
+template <typename TService>
 class TIoUringServiceFactory final
     : public IFileIOServiceFactory
 {
@@ -510,16 +501,13 @@ public:
         params.CompletionThreadName = TStringBuilder()
                                       << Params.CompletionThreadName << index;
 
-        if (!Params.ShareKernelWorkers) {
-            return std::make_shared<T>(std::move(params));
+        auto service =
+            std::make_shared<TService>(std::move(params), IoUring.get());
+
+        if (Params.ShareKernelWorkers && !IoUring) {
+            IoUring = std::shared_ptr<TIoUring>(service, &service->IoUring);
         }
 
-        if (IoUring) {
-            return std::make_shared<T>(std::move(params), *IoUring);
-        }
-
-        auto service = std::make_shared<T>(std::move(params));
-        IoUring = std::shared_ptr<TIoUring>(service, &service->IoUring);
         return service;
     }
 };
