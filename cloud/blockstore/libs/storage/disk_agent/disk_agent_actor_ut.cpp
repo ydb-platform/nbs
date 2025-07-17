@@ -310,6 +310,69 @@ struct TFixture
             path.DeleteIfExists();
         }
     }
+
+public:
+    void ShouldIgnoreRemovedDeviceImpl(const TString& labelToRemove)
+    {
+        // build the config cache
+        {
+            NProto::TDiskAgentConfig config;
+
+            for (ui32 i = 0; i != PartLabels.size(); ++i) {
+                auto& device = *config.AddFileDevices();
+                device.SetPath(PartLabels[i]);
+                device.SetDeviceId(IDs[i]);
+                device.SetBlockSize(4_KB);
+            }
+
+            auto error = SaveDiskAgentConfig(CachedConfigPath, config);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
+
+        NFs::Remove(labelToRemove);
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto mismatch = counters->GetCounter(
+            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
+            true);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        // ignore the absence of NVMENBS0X
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            PartLabels.size() - 1,
+            env.DiskRegistryState->Devices.size());
+
+        // check the config cache
+        {
+            TVector<TString> expected(PartLabels.begin(), PartLabels.end());
+            Erase(expected, labelToRemove);
+            Sort(expected);
+
+            auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), config.FileDevicesSize());
+            TVector<TString> paths;
+            for (const auto& device: config.GetFileDevices()) {
+                paths.push_back(device.GetPath());
+            }
+            Sort(paths);
+
+            for (ui32 i = 0; i != expected.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(expected[i], paths[i]);
+            }
+        }
+    }
 };
 
 struct TCopyRangeFixture: public NUnitTest::TBaseFixture
@@ -4631,60 +4694,28 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(1, mismatch->Val());
     }
 
-    Y_UNIT_TEST_F(ShouldIgnoreRemovedDevices, TFixture)
+    Y_UNIT_TEST_F(ShouldIgnoreRemovedDevice, TFixture)
     {
-        // build the config cache
-        {
-            NProto::TDiskAgentConfig config;
+        TVector<ui32> indices(IDs.size());
+        std::iota(indices.begin(), indices.end(), 0);
 
-            for (ui32 i = 0; i != PartLabels.size(); ++i) {
-                auto& device = *config.AddFileDevices();
-                device.SetPath(PartLabels[i]);
-                device.SetDeviceId(IDs[i]);
-                device.SetBlockSize(4_KB);
-            }
+        auto it = MinElementBy(indices, [&] (ui32 i) {
+            return IDs[i];
+        });
 
-            auto error = SaveDiskAgentConfig(CachedConfigPath, config);
-            UNIT_ASSERT_C(!HasError(error), FormatError(error));
-        }
+        ShouldIgnoreRemovedDeviceImpl(PartLabels[*it]);
+    }
 
-        // Remove NBSNVME03
-        NFs::Remove(PartLabels[2]);
+    Y_UNIT_TEST_F(ShouldIgnoreRemovedDeviceLast, TFixture)
+    {
+        TVector<ui32> indices(IDs.size());
+        std::iota(indices.begin(), indices.end(), 0);
 
-        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
-        InitCriticalEventsCounter(counters);
+        auto it = MaxElementBy(indices, [&] (ui32 i) {
+            return IDs[i];
+        });
 
-        auto mismatch = counters->GetCounter(
-            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
-            true);
-
-        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
-
-        auto env =
-            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
-
-        TDiskAgentClient diskAgent(*Runtime);
-        diskAgent.WaitReady();
-
-        // ignore the absence of NVMENBS03
-        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
-
-        UNIT_ASSERT_VALUES_EQUAL(3, env.DiskRegistryState->Devices.size());
-
-        // check the config cache
-        {
-            auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
-            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
-            UNIT_ASSERT_VALUES_EQUAL(3, config.FileDevicesSize());
-            TVector<TString> paths;
-            for (const auto& device: config.GetFileDevices()) {
-                paths.push_back(device.GetPath());
-            }
-            Sort(paths);
-            UNIT_ASSERT_VALUES_EQUAL(PartLabels[0], paths[0]);
-            UNIT_ASSERT_VALUES_EQUAL(PartLabels[1], paths[1]);
-            UNIT_ASSERT_VALUES_EQUAL(PartLabels[3], paths[2]);
-        }
+        ShouldIgnoreRemovedDeviceImpl(PartLabels[*it]);
     }
 
     Y_UNIT_TEST_F(ShouldReportLostDevices, TFixture)
@@ -5466,7 +5497,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         // NVMENBS01 is OK
         {
             auto error = Read(diskAgent, "reader-1", IDs[0]);
-            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error); // ???
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         // Before the registration in DR NVMENBS02 & NVMENBS04 should be
