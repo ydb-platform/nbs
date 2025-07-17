@@ -57,8 +57,8 @@ TVector<TString> GetTransactionAndOperationNames(
         for (const auto& group: channel.History) {
             names.push_back(
                 TStringBuilder() << "WriteBlob_Group" << group.GroupID);
-            // names.push_back(TStringBuilder() << "ReadBlob_Group" <<
-            // group.GroupID);
+            names.push_back(
+                TStringBuilder() << "ReadBlob_Group" << group.GroupID);
         }
     }
 

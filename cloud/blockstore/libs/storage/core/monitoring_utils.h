@@ -207,4 +207,11 @@ void RenderAutoRefreshScript(
     int intervalMs,
     const TString& jsUpdateFunctionName);
 
+void DumpGroupLatencyForOperation(
+    IOutputStream& out,
+    const TString& opName,
+    const TString& opLabel,
+    const TVector<TTransactionTimeTracker::TBucketInfo>& allTransactionBuckets,
+    const TVector<TTransactionTimeTracker::TBucketInfo>& timeBuckets);
+
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils

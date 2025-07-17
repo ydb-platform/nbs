@@ -702,7 +702,9 @@ void TPartitionActor::HandleHttpInfo_Default(
 
                         DIV_CLASS_ID(" ", containerId)
                         {
+                            out << "<div style='overflow-x: auto; border: 1px solid #ddd;'>";
                             DumpGroupLatency(out, TransactionTimeTracker);
+                            out << "</div>";
                         }
                     }
 

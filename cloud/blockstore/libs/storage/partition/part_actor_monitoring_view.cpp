@@ -326,7 +326,10 @@ void TPartitionActor::HandleHttpInfo_GetTransactionsLatency(
     auto json = TransactionTimeTracker.GetStatJson(
         GetCycleCount(),
         [](const TString& name)
-        { return !name.StartsWith("WriteBlob_Group"); });
+        {
+            return !name.StartsWith("WriteBlob_Group") &&
+                   !name.StartsWith("ReadBlob_Group");
+        });
     NCloud::Reply(
         ctx,
         *requestInfo,
@@ -342,7 +345,11 @@ void TPartitionActor::HandleHttpInfo_GetGroupLatencies(
 
     auto json = TransactionTimeTracker.GetStatJson(
         GetCycleCount(),
-        [](const TString& name) { return name.StartsWith("WriteBlob_Group"); });
+        [](const TString& name)
+        {
+            return name.StartsWith("WriteBlob_Group") ||
+                   name.StartsWith("ReadBlob_Group");
+        });
     NCloud::Reply(
         ctx,
         *requestInfo,
