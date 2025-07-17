@@ -64,13 +64,13 @@ void FillFeatures(
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
 
-    if (config.GetHasXAttrsFlagAllowed()) {
-        features->SetHasXAttrs(fileSystemStats.GetHasXAttrs());
-    } else {
-        // by defualt it's true and all the requests for XAttrs are forwareded
-        // to shards
-        features->SetHasXAttrs(true);
-    }
+    // HasXAttrs is false only if 'HasXAttrsFlagAllowed' == true and we know for sure that
+    // there are no XAttrs in the filesystem
+    const bool hasXAttrs =
+        !config.GetHasXAttrsFlagAllowed() ||
+        fileSystemStats.GetHasXAttrs() !=
+            static_cast<ui64>(TIndexTabletActor::EHasXAttrs::False);
+    features->SetHasXAttrs(hasXAttrs);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

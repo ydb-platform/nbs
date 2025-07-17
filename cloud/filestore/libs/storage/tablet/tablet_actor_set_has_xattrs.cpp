@@ -9,6 +9,15 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
+namespace {
+
+inline TIndexTabletActor::EHasXAttrs EHasXAttrsFromBool(bool value)
+{
+    return value ? TIndexTabletActor::EHasXAttrs::True : TIndexTabletActor::EHasXAttrs::False;
+}
+
+}   // namespace  
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::PrepareTx_SetHasXAttrs(
@@ -16,7 +25,8 @@ bool TIndexTabletActor::PrepareTx_SetHasXAttrs(
     TTransactionContext& /* tx */,
     TTxIndexTablet::TSetHasXAttrs& args)
 {
-    args.IsToBeChanged = (GetHasXAttrs() != args.Request.GetValue());
+    const ui64 newValue = static_cast<ui64>(EHasXAttrsFromBool(args.Request.GetValue()));
+    args.IsToBeChanged = (GetHasXAttrs() != newValue);
     return true;
 }
 
@@ -27,16 +37,16 @@ void TIndexTabletActor::ExecuteTx_SetHasXAttrs(
 {
     TIndexTabletDatabase db(tx.DB);
 
-    // write only the value is changed
+    // Write only if the value is changed
     if (args.IsToBeChanged) {
-        WriteHasXAttrs(db, args.Request.GetValue());
+        WriteHasXAttrs(db, EHasXAttrsFromBool(args.Request.GetValue()));
     }
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
-        "Set: %lu HasXAttrs: %lu",
-        args.IsToBeChanged,
-        GetHasXAttrs());
+        "SetHasXAttrs: %lu, HasXAttrs is changed: %s",
+        GetHasXAttrs(),
+        args.IsToBeChanged ? "true" :  "false");
 }
 
 void TIndexTabletActor::CompleteTx_SetHasXAttrs(
@@ -49,8 +59,15 @@ void TIndexTabletActor::CompleteTx_SetHasXAttrs(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    // when the value is changed, suicide in order all ssesions to be recreated
+    // Suiciding in order to force clients to recreate sessions
     if (args.IsToBeChanged) {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Suiciding after HasXAttrs is changed to force clients to fetch"
+            " a new value",
+            LogTag.c_str());
+
         TIndexTabletActor::Suicide(ctx);
     }
 }
@@ -68,7 +85,7 @@ void TIndexTabletActor::HandleSetHasXAttrs(
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TSetHasXAttrsMethod>(*requestInfo);
-
+    
     const auto* msg = ev->Get();
     ExecuteTx<TSetHasXAttrs>(
         ctx,

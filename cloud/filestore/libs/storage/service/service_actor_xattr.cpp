@@ -12,6 +12,108 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TSetHasXAttrsActor final
+    : public TActorBootstrapped<TSetHasXAttrsActor>
+{
+private:
+    const bool Value;
+    const TString& FileSystemId;
+    // Original request
+    const TRequestInfoPtr OriginalRequestInfo;
+    //const TEvService::TSetNodeXAttrMethod::TRequest::TPtr OriginalRequest;
+
+public:
+    TSetHasXAttrsActor(
+        bool value,
+        const TString& fileSystemId,
+        TRequestInfoPtr originalRequestInfo
+    //    const TEvService::TSetNodeXAttrMethod::TRequest::TPtr& originalRequest
+    );
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void HandleSetHasXAttrsResponse(
+        const TEvIndexTablet::TEvSetHasXAttrsResponse::TPtr& ev,
+        const TActorContext& ctx);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TSetHasXAttrsActor::TSetHasXAttrsActor(
+        bool value,
+        const TString& fileSystemId,
+        TRequestInfoPtr originalRequestInfo)
+    : Value(value)
+    , FileSystemId(fileSystemId)
+    , OriginalRequestInfo(originalRequestInfo)
+{}
+
+void TSetHasXAttrsActor::Bootstrap(const TActorContext& ctx)
+{
+    NProtoPrivate::TSetHasXAttrsRequest request;
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "Send TSetHasXAttrsRequest to index tablet");
+
+    auto requestToTablet =
+        std::make_unique<TEvIndexTablet::TEvSetHasXAttrsRequest>();
+    auto& record = requestToTablet->Record;
+    record.SetFileSystemId(FileSystemId);
+    record.SetValue(Value);
+
+    NCloud::Send(
+        ctx,
+        MakeIndexTabletProxyServiceId(),
+        std::move(requestToTablet));
+
+    Become(&TSetHasXAttrsActor::StateWork);
+}
+
+void TSetHasXAttrsActor::HandleSetHasXAttrsResponse(
+    const TEvIndexTablet::TEvSetHasXAttrsResponse::TPtr&,
+    const TActorContext& ctx)
+{
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "TSetHasXAttrsActor::HandleSetHasXAttrsResponse");
+
+    // We always reply E_REJECTED to the original request.
+    // When index tablet restarts and session is recreated we stop sending this message 
+    auto response =
+        std::make_unique<TEvService::TSetNodeXAttrMethod::TResponse>(MakeError(E_REJECTED));
+    NCloud::Reply(ctx, *OriginalRequestInfo, std::move(response));
+    
+    IActor::Die(ctx);
+}
+
+STFUNC(TSetHasXAttrsActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvIndexTablet::TEvSetHasXAttrsResponse,
+            HandleSetHasXAttrsResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -36,6 +138,8 @@ TSessionInfo* TStorageServiceActor::GetAndValidateSession(
     return session;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TMethod>
 void TStorageServiceActor::ForwardXAttrRequest(
     const TActorContext& ctx,
@@ -54,7 +158,7 @@ void TStorageServiceActor::ForwardXAttrRequest(
         TMethod::Name,
         msg->CallContext->RequestId);
 
-        const NProto::TFileStore& filestore = session->FileStore;
+    const NProto::TFileStore& filestore = session->FileStore;
 
     auto [fsId, error] = SelectShard(
         ctx,
@@ -91,10 +195,10 @@ void TStorageServiceActor::ForwardXAttrRequest(
         MakeIndexTabletProxyServiceId(),
         SelfId(),
         ev->ReleaseBase().Release(),
-        0,          // flags
-        cookie,     // cookie
-        // forwardOnNondelivery
-        nullptr);
+        0,        // flags
+        cookie,   // cookie
+        nullptr   // forwardOnNondelivery
+    );
 
     ctx.Send(event.release());
 }
@@ -152,8 +256,8 @@ void TStorageServiceActor::HandleGetNodeXAttr(
         return;
     }
 
-    // if there no extended attributes in the file system we don't create a
-    // requerst for them
+    // If there are no extended attributes in the file system we don't create
+    // a request for them
     if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
         auto response =
             std::make_unique<TEvService::TGetNodeXAttrMethod::TResponse>(
@@ -205,26 +309,17 @@ void TStorageServiceActor::HandleSetNodeXAttr(
         return;
     }
 
-    // if there are no XAttrs in the file system
     if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "Send TSetHasXAttrsRequest to index tablet");
-
-        auto requestToTablet =
-            std::make_unique<TEvIndexTablet::TEvSetHasXAttrsRequest>();
-        auto& record = requestToTablet->Record;
-        record.SetFileSystemId(session->FileStore.GetFileSystemId());
-        record.SetValue(true);
-
-        NCloud::Send(
-            ctx,
-            MakeIndexTabletProxyServiceId(),
-            std::move(requestToTablet));
+        // Send TSetHasXAttrsRequest to the index tablet
+        auto* msg = ev->Get();
+        auto requestInfo = CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+        auto setHasXAttrsActor = std::make_unique<TSetHasXAttrsActor>(true, session->FileStore.GetFileSystemId(), requestInfo);
+        NCloud::Register(ctx, std::move(setHasXAttrsActor));
+    } else {
+        // Forward SetNodeXAttr to a shard only if HasXAttrs flag is set in the
+        // filesystem
+        ForwardXAttrRequest<TEvService::TSetNodeXAttrMethod>(ctx, ev, session);
     }
-
-    ForwardXAttrRequest<TEvService::TSetNodeXAttrMethod>(ctx, ev, session);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

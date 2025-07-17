@@ -156,6 +156,14 @@ void TIndexTabletActor::ExecuteTx_LoadState(
         TABLET_VERIFY(newTabletStorageInfo.GetTabletId());
         args.TabletStorageInfo.CopyFrom(newTabletStorageInfo);
         db.WriteTabletStorageInfo(newTabletStorageInfo);
+
+        // When a new filesystem is created there are no XAttrs in it
+        // but if 'HasXAttrsFlagAllowed' == false we don't track XAttrs and for
+        // this reason HasXAttrs is set to true
+        const ui64 hasXAttrs = static_cast<ui64>(Config->GetHasXAttrsFlagAllowed() ? EHasXAttrs::False : EHasXAttrs::True);
+        args.FileSystemStats.SetHasXAttrs(hasXAttrs);
+        db.WriteHasXAttrs(hasXAttrs);
+
         return;
     }
 

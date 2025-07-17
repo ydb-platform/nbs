@@ -942,15 +942,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldSetHasXAttrsFlagOnFirstSetNodeXAttr)
     {
-        for(int i = 0; i < 2; ++i) {
-            const bool hasXAttrsFlagAllowed = static_cast<bool>(i);
+        for (bool hasXAttrsFlagAllowed: {false, true}) {
             config.SetHasXAttrsFlagAllowed(hasXAttrsFlagAllowed);
             config.SetMultiTabletForwardingEnabled(true);
 
             TShardedFileSystemConfig fsConfig;
             CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-            // counters
             auto counters = env.GetCounters()->FindSubgroup("component", "service");
 
             auto getCount = [&counters](const char* name)
@@ -966,20 +964,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     ->GetAtomic();
             };
 
-            // create initial session
+            // Create initial session
             THeaders headers;
             auto session = service.InitSession(headers, fsConfig.FsId, "client");
             if (hasXAttrsFlagAllowed) {
-                // there should be no XAttrs at the begining if the flag is allowed 
+                // There should be no XAttrs at the begining if
+                // hasXAttrsFlagAllowed is true
                 UNIT_ASSERT(
                     !session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
             } else {
-                // otherwise it's always true
+                // Otherwise it's always true
                 UNIT_ASSERT(
                     session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
             }
 
-            // create two files: "file1", "file2"
+            // Create two files: 'file1', 'file2'
             const auto createNodeResponse1 = service
                 .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
                 ->Record;
@@ -990,7 +989,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 ->Record;
             const auto nodeId2 = createNodeResponse2.GetNode().GetId();
 
-            // check that GetNodeXAttr returns error 'E_FS_NOXATTR' in case when
+            // Check that GetNodeXAttr returns error 'E_FS_NOXATTR' in case
             // 'HasXAttrs' is false
             auto getXAttrResponse = service
                 .AssertGetNodeXAttrFailed(
@@ -1000,8 +999,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     "user.some_attr")
                 ->Record;
             UNIT_ASSERT_VALUES_EQUAL(
-                STATUS_FROM_CODE(getXAttrResponse.GetError().GetCode()),
-                ui32(NProto::E_FS_NOXATTR));
+                ui32(NProto::E_FS_NOXATTR),
+                STATUS_FROM_CODE(getXAttrResponse.GetError().GetCode()));
             UNIT_ASSERT_VALUES_EQUAL(getErrorCount("GetNodeXAttr"), 1);
 
             auto listXAttrResponse =
@@ -1009,24 +1008,33 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT(listXAttrResponse.GetNames().empty());
             UNIT_ASSERT_VALUES_EQUAL(getCount("ListNodeXAttr"), 1);
 
+            if (hasXAttrsFlagAllowed) {
+                // If hasXAttrsFlagAllowed is true the first attempt should fail
+                // and cause the main tablet to restart
+                service.AssertSetNodeXAttrFailed(
+                    headers,
+                    fsConfig.FsId,
+                    nodeId1,
+                    "user.some_attr1",
+                    "some_value1");
+
+                WaitForTabletStart(service);
+                session = service.InitSession(headers, fsConfig.FsId, "client");
+                // After the first XAttr is set the flag HasXAttrs should be true
+                UNIT_ASSERT(
+                    session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+            }
+
             service.SetNodeXAttr(
                 headers,
                 fsConfig.FsId,
                 nodeId1,
                 "user.some_attr1",
                 "some_value1");
+            
             UNIT_ASSERT(getCount("SetNodeXAttr") == 1);
 
-            // wait for the main tablet to restart in case hasXAttrsFlagAllowed == true
-            if(hasXAttrsFlagAllowed) {
-                WaitForTabletStart(service);
-                session = service.InitSession(headers, fsConfig.FsId, "client");
-                // after first XAttr is set the flag HasXAttrs should be true
-                UNIT_ASSERT(
-                    session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
-            }
-
-            // check that XAttr was seccessfully set
+            // Check that XAttr was seccessfully set
             auto getXAttrResponse1 = service
                 .GetNodeXAttr(
                     headers,
@@ -1036,8 +1044,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 ->Record;
             UNIT_ASSERT_VALUES_EQUAL("some_value1", getXAttrResponse1.GetValue());
 
-            // the same check with "file2"
-            // as this time the IndexTablet should not restart we don't need to
+            // The same check for 'file2'.
+            // As this time the IndexTablet should not restart we don't need to
             // create a new session
             service.SetNodeXAttr(
                 headers,

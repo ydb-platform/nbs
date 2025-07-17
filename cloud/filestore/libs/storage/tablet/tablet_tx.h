@@ -1376,13 +1376,11 @@ struct TTxIndexTablet
 
     struct TSetHasXAttrs
         : TSessionAware
-        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TSetHasXAttrsRequest Request;
-        // the flag is set if Request.GetValue() is different from
-        // TIndexTabletState::GetHasXAttrs()
-        bool IsToBeChanged{};
+        // This flag is set only if the HasXAttrs flag is changed
+        bool IsToBeChanged = false;
 
         TSetHasXAttrs(
                 TRequestInfoPtr requestInfo,
@@ -1391,10 +1389,9 @@ struct TTxIndexTablet
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
-
         void Clear()
         {
-            TIndexStateNodeUpdates::Clear();
+            IsToBeChanged = false;
         }
     };
 

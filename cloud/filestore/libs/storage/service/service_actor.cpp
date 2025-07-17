@@ -160,10 +160,7 @@ bool TStorageServiceActor::HandleRequests(STFUNC_SIG)
 STFUNC(TStorageServiceActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        case TEvIndexTablet::TEvSetHasXAttrsResponse::EventType:
-            // no special processing required
-            break;
-        default:
+       default:
             if (!HandleRequests(ev)) {
                 HandleUnexpectedEvent(
                     ev,

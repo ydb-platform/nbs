@@ -428,9 +428,12 @@ void TIndexTabletState::RewriteNodeAttr(
     InvalidateNodeIndexCache(nodeId);
 }
 
-void TIndexTabletState::WriteHasXAttrs(TIndexTabletDatabase& db, bool value)
+////////////////////////////////////////////////////////////////////////////////
+// HasXAttrs
+
+void TIndexTabletState::WriteHasXAttrs(TIndexTabletDatabase& db, const TIndexTabletState::EHasXAttrs hasXAttrs)
 {
-    SetHasXAttrs(db, static_cast<ui64>(value ? 1 : 0));
+    SetHasXAttrs(db, static_cast<ui64>(hasXAttrs));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
