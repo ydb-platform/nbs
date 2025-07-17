@@ -770,7 +770,7 @@ func waitTaskAsync(
 
 	return response.(*wrappers.UInt64Value).GetValue(), nil
 }
-  
+
 func getTaskMetadata(
 	ctx context.Context,
 	scheduler tasks.Scheduler,
