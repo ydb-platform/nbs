@@ -666,7 +666,7 @@ void TVolumeActor::HandleUpdateCounters(
     // if we use pull scheme, we must send request to partitions
     // to collect statistic
     if (Config->GetUsePullSchemeForVolumeStatistics() &&
-        !State->IsDiskRegistryMediaKind() &&
+        State && !State->IsDiskRegistryMediaKind() &&
         GetVolumeStatus() != EStatus::STATUS_INACTIVE)
     {
         ScheduleRegularUpdates(ctx);
