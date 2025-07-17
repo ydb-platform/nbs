@@ -262,7 +262,11 @@ void TTraceReaderWithRingBuffer::Push(
 
     ui64 minSeenTimestamp = tl.Items[0].TimestampCycles;
 
-    RingBuffer.PushBack({.Ts=TInstant::Now(), .Date=minSeenTimestamp, .TrackLog=tl, .Tag=Tag});
+    RingBuffer.PushBack(
+        {.Ts = TInstant::Now(),
+         .Date = minSeenTimestamp,
+         .TrackLog = tl,
+         .Tag = Tag});
 }
 
 void TTraceReaderWithRingBuffer::Reset()
