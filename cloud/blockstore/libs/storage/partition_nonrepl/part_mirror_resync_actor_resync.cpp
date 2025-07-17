@@ -208,7 +208,11 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
             State.AddPendingResyncRange(rangeId.first);
             ScheduleResyncNextRange(ctx);
         } else {
-            ReportResyncFailed();
+            ReportResyncFailed(
+                TStringBuilder()
+                << "[" << PartConfig->GetName() << "] "
+                << "Range " << DescribeRange(range)
+                << " resync failed: " << FormatError(msg->GetError()));
         }
 
         TDeque<TPostponedRead> postponedReads;

@@ -203,7 +203,9 @@ private:
             << " request wakeup timer hit");
 
         if constexpr (IsWriteRequest(T::Request)) {
-            ReportServiceProxyWakeupTimerHit();
+            ReportServiceProxyWakeupTimerHit(
+                TStringBuilder() << "Request timeout for DiskId=" << DiskId
+                                 << ", RequestId=" << CallContext->RequestId);
             return;
         }
 

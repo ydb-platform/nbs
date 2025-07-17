@@ -331,14 +331,11 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
 
     Actors.Erase(ev->Sender);
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s Stop tablet because of AddConfirmedBlobs error: %s",
-            LogTitle.GetWithTime().c_str(),
-            FormatError(msg->GetError()).c_str());
-
-        ReportAddConfirmedBlobsError();
+        ReportAddConfirmedBlobsError(
+            TStringBuilder()
+            << LogTitle.GetWithTime()
+            << " Stop tablet because of AddConfirmedBlobs error: "
+            << FormatError(msg->GetError()));
         Suicide(ctx);
         return;
     }
