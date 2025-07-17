@@ -129,7 +129,6 @@ void DumpLatencyForTransactions(
     const TTransactionTimeTracker& transactionTimeTracker)
 {
     const auto buckets =   transactionTimeTracker.GetTransactionBuckets(
-        // Фильтр: НЕ показывать групповые операции
         [](const TString& name) { return !name.StartsWith("WriteBlob_Group"); }
     );
 
@@ -1440,20 +1439,19 @@ void DumpGroupLatency(
     IOutputStream& out,
     const TTransactionTimeTracker& timeTracker)
 {
-    // Получаем данные, необходимые для построения таблицы
     const auto transactionBuckets = timeTracker.GetTransactionBuckets();
     const auto timeBuckets = timeTracker.GetTimeBuckets();
 
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered table-condensed") {
-            // 1. Рисуем заголовок таблицы (персентили)
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Group ID"; } // Первая колонка
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-bordered table-condensed")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Group ID";
+                    }
                     for (const auto& bucket: timeBuckets) {
-                        // bucket.Description содержит что-то вроде "< 100 us", "1-10 ms" и т.д.
-                        // Используем Tooltip для более детальной информации при наведении
-                        TABLEH() {
+                        TABLEH () {
                             out << "<span title='" << bucket.Tooltip << "'>"
                                 << bucket.Description << "</span>";
                         }
@@ -1461,34 +1459,28 @@ void DumpGroupLatency(
                 }
             }
 
-            // 2. Рисуем тело таблицы (данные по группам)
-            TABLEBODY() {
-                // Перебираем все отслеживаемые операции
+            TABLEBODY()
+            {
                 for (const auto& transaction: transactionBuckets) {
-                    // Отбираем только те, что относятся к нашей задаче
-                    if (!transaction.TransactionName.StartsWith("WriteBlob_Group")) {
+                    if (!transaction.TransactionName.StartsWith(
+                            "WriteBlob_Group"))
+                    {
                         continue;
                     }
-
-                    // transaction.Key - это уникальный ключ для JS (например, "WriteBlob_Group123-inflight")
-                    // transaction.TransactionName - это имя (например, "WriteBlob_Group123")
 
                     const TString groupId = transaction.TransactionName.substr(
                         TString("WriteBlob_Group").length());
 
-                    TABLER() {
-                        // Первая ячейка - ID группы
-                        TABLED() { out << groupId; }
+                    TABLER () {
+                        TABLED () {
+                            out << groupId;
+                        }
 
-                        // Остальные ячейки - это счетчики, которые будут обновляться JS
                         for (const auto& timeBucket: timeBuckets) {
-                            // Формируем уникальный ID для каждой ячейки <td>
-                            // Его будет использовать JS для обновления
                             const TString cellId = TStringBuilder()
-                                << "stat-cell-"
-                                << transaction.Key   // ключ транзакции
-                                << "-"
-                                << timeBucket.Key;   // ключ временного бакета
+                                                   << "stat-cell-"
+                                                   << transaction.Key << "-"
+                                                   << timeBucket.Key;
 
                             out << "<td id='" << cellId << "'>0</td>";
                         }
