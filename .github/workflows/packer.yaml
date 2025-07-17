@@ -5,6 +5,10 @@ on:
   #   - cron: "0 5 * * *"
   workflow_call:
     inputs:
+      image_id:
+        description: "Image id to use"
+        required: false
+        type: string
       update_image_id:
         description: "Update image id"
         required: false
@@ -17,6 +21,11 @@ on:
         type: boolean
   workflow_dispatch:
     inputs:
+      image_id:
+        description: "Image id to use"
+        required: false
+        default: ""
+        type: string
       update_image_id:
         description: "Update image id"
         required: false
@@ -44,7 +53,7 @@ jobs:
 
     - name: install dependencies
       run: |
-        pip install PyGithub==2.5.0 nebius==0.2.28
+        pip install -r .github/scripts/requirements.txt
         echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
 
     - name: Set up Nebius CLI
@@ -71,9 +80,21 @@ jobs:
 
     - name: Get latest image ID from Nebius
       id: get-image-id
+      env: 
+        image_id: ${{ inputs.image_id }}
       run: |
+        if [ -n "${image_id}" ]; then
+          if [[ "${image_id}" != computeimage-* ]]; then
+            echo "Provided image id is not valid: ${image_id}"
+            exit 1
+          fi
+          echo "IMAGE_ID_2204=${image_id}" >> $GITHUB_OUTPUT
+          echo "Using image id provided by inputs: ${image_id}"
+          exit 0
+        fi
         image_id=$(nebius compute image get-latest-by-family --image-family ubuntu22.04-nbs-github-ci --parent-id ${{ vars.NEBIUS_PARENT_ID }} --format json | jq -r .metadata.id)
         echo "IMAGE_ID_2204=$image_id" >> $GITHUB_OUTPUT
+    
 
     - name: Start runner
       id: start-runner

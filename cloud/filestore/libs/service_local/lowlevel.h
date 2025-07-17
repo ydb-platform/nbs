@@ -17,14 +17,10 @@ class UnixCredentialsGuard {
 private:
     uid_t OriginalUid = -1;
     gid_t OriginalGid = -1;
-    uid_t UserUid = -1;
-    gid_t UserGid = -1;
     bool IsRestoreNeeded = false;
-    bool TrustUserCredentials = false;
 
 public:
     UnixCredentialsGuard(uid_t uid, gid_t gid, bool trustUserCredentials);
-    bool TryApplyCredentials(const TFileHandle& handle);
     ~UnixCredentialsGuard();
 };
 
@@ -97,10 +93,12 @@ struct TFileSystemStat
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOpenOrCreateResult
+using TDirEntry = std::pair<TString, TFileStat>;
+
+struct TListDirResult
 {
-    TFileHandle Handle;
-    bool WasCreated = false;
+    TVector<TDirEntry> DirEntries;
+    uint64_t DirOffset = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,11 +106,6 @@ struct TOpenOrCreateResult
 TFileHandle Open(const TString& path, int flags, int mode);
 TFileHandle Open(const TFileHandle& handle, int flags, int mode);
 TFileHandle OpenAt(
-    const TFileHandle& handle,
-    const TString& name,
-    int flags,
-    int mode);
-TOpenOrCreateResult OpenOrCreateAt(
     const TFileHandle& handle,
     const TString& name,
     int flags,
@@ -144,8 +137,10 @@ TFileStat Stat(const TFileHandle& handle);
 TFileStat StatAt(const TFileHandle& handle, const TString& name);
 TFileSystemStat StatFs(const TFileHandle& handle);
 
-TVector<std::pair<TString, TFileStat>> ListDirAt(
+TListDirResult ListDirAt(
     const TFileHandle& handle,
+    uint64_t offset,
+    size_t entriesLimit,
     bool ignoreErrors);
 
 //

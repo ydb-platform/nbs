@@ -327,6 +327,9 @@ public:
     [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMinDelay() const;
     [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMaxDelay() const;
     [[nodiscard]] TDuration GetLoadConfigsFromCmsTotalTimeout() const;
+
+    bool GetParentlessFilesOnly() const;
+    bool GetAllowHandlelessIO() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

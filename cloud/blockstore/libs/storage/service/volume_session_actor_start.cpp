@@ -844,6 +844,14 @@ void TStartVolumeActor::StartShutdown(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s StartVolumeActor shutdown is started for volume %lu with error %s",
+        LogTitle.GetWithTime().c_str(),
+        VolumeTabletId,
+        FormatError(error).c_str());
+
     Stopping = true;
     Error = error;
 
@@ -918,6 +926,16 @@ void TStartVolumeActor::SendVolumeTabletDeadErrorAndScheduleReboot(
 
     bool delay = true;
     switch (VolumeTabletDeadReason) {
+        case TEvTablet::TEvTabletDead::ReasonDemotedByStateStorage:
+            StartShutdown(
+                ctx,
+                MakeError(E_REJECTED, "Tablet is demoted by state storage"));
+            return;
+        case TEvTablet::TEvTabletDead::ReasonDemotedByBlobStorage:
+            StartShutdown(
+                ctx,
+                MakeError(E_REJECTED, "Tablet is demoted by blob storage"));
+            return;
         case TEvTablet::TEvTabletDead::ReasonBootRace:
             // Avoid unnecessary delays
             delay = false;

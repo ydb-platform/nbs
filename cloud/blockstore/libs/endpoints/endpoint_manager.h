@@ -46,6 +46,7 @@ struct TEndpointManagerOptions
     NProto::TClientConfig ClientConfig;
     TString NbdSocketSuffix;
     TString NbdDevicePrefix = "/dev/nbd";
+    bool AutomaticNbdDeviceManagement = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -64,6 +65,7 @@ IEndpointManagerPtr CreateEndpointManager(
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
     NBD::IDeviceFactoryPtr nbdDeviceFactory,
     NBD::IErrorHandlerMapPtr errorHandlerMap,
+    IBlockStorePtr service,
     TEndpointManagerOptions options);
 
 bool AreSameStartEndpointRequests(

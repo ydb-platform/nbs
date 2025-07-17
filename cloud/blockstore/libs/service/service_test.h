@@ -46,6 +46,7 @@ struct TTestService
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
         Y_UNUSED(callContext);                                                 \
+        Y_DEBUG_ABORT_UNLESS(name##Handler);                                   \
         return name##Handler(std::move(request));                              \
     }                                                                          \
 // BLOCKSTORE_DECLARE_METHOD

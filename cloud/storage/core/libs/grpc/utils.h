@@ -11,6 +11,6 @@ namespace NCloud {
 
 bool TryParseSourceFd(const TStringBuf& peer, ui32* fd);
 
-size_t SetExecutorThreadsLimit(size_t count);
+void SetGrpcThreadsLimit(ui32 maxThreads);
 
 }   // namespace NCloud

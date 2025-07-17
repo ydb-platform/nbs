@@ -59,6 +59,7 @@ class LocalLoadTest:
             nbd_request_timeout=None,
             nbd_reconnect_delay=None,
             proxy_restart_events=None,
+            log_config=None,
     ):
 
         self.__endpoint = endpoint
@@ -122,6 +123,7 @@ class LocalLoadTest:
             grpc_trace=grpc_trace,
             rack=rack,
             access_service_type=access_service_type,
+            log_config=log_config,
         )
 
         self.endpoint_proxy = None

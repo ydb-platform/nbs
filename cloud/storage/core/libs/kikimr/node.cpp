@@ -375,8 +375,16 @@ INodeRegistrantPtr CreateNodeRegistrant(
     const auto& hostName = FQDNHostName();
     const auto& hostAddress = GetNetworkAddress(hostName);
 
+    const TNodeLocation location(
+        options.DataCenter,
+        {},
+        options.Rack,
+        ToString(options.Body));
+
     if (options.UseNodeBrokerSsl) {
-        STORAGE_WARN("Trying to register with discovery service: ");
+        STORAGE_WARN("Trying to register with discovery service: "
+            << location.ToString());
+
         return std::make_unique<TDiscoveryNodeRegistrant>(
             hostName,
             hostAddress,
@@ -384,13 +392,10 @@ INodeRegistrantPtr CreateNodeRegistrant(
             nsConfig,
             dnConfig);
     }
-    const TNodeLocation location(
-        options.DataCenter,
-        {},
-        options.Rack,
-        ToString(options.Body));
+
     STORAGE_WARN(
         "Trying to register with legacy service: " << location.ToString());
+
     return std::make_unique<TLegacyNodeRegistrant>(
         hostName,
         hostAddress,
@@ -428,13 +433,18 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     const auto& hostName = FQDNHostName();
     const auto& hostAddress = GetNetworkAddress(hostName);
 
+    auto port = options.UseNodeBrokerSsl && options.NodeBrokerSecurePort
+        ? options.NodeBrokerSecurePort
+        : options.NodeBrokerPort;
+
     TVector<TString> addrs;
     if (options.NodeBrokerAddress) {
-        addrs.push_back(options.NodeBrokerAddress);
+        if (port != 0 && !options.NodeBrokerAddress.Contains(':')) {
+            addrs.push_back(Join(":", options.NodeBrokerAddress, port));
+        } else {
+            addrs.push_back(options.NodeBrokerAddress);
+        }
     } else {
-        auto port = options.UseNodeBrokerSsl && options.NodeBrokerSecurePort
-            ? options.NodeBrokerSecurePort
-            : options.NodeBrokerPort;
         if (port) {
             for (const auto& node: nsConfig.GetNode()) {
                 addrs.emplace_back(Join(":", node.GetHost(), port));

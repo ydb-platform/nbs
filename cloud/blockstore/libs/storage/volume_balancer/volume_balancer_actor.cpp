@@ -11,6 +11,8 @@
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -184,8 +186,7 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
     BalancerPreempted = serviceCounters->GetCounter("BalancerPreempted", false);
     InitiallyPreempted = serviceCounters->GetCounter("InitiallyPreempted", false);
 
-    CpuWait = serverCounters->GetCounter("CpuWait", false);
-    CpuWaitFailure = serverCounters->GetCounter("CpuWaitFailure", false);
+    CpuWaitCounter = serverCounters->GetCounter("CpuWait", false);
 
     ctx.Schedule(Timeout, new TEvents::TEvWakeup);
 }
@@ -244,25 +245,23 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
     if (State) {
         const auto *msg = ev->Get();
 
-        auto now = ctx.Now();
-
-        auto interval = (now - LastCpuWaitQuery).MicroSeconds();
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
         if (HasError(error)) {
-            *CpuWaitFailure = 1;
-            LOG_TRACE_S(
-                ctx,
-                TBlockStoreComponents::VOLUME_BALANCER,
-                "Failed to get CpuWait stats: " << error);
-        } else {
-            *CpuWaitFailure = 0;
+            auto errorMessage =
+                ReportCpuWaitCounterReadError(error.GetMessage());
+                LOG_WARN_S(
+                    ctx,
+                    TBlockStoreComponents::VOLUME_BALANCER,
+                    "Failed to get CpuWait stats: " << errorMessage);
         }
-        auto cpuLack =
-            CpuLackPercentsMultiplier * cpuWait.MicroSeconds();
-        cpuLack /= interval;
-        *CpuWait = cpuLack;
 
-        LastCpuWaitQuery = now;
+        auto now = ctx.Now();
+        auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
+        auto cpuLack = CpuLackPercentsMultiplier * cpuWait.MicroSeconds();
+        cpuLack /= intervalUs;
+        *CpuWaitCounter = cpuLack;
+
+        LastCpuWaitTs = now;
 
         if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
             LOG_WARN_S(ctx, TBlockStoreComponents::VOLUME_BALANCER,

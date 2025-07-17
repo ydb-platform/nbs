@@ -10,9 +10,10 @@
 #include <util/system/file.h>
 #include <util/system/thread.h>
 
-#include <atomic>
-
 #include <libaio.h>
+#include <sys/eventfd.h>
+
+#include <atomic>
 
 namespace NCloud {
 
@@ -125,12 +126,16 @@ private:
     TAsyncIOContext IOContext;
 
     TThread PollerThread;
-    std::atomic_flag ShouldStop = {};
+    std::atomic_flag ShouldStop = false;
 
 public:
-    explicit TAIOService(size_t maxEvents)
-        : IOContext(maxEvents)
-        , PollerThread(ThreadProc, this)
+    explicit TAIOService(TAioServiceParams params)
+        : IOContext(params.MaxEvents)
+        , PollerThread(
+              std::bind_front(
+                  &TAIOService::Run,
+                  this,
+                  std::move(params.CompletionThreadName)))
     {}
 
     // IStartable
@@ -142,9 +147,23 @@ public:
 
     void Stop() override
     {
-        if (!ShouldStop.test_and_set()) {
-            PollerThread.Join();
+        if (ShouldStop.test()) {
+            return;
         }
+
+        // unblock the poller thread that may be blocked on io_getevents by
+        // initiating a read operation
+
+        TFileHandle file {eventfd(1, EFD_NONBLOCK)};
+
+        ui64 value = 0;
+        IFileIOService::AsyncRead(
+            file,
+            0,
+            {std::bit_cast<char*>(&value), sizeof(value)},
+            [&](const auto&, ui32) { ShouldStop.test_and_set(); });
+
+        PollerThread.Join();
     }
 
     // IFileIOService
@@ -268,18 +287,10 @@ private:
         }
     }
 
-    static void* ThreadProc(void* arg)
-    {
-        static_cast<TAIOService*>(arg)->Run();
-        return nullptr;
-    }
-
-    void Run()
+    void Run(const TString& threadName)
     {
         SetHighestThreadPriority();
-
-        static std::atomic<ui64> index = 0;
-        NCloud::SetCurrentThreadName("AIO" + ToString(index++));
+        NCloud::SetCurrentThreadName(threadName);
 
         timespec timeout = WAIT_TIMEOUT;
 
@@ -306,79 +317,26 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThreadedAIOService final
-    : public IFileIOService
+class TAIOServiceFactory final
+    : public IFileIOServiceFactory
 {
 private:
-    TVector<IFileIOServicePtr> IoServices;
-    std::atomic<i64> NextService = 0;
+    const TAioServiceParams Params;
+    ui32 Index = 0;
 
 public:
-    TThreadedAIOService(ui32 threadCount, size_t maxEvents)
-    {
-        Y_ABORT_UNLESS(threadCount > 0);
+    explicit TAIOServiceFactory(TAioServiceParams params)
+        : Params(std::move(params))
+    {}
 
-        for (ui32 i = 0; i < threadCount; i++) {
-            IoServices.push_back(CreateAIOService(maxEvents));
-        }
-    }
-
-    void AsyncRead(
-        TFileHandle& file,
-        i64 offset,
-        TArrayRef<char> buffer,
-        TFileIOCompletion* completion) override
+    IFileIOServicePtr CreateFileIOService() final
     {
-        auto index = NextService++;
-        IoServices[index % IoServices.size()]
-            ->AsyncRead(file, offset, buffer, completion);
-    }
+        const ui32 index = Index++;
+        TAioServiceParams params = Params;
+        params.CompletionThreadName = TStringBuilder()
+                                      << params.CompletionThreadName << index;
 
-    void AsyncReadV(
-        TFileHandle& file,
-        i64 offset,
-        const TVector<TArrayRef<char>>& buffers,
-        TFileIOCompletion* completion) override
-    {
-        auto index = NextService++;
-        IoServices[index % IoServices.size()]
-            ->AsyncReadV(file, offset, buffers, completion);
-    }
-
-    void AsyncWrite(
-        TFileHandle& file,
-        i64 offset,
-        TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) override
-    {
-        auto index = NextService++;
-        IoServices[index % IoServices.size()]
-            ->AsyncWrite(file, offset, buffer, completion);
-    }
-
-    void AsyncWriteV(
-        TFileHandle& file,
-        i64 offset,
-        const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) override
-    {
-        auto index = NextService++;
-        IoServices[index % IoServices.size()]
-            ->AsyncWriteV(file, offset, buffers, completion);
-    }
-
-    void Start() override
-    {
-        for (auto& ioService: IoServices) {
-            ioService->Start();
-        }
-    }
-
-    void Stop() override
-    {
-        for (auto& ioService: IoServices) {
-            ioService->Stop();
-        }
+        return std::make_shared<TAIOService>(std::move(params));
     }
 };
 
@@ -386,14 +344,33 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServicePtr CreateAIOService(size_t maxEvents)
+IFileIOServicePtr CreateAIOService(TAioServiceParams params)
 {
-    return std::make_shared<TAIOService>(maxEvents);
+    TAIOServiceFactory factory(std::move(params));
+    return factory.CreateFileIOService();
 }
 
-IFileIOServicePtr CreateThreadedAIOService(ui32 threadCount, size_t maxEvents)
+IFileIOServicePtr CreateThreadedAIOService(
+    ui32 threadCount,
+    TAioServiceParams params)
 {
-    return std::make_shared<TThreadedAIOService>(threadCount, maxEvents);
+    TAIOServiceFactory factory(std::move(params));
+
+    Y_ABORT_UNLESS(threadCount > 0);
+
+    TVector<IFileIOServicePtr> fileIOs;
+    fileIOs.reserve(threadCount);
+
+    for (ui32 i = 0; i < threadCount; i++) {
+        fileIOs.push_back(factory.CreateFileIOService());
+    }
+
+    return CreateRoundRobinFileIOService(std::move(fileIOs));
+}
+
+IFileIOServiceFactoryPtr CreateAIOServiceFactory(TAioServiceParams params)
+{
+    return std::make_shared<TAIOServiceFactory>(std::move(params));
 }
 
 }   // namespace NCloud

@@ -488,13 +488,13 @@ void TPartitionActor::WriteFreshBlocks(
             Reserve(requestsInBuffer.size()));
 
         for (auto& r: requestsInBuffer) {
-            LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Writing fresh blocks @%lu (range: %s)",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
+            LOG_TRACE(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Writing fresh blocks @%lu (range: %s)",
+                LogTitle.GetWithTime().c_str(),
                 commitId,
-                DescribeRange(r.Data.Range).data()
-            );
+                DescribeRange(r.Data.Range).c_str());
 
             AddTransaction(
                 *r.Data.RequestInfo,
@@ -543,9 +543,11 @@ void TPartitionActor::HandleAddFreshBlocks(
             );
             State->DecrementFreshBlocksInFlight(blockRange->Size());
         } else {
-            LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-                "[" << TabletID() << "]"
-                << "Failed to lock a guardedSgList on AddFreshBlocks");
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Failed to lock a guardedSgList on AddFreshBlocks",
+                LogTitle.GetWithTime().c_str());
             Suicide(ctx);
             return;
         }
@@ -656,10 +658,11 @@ void TPartitionActor::CompleteWriteBlocks(
     ui64 waitCycles = 0;
 
     ui64 commitId = args.CommitId;
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Complete write blocks @%lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete WriteBlocks transaction @%lu",
+        LogTitle.GetWithTime().c_str(),
         commitId);
 
     if (args.Requests.size()) {

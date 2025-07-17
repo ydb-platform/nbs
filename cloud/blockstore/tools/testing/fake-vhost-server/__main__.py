@@ -257,6 +257,12 @@ def main():
         type=int,
         metavar="INT")
 
+    parser.add_argument(
+        "--blockstore-service-pid",
+        help="PID of blockstore service",
+        type=int,
+        metavar="INT")
+
     args = parser.parse_args()
 
     _prepare_logging(args.verbose)

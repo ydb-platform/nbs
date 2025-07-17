@@ -34,7 +34,7 @@ runs:
     - name: install dependencies
       shell: bash
       run: |
-        pip install PyGithub==2.5.0 nebius==0.2.28
+        pip install -r .github/scripts/requirements.txt
     - name: remove vm
       id: remove-vm
       shell: bash

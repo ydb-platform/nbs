@@ -165,10 +165,11 @@ void TPartitionActor::HandleCleanup(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Start cleanup @%lu (queue: %u)",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start cleanup @%lu (queue: %u)",
+        LogTitle.GetWithTime().c_str(),
         commitId,
         static_cast<ui32>(cleanupQueue.size()));
 
@@ -274,11 +275,12 @@ void TPartitionActor::ExecuteCleanup(
             }
         }
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Delete blob: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            ToString(MakeBlobId(TabletID(), item.BlobId)).data());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Delete blob: %s",
+            LogTitle.GetWithTime().c_str(),
+            ToString(MakeBlobId(TabletID(), item.BlobId)).Quote().c_str());
 
         State->RemoveCleanupQueueItem(item);
 
@@ -303,10 +305,11 @@ void TPartitionActor::CompleteCleanup(
 {
     TRequestScope timer(*args.RequestInfo);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Complete cleanup @%lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete Cleanup transaction @%lu",
+        LogTitle.GetWithTime().c_str(),
         args.CommitId);
 
     auto response = std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>();
@@ -328,11 +331,12 @@ void TPartitionActor::CompleteCleanup(
     // blobs added to GarbageQueue.
     for (const auto& item: args.CleanupQueue) {
         if (!IsDeletionMarker(item.BlobId)) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Add garbage blob: %s",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
-                ToString(MakeBlobId(TabletID(), item.BlobId)).data());
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Add garbage blob: %s",
+                LogTitle.GetWithTime().c_str(),
+                ToString(MakeBlobId(TabletID(), item.BlobId)).Quote().c_str());
 
             bool added = State->GetGarbageQueue().AddGarbageBlob(item.BlobId);
             Y_ABORT_UNLESS(added);

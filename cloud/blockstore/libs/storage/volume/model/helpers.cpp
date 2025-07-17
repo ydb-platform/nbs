@@ -97,8 +97,8 @@ std::optional<TDeviceLocation> FindTargetMigrationDeviceLocation(
             ReportDiskAllocationFailure(
                 TStringBuilder()
                 << "Migration source device " << migration.GetSourceDeviceId()
-                << " doesn't belong to the disk "
-                << meta.GetConfig().GetDiskId() << ". Target device: "
+                << " does not belong to disk " << meta.GetConfig().GetDiskId()
+                << ". Target device: "
                 << migration.GetTargetDevice().GetDeviceUUID());
             continue;
         }
@@ -194,11 +194,11 @@ TVector<NProto::TLaggingDevice> CollectLaggingDevices(
             if (!deviceLocation) {
                 ReportDiskAllocationFailure(
                     TStringBuilder()
-                    << "Migration source device "
-                    << migration.GetSourceDeviceId()
-                    << " doesn't belong to the disk "
+                    << "Migration inconsistency detected: source device "
+                    << migration.GetSourceDeviceId() << " not found on disk "
                     << meta.GetConfig().GetDiskId()
-                    << ". Target device: " << targetDevice.GetDeviceUUID());
+                    << ", although target device "
+                    << targetDevice.GetDeviceUUID() << " is present");
                 continue;
             }
             auto& laggingDevice = result.emplace_back();

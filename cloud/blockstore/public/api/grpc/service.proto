@@ -96,6 +96,13 @@ service TBlockStoreService
         };
     }
 
+    rpc RemoveVolumeClient(TRemoveVolumeClientRequest) returns (TRemoveVolumeClientResponse) {
+        option (google.api.http) = {
+            post: "/remove_volume_client"
+            body: "*"
+        };
+    }
+
     //
     // Volume information and statistics.
     //

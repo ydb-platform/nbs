@@ -1873,6 +1873,58 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
             NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
     }
+
+    Y_UNIT_TEST(ShouldForwardToMirrorWhenAllReplicasHaveFreshDevices)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime, {"vasya", "vasya#1", "vasya#2"});
+
+        const auto firstDeviceRange = TBlockRange64::WithLength(0, 100);
+        const auto secondDeviceRange = TBlockRange64::WithLength(2048, 100);
+
+        env.StartResync();
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        // Test ReadBlocks - should be forwarded to mirror and not crash
+        {
+            auto request = client.CreateReadBlocksRequest(firstDeviceRange);
+            client.SendRequest(client.GetActorId(), std::move(request));
+
+            auto response =
+                client.RecvResponse<TEvService::TEvReadBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        env.WriteMirror(secondDeviceRange, 'A');
+        env.WriteReplica(1, secondDeviceRange, 'B');
+        env.WriteReplica(2, secondDeviceRange, 'B');
+
+        // Test ReadBlocks to healthy devices
+        {
+            auto request = client.CreateReadBlocksRequest(secondDeviceRange);
+            client.SendRequest(client.GetActorId(), std::move(request));
+
+            auto response =
+                client.RecvResponse<TEvService::TEvReadBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            // Verify we got the correct data
+            for (const auto& buffer: response->Record.GetBlocks().GetBuffers())
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'B'),
+                    buffer);
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

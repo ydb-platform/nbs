@@ -146,7 +146,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             "[vc:12345 d:disk1 s:session-1 c:client-1 pg:?]",
             logTitle.Get(TLogTitle::EDetails::Brief));
 
-        logTitle.SetPipeGeneration(1);
+        logTitle.SetGeneration(1);
         UNIT_ASSERT_STRINGS_EQUAL(
             "[vc:12345 d:disk1 s:session-1 c:client-1 pg:1]",
             logTitle.Get(TLogTitle::EDetails::Brief));
@@ -167,6 +167,30 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             temporayLogTitle.Get(TLogTitle::EDetails::Brief));
     }
 
+    Y_UNIT_TEST(GetForVolumeProxy)
+    {
+        TLogTitle logTitle("disk1", false, GetCycleCount());
+
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[vp:? d:disk1 pg:0]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        logTitle.SetTabletId(12345);
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[vp:12345 d:disk1 pg:0]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        logTitle.SetGeneration(5);
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[vp:12345 d:disk1 pg:5]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        TLogTitle temporayLogTitle("disk1", true, GetCycleCount());
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[~vp:? d:disk1 pg:0]",
+            temporayLogTitle.Get(TLogTitle::EDetails::Brief));
+    }
+
     Y_UNIT_TEST(GetChildLogger)
     {
         const ui64 startTime =
@@ -180,6 +204,24 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
         UNIT_ASSERT_STRING_CONTAINS(
             childLogTitle.GetWithTime(),
             "[v:12345 g:5 d:disk1 t:1.001s + 1.");
+    }
+
+    Y_UNIT_TEST(GetChildWithTagsLogger)
+    {
+        const ui64 startTime =
+            GetCycleCount() - GetCyclesPerMillisecond() * 2001;
+        TLogTitle logTitle1(12345, "disk1", startTime);
+        logTitle1.SetGeneration(5);
+
+        std::vector<std::pair<TString, TString>> tags = {{"cp", "123"}};
+
+        auto childLogTitle = logTitle1.GetChildWithTags(
+            startTime + GetCyclesPerMillisecond() * 1001,
+            tags);
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            childLogTitle.GetWithTime(),
+            "[v:12345 g:5 d:disk1 cp:123 t:1.001s + 1.");
     }
 }
 

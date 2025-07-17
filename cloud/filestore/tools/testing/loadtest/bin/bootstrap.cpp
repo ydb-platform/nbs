@@ -190,6 +190,9 @@ void TBootstrap::InitClientConfig()
     if (Options->SecurePort) {
         clientConfig.SetSecurePort(Options->SecurePort);
     }
+    if (Options->UnixSocketPath) {
+        clientConfig.SetUnixSocketPath(Options->UnixSocketPath);
+    }
 
     ClientConfig = std::make_shared<NClient::TClientConfig>(clientConfig);
 

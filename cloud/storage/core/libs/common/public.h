@@ -73,4 +73,7 @@ using ITimerPtr = std::shared_ptr<ITimer>;
 struct IFileIOService;
 using IFileIOServicePtr = std::shared_ptr<IFileIOService>;
 
+struct IFileIOServiceFactory;
+using IFileIOServiceFactoryPtr = std::shared_ptr<IFileIOServiceFactory>;
+
 }   // namespace NCloud

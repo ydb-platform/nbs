@@ -513,13 +513,13 @@ bool TPartitionActor::WriteMixedBlocks(
                 );
             }
 
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Writing mixed blocks @%lu (range: %s)",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Writing mixed blocks @%lu (range: %s)",
+                LogTitle.GetWithTime().c_str(),
                 commitId,
-                DescribeRange(request->Data.Range).data()
-            );
+                DescribeRange(request->Data.Range).c_str());
 
             const ui32 checksumBoundary =
                 Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()

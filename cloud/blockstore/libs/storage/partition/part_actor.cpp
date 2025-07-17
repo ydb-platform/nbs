@@ -1,5 +1,7 @@
 #include "part_actor.h"
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -150,13 +152,15 @@ void TPartitionActor::BecomeAux(const TActorContext& ctx, EState state)
     Become(States[state].Func);
     CurrentState = state;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Switched to state %s (system: %s, user: %s, executor: %s)",
-        TabletID(),
-        States[state].Name.data(),
-        ToString(Tablet()).data(),
-        ToString(SelfId()).data(),
-        ToString(ExecutorID()).data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Switched to state %s (system: %s, user: %s, executor: %s)",
+        LogTitle.GetWithTime().c_str(),
+        States[state].Name.c_str(),
+        ToString(Tablet()).c_str(),
+        ToString(SelfId()).Quote().c_str(),
+        ToString(ExecutorID()).Quote().c_str());
 
     ReportTabletState(ctx);
 }
@@ -214,25 +218,30 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
 
     const auto& stats = State->GetStats();
 
-#define BLOCKSTORE_PARTITION_UPDATE_COUNTER(name, category, ...)               \
-    {                                                                          \
-        auto& counter = Counters->Cumulative()                                 \
-            [TPartitionCounters::CUMULATIVE_COUNTER_##category##_##name];      \
-        ui64 value = stats.Get##category##Counters().Get##name();              \
-        Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                                \
-        if (value < counter.Get()) {                                           \
-            ReportCounterUpdateRace();                                         \
-            LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,                   \
-                "[%lu] VERIFY violation %lu < %lu for counter %s::%s",         \
-                TabletID(),                                                    \
-                value,                                                         \
-                counter.Get(),                                                 \
-                #category,                                                     \
-                #name);                                                        \
-        }                                                                      \
-        counter.Increment(value - counter.Get());                              \
-    }                                                                          \
-// BLOCKSTORE_PARTITION_UPDATE_COUNTER
+#define BLOCKSTORE_PARTITION_UPDATE_COUNTER(name, category, ...)              \
+    {                                                                         \
+        auto& counter =                                                       \
+            Counters->Cumulative()                                            \
+                [TPartitionCounters::CUMULATIVE_COUNTER_##category##_##name]; \
+        ui64 value = stats.Get##category##Counters().Get##name();             \
+        Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                         \
+        if (value < counter.Get()) {                                          \
+            ReportCounterUpdateRace(                                          \
+                TStringBuilder() << "category="                               \
+                << #category  << " name=" << #name);                          \
+            LOG_ERROR(                                                        \
+                ctx,                                                          \
+                TBlockStoreComponents::PARTITION,                             \
+                "%s VERIFY violation %lu < %lu for counter %s::%s",           \
+                LogTitle.GetWithTime().c_str(),                               \
+                value,                                                        \
+                counter.Get(),                                                \
+                #category,                                                    \
+                #name);                                                       \
+        }                                                                     \
+        counter.Increment(value - counter.Get());                             \
+    }                                                                         \
+    // BLOCKSTORE_PARTITION_UPDATE_COUNTER
 
     BLOCKSTORE_PARTITION_IO_COUNTERS(BLOCKSTORE_PARTITION_UPDATE_COUNTER)
 
@@ -274,15 +283,16 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
     }
 
     if (ReassignRequestSentTs.GetValue()) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Retrying reassign request (timeout: %lu milliseconds)",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            timeout.MilliSeconds());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Retrying reassign request %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatDuration(timeout).c_str());
     }
 
+    TStringBuilder sb;
     {
-        TStringBuilder sb;
         for (const auto channel: channels) {
             if (sb.size()) {
                 sb << ", ";
@@ -291,10 +301,11 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
             sb << channel;
         }
 
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Reassign request sent for channels: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Reassign request sent for channels: %s",
+            LogTitle.GetWithTime().c_str(),
             sb.c_str());
     }
 
@@ -305,7 +316,10 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         TabletID(),
         std::move(channels));
 
-    ReportReassignTablet();
+    ReportReassignTablet(
+        TStringBuilder() << TabletID()
+                         << " tablet; reassign request sent for channels: "
+                         << sb);
     ReassignRequestSentTs = ctx.Now();
 }
 
@@ -442,10 +456,11 @@ void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
 {
     while (auto requestActor = State->DequeueIORequest(channel)) {
         auto actorId = NCloud::Register(ctx, std::move(requestActor));
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Partition registered request actor with id [%lu]",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Partition registered request actor with id [%lu]",
+            LogTitle.GetWithTime().c_str(),
             actorId);
         Actors.Insert(actorId);
     }
@@ -592,10 +607,11 @@ void TPartitionActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Stop tablet because of PoisonPill request",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Stop tablet because of PoisonPill request",
+        LogTitle.GetWithTime().c_str());
 
     Suicide(ctx);
 }
@@ -641,9 +657,12 @@ void TPartitionActor::RebootPartitionOnCommitIdOverflow(
     const TActorContext& ctx,
     const TStringBuf& requestName)
 {
-    LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-        "[" << TabletID() << "]"
-        << " CommitId overflow in " << requestName << ". Restarting partition");
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s CommitId overflow in %s. Restarting partition",
+        LogTitle.GetWithTime().c_str(),
+        ToString(requestName).c_str());
     ReportTabletCommitIdOverflow();
     Suicide(ctx);
 }
@@ -652,9 +671,12 @@ void TPartitionActor::RebootPartitionOnCollectCounterOverflow(
     const TActorContext& ctx,
     const TStringBuf& requestName)
 {
-    LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-        "[" << TabletID() << "]"
-        << " CollectCounter overflow in " << requestName << ". Restarting partition");
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s CollectCounter overflow in %s. Restarting partition",
+        LogTitle.GetWithTime().c_str(),
+        ToString(requestName).c_str());
     ReportTabletCollectCounterOverflow();
     Suicide(ctx);
 }
@@ -707,12 +729,14 @@ void TPartitionActor::MapBaseDiskIdToTabletId(
             SelfId(),
             request.release());
 
-        LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-            << " Sending MapBaseDiskIdToTabletId to VolumeProxy: BaseDiskId="
-            << State->GetBaseDiskId().Quote()
-            << " BaseTabletId="
-            << State->GetBaseDiskTabletId());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Sending MapBaseDiskIdToTabletId to VolumeProxy: BaseDiskId=%s "
+            "BaseTabletId=%lu",
+            LogTitle.GetWithTime().c_str(),
+            State->GetBaseDiskId().Quote().c_str(),
+            State->GetBaseDiskTabletId());
 
         ctx.Send(event.release());
     }
@@ -731,11 +755,13 @@ void TPartitionActor::ClearBaseDiskIdToTabletIdMapping(
             SelfId(),
             request.release());
 
-        LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-            << " Sending ClearBaseDiskIdToTabletIdMapping to VolumeProxy: BaseDiskId="
-            << State->GetBaseDiskId().Quote());
-
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Sending ClearBaseDiskIdToTabletIdMapping to VolumeProxy: "
+            "BaseDiskId=%s",
+            LogTitle.GetWithTime().c_str(),
+            State->GetBaseDiskId().Quote().c_str());
         ctx.Send(event.release());
     }
 }
@@ -748,10 +774,11 @@ void TPartitionActor::HandleReassignTabletResponse(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-            << " Reassign request failed");
-
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Reassign request failed",
+            LogTitle.GetWithTime().c_str());
         ReassignRequestSentTs = TInstant::Zero();
     }
 }
@@ -777,6 +804,25 @@ void TPartitionActor::HandleLockAndDrainRange(
     Y_UNUSED(ev);
     Y_UNUSED(ctx);
     Y_DEBUG_ABORT_UNLESS(0);
+}
+
+void TPartitionActor::HandleWakeupOnBoot(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto& msg = ev->Get();
+
+    if (msg->Tag != BootWakeupEventTag) {
+        return;
+    }
+
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Tablet booting takes too long, sending poison pill",
+        LogTitle.GetWithTime().c_str());
+
+    Suicide(ctx);
 }
 
 bool TPartitionActor::HandleRequests(STFUNC_SIG)
@@ -849,6 +895,15 @@ TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
 STFUNC(TPartitionActor::StateBoot)
 {
     UpdateActorStatsSampled(ActorContext());
+
+    if (ev->GetTypeRewrite() == TEvTablet::EvBoot &&
+        Config->GetPartitionBootTimeout())
+    {
+        ActorContext().Schedule(
+            Config->GetPartitionBootTimeout(),
+            new TEvents::TEvWakeup(BootWakeupEventTag));
+    }
+
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -859,6 +914,8 @@ STFUNC(TPartitionActor::StateBoot)
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
+
+        HFunc(TEvents::TEvWakeup, HandleWakeupOnBoot);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -888,6 +945,11 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
+
+        // Wakeup function should handle wakeup event taking into account that
+        // there is wakeup event scheduled during boot stage with
+        // TPartitionActor::BootWakeupEventTag tag.
+        IgnoreFunc(TEvents::TEvWakeup)
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -950,6 +1012,11 @@ STFUNC(TPartitionActor::StateWork)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsResponse);
 
+        // Wakeup function should handle wakeup event taking into account that
+        // there is wakeup event scheduled during boot stage with
+        // TPartitionActor::BootWakeupEventTag tag.
+        IgnoreFunc(TEvents::TEvWakeup)
+
         default:
             if (!HandleRequests(ev) &&
                 !HandleDefaultEvents(ev, SelfId()))
@@ -1003,6 +1070,11 @@ STFUNC(TPartitionActor::StateZombie)
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
+        // Wakeup function should handle wakeup event taking into account that
+        // there is wakeup event scheduled during boot stage with
+        // TPartitionActor::BootWakeupEventTag tag.
+        IgnoreFunc(TEvents::TEvWakeup)
+
         default:
             if (!RejectRequests(ev)) {
                 HandleUnexpectedEvent(
@@ -1020,7 +1092,11 @@ void TPartitionActor::HandleGetPartitionInfo(
     const TEvVolume::TEvGetPartitionInfoRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION, "GetPartitionInfo request");
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s GetPartitionInfo request",
+        LogTitle.GetWithTime().c_str());
 
     auto json = State->AsJson();
     auto response = std::make_unique<TEvVolume::TEvGetPartitionInfoResponse>();

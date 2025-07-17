@@ -1,0 +1,2 @@
+PyGithub==2.6.1
+nebius==0.2.34

@@ -20,7 +20,7 @@
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
-#include <cloud/blockstore/libs/service_local/storage_aio.h>
+#include <cloud/blockstore/libs/service_local/storage_local.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
@@ -42,9 +42,10 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
-#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
@@ -465,30 +466,30 @@ bool TBootstrap::InitKikimrService()
             case NProto::DISK_AGENT_BACKEND_AIO: {
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
 
-                auto factory = [events = config.GetMaxAIOContextEvents()] {
-                    return CreateAIOService(events);
-                };
+                auto factory = CreateAIOServiceFactory(
+                    {.MaxEvents = config.GetMaxAIOContextEvents()});
 
                 FileIOServiceProvider =
                     config.GetPathsPerFileIOService()
                         ? CreateFileIOServiceProvider(
                               config.GetPathsPerFileIOService(),
-                              factory)
-                        : CreateSingleFileIOServiceProvider(factory());
+                              std::move(factory))
+                        : CreateSingleFileIOServiceProvider(
+                              factory->CreateFileIOService());
 
-                AioStorageProvider = CreateAioStorageProvider(
+                LocalStorageProvider = CreateLocalStorageProvider(
                     FileIOServiceProvider,
                     NvmeManager,
-                    !config.GetDirectIoFlagDisabled(),
-                    EAioSubmitQueueOpt::Use
-                );
+                    {.DirectIO = !config.GetDirectIoFlagDisabled(),
+                     .UseSubmissionThread =
+                         config.GetUseLocalStorageSubmissionThread()});
 
                 STORAGE_INFO("Aio backend initialized");
                 break;
             }
             case NProto::DISK_AGENT_BACKEND_NULL:
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-                AioStorageProvider = CreateNullStorageProvider();
+                LocalStorageProvider = CreateNullStorageProvider();
                 STORAGE_INFO("Null backend initialized");
                 break;
         }
@@ -509,6 +510,14 @@ bool TBootstrap::InitKikimrService()
     InitProfileLog();
 
     STORAGE_INFO("ProfileLog initialized");
+
+    StatsFetcher = NCloud::NStorage::BuildStatsFetcher(
+        Configs->DiagnosticsConfig->GetStatsFetcherType(),
+        Configs->DiagnosticsConfig->GetCpuWaitFilename(),
+        Log,
+        logging);
+
+    STORAGE_INFO("StatsFetcher initialized");
 
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
         BlockDigestGenerator = CreateExt4BlockDigestGenerator(
@@ -531,12 +540,13 @@ bool TBootstrap::InitKikimrService()
     args.AsyncLogger = AsyncLogger;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.AioStorageProvider = AioStorageProvider;
+    args.LocalStorageProvider = LocalStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;
     args.RdmaServer = RdmaServer;
     args.Logging = logging;
     args.NvmeManager = NvmeManager;
+    args.StatsFetcher = StatsFetcher;
 
     ActorSystem = NStorage::CreateDiskAgentActorSystem(args);
 

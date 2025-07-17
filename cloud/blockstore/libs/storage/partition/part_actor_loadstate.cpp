@@ -165,20 +165,22 @@ void TPartitionActor::CompleteLoadState(
     if (tabletChannelCount < configChannelCount) {
         // either a race or a bug (if this situation occurs again after tablet restart)
         // example: CLOUDINC-2027
-        ReportInvalidTabletConfig();
-
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-            << "tablet info differs from config: "
-            << "tabletChannelCount < configChannelCount ("
+        ReportInvalidTabletConfig(
+            TStringBuilder()
+            << LogTitle.GetWithTime()
+            << " tablet info differs from config: tabletChannelCount < "
+               "configChannelCount ("
             << tabletChannelCount << " < " << configChannelCount << ")");
     } else if (tabletChannelCount > configChannelCount) {
         // legacy channel configuration
-         LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-            << "tablet info differs from config: "
-            << "tabletChannelCount > configChannelCount ("
-            << tabletChannelCount << " > " << configChannelCount << ")");
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s tablet info differs from config: tabletChannelCount > "
+            "configChannelCount (%u > %u)",
+            LogTitle.GetWithTime().c_str(),
+            tabletChannelCount,
+            configChannelCount);
     }
 
     const ui32 mixedIndexCacheSize = [&] {
@@ -303,19 +305,21 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
     auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-            << " LoadState failed: GetUsedBlocks from base disk failed: " << msg->GetStatus()
-            << " reason: " << msg->GetError().GetMessage().Quote());
-
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s LoadState failed: GetUsedBlocks from base disk failed. error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
         Suicide(ctx);
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] LoadState completed",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s LoadState completed",
+        LogTitle.GetWithTime().c_str());
 
     for (const auto& block: msg->Record.GetUsedBlocks()) {
         State->GetLogicalUsedBlocks().Merge(
@@ -396,10 +400,9 @@ bool TPartitionActor::PrepareLoadCompactionMapChunk(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Compaction map chunk %s read, result=%d",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
-        args.Range.Print().data(),
+        "%s Compaction map chunk %s read, result=%d",
+        LogTitle.GetWithTime().c_str(),
+        args.Range.Print().c_str(),
         result);
 
     return result;
@@ -425,9 +428,8 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Compaction map loaded",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str());
+            "%s Compaction map loaded",
+            LogTitle.GetWithTime().c_str());
 
         return;
     }
@@ -435,10 +437,9 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Compaction map chunk %s updated",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
-        args.Range.Print().data());
+        "%s Compaction map chunk %s updated",
+        LogTitle.GetWithTime().c_str(),
+        args.Range.Print().c_str());
 
     CompactionMapLoadState->OnRangeLoaded(args.Range);
     LoadNextCompactionMapChunk(ctx);
@@ -461,10 +462,9 @@ void TPartitionActor::HandleLoadCompactionMapChunk(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Loading compaction map chunk %s",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
-        ev->Get()->Range.Print().data());
+        "%s Loading compaction map chunk %s",
+        LogTitle.GetWithTime().c_str(),
+        ev->Get()->Range.Print().c_str());
 
     ExecuteTx<TLoadCompactionMapChunk>(ctx, ev->Get()->Range);
 }

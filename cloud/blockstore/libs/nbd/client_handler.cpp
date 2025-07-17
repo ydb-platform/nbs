@@ -458,7 +458,10 @@ void TClientHandler::SendRequest(
             return;
         }
     }
-
+    // if request is still active, client has probably retried it
+    if (RequestsInFlight.contains(requestId)) {
+        return;
+    }
     auto [it, inserted] = RequestsInFlight.emplace(
         requestId,
         std::move(request));

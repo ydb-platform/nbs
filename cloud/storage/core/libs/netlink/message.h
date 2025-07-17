@@ -28,8 +28,53 @@ struct TNetlinkHeader
     TNetlinkHeader(ui32 len, ui16 type, ui8 cmd)
         : MessageHeader{len, type, NLM_F_REQUEST | NLM_F_ACK, 0, 0}
         , GenericHeader{cmd, 1, 0}
-    {
-    }
+    {}
+};
+
+template <int attribute, typename P>
+struct TNetlinkAttribute
+{
+    ::nlattr Attribute;
+    P Payload;
+
+    TNetlinkAttribute(P payload)
+        : Attribute(NLA_HDRLEN + sizeof(P), attribute)
+        , Payload(payload)
+    {}
+};
+
+template <typename H, typename... T>
+struct TNetlinkPayload
+{
+    H Head;
+    TNetlinkPayload<T...> Tail;
+
+    TNetlinkPayload(H head, T... tail)
+        : Head(head)
+        , Tail(tail...)
+    {}
+};
+
+template <typename H>
+struct TNetlinkPayload<H>
+{
+    H Head;
+
+    TNetlinkPayload(H head)
+        : Head(head)
+    {}
+};
+
+template <typename... P>
+struct TNetlinkRequest
+{
+    TNetlinkHeader Header;
+    TNetlinkPayload<P...> Payload;
+
+    TNetlinkRequest(ui16 familyId, ui8 command, P... payload)
+        : Header{sizeof(TNetlinkHeader) + sizeof(TNetlinkPayload<P...>), familyId, command}
+        , Payload(payload...)
+    {}
 };
 
 struct TNetlinkMessage

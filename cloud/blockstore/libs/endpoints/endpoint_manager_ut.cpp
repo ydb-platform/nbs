@@ -172,6 +172,7 @@ struct TTestDeviceFactory
     : public NBD::IDeviceFactory
 {
     TVector<TString> Devices;
+    ui64 Index = 0;
 
     NBD::IDevicePtr Create(
         const TNetworkAddress& connectAddress,
@@ -185,61 +186,18 @@ struct TTestDeviceFactory
         Devices.push_back(deviceName);
         return NBD::CreateDeviceStub();
     }
-};
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TControlledDevice final: public NBD::IDevice
-{
-public:
-    explicit TControlledDevice(
-        std::function<NThreading::TFuture<NProto::TError>()> deviceStubFunction)
-        : DeviceStubFunction(std::move(deviceStubFunction))
-    {}
-
-    NThreading::TFuture<NProto::TError> Start() override
-    {
-        return DeviceStubFunction();
-    }
-
-    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
-    {
-        Y_UNUSED(deleteDevice);
-
-        return DeviceStubFunction();
-    }
-
-    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
-    {
-        Y_UNUSED(deviceSizeInBytes);
-
-        return DeviceStubFunction();
-    }
-
-private:
-    std::function<NThreading::TFuture<NProto::TError>()> DeviceStubFunction;
-};
-
-struct TTestControlledDeviceFactory: public NBD::IDeviceFactory
-{
-    std::function<NThreading::TFuture<NProto::TError>()> DeviceStubFunction;
-
-    explicit TTestControlledDeviceFactory(
-        std::function<NThreading::TFuture<NProto::TError>()> deviceStubFunction)
-        : DeviceStubFunction(std::move(deviceStubFunction))
-    {}
-
-    NBD::IDevicePtr Create(
+    NBD::IDevicePtr CreateFree(
         const TNetworkAddress& connectAddress,
-        TString deviceName,
+        TString devicePrefix,
         ui64 blockCount,
         ui32 blockSize) override
     {
         Y_UNUSED(connectAddress);
-        Y_UNUSED(deviceName);
         Y_UNUSED(blockCount);
         Y_UNUSED(blockSize);
-        return std::make_shared<TControlledDevice>(DeviceStubFunction);
+        Devices.push_back(devicePrefix + Index++);
+        return NBD::CreateDeviceStub();
     }
 };
 
@@ -529,7 +487,8 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
 
         auto encryptionClientFactory = CreateEncryptionClientFactory(
             bootstrap.Logging,
-            CreateDefaultEncryptionKeyProvider());
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         bootstrap.SessionManager = CreateSessionManager(
             bootstrap.Timer,
@@ -560,6 +519,7 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
         bootstrap.EndpointListeners,
         bootstrap.NbdDeviceFactory,
         bootstrap.NbdErrorHandlerMap,
+        bootstrap.Service,
         bootstrap.Options);
 
     return bootstrap.EndpointManager;

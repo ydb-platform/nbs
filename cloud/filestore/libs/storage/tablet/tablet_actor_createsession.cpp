@@ -57,8 +57,15 @@ void FillFeatures(
     features->SetServerWriteBackCacheEnabled(
         config.GetServerWriteBackCacheEnabled());
 
+    features->SetParentlessFilesOnly(config.GetParentlessFilesOnly());
+    features->SetAllowHandlelessIO(config.GetAllowHandlelessIO());
+
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
+
+    // as for now it's alway true
+    // later it will be set 'true' when the first XAttr appears in the file system
+    features->SetHasXAttrs(true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

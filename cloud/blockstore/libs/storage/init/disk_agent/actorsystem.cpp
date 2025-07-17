@@ -10,7 +10,9 @@
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/storage/init/common/actorsystem.h>
+#include <cloud/blockstore/libs/storage/stats_fetcher/stats_fetcher.h>
 #include <cloud/blockstore/libs/storage/undelivered/undelivered.h>
+
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 #include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
@@ -113,7 +115,7 @@ public:
                 Args.RdmaConfig,
                 Args.Spdk,
                 Args.Allocator,
-                Args.AioStorageProvider,
+                Args.LocalStorageProvider,
                 Args.ProfileLog,
                 Args.BlockDigestGenerator,
                 Args.Logging,
@@ -127,6 +129,21 @@ public:
                     TMailboxType::TinyReadAsFilled,
                     appData->UserPoolId));
         }
+
+        //
+        // StatsFetcher
+        //
+
+        auto statsFetcher = CreateStatsFetcherActor(
+            Args.StorageConfig,
+            Args.StatsFetcher);
+
+        setup->LocalServices.emplace_back(
+            TActorId(),
+            TActorSetupCmd(
+                statsFetcher.release(),
+                TMailboxType::TinyReadAsFilled,
+                appData->BatchPoolId));
     }
 };
 

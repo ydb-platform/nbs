@@ -555,7 +555,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TBlockRange64::MakeClosedInterval(5000, 5120));
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_INVALID_STATE,
+                E_REJECTED,
                 response->GetStatus(),
                 response->GetErrorReason());
         }
@@ -650,7 +650,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 )));
             auto response = client.RecvReadBlocksLocalResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_INVALID_STATE,
+                E_REJECTED,
                 response->GetStatus(),
                 response->GetErrorReason());
         }
@@ -929,7 +929,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         {
             client.SendReadBlocksRequest(range1, 4);
             auto response = client.RecvReadBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
             UNIT_ASSERT_STRING_CONTAINS(
                 response->GetErrorReason(),
                 "incorrect ReplicaIndex");
@@ -2379,7 +2379,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         {
             client.SendReadBlocksRequest(range, 0, 4);
             auto response = client.RecvReadBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
             UNIT_ASSERT_STRING_CONTAINS(
                 response->GetErrorReason(),
                 "has incorrect replica count");
@@ -3138,7 +3138,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(2, rdma.WriteCountMultiAgent.Value);
     }
 
-    Y_UNIT_TEST(ShouldFallbackFromMultiWriteRequestsWhenDiscoveryFailed)
+    Y_UNIT_TEST(ShouldFallbackFromMultiWriteRequestsWhenTwoDiscoveryFailed)
     {
         TTestRuntime runtime;
 
@@ -3162,7 +3162,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                         TEvGetDeviceForRangeResponse;
 
                     ++describeRequestCount;
-                    if (describeRequestCount == 1) {
+                    if (describeRequestCount == 1 || describeRequestCount == 2) {
                         auto response = std::make_unique<TResponse>(
                             MakeError(E_REJECTED, "error"));
                         runtime.Schedule(
@@ -3194,12 +3194,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(3, describeRequestCount);
     }
 
-    Y_UNIT_TEST(ShouldFallbackFromMultiWriteRequestsWhenMigrating)
+    Y_UNIT_TEST(ShouldMakeMultiAgentAndOrdinaryWriteRequestsWhenFresh)
     {
         TTestRuntime runtime;
 
-        size_t multiAgentRequestCount = 0;
-        auto countMultiRequest =
+        size_t multiAgentWriteRequestCount = 0;
+        TSet<TString> writtenDevices;
+        auto countWriteRequests =
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             Y_UNUSED(runtime);
@@ -3207,10 +3208,22 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             switch (event->GetTypeRewrite()) {
                 case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
                     using TRequest = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
-
                     const auto& record = event->Get<TRequest>()->Record;
+                    if (record.GetBlocks().GetBuffers().size() != 5) {
+                        break;
+                    }
+
                     if (!record.GetReplicationTargets().empty()) {
-                        ++multiAgentRequestCount;
+                        ++multiAgentWriteRequestCount;
+
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "vasya#1",
+                            record.GetReplicationTargets()[0].GetDeviceUUID());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "vasya#2",
+                            record.GetReplicationTargets()[1].GetDeviceUUID());
+                    } else {
+                        writtenDevices.insert(record.GetDeviceUUID());
                     }
 
                     break;
@@ -3220,11 +3233,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             return false;
         };
 
-        runtime.SetEventFilter(countMultiRequest);
-
         NProto::TStorageServiceConfig config;
         config.SetMultiAgentWriteEnabled(true);
-        const THashSet<TString> freshDeviceIds{"vasya", "vasya#1", "petya#2"};
+        const THashSet<TString> freshDeviceIds{"vasya"};
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -3232,7 +3243,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
             },
-            {}, // migrations
+            {},   // migrations
             freshDeviceIds,
             std::move(config));
 
@@ -3240,9 +3251,140 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         // Wait until the first range has migrated to avoid overlapping with it.
         WaitForMigrations(runtime, 1);
+
+        // Make user write request.
+        runtime.SetEventFilter(countWriteRequests);
         client.WriteBlocks(TBlockRange64::WithLength(10, 5), 1);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, multiAgentRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, multiAgentWriteRequestCount);
+        const TSet<TString> expectedDevices{"vasya", "vasya#1", "vasya#2"};
+        UNIT_ASSERT_EQUAL(writtenDevices, expectedDevices);
+    }
+
+    Y_UNIT_TEST(ShouldMakeMultiAgentAndOrdinaryWriteRequestsWhenMigrated)
+    {
+        TTestRuntime runtime;
+
+        size_t multiAgentWriteRequestCount = 0;
+        TSet<TString> writtenDevices;
+        auto countWriteRequests =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                    using TRequest = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
+                    const auto& record = event->Get<TRequest>()->Record;
+                    if (record.GetBlocks().GetBuffers().size() != 5) {
+                        break;
+                    }
+
+                    if (!record.GetReplicationTargets().empty()) {
+                        ++multiAgentWriteRequestCount;
+
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "vasya#1",
+                            record.GetReplicationTargets()[0].GetDeviceUUID());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "vasya#2",
+                            record.GetReplicationTargets()[1].GetDeviceUUID());
+                    } else {
+                        writtenDevices.insert(record.GetDeviceUUID());
+                    }
+
+                    break;
+                }
+            }
+
+            return false;
+        };
+
+        NProto::TStorageServiceConfig config;
+        config.SetMultiAgentWriteEnabled(true);
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TVector<TDevices>{
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
+            },
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0), 0),
+            {},   // freshDeviceIds
+            std::move(config));
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        // Wait until the first range has migrated to avoid overlapping with it.
+        WaitForMigrations(runtime, 1);
+
+        // Make user write request.
+        runtime.SetEventFilter(countWriteRequests);
+        client.WriteBlocks(TBlockRange64::WithLength(10, 5), 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, multiAgentWriteRequestCount);
+        const TSet<TString> expectedDevices{
+            "vasya",
+            "vasya#1",
+            "vasya#2",
+            "vasya-migration"};
+        UNIT_ASSERT_EQUAL(writtenDevices, expectedDevices);
+    }
+
+    Y_UNIT_TEST(ShouldHandleUndelviryForMultiAgentWriteRequests)
+    {
+        TTestRuntime runtime;
+
+        size_t undeliveredWriteRequestCount = 0;
+        auto simulateUndelivery =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                    using TRequest = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
+                    const auto& record = event->Get<TRequest>()->Record;
+                    if (record.GetBlocks().GetBuffers().size() != 5) {
+                        break;
+                    }
+
+                    if (!record.GetReplicationTargets().empty()) {
+                        auto sendTo = event->Sender;
+                        runtime.Send(
+                            new IEventHandle(
+                                sendTo,
+                                sendTo,
+                                event->ReleaseBase().Release(),
+                                0,
+                                event->Cookie,
+                                nullptr),
+                            0);
+                        ++undeliveredWriteRequestCount;
+                    }
+
+                    break;
+                }
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(simulateUndelivery);
+
+        NProto::TStorageServiceConfig config;
+        config.SetMultiAgentWriteEnabled(true);
+        TTestEnv env(runtime, std::move(config));
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        client.SendWriteBlocksRequest(TBlockRange64::WithLength(10, 5), 1);
+        auto response = client.RecvWriteBlocksResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, undeliveredWriteRequestCount);
     }
 
     Y_UNIT_TEST(ShouldHandleInvalidSessionForMultiWriteRequests)
@@ -3415,8 +3557,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TTestRuntime runtime;
         const TString sacrificedDevice = "vasya";
 
-        size_t multiAgentWriteDeviceBlocksRequestCount = 0;
-        bool isMultiWriteRequestToSacrificedDeviceAgent = false;
+        size_t multiAgentWriteToThreeDevicesCount = 0;
+        size_t multiAgentWriteToTwoDevicesCount = 0;
+
         auto dropDiskAgentRequest =
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
@@ -3427,19 +3570,21 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     using TRequest = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
 
                     const auto& record = event->Get<TRequest>()->Record;
-                    const bool isMultiWrite =
-                        !record.GetReplicationTargets().empty();
-                    if (isMultiWrite) {
-                        ++multiAgentWriteDeviceBlocksRequestCount;
-                        isMultiWriteRequestToSacrificedDeviceAgent =
-                            (record.GetReplicationTargets(0).GetDeviceUUID() ==
-                             sacrificedDevice);
-                    } else {
-                        if (isMultiWriteRequestToSacrificedDeviceAgent &&
-                            record.GetDeviceUUID() == sacrificedDevice)
-                        {
-                            return true;
-                        }
+
+                    const bool isMultiAgentToSacrificed =
+                        !record.GetReplicationTargets().empty() &&
+                        record.GetReplicationTargets(0).GetDeviceUUID() ==
+                            sacrificedDevice;
+                    const bool isOrdinaryToSacrificed =
+                        record.GetDeviceUUID() == sacrificedDevice;
+                    if (record.GetReplicationTargets().size() == 3) {
+                        multiAgentWriteToThreeDevicesCount++;
+                    }
+                    if (record.GetReplicationTargets().size() == 2) {
+                        multiAgentWriteToTwoDevicesCount++;
+                    }
+                    if (isMultiAgentToSacrificed || isOrdinaryToSacrificed) {
+                        return true;
                     }
                 }
             }
@@ -3453,28 +3598,22 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        size_t fallbackRequestCount = 0;
         runtime.SetEventFilter(dropDiskAgentRequest);
         for (size_t i = 0; i < 100; ++i) {
-            multiAgentWriteDeviceBlocksRequestCount = 0;
-
             client.SendWriteBlocksRequest(TBlockRange64::MakeOneBlock(0), 1);
             runtime.AdvanceCurrentTime(TDuration::Seconds(10));
             auto response = client.RecvWriteBlocksResponse();
 
-            if (multiAgentWriteDeviceBlocksRequestCount == 0) {
-                // The partition accumulated statistics and began to
-                // prohibit the use of multi-agent requests.
-                ++fallbackRequestCount;
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+            if (multiAgentWriteToTwoDevicesCount != 0) {
                 break;
             }
-
-            // Expect that only every third request will be timed out.
-            UNIT_ASSERT_VALUES_EQUAL(
-                (i % 3 == 0) ? E_REJECTED : S_OK,
-                response->GetError().GetCode());
         }
-        UNIT_ASSERT_VALUES_UNEQUAL(0, fallbackRequestCount);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, multiAgentWriteToThreeDevicesCount);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, multiAgentWriteToTwoDevicesCount);
     }
 
     Y_UNIT_TEST(ShouldNotBreakDeviceWhenTimeoutedAnotherReplica)
@@ -3660,6 +3799,65 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         response = client.RecvWriteBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(0, multiAgentRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldSendMultiAgentRequestsIfNoQuotaForDirectRequests)
+    {
+        TTestRuntime runtime;
+
+        size_t multiAgentWriteRequestCount = 0;
+
+        auto countWrites =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                    using TRequest = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
+
+                    const auto& record = event->Get<TRequest>()->Record;
+                    if (!record.GetReplicationTargets().empty()) {
+                        ++multiAgentWriteRequestCount;
+                    }
+
+                    break;
+                }
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(countWrites);
+
+        NProto::TStorageServiceConfig config;
+        config.SetMultiAgentWriteEnabled(true);
+        config.SetDirectWriteBandwidthQuota(DefaultBlockSize * 10);
+        TTestEnv env(runtime, std::move(config));
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 5), 'A');
+        UNIT_ASSERT_VALUES_EQUAL(0, multiAgentWriteRequestCount);
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 4), 'A');
+        UNIT_ASSERT_VALUES_EQUAL(0, multiAgentWriteRequestCount);
+
+        // DefaultBlockSize * 9 quota used. There is no quota for direct
+        // requests with size more than one block.
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 2), 'A');
+        UNIT_ASSERT_VALUES_EQUAL(1, multiAgentWriteRequestCount);
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 10), 'A');
+        UNIT_ASSERT_VALUES_EQUAL(2, multiAgentWriteRequestCount);
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+
+        // Quota regenerated, we can do direct requests.
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 10), 'A');
+        UNIT_ASSERT_VALUES_EQUAL(2, multiAgentWriteRequestCount);
     }
 
     Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)

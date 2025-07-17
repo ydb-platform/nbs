@@ -202,12 +202,14 @@ void TPartitionActor::WriteBlocks(
     IWriteBlocksHandlerPtr writeHandler,
     bool replyLocal)
 {
-    auto replyError = [=, this] (const TActorContext& ctx, NProto::TError error) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] WriteBlocks error: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            error.GetMessage().c_str());
+    auto replyError = [=, this](const TActorContext& ctx, NProto::TError error)
+    {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s WriteBlocks error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
 
         auto response = CreateWriteBlocksResponse(replyLocal, std::move(error));
 
@@ -257,12 +259,12 @@ void TPartitionActor::WriteBlocks(
             // we will accumulate these writes in FreshBlocks table
             EnqueueProcessWriteQueueIfNeeded(ctx);
 
-            LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Enqueueing fresh blocks (range: %s)",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
-                DescribeRange(writeRange).data()
-            );
+            LOG_TRACE(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Enqueueing fresh blocks (range: %s)",
+                LogTitle.GetWithTime().c_str(),
+                DescribeRange(writeRange).c_str());
             State->GetWriteBuffer().Put(std::move(requestInBuffer));
         } else {
             WriteFreshBlocks(ctx, std::move(requestInBuffer));
@@ -280,10 +282,11 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     auto* msg = ev->Get();
 
     ui64 commitId = msg->CommitId;
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Complete write blocks @%lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete write blocks @%lu",
+        LogTitle.GetWithTime().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);
@@ -324,6 +327,13 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         // commit & garbage queue barriers will be released when confirmed
         // blobs are added
     } else {
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Releasing commit queue barrier, commit id @%lu",
+            LogTitle.GetWithTime().c_str(),
+            commitId);
+
         State->GetCommitQueue().ReleaseBarrier(commitId);
         if (msg->CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);

@@ -21,6 +21,8 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
+#include <util/datetime/base.h>
+
 namespace NCloud::NFileStore::NProto {
     class TProfileLogRequestInfo;
 }   // namespace NCloud::NFileStore::NProto
@@ -44,8 +46,7 @@ private:
     IRequestStatsRegistryPtr StatsRegistry;
     THashMap<ui64, TInFlightRequest> InFlightRequests;
 
-    NMonitoring::TDynamicCounters::TCounterPtr CpuWait;
-    NMonitoring::TDynamicCounters::TCounterPtr CpuWaitFailure;
+    NMonitoring::TDynamicCounters::TCounterPtr CpuWaitCounter;
 
     NMonitoring::TDynamicCounters::TCounterPtr TotalFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr TotalTabletCount;
@@ -56,7 +57,7 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr SsdFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr SsdTabletCount;
 
-    TInstant LastCpuWaitQuery;
+    TInstant LastCpuWaitTs;
 
 public:
     TStorageServiceActor(
@@ -97,6 +98,17 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
         ui32 shardNo);
+
+    template <typename TMethod>
+    TSessionInfo* GetAndValidateSession(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev);
+
+    template <typename TMethod>
+    void ForwardXAttrRequest(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev,
+        const TSessionInfo*);
 
     template <typename TMethod>
     void CompleteRequest(
@@ -229,6 +241,10 @@ private:
         TString input);
 
     NActors::IActorPtr CreateGetFileSystemTopologyActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateReadNodeRefsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

@@ -68,6 +68,15 @@ TLogTitle::TLogTitle(
     Rebuild();
 }
 
+TLogTitle::TLogTitle(TString diskId, bool temporaryServer, ui64 startTime)
+    : Type(EType::VolumeProxy)
+    , StartTime(startTime)
+    , TemporaryServer(temporaryServer)
+    , DiskId(std::move(diskId))
+{
+    Rebuild();
+}
+
 // static
 TString TLogTitle::GetPartitionPrefix(
     ui64 tabletId,
@@ -96,6 +105,30 @@ TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
     return TChildLogTitle(childPrefix, startTime);
 }
 
+TChildLogTitle TLogTitle::GetChildWithTags(
+    const ui64 startTime,
+    std::span<const std::pair<TString, TString>> additionalTags) const
+{
+    TStringBuilder childPrefix;
+    childPrefix << CachedPrefix;
+
+    for (const auto& [key, value]: additionalTags) {
+        childPrefix << " " << key << ":" << value;
+    }
+
+    const auto duration = CyclesToDurationSafe(startTime - StartTime);
+    childPrefix << " t:" << FormatDuration(duration);
+
+    return TChildLogTitle(childPrefix, startTime);
+}
+
+TChildLogTitle TLogTitle::GetChildWithTags(
+    const ui64 startTime,
+    std::initializer_list<std::pair<TString, TString>> additionalTags) const
+{
+    return GetChildWithTags(startTime, std::span(additionalTags));
+}
+
 TString TLogTitle::Get(EDetails details) const
 {
     TStringBuilder result;
@@ -122,6 +155,11 @@ TString TLogTitle::GetWithTime() const
     return Get(EDetails::WithTime);
 }
 
+TString TLogTitle::GetBrief() const
+{
+    return Get(EDetails::Brief);
+}
+
 void TLogTitle::SetDiskId(TString diskId)
 {
     DiskId = std::move(diskId);
@@ -137,12 +175,6 @@ void TLogTitle::SetGeneration(ui32 generation)
 void TLogTitle::SetTabletId(ui64 tabletId)
 {
     TabletId = tabletId;
-    Rebuild();
-}
-
-void TLogTitle::SetPipeGeneration(ui32 pipeGeneration)
-{
-    PipeGeneration = pipeGeneration;
     Rebuild();
 }
 
@@ -163,6 +195,10 @@ void TLogTitle::Rebuild()
         }
         case EType::Client: {
             RebuildForClient();
+            break;
+        }
+        case EType::VolumeProxy: {
+            RebuildForVolumeProxy();
             break;
         }
     }
@@ -249,11 +285,31 @@ void TLogTitle::RebuildForClient()
     builder << " c:" << ClientId;
 
     builder << " pg:";
-    if (PipeGeneration) {
-        builder << PipeGeneration;
+    if (Generation) {
+        builder << Generation;
     } else {
         builder << "?";
     }
+    CachedPrefix = builder;
+}
+
+void TLogTitle::RebuildForVolumeProxy()
+{
+    auto builder = TStringBuilder();
+
+    builder << "[";
+    if (TemporaryServer) {
+        builder << "~";
+    }
+    builder << "vp:";
+    if (TabletId) {
+        builder << TabletId;
+    } else {
+        builder << "?";
+    }
+    builder << " d:" << DiskId;
+    builder << " pg:" << Generation;
+
     CachedPrefix = builder;
 }
 

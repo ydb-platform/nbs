@@ -25,9 +25,13 @@ from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
-
+from cloud.storage.core.tests.common import (
+    append_recipe_err_files,
+    process_recipe_err_files,
+)
 
 PID_FILE_NAME = "nfs_vhost_recipe.pid"
+ERR_LOG_FILE_NAMES_FILE = "nfs_vhost_recipe.err_log_files"
 
 
 def start(argv):
@@ -70,6 +74,10 @@ def start(argv):
     handle_ops_queue_path = common.work_path() + "/handleopsqueue-" + uid
     pathlib.Path(handle_ops_queue_path).mkdir(parents=True, exist_ok=True)
     config.VhostServiceConfig.HandleOpsQueuePath = handle_ops_queue_path
+
+    write_back_cache_path = common.work_path() + "/writebackcache-" + uid
+    pathlib.Path(write_back_cache_path).mkdir(parents=True, exist_ok=True)
+    config.VhostServiceConfig.WriteBackCachePath = write_back_cache_path
 
     service_type = args.service or "local"
     kikimr_port = 0
@@ -150,6 +158,8 @@ def start(argv):
     with open(PID_FILE_NAME, "w") as f:
         f.write(str(filestore_vhost.pid))
 
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, filestore_vhost.stderr_file_name)
+
     wait_for_filestore_vhost(filestore_vhost, vhost_configurator.port)
 
     if restart_interval:
@@ -159,6 +169,8 @@ def start(argv):
     set_env("NFS_VHOST_PORT", str(vhost_configurator.port))
     if service_type == "local-noserver":
         set_env("NFS_SERVER_PORT", str(vhost_configurator.local_service_port))
+
+    set_env("NFS_VHOST_MON_PORT", str(vhost_configurator.mon_port))
 
 
 def stop(argv):
@@ -171,6 +183,10 @@ def stop(argv):
     with open(PID_FILE_NAME) as f:
         pid = int(f.read())
         shutdown(pid)
+
+    errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
+    if errors:
+        raise RuntimeError("Errors found in recipe error files:\n" + "\n".join(errors))
 
 
 if __name__ == "__main__":

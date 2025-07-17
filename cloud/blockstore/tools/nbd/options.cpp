@@ -1,7 +1,6 @@
 #include "options.h"
 
 #include <cloud/blockstore/libs/encryption/model/utils.h>
-#include <cloud/blockstore/libs/nbd/utils.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>
 
@@ -178,7 +177,7 @@ void TOptions::Parse(int argc, char** argv)
 
     const auto& device = opts.AddLongOption("connect-device")
         .OptionalArgument("STR")
-        .StoreResult(&ConnectDevice);
+        .StoreResult(&ConnectDevicePath);
 
     opts.AddLongOption("null-blocksize")
         .RequiredArgument("NUM")
@@ -224,14 +223,6 @@ void TOptions::Parse(int argc, char** argv)
         .NoArgument()
         .SetFlag(&Netlink);
 
-    opts.AddLongOption("disconnect", "disconnect device before exiting")
-        .NoArgument()
-        .SetFlag(&Disconnect);
-
-    opts.AddLongOption("reconfigure", "reconfigure connected device")
-        .NoArgument()
-        .SetFlag(&Reconfigure);
-
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.Has(&verbose) && !VerboseLevel) {
@@ -245,10 +236,8 @@ void TOptions::Parse(int argc, char** argv)
             "'--listen-path' option is required for endpoint device-mode");
     }
 
-    if (res.Has(&device) && ConnectDevice.empty()) {
-        ConnectDevice = FindFreeNbdDevice();
-        Y_ENSURE(ConnectDevice,
-            "unable to find free nbd device");
+    if (res.Has(&device)) {
+        ConnectDevice = true;
     }
 }
 

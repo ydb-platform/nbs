@@ -138,6 +138,9 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::DestroyVolumeLink:
                 return CreatePermissionList({EPermission::Update});
 
+        case EBlockStoreRequest::RemoveVolumeClient:
+            return CreatePermissionList({EPermission::Delete});
+
         case EBlockStoreRequest::MAX:
             Y_ABORT("EBlockStoreRequest::MAX is not valid");
     }

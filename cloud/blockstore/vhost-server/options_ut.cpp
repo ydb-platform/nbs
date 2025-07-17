@@ -20,6 +20,7 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
             "--device", "path-nvme:v3-1:1000000:0",
             "--device", "path-nvme:v3-2:2000042:1111111",
             "--device", "path-nvme:v3-3:3001000:0",
+            "--vmpte-flush-threshold", "12345678900",
             "--read-only"
         };
 
@@ -37,6 +38,7 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
         UNIT_ASSERT(!options.NoSync);
         UNIT_ASSERT(!options.NoChmod);
         UNIT_ASSERT_VALUES_EQUAL(1024, options.BatchSize);
+        UNIT_ASSERT_VALUES_EQUAL(12345678900, options.PteFlushByteThreshold);
         UNIT_ASSERT_VALUES_EQUAL(3, options.QueueCount);
         UNIT_ASSERT_VALUES_EQUAL(3, options.Layout.size());
         UNIT_ASSERT_VALUES_EQUAL("path-nvme:v3-1", options.Layout[0].DevicePath);

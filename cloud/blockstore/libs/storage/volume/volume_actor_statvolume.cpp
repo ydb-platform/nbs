@@ -238,9 +238,12 @@ void TVolumeActor::HandleStatVolume(
         StartPartitionsIfNeeded(ctx);
 
         if (!State->Ready()) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] StatVolume request delayed until volume and partitions are ready",
-                TabletID());
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s StatVolume request delayed until volume and partitions are "
+                "ready",
+                LogTitle.GetWithTime().c_str());
 
             PendingRequests.emplace_back(NActors::IEventHandlePtr(ev.Release()), requestInfo);
             return;

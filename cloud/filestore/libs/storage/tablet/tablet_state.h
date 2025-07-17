@@ -198,7 +198,7 @@ private:
 
     ui32 Generation = 0;
     ui32 LastStep = 0;
-    ui32 LastCollectCounter = 0;
+    ui32 LastCollectPerGenerationCounter = 0;
     bool StartupGcExecuted = false;
 
     NProto::TFileSystem FileSystem;
@@ -465,7 +465,8 @@ public:
         const TString& name,
         const IIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
-        ui64 maxCommitId);
+        ui64 maxCommitId,
+        bool removeNodeRef);
 
     void UnlinkExternalNode(
         TIndexTabletDatabase& db,
@@ -1033,9 +1034,9 @@ public:
     //
 
 public:
-    ui32 NextCollectCounter()
+    ui32 NextCollectPerGenerationCounter()
     {
-        return ++LastCollectCounter;
+        return ++LastCollectPerGenerationCounter;
     }
 
     void SetStartupGcExecuted()

@@ -171,7 +171,8 @@ public:
 
         auto volumeProxy = CreateVolumeProxy(
             Args.StorageConfig,
-            Args.TraceSerializer);
+            Args.TraceSerializer,
+            Args.TemporaryServer);
 
         setup->LocalServices.emplace_back(
             MakeVolumeProxyServiceId(),
@@ -297,7 +298,7 @@ public:
                 Args.RdmaConfig,
                 Args.Spdk,
                 Args.Allocator,
-                Args.AioStorageProvider,
+                Args.LocalStorageProvider,
                 Args.ProfileLog,
                 Args.BlockDigestGenerator,
                 Args.Logging,

@@ -77,6 +77,7 @@ SRCS(
     service_actor_monitoring_unmount.cpp
     service_actor_mount.cpp
     service_actor_readblocks.cpp
+    service_actor_remove_client.cpp
     service_actor_sync_manually_preempted_volumes.cpp
     service_actor_unmount.cpp
     service_actor_update_disk_registry_config.cpp

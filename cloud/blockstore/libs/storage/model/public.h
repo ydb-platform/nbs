@@ -21,7 +21,7 @@ constexpr ui32 MaxMergedChannelCount = 248;
 // max merged + mixed channel count + fresh channel count
 constexpr ui32 MaxDataChannelCount = 252;
 
-constexpr ui32 InvalidCollectCounter = 0xFFFFFFFFul;
+constexpr ui32 InvalidCollectPerGenerationCounter = 0xFFFFFFFFul;
 constexpr ui32 InvalidBlockIndex = 0xFFFFFFFFul;
 constexpr ui16 InvalidBlobOffset = 0xFFFFu;
 // used for marking zero blocks

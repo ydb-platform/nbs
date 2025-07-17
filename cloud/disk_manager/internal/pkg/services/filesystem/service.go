@@ -6,7 +6,7 @@ import (
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -17,14 +17,14 @@ import (
 
 func getBlocksCountForSize(size uint64, blockSize uint32) (uint64, error) {
 	if blockSize == 0 {
-		return 0, errors.NewInvalidArgumentError(
+		return 0, common.NewInvalidArgumentError(
 			"invalid block size %v",
 			blockSize,
 		)
 	}
 
 	if size%uint64(blockSize) != 0 {
-		return 0, errors.NewInvalidArgumentError(
+		return 0, common.NewInvalidArgumentError(
 			"invalid size %v for block size %v",
 			size,
 			blockSize,
@@ -53,7 +53,7 @@ func prepareFilesystemKind(kind disk_manager.FilesystemKind) (types.FilesystemKi
 	case disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD:
 		return types.FilesystemKind_FILESYSTEM_KIND_SSD, nil
 	default:
-		return 0, errors.NewInvalidArgumentError(
+		return 0, common.NewInvalidArgumentError(
 			"unknown filesystem storage kind %v",
 			kind,
 		)
@@ -75,21 +75,21 @@ func (s *service) CreateFilesystem(
 
 	if len(req.FilesystemId.ZoneId) == 0 ||
 		len(req.FilesystemId.FilesystemId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty: %v",
 			req.FilesystemId,
 		)
 	}
 
 	if req.Size < 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"invalid size: %v",
 			req.Size,
 		)
 	}
 
 	if req.BlockSize < 0 || req.BlockSize > math.MaxUint32 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"invalid block size: %v",
 			req.BlockSize,
 		)
@@ -135,7 +135,7 @@ func (s *service) DeleteFilesystem(
 ) (string, error) {
 
 	if len(req.FilesystemId.FilesystemId) == 0 {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"filesystem id is empty, req=%v",
 			req,
 		)
@@ -163,7 +163,7 @@ func (s *service) ResizeFilesystem(
 		len(req.FilesystemId.FilesystemId) == 0 ||
 		req.Size == 0 {
 
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"some of parameters are empty, req=%v",
 			req,
 		)
@@ -201,14 +201,14 @@ func (s *service) DescribeFilesystemModel(
 	}
 
 	if req.Size < 0 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid size: %v",
 			req.Size,
 		)
 	}
 
 	if req.BlockSize < 0 || req.BlockSize > math.MaxUint32 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid block size: %v",
 			req.BlockSize,
 		)

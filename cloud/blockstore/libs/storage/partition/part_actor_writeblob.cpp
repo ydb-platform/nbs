@@ -39,6 +39,7 @@ private:
     const TString DiskId;
     const std::unique_ptr<TRequest> Request;
     const ui32 GroupId;
+    TChildLogTitle LogTitle;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -55,7 +56,8 @@ public:
         TString diskId,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
-        ui32 groupId);
+        ui32 groupId,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -95,7 +97,8 @@ TWriteBlobActor::TWriteBlobActor(
         TString diskId,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
-        ui32 groupId)
+        ui32 groupId,
+        TChildLogTitle logTitle)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -108,6 +111,7 @@ TWriteBlobActor::TWriteBlobActor(
     , DiskId(std::move(diskId))
     , Request(std::move(request))
     , GroupId(groupId)
+    , LogTitle(std::move(logTitle))
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -225,12 +229,13 @@ void TWriteBlobActor::ReplyError(
     const TEvBlobStorage::TEvPutResult& response,
     const TString& description)
 {
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] TEvBlobStorage::TEvPut failed: %s\n%s",
-        TabletId,
-        DiskId.c_str(),
-        description.data(),
-        response.Print(false).data());
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s TEvBlobStorage::TEvPut failed: %s\n%s",
+        LogTitle.GetWithTime().c_str(),
+        description.c_str(),
+        response.Print(false).c_str());
 
     auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + description);
     ReplyAndDie(ctx, std::make_unique<TResponse>(error));
@@ -398,7 +403,8 @@ void TPartitionActor::HandleWriteBlob(
             GetDowntimeThreshold(
                 *DiagnosticsConfig,
                 PartitionConfig.GetStorageMediaKind()),
-            groupId));
+            groupId,
+            LogTitle.GetChild(GetCycleCount())));
 
     ProcessIOQueue(ctx, channel);
 }
@@ -449,20 +455,22 @@ void TPartitionActor::HandleWriteBlobCompleted(
             msg->ApproximateFreeSpaceShare);
 
         if (msg->StorageStatusFlags.Check(yellowStopFlag)) {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Yellow stop flag received for channel %u and group %u",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Yellow stop flag received for channel %u and group %u",
+                LogTitle.GetWithTime().c_str(),
                 channel,
                 groupId);
 
             ScheduleYellowStateUpdate(ctx);
             ReassignChannelsIfNeeded(ctx);
         } else if (msg->StorageStatusFlags.Check(yellowMoveFlag)) {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Yellow move flag received for channel %u and group %u",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Yellow move flag received for channel %u and group %u",
+                LogTitle.GetWithTime().c_str(),
                 channel,
                 groupId);
 
@@ -472,24 +480,22 @@ void TPartitionActor::HandleWriteBlobCompleted(
     }
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] WriteBlob error happened: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            FormatError(msg->GetError()).data());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s WriteBlob error happened: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
 
         if (State->IncrementWriteBlobErrorCount()
                 >= Config->GetMaxWriteBlobErrorsBeforeSuicide())
         {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Stop tablet because of too many WritedBlob errors (actor %s, group %u): %s",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
-                ev->Sender.ToString().c_str(),
-                groupId,
-                FormatError(msg->GetError()).data());
-
-            ReportTabletBSFailure();
+            ReportTabletBSFailure(
+                TStringBuilder()
+                << LogTitle.GetWithTime()
+                << "Stop tablet because of too many WriteBlob errors (actor "
+                << ev->Sender.ToString() << " group " << groupId << "): "
+                << FormatError(msg->GetError()));
             Suicide(ctx);
             return;
         }

@@ -9646,11 +9646,30 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldManageFollowerLink)
     {
+        const auto volumeBlockCount = DefaultDeviceBlockSize * DefaultDeviceBlockCount
+            / DefaultBlockSize;
+
         auto runtime = PrepareTestActorRuntime();
-        TVolumeClient volume1(*runtime);
-        TVolumeClient volume2(*runtime);
+        runtime->RegisterService(
+            MakeVolumeProxyServiceId(),
+            runtime->AllocateEdgeActor(),
+            0);
 
-        volume1.UpdateVolumeConfig(
+        TVolumeClient volume1(*runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD,
+            7 * 1024,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        TVolumeClient volume2(*runtime, 0, TestVolumeTablets[1]);
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
             0,
             0,
             0,
@@ -9658,25 +9677,52 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false,
             1,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            7 * 1024,   // block count per partition
-            "vol1");
+            volumeBlockCount,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
 
-        volume2.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            7 * 1024,   // block count per partition
-            "vol2");
+        auto forwardRequest = [&](TAutoPtr<IEventHandle>& event, TString diskId)
+        {
+            if (diskId == "vol1") {
+                volume1.ForwardToPipe(event);
+            } else if (diskId == "vol2") {
+                volume2.ForwardToPipe(event);
+            } else {
+                UNIT_ASSERT_C(
+                    false,
+                    TStringBuilder() << "Unknown disk id: " << diskId);
+            }
+        };
 
-        TString linkUuid;
+        auto volumeProxyRequestHandler =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->Recipient == MakeVolumeProxyServiceId()) {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvUpdateLinkOnFollowerRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+                    forwardRequest(event, msg->Record.GetDiskId());
+                }
+
+                return true;
+            }
+            return false;
+        };
+
+        runtime->SetEventFilter(volumeProxyRequestHandler);
+
+        TLeaderFollowerLink link{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol1",
+            .LeaderShardId = "su1",
+            .FollowerDiskId = "vol2",
+            .FollowerShardId = "su2"};
         {
             // Create link
-            auto response = volume1.LinkLeaderVolumeToFollower("vol1", "vol2");
-            linkUuid = response->Record.GetLinkUUID();
+            auto response = volume1.LinkLeaderVolumeToFollower(link);
+            link.LinkUUID = response->Record.GetLinkUUID();
 
             // Reboot tablet
             volume1.RebootTablet();
@@ -9684,52 +9730,53 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
             // Should get S_ALREADY since link persisted in local volume
             // database.
-            volume1.SendLinkLeaderVolumeToFollowerRequest("vol1", "vol2");
+            volume1.SendLinkLeaderVolumeToFollowerRequest(link);
             response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
         }
 
         {   // Update link state
-            using EReason =
-                TEvVolumePrivate::TUpdateFollowerStateRequest::EReason;
             using EState = TFollowerDiskInfo::EState;
 
-            auto response = volume1.UpdateFollowerState(
-                linkUuid,
-                EReason::FillProgressUpdate,
-                1_MB);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(EState::Preparing, response->NewState);
-            UNIT_ASSERT_VALUES_EQUAL(1_MB, response->MigratedBytes);
+            auto follower = TFollowerDiskInfo{
+                .Link = link,
+                .CreatedAt = TInstant::Now(),
+                .State = EState::Preparing,
+                .MigratedBytes = 1_MB};
 
-            response = volume1.UpdateFollowerState(
-                linkUuid,
-                EReason::FillProgressUpdate,
-                2_MB);
+            auto response = volume1.UpdateFollowerState(follower);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(EState::Preparing, response->NewState);
-            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->MigratedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                EState::Preparing,
+                response->Follower.State);
+            UNIT_ASSERT_VALUES_EQUAL(1_MB, response->Follower.MigratedBytes);
 
-            response = volume1.UpdateFollowerState(
-                linkUuid,
-                EReason::FillCompleted,
-                2_MB);
+            follower.MigratedBytes = 2_MB;
+            response = volume1.UpdateFollowerState(follower);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(EState::Ready, response->NewState);
-            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->MigratedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                EState::Preparing,
+                response->Follower.State);
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->Follower.MigratedBytes);
 
-            response = volume1.UpdateFollowerState(
-                linkUuid,
-                EReason::FillError,
-                2_MB);
+            follower.State = EState::DataReady;
+            follower.MigratedBytes = 2_MB;
+            response = volume1.UpdateFollowerState(follower);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(EState::Error, response->NewState);
-            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->MigratedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(EState::DataReady, response->Follower.State);
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->Follower.MigratedBytes);
+
+            follower.State = EState::Error;
+            follower.MigratedBytes = 2_MB;
+            response = volume1.UpdateFollowerState(follower);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(EState::Error, response->Follower.State);
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->Follower.MigratedBytes);
         }
 
         {
             // Destroy link
-            volume1.UnlinkLeaderVolumeFromFollower("vol1", "vol2");
+            volume1.UnlinkLeaderVolumeFromFollower(link);
 
             // Reboot tablet
             volume1.RebootTablet();
@@ -9737,11 +9784,201 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
             // Should get S_ALREADY since link persisted in local volume
             // database.
-            volume1.SendUnlinkLeaderVolumeFromFollowerRequest("vol1", "vol2");
+            volume1.SendUnlinkLeaderVolumeFromFollowerRequest(link);
             auto response =
                 volume1.RecvUnlinkLeaderVolumeFromFollowerResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
         }
+    }
+
+    Y_UNIT_TEST(ShouldRetryPropagateFollowerLink)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        runtime->RegisterService(
+            MakeVolumeProxyServiceId(),
+            runtime->AllocateEdgeActor(),
+            0);
+
+        TVolumeClient volume1(*runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD,
+            7 * 1024,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        TVolumeClient volume2(*runtime, 0, TestVolumeTablets[1]);
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD,
+            7 * 1024,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
+
+        auto forwardRequest = [&](TAutoPtr<IEventHandle>& event, TString diskId)
+        {
+            if (diskId == "vol1") {
+                volume1.ForwardToPipe(event);
+            } else if (diskId == "vol2") {
+                volume2.ForwardToPipe(event);
+            } else {
+                UNIT_ASSERT_C(
+                    false,
+                    TStringBuilder() << "Unknown disk id: " << diskId);
+            }
+        };
+
+        size_t updateLinkOnFollowerResponseCount = 0;
+        auto volumeProxyRequestHandler =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->Recipient == MakeVolumeProxyServiceId()) {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvUpdateLinkOnFollowerRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+                    forwardRequest(event, msg->Record.GetDiskId());
+                }
+                return true;
+            }
+
+            if (event->GetTypeRewrite() ==
+                TEvVolume::EvUpdateLinkOnFollowerResponse)
+            {
+                // Drop first 3 responses from follower.
+                if (updateLinkOnFollowerResponseCount++ < 2) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        runtime->SetEventFilter(volumeProxyRequestHandler);
+
+        TLeaderFollowerLink link{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol1",
+            .LeaderShardId = "su1",
+            .FollowerDiskId = "vol2",
+            .FollowerShardId = "su2"};
+
+        // Create link
+        volume1.LinkLeaderVolumeToFollower(link);
+
+        // Should get 4 responses from follower.
+        UNIT_ASSERT_VALUES_EQUAL(3, updateLinkOnFollowerResponseCount);
+    }
+
+    Y_UNIT_TEST(ShouldFailCreateLinkPropagateFollowerLink)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        runtime->RegisterService(
+            MakeVolumeProxyServiceId(),
+            runtime->AllocateEdgeActor(),
+            0);
+
+        TVolumeClient volume1(*runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD,
+            7 * 1024,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        TVolumeClient volume2(*runtime, 0, TestVolumeTablets[1]);
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD,
+            7 * 1024,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
+
+        auto forwardRequest = [&](TAutoPtr<IEventHandle>& event, TString diskId)
+        {
+            if (diskId == "vol1") {
+                volume1.ForwardToPipe(event);
+            } else if (diskId == "vol2") {
+                volume2.ForwardToPipe(event);
+            } else {
+                UNIT_ASSERT_C(
+                    false,
+                    TStringBuilder() << "Unknown disk id: " << diskId);
+            }
+        };
+
+        auto volumeProxyRequestHandler =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->Recipient == MakeVolumeProxyServiceId()) {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvUpdateLinkOnFollowerRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+                    forwardRequest(event, msg->Record.GetDiskId());
+                }
+                return true;
+            }
+
+            if (event->GetTypeRewrite() ==
+                TEvVolume::EvUpdateLinkOnFollowerRequest)
+            {
+                auto response = std::make_unique<
+                    TEvVolume::TEvUpdateLinkOnFollowerResponse>(MakeError(
+                    E_ARGUMENT,
+                    "Simulated non-retriable error on follower"));
+
+                runtime->Send(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0,   // flags
+                        event->Cookie),
+                    0);
+                return true;
+            }
+            return false;
+        };
+
+        runtime->SetEventFilter(volumeProxyRequestHandler);
+
+        TLeaderFollowerLink link{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol1",
+            .LeaderShardId = "su1",
+            .FollowerDiskId = "vol2",
+            .FollowerShardId = "su2"};
+
+        // Create link
+        volume1.SendLinkLeaderVolumeToFollowerRequest(link);
+        auto response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
     }
 
     Y_UNIT_TEST(ShouldPerformIoWithPredefinedCopyVolumeClientId)

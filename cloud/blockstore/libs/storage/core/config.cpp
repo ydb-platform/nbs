@@ -490,6 +490,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(HiveProxyFallbackMode,                     bool,      false           )\
     xxx(SSProxyFallbackMode,                       bool,      false           )\
+    xxx(DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode, bool, false )\
                                                                                \
     xxx(RdmaTargetPort,                            ui32,      10020           )\
     xxx(UseNonreplicatedRdmaActor,                 bool,      false           )\
@@ -608,6 +609,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(MaxCompactionRangesLoadingPerTx,                   ui32,   0          )\
     xxx(MaxOutOfOrderCompactionMapChunksInflight,          ui32,   5          )\
+                                                                               \
+    xxx(PartitionBootTimeout,                 TDuration,   Seconds(0)         )\
+    xxx(DirectWriteBandwidthQuota,            ui64,        0                  )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

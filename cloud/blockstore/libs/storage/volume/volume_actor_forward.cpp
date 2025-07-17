@@ -177,13 +177,14 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
     }
 
     for (const auto& partitionRequest: partitionRequests) {
-        LOG_TRACE(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Forward %s request to partition: %lu %s",
-            TabletID(),
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Forward %s request to partition: %lu %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             partitionRequest.TabletId,
-            ToString(partitionRequest.ActorId).data()
-        );
+            ToString(partitionRequest.ActorId).data());
     }
 
     auto wrappedRequest = WrapRequest<TMethod>(
@@ -319,9 +320,11 @@ void TVolumeActor::SendRequestToPartition(
         : State->GetPartitions()[partitionId].GetTopActorId();
 
     if (State->GetPartitions()) {
-        LOG_TRACE(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Sending %s request to partition: %lu %s",
-            TabletID(),
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Sending %s request to partition: %lu %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             State->GetPartitions()[partitionId].TabletId,
             ToString(partActorId).data());
@@ -706,9 +709,12 @@ void TVolumeActor::ForwardRequest(
                     TStringBuilder() << "Volume " << State->GetDiskId().Quote()
                                      << " not ready by partition state"));
             } else {
-                LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-                    "[%lu] %s request delayed until volume and partitions are ready",
-                    TabletID(),
+                LOG_DEBUG(
+                    ctx,
+                    TBlockStoreComponents::VOLUME,
+                    "%s %s request delayed until volume and partitions are "
+                    "ready",
+                    LogTitle.GetWithTime().c_str(),
                     TMethod::Name);
 
                 auto requestInfo = CreateRequestInfo<TMethod>(
@@ -909,9 +915,11 @@ void TVolumeActor::ForwardRequest(
             });
             ++DuplicateRequestCount;
 
-            LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] DuplicateRequestCount=%lu",
-                TabletID(),
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s DuplicateRequestCount=%lu",
+                LogTitle.GetWithTime().c_str(),
                 DuplicateRequestCount);
 
             return;

@@ -36,12 +36,10 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
     auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-            << " LoadFreshBlobs failed: " << msg->GetStatus()
-            << " reason: " << msg->GetError().GetMessage().Quote());
-
-        ReportInitFreshBlocksError();
+        ReportInitFreshBlocksError(
+            TStringBuilder()
+            << LogTitle.GetWithTime() << " LoadFreshBlobs failed. error: "
+            << FormatError(msg->GetError()));
         Suicide(ctx);
         return;
     }
@@ -63,13 +61,11 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
             blocks);
 
         if (FAILED(error.GetCode())) {
-            LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-                "[" << TabletID() << "]"
-                << " Failed to parse fresh blob "
-                << "(blob commitId: " << blob.CommitId << "): "
-                << error.GetMessage());
-
-            ReportInitFreshBlocksError();
+            ReportInitFreshBlocksError(
+                TStringBuilder()
+                << LogTitle.GetWithTime()
+                << " Failed to parse fresh blob (blob commitId: "
+                << blob.CommitId << "): " << FormatError(error));
             Suicide(ctx);
             return;
         }

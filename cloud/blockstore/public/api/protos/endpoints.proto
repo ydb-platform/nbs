@@ -123,6 +123,8 @@ message TStopEndpointRequest
 
     // Unix-socket path.
     string UnixSocketPath = 2;
+
+    optional string DiskId = 3;
 }
 
 message TStopEndpointResponse

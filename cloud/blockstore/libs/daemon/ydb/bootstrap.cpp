@@ -37,7 +37,7 @@
 #include <cloud/blockstore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/blockstore/libs/service_kikimr/service_kikimr.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
-#include <cloud/blockstore/libs/service_local/storage_aio.h>
+#include <cloud/blockstore/libs/service_local/storage_local.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
@@ -302,6 +302,11 @@ IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get();
 IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
 IStartable* TBootstrapYdb::GetRootKmsClient()      { return RootKmsClient.get(); }
 
+ITraceServiceClientPtr TBootstrapYdb::GetTraceServiceClient()
+{
+    return TraceServiceClient;
+}
+
 void TBootstrapYdb::InitConfigs()
 {
     Configs->InitKikimrConfig();
@@ -404,16 +409,6 @@ void TBootstrapYdb::InitKikimrService()
         .NodeType = Configs->StorageConfig->GetNodeType(),
     };
 
-    bool loadCmsConfigs = Configs->Options->LoadCmsConfigs;
-    bool emergencyMode =
-        Configs->StorageConfig->GetHiveProxyFallbackMode() ||
-        Configs->StorageConfig->GetSSProxyFallbackMode();
-
-    if (loadCmsConfigs && emergencyMode) {
-        STORAGE_INFO("Disable loading configs from CMS in emergency mode");
-        loadCmsConfigs = false;
-    }
-
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
         .Domain = Configs->Options->Domain,
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
@@ -423,11 +418,17 @@ void TBootstrapYdb::InitKikimrService()
         .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl
             || Configs->StorageConfig->GetNodeRegistrationUseSsl(),
         .InterconnectPort = Configs->Options->InterconnectPort,
-        .LoadCmsConfigs = loadCmsConfigs,
+        .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
         .Settings = std::move(settings)
     };
 
-    if (emergencyMode) {
+    const bool emergencyMode =
+        Configs->StorageConfig->GetHiveProxyFallbackMode() ||
+        Configs->StorageConfig->GetSSProxyFallbackMode();
+    if (emergencyMode &&
+        Configs->StorageConfig
+            ->GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode())
+    {
         registerOpts.SchemeShardDir = "";
     }
 
@@ -637,40 +638,40 @@ void TBootstrapYdb::InitKikimrService()
     if (const auto& config = *Configs->DiskAgentConfig;
         config.GetEnabled() &&
         config.GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&
-        !AioStorageProvider)
+        !LocalStorageProvider)
     {
         NvmeManager = CreateNvmeManager(
             Configs->DiskAgentConfig->GetSecureEraseTimeout());
 
-        auto factory = [events = config.GetMaxAIOContextEvents()] {
-            return CreateAIOService(events);
-        };
+        auto factory = CreateAIOServiceFactory(
+            {.MaxEvents = config.GetMaxAIOContextEvents()});
 
-        FileIOServiceProvider =
-            config.GetPathsPerFileIOService()
-                ? CreateFileIOServiceProvider(
-                      config.GetPathsPerFileIOService(),
-                      factory)
-                : CreateSingleFileIOServiceProvider(factory());
+        FileIOServiceProvider = config.GetPathsPerFileIOService()
+                                    ? CreateFileIOServiceProvider(
+                                          config.GetPathsPerFileIOService(),
+                                          std::move(factory))
+                                    : CreateSingleFileIOServiceProvider(
+                                          factory->CreateFileIOService());
 
-        AioStorageProvider = CreateAioStorageProvider(
+        LocalStorageProvider = CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
-            !config.GetDirectIoFlagDisabled(),
-            EAioSubmitQueueOpt::DontUse);
+            {.DirectIO = !config.GetDirectIoFlagDisabled(),
+             .UseSubmissionThread =
+                 config.GetUseLocalStorageSubmissionThread()});
 
-        STORAGE_INFO("AioStorageProvider initialized");
+        STORAGE_INFO("LocalStorageProvider initialized");
     }
 
     if (Configs->DiskAgentConfig->GetEnabled() &&
         Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_NULL &&
-        !AioStorageProvider)
+        !LocalStorageProvider)
     {
         NvmeManager = CreateNvmeManager(
             Configs->DiskAgentConfig->GetSecureEraseTimeout());
-        AioStorageProvider = CreateNullStorageProvider();
+        LocalStorageProvider = CreateNullStorageProvider();
 
-        STORAGE_INFO("AioStorageProvider (null) initialized");
+        STORAGE_INFO("LocalStorageProvider (null) initialized");
     }
 
     Allocator = CreateCachingAllocator(
@@ -690,6 +691,8 @@ void TBootstrapYdb::InitKikimrService()
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
         Log,
         logging);
+
+    STORAGE_INFO("StatsFetcher initialized");
 
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
         if (Configs->StorageConfig->GetUseTestBlockDigestGenerator()) {
@@ -732,7 +735,7 @@ void TBootstrapYdb::InitKikimrService()
     args.DiscoveryService = DiscoveryService;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.AioStorageProvider = AioStorageProvider;
+    args.LocalStorageProvider = LocalStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;
     args.TraceSerializer = TraceSerializer;
@@ -786,12 +789,20 @@ void TBootstrapYdb::InitKikimrService()
         *isSpareNode = 1;
     }
 
+    TraceServiceClient = ServerModuleFactories->TraceServiceClientFactory(
+        Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+            .GetClientConfig(),
+        logging);
+
+    STORAGE_INFO("Trace service client initialized");
+
     auto& probes = NLwTraceMonPage::ProbeRegistry();
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_STORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
-    InitLWTrace();
+    InitLWTrace(Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+                    .GetServiceName());
 
     STORAGE_INFO("LWTrace initialized");
 

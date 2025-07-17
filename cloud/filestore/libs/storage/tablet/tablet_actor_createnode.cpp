@@ -188,8 +188,14 @@ void TCreateNodeInShardActor::ProcessNodeAttr(NProto::TNodeAttr attr)
     InitAttrs(requestAttrs, Request);
     // by the time of the request, the node may be already modified and thus we
     // can ignore those nodes that mismatch in size, but have updated mtime
+    //
+    // This MTime condition also takes into account the fact that the times in
+    // shard and leader can drift off and thus uses a 1-minute tolerance for
+    // this comparsion
+    const TDuration mtimeTolerance = TDuration::Minutes(1);
     if ((attr.GetSize() != requestAttrs.GetSize() &&
-         attr.GetMTime() <= requestAttrs.GetMTime()) ||
+         attr.GetMTime() + mtimeTolerance.MicroSeconds() <=
+             requestAttrs.GetMTime()) ||
         attr.GetType() != requestAttrs.GetType())
     {
         ReportCreateNodeRequestResponseMismatchInShard(TStringBuilder()
@@ -273,10 +279,11 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Shard node created for %s, %s",
+        "%s Shard node created for %s, %s, %ld",
         LogTag.c_str(),
         Request.GetFileSystemId().c_str(),
-        Request.GetName().c_str());
+        Request.GetName().c_str(),
+        msg->Record.GetNode().GetId());
 
     ProcessNodeAttr(*msg->Record.MutableNode());
     ReplyAndDie(ctx, {});
@@ -536,16 +543,27 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 
     // TODO: AccessCheck
 
-    // validate target node doesn't exist
-    TMaybe<IIndexTabletDatabase::TNodeRef> childRef;
-    if (!ReadNodeRef(db, args.ParentNodeId, args.CommitId, args.Name, childRef)) {
-        return false;   // not ready
-    }
+    if (!Config->GetParentlessFilesOnly()) {
+        // If the filesystem is configured to check for nodeRefs
 
-    if (childRef) {
-        // mknod, mkdir, link nor symlink does not overwrite existing files
-        args.Error = ErrorAlreadyExists(args.Name);
-        return true;
+        // validate target node doesn't exist
+        TMaybe<IIndexTabletDatabase::TNodeRef> childRef;
+
+        if (!ReadNodeRef(
+                db,
+                args.ParentNodeId,
+                args.CommitId,
+                args.Name,
+                childRef))
+        {
+            return false;   // not ready
+        }
+
+        if (childRef) {
+            // mknod, mkdir, link nor symlink does not overwrite existing files
+            args.Error = ErrorAlreadyExists(args.Name);
+            return true;
+        }
     }
 
     if (args.ChildNode) {
@@ -674,14 +692,16 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         parent,
         args.ParentNode->Attrs);
 
-    CreateNodeRef(
-        db,
-        args.ParentNodeId,
-        args.CommitId,
-        args.Name,
-        args.ChildNodeId,
-        args.ShardId,
-        args.ShardNodeName);
+    if (!Config->GetParentlessFilesOnly()) {
+        CreateNodeRef(
+            db,
+            args.ParentNodeId,
+            args.CommitId,
+            args.Name,
+            args.ChildNodeId,
+            args.ShardId,
+            args.ShardNodeName);
+    }
 
     if (args.ShardId.empty()) {
         if (args.ChildNodeId == InvalidNodeId) {

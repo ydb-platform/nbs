@@ -77,11 +77,15 @@ void DumpDownGroups(
                             for (const TTabletChannelInfo& channelInfo:
                                  matchedInfos)
                             {
+                                TString channelKind = TStringBuilder()
+                                                   << state.GetChannelDataKind(
+                                                          channelInfo.Channel);
                                 out << groupId << "&nbsp;<a href='"
                                     << GetMonitoringYDBGroupUrl(
                                            config,
                                            groupId,
-                                           channelInfo.StoragePool)
+                                           channelInfo.StoragePool,
+                                           channelKind)
                                     << "'>Graphs&nbsp;"
                                     << "(Channel=" << channelInfo.Channel
                                     << ")</a><br/>";
@@ -117,11 +121,11 @@ void DumpChannels(
     const auto& cps = state.GetConfig().GetExplicitChannelProfiles();
     for (int c = 0; c < cps.size(); ++c) {
         const auto& cp = cps[c];
-        const auto dataKind =
+        const auto channelKind =
             static_cast<EChannelDataKind>(cps[c].GetDataKind());
         channelInfos.push_back({
             cp.GetPoolKind(),
-            TStringBuilder() << dataKind,
+            TStringBuilder() << channelKind,
             state.CheckPermissions(c, EChannelPermission::UserWritesAllowed),
             state.CheckPermissions(c, EChannelPermission::SystemWritesAllowed),
             state.GetFreeSpaceShare(c),
@@ -131,11 +135,15 @@ void DumpChannels(
         out,
         channelInfos,
         storage,
-        [&] (ui32 groupId, const TString& storagePool) {
+        [&](ui32 groupId,
+            const TString& storagePool,
+            const TString& channelKind)
+        {
             return GetMonitoringYDBGroupUrl(
                 config,
                 groupId,
-                storagePool);
+                storagePool,
+                channelKind);
         },
         [&](ui32 groupId)
         { return GetMonitoringDashboardYDBGroupUrl(config, groupId); },
@@ -409,11 +417,12 @@ void TPartitionActor::HandleHttpInfo(
         "HttpInfo",
         requestInfo->CallContext->RequestId);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] HTTP request: %s",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
-        msg->Query.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s HTTP request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Query.Quote().c_str());
 
     if (State && State->IsLoadStateFinished()) {
         auto methodType = GetHttpMethodType(*msg);
@@ -690,7 +699,12 @@ void TPartitionActor::RejectHttpRequest(
     TRequestInfo& requestInfo,
     TString message)
 {
-    LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION, message);
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
+        message.c_str());
 
     SendHttpResponse(ctx, requestInfo, std::move(message), EAlertLevel::DANGER);
 }

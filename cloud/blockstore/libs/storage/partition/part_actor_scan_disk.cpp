@@ -473,10 +473,11 @@ void TPartitionActor::HandleScanDiskBatch(
 
     const auto [gen, step] = ParseCommitId(msg->BlobId.CommitId());
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Start scan batch (starting %u:%u)",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start scan batch (starting %u:%u)",
+        LogTitle.GetWithTime().c_str(),
         gen,
         step);
 
@@ -532,10 +533,11 @@ bool TPartitionActor::PrepareScanDiskBatch(
         State->UpdateScanDiskBlobsToBeProcessed(args.VisitCount);
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] PrepareScanDiskBatch completed (%u) %s",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s PrepareScanDiskBatch completed (%u) %s",
+        LogTitle.GetWithTime().c_str(),
         static_cast<ui32>(progress),
         StringifyScanDiskBatchTx(args).c_str());
 

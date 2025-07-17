@@ -75,11 +75,12 @@ void TPartitionActor::ExecuteDeleteGarbage(
     for (const auto& blobId: args.GarbageBlobs) {
         garbageBlobBytes += blobId.BlobSize();
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] Delete garbage blob: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            ToString(MakeBlobId(TabletID(), blobId)).data());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Delete garbage blob: %s",
+            LogTitle.GetWithTime().c_str(),
+            ToString(MakeBlobId(TabletID(), blobId)).Quote().c_str());
 
         bool deleted = State->GetGarbageQueue().RemoveGarbageBlob(blobId);
         Y_ABORT_UNLESS(deleted);

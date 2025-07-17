@@ -20,7 +20,8 @@ struct TChannelMonInfo
 
 using TGetMonitoringYDBGroupUrl = std::function<TString(
     ui32 groupId,
-    const TString& storagePool)>;
+    const TString& storagePool,
+    const TString& channelKind)>;
 
 using TGetMonitoringDashboardYDBGroupUrl = std::function<TString(ui32 groupId)>;
 

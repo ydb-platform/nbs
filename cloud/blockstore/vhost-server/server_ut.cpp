@@ -55,6 +55,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui8 GetFillChar(size_t block)
+{
+    constexpr char AllowedChars[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    return AllowedChars[block % strlen(AllowedChars)];
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 const TString DefaultEncryptionKey("1234567890123456789012345678901");
 
 using TBlocksPerRequest = size_t;
@@ -164,13 +173,20 @@ public:
         }
     }
 
-    void StartServer()
+    void StartServer(bool addNonExistingDevice = false)
     {
         Server = CreateServer(Logging, CreateAioBackend(Encryptor, Logging));
 
         Options.Layout.reserve(ChunkCount);
         Files.reserve(ChunkCount);
-        for (ui32 i = 0; i != ChunkCount; ++i) {
+
+        if (addNonExistingDevice) {
+            Options.Layout.push_back(
+                {.DevicePath = "NonExistingDevice",
+                 .ByteCount = ChunkByteCount});
+        }
+
+        for (ui32 i = 0; i != ChunkCount - addNonExistingDevice; ++i) {
             auto& file = Files.emplace_back(MakeTempName());
 
             Options.Layout.push_back({
@@ -379,6 +395,19 @@ public:
 
         return true;
     }
+
+    TString MakePattern(size_t startBlock) const
+    {
+        TString result;
+        result.resize(RequestSize);
+        for (size_t i = 0; i < BlocksPerRequest; ++i) {
+            memset(
+                const_cast<char*>(result.data()) + BlockSize * i,
+                GetFillChar(startBlock + i),
+                BlockSize);
+        }
+        return result;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -435,25 +464,6 @@ TEST_P(TServerTest, ShouldReadAndWrite)
 {
     StartServer();
 
-    auto getFillChar = [](size_t block) -> ui8
-    {
-        const TString allowedChars{
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"};
-        return allowedChars[block % allowedChars.size()];
-    };
-    auto makePatten = [&](size_t startBlock) -> TString
-    {
-        TString result;
-        result.resize(RequestSize);
-        for (size_t i = 0; i < BlocksPerRequest; ++i) {
-            memset(
-                const_cast<char*>(result.data()) + BlockSize * i,
-                getFillChar(startBlock + i),
-                BlockSize);
-        }
-        return result;
-    };
-
     // write data
     size_t writesCount = 0;
     {
@@ -466,7 +476,7 @@ TEST_P(TServerTest, ShouldReadAndWrite)
         for (ui64 i = 0; i <= TotalBlockCount - BlocksPerRequest; ++i) {
             reinterpret_cast<virtio_blk_req_hdr*>(hdr.data())->sector =
                 i * SectorsPerBlock;
-            TString expectedData = makePatten(i);
+            TString expectedData = MakePattern(i);
             memcpy(
                 writeBuffer.data(),
                 expectedData.data(),
@@ -495,14 +505,14 @@ TEST_P(TServerTest, ShouldReadAndWrite)
             EXPECT_EQ(VIRTIO_BLK_S_OK, status[0]);
 
             TString readData(readBuffer.data(), readBuffer.size());
-            EXPECT_EQ(makePatten(i), readData);
+            EXPECT_EQ(MakePattern(i), readData);
             ++readsCount;
         }
     }
 
     // validate storage
     for (ui64 i = 0; i != TotalBlockCount; ++i) {
-        const TString expectedData(BlockSize, getFillChar(i));
+        const TString expectedData(BlockSize, GetFillChar(i));
         const TString realData = LoadBlockAndDecrypt(i);
         EXPECT_EQ(expectedData, realData);
     }
@@ -535,6 +545,28 @@ TEST_P(TServerTest, ShouldReadAndWrite)
         EXPECT_EQ(
             Unaligned ? writesCount - splittedWrites : 0,
             write.Unaligned);
+    }
+}
+
+TEST_P(TServerTest, ShouldResponseWithEIOOnRequestsToNonExistingDevice)
+{
+    StartServer(true);
+
+    // write data
+    {
+        std::span hdr = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
+        std::span writeBuffer =
+            Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize);
+        std::span status = Memory.Allocate(1);
+
+        reinterpret_cast<virtio_blk_req_hdr*>(hdr.data())->sector =
+            0 * SectorsPerBlock;
+        TString expectedData = MakePattern(0);
+        memcpy(writeBuffer.data(), expectedData.data(), expectedData.size());
+        auto writeOp =
+            Client.WriteAsync(QueueIndex, {hdr, writeBuffer}, {status});
+        EXPECT_EQ(status.size(), writeOp.GetValueSync());
+        EXPECT_EQ(VIRTIO_BLK_S_IOERR, status[0]);
     }
 }
 
@@ -1034,6 +1066,107 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
         EXPECT_EQ(
             true,
             message.StartsWith("Encryptor has generated a zero block #"));
+    }
+}
+
+TEST_P(TServerTest, ShouldReadAndWriteWithPteFlushEnabled)
+{
+    Options.PteFlushByteThreshold = 4096;
+    StartServer();
+
+    auto makePatten = [&](size_t startBlock) -> TString
+    {
+        TString result;
+        result.resize(RequestSize);
+        for (size_t i = 0; i < BlocksPerRequest; ++i) {
+            memset(
+                const_cast<char*>(result.data()) + BlockSize * i,
+                GetFillChar(startBlock + i),
+                BlockSize);
+        }
+        return result;
+    };
+
+    // write data
+    size_t writesCount = 0;
+    {
+        std::span hdr = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
+        std::span writeBuffer =
+            Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize);
+        std::span status = Memory.Allocate(1);
+
+        for (ui64 i = 0; i <= TotalBlockCount - BlocksPerRequest; ++i) {
+            reinterpret_cast<virtio_blk_req_hdr*>(hdr.data())->sector =
+                i * SectorsPerBlock;
+            TString expectedData = makePatten(i);
+            memcpy(
+                writeBuffer.data(),
+                expectedData.data(),
+                expectedData.size());
+            auto writeOp =
+                Client.WriteAsync(QueueIndex, {hdr, writeBuffer}, {status});
+            EXPECT_EQ(status.size(), writeOp.GetValueSync());
+            EXPECT_EQ(VIRTIO_BLK_S_OK, status[0]);
+            ++writesCount;
+        }
+    }
+
+    // read data
+    size_t readsCount = 0;
+    {
+        std::span hdr = Hdr(Memory, {.type = VIRTIO_BLK_T_IN});
+        std::span readBuffer =
+            Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize);
+        std::span status = Memory.Allocate(1);
+        for (ui64 i = 0; i <= TotalBlockCount - BlocksPerRequest; ++i) {
+            reinterpret_cast<virtio_blk_req_hdr*>(hdr.data())->sector =
+                i * SectorsPerBlock;
+            auto readOp =
+                Client.WriteAsync(QueueIndex, {hdr}, {readBuffer, status});
+            EXPECT_EQ(status.size() + readBuffer.size(), readOp.GetValueSync());
+            EXPECT_EQ(VIRTIO_BLK_S_OK, status[0]);
+
+            TString readData(readBuffer.data(), readBuffer.size());
+            EXPECT_EQ(makePatten(i), readData);
+            ++readsCount;
+        }
+    }
+
+    // validate storage
+    for (ui64 i = 0; i < TotalBlockCount; ++i) {
+        const TString expectedData(BlockSize, GetFillChar(i));
+        const TString realData = LoadBlockAndDecrypt(i);
+        EXPECT_EQ(expectedData, realData);
+    }
+
+    // validate stats
+    const auto splittedReads = (BlocksPerRequest - 1) * (ChunkCount - 1);
+    const auto splittedWrites = (BlocksPerRequest - 1) * (ChunkCount - 1);
+    const auto expectedTotalRequestCount =
+        writesCount + readsCount + splittedReads + splittedWrites;
+    const auto completeStats = GetStats(expectedTotalRequestCount);
+    const auto& stats = completeStats.SimpleStats;
+
+    EXPECT_EQ(0u, stats.CompFailed);
+    EXPECT_EQ(0u, stats.SubFailed);
+    EXPECT_EQ(expectedTotalRequestCount, stats.Completed);
+    EXPECT_EQ(expectedTotalRequestCount, stats.Dequeued);
+    EXPECT_EQ(expectedTotalRequestCount, stats.Submitted);
+    {
+        const auto& read = stats.Requests[0];
+        EXPECT_EQ(readsCount, read.Count);
+        EXPECT_EQ(readsCount * RequestSize, read.Bytes);
+        EXPECT_EQ(0u, read.Errors);
+        EXPECT_EQ(Unaligned ? readsCount - splittedReads : 0, read.Unaligned);
+    }
+    {
+        const auto& write = stats.Requests[1];
+        EXPECT_EQ(writesCount, write.Count);
+        EXPECT_EQ(writesCount * RequestSize, write.Bytes);
+        EXPECT_EQ(0u, write.Errors);
+        EXPECT_EQ(
+            Unaligned ? writesCount - splittedWrites : 0,
+            write.Unaligned);
     }
 }
 

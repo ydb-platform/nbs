@@ -44,6 +44,8 @@ PEERDIR(
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/endpoints/fs
     cloud/storage/core/libs/endpoints/keyring
+    cloud/storage/core/libs/opentelemetry/iface
+    cloud/storage/core/libs/opentelemetry/impl
     cloud/storage/core/libs/version
 
     contrib/ydb/library/actors/util

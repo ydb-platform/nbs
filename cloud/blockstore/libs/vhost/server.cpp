@@ -446,7 +446,7 @@ public:
             options.BlockSize,
             options.UnalignedRequestsDisabled,
             options.CheckBufferModificationDuringWriting,
-            options.IsReliableMediaKind,
+            options.StorageMediaKind,
             options.MaxZeroBlocksSubRequestSize);
 
         auto endpoint = std::make_shared<TEndpoint>(
@@ -515,15 +515,14 @@ private:
 
         ::NCloud::SetCurrentThreadName(Name);
 
-        TLog& Log = AppCtx.Log;
-
         while (true) {
             int res = RunRequestQueue();
             if (res != -EAGAIN) {
                 if (res < 0) {
-                    ReportVhostQueueRunningError();
-                    STORAGE_ERROR(
-                        "Failed to run vhost request queue. Return code: " << -res);
+                    ReportVhostQueueRunningError(
+                        TStringBuilder()
+                        << "Failed to run vhost request queue. Return code: "
+                        << -res);
                 }
                 break;
             }

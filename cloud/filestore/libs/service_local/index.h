@@ -56,18 +56,15 @@ public:
         return NodeId;
     }
 
-    [[nodiscard]] const TFileHandle& GetNodeFd() const
-    {
-        return NodeFd;
-    }
-
     TIndexNodePtr CreateFile(const TString& name, int flags);
     TIndexNodePtr CreateDirectory(const TString& name, int flags);
     TIndexNodePtr CreateLink(const TIndexNode& parent, const TString& name);
     TIndexNodePtr CreateSymlink(const TString& name, const TString& target);
     TIndexNodePtr CreateSocket(const TString& name, int flags);
 
-    TVector<std::pair<TString, TFileStat>> List(bool ignoreErrors = false);
+    TVector<NLowLevel::TDirEntry> List(bool ignoreErrors);
+    NLowLevel::TListDirResult
+    List(uint64_t offset, size_t entriesLimit, bool ignoreErrors);
 
     void Rename(
         const TString& name,
@@ -84,8 +81,6 @@ public:
 
     TFileHandle OpenHandle(int flags);
     TFileHandle OpenHandle(const TString& name, int flags, int mode);
-    NLowLevel::TOpenOrCreateResult
-    OpenOrCreateHandle(const TString& name, int flags, int mode);
 
     //
     // Attrs

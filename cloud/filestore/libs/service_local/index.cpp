@@ -90,9 +90,21 @@ TString TIndexNode::ReadLink() const
     return NLowLevel::ReadLink(NodeFd);
 }
 
-TVector<std::pair<TString, TFileStat>> TIndexNode::List(bool ignoreErrors)
+TVector<NLowLevel::TDirEntry> TIndexNode::List(bool ignoreErrors)
 {
-    return NLowLevel::ListDirAt(NodeFd, ignoreErrors);
+    auto res = NLowLevel::ListDirAt(
+        NodeFd,
+        0,   // start at beginning of dir
+        0,   // don't limit number of entries
+        ignoreErrors);
+
+    return std::move(res.DirEntries);
+}
+
+NLowLevel::TListDirResult
+TIndexNode::List(uint64_t offset, size_t entriesLimit, bool ignoreErrors)
+{
+    return NLowLevel::ListDirAt(NodeFd, offset, entriesLimit, ignoreErrors);
 }
 
 TFileStat TIndexNode::Stat()
@@ -118,12 +130,6 @@ TFileHandle TIndexNode::OpenHandle(int flags)
 TFileHandle TIndexNode::OpenHandle(const TString& name, int flags, int mode)
 {
     return NLowLevel::OpenAt(NodeFd, name.data(), flags, mode);
-}
-
-NLowLevel::TOpenOrCreateResult
-TIndexNode::OpenOrCreateHandle(const TString& name, int flags, int mode)
-{
-    return NLowLevel::OpenOrCreateAt(NodeFd, name.data(), flags, mode);
 }
 
 void TIndexNode::Access(int mode)
