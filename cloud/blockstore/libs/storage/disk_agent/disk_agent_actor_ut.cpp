@@ -96,7 +96,14 @@ struct TTestNvmeManager
 
     TResultOrError<TString> GetSerialNumber(const TString& path) override
     {
-        auto it = PathToSerial.find(path);
+        TString device;
+        try {
+            device = NFs::ReadLink(path);
+        } catch (...) {
+            return MakeError(E_FAIL, CurrentExceptionMessage());
+        }
+
+        auto it = PathToSerial.find(device);
         if (it == PathToSerial.end()) {
             return MakeError(MAKE_SYSTEM_ERROR(42), path);
         }
@@ -166,6 +173,9 @@ struct TFixture
     : public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
+    const TFsPath DevPath = TempDir.Path() / "dev";
+    const TFsPath PartLabelsPath = TempDir.Path() / "by-partlabel";
+
     const TString CachedSessionsPath =
         TempDir.Path() / "nbs-disk-agent-sessions.txt";
     const TString CachedConfigPath = TempDir.Path() / "nbs-disk-agent.txt";
@@ -175,7 +185,8 @@ struct TFixture
     NMonitoring::TDynamicCountersPtr Counters =
         MakeIntrusive<NMonitoring::TDynamicCounters>();
 
-    TVector<TFsPath> Files;
+    TVector<TFsPath> Devices;
+    TVector<TFsPath> PartLabels;
     const TVector<TString> IDs = {
         "79955ae90189fe8a89ab832a8b0cb57d",   // NVMENBS01
         "657dabaf3d224c9177b00c437716dfb1",   // NVMENBS02
@@ -185,12 +196,16 @@ struct TFixture
 
     const ui64 DefaultFileSize = DefaultDeviceBlockSize * DefaultBlocksCount;
 
-    void PrepareFile(const TString& name, size_t size)
+    void PrepareFile(const TString& label, const TString& dev, size_t size)
     {
-        TFile fileData(TempDir.Path() / name, EOpenModeFlag::CreateNew);
-        fileData.Resize(size);
+        TFile file(DevPath / dev, EOpenModeFlag::CreateNew);
+        file.Resize(size);
 
-        Files.push_back(fileData.GetName());
+        Devices.push_back(file.GetName());
+        PartLabels.push_back(PartLabelsPath / label);
+
+        const bool ok = NFs::SymLink(Devices.back(), PartLabels.back());
+        UNIT_ASSERT(ok);
     }
 
     auto CreateDiskAgentConfig()
@@ -199,7 +214,7 @@ struct TFixture
 
         auto& discovery = *config.MutableStorageDiscoveryConfig();
         auto& path = *discovery.AddPathConfigs();
-        path.SetPathRegExp(TempDir.Path() / "NVMENBS([0-9]{2})");
+        path.SetPathRegExp(PartLabelsPath / "NVMENBS([0-9]{2})");
         auto& pool = *path.AddPoolConfigs();
         pool.SetMaxSize(DefaultFileSize);
 
@@ -276,15 +291,22 @@ struct TFixture
 
         InitCriticalEventsCounter(Counters);
 
-        PrepareFile("NVMENBS01", DefaultFileSize);
-        PrepareFile("NVMENBS02", DefaultFileSize);
-        PrepareFile("NVMENBS03", DefaultFileSize);
-        PrepareFile("NVMENBS04", DefaultFileSize);
+        PartLabelsPath.MkDirs();
+        DevPath.MkDirs();
+
+        PrepareFile("NVMENBS01", "nvme0n1p1", DefaultFileSize);
+        PrepareFile("NVMENBS02", "nvme1n1p1", DefaultFileSize);
+        PrepareFile("NVMENBS03", "nvme2n1p1", DefaultFileSize);
+        PrepareFile("NVMENBS04", "nvme3n1p1", DefaultFileSize);
     }
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {
-        for (const auto& path: Files) {
+        for (const auto& path: PartLabels) {
+            path.DeleteIfExists();
+        }
+
+        for (const auto& path: Devices) {
             path.DeleteIfExists();
         }
     }
@@ -4615,9 +4637,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             NProto::TDiskAgentConfig config;
 
-            for (ui32 i = 0; i != Files.size(); ++i) {
+            for (ui32 i = 0; i != PartLabels.size(); ++i) {
                 auto& device = *config.AddFileDevices();
-                device.SetPath(Files[i]);
+                device.SetPath(PartLabels[i]);
                 device.SetDeviceId(IDs[i]);
                 device.SetBlockSize(4_KB);
             }
@@ -4627,7 +4649,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         // Remove NBSNVME03
-        NFs::Remove(Files[2]);
+        NFs::Remove(PartLabels[2]);
 
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         InitCriticalEventsCounter(counters);
@@ -4659,9 +4681,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 paths.push_back(device.GetPath());
             }
             Sort(paths);
-            UNIT_ASSERT_VALUES_EQUAL(Files[0], paths[0]);
-            UNIT_ASSERT_VALUES_EQUAL(Files[1], paths[1]);
-            UNIT_ASSERT_VALUES_EQUAL(Files[3], paths[2]);
+            UNIT_ASSERT_VALUES_EQUAL(PartLabels[0], paths[0]);
+            UNIT_ASSERT_VALUES_EQUAL(PartLabels[1], paths[1]);
+            UNIT_ASSERT_VALUES_EQUAL(PartLabels[3], paths[2]);
         }
     }
 
@@ -4671,15 +4693,15 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             NProto::TDiskAgentConfig config;
 
-            for (ui32 i = 0; i != Files.size(); ++i) {
+            for (ui32 i = 0; i != PartLabels.size(); ++i) {
                 auto& device = *config.AddFileDevices();
-                device.SetPath(Files[i]);
+                device.SetPath(PartLabels[i]);
                 device.SetDeviceId(IDs[i]);
                 device.SetBlockSize(4_KB);
             }
 
             // NVMENBS02 has became too big to be discovered
-            TFile file{Files[1], EOpenModeFlag::CreateAlways};
+            TFile file{PartLabels[1], EOpenModeFlag::CreateAlways};
             file.Resize(DefaultFileSize * 2);
 
             auto error = SaveDiskAgentConfig(CachedConfigPath, config);
@@ -4705,12 +4727,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         // doesn't match the cached one"
         UNIT_ASSERT_VALUES_EQUAL(2, mismatch->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            Files.size(),
+            PartLabels.size(),
             env.DiskRegistryState->Devices.size());
 
         // check the config cache
         {
-            TVector<TString> expected(Files.begin(), Files.end());
+            TVector<TString> expected(PartLabels.begin(), PartLabels.end());
             Sort(expected);
 
             auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
@@ -4735,21 +4757,15 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             NProto::TDiskAgentConfig config;
 
-            for (ui32 i = 0; i != Files.size(); ++i) {
+            for (ui32 i = 0; i != PartLabels.size(); ++i) {
                 auto& device = *config.AddFileDevices();
-                device.SetPath(Files[i]);
+                device.SetPath(PartLabels[i]);
                 device.SetDeviceId(IDs[i]);
                 device.SetBlockSize(4_KB);
             }
 
-            // Replace NVMENBS02 with a broken symlink
-            NFs::Remove(Files[1]);
-            TFile nvme{
-                TempDir.Path() / "nvme1n1p1",
-                EOpenModeFlag::CreateAlways};
-            NFs::SymLink(nvme.GetName(), Files[1]);
-            nvme.Close();
-            NFs::Remove(nvme.GetName());
+            // Breaking NVMENBS02
+            NFs::Remove(Devices[1]);
 
             auto error = SaveDiskAgentConfig(CachedConfigPath, config);
             UNIT_ASSERT_C(!HasError(error), FormatError(error));
@@ -4774,12 +4790,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         // match the cached one"
         UNIT_ASSERT_VALUES_EQUAL(2, mismatch->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            Files.size(),
+            PartLabels.size(),
             env.DiskRegistryState->Devices.size());
 
         // check the config cache
         {
-            TVector<TString> expected(Files.begin(), Files.end());
+            TVector<TString> expected(PartLabels.begin(), PartLabels.end());
             Sort(expected);
 
             auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
@@ -5371,19 +5387,19 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
     Y_UNIT_TEST_F(ShouldDisableDevicesAfterRegistration, TFixture)
     {
         TVector<std::pair<TString, TString>> pathToSerial{
-            {Files[0], "W"},   // NVMENBS01
-            {Files[1], "X"},   // NVMENBS02
-            {Files[2], "Y"},   // NVMENBS03
-            {Files[3], "Z"},   // NVMENBS04
+            {Devices[0], "W"},   // nvme0n1
+            {Devices[1], "X"},   // nvme1n1
+            {Devices[2], "Y"},   // nvme2n1
+            {Devices[3], "Z"},   // nvme3n1
         };
 
         // build the config cache
         {
             NProto::TDiskAgentConfig config;
 
-            for (ui32 i = 0; i != Files.size(); ++i) {
+            for (ui32 i = 0; i != PartLabels.size(); ++i) {
                 auto& file = *config.AddFileDevices();
-                file.SetPath(Files[i]);
+                file.SetPath(PartLabels[i]);
                 file.SetSerialNumber(pathToSerial[i].second);
                 file.SetDeviceId(IDs[i]);
                 file.SetBlockSize(4_KB);
