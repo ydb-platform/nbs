@@ -23,7 +23,7 @@ private:
     const bool Value;
     const TString& FileSystemId;
     // Original request
-    const TRequestInfoPtr OriginalRequestInfo;
+    const TRequestInfoPtr RequestInfo;
     //const TEvService::TSetNodeXAttrMethod::TRequest::TPtr OriginalRequest;
 
 public:
@@ -31,7 +31,6 @@ public:
         bool value,
         const TString& fileSystemId,
         TRequestInfoPtr originalRequestInfo
-    //    const TEvService::TSetNodeXAttrMethod::TRequest::TPtr& originalRequest
     );
 
     void Bootstrap(const TActorContext& ctx);
@@ -49,10 +48,10 @@ private:
 TSetHasXAttrsActor::TSetHasXAttrsActor(
         bool value,
         const TString& fileSystemId,
-        TRequestInfoPtr originalRequestInfo)
+        TRequestInfoPtr RequestInfo)
     : Value(value)
     , FileSystemId(fileSystemId)
-    , OriginalRequestInfo(originalRequestInfo)
+    , RequestInfo(RequestInfo)
 {}
 
 void TSetHasXAttrsActor::Bootstrap(const TActorContext& ctx)
@@ -88,11 +87,13 @@ void TSetHasXAttrsActor::HandleSetHasXAttrsResponse(
         "TSetHasXAttrsActor::HandleSetHasXAttrsResponse");
 
     // We always reply E_REJECTED to the original request.
-    // When index tablet restarts and session is recreated we stop sending this message 
+    // When index tablet restarts and session is recreated we stop sending this
+    // message
     auto response =
-        std::make_unique<TEvService::TSetNodeXAttrMethod::TResponse>(MakeError(E_REJECTED));
-    NCloud::Reply(ctx, *OriginalRequestInfo, std::move(response));
-    
+        std::make_unique<TEvService::TSetNodeXAttrMethod::TResponse>(
+            MakeError(E_REJECTED));
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+
     IActor::Die(ctx);
 }
 
@@ -256,15 +257,20 @@ void TStorageServiceActor::HandleGetNodeXAttr(
         return;
     }
 
-    // If there are no extended attributes in the file system we don't create
-    // a request for them
+    // If there are no extended attributes in the file system we don't
+    // forward corresponding requests to the tablet and reply from the service
+    // actor
     if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
         auto response =
             std::make_unique<TEvService::TGetNodeXAttrMethod::TResponse>(
                 ErrorAttributeDoesNotExist(
                     TEvService::TGetNodeXAttrMethod::Name));
 
-        ReplyToXAttrRequest<TEvService::TGetNodeXAttrMethod>(ctx, ev, std::move(response), session);
+        ReplyToXAttrRequest<TEvService::TGetNodeXAttrMethod>(
+            ctx,
+            ev,
+            std::move(response),
+            session);
 
         return;
     }
@@ -290,7 +296,11 @@ void TStorageServiceActor::HandleListNodeXAttr(
         auto response =
             std::make_unique<TEvService::TListNodeXAttrMethod::TResponse>();
 
-        ReplyToXAttrRequest<TEvService::TListNodeXAttrMethod>(ctx, ev, std::move(response), session);
+        ReplyToXAttrRequest<TEvService::TListNodeXAttrMethod>(
+            ctx,
+            ev,
+            std::move(response),
+            session);
 
         return;
     }
@@ -312,8 +322,20 @@ void TStorageServiceActor::HandleSetNodeXAttr(
     if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
         // Send TSetHasXAttrsRequest to the index tablet
         auto* msg = ev->Get();
-        auto requestInfo = CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-        auto setHasXAttrsActor = std::make_unique<TSetHasXAttrsActor>(true, session->FileStore.GetFileSystemId(), requestInfo);
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s][%lu] The first XAttr in the filesystem is set. Sending "
+            "SetHasXAttrs to the index tablet.",
+            session->SessionId.Quote().c_str(),
+            GetSessionSeqNo(msg->Record));
+
+        auto requestInfo =
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+        auto setHasXAttrsActor = std::make_unique<TSetHasXAttrsActor>(
+            true,
+            session->FileStore.GetFileSystemId(),
+            requestInfo);
         NCloud::Register(ctx, std::move(setHasXAttrsActor));
     } else {
         // Forward SetNodeXAttr to a shard only if HasXAttrs flag is set in the

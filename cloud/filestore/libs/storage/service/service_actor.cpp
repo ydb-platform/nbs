@@ -3,8 +3,6 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 
-#include <cloud/filestore/libs/storage/api/tablet.h>
-
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -160,7 +158,7 @@ bool TStorageServiceActor::HandleRequests(STFUNC_SIG)
 STFUNC(TStorageServiceActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-       default:
+        default:
             if (!HandleRequests(ev)) {
                 HandleUnexpectedEvent(
                     ev,
