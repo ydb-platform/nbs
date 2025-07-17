@@ -626,10 +626,13 @@ message TStorageConfig
     // data.
     optional bool AllowHandlelessIO = 435;
 
-    // If HasXAttrs flag is allowed, IndexTablet klnows whether at least one
-    // XAttr exists in thefile system.
-    // If the file system doesn't have XAttrs,
-    // TServiceActor responds fast to XAttrs requests without sending
-    // actual requests to the shards.
+    // This flag enables tracking of XAttrs.
+    // If it's true and a new filesystem is created, 
+    // TFileSystemStats::HasXAttrs is set to 
+    // EHasXAttrs::False and changes to EHasXAttrs::True 
+    // when the first XAttr is set.
+    // If it's false, filesystem behaives as if it has XAttrs.
+    // Knowledge about XAttrs presence allows to reply early 
+    // to GetNodeXAttr and ListNodeXAttr queries.
     optional bool HasXAttrsFlagAllowed = 436;
 }
