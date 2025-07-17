@@ -9,7 +9,6 @@ Flush
 GetNodeAttr
 GetNodeXAttr
 ListNodes
-ReadData
 ReadLink
 RenameNode
 SetNodeAttr
