@@ -7,6 +7,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TPartitionStatisticsCounters
 {
     ui64 DiffSysCpuConsumption;

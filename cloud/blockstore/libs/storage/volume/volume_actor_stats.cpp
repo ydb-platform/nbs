@@ -728,18 +728,19 @@ void TVolumeActor::CleanUpHistory(
     ui64 cookie,
     TCallContextPtr callContext)
 {
-    if (State) {
-        State->AccessMountHistory().CleanupHistoryIfNeeded(
-            ctx.Now() - Config->GetVolumeHistoryDuration());
-
-        auto requestInfo = CreateRequestInfo(sender, cookie, callContext);
-
-        ExecuteTx<TCleanupHistory>(
-            ctx,
-            std::move(requestInfo),
-            ctx.Now() - Config->GetVolumeHistoryDuration(),
-            Config->GetVolumeHistoryCleanupItemCount());
+    if (!State) {
+        return;
     }
+    State->AccessMountHistory().CleanupHistoryIfNeeded(
+        ctx.Now() - Config->GetVolumeHistoryDuration());
+
+    auto requestInfo = CreateRequestInfo(sender, cookie, callContext);
+
+    ExecuteTx<TCleanupHistory>(
+        ctx,
+        std::move(requestInfo),
+        ctx.Now() - Config->GetVolumeHistoryDuration(),
+        Config->GetVolumeHistoryCleanupItemCount());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
