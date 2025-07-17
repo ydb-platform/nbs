@@ -40,6 +40,7 @@ private:
     const std::unique_ptr<TRequest> Request;
     const ui32 GroupId;
     TChildLogTitle LogTitle;
+    TTransactionTimeTracker* const TransactionTimeTracker;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -57,7 +58,8 @@ public:
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui32 groupId,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        TTransactionTimeTracker* transactionTimeTracker);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -98,7 +100,8 @@ TWriteBlobActor::TWriteBlobActor(
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui32 groupId,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        TTransactionTimeTracker* transactionTimeTracker)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -112,6 +115,7 @@ TWriteBlobActor::TWriteBlobActor(
     , Request(std::move(request))
     , GroupId(groupId)
     , LogTitle(std::move(logTitle))
+    , TransactionTimeTracker(transactionTimeTracker)
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -184,6 +188,13 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 
     RequestSent = ctx.Now();
 
+    if (TransactionTimeTracker) {
+        TransactionTimeTracker->OnStarted(
+            RequestInfo->CallContext->RequestId,
+            TStringBuilder() << "WriteBlob_Group" << GroupId,
+            GetCycleCount());
+    }
+
     SendToBSProxy(
         ctx,
         Request->Proxy,
@@ -248,6 +259,12 @@ void TWriteBlobActor::HandlePutResult(
     const TActorContext& ctx)
 {
     ResponseReceived = ctx.Now();
+
+    if (TransactionTimeTracker) {
+        TransactionTimeTracker->OnFinished(
+            RequestInfo->CallContext->RequestId,
+            GetCycleCount());
+    }
 
     const auto* msg = ev->Get();
 
@@ -404,7 +421,8 @@ void TPartitionActor::HandleWriteBlob(
                 *DiagnosticsConfig,
                 PartitionConfig.GetStorageMediaKind()),
             groupId,
-            LogTitle.GetChild(GetCycleCount())));
+            LogTitle.GetChild(GetCycleCount()),
+            &TransactionTimeTracker));
 
     ProcessIOQueue(ctx, channel);
 }

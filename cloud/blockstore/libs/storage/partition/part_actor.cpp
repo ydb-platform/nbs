@@ -40,12 +40,35 @@ const TPartitionActor::TStateInfo TPartitionActor::States[STATE_MAX] = {
     { "Zombie", (IActor::TReceiveFunc)&TPartitionActor::StateZombie },
 };
 
-const TString PartitionTransactions[] = {
-#define TRANSACTION_NAME(name, ...) #name,
+namespace {
+
+TVector<TString> GetTransactionAndOperationNames(
+    const NKikimr::TTabletStorageInfo& storageInfo)
+{
+    TVector<TString> names;
+
+#define TRANSACTION_NAME(name, ...) names.push_back(#name);
     BLOCKSTORE_PARTITION_TRANSACTIONS(TRANSACTION_NAME)
 #undef TRANSACTION_NAME
-        "Total",
-};
+    names.push_back("Total");
+
+    const auto& channels = storageInfo.Channels;
+    for (const auto& channel: channels) {
+        for (const auto& group: channel.History) {
+            names.push_back(
+                TStringBuilder() << "WriteBlob_Group" << group.GroupID);
+            // names.push_back(TStringBuilder() << "ReadBlob_Group" <<
+            // group.GroupID);
+        }
+    }
+
+    Sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+
+    return names;
+}
+
+}   // namespace
 
 TPartitionActor::TPartitionActor(
         const TActorId& owner,
@@ -79,7 +102,7 @@ TPartitionActor::TPartitionActor(
           StartTime,
           partitionIndex,
           siblingCount)
-    , TransactionTimeTracker(PartitionTransactions)
+    , TransactionTimeTracker()
 {}
 
 TPartitionActor::~TPartitionActor()
@@ -343,6 +366,10 @@ void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
         TBlockStoreComponents::PARTITION,
         "%s Activated executor",
         LogTitle.GetWithTime().c_str());
+
+    Y_ABORT_UNLESS(Info(), "Storage info must be initialized here");
+    auto names = GetTransactionAndOperationNames(*Info());
+    TransactionTimeTracker.Init(names);
 
     BecomeAux(ctx, STATE_INIT);
 

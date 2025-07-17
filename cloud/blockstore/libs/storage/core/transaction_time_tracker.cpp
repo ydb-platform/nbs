@@ -102,7 +102,9 @@ void TTransactionTimeTracker::OnFinished(ui64 transactionId, ui64 finishTime)
     Inflight.erase(transactionId);
 }
 
-TString TTransactionTimeTracker::GetStatJson(ui64 nowCycles) const
+TString TTransactionTimeTracker::GetStatJson(
+    ui64 nowCycles,
+    std::function<bool(const TString&)> filter) const
 {
     NJson::TJsonValue allStat(NJson::EJsonValueType::JSON_MAP);
 
@@ -110,6 +112,9 @@ TString TTransactionTimeTracker::GetStatJson(ui64 nowCycles) const
 
     // Build finished transaction counters.
     for (const auto& [key, histogram]: Histograms) {
+        if (filter && !filter(key.TransactionName)) {
+            continue;
+        }
         size_t total = 0;
         const auto htmlPrefix = key.GetHtmlPrefix();
         for (size_t i = 0; i < TRequestUsTimeBuckets::BUCKETS_COUNT; ++i) {
@@ -133,6 +138,9 @@ TString TTransactionTimeTracker::GetStatJson(ui64 nowCycles) const
     TMap<TString, size_t> inflight;
 
     for (const auto& [transactionId, transaction]: Inflight) {
+        if (filter && !filter(transaction.TransactionName)) {
+            continue;
+        }
         const auto& timeBucketName = GetTimeBucketName(
             CyclesToDurationSafe(nowCycles - transaction.StartTime));
 
@@ -154,11 +162,16 @@ TString TTransactionTimeTracker::GetStatJson(ui64 nowCycles) const
 }
 
 TVector<TTransactionTimeTracker::TBucketInfo>
-TTransactionTimeTracker::GetTransactionBuckets() const
+TTransactionTimeTracker::GetTransactionBuckets(
+    std::function<bool(const TString&)> filter) const
 {
     TVector<TBucketInfo> result;
 
     for (const auto& transaction: TransactionTypes) {
+        if (filter && !filter(transaction)) {
+            continue;
+        }
+
         TBucketInfo bucket{
             .TransactionName = transaction,
             .Key = transaction,
@@ -194,6 +207,17 @@ TTransactionTimeTracker::GetTimeBuckets() const
         .Description = "Total",
         .Tooltip = ""});
     return result;
+}
+
+void TTransactionTimeTracker::Init(std::span<const TString> transactionTypes)
+{
+    TransactionTypes.assign(transactionTypes.begin(), transactionTypes.end());
+    Histograms.clear();
+    for (const auto& transaction: TransactionTypes) {
+        auto key =
+            TKey{.TransactionName = transaction, .Status = EStatus::Inflight};
+        Histograms[key];
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -184,6 +184,10 @@ void DumpLatency(
     const TTransactionTimeTracker& transactionTimeTracker,
     size_t columnCount);
 
+void DumpGroupLatency(
+    IOutputStream& out,
+    const TTransactionTimeTracker& timeTracker);
+
 TCgiParameters GatherHttpParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
 TCgiParameters GetHttpMethodParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
 HTTP_METHOD GetHttpMethodType(const NActors::NMon::TEvRemoteHttpInfo& msg);

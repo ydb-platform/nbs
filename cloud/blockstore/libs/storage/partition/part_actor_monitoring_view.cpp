@@ -323,11 +323,30 @@ void TPartitionActor::HandleHttpInfo_GetTransactionsLatency(
 {
     Y_UNUSED(params);
 
+    auto json = TransactionTimeTracker.GetStatJson(
+        GetCycleCount(),
+        [](const TString& name)
+        { return !name.StartsWith("WriteBlob_Group"); });
     NCloud::Reply(
         ctx,
         *requestInfo,
-        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
-            TransactionTimeTracker.GetStatJson(GetCycleCount())));
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(json));
+}
+
+void TPartitionActor::HandleHttpInfo_GetGroupLatencies(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    auto json = TransactionTimeTracker.GetStatJson(
+        GetCycleCount(),
+        [](const TString& name) { return name.StartsWith("WriteBlob_Group"); });
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(json));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
