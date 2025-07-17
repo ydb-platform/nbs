@@ -149,8 +149,11 @@ void TReadBlobActor::ReplyError(
         DeadlineSeen = true;
     }
 
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + description);
-    ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+    ReplyAndDie(
+        ctx,
+        std::make_unique<TResponse>(MakeError(
+            E_REJECTED,
+            "TEvBlobStorage::TEvGet failed: " + description)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -261,10 +264,11 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
     } else {
-        auto error = MakeError(
-            E_CANCELLED,
-            "failed to acquire sglist in ReadBlobActor");
-        ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TResponse>(MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in ReadBlobActor")));
         return;
     }
 
