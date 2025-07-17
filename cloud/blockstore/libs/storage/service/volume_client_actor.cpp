@@ -292,9 +292,8 @@ void TVolumeClientActor::HandleRequest(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "%s Creating pipe to volume %d from volume client",
-            LogTitle.GetWithTime().c_str(),
-            TabletId);
+            "%s Creating pipe from volume client",
+            LogTitle.GetWithTime().c_str());
 
         PipeClient = ctx.Register(CreateClient(SelfId(), TabletId, ClientConfig));
         ++Generation;
