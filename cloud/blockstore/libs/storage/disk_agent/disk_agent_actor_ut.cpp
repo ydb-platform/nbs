@@ -4665,6 +4665,139 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
     }
 
+    Y_UNIT_TEST_F(ShouldReportLostDevices, TFixture)
+    {
+        // build the config cache
+        {
+            NProto::TDiskAgentConfig config;
+
+            for (ui32 i = 0; i != Files.size(); ++i) {
+                auto& device = *config.AddFileDevices();
+                device.SetPath(Files[i]);
+                device.SetDeviceId(IDs[i]);
+                device.SetBlockSize(4_KB);
+            }
+
+            // NVMENBS02 has became too big to be discovered
+            TFile file{Files[1], EOpenModeFlag::CreateAlways};
+            file.Resize(DefaultFileSize * 2);
+
+            auto error = SaveDiskAgentConfig(CachedConfigPath, config);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto mismatch = counters->GetCounter(
+            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
+            true);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        // "unable to find the appropriate pool for NVMENBS02" + "Current config
+        // doesn't match the cached one"
+        UNIT_ASSERT_VALUES_EQUAL(2, mismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            Files.size(),
+            env.DiskRegistryState->Devices.size());
+
+        // check the config cache
+        {
+            TVector<TString> expected(Files.begin(), Files.end());
+            Sort(expected);
+
+            auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), config.FileDevicesSize());
+
+            TVector<TString> paths;
+            for (const auto& device: config.GetFileDevices()) {
+                paths.push_back(device.GetPath());
+            }
+            Sort(paths);
+
+            for (ui32 i = 0; i != expected.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(expected[i], paths[i]);
+            }
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldReportBrokenSymLink, TFixture)
+    {
+        // build the config cache
+        {
+            NProto::TDiskAgentConfig config;
+
+            for (ui32 i = 0; i != Files.size(); ++i) {
+                auto& device = *config.AddFileDevices();
+                device.SetPath(Files[i]);
+                device.SetDeviceId(IDs[i]);
+                device.SetBlockSize(4_KB);
+            }
+
+            // Replace NVMENBS02 with a broken symlink
+            NFs::Remove(Files[1]);
+            TFile nvme{
+                TempDir.Path() / "nvme1n1p1",
+                EOpenModeFlag::CreateAlways};
+            NFs::SymLink(nvme.GetName(), Files[1]);
+            nvme.Close();
+            NFs::Remove(nvme.GetName());
+
+            auto error = SaveDiskAgentConfig(CachedConfigPath, config);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto mismatch = counters->GetCounter(
+            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
+            true);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        // "NVMENBS02 is not a file or a block device" + "Current config doesn't
+        // match the cached one"
+        UNIT_ASSERT_VALUES_EQUAL(2, mismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            Files.size(),
+            env.DiskRegistryState->Devices.size());
+
+        // check the config cache
+        {
+            TVector<TString> expected(Files.begin(), Files.end());
+            Sort(expected);
+
+            auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), config.FileDevicesSize());
+
+            TVector<TString> paths;
+            for (const auto& device: config.GetFileDevices()) {
+                paths.push_back(device.GetPath());
+            }
+            Sort(paths);
+
+            for (ui32 i = 0; i != expected.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(expected[i], paths[i]);
+            }
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldCacheSessions, TFixture)
     {
         auto cacheRestoreError = Counters->GetCounter(
