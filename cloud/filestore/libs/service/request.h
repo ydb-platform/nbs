@@ -36,8 +36,6 @@ namespace NCloud::NFileStore {
     xxx(DestroyCheckpoint,                  __VA_ARGS__)                       \
                                                                                \
     xxx(ExecuteAction,                      __VA_ARGS__)                       \
-    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
-                                                                               \
 // FILESTORE_SERVICE_METHODS
 
 #define FILESTORE_DATA_METHODS(xxx, ...)                                       \
@@ -88,6 +86,7 @@ namespace NCloud::NFileStore {
     xxx(Ping,                               __VA_ARGS__)                       \
     xxx(PingSession,                        __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
+    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_CONTROL_SERVICE
 
 #define FILESTORE_SERVICE(xxx, ...)                                            \
@@ -96,6 +95,7 @@ namespace NCloud::NFileStore {
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
     FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
     FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
+    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_SERVICE
 
 #define FILESTORE_REMOTE_SERVICE(xxx, ...)                                     \
@@ -103,6 +103,7 @@ namespace NCloud::NFileStore {
     xxx(PingSession,                        __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
     FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
+    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_SERVICE
 
 #define FILESTORE_ENDPOINT_METHODS(xxx, ...)                                   \
@@ -127,6 +128,7 @@ namespace NCloud::NFileStore {
     FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
     xxx(GetSessionEventsStream,             __VA_ARGS__)                       \
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
+    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -138,6 +140,7 @@ namespace NCloud::NFileStore {
     FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
     FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
+    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_PROTO_REQUESTS
 
 #define FILESTORE_DECLARE_REQUEST(name, ...) name,
