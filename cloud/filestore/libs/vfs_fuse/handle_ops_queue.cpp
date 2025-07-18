@@ -5,8 +5,9 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
-    : RequestsToProcess(filePath, size)
-{}
+{
+    CheckError(RequestsToProcess.Init(filePath, size));
+}
 
 THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
     ui64 nodeId,

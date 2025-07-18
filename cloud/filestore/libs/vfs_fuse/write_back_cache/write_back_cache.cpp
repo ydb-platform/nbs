@@ -78,17 +78,15 @@ public:
             IFileStorePtr session,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
-            const TString& filePath,
-            ui32 capacityBytes,
+            TFileRingBuffer fileRingBuffer,
             TDuration automaticFlushPeriod)
         : Session(CreateSessionSequencer(std::move(session)))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , AutomaticFlushPeriod(automaticFlushPeriod)
-        , WriteDataRequestsQueue(filePath, capacityBytes)
+        , WriteDataRequestsQueue(std::move(fileRingBuffer))
     {
-        // should fit 1 MiB of data plus some headers (assume 1 KiB is enough)
-        Y_ABORT_UNLESS(capacityBytes >= 1024*1024 + 1024);
+        Y_ABORT_UNLESS(WriteDataRequestsQueue);
 
         WriteDataRequestsQueue.Visit([&] (auto, auto serializedRequest) {
             NProto::TWriteDataRequest parsedRequest;
@@ -627,23 +625,33 @@ public:
 
 TWriteBackCache::TWriteBackCache() = default;
 
-TWriteBackCache::TWriteBackCache(
+NProto::TError TWriteBackCache::Init(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
         const TString& filePath,
         ui32 capacityBytes,
         TDuration automaticFlushPeriod)
-    : Impl(
-        new TImpl(
-            session,
-            scheduler,
-            timer,
-            filePath,
-            capacityBytes,
-            automaticFlushPeriod))
 {
+    // should fit 1 MiB of data plus some headers (assume 1 KiB is enough)
+    Y_ABORT_UNLESS(capacityBytes >= 1024*1024 + 1024);
+
+    TFileRingBuffer fileRingBuffer;
+    auto error = fileRingBuffer.Init(filePath, capacityBytes);
+    if (HasError(error)) {
+        return error;
+    }
+
+    Impl = std::make_unique<TImpl>(
+        std::move(session),
+        std::move(scheduler),
+        timer,
+        std::move(fileRingBuffer),
+        automaticFlushPeriod);
+
     Impl->ScheduleAutomaticFlushIfNeeded();
+
+    return {};
 }
 
 TWriteBackCache::~TWriteBackCache() = default;

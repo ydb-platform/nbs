@@ -512,13 +512,21 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFileRingBuffer::TFileRingBuffer(
-        const TString& filePath,
-        ui64 capacity)
-    : Impl(new TImpl(filePath, capacity))
-{}
-
+TFileRingBuffer::TFileRingBuffer() = default;
+TFileRingBuffer::TFileRingBuffer(TFileRingBuffer&&) noexcept = default;
 TFileRingBuffer::~TFileRingBuffer() = default;
+
+NProto::TError TFileRingBuffer::Init(const TString& filePath, ui64 capacity)
+{
+    try
+    {
+        Impl = std::make_unique<TImpl>(filePath, capacity);
+        return {};
+    }
+    catch (yexception &ex) {
+        return MakeError(E_FAIL, ex.what());
+    }
+}
 
 bool TFileRingBuffer::PushBack(TStringBuf data)
 {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "error.h"
+
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
@@ -26,8 +28,11 @@ private:
     std::unique_ptr<TImpl> Impl;
 
 public:
-    TFileRingBuffer(const TString& filePath, ui64 capacity);
+    TFileRingBuffer();
+    TFileRingBuffer(TFileRingBuffer&&) noexcept;
     ~TFileRingBuffer();
+
+    NProto::TError Init(const TString& filePath, ui64 capacity);
 
 public:
     bool PushBack(TStringBuf data);

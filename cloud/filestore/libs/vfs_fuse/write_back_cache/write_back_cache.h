@@ -29,7 +29,7 @@ private:
 public:
     TWriteBackCache();
 
-    TWriteBackCache(
+    NProto::TError Init(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,

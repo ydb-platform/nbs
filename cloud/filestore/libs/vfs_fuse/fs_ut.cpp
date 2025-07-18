@@ -2240,8 +2240,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
         UNIT_ASSERT(!HasError(error));
 
+        // Failure to initialize cache is not a fatal error.
+        // Fallback to non-using cache should happen but the error should
+        // be reported.
         error = bootstrap2.Start();
-        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT(!HasError(error));
 
         auto writeBackCacheError =
             bootstrap2.Counters->GetSubgroup("component", "fs_ut")

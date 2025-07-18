@@ -893,40 +893,46 @@ private:
 
             TWriteBackCache writeBackCache;
             if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
+                NProto::TError error;
+
                 if (Config->GetWriteBackCachePath()) {
                     auto path = TFsPath(Config->GetWriteBackCachePath()) /
                         FileSystemConfig->GetFileSystemId() /
                         SessionId;
 
-                    auto error = CreateAndLockFile(
+                    error = CreateAndLockFile(
                         path,
                         WriteBackCacheFileName,
                         WriteBackCacheFileLock);
 
-                    if (HasError(error)) {
-                        ReportWriteBackCacheCreatingOrDeletingError(
-                            error.GetMessage());
-                        return error;
+                    if (!HasError(error)) {
+                        error = writeBackCache.Init(
+                            Session,
+                            Scheduler,
+                            Timer,
+                            path / WriteBackCacheFileName,
+                            Config->GetWriteBackCacheCapacity(),
+                            Config->GetWriteBackCacheAutomaticFlushPeriod());
                     }
-
-                    writeBackCache = TWriteBackCache(
-                        Session,
-                        Scheduler,
-                        Timer,
-                        path / WriteBackCacheFileName,
-                        Config->GetWriteBackCacheCapacity(),
-                        Config->GetWriteBackCacheAutomaticFlushPeriod());
-                    WriteBackCacheInitialized = true;
                 } else {
-                    TString msg =
-                        "Error initializing WriteBackCache: "
-                        "WriteBackCachePath is not set";
+                    error = MakeError(E_FAIL, "WriteBackCachePath is not set");
+                }
+
+                if (HasError(error)) {
                     STORAGE_WARN(
-                        "[f:%s][c:%s] %s",
+                        "[f:%s][c:%s] Error initializing WriteBackCache: %s",
                         Config->GetFileSystemId().Quote().c_str(),
                         Config->GetClientId().Quote().c_str(),
-                        msg.c_str());
-                    ReportWriteBackCacheCreatingOrDeletingError(msg);
+                        error.GetMessage().c_str());
+
+                    // Failure to initialize cache is not a fatal error.
+                    // Fallback to non-using cache should happen but the error
+                    // should be reported.
+                    ReportWriteBackCacheCreatingOrDeletingError(
+                        error.GetMessage());
+
+                } else {
+                    WriteBackCacheInitialized = true;
                 }
             }
 
