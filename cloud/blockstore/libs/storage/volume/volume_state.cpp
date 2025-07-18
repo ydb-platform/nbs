@@ -215,7 +215,7 @@ bool TVolumeState::HasLaggingInReplica(ui32 replicaIndex) const
     return false;
 }
 
-THashSet<TString> TVolumeState::GetLaggingDevices() const
+THashSet<TString> TVolumeState::GetLaggingDeviceIds() const
 {
     THashSet<TString> laggingDevices;
     for (const auto& agent: Meta.GetLaggingAgentsInfo().GetAgents()) {
@@ -224,6 +224,29 @@ THashSet<TString> TVolumeState::GetLaggingDevices() const
         }
     }
     return laggingDevices;
+}
+
+void TVolumeState::FillOutdatedDevices() {
+    OutdatedDevices.clear();
+    for (const auto& agent: Meta.GetLaggingAgentsInfo().GetAgents()) {
+        for (const auto& device: agent.GetDevices()) {
+            OutdatedDevices.push_back(device);
+        }
+    }
+}
+
+[[nodiscard]] THashSet<TString> TVolumeState::GetOutdatedDeviceIds() const
+{
+    THashSet<TString> outdatedDeviceIds;
+    for (const auto& device: OutdatedDevices) {
+        outdatedDeviceIds.insert(device.GetDeviceUUID());
+    }
+    return outdatedDeviceIds;
+}
+
+const TVector<NProto::TLaggingDevice>& TVolumeState::GetOutdatedDevices() const
+{
+    return OutdatedDevices;
 }
 
 void TVolumeState::UpdateLaggingAgentMigrationState(
