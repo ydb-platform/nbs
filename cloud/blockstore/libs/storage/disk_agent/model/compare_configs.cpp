@@ -1,6 +1,7 @@
 #include "compare_configs.h"
 
 #include <util/string/builder.h>
+#include <util/system/fs.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -43,25 +44,21 @@ NProto::TError CompareConfigs(
     const TVector<NProto::TFileDeviceArgs>& expectedConfig,
     const TVector<NProto::TFileDeviceArgs>& currentConfig)
 {
-    auto byId = [] (const auto& lhs, const auto& rhs) {
-        return lhs.GetDeviceId() < rhs.GetDeviceId();
+    auto byId = [] (const auto& device) -> TStringBuf {
+        return device.GetDeviceId();
     };
 
-    if (!std::is_sorted(
-        expectedConfig.begin(),
-        expectedConfig.end(),
-        byId))
-    {
+    if (!IsSortedBy(expectedConfig,  byId)) {
         return MakeError(E_ARGUMENT, "expected config is not sorted");
     }
 
-    if (!std::is_sorted(
-        currentConfig.begin(),
-        currentConfig.end(),
-        byId))
-    {
+    if (!IsSortedBy(currentConfig,  byId)) {
         return MakeError(E_ARGUMENT, "current config is not sorted");
     }
+
+    auto pathExists = [&] (const auto& device) {
+        return NFs::Exists(device.GetPath());
+    };
 
     size_t i = 0;
     size_t j = 0;
@@ -90,13 +87,24 @@ NProto::TError CompareConfigs(
             continue;
         }
 
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "Device " << expected << " has been lost");
+        if (pathExists(expected)) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Device " << expected << " has been lost");
+        }
+
+        ++i;
     }
 
-    if (i != expectedConfig.size()) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "Device " << expectedConfig[i] << " has been lost");
+    const auto* lostDevice = FindIfPtr(
+        expectedConfig.begin() + i,
+        expectedConfig.end(),
+        pathExists);
+
+    if (lostDevice) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Device " << *lostDevice << " has been lost");
     }
 
     return {};
