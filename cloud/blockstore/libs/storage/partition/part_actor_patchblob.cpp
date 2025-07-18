@@ -186,8 +186,11 @@ void TPatchBlobActor::ReplyError(
         description.c_str(),
         response.Print(false).c_str());
 
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvPatch failed: " + description);
-    ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+    ReplyAndDie(
+        ctx,
+        std::make_unique<TResponse>(MakeError(
+            E_REJECTED,
+            "TEvBlobStorage::TEvPatch failed: " + description)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
