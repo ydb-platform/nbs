@@ -375,11 +375,13 @@ runs:
           cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
           echo "::endgroup::"
 
-          echo "::group::cleaning-artifacts-log-dir"
-          find "$ARTIFACTS_DIR/logs/" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
-          find "$ARTIFACTS_DIR/logs/" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
-          echo "::endgroup::"
-          
+          if [ -d "$ARTIFACTS_DIR/logs/" ]; then
+            echo "::group::cleaning-artifacts-log-dir"
+            find "$ARTIFACTS_DIR/logs/" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
+            find "$ARTIFACTS_DIR/logs/" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
+            echo "::endgroup::"
+          fi
+
           echo "::group::s3-sync"
           sudo -E -H -u github s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
           echo "::endgroup::"
