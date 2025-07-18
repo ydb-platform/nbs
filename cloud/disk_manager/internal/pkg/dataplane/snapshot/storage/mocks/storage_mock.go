@@ -9,7 +9,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
+	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -246,10 +246,10 @@ func (s *StorageMock) GetIncremental(
 
 func (s *StorageMock) ListSnapshots(
 	ctx context.Context,
-) (task_storage.StringSet, error) {
+) (tasks_common.StringSet, error) {
 
 	args := s.Called(ctx)
-	return args.Get(0).(task_storage.StringSet), args.Error(1)
+	return args.Get(0).(tasks_common.StringSet), args.Error(1)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
