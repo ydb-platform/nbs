@@ -949,7 +949,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             TShardedFileSystemConfig fsConfig;
             CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-            auto counters = env.GetCounters()->FindSubgroup("component", "service");
+            auto counters =
+                env.GetCounters()->FindSubgroup("component", "service");
 
             auto getCount = [&counters](const char* name)
             {
@@ -966,47 +967,56 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             // Create initial session
             THeaders headers;
-            auto session = service.InitSession(headers, fsConfig.FsId, "client");
+            auto session =
+                service.InitSession(headers, fsConfig.FsId, "client");
             if (hasXAttrsFlagAllowed) {
                 // There should be no XAttrs at the begining if
                 // hasXAttrsFlagAllowed is true
-                UNIT_ASSERT(
-                    !session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+                UNIT_ASSERT(!session->Record.GetFileStore()
+                                 .GetFeatures()
+                                 .GetHasXAttrs());
             } else {
                 // Otherwise it's always true
-                UNIT_ASSERT(
-                    session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+                UNIT_ASSERT(session->Record.GetFileStore()
+                                .GetFeatures()
+                                .GetHasXAttrs());
             }
 
             // Create two files: 'file1', 'file2'
-            const auto createNodeResponse1 = service
-                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
-                ->Record;
+            const auto createNodeResponse1 =
+                service
+                    .CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(RootNodeId, "file1"))
+                    ->Record;
             const auto nodeId1 = createNodeResponse1.GetNode().GetId();
 
-            const auto createNodeResponse2 = service
-                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file2"))
-                ->Record;
+            const auto createNodeResponse2 =
+                service
+                    .CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(RootNodeId, "file2"))
+                    ->Record;
             const auto nodeId2 = createNodeResponse2.GetNode().GetId();
 
             // Check that GetNodeXAttr returns error 'E_FS_NOXATTR' in case
             // 'HasXAttrs' is false
             auto getXAttrResponse = service
-                .AssertGetNodeXAttrFailed(
-                    headers,
-                    fsConfig.FsId,
-                    nodeId1,
-                    "user.some_attr")
-                ->Record;
+                                        .AssertGetNodeXAttrFailed(
+                                            headers,
+                                            fsConfig.FsId,
+                                            nodeId1,
+                                            "user.some_attr")
+                                        ->Record;
             UNIT_ASSERT_VALUES_EQUAL(
                 ui32(NProto::E_FS_NOXATTR),
                 STATUS_FROM_CODE(getXAttrResponse.GetError().GetCode()));
-            UNIT_ASSERT_VALUES_EQUAL(getErrorCount("GetNodeXAttr"), 1);
+            UNIT_ASSERT_VALUES_EQUAL(1, getErrorCount("GetNodeXAttr"));
 
             auto listXAttrResponse =
                 service.ListNodeXAttr(headers, fsConfig.FsId, nodeId1)->Record;
             UNIT_ASSERT(listXAttrResponse.GetNames().empty());
-            UNIT_ASSERT_VALUES_EQUAL(getCount("ListNodeXAttr"), 1);
+            UNIT_ASSERT_VALUES_EQUAL(1, getCount("ListNodeXAttr"));
 
             if (hasXAttrsFlagAllowed) {
                 // If hasXAttrsFlagAllowed is true the first attempt should fail
@@ -1020,9 +1030,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
                 WaitForTabletStart(service);
                 session = service.InitSession(headers, fsConfig.FsId, "client");
-                // After the first XAttr is set the flag HasXAttrs should be true
-                UNIT_ASSERT(
-                    session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+                // After the first XAttr is set the flag HasXAttrs should be
+                // true
+                UNIT_ASSERT(session->Record.GetFileStore()
+                                .GetFeatures()
+                                .GetHasXAttrs());
             }
 
             service.SetNodeXAttr(
@@ -1031,58 +1043,62 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 nodeId1,
                 "user.some_attr1",
                 "some_value1");
-            
-            UNIT_ASSERT(getCount("SetNodeXAttr") == 1);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, getCount("SetNodeXAttr"));
 
             // Check that XAttr was seccessfully set
             auto getXAttrResponse1 = service
-                .GetNodeXAttr(
-                    headers,
-                    fsConfig.FsId,
-                    nodeId1,
-                    "user.some_attr1")
-                ->Record;
-            UNIT_ASSERT_VALUES_EQUAL("some_value1", getXAttrResponse1.GetValue());
+                                         .GetNodeXAttr(
+                                             headers,
+                                             fsConfig.FsId,
+                                             nodeId1,
+                                             "user.some_attr1")
+                                         ->Record;
+            UNIT_ASSERT_VALUES_EQUAL(
+                "some_value1",
+                getXAttrResponse1.GetValue());
 
             // The same check for 'file2'.
-            // As this time the IndexTablet should not restart we don't need to
-            // create a new session
+            // As this time the index tablet should not restart, we don't need
+            // to create a new session
             service.SetNodeXAttr(
                 headers,
                 fsConfig.FsId,
                 nodeId2,
                 "user.some_attr2",
                 "some_value2");
-            UNIT_ASSERT(getCount("SetNodeXAttr") == 2);
+            UNIT_ASSERT_VALUES_EQUAL(2, getCount("SetNodeXAttr"));
 
             auto getXAttrResponse2 = service
-                .GetNodeXAttr(
-                    headers,
-                    fsConfig.FsId,
-                    nodeId2,
-                    "user.some_attr2")
-                ->Record;
-            UNIT_ASSERT_VALUES_EQUAL("some_value2", getXAttrResponse2.GetValue());
-            UNIT_ASSERT_VALUES_EQUAL(getCount("GetNodeXAttr"), 2);
+                                         .GetNodeXAttr(
+                                             headers,
+                                             fsConfig.FsId,
+                                             nodeId2,
+                                             "user.some_attr2")
+                                         ->Record;
+            UNIT_ASSERT_VALUES_EQUAL(
+                "some_value2",
+                getXAttrResponse2.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, getCount("GetNodeXAttr"));
 
             service.RemoveNodeXAttr(
                 headers,
                 fsConfig.FsId,
                 nodeId1,
                 "user.some_attr1");
-            UNIT_ASSERT_VALUES_EQUAL(getCount("RemoveNodeXAttr"), 1);
+            UNIT_ASSERT_VALUES_EQUAL(1, getCount("RemoveNodeXAttr"));
 
             listXAttrResponse =
                 service.ListNodeXAttr(headers, fsConfig.FsId, nodeId2)->Record;
             const auto& names = listXAttrResponse.GetNames();
-            UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
-            UNIT_ASSERT_VALUES_EQUAL(names[0], "user.some_attr2");
+            UNIT_ASSERT_VALUES_EQUAL(1, names.size());
+            UNIT_ASSERT_VALUES_EQUAL("user.some_attr2", names[0]);
 
             listXAttrResponse =
                 service.ListNodeXAttr(headers, fsConfig.FsId, nodeId1)->Record;
             UNIT_ASSERT(names.empty());
 
-            UNIT_ASSERT_VALUES_EQUAL(getCount("ListNodeXAttr"), 3);
+            UNIT_ASSERT_VALUES_EQUAL(3, getCount("ListNodeXAttr"));
         }
     }
 

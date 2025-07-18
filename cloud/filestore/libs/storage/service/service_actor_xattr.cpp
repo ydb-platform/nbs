@@ -24,7 +24,6 @@ private:
     const TString& FileSystemId;
     // Original request
     const TRequestInfoPtr RequestInfo;
-    //const TEvService::TSetNodeXAttrMethod::TRequest::TPtr OriginalRequest;
 
 public:
     TSetHasXAttrsActor(
@@ -81,11 +80,6 @@ void TSetHasXAttrsActor::HandleSetHasXAttrsResponse(
     const TEvIndexTablet::TEvSetHasXAttrsResponse::TPtr&,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "TSetHasXAttrsActor::HandleSetHasXAttrsResponse");
-
     // We always reply E_REJECTED to the original request.
     // When index tablet restarts and session is recreated we stop sending this
     // message
@@ -224,19 +218,21 @@ void TStorageServiceActor::ReplyToXAttrRequest(
         TEvService::TGetNodeXAttrMethod::Name,
         msg->CallContext->RequestId);
 
-    TInFlightRequest dummyRequest(
+    // This request is created and deleted immediately in order to increment
+    // a corresponding counter
+    TInFlightRequest inflight(
         TRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
         ProfileLog,
         session->MediaKind,
         session->RequestStats);
 
-    InitProfileLogRequestInfo(dummyRequest.ProfileLogRequest, msg->Record);
-    dummyRequest.Start(ctx.Now());
+    InitProfileLogRequestInfo(inflight.ProfileLogRequest, msg->Record);
+    inflight.Start(ctx.Now());
 
     FinalizeProfileLogRequestInfo(
-        dummyRequest.ProfileLogRequest,
+        inflight.ProfileLogRequest,
         response->Record);
-    dummyRequest.Complete(ctx.Now(), response->GetError());
+    inflight.Complete(ctx.Now(), response->GetError());
 
     TraceSerializer->BuildTraceRequest(
         *(msg->Record.MutableHeaders()->MutableInternal()->MutableTrace()),

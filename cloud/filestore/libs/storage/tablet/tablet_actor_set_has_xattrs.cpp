@@ -13,19 +13,21 @@ namespace {
 
 inline TIndexTabletActor::EHasXAttrs EHasXAttrsFromBool(bool value)
 {
-    return value ? TIndexTabletActor::EHasXAttrs::True : TIndexTabletActor::EHasXAttrs::False;
+    return value ? TIndexTabletActor::EHasXAttrs::True
+                 : TIndexTabletActor::EHasXAttrs::False;
 }
 
-}   // namespace  
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::PrepareTx_SetHasXAttrs(
-    const TActorContext& /* ctx */,
-    TTransactionContext& /* tx */,
+    const TActorContext&,
+    TTransactionContext&,
     TTxIndexTablet::TSetHasXAttrs& args)
 {
-    const ui64 newValue = static_cast<ui64>(EHasXAttrsFromBool(args.Request.GetValue()));
+    const ui64 newValue =
+        static_cast<ui64>(EHasXAttrsFromBool(args.Request.GetValue()));
     args.IsToBeChanged = (GetHasXAttrs() != newValue);
     return true;
 }
@@ -46,7 +48,7 @@ void TIndexTabletActor::ExecuteTx_SetHasXAttrs(
         TFileStoreComponents::TABLET,
         "SetHasXAttrs: %lu, HasXAttrs is changed: %s",
         GetHasXAttrs(),
-        args.IsToBeChanged ? "true" :  "false");
+        args.IsToBeChanged ? "true" : "false");
 }
 
 void TIndexTabletActor::CompleteTx_SetHasXAttrs(
@@ -85,7 +87,7 @@ void TIndexTabletActor::HandleSetHasXAttrs(
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TSetHasXAttrsMethod>(*requestInfo);
-    
+
     const auto* msg = ev->Get();
     ExecuteTx<TSetHasXAttrs>(
         ctx,
