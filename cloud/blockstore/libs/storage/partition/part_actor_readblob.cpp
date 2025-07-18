@@ -57,7 +57,7 @@ void TPartitionActor::HandleReadBlob(
         GetDowntimeThreshold(
             *DiagnosticsConfig,
             PartitionConfig.GetStorageMediaKind()),
-        msg->GroupId,
+        Info()->GroupFor(blob.Channel(), blob.Generation()),
         &TransactionTimeTracker);
 
     if (blob.TabletID() != TabletID()) {
