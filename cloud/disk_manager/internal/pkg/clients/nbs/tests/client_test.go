@@ -1965,3 +1965,57 @@ func TestAlterPlacementGroupMembershipFailureBecauseOfTooManyDisksInGroup(t *tes
 	err = client.DeletePlacementGroup(ctx, groupID)
 	require.NoError(t, err)
 }
+
+func TestMountDeletedEncryptedDisk(t *testing.T) {
+	ctx := newContext()
+	client := newTestingClient(t, ctx)
+
+	diskID := t.Name()
+
+	encryptionDesc := &types.EncryptionDesc{
+		Mode: types.EncryptionMode_ENCRYPTION_AES_XTS,
+		Key: &types.EncryptionDesc_KmsKey{
+			KmsKey: &types.KmsKey{
+				KekId:        "kekid",
+				EncryptedDEK: []byte("encrypteddek"),
+				TaskId:       "taskid",
+			},
+		},
+	}
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:             diskID,
+		BlocksCount:    10,
+		BlockSize:      4096,
+		Kind:           types.DiskKind_DISK_KIND_SSD,
+		EncryptionDesc: encryptionDesc,
+	})
+
+	_, err = client.MountRW(
+		ctx,
+		diskID,
+		0,              // fillGeneration
+		0,              // fillSeqNumber
+		encryptionDesc, // encryption
+	)
+	fmt.Printf("CHECK error: %v\n", err.Error())
+	require.Error(t, err)
+	require.False(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.ErrorContains(t, err, "E_GRPC_UNAVAILABLE")
+	// E_GRPC_UNAVAILABLE failed to create token for disk TestMountDeletedEncryptedDisk, error: DNS resolution failed for localhost:(0,): UNKNOWN: Servname not supported for ai_socktype
+
+	err = client.Delete(ctx, diskID)
+	require.NoError(t, err)
+
+	_, err = client.MountRW(
+		ctx,
+		diskID,
+		0,              // fillGeneration
+		0,              // fillSeqNumber
+		encryptionDesc, // encryption
+	)
+	fmt.Printf("CHECK error: %v\n", err.Error())
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.ErrorContains(t, err, "Path not found")
+}

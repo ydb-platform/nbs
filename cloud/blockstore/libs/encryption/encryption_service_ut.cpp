@@ -46,6 +46,15 @@ struct TTestCountService
         return MakeFuture(NProto::TUnmountVolumeResponse());
     }
 
+    TFuture<NProto::TDescribeVolumeResponse> DescribeVolume(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TDescribeVolumeRequest> request) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+        return MakeFuture(NProto::TDescribeVolumeResponse());
+    }
+
     TFuture<NProto::TReadBlocksResponse> ReadBlocks(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksRequest> request) override
