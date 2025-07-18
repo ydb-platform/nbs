@@ -1271,4 +1271,8 @@ message TStorageServiceConfig
     // If a disk starts sending more than the DirectWriteBandwidthQuota bytes per second,
     // we start using MultiAgent write requests.
     optional uint64 DirectWriteBandwidthQuota = 440;
+
+    // The volume pulls statistics from the partitions,
+    // instead of the partitions pushing statistics to the volume themselves.
+    optional bool UsePullSchemeForVolumeStatistics = 441;
 }

@@ -4,8 +4,10 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/volume/actors/partition_statistics_collector_actor.h>
 
 #include <cloud/storage/core/libs/common/media.h>
+#include <cloud/storage/core/libs/common/verify.h>
 
 #include <util/system/hostname.h>
 
@@ -283,21 +285,16 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         std::move(partStats));
 }
 
-void TVolumeActor::HandlePartCounters(
-    const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
-    const TActorContext& ctx)
+std::optional<TTxVolume::TSavePartStats> TVolumeActor::UpdatePartCounters(
+    const TActorContext& ctx,
+    TUpdatePartCounters& args)
 {
     Y_DEBUG_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
 
-    auto* msg = ev->Get();
+    auto requestInfo =
+        CreateRequestInfo(args.Sender, args.Cookie, args.CallContext);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext
-    );
-
-    auto tabletId = State->FindPartitionTabletId(ev->Sender);
+    auto tabletId = State->FindPartitionTabletId(args.Sender);
     auto* statInfo =
         tabletId ? State->GetPartitionStatInfoByTabletId(*tabletId) : nullptr;
     if (!statInfo) {
@@ -306,27 +303,27 @@ void TVolumeActor::HandlePartCounters(
             TBlockStoreComponents::VOLUME,
             "%s Partition %s for disk counters not found",
             LogTitle.GetWithTime().c_str(),
-            ToString(ev->Sender).c_str());
-        return;
+            ToString(args.Sender).c_str());
+        return std::nullopt;
     }
 
-    UpdateTabletMetrics(ctx, msg->TabletMetrics);
+    UpdateTabletMetrics(ctx, args.TabletMetrics);
 
     if (!statInfo->LastCounters) {
         statInfo->LastCounters = CreatePartitionDiskCounters(
             State->CountersPolicy(),
             DiagnosticsConfig->GetHistogramCounterOptions());
-        statInfo->LastMetrics = std::move(msg->BlobLoadMetrics);
+        statInfo->LastMetrics = std::move(args.BlobLoadMetrics);
     }
 
-    statInfo->LastSystemCpu += msg->VolumeSystemCpu;
-    statInfo->LastUserCpu += msg->VolumeUserCpu;
+    statInfo->LastSystemCpu += args.VolumeSystemCpu;
+    statInfo->LastUserCpu += args.VolumeUserCpu;
 
-    statInfo->LastCounters->Add(*msg->DiskCounters);
+    statInfo->LastCounters->Add(*args.DiskCounters);
 
-    UpdateCachedStats(*msg->DiskCounters, statInfo->CachedCounters);
+    UpdateCachedStats(*args.DiskCounters, statInfo->CachedCounters);
     CopyPartCountersToCachedStats(
-        *msg->DiskCounters,
+        *args.DiskCounters,
         statInfo->CachedCountersProto);
 
     TVolumeDatabase::TPartStats partStats;
@@ -334,10 +331,82 @@ void TVolumeActor::HandlePartCounters(
     partStats.TabletId = statInfo->TabletId;
     partStats.Stats = statInfo->CachedCountersProto;
 
-    ExecuteTx<TSavePartStats>(
-        ctx,
+    return TTxVolume::TSavePartStats(
         std::move(requestInfo),
         std::move(partStats));
+}
+
+void TVolumeActor::HandlePartCounters(
+    const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_DEBUG_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
+
+    auto* msg = ev->Get();
+
+    TUpdatePartCounters args(
+        ev->Sender,
+        ev->Cookie,
+        msg->VolumeSystemCpu,
+        msg->VolumeUserCpu,
+        std::move(msg->CallContext),
+        std::move(msg->DiskCounters),
+        std::move(msg->TabletMetrics),
+        std::move(msg->BlobLoadMetrics));
+
+    if (auto stats = UpdatePartCounters(ctx, args)) {
+        ExecuteTx<TSavePartStats>(ctx, *std::move(stats));
+    }
+}
+
+void TVolumeActor::HandlePartCountersCombined(
+    const TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_DEBUG_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
+
+    Actors.erase(ev->Sender);
+
+    auto* msg = ev->Get();
+
+    if (HasError(msg->Error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "Failed to update part counters. Error: %s",
+            FormatError(msg->Error).c_str());
+    }
+
+    TVector<TTxVolume::TSavePartStats> partStats;
+
+    for (auto& partCounters: msg->PartCounters) {
+        TUpdatePartCounters args(
+            partCounters.PartActorId,
+            ev->Cookie,
+            partCounters.VolumeSystemCpu,
+            partCounters.VolumeUserCpu,
+            MakeIntrusive<TCallContext>(),
+            std::move(partCounters.DiskCounters),
+            std::move(partCounters.TabletMetrics),
+            std::move(partCounters.BlobLoadMetrics));
+
+        if (auto stats = UpdatePartCounters(ctx, args)) {
+            partStats.emplace_back(*std::move(stats));
+        }
+    }
+
+    if (partStats.empty()) {
+        UpdateCounters(ctx);
+        CleanUpHistory(
+            ctx,
+            SelfId(),                       // sender
+            0,                              // cookie
+            MakeIntrusive<TCallContext>()   // callContext
+        );
+        return;
+    }
+
+    ExecuteTx<TSaveMultiplePartStats>(ctx, std::move(partStats));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -386,6 +455,67 @@ void TVolumeActor::CompleteSavePartStats(
         SelfId(),
         std::make_unique<TEvVolumePrivate::TEvPartStatsSaved>()
     );
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TVolumeActor::PrepareSaveMultiplePartStats(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxVolume::TSaveMultiplePartStats& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TVolumeActor::ExecuteSaveMultiplePartStats(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxVolume::TSaveMultiplePartStats& args)
+{
+    Y_DEBUG_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
+    Y_UNUSED(ctx);
+
+    TVolumeDatabase db(tx.DB);
+
+    for (const auto& stats: args.PartStats) {
+        Y_DEBUG_ABORT_UNLESS(stats.PartStats.TabletId);
+        db.WritePartStats(stats.PartStats.TabletId, stats.PartStats.Stats);
+    }
+}
+
+void TVolumeActor::CompleteSaveMultiplePartStats(
+    const TActorContext& ctx,
+    TTxVolume::TSaveMultiplePartStats& args)
+{
+    TStringBuilder builder;
+
+    for (const auto& stats: args.PartStats) {
+        builder << stats.PartStats.TabletId << " ";
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Parts: %s stats saved",
+        TabletID(),
+        builder.c_str());
+
+    UpdateCounters(ctx);
+    CleanUpHistory(
+        ctx,
+        SelfId(),                       // sender
+        0,                              // cookie
+        MakeIntrusive<TCallContext>()   // callContext
+    );
+
+    NCloud::Send(
+        ctx,
+        SelfId(),
+        std::make_unique<TEvVolumePrivate::TEvPartStatsSaved>());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -638,6 +768,49 @@ void TVolumeActor::HandleLongRunningBlobOperation(
             FormatDuration(msg.Duration).c_str(),
             FormatError(msg.Error).c_str());
     }
+}
+
+void TVolumeActor::SendStatisticRequests(const TActorContext& ctx)
+{
+    STORAGE_VERIFY_C(
+        State->GetPartitions(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "Empty partition list");
+
+    TVector<TActorId> partitions;
+
+    for (const auto& partition: State->GetPartitions()) {
+        partitions.push_back(partition.GetTopActorId());
+    }
+
+    auto actor = NCloud::Register<TPartitionStatisticsCollectorActor>(
+        ctx,
+        SelfId(),
+        std::move(partitions));
+
+    Actors.insert(actor);
+}
+
+void TVolumeActor::CleanUpHistory(
+    const TActorContext& ctx,
+    const TActorId& sender,
+    ui64 cookie,
+    TCallContextPtr callContext)
+{
+    if (!State) {
+        return;
+    }
+    State->AccessMountHistory().CleanupHistoryIfNeeded(
+        ctx.Now() - Config->GetVolumeHistoryDuration());
+
+    auto requestInfo = CreateRequestInfo(sender, cookie, callContext);
+
+    ExecuteTx<TCleanupHistory>(
+        ctx,
+        std::move(requestInfo),
+        ctx.Now() - Config->GetVolumeHistoryDuration(),
+        Config->GetVolumeHistoryCleanupItemCount());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
