@@ -11,6 +11,7 @@ SRCS(
     release_devices_actor.cpp
     shadow_disk_actor.cpp
     volume_as_partition_actor.cpp
+    partition_statistics_collector_actor.cpp
 )
 
 PEERDIR(

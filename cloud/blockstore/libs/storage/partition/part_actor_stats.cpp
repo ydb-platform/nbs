@@ -202,6 +202,7 @@ void TPartitionActor::HandleGetPartCountersRequest(
 
     auto response =
         std::make_unique<TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
+            SelfId(),
             diffSysCpuConsumption,
             userCpuConsumption,
             std::move(partCounters),
