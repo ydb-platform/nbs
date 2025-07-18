@@ -87,10 +87,7 @@ TString TFollowerDiskInfo::Describe() const
     auto builder = TStringBuilder();
     builder << "{ State: " << ToString(State);
 
-    if (MediaKind) {
-        builder << ", MediaKind: "
-                << NProto::EStorageMediaKind_Name(*MediaKind);
-    }
+    builder << ", MediaKind: " << NProto::EStorageMediaKind_Name(MediaKind);
 
     if (MigratedBytes) {
         builder << ", MigratedBytes: " << FormatByteSize(*MigratedBytes);

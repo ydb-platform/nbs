@@ -4,6 +4,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TActorsStack::TActorsStack(NActors::TActorId actor)
+{
+    Actors.push_back(actor);
+}
+
 void TActorsStack::Push(NActors::TActorId actorId)
 {
     if (!actorId || IsKnown(actorId)) {

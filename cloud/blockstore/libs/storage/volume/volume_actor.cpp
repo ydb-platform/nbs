@@ -691,7 +691,31 @@ void TVolumeActor::HandleServerConnected(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(
+    if (State) {
+        const auto& map = State->GetPipeServerId2ClientId();
+        auto a = map.find(msg->ServerId);
+        if (a != map.end())
+        {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s !!! 1 %s",
+                LogTitle.GetWithTime().c_str(),
+                a->second.c_str());
+        }
+        auto b = map.find(msg->ClientId);
+        if (b != map.end())
+        {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s !!! 2 %s",
+                LogTitle.GetWithTime().c_str(),
+                a->second.c_str());
+        }
+    }
+
+    LOG_TRACE(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Pipe client %s server %s connected to volume",
@@ -707,7 +731,7 @@ void TVolumeActor::HandleServerDisconnected(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_DEBUG(
+    LOG_TRACE(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Pipe client %s server %s disconnected from volume",

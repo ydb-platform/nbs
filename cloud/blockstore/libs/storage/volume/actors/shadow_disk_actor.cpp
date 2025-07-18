@@ -555,7 +555,8 @@ TShadowDiskActor::TShadowDiskActor(
               checkpointInfo.ShadowDiskState == EShadowDiskState::Ready),
           volumeActorId,
           config->GetMaxShadowDiskFillIoDepth(),
-          volumeActorId)
+          volumeActorId,
+          EDirectCopyPolicy::CanUse)
     , RdmaClient(std::move(rdmaClient))
     , SrcConfig(std::move(srcConfig))
     , CheckpointId(checkpointInfo.CheckpointId)
