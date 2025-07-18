@@ -41,6 +41,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <assert.h>
+#include <dirent.h>
 
 #ifndef HAS_TRUNCATE64
 #define	truncate64	truncate
@@ -79,6 +80,7 @@ enum action {
 	ACTION_TRUNCATE,
 	ACTION_STAT,
 	ACTION_LSTAT,
+	ACTION_OPENDIR,
 };
 
 #define	TYPE_NONE	0x0000
@@ -120,6 +122,7 @@ static struct syscall_desc syscalls[] = {
 	{ "truncate", ACTION_TRUNCATE, { TYPE_STRING, TYPE_NUMBER, TYPE_NONE } },
 	{ "stat", ACTION_STAT, { TYPE_STRING, TYPE_STRING, TYPE_NONE } },
 	{ "lstat", ACTION_LSTAT, { TYPE_STRING, TYPE_STRING, TYPE_NONE } },
+	{ "opendir", ACTION_OPENDIR, { TYPE_STRING, TYPE_NONE } },
 	{ NULL, -1, { TYPE_NONE } }
 };
 
@@ -485,6 +488,17 @@ call_syscall(struct syscall_desc *scall, char *argv[])
 		if (rval == 0) {
 			show_stats(&sb, STR(1));
 			return (i);
+		}
+		break;
+	case ACTION_OPENDIR:
+		{
+			DIR *dir = opendir(STR(0));
+			if (dir != NULL) {
+				closedir(dir);
+				printf("0\n");
+				return (i);
+			}
+			rval = -1;
 		}
 		break;
 	default:
