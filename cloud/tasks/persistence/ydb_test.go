@@ -561,8 +561,10 @@ func migrateAndValidate(
 	require.NoError(fixtures.t, err)
 
 	err = fixtures.db.Execute(fixtures.ctx, func(ctx context.Context, session *Session) error {
-		description, err := session.session.DescribeTable(ctx, fixtures.db.AbsolutePath(fixtures.folder, fixtures.table))
+		path := fixtures.db.AbsolutePath(fixtures.folder, fixtures.table)
+		description, err := session.session.DescribeTable(ctx, path)
 		require.NoError(fixtures.t, err)
+
 		validate(description)
 		return nil
 	})
