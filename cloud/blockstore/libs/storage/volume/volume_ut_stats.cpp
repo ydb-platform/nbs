@@ -1264,21 +1264,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
 
         bool updated = false;
-        auto updatedObserver =
-            runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
-                [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
-                {
-                    Y_UNUSED(ev);
-                    updated = true;
-                });
 
-        bool requestSendToPartitions = false;
-        auto sendRequestObserver = runtime->AddObserver<
-            TEvPartitionCommonPrivate::TEvGetPartCountersRequest>(
-            [&](TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev)
+        auto updatedObserver = runtime->AddObserver<
+            TEvPartitionCommonPrivate::TEvPartCountersCombined>(
+            [&](TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev)
             {
-                Y_UNUSED(ev);
-                requestSendToPartitions = true;
+                UNIT_ASSERT(ev->Get()->PartCounters.size() == 1);
+                updated = true;
             });
 
         TVolumeClient volume(*runtime);
@@ -1294,10 +1286,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             runtime->DispatchEvents(options);
         }
 
-        // Check that volume sent request to partitions
-        UNIT_ASSERT(requestSendToPartitions);
-
-        // Check that volume got statistics from partitions
+        // Check that volume got statistics
         UNIT_ASSERT(updated);
     }
 
@@ -1310,18 +1299,15 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
 
-        THashMap<TActorId, bool> isSentToPart;
-        THashMap<TActorId, bool> isGotFromPart;
+        bool updated = false;
 
         auto updatedObserver = runtime->AddObserver<
-            TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
-            [&](TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev)
-            { isGotFromPart[ev->Sender] = true; });
-
-        auto sendRequestObserver = runtime->AddObserver<
-            TEvPartitionCommonPrivate::TEvGetPartCountersRequest>(
-            [&](TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev)
-            { isSentToPart[ev->Recipient] = true; });
+            TEvPartitionCommonPrivate::TEvPartCountersCombined>(
+            [&](TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev)
+            {
+                UNIT_ASSERT(ev->Get()->PartCounters.size() == 2);
+                updated = true;
+            });
 
         TVolumeClient volume(*runtime);
 
@@ -1351,11 +1337,94 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             runtime->DispatchEvents(options);
         }
 
-        // Check that volume sent requests to partitions
-        UNIT_ASSERT(isSentToPart.size() == 2);
+        // Check that volume got statistics
+        UNIT_ASSERT(updated);
+    }
 
-        // Check that volume got statistics from partitions
-        UNIT_ASSERT(isGotFromPart.size() == 2);
+    Y_UNIT_TEST(ShouldVolumePullStatisticFromPartitionsWithTimeout)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        // Enable pull scheme
+        storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        bool updated = false;
+
+        bool isGrabRequest = false;
+
+        auto updatedObserver = runtime->AddObserver<
+            TEvPartitionCommonPrivate::TEvPartCountersCombined>(
+            [&](TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev)
+            {
+                UNIT_ASSERT(ev->Get()->PartCounters.size() == 1);
+                UNIT_ASSERT(HasError(ev->Get()->Error));
+                updated = true;
+            });
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+                if (ev->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvGetPartCountersRequest &&
+                    !isGrabRequest)
+                {
+                    isGrabRequest = true;
+                    return true;
+                }
+
+                return false;
+            });
+
+        runtime->SetScheduledEventFilter(
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& ev,
+                TDuration delay,
+                TInstant& deadline)
+            {
+                Y_UNUSED(runtime);
+                Y_UNUSED(delay);
+                Y_UNUSED(deadline);
+                if (ev->GetTypeRewrite() == TEvVolumePrivate::EvUpdateCounters)
+                {
+                    return true;
+                }
+                return false;
+            });
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            7 * 1024,   // block count per partition
+            "vol0",
+            "cloud",
+            "folder",
+            2,   // partition count
+            2);
+
+        volume.WaitReady();
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        {
+            runtime->AdvanceCurrentTime(UpdateCountersInterval);
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvVolumePrivate::EvPartStatsSaved);
+            runtime->DispatchEvents(options);
+        }
+
+        // Check that volume got statistics
+        UNIT_ASSERT(updated);
     }
 }
 

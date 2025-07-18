@@ -743,7 +743,7 @@ private:
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void UpdatePartCounters(
+    std::optional<TTxVolume::TSavePartStats> UpdatePartCounters(
         const NActors::TActorContext& ctx,
         TUpdatePartCounters& args);
 
@@ -1172,8 +1172,8 @@ private:
         TLeaderFollowerLink link,
         const NActors::TActorContext& ctx);
 
-    void HandleGetPartCountersResponse(
-        const TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev,
+    void HandlePartCountersCombined(
+        const TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     // Restart partitions. If these were partition of DiskRegistry-based disk,
