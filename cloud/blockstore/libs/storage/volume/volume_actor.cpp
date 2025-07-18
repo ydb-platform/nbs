@@ -1055,8 +1055,8 @@ STFUNC(TVolumeActor::StateWork)
             HandleGetDrTabletInfoResponse);
 
         HFunc(
-            TEvPartitionCommonPrivate::TEvGetPartCountersResponse,
-            HandleGetPartCountersResponse);
+            TEvPartitionCommonPrivate::TEvPartCountersCombined,
+            HandlePartCountersCombined);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
@@ -1118,7 +1118,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUpdateLinkOnFollowerResponse);
 
-        IgnoreFunc(TEvPartitionCommonPrivate::TEvGetPartCountersResponse);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvPartCountersCombined);
 
         default:
             if (!RejectRequests(ev)) {

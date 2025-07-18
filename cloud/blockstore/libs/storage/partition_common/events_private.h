@@ -196,6 +196,7 @@ struct TEvPartitionCommonPrivate
 
     struct GetPartCountersResponse
     {
+        NActors::TActorId PartActorId;
         ui64 VolumeSystemCpu;
         ui64 VolumeUserCpu;
         TPartitionDiskCountersPtr DiskCounters;
@@ -205,16 +206,28 @@ struct TEvPartitionCommonPrivate
         GetPartCountersResponse() = default;
 
         GetPartCountersResponse(
+                NActors::TActorId partActorId,
                 ui64 volumeSystemCpu,
                 ui64 volumeUserCpu,
                 TPartitionDiskCountersPtr diskCounters,
                 NBlobMetrics::TBlobLoadMetrics metrics,
                 NKikimrTabletBase::TMetrics tabletMetrics)
-            : VolumeSystemCpu(volumeSystemCpu)
+            : PartActorId(partActorId)
+            , VolumeSystemCpu(volumeSystemCpu)
             , VolumeUserCpu(volumeUserCpu)
             , DiskCounters(std::move(diskCounters))
             , BlobLoadMetrics(std::move(metrics))
             , TabletMetrics(std::move(tabletMetrics))
+        {}
+    };
+
+    struct TPartCountersCombined
+    {
+        TVector<GetPartCountersResponse> PartCounters;
+
+        explicit TPartCountersCombined(
+                TVector<GetPartCountersResponse> partCounters)
+            : PartCounters(std::move(partCounters))
         {}
     };
 
@@ -235,6 +248,7 @@ struct TEvPartitionCommonPrivate
         EvLongRunningOperation,
         EvGetPartCountersRequest,
         EvGetPartCountersResponse,
+        EvPartCountersCombined,
 
         EvEnd
     };
@@ -253,6 +267,8 @@ struct TEvPartitionCommonPrivate
         TRequestEvent<GetPartCountersRequest, EvGetPartCountersRequest>;
     using TEvGetPartCountersResponse =
         TResponseEvent<GetPartCountersResponse, EvGetPartCountersResponse>;
+    using TEvPartCountersCombined =
+        TResponseEvent<TPartCountersCombined, EvPartCountersCombined>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
