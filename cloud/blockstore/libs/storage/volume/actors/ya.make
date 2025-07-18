@@ -5,6 +5,7 @@ GENERATE_ENUM_SERIALIZATION(volume_as_partition_actor.h)
 
 SRCS(
     create_volume_link_actor.cpp
+    follower_disk_actor.cpp
     forward_write_and_mark_used.cpp
     propagate_to_follower.cpp
     read_disk_registry_based_overlay.cpp

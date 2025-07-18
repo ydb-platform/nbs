@@ -740,7 +740,15 @@ void TVolumeActor::ForwardRequest(
     if constexpr (RequiresMount<TMethod>) {
         clientsIt = clients.find(clientId);
         if (clientsIt == clients.end()) {
-            if (clientId == CopyVolumeClientId && clients.empty()) {
+            if (clientId == CopyVolumeClientId ) {
+                if (!clients.empty()) {
+                    replyError(MakeError(
+                        E_BS_INVALID_SESSION,
+                        TStringBuilder()
+                            << "Invalid session. Can't use " << clientId.Quote()
+                            << " when other clients exists"));
+                    return;
+                }
                 predefinedClient = true;
                 throttlingDisabled = true;
                 VolumeSelfCounters->Cumulative.ThrottlerSkippedRequests
