@@ -1219,7 +1219,7 @@ void DumpLatency(
     const TString toggleId = "transactions-auto-refresh-toggle";
 
     HTML (out) {
-        RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
 
         DIV_CLASS_ID(" ", containerId) {
             TAG (TH3) { out << "Transactions"; }

@@ -1239,7 +1239,7 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
     HTML (out) {
         out << style;
 
-        RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
 
         out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
