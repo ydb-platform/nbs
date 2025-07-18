@@ -7,8 +7,6 @@
 
 #include <util/generic/strbuf.h>
 
-#include <functional>
-
 namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////

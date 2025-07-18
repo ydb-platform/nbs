@@ -1,0 +1,44 @@
+#include "bootstrap.h"
+
+#include "config.h"
+
+#include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
+
+#include <cloud/storage/core/libs/aio/service.h>
+#include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
+
+#include <util/string/builder.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+IFileIOServiceFactoryPtr CreateAIOServiceFactory(const TDiskAgentConfig& config)
+{
+    return NCloud::CreateAIOServiceFactory(
+        {.MaxEvents = config.GetMaxAIOContextEvents()});
+}
+
+IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
+    const TDiskAgentConfig& config)
+{
+    return NCloud::CreateIoUringServiceFactory(
+        {.SubmissionQueueEntries = config.GetMaxAIOContextEvents()});
+}
+
+NServer::IFileIOServiceProviderPtr CreateFileIOServiceProvider(
+    const TDiskAgentConfig& config,
+    IFileIOServiceFactoryPtr factory)
+{
+    if (config.GetPathsPerFileIOService()) {
+        return NServer::CreateFileIOServiceProvider(
+            config.GetPathsPerFileIOService(),
+            std::move(factory));
+    }
+
+    return NServer::CreateSingleFileIOServiceProvider(
+        factory->CreateFileIOService());
+}
+
+}   // namespace NCloud::NBlockStore::NStorage
