@@ -706,7 +706,8 @@ void TStorageServiceActor::HandleReadData(
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
-    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(MakeStorageServiceId(), cookie, msg->CallContext);
 
     auto actor = std::make_unique<TReadDataActor>(
         std::move(requestInfo),
