@@ -48,7 +48,6 @@ private:
     // Response data
     const TByteRange OriginByteRange;
     const TByteRange AlignedByteRange;
-    IBlockBufferPtr BlockBuffer;
     NProtoPrivate::TDescribeDataResponse DescribeResponse;
     ui32 RemainingBlobsToRead = 0;
     bool ReadDataFallbackEnabled = false;
@@ -58,6 +57,7 @@ private:
     IProfileLogPtr ProfileLog;
     std::optional<TInFlightRequest> InFlightRequest;
     const NCloud::NProto::EStorageMediaKind MediaKind;
+    std::unique_ptr<TEvService::TEvReadDataResponse> Response;
 
 public:
     TReadDataActor(
@@ -119,11 +119,12 @@ TReadDataActor::TReadDataActor(
         ReadRequest.GetLength(),
         BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
-    , BlockBuffer(CreateBlockBuffer(AlignedByteRange))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
+    , Response(std::make_unique<TEvService::TEvReadDataResponse>())
 {
+    Response->Record.MutableBuffer()->ReserveAndResize(ReadRequest.GetLength());
 }
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
@@ -193,26 +194,11 @@ TString DescribeResponseDebugString(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-char* GetDataPtr(
-    ui64 offset,
-    TByteRange alignedByteRange,
-    ui32 blockSize,
-    IBlockBuffer& buffer)
-{
-
-    const ui64 relOffset = offset - alignedByteRange.Offset;
-    const ui32 blockNo = relOffset / blockSize;
-    const auto block = buffer.GetBlock(blockNo);
-    return const_cast<char*>(block.data()) + relOffset - blockNo * blockSize;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void ApplyFreshDataRange(
     const TActorContext& ctx,
     const NProtoPrivate::TFreshDataRange& sourceFreshData,
-    IBlockBuffer& targetBuffer,
-    TByteRange alignedTargetByteRange,
+    TString* targetBuffer,
+    TByteRange targetByteRange,
     ui32 blockSize,
     ui64 offset,
     ui64 length,
@@ -232,31 +218,24 @@ void ApplyFreshDataRange(
         "common byte range found: source: %s, target: %s, original request: "
         "[%lu, %lu), response: %s",
         sourceByteRange.Describe().c_str(),
-        alignedTargetByteRange.Describe().c_str(),
+        targetByteRange.Describe().c_str(),
         offset,
         length,
         DescribeResponseDebugString(describeResponse).Quote().c_str());
 
-    auto commonRange = sourceByteRange.Intersect(alignedTargetByteRange);
-
-    Y_ABORT_UNLESS(sourceByteRange == commonRange);
+    auto commonRange = sourceByteRange.Intersect(targetByteRange);
     if (commonRange.Length == 0) {
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
             "common range is empty: source: %s, target: %s",
             sourceByteRange.Describe().c_str(),
-            alignedTargetByteRange.Describe().c_str());
+            targetByteRange.Describe().c_str());
         return;
     }
-    char* targetData = GetDataPtr(
-        commonRange.Offset,
-        alignedTargetByteRange,
-        blockSize,
-        targetBuffer);
 
-    // NB: we assume that underlying target data is a continuous buffer
-    // TODO: don't make such an assumption - use GetBlock(i) API
+    auto relativeOffset = commonRange.Offset - targetByteRange.Offset;
+    char* targetData = &(*targetBuffer)[0] + relativeOffset;
     memcpy(
         targetData,
         sourceFreshData.GetContent().data() +
@@ -479,13 +458,15 @@ void TReadDataActor::HandleReadBlobResponse(
             response.Buffer.size());
         TABLET_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
-        char* targetData = GetDataPtr(
-            blobRange.GetOffset(),
-            AlignedByteRange,
-            BlockSize,
-            *BlockBuffer);
-
-        dataIter.ExtractPlainDataAndAdvance(targetData, blobRange.GetLength());
+        auto commonRange = OriginByteRange.Intersect(
+            TByteRange{
+                blobRange.GetBlobOffset(),
+                blobRange.GetLength(),
+                BlockSize});
+        auto relativeOffset = commonRange.Offset - ReadRequest.GetOffset();
+        char* targetData =
+            &(*Response->Record.MutableBuffer())[0] + relativeOffset;
+        dataIter.ExtractPlainDataAndAdvance(targetData, commonRange.Length);
     }
 
     --RemainingBlobsToRead;
@@ -561,8 +542,6 @@ void TReadDataActor::HandleReadDataResponse(
 
 void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvService::TEvReadDataResponse>();
-
     // we apply fresh data ranges to the buffer only after all blobs are
     // read and applied
     for (const auto& freshDataRange: DescribeResponse.GetFreshDataRanges())
@@ -573,8 +552,8 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
         ApplyFreshDataRange(
             ctx,
             freshDataRange,
-            *BlockBuffer,
-            AlignedByteRange,
+            Response->Record.MutableBuffer(),
+            OriginByteRange,
             BlockSize,
             ReadRequest.GetOffset(),
             ReadRequest.GetLength(),
@@ -589,15 +568,7 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             offset);
     }
 
-    CopyFileData(
-        LogTag,
-        OriginByteRange,
-        AlignedByteRange,
-        DescribeResponse.GetFileSize(),
-        *BlockBuffer,
-        response->Record.MutableBuffer());
-
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    NCloud::Reply(ctx, *RequestInfo, std::move(Response));
 
     Die(ctx);
 }
