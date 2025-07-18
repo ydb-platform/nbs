@@ -201,12 +201,12 @@ void TPartitionActor::DeleteCheckpoint(
         TMethod::Name,
         requestInfo->CallContext->RequestId);
 
-    auto reply = [] (
-        const TActorContext& ctx,
-        TRequestInfoPtr requestInfo,
-        const NProto::TError& error)
+    auto reply = [](const TActorContext& ctx,
+                    TRequestInfoPtr requestInfo,
+                    NProto::TError error)
     {
-        auto response = std::make_unique<typename TMethod::TResponse>(error);
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(std::move(error));
 
         LWTRACK(
             ResponseSent_Partition,

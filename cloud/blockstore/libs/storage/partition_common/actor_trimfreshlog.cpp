@@ -131,13 +131,11 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
     if (auto error = MakeKikimrError(msg->Status, msg->ErrorReason);
         HasError(error))
     {
-        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Fresh blobs collect request failed: %u reason: %s",
-            TabletInfo->TabletID,
-            error.GetCode(),
-            error.GetMessage().Quote().c_str());
+        ReportTrimFreshLogError(
+            TStringBuilder()
+            << "[" << TabletInfo->TabletID
+            << "] Fresh blobs collect request failed: " << FormatError(error));
 
-        ReportTrimFreshLogError();
         Error = std::move(error);
     }
 

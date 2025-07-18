@@ -443,7 +443,7 @@ auto SendAsyncRequest(
         TResponse proto;
         *proto.MutableError() = MakeError(
             E_CANCELLED,
-            "failed to acquire sglist in AioStorage");
+            "failed to acquire sglist in Local Storage");
         response.SetValue(std::move(proto));
     } else {
         ProcessRequest(std::move(request));
@@ -476,7 +476,7 @@ TFuture<NProto::TZeroBlocksResponse> WriteZeroes(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAioStorage final
+class TLocalStorage final
     : public IStorage
     , public TStorageContext
 {
@@ -555,7 +555,7 @@ NProto::TError MakeTooBigRequestError(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::DoReadBlocksLocal(
+TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
@@ -594,7 +594,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::DoReadBlocksLocal(
         byteCount);
 }
 
-TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::DoWriteBlocksLocal(
+TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
@@ -633,7 +633,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::DoWriteBlocksLocal(
         byteCount);
 }
 
-TFuture<NProto::TZeroBlocksResponse> TAioStorage::DoZeroBlocks(
+TFuture<NProto::TZeroBlocksResponse> TLocalStorage::DoZeroBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
@@ -659,7 +659,7 @@ TFuture<NProto::TZeroBlocksResponse> TAioStorage::DoZeroBlocks(
         BlockSize);
 }
 
-TFuture<NProto::TZeroBlocksResponse> TAioStorage::ZeroBlocks(
+TFuture<NProto::TZeroBlocksResponse> TLocalStorage::ZeroBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
@@ -669,7 +669,7 @@ TFuture<NProto::TZeroBlocksResponse> TAioStorage::ZeroBlocks(
         });
 }
 
-TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::ReadBlocksLocal(
+TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::ReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
@@ -679,7 +679,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::ReadBlocksLocal(
         });
 }
 
-TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::WriteBlocksLocal(
+TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::WriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
@@ -689,7 +689,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::WriteBlocksLocal(
         });
 }
 
-TFuture<NProto::TError> TAioStorage::EraseDevice(NProto::EDeviceEraseMethod method)
+TFuture<NProto::TError> TLocalStorage::EraseDevice(NProto::EDeviceEraseMethod method)
 {
     if (method != NProto::DEVICE_ERASE_METHOD_NONE &&
         method != NProto::DEVICE_ERASE_METHOD_ZERO_FILL)
@@ -889,7 +889,7 @@ private:
     }
 };
 
-TFuture<NProto::TError> TAioStorage::SafeDeallocateDevice()
+TFuture<NProto::TError> TLocalStorage::SafeDeallocateDevice()
 {
     auto response = NewPromise<NProto::TError>();
 
@@ -903,12 +903,12 @@ TFuture<NProto::TError> TAioStorage::SafeDeallocateDevice()
     return response;
 }
 
-TStorageBuffer TAioStorage::AllocateBuffer(size_t byteCount)
+TStorageBuffer TLocalStorage::AllocateBuffer(size_t byteCount)
 {
     return AllocateUninitialized(byteCount);
 }
 
-void TAioStorage::ReportIOError()
+void TLocalStorage::ReportIOError()
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -957,7 +957,7 @@ public:
                     ? EOpenModeFlag::DirectAligned | EOpenModeFlag::Sync
                     : EOpenModeFlag());
 
-        auto storage = std::make_shared<TAioStorage>(
+        auto storage = std::make_shared<TLocalStorage>(
             SubmitQueue,
             FileIOServiceProvider->CreateFileIOService(filePath),
             NvmeManager,

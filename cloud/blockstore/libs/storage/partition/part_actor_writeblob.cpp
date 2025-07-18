@@ -144,7 +144,7 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
             auto error = MakeError(
                 E_CANCELLED,
                 "failed to acquire sglist in WriteBlobActor");
-            ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+            ReplyAndDie(ctx, std::make_unique<TResponse>(std::move(error)));
             return;
         }
     } else {
@@ -237,8 +237,11 @@ void TWriteBlobActor::ReplyError(
         description.c_str(),
         response.Print(false).c_str());
 
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + description);
-    ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+    ReplyAndDie(
+        ctx,
+        std::make_unique<TResponse>(MakeError(
+            E_REJECTED,
+            "TEvBlobStorage::TEvPut failed: " + description)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -490,17 +493,12 @@ void TPartitionActor::HandleWriteBlobCompleted(
         if (State->IncrementWriteBlobErrorCount()
                 >= Config->GetMaxWriteBlobErrorsBeforeSuicide())
         {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "%s Stop tablet because of too many WritedBlob errors (actor "
-                "%s, group %u): %s",
-                LogTitle.GetWithTime().c_str(),
-                ev->Sender.ToString().c_str(),
-                groupId,
-                FormatError(msg->GetError()).c_str());
-
-            ReportTabletBSFailure();
+            ReportTabletBSFailure(
+                TStringBuilder()
+                << LogTitle.GetWithTime()
+                << "Stop tablet because of too many WriteBlob errors (actor "
+                << ev->Sender.ToString() << " group " << groupId << "): "
+                << FormatError(msg->GetError()));
             Suicide(ctx);
             return;
         }

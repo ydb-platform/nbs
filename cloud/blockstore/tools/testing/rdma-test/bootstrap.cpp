@@ -117,10 +117,11 @@ void TBootstrap::InitTracing()
             TraceLoggerId,
             ProbabilisticQuery(StartProbes, Options->TraceRate));
 
-        traceReaders.emplace_back(CreateTraceLogger(
+        traceReaders.emplace_back(SetupTraceReaderWithLog(
             TraceLoggerId,
             CreateLoggingService(Options->TracePath),
-            "BLOCKSTORE_TRACE"));
+            "BLOCKSTORE_TRACE",
+            "AllRequests"));
     }
 
     if (traceReaders) {
