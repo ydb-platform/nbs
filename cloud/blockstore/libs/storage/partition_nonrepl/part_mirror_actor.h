@@ -231,6 +231,11 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    // returns new request identity key
+    [[nodiscard]] ui64 RegisterNewReadBlocksRequest(
+        ui64 volumeRequestId,
+        TBlockRange64 blockRange);
+
     template <typename TMethod>
     void ReadBlocks(
         const typename TMethod::TRequest::TPtr& ev,
