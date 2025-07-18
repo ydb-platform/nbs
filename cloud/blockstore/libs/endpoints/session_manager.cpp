@@ -751,16 +751,16 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     }
     client = clientOrError.GetResult();
 
-    auto throttler = ThrottlerProvider->GetThrottler(
-        clientConfig->GetClientConfig(),
-        request.GetClientProfile(),
-        request.GetClientPerformanceProfile());
+    // auto throttler = ThrottlerProvider->GetThrottler(
+    //     clientConfig->GetClientConfig(),
+    //     request.GetClientProfile(),
+    //     request.GetClientPerformanceProfile());
 
-    if (throttler) {
-        client = CreateThrottlingClient(
-            std::move(client),
-            std::move(throttler));
-    }
+    // if (throttler) {
+    //     client = CreateThrottlingClient(
+    //         std::move(client),
+    //         std::move(throttler));
+    // }
 
     if (Options.StrictContractValidation &&
         !volume.GetIsFastPathEnabled()   // switching fast path to slow path
