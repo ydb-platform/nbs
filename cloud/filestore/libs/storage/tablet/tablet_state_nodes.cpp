@@ -429,6 +429,16 @@ void TIndexTabletState::RewriteNodeAttr(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// HasXAttrs
+
+void TIndexTabletState::WriteHasXAttrs(
+    TIndexTabletDatabase& db,
+    const TIndexTabletState::EHasXAttrs hasXAttrs)
+{
+    SetHasXAttrs(db, static_cast<ui64>(hasXAttrs));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // NodeRefs
 
 void TIndexTabletState::CreateNodeRef(
