@@ -597,6 +597,13 @@ struct TEvDiskRegistryPrivate
 
     struct TStartMigrationResponse
     {
+        ui32 StartedDeviceMigrationsCount = 0;
+
+        TStartMigrationResponse() = default;
+
+        explicit TStartMigrationResponse(ui32 startedDeviceMigrationsCount)
+            : StartedDeviceMigrationsCount(startedDeviceMigrationsCount)
+        {}
     };
 
     //

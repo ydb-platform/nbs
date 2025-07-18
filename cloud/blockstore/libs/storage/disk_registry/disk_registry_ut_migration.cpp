@@ -1745,6 +1745,160 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TDuration::MicroSeconds(maxMigrationTime)
         );
     }
+
+    Y_UNIT_TEST(ShouldLimitSizeOfDeviceMigrationBatch)
+    {
+        const size_t agentWithDiskCount = 2;
+        const size_t agentCount = 2 * agentWithDiskCount;
+        const size_t devicesPerAgent = 128;
+        const size_t devicesPerDisk = 32;
+        const size_t disksPerAgent = devicesPerAgent / devicesPerDisk;
+        const ui64 deviceSize = 93_GB;
+        const ui64 diskSize = deviceSize * devicesPerDisk;
+        const ui32 migrationsBatchSize = 8;
+
+        TVector<NProto::TAgentConfig> agents;
+        agents.reserve(agentCount);
+
+        for (ui32 i = 0; i != agentCount; ++i) {
+            auto& agent = agents.emplace_back(CreateAgentConfig(
+                Sprintf("node-%04d.nbs.node.foo.bar.net", 1 + i),
+                {}));
+
+            auto& devices = *agent.MutableDevices();
+            for (ui32 j = 0; j != devicesPerAgent; ++j) {
+                auto device = Device(
+                    Sprintf("/dev/disk/by-partlabel/NBSNVME%02d", j % 32),
+                    Sprintf("uuid-%d-%d", i, j),
+                    "rack",
+                    deviceSize);
+                device.SetSerialNumber("SERIAL_NUMBER_0123456789");
+                devices.Add(std::move(device));
+            }
+        }
+
+        auto config = CreateDefaultStorageConfig();
+        config.SetAllocationUnitNonReplicatedSSD(93);
+        config.SetMaxDevicesToErasePerDeviceNameForDefaultPoolKind(
+            devicesPerAgent * agentCount);
+        config.SetMaxNonReplicatedDeviceMigrationPercentageInProgress(100);
+        config.SetMaxNonReplicatedDeviceMigrationBatchSize(migrationsBatchSize);
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .With(config)
+            .Build();
+
+        // prepare Disk Registry
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(agents));
+
+        RegisterAgents(*runtime, agents.size());
+        WaitForAgents(*runtime, agents.size());
+
+        runtime->AdvanceCurrentTime(15s);
+        runtime->DispatchEvents({}, 10ms);
+
+        runtime->AdvanceCurrentTime(20s);
+        runtime->DispatchEvents(
+            {.CustomFinalCondition = [&]
+             {
+                 auto response = diskRegistry.BackupDiskRegistryState(false);
+                 return !response->Record.MutableBackup()->DirtyDevicesSize();
+             }});
+
+        // create disks
+
+        for (ui32 i = 0; i != agentWithDiskCount; ++i) {
+            const auto& agent = agents[i];
+            for (ui32 j = 0; j != disksPerAgent; ++j) {
+                auto request = diskRegistry.CreateAllocateDiskRequest(
+                    Sprintf("disk-%d-%d", i, j),
+                    diskSize);
+                *request->Record.MutableAgentIds()->Add() = agent.GetAgentId();
+                diskRegistry.SendRequest(std::move(request));
+                auto response = diskRegistry.RecvAllocateDiskResponse();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            }
+        }
+
+        // start migration
+
+        TAutoPtr<IEventHandle> startMigrationRequest;
+
+        runtime->SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistryPrivate::EvStartMigrationRequest)
+                {
+                    UNIT_ASSERT(!startMigrationRequest);
+                    startMigrationRequest = event.Release();
+                    return true;
+                }
+
+                return false;
+            });
+
+        // send a CMS request to remove the agents
+        {
+            TVector<NProto::TAction> requests;
+            requests.reserve(agentWithDiskCount);
+
+            for (ui32 i = 0; i != agentWithDiskCount; ++i) {
+                auto& action = requests.emplace_back();
+                action.SetHost(agents[i].GetAgentId());
+                action.SetType(NProto::TAction::REMOVE_HOST);
+            }
+
+            diskRegistry.CmsAction(std::move(requests));
+        }
+
+        runtime->DispatchEvents({}, 10ms);
+
+        ui32 startedMigrationCount = 0;
+        runtime->SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistryPrivate::EvStartMigrationResponse)
+                {
+                    auto* msg = event->Get<
+                        TEvDiskRegistryPrivate::TEvStartMigrationResponse>();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        migrationsBatchSize,
+                        msg->StartedDeviceMigrationsCount);
+
+                    startedMigrationCount += msg->StartedDeviceMigrationsCount;
+                }
+                return false;
+            });
+
+        runtime->Send(startMigrationRequest.Release());
+
+        while (startedMigrationCount != agentWithDiskCount * devicesPerAgent) {
+            runtime->AdvanceCurrentTime(15s);
+            runtime->DispatchEvents({}, 10ms);
+        }
+
+        // check if all disks have a proper migration list
+
+        for (ui32 i = 0; i != agentWithDiskCount; ++i) {
+            for (ui32 j = 0; j != disksPerAgent; ++j) {
+                auto response = diskRegistry.AllocateDisk(
+                    Sprintf("disk-%d-%d", i, j),
+                    diskSize);
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    devicesPerDisk,
+                    response->Record.MigrationsSize());
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
