@@ -15,9 +15,7 @@ struct TIoUringServiceParams
 
     ui32 SubmissionQueueEntries = DefaultSubmissionQueueEntries;
 
-    ui32 BoundWorkers = 0;
-    ui32 UnboundWorkers = 0;
-
+    ui32 MaxKernelWorkersCount = 0;
     bool ShareKernelWorkers = false;
 };
 

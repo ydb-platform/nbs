@@ -50,9 +50,9 @@ NProto::TError Submit(io_uring* ring)
     }
 }
 
-NProto::TError SetMaxWorkers(io_uring* ring, ui32 bound, ui32 unbound)
+NProto::TError SetMaxWorkers(io_uring* ring, ui32 bound)
 {
-    ui32 workers[2] = {bound, unbound};
+    ui32 workers[2] = {bound, 0};
 
     const int ret = io_uring_register_iowq_max_workers(ring, workers);
     if (ret < 0) {
@@ -134,11 +134,9 @@ public:
             "can't initialize the ring: %s",
             FormatError(error).c_str());
 
-        if (!wqOwner && (params.BoundWorkers || params.UnboundWorkers)) {
-            const auto error = SetMaxWorkers(
-                &Ring,
-                params.BoundWorkers,
-                params.UnboundWorkers);
+        if (!wqOwner && params.MaxKernelWorkersCount) {
+            const auto error =
+                SetMaxWorkers(&Ring, params.MaxKernelWorkersCount);
             Y_ABORT_IF(
                 HasError(error),
                 "can't set max workers: %s",
