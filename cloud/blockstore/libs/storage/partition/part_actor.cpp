@@ -1138,7 +1138,10 @@ NProto::TError VerifyBlockChecksum(
     }
 
     if (actualChecksum != expectedChecksum) {
-        ReportBlockDigestMismatchInBlob();
+        ReportBlockDigestMismatchInBlob(
+            TStringBuilder()
+            << "Block digest mismatch detected: blockIndex=" << blockIndex
+            << ", blobOffset=" << blobOffset << ", blobId=" << blobID);
         // we might read proper data upon retry - let's give it a chance
         return MakeError(
             E_REJECTED,
