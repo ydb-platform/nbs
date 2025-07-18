@@ -78,7 +78,9 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 false, // shouldCalculateChecksums
                 EStorageAccessMode::Default,
                 std::move(request),
-                TDuration()));
+                TDuration(),
+                groupId,
+                nullptr));
 
         auto readBlob = ActorSystem.GrabEdgeEvent<
             NKikimr::TEvBlobStorage::TEvGet>();
@@ -169,7 +171,9 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 false, // shouldCalculateChecksums
                 EStorageAccessMode::Default,
                 std::move(request),
-                TDuration()));
+                TDuration(),
+                groupId,
+                nullptr));
 
         auto readBlob = ActorSystem.GrabEdgeEvent<
             NKikimr::TEvBlobStorage::TEvGet>();
@@ -244,7 +248,9 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 false, // shouldCalculateChecksums
                 EStorageAccessMode::Default,
                 std::move(request),
-                TDuration()));
+                TDuration(),
+                groupId,
+                nullptr));
 
         auto readBlob = ActorSystem.GrabEdgeEvent<
             NKikimr::TEvBlobStorage::TEvGet>();

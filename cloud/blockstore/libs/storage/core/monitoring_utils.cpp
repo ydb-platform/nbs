@@ -128,7 +128,12 @@ void DumpLatencyForTransactions(
     size_t columnCount,
     const TTransactionTimeTracker& transactionTimeTracker)
 {
-    const auto buckets = transactionTimeTracker.GetTransactionBuckets();
+    const auto buckets = transactionTimeTracker.GetTransactionBuckets(
+        [](const TString& name)
+        {
+            return !name.StartsWith("WriteBlob_Group") &&
+                   !name.StartsWith("ReadBlob_Group");
+        });
 
     HTML (out) {
         TABLE_CLASS ("table-latency") {
@@ -332,7 +337,8 @@ void BuildPartitionTabs(IOutputStream& out)
         << "<li><a href='#Tables' data-toggle='tab'>Tables</a>" << "</li>"
         << "<li><a href='#Channels' data-toggle='tab'>Channels</a>" << "</li>"
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a>" << "</li>"
-        << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>" << "</ul>";
+        << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>"
+        << "<li><a href='#GroupLatency' data-toggle='tab'>GroupLatency</a>" << "</li>" << "</ul>";
 }
 
 void GeneratePartitionTabsJs(IOutputStream& out)
@@ -1430,6 +1436,105 @@ void RenderAutoRefreshScript(
     });
 })();
 </script>)";
+}
+
+void DumpGroupLatency(
+    IOutputStream& out,
+    const TTransactionTimeTracker& timeTracker)
+{
+    const auto transactionBuckets = timeTracker.GetTransactionBuckets(
+        [](const TString& name)
+        {
+            return name.StartsWith("WriteBlob_Group") ||
+                   name.StartsWith("ReadBlob_Group");
+        });
+    const auto timeBuckets = timeTracker.GetTimeBuckets();
+
+    if (transactionBuckets.empty()) {
+        out << "<div>No group I/O operations to display.</div>";
+        return;
+    }
+
+    DumpGroupLatencyForOperation(
+        out,
+        "WriteBlob_Group",
+        "Write",
+        transactionBuckets,
+        timeBuckets);
+
+    out << "<br/>";
+
+    DumpGroupLatencyForOperation(
+        out,
+        "ReadBlob_Group",
+        "Read",
+        transactionBuckets,
+        timeBuckets);
+}
+
+void DumpGroupLatencyForOperation(
+    IOutputStream& out,
+    const TString& opName,
+    const TString& opLabel,
+    const TVector<TTransactionTimeTracker::TBucketInfo>& allTransactionBuckets,
+    const TVector<TTransactionTimeTracker::TBucketInfo>& timeBuckets)
+{
+    TVector<TTransactionTimeTracker::TBucketInfo> filteredBuckets;
+    for (const auto& bucket: allTransactionBuckets) {
+        if (bucket.TransactionName.StartsWith(opName)) {
+            filteredBuckets.push_back(bucket);
+        }
+    }
+
+    if (filteredBuckets.empty()) {
+        return;
+    }
+
+    HTML (out) {
+        TAG (TH4) {
+            out << opLabel << " Latency by Group";
+        }
+
+        TABLE_SORTABLE_CLASS("table table-bordered table-condensed")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Group ID";
+                    }
+                    for (const auto& bucket: timeBuckets) {
+                        TABLEH () {
+                            out << "<span title='" << bucket.Tooltip << "'>"
+                                << bucket.Description << "</span>";
+                        }
+                    }
+                }
+            }
+
+            TABLEBODY()
+            {
+                for (const auto& transaction: filteredBuckets) {
+                    const TString groupId =
+                        transaction.TransactionName.substr(opName.length());
+
+                    TABLER () {
+                        TABLED () {
+                            out << groupId;
+                        }
+
+                        for (const auto& timeBucket: timeBuckets) {
+                            const TString cellId = TStringBuilder()
+                                                   << "stat-cell-"
+                                                   << transaction.Key << "-"
+                                                   << timeBucket.Key;
+
+                            out << "<td id='" << cellId << "'>0</td>";
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 }   // namespace NMonitoringUtils

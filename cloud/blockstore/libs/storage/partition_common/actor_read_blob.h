@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cloud/blockstore/libs/storage/core/tablet.h"
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
@@ -37,6 +38,9 @@ private:
 
     bool DeadlineSeen = false;
 
+    const ui32 GroupId;
+    ITransactionTracker* TransactionTracker;
+
 public:
     TReadBlobActor(
         TRequestInfoPtr requestInfo,
@@ -47,7 +51,9 @@ public:
         bool shouldCalculateChecksums,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold);
+        TDuration longRunningThreshold,
+        ui32 groupId,
+        ITransactionTracker* transactionTracker = nullptr);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

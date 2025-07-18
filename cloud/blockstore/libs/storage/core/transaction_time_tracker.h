@@ -65,15 +65,17 @@ private:
         TString TransactionName;
     };
 
-    const TVector<TString> TransactionTypes;
+    TVector<TString> TransactionTypes;
 
     THashMap<ui64, TTransactionInflight> Inflight;
     THashMap<TKey, TTimeHistogram, THash> Histograms;
 
 public:
+    TTransactionTimeTracker() = default;
     explicit TTransactionTimeTracker(std::span<const TString> transactionTypes);
 
-    [[nodiscard]] TVector<TBucketInfo> GetTransactionBuckets() const;
+    [[nodiscard]] TVector<TBucketInfo> GetTransactionBuckets(
+        std::function<bool(const TString&)> filter = nullptr) const;
     [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
 
     // Implements ITransactionTracker
@@ -84,7 +86,11 @@ public:
 
     void OnFinished(ui64 transactionId, ui64 finishTime) override;
 
-    [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
+    [[nodiscard]] TString GetStatJson(
+        ui64 nowCycles,
+        std::function<bool(const TString&)> filter = nullptr) const;
+
+    void Init(std::span<const TString> transactionTypes);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
