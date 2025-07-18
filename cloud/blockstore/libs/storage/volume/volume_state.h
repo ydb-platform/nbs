@@ -544,6 +544,7 @@ public:
         NProto::TError Error;
         TVector<TString> RemovedClientIds;
         bool ForceTabletRestart = false;
+        bool InMigration = false;
 
         TAddClientResult() = default;
 
@@ -816,17 +817,28 @@ private:
     bool CanPreemptClient(
         const TString& oldClientId,
         TInstant referenceTimestamp,
-        ui64 clientMountSeqNumber);
+        ui64 clientMountSeqNumber) const;
 
     bool CanAcceptClient(
         ui64 newFillSeqNumber,
-        ui64 proposedFillGeneration);
+        ui64 proposedFillGeneration) const;
 
     bool ShouldForceTabletRestart(const NProto::TVolumeClientInfo& info) const;
 
     THashSet<TString> MakeFilteredDeviceIds() const;
 
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
+
+    bool IsInMigration() const
+    {
+        return !LocalMountClientId.empty() &&
+               LocalMountClientId != ReadWriteAccessClientId;
+    }
+
+    bool OnAddClientRW(
+        const NProto::TVolumeClientInfo& info,
+        TInstant referenceTimestamp,
+        TAddClientResult& res) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
