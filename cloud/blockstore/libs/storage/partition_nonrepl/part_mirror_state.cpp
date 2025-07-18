@@ -140,7 +140,11 @@ bool TMirrorPartitionState::PrepareMigrationConfigForWarningDevices()
         }
     }
 
-    ReportMigrationSourceNotFound();
+    ReportMigrationSourceNotFound(
+        TStringBuilder()
+        << "No migration source device found among replicas for "
+        << PartConfig->GetName() << ", RWClientId: " << RWClientId);
+
     // TODO: log details
     return false;
 }
@@ -193,7 +197,12 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
         }
     }
 
-    ReportMigrationSourceNotFound();
+    ReportMigrationSourceNotFound(
+        TStringBuilder() << "PrepareMigrationConfigForFreshDevices failed: no "
+                            "suitable source device found"
+                         << " for fresh device at index " << deviceIdx
+                         << ", namr: " << PartConfig->GetName()
+                         << ", total replicas: " << ReplicaInfos.size());
     return false;
 }
 
