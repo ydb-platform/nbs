@@ -100,6 +100,15 @@ func (c *NfsClientMock) DescribeFileStoreModel(
 	return args.Get(0).(*protos.TDescribeFileStoreModelResponse), args.Error(1)
 }
 
+func (c *NfsClientMock) ReadNodeRefs(
+	ctx context.Context,
+	req *protos.TReadNodeRefsRequest,
+) (*protos.TReadNodeRefsResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TReadNodeRefsResponse), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewNfsClientMock() *NfsClientMock {

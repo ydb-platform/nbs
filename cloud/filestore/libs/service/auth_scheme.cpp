@@ -29,6 +29,7 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::TestLock:
         case EFileStoreRequest::DescribeData:
         case EFileStoreRequest::ReadBlob:
+        case EFileStoreRequest::ReadNodeRefs:
             return CreatePermissionList({EPermission::Read});
         case EFileStoreRequest::CreateNode:
         case EFileStoreRequest::UnlinkNode:
