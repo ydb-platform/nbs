@@ -378,14 +378,14 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 		return TaskState{}, errors.NewNonRetriableError(err)
 	}
 
-	state.Dependencies = NewStringSet(depsValues...)
+	state.Dependencies = common.NewStringSet(depsValues...)
 
 	dependantValues, err := common.UnmarshalStrings(dependants)
 	if err != nil {
 		return TaskState{}, errors.NewNonRetriableError(err)
 	}
 
-	state.dependants = NewStringSet(dependantValues...)
+	state.dependants = common.NewStringSet(dependantValues...)
 
 	eventsValues, err := common.UnmarshalInts(events)
 	if err != nil {

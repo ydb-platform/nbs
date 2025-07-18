@@ -12,10 +12,10 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
-	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -1425,9 +1425,9 @@ func (s *storageYDB) getSnapshotMeta(
 func (s *storageYDB) listSnapshots(
 	ctx context.Context,
 	session *persistence.Session,
-) (task_storage.StringSet, error) {
+) (tasks_common.StringSet, error) {
 
-	snapshots := task_storage.NewStringSet()
+	snapshots := tasks_common.NewStringSet()
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";

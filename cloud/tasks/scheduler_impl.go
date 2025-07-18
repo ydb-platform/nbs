@@ -98,7 +98,7 @@ func (s *scheduler) ScheduleZonalTask(
 		Status:         tasks_storage.TaskStatusReadyToRun,
 		Request:        marshalledRequest,
 		Metadata:       metadata,
-		Dependencies:   tasks_storage.NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		ZoneID:         zoneID,
 	})
 	if err != nil {
@@ -208,7 +208,7 @@ func (s *scheduler) ScheduleRegularTasks(
 				GenerationID: 0,
 				Status:       tasks_storage.TaskStatusReadyToRun,
 				Metadata:     metadata,
-				Dependencies: tasks_storage.NewStringSet(),
+				Dependencies: common.NewStringSet(),
 			}, schedule)
 			if err != nil {
 				logging.Warn(ctx, "failed to persist task %v: %v", taskType, err)
