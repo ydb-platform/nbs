@@ -17,6 +17,7 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/storage/core
+    cloud/blockstore/libs/storage/partition_nonrepl
     cloud/blockstore/libs/storage/partition_common/model
     cloud/storage/core/libs/common
     cloud/storage/core/libs/kikimr
