@@ -1271,4 +1271,7 @@ message TStorageServiceConfig
     // If a disk starts sending more than the DirectWriteBandwidthQuota bytes per second,
     // we start using MultiAgent write requests.
     optional uint64 DirectWriteBandwidthQuota = 440;
+
+    // Max number of devices in a TStartMigration transaction.
+    optional uint32 MaxNonReplicatedDeviceMigrationBatchSize = 441;
 }
