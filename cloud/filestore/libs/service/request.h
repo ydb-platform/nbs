@@ -128,7 +128,6 @@ namespace NCloud::NFileStore {
     FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
     xxx(GetSessionEventsStream,             __VA_ARGS__)                       \
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
-    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -153,7 +152,8 @@ enum class EFileStoreRequest
     AddData,
     ReadBlob,
     WriteBlob,
-    MAX
+    ReadNodeRefs,
+    MAX,
 };
 
 #undef FILESTORE_DECLARE_REQUEST
