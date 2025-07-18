@@ -5555,7 +5555,9 @@ NProto::TError TDiskRegistryState::PurgeHost(
         timeout);
 
     if (HasError(removeHostError)) {
-        ReportDiskRegistryPurgeHostError();
+        ReportDiskRegistryPurgeHostError(
+            TStringBuilder()
+            << "Failed to purge host: AgentId=" << agent->GetAgentId().Quote());
     }
 
     STORAGE_LOG(

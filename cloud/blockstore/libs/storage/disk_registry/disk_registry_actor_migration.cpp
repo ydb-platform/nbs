@@ -193,7 +193,11 @@ void TDiskRegistryActor::HandleFinishMigration(
                 // to migrate again, which is inefficient but which won't
                 // break anything
 
-                ReportUnexpectedBatchMigration();
+                ReportUnexpectedBatchMigration(
+                    TStringBuilder()
+                    << "FinishMigration request contains migrations spanning "
+                       "multiple replicas for disk: "
+                    << record.GetDiskId());
 
                 break;
             }
