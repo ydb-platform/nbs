@@ -622,6 +622,7 @@ void TVolumeActor::ExecuteUpdateDevices(
 
     db.WriteMeta(newMeta);
     State->ResetMeta(std::move(newMeta));
+    State->FillOutdatedDevices();
 }
 
 void TVolumeActor::CompleteUpdateDevices(
@@ -642,7 +643,7 @@ void TVolumeActor::CompleteUpdateDevices(
     }
 
     TPoisonCallback onPartitionDestroy =
-        [laggingDevices = State->GetLaggingDeviceIds(),
+        [laggingDevices = State->GetOutdatedDevices(),
          requestInfo = args.RequestInfo](
             const TActorContext& ctx,
             NProto::TError error) mutable

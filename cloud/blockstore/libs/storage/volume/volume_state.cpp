@@ -226,15 +226,27 @@ THashSet<TString> TVolumeState::GetLaggingDeviceIds() const
     return laggingDevices;
 }
 
-TVector<NProto::TLaggingDevice> TVolumeState::GetLaggingDevices() const
-{
-    TVector<NProto::TLaggingDevice> laggingDevices;
+void TVolumeState::FillOutdatedDevices() {
+    OutdatedDevices.clear();
     for (const auto& agent: Meta.GetLaggingAgentsInfo().GetAgents()) {
         for (const auto& device: agent.GetDevices()) {
-            laggingDevices.push_back(device);
+            OutdatedDevices.push_back(device);
         }
     }
-    return laggingDevices;
+}
+
+[[nodiscard]] THashSet<TString> TVolumeState::GetOutdatedDeviceIds() const
+{
+    THashSet<TString> outdatedDeviceIds;
+    for (const auto& device: OutdatedDevices) {
+        outdatedDeviceIds.insert(device.GetDeviceUUID());
+    }
+    return outdatedDeviceIds;
+}
+
+const TVector<NProto::TLaggingDevice>& TVolumeState::GetOutdatedDevices() const
+{
+    return OutdatedDevices;
 }
 
 void TVolumeState::UpdateLaggingAgentMigrationState(
