@@ -40,6 +40,19 @@ struct TDiskNotification
     {}
 };
 
+struct TDiskNotificationResult
+{
+    TDiskNotification DiskNotification;
+    TVector<NProto::TLaggingDevice> OutdatedLaggingDevices;
+
+    TDiskNotificationResult(
+        TDiskNotification diskNotification,
+        TVector<NProto::TLaggingDevice> outdatedLaggingDevices)
+        : DiskNotification(std::move(diskNotification))
+        , OutdatedLaggingDevices(std::move(outdatedLaggingDevices))
+    {}
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TDiskStateUpdate
@@ -368,15 +381,16 @@ struct TEvDiskRegistryPrivate
     struct TNotifyDisksResponse
     {
         TCallContextPtr CallContext;
-        TVector<TDiskNotification> NotifiedDisks;
+        TVector<TDiskNotificationResult> NotifiedDisks;
 
         TNotifyDisksResponse() = default;
 
         TNotifyDisksResponse(
-                TCallContextPtr callContext)
+                TCallContextPtr callContext,
+                TVector<TDiskNotificationResult> notifiedDisks)
             : CallContext(std::move(callContext))
-        {
-        }
+            , NotifiedDisks(std::move(notifiedDisks))
+        {}
     };
 
     //

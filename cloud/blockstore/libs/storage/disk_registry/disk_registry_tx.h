@@ -473,13 +473,13 @@ struct TTxDiskRegistry
     struct TDeleteNotifiedDisks
     {
         const TRequestInfoPtr RequestInfo;
-        const TVector<TDiskNotification> DiskIds;
+        TVector<TDiskNotificationResult> DiskNotifications;
 
         TDeleteNotifiedDisks(
                 TRequestInfoPtr requestInfo,
-                TVector<TDiskNotification> diskIds)
+                TVector<TDiskNotificationResult> diskNotifications)
             : RequestInfo(std::move(requestInfo))
-            , DiskIds(std::move(diskIds))
+            , DiskNotifications(std::move(diskNotifications))
         {}
 
         void Clear()

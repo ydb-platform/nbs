@@ -152,6 +152,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     const auto& volumeParams = State->GetVolumeParams();
 
     State->SetBlockCountToMigrate(std::nullopt);
+    ReportOutdatedLaggingDevicesToDR(ctx);
 
     auto maxTimedOutDeviceStateDuration =
         volumeParams.GetMaxTimedOutDeviceStateDurationOverride(ctx.Now());
@@ -193,7 +194,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
             State->GetMeta().GetIOMode(),
             State->GetMeta().GetMuteIOErrors(),
             State->GetFilteredFreshDevices(),
-            State->GetLaggingDevices(),
+            State->GetOutdatedDeviceIds(),
             LaggingDevicesAreAllowed(),
             maxTimedOutDeviceStateDuration,
             maxTimedOutDeviceStateDurationOverridden,
@@ -284,7 +285,6 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     State->SetDiskRegistryBasedPartitionActor(
         WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
         nonreplicatedConfig);
-    ReportOutdatedLaggingDevicesToDR(ctx);
 }
 
 TActorsStack TVolumeActor::WrapNonreplActorIfNeeded(
