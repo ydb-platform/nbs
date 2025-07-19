@@ -813,6 +813,10 @@ public:
         return AutomaticallyReplacedDeviceIds.contains(deviceId);
     }
 
+    void AddAutomaticallyReplacedDevice(
+        TDiskRegistryDatabase& db,
+        const TAutomaticallyReplacedDeviceInfo& deviceInfo);
+
     ui32 DeleteAutomaticallyReplacedDevices(
         TDiskRegistryDatabase& db,
         const TInstant until);
