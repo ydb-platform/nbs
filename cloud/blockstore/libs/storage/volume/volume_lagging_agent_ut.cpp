@@ -336,7 +336,11 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                 .DebugString());
 
         // Disk Registry will remove lagging devices on reallocation.
-        volume.ReallocateDisk();
+        auto response = volume.ReallocateDisk();
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            response->Record.OutdatedLaggingDevicesSize());
+
         auto metaHistoryResponse = volume.ReadMetaHistory();
         UNIT_ASSERT(!metaHistoryResponse->MetaHistory.empty());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -344,6 +348,156 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             metaHistoryResponse->MetaHistory.back()
                 .Meta.GetLaggingAgentsInfo()
                 .AgentsSize());
+    }
+
+    Y_UNIT_TEST(ShouldHandleVolumeReallocation)
+    {
+        constexpr ui32 AgentCount = 6;
+        constexpr ui32 DevicePerAgentCount = 2;
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->Devices =
+            MakeDeviceList(AgentCount, DevicePerAgentCount);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = 2;
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < AgentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            std::move(storageServiceConfig),
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
+
+        TVolumeClient volume(*runtime);
+        const ui64 blockCount = DefaultDeviceBlockCount *
+                                DefaultDeviceBlockSize / DefaultBlockSize * 3;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,   // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            blockCount);
+        volume.WaitReady();
+
+        std::optional<TEvNonreplPartitionPrivate::TAddLaggingAgentRequest>
+            addLaggingAgentRequest;
+        std::optional<NProto::TAddOutdatedLaggingDevicesRequest>
+            addLaggingDevicesRequest;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest: {
+                        auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                                   TEvAddLaggingAgentRequest>();
+                        UNIT_ASSERT(!addLaggingAgentRequest.has_value());
+                        addLaggingAgentRequest = *msg;
+                        return true;
+                    }
+                    case TEvDiskRegistry::EvAddOutdatedLaggingDevicesRequest: {
+                        auto* msg = event->Get<
+                            TEvDiskRegistry::
+                                TEvAddOutdatedLaggingDevicesRequest>();
+                        addLaggingDevicesRequest = msg->Record;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        // Device in the zeroth replica is timed out.
+        volume.DeviceTimedOut("uuid-1.1");
+
+        UNIT_ASSERT(addLaggingAgentRequest.has_value());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "agent-1",
+            addLaggingAgentRequest->LaggingAgent.GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            addLaggingAgentRequest->LaggingAgent.GetReplicaIndex());
+
+        // Rebooting the partition should report lagging devices to the DR.
+        // Reallocate response should contain outdated lagging devices.
+        {
+            auto reallocateResponse = volume.ReallocateDisk();
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                reallocateResponse->Record.OutdatedLaggingDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "DeviceUUID: \"uuid-1.0\"\n",
+                reallocateResponse->Record.GetOutdatedLaggingDevices(0)
+                    .DebugString());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "DeviceUUID: \"uuid-1.1\"\nRowIndex: 1\n",
+                reallocateResponse->Record.GetOutdatedLaggingDevices(1)
+                    .DebugString());
+        }
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT(addLaggingDevicesRequest.has_value());
+        UNIT_ASSERT_VALUES_EQUAL("vol0", addLaggingDevicesRequest->GetDiskId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            addLaggingDevicesRequest->GetOutdatedLaggingDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "DeviceUUID: \"uuid-1.0\"\n",
+            addLaggingDevicesRequest->GetOutdatedLaggingDevices(0)
+                .DebugString());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "DeviceUUID: \"uuid-1.1\"\nRowIndex: 1\n",
+            addLaggingDevicesRequest->GetOutdatedLaggingDevices(1)
+                .DebugString());
+
+        // Check for lagging agent in the meta.
+        {
+            auto metaHistoryResponse = volume.ReadMetaHistory();
+            UNIT_ASSERT(!metaHistoryResponse->MetaHistory.empty());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                metaHistoryResponse->MetaHistory.back()
+                    .Meta.GetLaggingAgentsInfo()
+                    .AgentsSize());
+        }
+
+        {
+            // Shouldn't be able to add a new lagging agent while the volume
+            // have outdated lagging devices.
+            addLaggingAgentRequest.reset();
+            volume.SendDeviceTimedOutRequest("uuid-6.0");
+            auto response = volume.RecvDeviceTimedOutResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                response->GetError().GetCode());
+            UNIT_ASSERT(!addLaggingAgentRequest.has_value());
+        }
+
+        // Disk Registry will remove lagging devices on reallocation another
+        // reallocation.
+        {
+            auto reallocateResponse = volume.ReallocateDisk();
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                reallocateResponse->Record.OutdatedLaggingDevicesSize());
+        }
+
+        // No more lagging devices now.
+        {
+            auto metaHistoryResponse = volume.ReadMetaHistory();
+            UNIT_ASSERT(!metaHistoryResponse->MetaHistory.empty());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                metaHistoryResponse->MetaHistory.back()
+                    .Meta.GetLaggingAgentsInfo()
+                    .AgentsSize());
+        }
     }
 
     Y_UNIT_TEST(ShouldHandleUpdateVolumeConfig)
@@ -637,7 +791,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                 .DebugString());
 
         // Disk Registry will remove lagging devices on reallocation.
-        volume.ReallocateDisk();
+        auto response = volume.ReallocateDisk();
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            response->Record.OutdatedLaggingDevicesSize());
         auto metaHistoryResponse = volume.ReadMetaHistory();
         UNIT_ASSERT(!metaHistoryResponse->MetaHistory.empty());
         UNIT_ASSERT_VALUES_EQUAL(

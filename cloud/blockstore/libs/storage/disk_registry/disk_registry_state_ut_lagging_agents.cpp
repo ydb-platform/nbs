@@ -97,7 +97,9 @@ void CreateMirror3Disk(TTestExecutor& executor, TDiskRegistryState& state)
         });
 }
 
-void DeleteDisksToNotify(TTestExecutor& executor, TDiskRegistryState& state)
+void DeleteDisksToNotify(
+    TTestExecutor& executor,
+    TDiskRegistryState& state)
 {
     executor.WriteTx(
         [&](TDiskRegistryDatabase db) mutable
@@ -105,7 +107,13 @@ void DeleteDisksToNotify(TTestExecutor& executor, TDiskRegistryState& state)
             // copying needed to avoid use-after-free upon deletion
             const auto disks = state.GetDisksToReallocate();
             for (const auto& x: disks) {
-                state.DeleteDiskToReallocate(db, x.first, x.second);
+                state.DeleteDiskToReallocate(
+                    Now(),
+                    db,
+                    TDiskNotificationResult{
+                        TDiskNotification{x.first, x.second},
+                        {},
+                    });
             }
         });
 }

@@ -1081,7 +1081,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 
                 auto notification = state.GetDisksToReallocate().find("nrd0");
                 UNIT_ASSERT(notification != state.GetDisksToReallocate().end());
-                state.DeleteDiskToReallocate(db, "nrd0", notification->second);
+                state.DeleteDiskToReallocate(
+                    Now(),
+                    db,
+                    TDiskNotificationResult{
+                        TDiskNotification{"nrd0", notification->second},
+                        {},
+                    });
             });
 
         executor.WriteTx(

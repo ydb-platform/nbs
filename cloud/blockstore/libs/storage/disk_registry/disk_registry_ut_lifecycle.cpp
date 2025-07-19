@@ -322,6 +322,136 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldReplaceLaggingDevicesAfterDiskReallocation)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        const auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {
+                Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                Device("dev-2", "uuid-4", "rack-2", 10_GB),
+            });
+
+        NProto::TStorageServiceConfig config = CreateDefaultStorageConfig();
+        config.SetDiskRegistryDisksNotificationTimeout(1);
+        auto runtime = TTestRuntimeBuilder()
+                           .With(config)
+                           .WithAgents({agent1, agent2})
+                           .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1, agent2}));
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+        WaitForSecureErase(*runtime, {agent1, agent2});
+
+        TSSProxyClient ss(*runtime);
+        ss.CreateVolume("mirrored-vol");
+        diskRegistry.AllocateDisk(
+            "mirrored-vol",
+            10_GB,
+            DefaultLogicalBlockSize,
+            "",   // placementGroupId
+            0,    // placementPartitionIndex
+            "",   // cloudId
+            "",   // folderId
+            1,    // replicaCount
+            NProto::STORAGE_MEDIA_SSD_MIRROR2);
+
+        // Send volume reallocations.
+        runtime->DispatchEvents({}, 10ms);
+
+        {
+            auto response = diskRegistry.DescribeDisk("mirrored-vol");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            auto& r = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", r.GetDevices(0).GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetReplicas(0).DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-3",
+                r.GetReplicas(0).GetDevices(0).GetDeviceUUID());
+        }
+
+        ui32 reallocateCount = 0;
+        runtime->SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::EvReallocateDiskRequest: {
+                        auto* msg =
+                            event->Get<TEvVolume::TEvReallocateDiskRequest>();
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "mirrored-vol",
+                            msg->Record.GetDiskId());
+                        ++reallocateCount;
+                        break;
+                    }
+
+                    case TEvVolume::EvReallocateDiskResponse: {
+                        auto* msg =
+                            event->Get<TEvVolume::TEvReallocateDiskResponse>();
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            0,
+                            msg->Record.OutdatedLaggingDevicesSize());
+
+                        static bool onceGuard = false;
+                        if (onceGuard) {
+                            break;
+                        }
+                        onceGuard = true;
+
+                        auto* laggingDevice =
+                            msg->Record.AddOutdatedLaggingDevices();
+                        laggingDevice->SetDeviceUUID("uuid-1");
+                        laggingDevice->SetRowIndex(0);
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        // Trigger the reallocation. It should add "uuid-1" to outdated lagging
+        // devices.
+        diskRegistry.ChangeDeviceState(
+            "uuid-1",
+            NProto::EDeviceState::DEVICE_STATE_WARNING);
+
+        // We should do 2 reallocations: one for changing deivce state and one
+        // for the outdated lagging devices. Wait for both here.
+        runtime->DispatchEvents({}, 100ms);
+        UNIT_ASSERT_VALUES_EQUAL(2, reallocateCount);
+
+        // "uuid-1" should be replaced with "uuid-2".
+        {
+            auto response = diskRegistry.DescribeDisk("mirrored-vol");
+            auto& r = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", r.GetDevices(0).GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetReplicas(0).DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-3",
+                r.GetReplicas(0).GetDevices(0).GetDeviceUUID());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetDeviceReplacementUUIDs().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-2",
+                r.GetDeviceReplacementUUIDs()[0]);
+        }
+    }
+
     Y_UNIT_TEST(ShouldRepairVolume)
     {
         const auto agent = CreateAgentConfig("agent-1", {

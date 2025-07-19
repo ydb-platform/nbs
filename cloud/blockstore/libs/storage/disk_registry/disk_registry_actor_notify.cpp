@@ -22,9 +22,9 @@ private:
     const ui64 TabletID;
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
-    const TVector<TDiskNotification> DiskIds;
+    const TVector<TDiskNotification> DiskNotifications;
 
-    TVector<TDiskNotification> NotifiedDisks;
+    TVector<TDiskNotificationResult> NotifiedDisks;
     int PendingOperations = 0;
 
 public:
@@ -69,7 +69,7 @@ TNotifyActor::TNotifyActor(
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
-    , DiskIds(std::move(diskIds))
+    , DiskNotifications(std::move(diskIds))
 {}
 
 void TNotifyActor::Bootstrap(const TActorContext& ctx)
@@ -92,9 +92,10 @@ void TNotifyActor::Bootstrap(const TActorContext& ctx)
 
 void TNotifyActor::ReplyAndDie(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvNotifyDisksResponse>(
-        RequestInfo->CallContext);
-    response->NotifiedDisks = std::move(NotifiedDisks);
+    auto response =
+        std::make_unique<TEvDiskRegistryPrivate::TEvNotifyDisksResponse>(
+            RequestInfo->CallContext,
+            std::move(NotifiedDisks));
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -107,10 +108,10 @@ void TNotifyActor::ReplyAndDie(const TActorContext& ctx)
 
 void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
 {
-    PendingOperations = DiskIds.size();
+    PendingOperations = DiskNotifications.size();
 
     ui64 cookie = 0;
-    for (const auto& [diskId, seqNo]: DiskIds) {
+    for (const auto& [diskId, seqNo]: DiskNotifications) {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%lu] Notifying volume: DiskId=%s",
             TabletID,
@@ -154,26 +155,38 @@ void TNotifyActor::HandleReallocateDiskResponse(
     const TActorContext& ctx)
 {
     auto cookie = ev->Cookie;
+    auto* msg = ev->Get();
 
     --PendingOperations;
 
     Y_ABORT_UNLESS(PendingOperations >= 0);
 
-    const auto& diskId = DiskIds[cookie].DiskId;
+    const auto& diskId = DiskNotifications[cookie].DiskId;
 
-    if (HasError(ev->Get()->Record)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+    if (HasError(msg->Record)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%lu] Volume notification failed: DiskId=%s, Error=%s",
             TabletID,
             diskId.Quote().c_str(),
-            ev->Get()->Record.GetError().GetMessage().Quote().c_str());
+            msg->Record.GetError().GetMessage().Quote().c_str());
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%lu] Volume notification succeeded: DiskId=%s",
             TabletID,
             diskId.Quote().c_str());
 
-        NotifiedDisks.push_back(DiskIds[cookie]);
+        TVector<NProto::TLaggingDevice> outdatedLaggingDevices;
+        for (auto& laggingDevice: *msg->Record.MutableOutdatedLaggingDevices())
+        {
+            outdatedLaggingDevices.emplace_back(std::move(laggingDevice));
+        }
+        NotifiedDisks.emplace_back(
+            DiskNotifications[cookie],
+            std::move(outdatedLaggingDevices));
     }
 
     if (!PendingOperations) {
@@ -295,7 +308,7 @@ void TDiskRegistryActor::HandleNotifyDisksResponse(
             ev->Cookie,
             ev->Get()->CallContext
         ),
-        ev->Get()->NotifiedDisks
+        std::move(ev->Get()->NotifiedDisks)
     );
 }
 
@@ -318,11 +331,9 @@ void TDiskRegistryActor::ExecuteDeleteNotifiedDisks(
     TTransactionContext& tx,
     TTxDiskRegistry::TDeleteNotifiedDisks& args)
 {
-    Y_UNUSED(ctx);
-
     TDiskRegistryDatabase db(tx.DB);
-    for (const auto& x: args.DiskIds) {
-        State->DeleteDiskToReallocate(db, x.DiskId, x.SeqNo);
+    for (auto& notification: args.DiskNotifications) {
+        State->DeleteDiskToReallocate(ctx.Now(), db, std::move(notification));
     }
 }
 
@@ -334,8 +345,12 @@ void TDiskRegistryActor::CompleteDeleteNotifiedDisks(
 
     DisksNotificationInProgress = false;
     DisksBeingNotified.clear();
+
     ReallocateDisks(ctx);
+    NotifyUsers(ctx);
+    PublishDiskStates(ctx);
     SecureErase(ctx);
+    StartMigration(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

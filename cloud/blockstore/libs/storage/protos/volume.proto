@@ -6,6 +6,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/libs/storage/p
 
 import "cloud/blockstore/config/storage.proto";
 
+import "cloud/blockstore/libs/storage/protos/disk.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/volume.proto";
 
@@ -331,6 +332,9 @@ message TReallocateDiskResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
+
+    // Outdated lagging devices of the volume.
+    repeated TLaggingDevice OutdatedLaggingDevices = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

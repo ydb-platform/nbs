@@ -237,7 +237,16 @@ struct TEvVolumePrivate
     };
 
     struct TUpdateDevicesResponse
-    {};
+    {
+        TVector<NProto::TLaggingDevice> LaggingDevices;
+
+        TUpdateDevicesResponse() = default;
+
+        explicit TUpdateDevicesResponse(
+            TVector<NProto::TLaggingDevice> laggingDevices)
+            : LaggingDevices(std::move(laggingDevices))
+        {}
+    };
 
     //
     // PartStatsSaved

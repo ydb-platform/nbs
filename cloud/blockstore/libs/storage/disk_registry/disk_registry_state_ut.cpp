@@ -5816,9 +5816,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(seqNo2, disks.at("disk-1"));
         }
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeleteDiskToReallocate(db, "disk-1", seqNo1);
-        });
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                state.DeleteDiskToReallocate(
+                    Now(),
+                    db,
+                    TDiskNotificationResult{
+                        TDiskNotification{"disk-1", seqNo1},
+                        {},
+                    });
+            });
 
         {
             const auto& disks = state.GetDisksToReallocate();
@@ -5827,7 +5835,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeleteDiskToReallocate(db, "disk-1", seqNo2);
+            state.DeleteDiskToReallocate(
+                Now(),
+                db,
+                TDiskNotificationResult{
+                    TDiskNotification{"disk-1", seqNo2},
+                    {},
+                });
         });
 
         {
@@ -8993,13 +9007,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             }
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            auto disksToReallocate = state.GetDisksToReallocate();
-            UNIT_ASSERT_VALUES_EQUAL(1, disksToReallocate.size());
-            for (auto& [diskId, seqNo]: disksToReallocate) {
-                state.DeleteDiskToReallocate(db, diskId, seqNo);
-            }
-        });
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto disksToReallocate = state.GetDisksToReallocate();
+                UNIT_ASSERT_VALUES_EQUAL(1, disksToReallocate.size());
+                for (auto& [diskId, seqNo]: disksToReallocate) {
+                    state.DeleteDiskToReallocate(
+                        Now(),
+                        db,
+                        TDiskNotificationResult{
+                            TDiskNotification{diskId, seqNo},
+                            {},
+                        });
+                }
+            });
 
         // clean dirty devices
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -9936,18 +9958,28 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            auto disksToReallocate = state.GetDisksToReallocate();
-            UNIT_ASSERT_VALUES_EQUAL(1, disksToReallocate.size());
-            for (auto& [diskId, seqNo]: disksToReallocate) {
-                state.DeleteDiskToReallocate(db, diskId, seqNo);
-            }
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto disksToReallocate = state.GetDisksToReallocate();
+                UNIT_ASSERT_VALUES_EQUAL(1, disksToReallocate.size());
+                for (auto& [diskId, seqNo]: disksToReallocate) {
+                    state.DeleteDiskToReallocate(
+                        Now(),
+                        db,
+                        TDiskNotificationResult{
+                            TDiskNotification{diskId, seqNo},
+                            {},
+                        });
+                }
 
-            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
-            UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", state.GetDirtyDevices()[0].GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-1.1",
+                    state.GetDirtyDevices()[0].GetDeviceUUID());
 
-            CleanDevices(state, db);
-        });
+                CleanDevices(state, db);
+            });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agents[1]));
@@ -10025,18 +10057,28 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, update);
         });
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            auto disksToReallocate = state.GetDisksToReallocate();
-            UNIT_ASSERT_VALUES_EQUAL(1, disksToReallocate.size());
-            for (auto& [diskId, seqNo]: disksToReallocate) {
-                state.DeleteDiskToReallocate(db, diskId, seqNo);
-            }
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto disksToReallocate = state.GetDisksToReallocate();
+                UNIT_ASSERT_VALUES_EQUAL(1, disksToReallocate.size());
+                for (auto& [diskId, seqNo]: disksToReallocate) {
+                    state.DeleteDiskToReallocate(
+                        Now(),
+                        db,
+                        TDiskNotificationResult{
+                            TDiskNotification{diskId, seqNo},
+                            {},
+                        });
+                }
 
-            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
-            UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", state.GetDirtyDevices()[0].GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-2.1",
+                    state.GetDirtyDevices()[0].GetDeviceUUID());
 
-            CleanDevices(state, db);
-        });
+                CleanDevices(state, db);
+            });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agents[1]));
@@ -10599,12 +10641,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT(!state.GetDisksToReallocate().empty());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            auto notifications = state.GetDisksToReallocate();
-            for (const auto& [diskId, seqNo]: notifications) {
-                state.DeleteDiskToReallocate(db, diskId, seqNo);
-            }
-        });
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto notifications = state.GetDisksToReallocate();
+                for (const auto& [diskId, seqNo]: notifications) {
+                    state.DeleteDiskToReallocate(
+                        Now(),
+                        db,
+                        TDiskNotificationResult{
+                            TDiskNotification{diskId, seqNo},
+                            {},
+                        });
+                }
+            });
 
         UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
 
@@ -11868,7 +11918,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 auto disksToReallocate = state.GetDisksToReallocate();
                 UNIT_ASSERT_VALUES_EQUAL(2, disksToReallocate.size());
                 for (auto& [diskId, seqNo]: disksToReallocate) {
-                    state.DeleteDiskToReallocate(db, diskId, seqNo);
+                    state.DeleteDiskToReallocate(
+                        Now(),
+                        db,
+                        TDiskNotificationResult{
+                            TDiskNotification{diskId, seqNo},
+                            {},
+                        });
                 }
             });
         UNIT_ASSERT(state.HasPendingCleanup("disk-2"));
@@ -12162,15 +12218,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(20_GB, allocatedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyBytes->Val());
 
-        executor.WriteTx([&](TDiskRegistryDatabase db) mutable {
-            const auto& disks = state.GetDisksToReallocate();
-            UNIT_ASSERT_VALUES_EQUAL(1, disks.size());
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                const auto& disks = state.GetDisksToReallocate();
+                UNIT_ASSERT_VALUES_EQUAL(1, disks.size());
 
-            const auto seqNo = disks.at("vol1");
-            UNIT_ASSERT_VALUES_UNEQUAL(0, seqNo);
+                const auto seqNo = disks.at("vol1");
+                UNIT_ASSERT_VALUES_UNEQUAL(0, seqNo);
 
-            state.DeleteDiskToReallocate(db, "vol1", seqNo);
-        });
+                state.DeleteDiskToReallocate(
+                    Now(),
+                    db,
+                    TDiskNotificationResult{
+                        TDiskNotification{"vol1", seqNo},
+                        {},
+                    });
+            });
 
         state.PublishCounters(Now());
 

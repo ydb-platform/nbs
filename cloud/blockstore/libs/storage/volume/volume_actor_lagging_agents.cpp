@@ -57,19 +57,21 @@ void TVolumeActor::HandleReportLaggingDevicesToDR(
 void TVolumeActor::ReportOutdatedLaggingDevicesToDR(
     const NActors::TActorContext& ctx)
 {
-    if (!State || State->GetMeta().GetLaggingAgentsInfo().GetAgents().empty()) {
+    if (!State) {
+        return;
+    }
+
+    State->FillOutdatedDevices();
+    const auto& outdatedDevices = State->GetOutdatedDevices();
+    if (outdatedDevices.empty()) {
         return;
     }
 
     auto request = std::make_unique<
         TEvDiskRegistry::TEvAddOutdatedLaggingDevicesRequest>();
     *request->Record.MutableDiskId() = State->GetDiskId();
-    for (const auto& laggingAgent:
-         State->GetMeta().GetLaggingAgentsInfo().GetAgents())
-    {
-        for (const auto& laggingDevice: laggingAgent.GetDevices()) {
-            *request->Record.AddOutdatedLaggingDevices() = laggingDevice;
-        }
+    for (const auto& outdatedDevice: outdatedDevices) {
+        *request->Record.AddOutdatedLaggingDevices() = outdatedDevice;
     }
     NCloud::Send(
         ctx,
@@ -272,6 +274,14 @@ void TVolumeActor::ExecuteAddLaggingAgent(
     TTxVolume::TAddLaggingAgent& args)
 {
     Y_DEBUG_ABORT_UNLESS(!args.Agent.GetDevices().empty());
+
+    if (!State->GetOutdatedDevices().empty()) {
+        args.Error = MakeError(
+            E_REJECTED,
+            "Disk is soon to be reallocated to remove outdated devices");
+        return;
+    }
+
     const auto& meta = State->GetMeta();
     for (const auto& laggingAgent: meta.GetLaggingAgentsInfo().GetAgents()) {
         // Whether the agent is lagging already.
