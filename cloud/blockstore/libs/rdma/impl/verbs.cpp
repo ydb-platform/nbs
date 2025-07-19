@@ -231,6 +231,8 @@ struct TVerbs
     {
         rdma_cm_id* id = nullptr;
 
+        // RDMA_OPTION_IB_PATH;
+
         int res = rdma_create_id(channel, &id, context, ps);
         if (res < 0) {
             RDMA_THROW_ERROR("rdma_create_id");

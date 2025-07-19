@@ -473,6 +473,8 @@ message TInterconnectConfig {
     optional double ErrorSleepRetryMultiplier = 48;
 
     optional uint32 OutgoingHandshakeInflightLimit = 43;
+
+    optional string SocketBindDevice = 49;
 }
 
 message TChannelProfileConfig {

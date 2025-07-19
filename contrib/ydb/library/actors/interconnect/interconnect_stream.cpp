@@ -110,6 +110,23 @@ namespace NInterconnect {
     {
     }
 
+    int TStreamSocket::BindToDevice(TStringBuf interfaceName)
+    {
+#ifdef SO_BINDTODEVICE
+        const auto ret = ::setsockopt(
+            Descriptor,
+            SOL_SOCKET,
+            SO_BINDTODEVICE,
+            interfaceName.data(),
+            interfaceName.size());
+        if (ret < 0) {
+            return -LastSocketError();
+        }
+        return 0;
+#endif
+        return -ENOTSUP;   // this is bad?
+    }
+
     ssize_t
     TStreamSocket::Send(const void* msg, size_t len, TString* /*err*/) const {
         const auto ret = ::send(Descriptor, static_cast<const char*>(msg), int(len), 0);

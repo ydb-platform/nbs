@@ -848,6 +848,7 @@ void TServer::HandleStoppedEndpoint(
 
 void TServer::InitExecutors()
 {
+    constexpr char AUTH_METHOD[] = "Bearer";
     for (size_t i = 1; i <= Config.ThreadsCount; ++i) {
         auto vhostQueue = VhostQueueFactory->CreateQueue();
 

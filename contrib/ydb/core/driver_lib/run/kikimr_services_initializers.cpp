@@ -767,6 +767,7 @@ void TBasicServicesInitializer::InitializeServices(NActors::TActorSystemSetup* s
             setup->Interconnect.ProxyWrapperFactory = CreateProxyWrapperFactory(icCommon, interconnectPoolId);
 
             std::unordered_set<ui32> staticIds;
+            const TString& socketBindDevice = icConfig.GetSocketBindDevice();
 
             for (const auto& node : table->StaticNodeTable) {
                 const ui32 destId = node.first;

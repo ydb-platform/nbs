@@ -15,7 +15,14 @@ namespace NActors {
             return EActivityType::INTERCONNECT_COMMON;
         }
 
-        TInterconnectListenerTCP(const TString& address, ui16 port, TInterconnectProxyCommon::TPtr common, const TMaybe<SOCKET>& socket = Nothing());
+        TInterconnectListenerTCP(
+            const TString& address,
+            ui16 port,
+            TInterconnectProxyCommon::TPtr common,
+            const TMaybe<SOCKET>& socket = Nothing());
+
+        void BindToDevice(TStringBuf interfaceName);
+
         int Bind();
 
     private:

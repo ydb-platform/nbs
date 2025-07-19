@@ -52,6 +52,8 @@ namespace NInterconnect {
 
         static TIntrusivePtr<TStreamSocket> Make(int domain, int *error = nullptr);
 
+        int BindToDevice(TStringBuf interfaceName);
+
         virtual ssize_t Send(const void* msg, size_t len, TString *err = nullptr) const;
         virtual ssize_t Recv(void* buf, size_t len, TString *err = nullptr) const;
 

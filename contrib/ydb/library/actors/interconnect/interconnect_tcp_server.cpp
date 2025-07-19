@@ -24,6 +24,10 @@ namespace NActors {
         }
     }
 
+    void TInterconnectListenerTCP::BindToDevice(TStringBuf interfaceName) {
+        Listener->BindToDevice(interfaceName);
+    }
+
     TAutoPtr<IEventHandle> TInterconnectListenerTCP::AfterRegister(const TActorId& self, const TActorId& parentId) {
         return new IEventHandle(self, parentId, new TEvents::TEvBootstrap, 0);
     }
