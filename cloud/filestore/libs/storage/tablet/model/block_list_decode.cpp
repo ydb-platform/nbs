@@ -260,22 +260,6 @@ void StatDeletionMarkers(const TByteVector& encodedDeletionMarkers, TBlockList::
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEmptyFilter
-{
-};
-
-bool CheckGroup(const TEmptyFilter&, ui64, ui64)
-{
-    return true;
-}
-
-bool CheckEntry(const TEmptyFilter&, ui32, ui64)
-{
-    return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TBlockFilter
 {
     ui64 NodeId;
@@ -495,14 +479,6 @@ private:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
-IBlockIteratorPtr TBlockList::FindBlocks() const
-{
-    return std::make_shared<TBlockIterator<TEmptyFilter>>(
-        EncodedBlocks,
-        EncodedDeletionMarkers,
-        TEmptyFilter {});
-}
 
 IBlockIteratorPtr TBlockList::FindBlocks(
     ui64 nodeId,

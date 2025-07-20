@@ -47,8 +47,6 @@ public:
         return EncodedDeletionMarkers;
     }
 
-    IBlockIteratorPtr FindBlocks() const;
-
     IBlockIteratorPtr FindBlocks(
         ui64 nodeId,
         ui64 commitId,
