@@ -63,7 +63,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             OpenAlways | RdWr | DirectAligned | Sync);
         FileData.Resize(BlockCount * BlockSize);
 
-        auto factory = NIoUring::CreateServiceFactory(
+        auto factory = CreateIoUringServiceFactory(
             {.SubmissionQueueEntries = SubmissionQueueSize,
              .MaxKernelWorkersCount = 1,
              .ShareKernelWorkers = true});
@@ -98,7 +98,7 @@ struct TFixtureNull: public NUnitTest::TBaseFixture
     {
         Y_UNUSED(context);
 
-        auto factory = NIoUring::CreateServiceNullFactory(
+        auto factory = CreateIoUringServiceNullFactory(
             {.SubmissionQueueEntries = SubmissionQueueSize,
              .MaxKernelWorkersCount = 1});
 

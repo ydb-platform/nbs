@@ -37,7 +37,6 @@ public:
         bool ShareKernelWorkers = false;
     };
 
-    TContext();
     // Share kernel worker threads with `wqOwner`
     explicit TContext(TParams params,  TContext* wqOwner = nullptr);
 

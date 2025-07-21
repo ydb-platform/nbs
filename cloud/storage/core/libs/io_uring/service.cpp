@@ -19,18 +19,20 @@
 #include <liburing.h>
 #include <sys/eventfd.h>
 
-namespace NCloud::NIoUring {
+namespace NCloud {
+
+using namespace NIoUring;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TServiceBase
+struct TIoUringServiceBase
     : public IFileIOService
 {
     TContext Context;
 
-    TServiceBase(TContext::TParams params, TContext* wqOwner)
+    TIoUringServiceBase(TContext::TParams params, TContext* wqOwner)
         : Context(std::move(params), wqOwner)
     {}
 
@@ -47,10 +49,10 @@ struct TServiceBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TService final
-    : public TServiceBase
+struct TIoUringService final
+    : public TIoUringServiceBase
 {
-    using TServiceBase::TServiceBase;
+    using TIoUringServiceBase::TIoUringServiceBase;
 
     void AsyncRead(
         TFileHandle& file,
@@ -91,10 +93,10 @@ struct TService final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TServiceNull final
-    : public TServiceBase
+struct TIoUringServiceNull final
+    : public TIoUringServiceBase
 {
-    using TServiceBase::TServiceBase;
+    using TIoUringServiceBase::TIoUringServiceBase;
 
     void AsyncRead(
         TFileHandle& file,
@@ -144,7 +146,7 @@ struct TServiceNull final
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TService>
-class TServiceFactory final
+class TIoUringServiceFactory final
     : public IFileIOServiceFactory
 {
 private:
@@ -154,7 +156,7 @@ private:
     ui32 Index = 0;
 
 public:
-    explicit TServiceFactory(TServiceParams params)
+    explicit TIoUringServiceFactory(TIoUringServiceParams params)
         : Params({
               .SubmissionThreadName = std::move(params.SubmissionThreadName),
               .CompletionThreadName = std::move(params.CompletionThreadName),
@@ -189,18 +191,20 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServiceFactoryPtr CreateServiceFactory(TServiceParams params)
+IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
+    TIoUringServiceParams params)
 {
-    using TFactory = TServiceFactory<TService>;
+    using TFactory = TIoUringServiceFactory<TIoUringService>;
 
     return std::make_shared<TFactory>(std::move(params));
 }
 
-IFileIOServiceFactoryPtr CreateServiceNullFactory(TServiceParams params)
+IFileIOServiceFactoryPtr CreateIoUringServiceNullFactory(
+    TIoUringServiceParams params)
 {
-    using TFactory = TServiceFactory<TServiceNull>;
+    using TFactory = TIoUringServiceFactory<TIoUringServiceNull>;
 
     return std::make_shared<TFactory>(std::move(params));
 }
 
-}   // namespace NCloud::NIoUring
+}   // namespace NCloud
