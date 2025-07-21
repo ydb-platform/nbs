@@ -40,7 +40,8 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
           std::move(rwClientId),
           statActorId,
           config->GetMaxMigrationIoDepth(),
-          srcConfig->GetParentActorId())
+          srcConfig->GetParentActorId(),
+          EDirectCopyPolicy::CanUse)
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
