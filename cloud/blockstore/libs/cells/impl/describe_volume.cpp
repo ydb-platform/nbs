@@ -42,6 +42,7 @@ using TCells = THashMap<TString, TCell>;
 struct TMultiCellDescribeHandler;
 
 struct TDescribeResponseHandler
+    : std::enable_shared_from_this<TDescribeResponseHandler>
 {
     const std::weak_ptr<TMultiCellDescribeHandler> Owner;
     const TString CellId;
@@ -58,11 +59,18 @@ struct TDescribeResponseHandler
             TFuture<NProto::TDescribeVolumeResponse> future,
             TCell& cell);
 
-    void operator ()(const auto& future);
+    void HandleResponse(const auto& future);
 
     void Start()
     {
-        Future.Subscribe(*this);
+        auto weakPtr = weak_from_this();
+        Future.Subscribe(
+            [weakPtr = std::move(weakPtr)] (const auto& future) {
+                if (auto self = weakPtr.lock(); self != nullptr) {
+                    self->HandleResponse(future);
+                }
+            }
+        );
     }
 };
 
@@ -102,7 +110,7 @@ struct TMultiCellDescribeHandler
     TAdaptiveLock Lock;
     bool HasValue = false;
     TPromise<NProto::TDescribeVolumeResponse> Promise;
-    TVector<TDescribeResponseHandler> Handlers;
+    TVector<std::shared_ptr<TDescribeResponseHandler>> Handlers;
 
     TMultiCellDescribeHandler(
             ISchedulerPtr scheduler,
@@ -145,7 +153,7 @@ struct TMultiCellDescribeHandler
                     Request,
                     cell.first.empty());
 
-                TDescribeResponseHandler handler(
+                auto handler = std::make_shared<TDescribeResponseHandler>(
                     weak,
                     cell.first,
                     host.LogTag,
@@ -153,7 +161,7 @@ struct TMultiCellDescribeHandler
                     std::move(future),
                     cell.second);
 
-                handler.Start();
+                handler->Start();
                 Handlers.push_back(std::move(handler));
             }
         }
@@ -178,6 +186,34 @@ struct TMultiCellDescribeHandler
                 std::move(MakeError(E_REJECTED, "Describe timeout"));
         SetResponse(std::move(response));
     }
+
+    void FinalizeIfPossible(NProto::TDescribeVolumeResponse response)
+    {
+        auto now = Counter.fetch_sub(1, std::memory_order_acq_rel) - 1;
+        if (now == 0) {
+            TString retryCell;
+            // all the cells has replied with errors.
+            // try to find cell replied with retriable errors only,
+            // if such cell exists the compute should retry kick
+            // endpoint, otherwise volume does not exist.
+            for (const auto& cell: Cells) {
+                const auto& s = cell.second;
+                if (!HasError(s.FatalError)) {
+                    *response.MutableError() =
+                        std::move(s.RetriableError);
+                    SetResponse(std::move(response));
+                    return;
+                }
+            }
+            if (IncompleteCells) {
+                *response.MutableError() =
+                        std::move(MakeError(E_REJECTED, "Not all cells available"));
+                SetResponse(std::move(response));
+                return;
+            }
+            SetResponse(std::move(response));
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -197,7 +233,7 @@ TDescribeResponseHandler::TDescribeResponseHandler(
     , Cell(cell)
 {}
 
-void TDescribeResponseHandler::operator ()(const auto& future)
+void TDescribeResponseHandler::HandleResponse(const auto& future)
 {
     auto owner = Owner.lock();
     if (!owner) {
@@ -235,30 +271,7 @@ void TDescribeResponseHandler::operator ()(const auto& future)
         }
     }
 
-    auto now = owner->Counter.fetch_sub(1, std::memory_order_acq_rel) - 1;
-    if (now == 0) {
-        TString retryCell;
-        // all the cells has replied with errors.
-        // try to find cell replied with retriable errors only,
-        // if such cell exists the compute should retry kick
-        // endpoint, otherwise volume does not exist.
-        for (const auto& cell: owner->Cells) {
-            const auto& s = cell.second;
-            if (!HasError(s.FatalError)) {
-                *response.MutableError() =
-                    std::move(s.RetriableError);
-                owner->SetResponse(std::move(response));
-                return;
-            }
-        }
-        if (owner->IncompleteCells) {
-            *response.MutableError() =
-                    std::move(MakeError(E_REJECTED, "Not all cells available"));
-            owner->SetResponse(std::move(response));
-            return;
-        }
-        owner->SetResponse(std::move(response));
-    }
+    owner->FinalizeIfPossible(std::move(response));
 }
 
 }   // namespace
