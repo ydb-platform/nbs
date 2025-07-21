@@ -449,9 +449,12 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::CreateSession(
     TCallContextPtr callContext,
     const NProto::TStartEndpointRequest& request)
 {
-    return Executor->Execute([=] () mutable {
-        return CreateSessionImpl(std::move(callContext), request);
-    });
+    return Executor->Execute(
+        [callContext = std::move(callContext), request, this] () mutable
+        {
+            return CreateSessionImpl(std::move(callContext), request);
+        }
+    );
 }
 
 TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
@@ -526,9 +529,12 @@ TFuture<NProto::TError> TSessionManager::RemoveSession(
     const TString& socketPath,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=] () mutable {
-        return RemoveSessionImpl(std::move(callContext), socketPath, headers);
-    });
+    return Executor->Execute(
+        [this, callContext = std::move(callContext), socketPath, headers] () mutable
+        {
+            return RemoveSessionImpl(std::move(callContext), socketPath, headers);
+        }
+    );
 }
 
 NProto::TError TSessionManager::RemoveSessionImpl(
@@ -564,15 +570,24 @@ TFuture<NProto::TError> TSessionManager::AlterSession(
     ui64 mountSeqNumber,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=] () mutable {
-        return AlterSessionImpl(
-            std::move(callContext),
-            socketPath,
-            accessMode,
-            mountMode,
-            mountSeqNumber,
-            headers);
-    });
+    return Executor->Execute(
+        [this,
+         callContext = std::move(callContext),
+         socketPath,
+         accessMode,
+         mountMode,
+         mountSeqNumber,
+         headers] () mutable
+        {
+            return AlterSessionImpl(
+                std::move(callContext),
+                socketPath,
+                accessMode,
+                mountMode,
+                mountSeqNumber,
+                headers);
+            }
+    );
 }
 
 NProto::TError TSessionManager::AlterSessionImpl(
@@ -610,12 +625,15 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::GetSession(
     const TString& socketPath,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=] () mutable {
-        return GetSessionImpl(
-            std::move(callContext),
-            socketPath,
-            headers);
-    });
+    return Executor->Execute(
+        [this, callContext = std::move(callContext), socketPath, headers] () mutable
+        {
+            return GetSessionImpl(
+                std::move(callContext),
+                socketPath,
+                headers);
+            }
+    );
 }
 
 TSessionManager::TSessionOrError TSessionManager::GetSessionImpl(
