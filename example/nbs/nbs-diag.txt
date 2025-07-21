@@ -1,2 +1,3 @@
 UseAsyncLogger: true
 SamplingRate: 1000
+CpuWaitFilename: ""

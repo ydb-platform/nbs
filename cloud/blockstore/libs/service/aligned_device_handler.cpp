@@ -1,5 +1,6 @@
 #include "aligned_device_handler.h"
 
+#include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/checksum_storage_wrapper.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -8,6 +9,7 @@
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <util/string/builder.h>
+#include <util/system/align.h>
 
 namespace NCloud::NBlockStore {
 
@@ -92,24 +94,21 @@ NProto::TError TryToNormalize(
 ////////////////////////////////////////////////////////////////////////////////
 
 TAlignedDeviceHandler::TAlignedDeviceHandler(
-        IStoragePtr storage,
-        TString diskId,
-        TString clientId,
-        ui32 blockSize,
-        ui32 maxSubRequestSize,
-        ui32 maxZeroBlocksSubRequestSize,
-        bool checkBufferModificationDuringWriting,
-        NProto::EStorageMediaKind storageMediaKind)
+        TDeviceHandlerParams params,
+        ui32 maxSubRequestSize)
     : Storage(
-          checkBufferModificationDuringWriting
-              ? CreateChecksumStorageWrapper(std::move(storage), diskId)
-              : std::move(storage))
-    , DiskId(std::move(diskId))
-    , ClientId(std::move(clientId))
-    , BlockSize(blockSize)
+          params.CheckBufferModificationDuringWriting
+              ? CreateChecksumStorageWrapper(
+                    std::move(params.Storage),
+                    params.DiskId)
+              : std::move(params.Storage))
+    , DiskId(std::move(params.DiskId))
+    , ClientId(std::move(params.ClientId))
+    , BlockSize(params.BlockSize)
     , MaxBlockCount(maxSubRequestSize / BlockSize)
-    , MaxBlockCountForZeroBlocksRequest(maxZeroBlocksSubRequestSize / BlockSize)
-    , StorageMediaKind(storageMediaKind)
+    , MaxBlockCountForZeroBlocksRequest(
+          params.MaxZeroBlocksSubRequestSize / BlockSize)
+    , StorageMediaKind(params.StorageMediaKind)
 {
     Y_ABORT_UNLESS(MaxBlockCount > 0);
     Y_ABORT_UNLESS(MaxBlockCountForZeroBlocksRequest > 0);
@@ -300,6 +299,26 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     request->BlocksCount = requestBlockCount;
     request->BlockSize = BlockSize;
 
+    // // For reliable DiskRegistry disks checksums are calculated by disk agents
+    // // and returned in the response.
+    // if (IsNonReliableDiskRegistryMediaKind(StorageMediaKind)) {
+    //     TBlockChecksum checksum;
+    //     if (auto guard = sgList.Acquire()) {
+    //         const TSgList& sgList = guard.Get();
+
+    //         const ui64 end =
+    //             Min(AlignUp<ui64>(blocksInfo.Range.Start + 1, MaxBlockCount),
+    //                 blocksInfo.Range.End);
+    //         const ui64 len = end - blocksInfo.Range.Start;
+    //         for (ui64 i = 0; i < len; i++) {
+    //             auto blockData = sgList[i];
+    //             checksum.Extend(blockData.Data(), blockData.Size());
+    //         }
+    //     }
+
+    //     request->SetChecksum(CalculateChecksum(request->Sglist));
+    // }
+
     if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.
         request->Sglist = std::move(sgList);
@@ -483,6 +502,11 @@ void TAlignedDeviceHandler::ReportCriticalError(
     } else {
         ReportErrorWasSentToTheGuestForNonReliableDisk(message);
     }
+}
+
+ui32 TAlignedDeviceHandler::GetBlockSize() const
+{
+    return BlockSize;
 }
 
 }   // namespace NCloud::NBlockStore

@@ -11,6 +11,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui32 MaxUnalignedRequestSize = 32_MB;
+
 TErrorResponse CreateErrorAcquireResponse()
 {
     return {E_CANCELLED, "failed to acquire sglist in DeviceHandler"};
@@ -467,26 +469,14 @@ TZeroRequest::TResponseFuture TZeroRequest::ModifyAndWrite()
 ////////////////////////////////////////////////////////////////////////////////
 
 TUnalignedDeviceHandler::TUnalignedDeviceHandler(
-        IStoragePtr storage,
-        TString diskId,
-        TString clientId,
-        ui32 blockSize,
-        ui32 maxSubRequestSize,
-        ui32 maxZeroBlocksSubRequestSize,
-        ui32 maxUnalignedRequestSize,
-        bool checkBufferModificationDuringWriting,
-        NProto::EStorageMediaKind storageMediaKind)
-    : Backend(std::make_shared<TAlignedDeviceHandler>(
-          std::move(storage),
-          std::move(diskId),
-          std::move(clientId),
-          blockSize,
-          maxSubRequestSize,
-          maxZeroBlocksSubRequestSize,
-          checkBufferModificationDuringWriting,
-          storageMediaKind))
-    , BlockSize(blockSize)
-    , MaxUnalignedBlockCount(maxUnalignedRequestSize / BlockSize)
+        TDeviceHandlerParams params,
+        ui32 maxSubRequestSize)
+    : Backend(
+          std::make_shared<TAlignedDeviceHandler>(
+              std::move(params),
+              maxSubRequestSize))
+    , BlockSize(Backend->GetBlockSize())
+    , MaxUnalignedBlockCount(MaxUnalignedRequestSize / BlockSize)
 {}
 
 TUnalignedDeviceHandler::~TUnalignedDeviceHandler()
