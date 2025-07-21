@@ -173,15 +173,41 @@ func (s *service) getZoneIDForExistingDisk(
 	return diskMeta.ZoneID, nil
 }
 
+func (s *service) prepareZoneIDForLocalDisk(
+	ctx context.Context,
+	req *disk_manager.CreateDiskRequest,
+) (string, error) {
+
+	for _, cellId := range s.cellSelector.GetCells(req.DiskId.ZoneId) {
+		client, err := s.nbsFactory.GetClient(ctx, cellId)
+		if err != nil {
+			return "", err
+		}
+
+		infos, err := client.QueryAvailableStorage(ctx, req.GetAgentIds())
+
+		if len(infos) == 0 {
+			// There are no provided agents found in this cell.
+			continue
+		}
+
+		// TODO: return AGENT_STATE from QueryAvailableStorage
+		// and check it here.
+		return cellId, nil
+	}
+
+	return "", task_errors.NewNonRetriableErrorf(
+		"No cells in zone %v with available agents for this disk %v",
+		req.DiskId.ZoneId, req.DiskId.DiskId,
+	)
+}
+
 func (s *service) prepareZoneID(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
 ) (string, error) {
 
-	if isLocalDiskKind(req.Kind) {
-		// When creating a local disk, we need to find a cell
-		// for its agents (storage nodes).
-		// TODO: implement this selection.
+	if len(s.cellSelector.GetCells(req.DiskId.ZoneId)) == 0 {
 		return req.DiskId.ZoneId, nil
 	}
 
@@ -192,6 +218,12 @@ func (s *service) prepareZoneID(
 
 	if diskMeta != nil {
 		return diskMeta.ZoneID, nil
+	}
+
+	if isLocalDiskKind(req.Kind) {
+		// When creating a local disk, we need to find a cell
+		// for its agents (storage nodes).
+		return s.prepareZoneIDForLocalDisk(ctx, req)
 	}
 
 	return s.cellSelector.SelectCell(ctx, req), nil

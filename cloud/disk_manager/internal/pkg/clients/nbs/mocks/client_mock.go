@@ -392,6 +392,15 @@ func (c *ClientMock) FinishFillDisk(
 	return args.Error(0)
 }
 
+func (c *ClientMock) QueryAvailableStorage(
+	ctx context.Context,
+	agentIDs []string,
+) ([]nbs.AvailableStorageInfo, error) {
+
+	args := c.Called(ctx, agentIDs)
+	return args.Get(0).([]nbs.AvailableStorageInfo), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewClientMock() *ClientMock {
