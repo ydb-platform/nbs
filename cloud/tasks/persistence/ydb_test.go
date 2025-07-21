@@ -605,7 +605,7 @@ func TestYDBMigrateSecondaryKeys(t *testing.T) {
 		},
 	)
 
-	// Delete index on val1 and create index on val1
+	// Delete index on val1 and create index on val2
 	migrateAndValidate(
 		fixtures,
 		NewCreateTableDescription(
@@ -630,7 +630,7 @@ func TestYDBMigrateSecondaryKeys(t *testing.T) {
 			WithColumn("val1", Optional(TypeUTF8)),
 			WithColumn("val2", Optional(TypeUTF8)),
 			WithPrimaryKeyColumn("id"),
-			WithSecondaryKeyColumn("val1", "val2"),
+			WithSecondaryKeyColumn("val2", "val1"),
 		),
 		func(description options.Description) {
 			require.Equal(t, 2, len(description.Indexes))
