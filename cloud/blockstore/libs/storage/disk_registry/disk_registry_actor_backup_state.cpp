@@ -103,7 +103,8 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
         outdatedVolumeConfigs,
         suspendedDevices,
         automaticallyReplacedDevices,
-        diskRegistryAgentListParams
+        diskRegistryAgentListParams,
+        replicasWithRecentlyReplacedDevices
     ] = args.Snapshot;
 
     auto copy = [] (auto& src, auto* dst) {

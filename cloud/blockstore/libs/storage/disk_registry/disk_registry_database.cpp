@@ -750,4 +750,41 @@ void TDiskRegistryDatabase::DeleteDiskRegistryAgentListParams(const TString& age
         .Delete();
 }
 
+void TDiskRegistryDatabase::AddDiskWithRecentlyReplacedDevices(
+    const TString& masterDiskId,
+    const NProto::TReplicaWithRecentlyReplacedDevices& replica)
+{
+    using TTable = TDiskRegistrySchema::DisksWithRecentlyReplacedDevices;
+    Table<TTable>().Key(masterDiskId).Update<TTable::Replica>(replica);
+}
+
+void TDiskRegistryDatabase::DeleteDiskWithRecentlyReplacedDevices(
+    const TString& masterDiskId)
+{
+    using TTable = TDiskRegistrySchema::DisksWithRecentlyReplacedDevices;
+    Table<TTable>().Key(masterDiskId).Delete();
+}
+
+bool TDiskRegistryDatabase::ReadDiskWithRecentlyReplacedDevices(
+    TVector<NProto::TReplicaWithRecentlyReplacedDevices>& replicas)
+{
+    using TTable = TDiskRegistrySchema::DisksWithRecentlyReplacedDevices;
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        replicas.push_back(it.GetValue<TTable::Replica>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -337,6 +337,9 @@ private:
 
     NDiskRegistry::TNotificationSystem NotificationSystem;
 
+    THashMap<TString, NProto::TReplicaWithRecentlyReplacedDevices>
+        ReplicasWithRecentlyReplacedDevices;
+
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
 public:
@@ -359,7 +362,10 @@ public:
         TVector<TString> outdatedVolumeConfigs,
         TVector<NProto::TSuspendedDevice> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
-        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
+        THashMap<TString, NProto::TDiskRegistryAgentParams>
+            diskRegistryAgentListParams,
+        THashMap<TString, NProto::TReplicaWithRecentlyReplacedDevices>
+            replicasWithRecentlyReplacedDevices);
 
     ~TDiskRegistryState();
 
@@ -572,9 +578,9 @@ public:
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);
 
     void DeleteDiskToReallocate(
+        TInstant now,
         TDiskRegistryDatabase& db,
-        const TString& diskId,
-        ui64 seqNo);
+        TDiskNotificationResult notification);
 
     const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
 
@@ -827,7 +833,8 @@ public:
 
     bool CheckIfDeviceReplacementIsAllowed(
         TInstant now,
-        const TDiskId& masterDiskId,
+        const TString& diskId,
+        const TDiskState& disk,
         const TDeviceId& deviceId);
 
     NProto::TError CreateDiskFromDevices(
@@ -1128,6 +1135,18 @@ private:
         const TString& diskId,
         ui64 seqNo);
 
+    void AddDiskWithRecentlyReplacedDevices(
+        TDiskRegistryDatabase& db,
+        const TDiskId& masterDiskId,
+        const TDiskId& replicaId,
+        ui64 seqNo);
+
+    void ReplaceNextDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        ui64 seqNo);
+
     NProto::TError ValidateUpdateDiskBlockSizeParams(
         const TDiskId& diskId,
         ui32 blockSize,
@@ -1353,7 +1372,7 @@ private:
         TString message,
         bool manual);
 
-    void TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+    bool TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
         TDiskRegistryDatabase& db,
         TDiskState& disk,
         const TString& diskId,

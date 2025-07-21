@@ -35,7 +35,10 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        NProto::TError error,
+        TVector<NProto::TLaggingDevice> laggingDevices);
 
 private:
     STFUNC(StateWork);
@@ -77,10 +80,16 @@ void TReallocateActor::Bootstrap(const TActorContext& ctx)
         std::move(request));
 }
 
-void TReallocateActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
+void TReallocateActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error,
+    TVector<NProto::TLaggingDevice> laggingDevices)
 {
     auto response = std::make_unique<TEvVolume::TEvReallocateDiskResponse>(
         std::move(error));
+    for (auto& laggingDevice: laggingDevices) {
+        *response->Record.AddLaggingDevices() = std::move(laggingDevice);
+    }
 
     NCloud::Reply(ctx, *Request, std::move(response));
     Die(ctx);

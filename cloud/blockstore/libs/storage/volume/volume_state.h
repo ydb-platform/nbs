@@ -265,6 +265,8 @@ private:
     };
     THashMap<TString, TLaggingAgentMigrationInfo>
         CurrentlyMigratingLaggingAgents;
+    // Devices that were lagging and can't be restored.
+    TVector<NProto::TLaggingDevice> OutdatedDevices;
 
     TScrubbingInfo ScrubbingInfo;
 
@@ -346,7 +348,15 @@ public:
         const TString& agentId);
     [[nodiscard]] bool HasLaggingAgents() const;
     [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
-    [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
+    [[nodiscard]] THashSet<TString> GetLaggingDeviceIds() const;
+
+    // Once the partition is restarted, the lagging devices can not be restored.
+    // So they must become outdated.
+    void FillOutdatedDevices();
+    [[nodiscard]] THashSet<TString> GetOutdatedDeviceIds() const;
+    [[nodiscard]] const TVector<NProto::TLaggingDevice>&
+    GetOutdatedDevices() const;
+
     void UpdateLaggingAgentMigrationState(
         const TString& agentId,
         ui64 cleanBlocks,
