@@ -5055,8 +5055,7 @@ void TDiskRegistryState::DeleteDiskToReallocate(
             STORAGE_ERROR(
                 "Failed to add outdated lagging devices: "
                 << FormatError(error));
-            ReportDiskRegistryCouldNotAddOutdatedLaggingDevice(
-                TStringBuilder() << diskId);
+            ReportDiskRegistryCouldNotAddOutdatedLaggingDevice(diskId);
         }
     }
 }
