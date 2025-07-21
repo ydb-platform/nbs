@@ -444,7 +444,6 @@ void TReadDataActor::HandleReadBlobResponse(
             return;
         }
 
-        auto dataIter = response.Buffer.begin();
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -469,11 +468,16 @@ void TReadDataActor::HandleReadBlobResponse(
                 blobRange.GetOffset(),
                 blobRange.GetLength(),
                 BlockSize});
-        const auto relOffset = commonRange.Offset - ReadRequest.GetOffset();
-        char* targetData =
-            const_cast<char*>(Response->Record.MutableBuffer()->data()) +
-            relOffset;
-        dataIter.ExtractPlainDataAndAdvance(targetData, commonRange.Length);
+        if (commonRange.Length != 0) {
+            const auto relOffset = commonRange.Offset - OriginByteRange.Offset;
+            char* targetData =
+                const_cast<char*>(Response->Record.MutableBuffer()->data()) +
+                relOffset;
+
+            auto dataIter = response.Buffer.begin();
+            dataIter += commonRange.Offset - blobRange.GetOffset();
+            dataIter.ExtractPlainDataAndAdvance(targetData, commonRange.Length);
+        }
     }
 
     --RemainingBlobsToRead;
