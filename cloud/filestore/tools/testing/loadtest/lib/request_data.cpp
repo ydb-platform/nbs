@@ -430,7 +430,7 @@ private:
         ui64 byteOffset)
     {
         try {
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             CheckResponse(response);
 
             const auto& buffer = response.GetBuffer();
@@ -541,7 +541,7 @@ private:
         TInstant started)
     {
         try {
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             CheckResponse(response);
 
             with_lock (StateLock) {
