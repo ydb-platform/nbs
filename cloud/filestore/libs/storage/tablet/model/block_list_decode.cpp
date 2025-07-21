@@ -8,6 +8,10 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
+using TBlockWithBlobOffset = TBlockList::TBlockWithBlobOffset;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -262,37 +266,38 @@ void StatDeletionMarkers(const TByteVector& encodedDeletionMarkers, TBlockList::
 
 struct TBlockFilter
 {
-    ui64 NodeId;
-    ui64 CommitId;
-    ui32 MinBlockIndex;
-    ui32 MaxBlockIndex;
+    ui64 NodeId = 0;
+    ui64 CommitId = 0;
+    ui32 MinBlockIndex = 0;
+    ui32 MaxBlockIndex = 0;
+
+    bool CheckGroup(ui64 nodeId, ui64 minCommitId) const
+    {
+        return NodeId == nodeId && CommitId >= minCommitId;
+    }
+
+    bool CheckEntry(ui32 blockIndex, ui64 maxCommitId) const
+    {
+        return CommitId < maxCommitId
+            && MinBlockIndex <= blockIndex
+            && MaxBlockIndex > blockIndex;
+    }
 };
-
-bool CheckGroup(const TBlockFilter& filter, ui64 nodeId, ui64 minCommitId)
-{
-    return filter.NodeId == nodeId
-        && filter.CommitId >= minCommitId;
-}
-
-bool CheckEntry(const TBlockFilter& filter, ui32 blockIndex, ui64 maxCommitId)
-{
-    return filter.CommitId < maxCommitId
-        && filter.MinBlockIndex <= blockIndex
-        && filter.MaxBlockIndex > blockIndex;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TFilter>
-class TBlockIterator final
-    : public IBlockIterator
+class TBlockIterator
 {
     using PNextBlockFunc = bool (TBlockIterator::*)(void);
+
+public:
+    TBlock Block;
+    ui32 BlobOffset = 0;
 
 private:
     TBinaryReader Reader;
     const TByteVector& EncodedDeletionMarkers;
-    TFilter Filter;
+    TBlockFilter Filter;
 
     PNextBlockFunc NextBlock = nullptr;
 
@@ -317,7 +322,7 @@ public:
     TBlockIterator(
             const TByteVector& encodedBlocks,
             const TByteVector& encodedDeletionMarkers,
-            const TFilter& filter)
+            const TBlockFilter& filter)
         : Reader(encodedBlocks)
         , EncodedDeletionMarkers(encodedDeletionMarkers)
         , Filter(filter)
@@ -328,7 +333,7 @@ public:
         Zero(Group);
     }
 
-    bool Next() override
+    bool Next()
     {
         for (;;) {
             if (NextBlock && (this->*NextBlock)()) {
@@ -342,12 +347,12 @@ public:
             const auto& group = Reader.Read<NBlockListSpec::TGroupHeader>();
             if (!group.IsMulti) {
                 const auto& entry = Reader.Read<NBlockListSpec::TBlockEntry>();
-                if (CheckGroup(Filter, group.NodeId, group.CommitId)) {
+                if (Filter.CheckGroup(group.NodeId, group.CommitId)) {
                     ui64 maxCommitId = FindDeletionMarker(
                         EncodedDeletionMarkers,
                         entry.BlobOffset);
 
-                    if (CheckEntry(Filter, entry.BlockIndex, maxCommitId)) {
+                    if (Filter.CheckEntry(entry.BlockIndex, maxCommitId)) {
                         Block.NodeId = group.NodeId;
                         Block.BlockIndex = entry.BlockIndex;
                         Block.MinCommitId = group.CommitId;
@@ -361,7 +366,7 @@ public:
                 switch (multi.GroupType) {
                     case NBlockListSpec::TMultiGroupHeader::MergedGroup: {
                         const auto& entry = Reader.Read<NBlockListSpec::TBlockEntry>();
-                        if (CheckGroup(Filter, group.NodeId, group.CommitId)) {
+                        if (Filter.CheckGroup(group.NodeId, group.CommitId)) {
                             SetMerged(
                                 group.NodeId,
                                 group.CommitId,
@@ -375,7 +380,7 @@ public:
                     case NBlockListSpec::TMultiGroupHeader::MixedGroup: {
                         const auto* blockIndices = Reader.Read<ui32>(multi.Count);
                         const auto* blobOffsets = Reader.Read<ui16>(Align2(multi.Count));
-                        if (CheckGroup(Filter, group.NodeId, group.CommitId)) {
+                        if (Filter.CheckGroup(group.NodeId, group.CommitId)) {
                             SetMixed(
                                 group.NodeId,
                                 group.CommitId,
@@ -440,7 +445,7 @@ private:
                 EncodedDeletionMarkers,
                 blobOffset);
 
-            if (CheckEntry(Filter, blockIndex, maxCommitId)) {
+            if (Filter.CheckEntry(blockIndex, maxCommitId)) {
                 Block.BlockIndex = blockIndex;
                 Block.MaxCommitId = maxCommitId;
                 BlobOffset = blobOffset;
@@ -463,7 +468,7 @@ private:
                 EncodedDeletionMarkers,
                 blobOffset);
 
-            if (CheckEntry(Filter, blockIndex, maxCommitId)) {
+            if (Filter.CheckEntry(blockIndex, maxCommitId)) {
                 Block.BlockIndex = blockIndex;
                 Block.MaxCommitId = maxCommitId;
                 BlobOffset = blobOffset;
@@ -480,16 +485,22 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBlockIteratorPtr TBlockList::FindBlocks(
+TVector<TBlockWithBlobOffset> TBlockList::FindBlocks(
     ui64 nodeId,
     ui64 commitId,
     ui32 blockIndex,
     ui32 blocksCount) const
 {
-    return std::make_shared<TBlockIterator<TBlockFilter>>(
+    TBlockIterator iter(
         EncodedBlocks,
         EncodedDeletionMarkers,
         TBlockFilter {nodeId, commitId, blockIndex, blockIndex + blocksCount});
+
+    TVector<TBlockWithBlobOffset> blocks(Reserve(blocksCount));
+    while (iter.Next()) {
+        blocks.emplace_back(iter.Block, iter.BlobOffset);
+    }
+    return blocks;
 }
 
 TBlockList::TStats TBlockList::GetStats() const

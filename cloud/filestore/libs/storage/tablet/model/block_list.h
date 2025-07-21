@@ -14,17 +14,6 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IBlockIterator
-{
-    virtual ~IBlockIterator() = default;
-    virtual bool Next() = 0;
-
-    TBlock Block;
-    ui32 BlobOffset = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TBlockList
 {
 private:
@@ -47,7 +36,13 @@ public:
         return EncodedDeletionMarkers;
     }
 
-    IBlockIteratorPtr FindBlocks(
+    struct TBlockWithBlobOffset
+    {
+        TBlock Block;
+        ui32 BlobOffset = 0;
+    };
+
+    TVector<TBlockWithBlobOffset> FindBlocks(
         ui64 nodeId,
         ui64 commitId,
         ui32 blockIndex,
