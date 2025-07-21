@@ -700,6 +700,10 @@ public:
     [[nodiscard]] TDuration GetPartitionBootTimeout() const;
 
     [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
+
+    [[nodiscard]] TDuration
+    GetRetryInitialDelayForResyncAndMirrorActors() const;
+    [[nodiscard]] TDuration GetRetryMaxDelayForResyncAndMirrorActors() const;
 };
 
 ui64 GetAllocationUnit(

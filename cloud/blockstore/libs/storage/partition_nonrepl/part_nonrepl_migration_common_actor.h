@@ -22,6 +22,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -185,6 +186,8 @@ private:
     // sent only to "SrcActorId".
     bool TargetMigrationIsLagging = false;
 
+    TBackoffDelayProvider BackoffProvider;
+
 protected:
     // Derived class that wishes to handle wakeup messages should make its own
     // enum which starts with `WR_REASON_COUNT` value.
@@ -283,7 +286,9 @@ private:
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
 
-    void ScheduleRangeMigration(const NActors::TActorContext& ctx);
+    void ScheduleRangeMigration(
+        const NActors::TActorContext& ctx,
+        bool isRetry = false);
     void StartRangeMigration(const NActors::TActorContext& ctx);
     void MigrateRange(const NActors::TActorContext& ctx, TBlockRange64 range);
 

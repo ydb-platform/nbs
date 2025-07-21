@@ -1281,4 +1281,12 @@ message TStorageServiceConfig
 
     // If true, describes will be done using SchemeCache instead of TxProxy.
     optional bool UseSchemeCache = 443;
+
+    // Initial retry delay for schedule resync next range and
+    // for schedule range migration (in milliseconds).
+    optional uint32 RetryInitialDelayForResyncAndMirrorActors = 444;
+
+    // Max retry delay for schedule resync next range and
+    // for schedule range migration (in milliseconds).
+    optional uint32 RetryMaxDelayForResyncAndMirrorActors = 445;
 }

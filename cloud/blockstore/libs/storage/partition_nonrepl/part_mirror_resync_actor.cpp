@@ -50,6 +50,9 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , RdmaClient(std::move(rdmaClient))
     , StatActorId(statActorId)
     , State(Config, RWClientId, PartConfig, ReplicaDevices, initialResyncIndex)
+    , BackoffProvider(
+          Config->GetRetryInitialDelayForResyncAndMirrorActors(),
+          Config->GetRetryMaxDelayForResyncAndMirrorActors())
 {}
 
 TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor() = default;
