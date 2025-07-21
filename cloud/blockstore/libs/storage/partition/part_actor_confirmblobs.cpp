@@ -223,10 +223,16 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
     auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s ConfirmBlobs failed: %u reason: %s",
+            LogTitle.GetWithTime().c_str(),
+            msg->GetStatus(),
+            FormatError(msg->GetError()).c_str());
         ReportConfirmBlobsError(
-            TStringBuilder()
-            << LogTitle.GetWithTime()
-            << " ConfirmBlobs failed: " << FormatError(msg->GetError()));
+            TStringBuilder() << "DiskId: " << PartitionConfig.GetDiskId()
+                             << " error: " << FormatError(msg->GetError()));
         Suicide(ctx);
         return;
     }

@@ -210,8 +210,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         } else {
             ReportResyncFailed(
                 TStringBuilder()
-                << "[" << PartConfig->GetName() << "] "
-                << "Range " << DescribeRange(range)
+                << "Disk: " << PartConfig->GetName() << ", Range "
+                << DescribeRange(range)
                 << " resync failed: " << FormatError(msg->GetError()));
         }
 

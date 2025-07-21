@@ -181,7 +181,7 @@ size_t SerializeError(ui32 code, TStringBuf message, TStringBuf buffer)
         ReportFailedToSerializeRdmaError(
             TStringBuilder()
             << "Failed to serialize RDMA error with code " << code
-            << ", original message: \"" << message << "\"");
+            << ", original message: \"" << TString(message).Quote() << "\"");
     }
 
     if (error.SerializeToArray(
