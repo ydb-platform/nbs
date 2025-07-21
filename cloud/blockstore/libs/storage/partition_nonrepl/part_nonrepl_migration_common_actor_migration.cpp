@@ -318,9 +318,11 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
                 << "Can't defer a range to migrate later. Range: " << msg->Range
                 << ", diskId: " << DiskId);
         }
-        ScheduleRangeMigration(ctx);
+        ScheduleRangeMigration(ctx, true);
         return;
     }
+
+    BackoffProvider.Reset();
 
     LOG_DEBUG(
         ctx,
@@ -460,7 +462,7 @@ void TNonreplicatedPartitionMigrationCommonActor::OnMigrationNonRetriableError(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
-    const TActorContext& ctx)
+    const TActorContext& ctx, bool isRetry)
 {
     if (!MigrationEnabled || RangeMigrationScheduled || IsIoDepthLimitReached())
     {
@@ -488,8 +490,14 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
         delayBetweenMigrations.ToString().Quote().c_str());
 
     RangeMigrationScheduled = true;
+    if (!isRetry) {
+        ctx.Schedule(
+            delayBetweenMigrations,
+            new TEvNonreplPartitionPrivate::TEvMigrateNextRange());
+        return;
+    }
     ctx.Schedule(
-        delayBetweenMigrations,
+        BackoffProvider.GetDelayAndIncrease(),
         new TEvNonreplPartitionPrivate::TEvMigrateNextRange());
 }
 

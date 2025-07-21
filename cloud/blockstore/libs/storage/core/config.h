@@ -702,6 +702,10 @@ public:
     [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
 
     [[nodiscard]] bool GetUsePullSchemeForVolumeStatistics() const;
+
+    [[nodiscard]] TDuration
+    GetRetryInitialDelayForResyncAndMirrorActors() const;
+    [[nodiscard]] TDuration GetRetryMaxDelayForResyncAndMirrorActors() const;
 };
 
 ui64 GetAllocationUnit(

@@ -61,6 +61,14 @@ void TMirrorPartitionResyncActor::ScheduleResyncNextRange(const TActorContext& c
         new TEvNonreplPartitionPrivate::TEvResyncNextRange());
 }
 
+void TMirrorPartitionResyncActor::ScheduleResyncNextRangeWhenRetry(
+    const TActorContext& ctx)
+{
+    ctx.Schedule(
+        BackoffProvider.GetDelayAndIncrease(),
+        new TEvNonreplPartitionPrivate::TEvResyncNextRange());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
@@ -206,7 +214,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
             // Reschedule range
             State.AddPendingResyncRange(rangeId.first);
-            ScheduleResyncNextRange(ctx);
+            ScheduleResyncNextRangeWhenRetry(ctx);
         } else {
             ReportResyncFailed(
                 FormatError(msg->GetError()),
@@ -229,6 +237,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 
         return;
     }
+
+    BackoffProvider.Reset();
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Range %s resynced",

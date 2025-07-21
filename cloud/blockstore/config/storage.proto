@@ -1285,4 +1285,12 @@ message TStorageServiceConfig
     // The volume pulls statistics from the partitions,
     // instead of the partitions pushing statistics to the volume themselves.
     optional bool UsePullSchemeForVolumeStatistics  = 444;
+
+    // Initial retry delay for schedule resync next range and
+    // for schedule range migration (in milliseconds).
+    optional uint32 RetryInitialDelayForResyncAndMirrorActors = 445;
+
+    // Max retry delay for schedule resync next range and
+    // for schedule range migration (in milliseconds).
+    optional uint32 RetryMaxDelayForResyncAndMirrorActors = 446;
 }
