@@ -285,12 +285,8 @@ void RenderFollowers(IOutputStream& out, const TFollowerDisks& followers)
                             out << follower.Link.FollowerDiskIdForPrint();
                             if (follower.MediaKind) {
                                 out << "<br>(";
-                                if (follower.MediaKind) {
-                                    out << NProto::EStorageMediaKind_Name(
-                                        *follower.MediaKind);
-                                } else {
-                                    out << "unknown";
-                                }
+                                out << NProto::EStorageMediaKind_Name(
+                                    follower.MediaKind);
                                 out << ")";
                             }
                         }
