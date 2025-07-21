@@ -66,7 +66,8 @@ struct TFixture: public NUnitTest::TBaseFixture
         auto factory = CreateIoUringServiceFactory(
             {.SubmissionQueueEntries = SubmissionQueueSize,
              .MaxKernelWorkersCount = 1,
-             .ShareKernelWorkers = true});
+             .ShareKernelWorkers = true,
+             .ForceAsyncIO = true});
 
         Services.reserve(ServicesCount);
         for (ui32 i = 0; i != ServicesCount; ++i) {

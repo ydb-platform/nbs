@@ -190,6 +190,7 @@ public:
 
     void AsyncIO(
         int op,
+        ui32 flags,
         int fd,
         const void* addr,
         ui32 len,
@@ -197,7 +198,7 @@ public:
         TFileIOCompletion* completion)
     {
         SubmissionThread->ExecuteSimple([=, this] {
-            SubmitIO(op, fd, addr, len, offset, completion);
+            SubmitIO(op, flags, fd, addr, len, offset, completion);
         });
     }
 
@@ -211,6 +212,7 @@ public:
 private:
     void SubmitIO(
         int op,
+        ui32 flags,
         int fd,
         const void* addr,
         ui32 len,
@@ -228,6 +230,7 @@ private:
 
         io_uring_prep_rw(op, sqe, fd, addr, len, offset);
         io_uring_sqe_set_data(sqe, completion);
+        io_uring_sqe_set_flags(sqe, flags);
 
         NSan::Release(completion);
 
@@ -357,7 +360,12 @@ struct TIoUringServiceBase
 struct TIoUringService final
     : public TIoUringServiceBase
 {
-    using TIoUringServiceBase::TIoUringServiceBase;
+    const ui32 Flags;
+
+    TIoUringService(TIoUringServiceParams params, TIoUring* wqOwner)
+        : TIoUringServiceBase(std::move(params), wqOwner)
+        , Flags(params.ForceAsyncIO ? IOSQE_ASYNC : 0)
+    {}
 
     void AsyncRead(
         TFileHandle& file,
@@ -367,6 +375,7 @@ struct TIoUringService final
     {
         IoUring.AsyncIO(
             IORING_OP_READ,
+            Flags,
             file,
             buffer.data(),
             buffer.size(),
@@ -382,6 +391,7 @@ struct TIoUringService final
     {
         IoUring.AsyncIO(
             IORING_OP_READV,
+            Flags,
             file,
             buffers.data(),
             buffers.size(),
@@ -397,6 +407,7 @@ struct TIoUringService final
     {
         IoUring.AsyncIO(
             IORING_OP_WRITE,
+            Flags,
             file,
             buffer.data(),
             buffer.size(),
@@ -412,6 +423,7 @@ struct TIoUringService final
     {
         IoUring.AsyncIO(
             IORING_OP_WRITEV,
+            Flags,
             file,
             buffers.data(),
             buffers.size(),
