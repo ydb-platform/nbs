@@ -888,8 +888,13 @@ bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize)
 {
     const auto blockSize = device.GetBlockSize();
     if (logicalBlockSize % blockSize != 0) {
-        ReportDiskRegistryLogicalPhysicalBlockSizeMismatch();
-
+        ReportDiskRegistryLogicalPhysicalBlockSizeMismatch(
+            TStringBuilder()
+            << "AgentId=" << device.GetAgentId().Quote()
+            << ", Device=" << device.GetDeviceUUID().Quote()
+            << ": logicalBlockSize (" << logicalBlockSize
+            << ") is not a multiple of physical block size ("
+            << device.GetBlockSize() << ")");
         return false;
     }
 

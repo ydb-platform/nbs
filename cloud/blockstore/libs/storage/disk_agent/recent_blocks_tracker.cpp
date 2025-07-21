@@ -232,7 +232,10 @@ void TRecentBlocksTracker::ReportRepeatedRequestId(
     ui64 requestId,
     const TBlockRange64& range) const
 {
-    ReportUnexpectedIdentifierRepetition();
+    ReportUnexpectedIdentifierRepetition(
+        TStringBuilder() << "[DeviceUUID=" << DeviceUUID.Quote() << "] "
+                         << "Duplicate requestId="
+                         << TCompositeId::FromRaw(requestId).Print());
 
     auto message = TStringBuilder()
                    << "[ " << DeviceUUID << "] Duplicate with same requestId: "

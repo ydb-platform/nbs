@@ -346,7 +346,8 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     if (guard.Get().empty()) {
         // can happen only if there is a bug in the code of the layers above
         // this one
-        ReportEmptyRequestSgList();
+        ReportEmptyRequestSgList(
+            TStringBuilder() << "DiskId: " << PartConfig->GetName().Quote());
         replyError(
             ctx,
             *requestInfo,

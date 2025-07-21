@@ -663,7 +663,8 @@ void TPartitionActor::RebootPartitionOnCommitIdOverflow(
         "%s CommitId overflow in %s. Restarting partition",
         LogTitle.GetWithTime().c_str(),
         ToString(requestName).c_str());
-    ReportTabletCommitIdOverflow();
+    ReportTabletCommitIdOverflow(
+        TStringBuilder() << "DiskId: " << PartitionConfig.diskid());
     Suicide(ctx);
 }
 
@@ -677,7 +678,8 @@ void TPartitionActor::RebootPartitionOnCollectCounterOverflow(
         "%s CollectCounter overflow in %s. Restarting partition",
         LogTitle.GetWithTime().c_str(),
         ToString(requestName).c_str());
-    ReportTabletCollectCounterOverflow();
+    ReportTabletCollectCounterOverflow(
+        TStringBuilder() << "DiskId: " << PartitionConfig.diskid());
     Suicide(ctx);
 }
 

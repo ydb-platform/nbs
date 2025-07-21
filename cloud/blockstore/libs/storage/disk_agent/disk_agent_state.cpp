@@ -764,7 +764,9 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
             && sessionInfo.LastActivityTs
                 + AgentConfig->GetReleaseInactiveSessionsTimeout() > now)
     {
-        ReportAcquiredDiskEraseAttempt();
+        ReportAcquiredDiskEraseAttempt(
+            TStringBuilder()
+            << "Device: " << uuid.Quote() << ", client: " << sessionInfo.Id);
 
         ythrow TServiceError(E_INVALID_STATE)
             << "Device " << uuid.Quote()
@@ -1034,7 +1036,8 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
     } catch (...) {
         STORAGE_ERROR("Can't restore sessions from the cache: "
             << CurrentExceptionMessage());
-        ReportDiskAgentSessionCacheRestoreError();
+        ReportDiskAgentSessionCacheRestoreError(
+            TStringBuilder() << CurrentExceptionMessage());
     }
 }
 

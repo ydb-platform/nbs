@@ -50,7 +50,10 @@ struct TRequestInfo
     void CancelRequest(const NActors::TActorContext& ctx)
     {
         if (!CancelRoutine) {
-            ReportCancelRoutineIsNotSet();
+            ReportCancelRoutineIsNotSet(
+                TStringBuilder()
+                << "CancelRoutine is not set for request. Sender=" << Sender
+                << ", Cookie=" << Cookie);
             return;
         };
         CancelRoutine(ctx, *this);
