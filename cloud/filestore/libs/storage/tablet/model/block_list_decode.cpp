@@ -179,49 +179,6 @@ void DecodeDeletionMarkers(const TByteVector& encodedDeletionMarkers, TVector<TB
     }
 }
 
-ui64 FindDeletionMarker(const TByteVector& encodedDeletionMarkers, ui16 blobOffset)
-{
-    TBinaryReader reader(encodedDeletionMarkers);
-
-    const auto& header = reader.Read<NBlockListSpec::TListHeader>();
-    Y_ABORT_UNLESS(header.ListType == NBlockListSpec::TListHeader::DeletionMarkers);
-
-    while (reader.Avail()) {
-        const auto& group = reader.Read<NBlockListSpec::TGroupHeader>();
-        if (!group.IsMulti) {
-            const auto& entry = reader.Read<NBlockListSpec::TDeletionMarker>();
-            if (entry.BlobOffset == blobOffset) {
-                return group.CommitId;
-            }
-        } else {
-            const auto& multi = reader.Read<NBlockListSpec::TMultiGroupHeader>();
-            switch (multi.GroupType) {
-                case NBlockListSpec::TMultiGroupHeader::MergedGroup: {
-                    const auto& entry = reader.Read<NBlockListSpec::TDeletionMarker>();
-                    if (entry.BlobOffset <= blobOffset && blobOffset < entry.BlobOffset + multi.Count) {
-                        return group.CommitId;
-                    }
-                    break;
-                }
-
-                case NBlockListSpec::TMultiGroupHeader::MixedGroup: {
-                    const auto* blobOffsets = reader.Read<ui16>(Align2(multi.Count));
-                    size_t i = FindOffset(
-                        blobOffsets,
-                        blobOffsets + multi.Count,
-                        blobOffset);
-                    if (i != NPOS) {
-                        return group.CommitId;
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    return InvalidCommitId;
-}
-
 void StatDeletionMarkers(const TByteVector& encodedDeletionMarkers, TBlockList::TStats& stats)
 {
     TBinaryReader reader(encodedDeletionMarkers);
@@ -318,6 +275,8 @@ private:
         };
     } Group;
 
+    TVector<TBlock> DeletionMarkers;
+
 public:
     TBlockIterator(
             const TByteVector& encodedBlocks,
@@ -331,6 +290,11 @@ public:
         Y_ABORT_UNLESS(header.ListType == NBlockListSpec::TListHeader::Blocks);
 
         Zero(Group);
+
+        DeletionMarkers.resize(
+            MaxBlocksCount,
+            TBlock(0, 0, 0, InvalidCommitId));
+        DecodeDeletionMarkers(EncodedDeletionMarkers, DeletionMarkers);
     }
 
     bool Next()
@@ -348,9 +312,7 @@ public:
             if (!group.IsMulti) {
                 const auto& entry = Reader.Read<NBlockListSpec::TBlockEntry>();
                 if (Filter.CheckGroup(group.NodeId, group.CommitId)) {
-                    ui64 maxCommitId = FindDeletionMarker(
-                        EncodedDeletionMarkers,
-                        entry.BlobOffset);
+                    ui64 maxCommitId = DeletionMarkers[entry.BlobOffset].MaxCommitId;
 
                     if (Filter.CheckEntry(entry.BlockIndex, maxCommitId)) {
                         Block.NodeId = group.NodeId;
@@ -441,9 +403,7 @@ private:
             ui16 blobOffset = Group.Merged.BlobOffset + Group.Index;
             ++Group.Index;
 
-            ui64 maxCommitId = FindDeletionMarker(
-                EncodedDeletionMarkers,
-                blobOffset);
+            ui64 maxCommitId = DeletionMarkers[blobOffset].MaxCommitId;
 
             if (Filter.CheckEntry(blockIndex, maxCommitId)) {
                 Block.BlockIndex = blockIndex;
@@ -464,9 +424,7 @@ private:
             ui16 blobOffset = Group.Mixed.BlobOffsets[Group.Index];
             ++Group.Index;
 
-            ui64 maxCommitId = FindDeletionMarker(
-                EncodedDeletionMarkers,
-                blobOffset);
+            ui64 maxCommitId = DeletionMarkers[blobOffset].MaxCommitId;
 
             if (Filter.CheckEntry(blockIndex, maxCommitId)) {
                 Block.BlockIndex = blockIndex;
