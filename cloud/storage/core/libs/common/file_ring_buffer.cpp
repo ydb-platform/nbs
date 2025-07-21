@@ -29,7 +29,7 @@ struct THeader
 
 struct Y_PACKED TEntryHeader
 {
-    ui32 Size = 0;
+    ui32 DataSize = 0;
     ui32 Checksum = 0;
 };
 
@@ -82,10 +82,10 @@ private:
     char* DoGetEntryData(const TEntryHeader* eh) const
     {
         Y_ABORT_UNLESS(eh != nullptr);
-        Y_ABORT_UNLESS(eh->Size != 0);
+        Y_ABORT_UNLESS(eh->DataSize != 0);
 
         ui64 pos = reinterpret_cast<const char*>(eh) - Begin;
-        return GetPtr(pos + sizeof(eh), eh->Size);
+        return GetPtr(pos + sizeof(eh), eh->DataSize);
     }
 
 public:
@@ -126,7 +126,7 @@ public:
         auto* eh = GetEntryHeader(pos);
         Y_ABORT_UNLESS(eh != nullptr);
 
-        eh->Size = data.size();
+        eh->DataSize = data.size();
         eh->Checksum = Crc32c(data.data(), data.size());
 
         auto* dst = GetEntryData(eh);
@@ -155,13 +155,13 @@ struct TEntryInfo
 
     TStringBuf GetData() const
     {
-        return HasValue() ? TStringBuf(Data, Header->Size) : TStringBuf();
+        return HasValue() ? TStringBuf(Data, Header->DataSize) : TStringBuf();
     }
 
     ui64 GetNextEntryPos() const
     {
-        return Header != nullptr && Header->Size > 0
-            ? ActualPos + sizeof(TEntryHeader) + Header->Size
+        return Header != nullptr && Header->DataSize > 0
+            ? ActualPos + sizeof(TEntryHeader) + Header->DataSize
             : INVALID_POS;
     }
 
@@ -172,7 +172,7 @@ struct TEntryInfo
     {
         Y_ABORT_UNLESS(pos != INVALID_POS);
         Y_ABORT_UNLESS(header != nullptr);
-        Y_ABORT_UNLESS(header->Size > 0);
+        Y_ABORT_UNLESS(header->DataSize > 0);
         Y_ABORT_UNLESS(data != nullptr);
 
         return TEntryInfo{.ActualPos = pos, .Header = header, .Data = data};
@@ -228,7 +228,7 @@ private:
             }
 
             const auto* eh = Data.GetEntryHeader(pos);
-            if (eh != nullptr && eh->Size != 0) {
+            if (eh != nullptr && eh->DataSize != 0) {
                 const auto* data = Data.GetEntryData(eh);
                 return data != nullptr
                     ? TEntryInfo::Create(pos, eh, data)
@@ -250,7 +250,7 @@ private:
         }
 
         const auto* eh = Data.GetEntryHeader(pos);
-        if (eh == nullptr || eh->Size == 0) {
+        if (eh == nullptr || eh->DataSize == 0) {
             return TEntryInfo::CreateInvalid();
         }
 
@@ -284,11 +284,15 @@ private:
         Corrupted = true;
     }
 
-    void CheckDataStructure()
+    void ValidateDataStructure()
     {
         TEntryInfo front = GetFrontEntry();
         TEntryInfo back = front;
         TEntryInfo cur = front;
+
+        if (front.IsInvalid() || front.ActualPos != Header()->ReadPos) {
+            SetCorrupted();
+        }
 
         while (cur.HasValue()) {
             Count++;
@@ -301,9 +305,16 @@ private:
         }
 
         if (front.HasValue()) {
+            Y_ABORT_UNLESS(back.HasValue());
+
             Header()->ReadPos = front.ActualPos;
             Header()->WritePos = back.GetNextEntryPos();
-            Header()->LastEntrySize = back.GetNextEntryPos() - back.ActualPos;
+
+            auto lastEntrySize = back.GetNextEntryPos() - back.ActualPos;
+            if (Header()->LastEntrySize != lastEntrySize) {
+                SetCorrupted();
+                Header()->LastEntrySize = lastEntrySize;
+            }
         } else {
             Header()->ReadPos = 0;
             Header()->WritePos = 0;
@@ -335,7 +346,7 @@ public:
         auto* begin = static_cast<char*>(Map.Ptr()) + sizeof(THeader);
         Data = TEntriesData(begin, begin + capacity);
 
-        CheckDataStructure();
+        ValidateDataStructure();
     }
 
 public:
@@ -370,7 +381,7 @@ public:
                     }
                     auto* eh = Data.GetEntryHeader(Header()->WritePos);
                     if (eh != nullptr) {
-                        eh->Size = 0;
+                        eh->DataSize = 0;
                     }
                     writePos = 0;
                 }
@@ -462,7 +473,7 @@ public:
         return result;
     }
 
-    auto Validate()
+    auto ValidateEntriesChecksums()
     {
         TVector<TBrokenFileEntry> entries;
 
@@ -541,7 +552,7 @@ bool TFileRingBuffer::Empty() const
 
 TVector<TFileRingBuffer::TBrokenFileEntry> TFileRingBuffer::Validate()
 {
-    return Impl->Validate();
+    return Impl->ValidateEntriesChecksums();
 }
 
 void TFileRingBuffer::Visit(const TVisitor& visitor)
