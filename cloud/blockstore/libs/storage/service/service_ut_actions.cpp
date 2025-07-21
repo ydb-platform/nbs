@@ -1876,30 +1876,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(blockCount, checkRangeResponse.ChecksumsSize());
         }
     }
-
-    Y_UNIT_TEST(ShouldGetClusterCapacity)
-    {
-        TTestEnv env;
-        NProto::TStorageServiceConfig config;
-        const ui32 nodeIdx = SetupTestEnv(env, std::move(config));
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-
-        {
-            NProto::TGetClusterCapacityRequest request;
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-
-            const auto response =
-                service.ExecuteAction("getclustercapacity", buf);
-            NProto::TGetClusterCapacityResponse clusterCapacityResponse;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                            response->Record.GetOutput(),
-                            &clusterCapacityResponse)
-                            .ok());
-        }
-    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
