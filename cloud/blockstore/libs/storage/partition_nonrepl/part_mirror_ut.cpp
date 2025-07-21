@@ -2159,25 +2159,24 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         bool interceptReadDeviceBlocks = false;
         bool interceptWriteDeviceBlocks = false;
 
-        runtime.SetEventFilter([&] (auto&, auto& event) {
-            if (!toSend) {
-                if (
-                    (
-                        interceptReadDeviceBlocks &&
-                        event->GetTypeRewrite() == TEvDiskAgent::EvReadDeviceBlocksRequest
-                    ) ||
-                    (
-                        interceptWriteDeviceBlocks &&
-                        event->GetTypeRewrite() == TEvDiskAgent::EvWriteDeviceBlocksRequest
-                    )
-                ) {
-                    toSend = event;
-                    return true;
+        runtime.SetEventFilter(
+            [&] (auto&, auto& event)
+            {
+                if (!toSend) {
+                    if ((interceptReadDeviceBlocks &&
+                        event->GetTypeRewrite() ==
+                            TEvDiskAgent::EvReadDeviceBlocksRequest) ||
+                        (interceptWriteDeviceBlocks &&
+                        event->GetTypeRewrite() ==
+                            TEvDiskAgent::EvWriteDeviceBlocksRequest))
+                    {
+                        toSend = event;
+                        return true;
+                    }
                 }
-            }
 
-            return false;
-        });
+                return false;
+            });
 
         TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
         InitCriticalEventsCounter(critEventsCounters);
