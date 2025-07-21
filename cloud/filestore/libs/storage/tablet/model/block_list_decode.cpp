@@ -221,6 +221,21 @@ void StatDeletionMarkers(const TByteVector& encodedDeletionMarkers, TBlockList::
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TEmptyFilter
+{
+    bool CheckGroup(ui64, ui64) const
+    {
+        return true;
+    }
+
+    bool CheckEntry(ui32, ui64) const
+    {
+        return true;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TBlockFilter
 {
     ui64 NodeId = 0;
@@ -243,6 +258,7 @@ struct TBlockFilter
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TFilter>
 class TBlockIterator
 {
     using PNextBlockFunc = bool (TBlockIterator::*)(void);
@@ -254,7 +270,7 @@ public:
 private:
     TBinaryReader Reader;
     const TByteVector& EncodedDeletionMarkers;
-    TBlockFilter Filter;
+    TFilter Filter;
 
     PNextBlockFunc NextBlock = nullptr;
 
@@ -281,7 +297,7 @@ public:
     TBlockIterator(
             const TByteVector& encodedBlocks,
             const TByteVector& encodedDeletionMarkers,
-            const TBlockFilter& filter)
+            const TFilter& filter)
         : Reader(encodedBlocks)
         , EncodedDeletionMarkers(encodedDeletionMarkers)
         , Filter(filter)
@@ -443,13 +459,27 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TVector<TBlockWithBlobOffset> TBlockList::FindBlocks() const
+{
+    TBlockIterator<TEmptyFilter> iter(
+        EncodedBlocks,
+        EncodedDeletionMarkers,
+        TEmptyFilter {});
+
+    TVector<TBlockWithBlobOffset> blocks(Reserve(MaxBlocksCount));
+    while (iter.Next()) {
+        blocks.emplace_back(iter.Block, iter.BlobOffset);
+    }
+    return blocks;
+}
+
 TVector<TBlockWithBlobOffset> TBlockList::FindBlocks(
     ui64 nodeId,
     ui64 commitId,
     ui32 blockIndex,
     ui32 blocksCount) const
 {
-    TBlockIterator iter(
+    TBlockIterator<TBlockFilter> iter(
         EncodedBlocks,
         EncodedDeletionMarkers,
         TBlockFilter {nodeId, commitId, blockIndex, blockIndex + blocksCount});

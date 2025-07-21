@@ -42,6 +42,8 @@ public:
         ui32 BlobOffset = 0;
     };
 
+    TVector<TBlockWithBlobOffset> FindBlocks() const;
+
     TVector<TBlockWithBlobOffset> FindBlocks(
         ui64 nodeId,
         ui64 commitId,
