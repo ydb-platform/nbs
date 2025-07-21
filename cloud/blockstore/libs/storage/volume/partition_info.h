@@ -24,6 +24,9 @@ class TActorsStack
     TDeque<NActors::TActorId> Actors;
 
 public:
+    TActorsStack() = default;
+    explicit TActorsStack(NActors::TActorId actor);
+
     void Push(NActors::TActorId actorId);
     void Clear();
     [[nodiscard]] bool IsKnown(NActors::TActorId actorId) const;

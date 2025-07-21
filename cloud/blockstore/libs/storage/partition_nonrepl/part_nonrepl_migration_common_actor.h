@@ -31,6 +31,13 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The policy of using direct copying of blocks.
+enum class EDirectCopyPolicy
+{
+    CanUse,
+    DoNotUse
+};
+
 // The successor class must provide an implementation of this interface so that
 // it can notify the progress and completion of the migration.
 class IMigrationOwner
@@ -113,6 +120,8 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ui32 MaxIoDepth;
     const NActors::TActorId VolumeActorId;
+    const EDirectCopyPolicy DirectCopyPolicy = EDirectCopyPolicy::CanUse;
+
     TString RWClientId;
 
     NActors::TActorId MigrationSrcActorId;
@@ -190,7 +199,8 @@ public:
         TString rwClientId,
         NActors::TActorId statActorId,
         ui32 maxIoDepth,
-        NActors::TActorId volumeActorId);
+        NActors::TActorId volumeActorId,
+        EDirectCopyPolicy directCopyPolicy);
 
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
@@ -207,7 +217,7 @@ public:
         ui32 maxIoDepth,
         NActors::TActorId volumeActorId);
 
-    ~TNonreplicatedPartitionMigrationCommonActor() override;
+    virtual ~TNonreplicatedPartitionMigrationCommonActor();
 
     virtual void Bootstrap(const NActors::TActorContext& ctx);
 

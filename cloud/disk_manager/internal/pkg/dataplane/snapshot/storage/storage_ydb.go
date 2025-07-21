@@ -6,8 +6,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
-	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -261,7 +261,7 @@ func (s *storageYDB) GetIncremental(
 
 func (s *storageYDB) ListSnapshots(
 	ctx context.Context,
-) (ids task_storage.StringSet, err error) {
+) (ids tasks_common.StringSet, err error) {
 
 	err = s.db.Execute(
 		ctx,

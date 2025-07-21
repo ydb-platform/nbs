@@ -1505,12 +1505,9 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
         if (manual) {
             devicePtr->SetState(NProto::DEVICE_STATE_ERROR);
         } else {
-            TAutomaticallyReplacedDeviceInfo deviceInfo{deviceId, timestamp};
-            AutomaticallyReplacedDevices.push_back(deviceInfo);
-            AutomaticallyReplacedDeviceIds.insert(deviceId);
-            db.AddAutomaticallyReplacedDevice(deviceInfo);
-
-            AutomaticReplacementTimestamps.push_back(timestamp);
+            AddAutomaticallyReplacedDevice(
+                db,
+                TAutomaticallyReplacedDeviceInfo{deviceId, timestamp});
         }
         devicePtr->SetStateMessage(std::move(message));
         devicePtr->SetStateTs(timestamp.MicroSeconds());
@@ -6404,6 +6401,7 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     }
     *sourceDeviceIt = targetId;
 
+    // Target migration device is marked as replacement.
     auto* masterDiskState = Disks.FindPtr(disk.MasterDiskId);
     Y_DEBUG_ABORT_UNLESS(masterDiskState);
     if (masterDiskState) {
@@ -6419,6 +6417,26 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     for (auto& x: SourceDeviceMigrationsInProgress) {
         x.second.erase(sourceId);
     }
+
+    // Just in case. Automatically replaced devices are not secure erased for
+    // some time.
+    AddAutomaticallyReplacedDevice(
+        db,
+        TAutomaticallyReplacedDeviceInfo{sourceId, now});
+
+    // Update source device state message.
+    auto [agentPtr, devicePtr] = FindDeviceLocation(sourceId);
+    Y_DEBUG_ABORT_UNLESS(agentPtr);
+    Y_DEBUG_ABORT_UNLESS(devicePtr);
+    if (!devicePtr || !agentPtr) {
+        return MakeError(E_INVALID_STATE, "can't find device");
+    }
+    devicePtr->SetStateMessage(
+        TStringBuilder() << "Lagging source migration was aborted; diskId="
+                         << diskId);
+    devicePtr->SetStateTs(now.MicroSeconds());
+    UpdateAgent(db, *agentPtr);
+    DeviceList.UpdateDevices(*agentPtr, DevicePoolConfigs);
 
     const bool replaced =
         ReplicaTable.ReplaceDevice(disk.MasterDiskId, sourceId, targetId);
@@ -6438,8 +6456,8 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     NProto::TDiskHistoryItem historyItem;
     historyItem.SetTimestamp(now.MicroSeconds());
     historyItem.SetMessage(
-        TStringBuilder() << "Migration was aborted. Device " << sourceId
-                         << " was replaced by " << targetId);
+        TStringBuilder() << "Migration was aborted due to lagging. Device "
+                         << sourceId << " was replaced by " << targetId);
     masterDiskState->History.push_back(std::move(historyItem));
 
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
@@ -7572,6 +7590,17 @@ bool TDiskRegistryState::IsDirtyDevice(const TDeviceId& id) const
 TVector<NProto::TSuspendedDevice> TDiskRegistryState::GetSuspendedDevices() const
 {
     return DeviceList.GetSuspendedDevices();
+}
+
+void TDiskRegistryState::AddAutomaticallyReplacedDevice(
+    TDiskRegistryDatabase& db,
+    const TAutomaticallyReplacedDeviceInfo& deviceInfo)
+{
+    AutomaticallyReplacedDevices.push_back(deviceInfo);
+    AutomaticallyReplacedDeviceIds.insert(deviceInfo.DeviceId);
+    AutomaticReplacementTimestamps.push_back(deviceInfo.ReplacementTs);
+
+    db.AddAutomaticallyReplacedDevice(deviceInfo);
 }
 
 ui32 TDiskRegistryState::DeleteAutomaticallyReplacedDevices(

@@ -1287,12 +1287,14 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
         TTestExecutor executor;
 
         TFollowerDiskInfo follower1{
-            .Link = TLeaderFollowerLink{
-                .LinkUUID = "x",
-                .LeaderDiskId = "vol0",
-                .LeaderShardId = "su0",
-                .FollowerDiskId = "vol1",
-                .FollowerShardId = "su1"}};
+            .Link =
+                TLeaderFollowerLink{
+                    .LinkUUID = "x",
+                    .LeaderDiskId = "vol0",
+                    .LeaderShardId = "su0",
+                    .FollowerDiskId = "vol1",
+                    .FollowerShardId = "su1"},
+            .MediaKind = NProto::EStorageMediaKind::STORAGE_MEDIA_HDD};
 
         TFollowerDiskInfo follower2{
             .Link =
@@ -1303,6 +1305,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                     .FollowerDiskId = "vol2",
                     .FollowerShardId = "su1"},
             .State = TFollowerDiskInfo::EState::Preparing,
+            .MediaKind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD,
             .MigratedBytes = 1_MB};
 
         executor.WriteTx(
