@@ -91,7 +91,7 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 
     RequestSent = ctx.Now();
 
-    if (TransactionTracker) {
+    if (TransactionTracker && GroupId != Max<ui32>()) {
         TransactionTracker->OnStarted(
             RequestInfo->CallContext->RequestId,
             TStringBuilder() << "ReadBlob_Group" << GroupId,

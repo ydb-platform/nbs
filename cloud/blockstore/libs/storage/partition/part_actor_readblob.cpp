@@ -44,6 +44,10 @@ void TPartitionActor::HandleReadBlob(
 
     const auto& blob = msg->BlobId;
 
+    const ui32 groupId =
+        Info() ? Info()->GroupFor(blob.Channel(), blob.Generation())
+               : Max<ui32>();
+
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,
         SelfId(),
@@ -57,7 +61,7 @@ void TPartitionActor::HandleReadBlob(
         GetDowntimeThreshold(
             *DiagnosticsConfig,
             PartitionConfig.GetStorageMediaKind()),
-        Info()->GroupFor(blob.Channel(), blob.Generation()),
+        groupId,
         &TransactionTimeTracker);
 
     if (blob.TabletID() != TabletID()) {

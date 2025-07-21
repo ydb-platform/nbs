@@ -188,7 +188,7 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 
     RequestSent = ctx.Now();
 
-    if (TransactionTimeTracker) {
+    if (TransactionTimeTracker && GroupId != Max<ui32>()) {
         TransactionTimeTracker->OnStarted(
             RequestInfo->CallContext->RequestId,
             TStringBuilder() << "WriteBlob_Group" << GroupId,

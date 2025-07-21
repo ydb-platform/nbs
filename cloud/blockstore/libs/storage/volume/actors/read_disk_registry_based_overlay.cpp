@@ -369,7 +369,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                     Mode,
                     std::move(currentRequest),
                     LongRunningThreshold,
-                    requestRef.BSGroupId,
+                    requestRef.BSGroupId ? requestRef.BSGroupId : Max<ui32>(),
                     nullptr);
                 currentRequest = std::make_unique<
                     TEvPartitionCommonPrivate::TEvReadBlobRequest>();
@@ -398,7 +398,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             EStorageAccessMode::Default,
             std::move(currentRequest),
             LongRunningThreshold,
-            currentRequest->GroupId,
+            currentRequest->GroupId ? currentRequest->GroupId : Max<ui32>(),
             nullptr);
     }
 }
