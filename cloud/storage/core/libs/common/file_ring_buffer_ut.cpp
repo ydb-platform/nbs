@@ -31,6 +31,20 @@ TString Dump(const TVector<TFileRingBuffer::TBrokenFileEntry>& entries)
     return sb;
 }
 
+TString Dump(const TVector<TString>& entries)
+{
+    TStringBuilder sb;
+
+    for (ui32 i = 0; i < entries.size(); ++i) {
+        if (i) {
+            sb << ", ";
+        }
+        sb << entries[i];
+    }
+
+    return sb;
+}
+
 TString PopAll(TFileRingBuffer& rb)
 {
     TStringBuilder sb;
@@ -495,6 +509,30 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         UNIT_ASSERT_EQUAL(f.GetLength(), len + 40);
         UNIT_ASSERT(rb.PushBack("12345678"));
+    }
+
+    Y_UNIT_TEST(VisitAndPopBackShouldProduceSameResults)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
+
+            TVector<TString> afterVisit;
+            rb.Visit([&] (ui32 checksum, TStringBuf entry)
+            {
+                Y_UNUSED(checksum);
+                afterVisit.push_back(TString(entry));
+            });
+
+            TVector<TString> afterPopBack;
+            while (!rb.Empty())
+            {
+                afterPopBack.push_back(TString(rb.Front()));
+                rb.PopFront();
+            }
+
+            UNIT_ASSERT_EQUAL(Dump(afterVisit), Dump(afterPopBack));
+        }
     }
 }
 
