@@ -80,7 +80,9 @@ message TIoUringConfig
     optional bool ShareKernelWorkers = 2;
 
     // Max. number of kernel workers.
-    optional uint32 KernelWorkersCount = 3;
+    optional uint32 MaxKernelWorkersCount = 3;
+
+    optional uint32 ForceAsyncIO = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

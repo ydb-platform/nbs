@@ -41,6 +41,7 @@ public:
     [[nodiscard]] ui32 GetEntries() const;
     [[nodiscard]] bool GetShareKernelWorkers() const;
     [[nodiscard]] ui32 GetMaxKernelWorkersCount() const;
+    [[nodiscard]] bool GetForceAsyncIO() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
