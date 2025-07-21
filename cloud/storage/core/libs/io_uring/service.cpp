@@ -19,38 +19,38 @@
 #include <liburing.h>
 #include <sys/eventfd.h>
 
-namespace NCloud {
+namespace NCloud::NIoUring {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIoUringServiceBase
+struct TServiceBase
     : public IFileIOService
 {
-    TIoUring IoUring;
+    TContext Context;
 
-    TIoUringServiceBase(TIoUring::TParams params, TIoUring* wqOwner)
-        : IoUring(std::move(params), wqOwner)
+    TServiceBase(TContext::TParams params, TContext* wqOwner)
+        : Context(std::move(params), wqOwner)
     {}
 
     void Start() final
     {
-        IoUring.Start();
+        Context.Start();
     }
 
     void Stop() final
     {
-        IoUring.Stop();
+        Context.Stop();
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIoUringService final
-    : public TIoUringServiceBase
+struct TService final
+    : public TServiceBase
 {
-    using TIoUringServiceBase::TIoUringServiceBase;
+    using TServiceBase::TServiceBase;
 
     void AsyncRead(
         TFileHandle& file,
@@ -58,7 +58,7 @@ struct TIoUringService final
         TArrayRef<char> buffer,
         TFileIOCompletion* completion) final
     {
-        IoUring.AsyncRead(file, buffer, offset, completion);
+        Context.AsyncRead(file, buffer, offset, completion);
     }
 
     void AsyncReadV(
@@ -67,7 +67,7 @@ struct TIoUringService final
         const TVector<TArrayRef<char>>& buffers,
         TFileIOCompletion* completion) final
     {
-        IoUring.AsyncReadV(file, buffers, offset, completion);
+        Context.AsyncReadV(file, buffers, offset, completion);
     }
 
     void AsyncWrite(
@@ -76,7 +76,7 @@ struct TIoUringService final
         TArrayRef<const char> buffer,
         TFileIOCompletion* completion) final
     {
-        IoUring.AsyncWrite(file, buffer, offset, completion);
+        Context.AsyncWrite(file, buffer, offset, completion);
     }
 
     void AsyncWriteV(
@@ -85,16 +85,16 @@ struct TIoUringService final
         const TVector<TArrayRef<const char>>& buffers,
         TFileIOCompletion* completion) final
     {
-        IoUring.AsyncWriteV(file, buffers, offset, completion);
+        Context.AsyncWriteV(file, buffers, offset, completion);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIoUringServiceNull final
-    : public TIoUringServiceBase
+struct TServiceNull final
+    : public TServiceBase
 {
-    using TIoUringServiceBase::TIoUringServiceBase;
+    using TServiceBase::TServiceBase;
 
     void AsyncRead(
         TFileHandle& file,
@@ -104,7 +104,7 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffer);
 
-        IoUring.AsyncNOP(completion);
+        Context.AsyncNOP(completion);
     }
 
     void AsyncReadV(
@@ -115,7 +115,7 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffers);
 
-        IoUring.AsyncNOP(completion);
+        Context.AsyncNOP(completion);
     }
 
     void AsyncWrite(
@@ -126,7 +126,7 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffer);
 
-        IoUring.AsyncNOP(completion);
+        Context.AsyncNOP(completion);
     }
 
     void AsyncWriteV(
@@ -137,24 +137,24 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffers);
 
-        IoUring.AsyncNOP(completion);
+        Context.AsyncNOP(completion);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TService>
-class TIoUringServiceFactory final
+class TServiceFactory final
     : public IFileIOServiceFactory
 {
 private:
-    const TIoUring::TParams Params;
+    const TContext::TParams Params;
 
-    std::shared_ptr<TIoUring> WqOwner;
+    std::shared_ptr<TContext> WqOwner;
     ui32 Index = 0;
 
 public:
-    explicit TIoUringServiceFactory(TIoUringServiceParams params)
+    explicit TServiceFactory(TServiceParams params)
         : Params({
               .SubmissionThreadName = std::move(params.SubmissionThreadName),
               .CompletionThreadName = std::move(params.CompletionThreadName),
@@ -168,7 +168,7 @@ public:
     {
         const ui32 index = Index++;
 
-        TIoUring::TParams params = Params;
+        TContext::TParams params = Params;
         params.SubmissionThreadName = TStringBuilder()
                                       << Params.SubmissionThreadName << index;
         params.CompletionThreadName = TStringBuilder()
@@ -178,7 +178,7 @@ public:
             std::make_shared<TService>(std::move(params), WqOwner.get());
 
         if (Params.ShareKernelWorkers && !WqOwner) {
-            WqOwner = std::shared_ptr<TIoUring>(service, &service->IoUring);
+            WqOwner = std::shared_ptr<TContext>(service, &service->Context);
         }
 
         return service;
@@ -189,20 +189,18 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
-    TIoUringServiceParams params)
+IFileIOServiceFactoryPtr CreateServiceFactory(TServiceParams params)
 {
-    using TFactory = TIoUringServiceFactory<TIoUringService>;
+    using TFactory = TServiceFactory<TService>;
 
     return std::make_shared<TFactory>(std::move(params));
 }
 
-IFileIOServiceFactoryPtr CreateIoUringServiceNullFactory(
-    TIoUringServiceParams params)
+IFileIOServiceFactoryPtr CreateServiceNullFactory(TServiceParams params)
 {
-    using TFactory = TIoUringServiceFactory<TIoUringServiceNull>;
+    using TFactory = TServiceFactory<TServiceNull>;
 
     return std::make_shared<TFactory>(std::move(params));
 }
 
-}   // namespace NCloud
+}   // namespace NCloud::NIoUring

@@ -2,11 +2,11 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 
-namespace NCloud {
+namespace NCloud::NIoUring {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIoUringServiceParams
+struct TServiceParams
 {
     static constexpr ui32 DefaultSubmissionQueueEntries = 1024;
 
@@ -21,10 +21,7 @@ struct TIoUringServiceParams
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
-    TIoUringServiceParams params);
+IFileIOServiceFactoryPtr CreateServiceFactory(TServiceParams params);
+IFileIOServiceFactoryPtr CreateServiceNullFactory(TServiceParams params);
 
-IFileIOServiceFactoryPtr CreateIoUringServiceNullFactory(
-    TIoUringServiceParams params);
-
-}   // namespace NCloud
+}   // namespace NCloud::NIoUring

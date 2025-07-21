@@ -11,7 +11,7 @@
 #include <util/system/error.h>
 #include <util/system/sanitizers.h>
 
-namespace NCloud {
+namespace NCloud::NIoUring {
 
 namespace {
 
@@ -100,11 +100,11 @@ NProto::TError EnableRing(io_uring* ring)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TIoUring::TIoUring(TParams params, TIoUring* wqOwner)
+TContext::TContext(TParams params, TContext* wqOwner)
     : SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
     , CompletionThread(
           std::bind_front(
-              &TIoUring::CompletionThreadProc,
+              &TContext::CompletionThreadProc,
               this,
               std::move(params.CompletionThreadName)))
 {
@@ -127,7 +127,7 @@ TIoUring::TIoUring(TParams params, TIoUring* wqOwner)
     }
 }
 
-TIoUring::~TIoUring()
+TContext::~TContext()
 {
     Stop();
 
@@ -135,7 +135,7 @@ TIoUring::~TIoUring()
     Ring = {};
 }
 
-void TIoUring::Start()
+void TContext::Start()
 {
     SubmissionThread->Start();
 
@@ -156,7 +156,7 @@ void TIoUring::Start()
         });
 }
 
-void TIoUring::Stop()
+void TContext::Stop()
 {
     if (!Started.Initialized()) {
         return;
@@ -171,7 +171,7 @@ void TIoUring::Stop()
     SubmissionThread->Stop();
 }
 
-void TIoUring::AsyncIO(
+void TContext::AsyncIO(
     int op,
     int fd,
     const void* addr,
@@ -183,12 +183,12 @@ void TIoUring::AsyncIO(
         [=, this] { SubmitIO(op, fd, addr, len, offset, completion); });
 }
 
-void TIoUring::AsyncNOP(TFileIOCompletion* completion)
+void TContext::AsyncNOP(TFileIOCompletion* completion)
 {
     SubmissionThread->ExecuteSimple([=, this] { SubmitNOP(completion); });
 }
 
-void TIoUring::SubmitIO(
+void TContext::SubmitIO(
     int op,
     int fd,
     const void* addr,
@@ -216,7 +216,7 @@ void TIoUring::SubmitIO(
     }
 }
 
-void TIoUring::SubmitNOP(TFileIOCompletion* completion)
+void TContext::SubmitNOP(TFileIOCompletion* completion)
 {
     io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
     if (!sqe) {
@@ -238,7 +238,7 @@ void TIoUring::SubmitNOP(TFileIOCompletion* completion)
     }
 }
 
-void TIoUring::SubmitStopSignal()
+void TContext::SubmitStopSignal()
 {
     for (;;) {
         io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
@@ -259,7 +259,7 @@ void TIoUring::SubmitStopSignal()
     }
 }
 
-void TIoUring::ProcessCompletion(io_uring_cqe* cqe)
+void TContext::ProcessCompletion(io_uring_cqe* cqe)
 {
     void* data = io_uring_cqe_get_data(cqe);
     Y_DEBUG_ABORT_UNLESS(data);
@@ -281,7 +281,7 @@ void TIoUring::ProcessCompletion(io_uring_cqe* cqe)
     }
 }
 
-void TIoUring::CompletionThreadProc(const TString& threadName)
+void TContext::CompletionThreadProc(const TString& threadName)
 {
     SetHighestThreadPriority();
     NCloud::SetCurrentThreadName(threadName);
@@ -308,7 +308,7 @@ void TIoUring::CompletionThreadProc(const TString& threadName)
     }
 }
 
-void TIoUring::AsyncWrite(
+void TContext::AsyncWrite(
     int fd,
     TArrayRef<const char> buffer,
     ui64 offset,
@@ -323,7 +323,7 @@ void TIoUring::AsyncWrite(
         completion);
 }
 
-void TIoUring::AsyncRead(
+void TContext::AsyncRead(
     int fd,
     TArrayRef<char> buffer,
     ui64 offset,
@@ -338,7 +338,7 @@ void TIoUring::AsyncRead(
         completion);
 }
 
-void TIoUring::AsyncWriteV(
+void TContext::AsyncWriteV(
     int fd,
     TArrayRef<const TArrayRef<const char>> buffers,
     ui64 offset,
@@ -353,7 +353,7 @@ void TIoUring::AsyncWriteV(
         completion);
 }
 
-void TIoUring::AsyncReadV(
+void TContext::AsyncReadV(
     int fd,
     TArrayRef<const TArrayRef<char>> buffers,
     ui64 offset,
@@ -368,4 +368,4 @@ void TIoUring::AsyncReadV(
         completion);
 }
 
-}   // namespace NCloud
+}   // namespace NCloud::NIoUring

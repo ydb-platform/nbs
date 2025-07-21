@@ -8,11 +8,11 @@
 
 #include <liburing.h>
 
-namespace NCloud {
+namespace NCloud::NIoUring {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TIoUring final
+class TContext final
 {
 private:
     io_uring Ring = {};
@@ -36,17 +36,17 @@ public:
         bool ShareKernelWorkers = false;
     };
 
-    TIoUring();
+    TContext();
     // Share kernel worker threads with `wqOwner`
-    explicit TIoUring(TParams params,  TIoUring* wqOwner = nullptr);
+    explicit TContext(TParams params,  TContext* wqOwner = nullptr);
 
-    TIoUring(TIoUring&&) = default;
-    TIoUring(const TIoUring&&) = delete;
+    TContext(TContext&&) = default;
+    TContext(const TContext&&) = delete;
 
-    TIoUring& operator = (TIoUring&&) = delete;
-    TIoUring& operator = (const TIoUring&&) = delete;
+    TContext& operator = (TContext&&) = delete;
+    TContext& operator = (const TContext&&) = delete;
 
-    ~TIoUring();
+    ~TContext();
 
     void Start();
     void Stop();
@@ -100,4 +100,4 @@ private:
     void CompletionThreadProc(const TString& threadName);
 };
 
-}   // namespace NCloud
+}   // namespace NCloud::NIoUring
