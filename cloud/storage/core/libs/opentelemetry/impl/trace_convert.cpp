@@ -8,6 +8,7 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 #include <util/random/random.h>
 
@@ -226,7 +227,8 @@ TSpanTree ProcessItemsToSpanTree(
     ui64 traceId,
     ui64 currentSpanId,
     TLogItemsIterationContext iterationContext,
-    TReferenceTimeCycle referenceTimeCycle)
+    TReferenceTimeCycle referenceTimeCycle,
+    bool hasConflicts)
 {
     TSpanTree spanTree(traceId, currentSpanId);
 
@@ -254,7 +256,9 @@ TSpanTree ProcessItemsToSpanTree(
         }
 
         if (TStringBuf(name) == "Join") {
-            const auto childSpanId = item.Params.Param[0].Get<ui64>();
+            const auto childSpanId = hasConflicts
+                                         ? RandomNumber<ui32>()
+                                         : item.Params.Param[0].Get<ui64>();
             const auto itemsCount = item.Params.Param[1].Get<ui64>();
 
             // recursively process child spans
@@ -263,10 +267,13 @@ TSpanTree ProcessItemsToSpanTree(
                 traceId,
                 childSpanId,
                 iterationContext.ConstructSubSpanIterationContext(itemsCount),
-                referenceTimeCycle);
+                referenceTimeCycle,
+                hasConflicts);
 
-            subSpans.GetParentSpan().set_start_time_unix_nano(
-                spanIdToStartTime[childSpanId]);
+            if (!hasConflicts) {
+                subSpans.GetParentSpan().set_start_time_unix_nano(
+                    spanIdToStartTime[childSpanId]);
+            }
             subSpans.GetParentSpan().set_end_time_unix_nano(curTimeStampNano);
 
             spanTree.AddSpanSubTree(std::move(subSpans));
@@ -297,6 +304,58 @@ TReferenceTimeCycle GetReferenceTimeCycle(const NLWTrace::TTrackLog& tl)
         .ReferenceTimeCycle = maxTimeCycle};
 }
 
+struct TConflictDetecter
+{
+    THashSet<ui64> SpanIdsParents;
+    THashSet<ui64> SpanIdsDeclaredAndNotJoinedYet;
+
+    bool HasConflict(
+        const NLWTrace::TTrackLog& tl,
+        TLogItemsIterationContext iCtx,
+        ui64 currentSpanId)
+    {
+        auto [_, inserted] = SpanIdsParents.insert(currentSpanId);
+        if (!inserted) {
+            return true;
+        }
+
+        for (; iCtx; iCtx.Next()) {
+            const auto& item = tl.Items[iCtx.Idx];
+            const auto& name = item.Probe->Event.Name;
+
+            if (TStringBuf(name) == "Fork") {
+                const auto childSpanId = item.Params.Param[0].Get<ui64>();
+                auto [_, inserted] =
+                    SpanIdsDeclaredAndNotJoinedYet.insert(childSpanId);
+                if (!inserted) {
+                    return true;
+                }
+                continue;
+            }
+
+            if (TStringBuf(name) != "Join") {
+                continue;
+            }
+
+            const auto childSpanId = item.Params.Param[0].Get<ui64>();
+            const auto itemsCount = item.Params.Param[1].Get<ui64>();
+
+            SpanIdsDeclaredAndNotJoinedYet.erase(childSpanId);
+
+            if (HasConflict(
+                    tl,
+                    iCtx.ConstructSubSpanIterationContext(itemsCount),
+                    childSpanId))
+            {
+                return true;
+            }
+        }
+
+        SpanIdsParents.erase(currentSpanId);
+        return false;
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -305,16 +364,18 @@ TTraceInfo ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
 {
     TTraceInfo traceInfo;
 
-    traceInfo.RequestId = FindRequestId(tl, {0, tl.Items.size()});
-    traceInfo.DiskId = FindFirst<TString>(tl, "diskId", {0, tl.Items.size()});
+    TLogItemsIterationContext traceItCtx{.Idx = 0, .Count = tl.Items.size()};
+
+    traceInfo.RequestId = FindRequestId(tl, traceItCtx);
+    traceInfo.DiskId = FindFirst<TString>(tl, "diskId", traceItCtx);
 
     traceInfo.Spans = TSpanTree::ExtractSpans(ProcessItemsToSpanTree(
         tl,
-        RandomNumber<ui64>(),       // traceId
-        0,                          // currentSpanId
-        {0, tl.Items.size()},       // iterationContext
-        GetReferenceTimeCycle(tl)   // referenceTimeCycle
-        ));
+        RandomNumber<ui64>(),        // traceId
+        0,                           // currentSpanId
+        traceItCtx,                  // iterationContext
+        GetReferenceTimeCycle(tl),   // referenceTimeCycle
+        TConflictDetecter().HasConflict(tl, traceItCtx, 0)));
 
     return traceInfo;
 }
