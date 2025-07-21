@@ -312,7 +312,8 @@ struct TVolumeSchema
         {
         };
 
-        struct MediaKind: public Column<9, NKikimr::NScheme::NTypeIds::Uint32>
+        struct FollowerMediaKind
+            : public Column<9, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
@@ -331,7 +332,7 @@ struct TVolumeSchema
             CreatedAt,
             LeaderDiskId,
             LeaderShardId,
-            MediaKind,
+            FollowerMediaKind,
             ErrorMessage>;
     };
 

@@ -781,9 +781,7 @@ void TVolumeActor::HandleTabletStatus(
 
     switch (msg->Status) {
         case TEvBootstrapper::STARTED: {
-            TActorsStack actors;
-            actors.Push(msg->TabletUser);
-            partition->SetStarted(std::move(actors));
+            partition->SetStarted(TActorsStack(msg->TabletUser));
             NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
                 ctx,
                 msg->TabletUser,
