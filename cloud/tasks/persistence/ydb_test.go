@@ -537,7 +537,7 @@ func TestYDBShouldSendSchemeErrorMetric(t *testing.T) {
 	metricsRegistry.AssertAllExpectations(t)
 }
 
-type migrateFixtures struct {
+type migrationFixtures struct {
 	t                 *testing.T
 	ctx               context.Context
 	db                *YDBClient
@@ -547,7 +547,7 @@ type migrateFixtures struct {
 }
 
 func migrateAndValidate(
-	fixtures migrateFixtures,
+	fixtures migrationFixtures,
 	newDescription CreateTableDescription,
 	validate func(options.Description),
 ) {
@@ -579,7 +579,7 @@ func TestYDBMigrateSecondaryKeys(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	fixtures := migrateFixtures{
+	fixtures := migrationFixtures{
 		t:                 t,
 		ctx:               ctx,
 		db:                db,
@@ -665,7 +665,7 @@ func TestYDBMigrateColumnsWithSecondaryKeys(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	fixtures := migrateFixtures{
+	fixtures := migrationFixtures{
 		t:                 t,
 		ctx:               ctx,
 		db:                db,

@@ -981,34 +981,25 @@ func buildAlterColumnsOptions(
 func getUnusedAndAddedIndexes(
 	currentDescription ydb_options.Description,
 	description CreateTableDescription,
-) (unusedIndexes, addedIndexes []string, err error) {
+) ([]string, []string, error) {
 
-	currentIndexes := make([]string, len(currentDescription.Indexes))
-	for i := 0; i < len(currentIndexes); i++ {
-		columns := currentDescription.Indexes[i].IndexColumns
-		if len(columns) != 1 {
-			err = errors.NewNonRetriableErrorf("indexes with more than one column are not supported")
-			return
+	lhsSet := common.NewStringSet()
+	for _, index := range currentDescription.Indexes {
+		if len(index.IndexColumns) != 1 {
+			return nil, nil, errors.NewNonRetriableErrorf(
+				"indexes with more than one column are not supported",
+			)
 		}
-		currentIndexes[i] = columns[0]
+
+		lhsSet.Add(index.IndexColumns[0])
 	}
 
-	lhsSet := common.NewStringSet(currentIndexes...)
 	rhsSet := common.NewStringSet(description.SecondaryKeys...)
 
-	for _, item := range lhsSet.List() {
-		if !rhsSet.Has(item) {
-			unusedIndexes = append(unusedIndexes, item)
-		}
-	}
+	lhsOnly := lhsSet.Subtract(rhsSet)
+	rhsOnly := rhsSet.Subtract(lhsSet)
 
-	for _, item := range rhsSet.List() {
-		if !lhsSet.Has(item) {
-			addedIndexes = append(addedIndexes, item)
-		}
-	}
-
-	return
+	return lhsOnly.List(), rhsOnly.List(), nil
 }
 
 func alterTable(
