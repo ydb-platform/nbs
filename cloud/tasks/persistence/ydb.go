@@ -966,12 +966,18 @@ func buildAlterColumnsOptions(
 	alterTableOptions := make([]ydb_options.AlterTableOption, 0)
 
 	for _, column := range addedColumns {
-		alterTableOptions = append(alterTableOptions, ydb_options.WithAddColumn(column.Name, column.Type))
+		alterTableOptions = append(
+			alterTableOptions,
+			ydb_options.WithAddColumn(column.Name, column.Type),
+		)
 	}
 
 	if dropUnusedColumns {
 		for _, column := range unusedColumns {
-			alterTableOptions = append(alterTableOptions, ydb_options.WithDropColumn(column.Name))
+			alterTableOptions = append(
+				alterTableOptions,
+				ydb_options.WithDropColumn(column.Name),
+			)
 		}
 	}
 
@@ -1014,19 +1020,27 @@ func alterTable(
 	// Indexes must be created and deleted one-by-one
 	// https://ydb.tech/docs/en/concepts/secondary_indexes#index-add
 
-	unusedIndexes, addedIndexes, err := getUnusedAndAddedIndexes(currentDescription, description)
+	unusedIndexes, addedIndexes, err := getUnusedAndAddedIndexes(
+		currentDescription, description,
+	)
 	if err != nil {
 		return err
 	}
 
 	for _, key := range unusedIndexes {
-		err = session.AlterTable(ctx, fullPath, ydb_options.WithDropIndex(getIndexName(key)))
+		err = session.AlterTable(
+			ctx,
+			fullPath,
+			ydb_options.WithDropIndex(getIndexName(key)),
+		)
 		if err != nil {
 			return err
 		}
 	}
 
-	alterColumnsOptions, err := buildAlterColumnsOptions(currentDescription, description, dropUnusedColumns)
+	alterColumnsOptions, err := buildAlterColumnsOptions(
+		currentDescription, description, dropUnusedColumns,
+	)
 	if err != nil {
 		return err
 	}
