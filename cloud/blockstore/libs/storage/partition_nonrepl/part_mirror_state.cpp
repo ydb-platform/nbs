@@ -142,7 +142,7 @@ bool TMirrorPartitionState::PrepareMigrationConfigForWarningDevices()
 
     ReportMigrationSourceNotFound(
         TStringBuilder()
-        << "No migration source device found among replicas for "
+        << "No migration source device found among replicas for disk"
         << PartConfig->GetName() << ", RWClientId: " << RWClientId);
 
     // TODO: log details
@@ -201,7 +201,7 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
         TStringBuilder() << "PrepareMigrationConfigForFreshDevices failed: no "
                             "suitable source device found"
                          << " for fresh device at index " << deviceIdx
-                         << ", namr: " << PartConfig->GetName()
+                         << ", disk: " << PartConfig->GetName()
                          << ", total replicas: " << ReplicaInfos.size());
     return false;
 }
