@@ -41,7 +41,7 @@ public:
 
     explicit TContext(TParams params);
 
-    TContext(TContext&&) = default;
+    TContext(TContext&&) = delete;
     TContext(const TContext&&) = delete;
 
     TContext& operator = (TContext&&) = delete;
