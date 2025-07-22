@@ -1496,6 +1496,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultIndexCachingConfig(),
             Max<ui32>(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             Max<ui32>()  // lastStep
         );
 

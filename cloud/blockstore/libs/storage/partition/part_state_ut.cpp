@@ -117,6 +117,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 DefaultFreeSpaceConfig(),
                 Max(),  // maxIORequestsInFlight
                 0,  // reassignChannelsPercentageThreshold
+                100,  // reassignMixedChannelsPercentageThreshold
                 0,  // lastCommitId
                 channelCount + 4,  // channelCount
                 0,  // mixedIndexCacheSize
@@ -227,6 +228,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             6,  // channelCount
             0,  // mixedIndexCacheSize
@@ -286,6 +288,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             10, // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             100,// channelCount
             0,  // mixedIndexCacheSize
@@ -367,6 +370,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 DefaultFreeSpaceConfig(),
                 Max(),  // maxIORequestsInFlight
                 0,  // reassignChannelsPercentageThreshold
+                100,  // reassignMixedChannelsPercentageThreshold
                 0,  // lastCommitId
                 channelCount + 4,  // channelCount
                 0,  // mixedIndexCacheSize
@@ -440,6 +444,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 DefaultFreeSpaceConfig(),
                 Max(),  // maxIORequestsInFlight
                 0,  // reassignChannelsPercentageThreshold
+                100,  // reassignMixedChannelsPercentageThreshold
                 0,  // lastCommitId
                 MaxDataChannelCount,  // channelCount
                 0,  // mixedIndexCacheSize
@@ -486,6 +491,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             config.ExplicitChannelProfilesSize(),
             0,  // mixedIndexCacheSize
@@ -539,6 +545,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 DefaultFreeSpaceConfig(),
                 Max(),  // maxIORequestsInFlight
                 0,  // reassignChannelsPercentageThreshold
+                100,  // reassignMixedChannelsPercentageThreshold
                 0,  // lastCommitId
                 6,  // channelCount
                 0,  // mixedIndexCacheSize
@@ -676,6 +683,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             config.ExplicitChannelProfilesSize(),
             0,  // mixedIndexCacheSize
@@ -736,6 +744,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -802,6 +811,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -829,6 +839,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             Max(),  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -860,6 +871,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -940,6 +952,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -984,6 +997,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             1,  // channelCount
             0,  // mixedIndexCacheSize
@@ -1024,6 +1038,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             1,  // mixedIndexCacheSize
@@ -1154,6 +1169,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             1,  // mixedIndexCacheSize
@@ -1186,6 +1202,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             1,  // channelCount
             0,  // mixedIndexCacheSize
@@ -1267,6 +1284,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
+            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
