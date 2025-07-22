@@ -1,6 +1,7 @@
 #include "service.h"
 
 #include "context.h"
+#include "factory.h"
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -142,49 +143,6 @@ struct TIoUringServiceNull final
         Y_UNUSED(file, offset, buffers);
 
         Context.AsyncNOP(completion, SqeFlags);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TService>
-class TIoUringServiceFactory final
-    : public IFileIOServiceFactory
-{
-private:
-    const TIoUringServiceParams Params;
-
-    std::shared_ptr<TContext> WqOwner;
-    ui32 Index = 0;
-
-public:
-    explicit TIoUringServiceFactory(TIoUringServiceParams params)
-        : Params(std::move(params))
-    {}
-
-    IFileIOServicePtr CreateFileIOService() final
-    {
-        const ui32 index = Index++;
-
-        TContext::TParams params{
-            .SubmissionThreadName = TStringBuilder()
-                                    << Params.SubmissionThreadName << index,
-            .CompletionThreadName = TStringBuilder()
-                                    << Params.CompletionThreadName << index,
-            .SubmissionQueueEntries = Params.SubmissionQueueEntries,
-            .MaxKernelWorkersCount = Params.MaxKernelWorkersCount,
-            .WqOwner = WqOwner.get(),
-        };
-
-        const ui32 sqeFlags = Params.ForceAsyncIO ? IOSQE_ASYNC : 0;
-
-        auto service = std::make_shared<TService>(std::move(params), sqeFlags);
-
-        if (Params.ShareKernelWorkers && !WqOwner) {
-            WqOwner = std::shared_ptr<TContext>(service, &service->Context);
-        }
-
-        return service;
     }
 };
 

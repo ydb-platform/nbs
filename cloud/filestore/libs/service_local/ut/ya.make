@@ -8,6 +8,7 @@ PEERDIR(
 
 SRCS(
     index_ut.cpp
+    io_uring_ut.cpp
     service_ut.cpp
 )
 

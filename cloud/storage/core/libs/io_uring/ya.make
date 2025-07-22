@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     context.cpp
+    factory.cpp
     service.cpp
 )
 

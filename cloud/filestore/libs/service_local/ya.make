@@ -11,6 +11,7 @@ SRCS(
     fs_node.cpp
     fs_session.cpp
     index.cpp
+    io_uring.cpp
     service.cpp
     session.cpp
 )
@@ -32,6 +33,7 @@ PEERDIR(
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/io_uring
 
     library/cpp/protobuf/util
 
