@@ -933,7 +933,7 @@ func splitColumns(
 	return
 }
 
-func buildAlterColumnsOptions(
+func prepareAlterColumnOptions(
 	currentDescription ydb_options.Description,
 	description CreateTableDescription,
 	dropUnusedColumns bool,
@@ -1038,7 +1038,7 @@ func alterTable(
 		}
 	}
 
-	alterColumnsOptions, err := buildAlterColumnsOptions(
+	alterColumnsOptions, err := prepareAlterColumnOptions(
 		currentDescription, description, dropUnusedColumns,
 	)
 	if err != nil {
