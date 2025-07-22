@@ -168,6 +168,11 @@ public:
         auto stringBuf = ConvertBitMapToStringBuf(UnencryptedBlockMask);
         auto& blockMask = *response.MutableUnencryptedBlockMask();
         blockMask.assign(stringBuf);
+
+        const bool allEmpty = AllOf(
+            response.GetBlocks().GetBuffers(),
+            [](const TString& block) { return block.empty(); });
+        response.SetAllZeroes(allEmpty);
     }
 
     TGuardedSgList GetLocalResponse(
@@ -343,6 +348,8 @@ public:
                     SetBitMapValue(UnencryptedBlockMask, i, true);
                 }
             }
+
+            response.SetAllZeroes(IsAllZeroes(sglist));
         }
 
         auto stringBuf = ConvertBitMapToStringBuf(UnencryptedBlockMask);
