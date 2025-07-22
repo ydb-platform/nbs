@@ -34,6 +34,11 @@ public:
 
     NProto::TError Init(const TString& filePath, ui64 capacity);
 
+    explicit operator bool() const
+    {
+        return !!Impl;
+    }
+
 public:
     bool PushBack(TStringBuf data);
     TStringBuf Front() const;
