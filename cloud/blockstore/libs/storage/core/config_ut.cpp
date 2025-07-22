@@ -164,6 +164,123 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             config->GetSchemeShardDir());
     }
 
+    Y_UNIT_TEST(ShouldOverrideConfigsViaImmediateControlBoard2)
+    {
+        const auto defaultConfig = std::make_shared<TStorageConfig>(
+            NProto::TStorageServiceConfig{},
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        // Let's take two values: one with zero default and other with non-zero
+        // default.
+        UNIT_ASSERT_VALUES_EQUAL(100, defaultConfig->GetMaxMigrationBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(0, defaultConfig->GetDefaultTabletVersion());
+
+        // Check for simple overrides.
+        {
+            NProto::TStorageServiceConfig overriddenProto = []
+            {
+                NProto::TStorageServiceConfig proto;
+                proto.SetMaxMigrationBandwidth(400);
+                proto.SetDefaultTabletVersion(1);
+                return proto;
+            }();
+            const auto overriddenConfigProto = std::make_shared<TStorageConfig>(
+                std::move(overriddenProto),
+                std::make_shared<NFeatures::TFeaturesConfig>());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                400,
+                overriddenConfigProto->GetMaxMigrationBandwidth());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                overriddenConfigProto->GetDefaultTabletVersion());
+
+            NKikimr::TControlBoard controlBoard;
+            overriddenConfigProto->Register(controlBoard);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                400,
+                overriddenConfigProto->GetMaxMigrationBandwidth());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                overriddenConfigProto->GetDefaultTabletVersion());
+
+            TAtomic prevValue{};
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_MaxMigrationBandwidth",
+                600,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                600,
+                overriddenConfigProto->GetMaxMigrationBandwidth());
+
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_MaxMigrationBandwidth",
+                0,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                overriddenConfigProto->GetMaxMigrationBandwidth());
+
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_DefaultTabletVersion",
+                0,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                overriddenConfigProto->GetDefaultTabletVersion());
+        }
+
+        // Check with zeroed field in the proto config.
+        {
+            NProto::TStorageServiceConfig overriddenProto = []
+            {
+                NProto::TStorageServiceConfig proto;
+                proto.SetMaxMigrationBandwidth(0);
+                return proto;
+            }();
+            const auto overriddenConfigProto = std::make_shared<TStorageConfig>(
+                std::move(overriddenProto),
+                std::make_shared<NFeatures::TFeaturesConfig>());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                overriddenConfigProto->GetMaxMigrationBandwidth());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                overriddenConfigProto->GetDefaultTabletVersion());
+
+            NKikimr::TControlBoard controlBoard;
+            overriddenConfigProto->Register(controlBoard);
+
+            TAtomic prevValue{};
+
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_MaxMigrationBandwidth",
+                100,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                100,
+                overriddenConfigProto->GetMaxMigrationBandwidth());
+
+            UNIT_ASSERT(controlBoard.SetValue(
+                "BlockStore_MaxMigrationBandwidth",
+                0,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                overriddenConfigProto->GetMaxMigrationBandwidth());
+
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_DefaultTabletVersion",
+                1,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                overriddenConfigProto->GetDefaultTabletVersion());
+        }
+    }
+
     Y_UNIT_TEST(ShouldCalcLinkedDisksBandwidthWithoutConfig)
     {
         using EStorageMediaKind = NCloud::NProto::EStorageMediaKind;

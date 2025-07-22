@@ -416,7 +416,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval, ui32, 1       )\
                                                                                \
     xxx(BrokenDiskDestructionDelay,                     TDuration, Seconds(5) )\
-    xxx(AutomaticallyReplacedDevicesFreezePeriod,       TDuration, {}         )\
+    xxx(AutomaticallyReplacedDevicesFreezePeriod,       TDuration, Seconds(0) )\
     xxx(MaxAutomaticDeviceReplacementsPerHour,          ui32,      0          )\
                                                                                \
     xxx(VolumeHistoryDuration,                     TDuration, Days(7)         )\
@@ -709,30 +709,6 @@ TVector<NProto::TLinkedDiskFillBandwidth> ConvertValue(
     return v;
 }
 
-template <typename T>
-bool IsEmpty(const T& value)
-{
-    return !value;
-}
-
-template <>
-bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
-{
-    return !value.HasAllowList() && !value.HasDenyList();
-}
-
-template <typename T>
-bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
-{
-    return value.empty();
-}
-
-template <>
-bool IsEmpty(const NCloud::NProto::TCertificate& value)
-{
-    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 IOutputStream& operator <<(
@@ -807,13 +783,18 @@ void DumpImpl(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TValue>
-constexpr TAtomicBase ConvertToAtomicBase(const TValue& value, const TValue& defVal)
+constexpr TAtomicBase ConvertToAtomicBase(const TValue& value)
 {
     if constexpr (std::is_nothrow_convertible<TValue, TAtomicBase>::value) {
-        return (value != TValue{} ? value : defVal);
+        return value;
     }
     return 0;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+#define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value)          \
+    (NCloud::HasField(config, #name) ? ConvertValue<type>(config.Get##name())  \
+                                     : value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -823,14 +804,15 @@ struct TStorageConfig::TImpl
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
 #define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
-    TControlWrapper Control##name {                                            \
-        ConvertToAtomicBase<type>(                                             \
-            ConvertValue<type>(StorageServiceConfig.Get##name()),              \
-            value),                                                            \
+    TControlWrapper Control##name{                                             \
+        ConvertToAtomicBase<type>(BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(          \
+            StorageServiceConfig,                                              \
+            name,                                                              \
+            type,                                                              \
+            value)),                                                           \
         0,                                                                     \
-        Max()                                                                  \
-    };                                                                         \
-// BLOCKSTORE_CONFIG_CONTROL
+        Max()};                                                                \
+    // BLOCKSTORE_CONFIG_CONTROL
 
     BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_CONTROL)
 
@@ -899,25 +881,33 @@ void TStorageConfig::Register(TControlBoard& controlBoard){
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
-        bool hasValue = NCloud::HasField(Impl->StorageServiceConfig, #name) && \
-                        !IsEmpty(Impl->StorageServiceConfig.Get##name());      \
-        return hasValue ? ConvertValue<type>(                                  \
-                              Impl->StorageServiceConfig.Get##name())          \
-                        : Default##name;                                       \
-    }   // namespace NCloud::NBlockStore::NStorage
+        return BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                             \
+            Impl->StorageServiceConfig,                                        \
+            name,                                                              \
+            type,                                                              \
+            Default##name);                                                    \
+    }
 
 BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 
 #undef BLOCKSTORE_CONFIG_GETTER
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TStorageConfig::Get##name() const                                         \
-{                                                                              \
-    ui64 value = Impl->Control##name;                                          \
-    if (!value) value = Impl->StorageServiceConfig.Get##name();                \
-    return value ? ConvertValue<type>(value) : Default##name;                  \
-}                                                                              \
-// BLOCKSTORE_CONFIG_GETTER
+    type TStorageConfig::Get##name() const                                     \
+    {                                                                          \
+        const type configValue = BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(           \
+            Impl->StorageServiceConfig,                                        \
+            name,                                                              \
+            type,                                                              \
+            Default##name);                                                    \
+        const ui64 rawControlValue = Impl->Control##name;                      \
+        const type controlValue = ConvertValue<type>(rawControlValue);         \
+        if (controlValue != configValue) {                                     \
+            return controlValue;                                               \
+        }                                                                      \
+        return configValue;                                                    \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_GETTER
 
 BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_GETTER)
 
