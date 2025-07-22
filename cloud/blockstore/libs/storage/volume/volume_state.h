@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
+#include <cloud/blockstore/libs/storage/throttling_manager/throttling_manager.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
@@ -360,6 +361,9 @@ public:
     void ResetMeta(NProto::TVolumeMeta meta);
     void AddMetaHistory(TVolumeMetaHistoryItem meta);
     void ResetThrottlingPolicy(const NProto::TVolumePerformanceProfile& pp);
+    void ResetThrottlingPolicy(
+        const NProto::TVolumePerformanceProfileCoefficients& coefficients,
+        ui32 coefficientsVersion);
     void Reset();
 
     //

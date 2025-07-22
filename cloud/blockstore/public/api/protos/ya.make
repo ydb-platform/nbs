@@ -20,6 +20,7 @@ SRCS(
     ping.proto
     placement.proto
     rdma.proto
+    throttling.proto
     volume.proto
 )
 

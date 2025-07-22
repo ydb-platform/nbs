@@ -1257,4 +1257,8 @@ message TStorageServiceConfig
     optional uint32 MaxCompactionRangesLoadingPerTx = 436;
     // Max inflight for out of order compaction map load requests.
     optional uint32 MaxOutOfOrderCompactionMapChunksInflight = 437;
+
+    // Throttling manager feature flag
+    optional bool ThrottlingManagerEnabled = 438;
+    optional uint32 ThrottlingManagerCycleTimeSeconds = 439;
 }

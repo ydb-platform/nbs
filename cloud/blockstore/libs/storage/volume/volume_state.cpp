@@ -272,6 +272,13 @@ void TVolumeState::ResetThrottlingPolicy(
             ThrottlerConfig.UseDiskSpaceScore));
 }
 
+void TVolumeState::ResetThrottlingPolicy(
+    const NProto::TVolumePerformanceProfileCoefficients& coefficients,
+    ui32 coefficientsVersion)
+{
+    ThrottlingPolicy.Reset(coefficients, coefficientsVersion);
+}
+
 bool TVolumeState::ShouldTrackUsedBlocks() const
 {
     if (!IsDiskRegistryMediaKind()) {

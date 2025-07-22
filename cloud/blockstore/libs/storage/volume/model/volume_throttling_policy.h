@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/public/api/protos/throttling.pb.h>
 #include <cloud/blockstore/libs/storage/api/public.h>
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler_policy.h>
@@ -72,6 +73,8 @@ public:
 
     void Reset(
         const NProto::TVolumePerformanceProfile& config,
+        const NProto::TVolumePerformanceProfileCoefficients& coefficients,
+        ui32 coefficientsVersion,
         TDuration maxDelay,
         ui32 maxWriteCostMultiplier,
         ui32 defaultPostponedRequestWeight,
@@ -81,6 +84,9 @@ public:
         const NProto::TVolumePerformanceProfile& config,
         const TThrottlerConfig& throttlerConfig);
     void Reset(const TVolumeThrottlingPolicy& policy);
+    void Reset(
+        const NProto::TVolumePerformanceProfileCoefficients& coefficients,
+        ui32 coefficientsVersion);
 
 public:
     bool TryPostpone(
@@ -112,6 +118,8 @@ public:
     {
         return PolicyVersion;
     }
+
+    ui32 GetVolatileVersion() const;
 
     // the following funcs were made public to display the results on monpages
     ui64 C1(EOpType opType) const;

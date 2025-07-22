@@ -608,6 +608,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(MaxCompactionRangesLoadingPerTx,                   ui32,   0          )\
     xxx(MaxOutOfOrderCompactionMapChunksInflight,          ui32,   5          )\
+                                                                               \
+    xxx(ThrottlingManagerEnabled,             bool,        false              )\
+    xxx(ThrottlingManagerCycleTimeSeconds,    TDuration,   Seconds(5)         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
