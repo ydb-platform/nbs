@@ -98,7 +98,7 @@ NProto::TError EnableRing(io_uring* ring)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TContext::TContext(TParams params, TContext* wqOwner)
+TContext::TContext(TParams params)
     : SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
     , CompletionThread(
           std::bind_front(
@@ -109,14 +109,14 @@ TContext::TContext(TParams params, TContext* wqOwner)
     const auto error = InitRing(
         &Ring,
         params.SubmissionQueueEntries,
-        wqOwner ? &wqOwner->Ring : nullptr);
+        params.WqOwner ? &params.WqOwner->Ring : nullptr);
 
     Y_ABORT_IF(
         HasError(error),
         "can't initialize the ring: %s",
         FormatError(error).c_str());
 
-    if (!wqOwner && params.MaxKernelWorkersCount) {
+    if (!params.WqOwner && params.MaxKernelWorkersCount) {
         const auto error = SetMaxWorkers(&Ring, params.MaxKernelWorkersCount);
         Y_ABORT_IF(
             HasError(error),

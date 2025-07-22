@@ -34,11 +34,12 @@ public:
         ui32 SubmissionQueueEntries = DefaultSubmissionQueueEntries;
 
         ui32 MaxKernelWorkersCount = 0;
-        bool ShareKernelWorkers = false;
+
+        // Share kernel worker threads with `WqOwner`
+        TContext* WqOwner = nullptr;
     };
 
-    // Share kernel worker threads with `wqOwner`
-    explicit TContext(TParams params,  TContext* wqOwner = nullptr);
+    explicit TContext(TParams params);
 
     TContext(TContext&&) = default;
     TContext(const TContext&&) = delete;

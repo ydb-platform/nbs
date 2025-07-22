@@ -32,8 +32,8 @@ struct TIoUringServiceBase
 {
     TContext Context;
 
-    TIoUringServiceBase(TContext::TParams params, TContext* wqOwner)
-        : Context(std::move(params), wqOwner)
+    explicit TIoUringServiceBase(TContext::TParams params)
+        : Context(std::move(params))
     {}
 
     void Start() final
@@ -150,34 +150,31 @@ class TIoUringServiceFactory final
     : public IFileIOServiceFactory
 {
 private:
-    const TContext::TParams Params;
+    const TIoUringServiceParams Params;
 
     std::shared_ptr<TContext> WqOwner;
     ui32 Index = 0;
 
 public:
     explicit TIoUringServiceFactory(TIoUringServiceParams params)
-        : Params({
-              .SubmissionThreadName = std::move(params.SubmissionThreadName),
-              .CompletionThreadName = std::move(params.CompletionThreadName),
-              .SubmissionQueueEntries = params.SubmissionQueueEntries,
-              .MaxKernelWorkersCount = params.MaxKernelWorkersCount,
-              .ShareKernelWorkers = params.ShareKernelWorkers,
-          })
+        : Params(std::move(params))
     {}
 
     IFileIOServicePtr CreateFileIOService() final
     {
         const ui32 index = Index++;
 
-        TContext::TParams params = Params;
-        params.SubmissionThreadName = TStringBuilder()
-                                      << Params.SubmissionThreadName << index;
-        params.CompletionThreadName = TStringBuilder()
-                                      << Params.CompletionThreadName << index;
+        TContext::TParams params{
+            .SubmissionThreadName = TStringBuilder()
+                                    << Params.SubmissionThreadName << index,
+            .CompletionThreadName = TStringBuilder()
+                                    << Params.CompletionThreadName << index,
+            .SubmissionQueueEntries = Params.SubmissionQueueEntries,
+            .MaxKernelWorkersCount = Params.MaxKernelWorkersCount,
+            .WqOwner = WqOwner.get(),
+        };
 
-        auto service =
-            std::make_shared<TService>(std::move(params), WqOwner.get());
+        auto service = std::make_shared<TService>(std::move(params));
 
         if (Params.ShareKernelWorkers && !WqOwner) {
             WqOwner = std::shared_ptr<TContext>(service, &service->Context);
