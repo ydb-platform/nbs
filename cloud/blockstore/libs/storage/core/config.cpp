@@ -444,6 +444,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     /* 75 devices = 5 agents */                                                \
     xxx(MaxNonReplicatedDeviceMigrationsInProgress,             ui32,      75 )\
     xxx(MaxNonReplicatedDeviceMigrationPercentageInProgress,    ui32,      5  )\
+    xxx(MaxNonReplicatedDeviceMigrationBatchSize,               ui32,    1000 )\
     xxx(MirroredMigrationStartAllowed,             bool,      false           )\
     xxx(PlacementGroupAlertPeriod,                 TDuration, Hours(8)        )\
     xxx(EnableLoadActor,                           bool,      false           )\
