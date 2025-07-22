@@ -2143,22 +2143,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(4, msg.CapacitySize());
             for (auto& cap: msg.GetCapacity()) {
-                switch (cap.GetKind()) {
+                switch (cap.GetStorageMediaKind()) {
                     case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
-                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetFree());
-                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetTotal());
+                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetFreeBytes());
+                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetTotalBytes());
                         break;
                     case NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
-                        UNIT_ASSERT_VALUES_EQUAL(20_GB, cap.GetFree());
-                        UNIT_ASSERT_VALUES_EQUAL(20_GB, cap.GetTotal());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB, cap.GetFreeBytes());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB, cap.GetTotalBytes());
                         break;
                     case NProto::STORAGE_MEDIA_SSD_MIRROR2:
-                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 2, cap.GetFree());
-                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 2, cap.GetTotal());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 2, cap.GetFreeBytes());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            20_GB / 2,
+                            cap.GetTotalBytes());
                         break;
                     case NProto::STORAGE_MEDIA_SSD_MIRROR3:
-                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 3, cap.GetFree());
-                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 3, cap.GetTotal());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 3, cap.GetFreeBytes());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            20_GB / 3,
+                            cap.GetTotalBytes());
                         break;
                     default:
                         UNIT_ASSERT(false);   // Unhandled kind.
@@ -2174,22 +2178,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(4, msg.CapacitySize());
             for (auto& cap: msg.GetCapacity()) {
-                switch (cap.GetKind()) {
+                switch (cap.GetStorageMediaKind()) {
                     case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
-                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetFree());
-                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetTotal());
+                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetFreeBytes());
+                        UNIT_ASSERT_VALUES_EQUAL(0, cap.GetTotalBytes());
                         break;
                     case NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
-                        UNIT_ASSERT_VALUES_EQUAL(10_GB, cap.GetFree());
-                        UNIT_ASSERT_VALUES_EQUAL(20_GB, cap.GetTotal());
+                        UNIT_ASSERT_VALUES_EQUAL(10_GB, cap.GetFreeBytes());
+                        UNIT_ASSERT_VALUES_EQUAL(20_GB, cap.GetTotalBytes());
                         break;
                     case NProto::STORAGE_MEDIA_SSD_MIRROR2:
-                        UNIT_ASSERT_VALUES_EQUAL(10_GB / 2, cap.GetFree());
-                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 2, cap.GetTotal());
+                        UNIT_ASSERT_VALUES_EQUAL(10_GB / 2, cap.GetFreeBytes());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            20_GB / 2,
+                            cap.GetTotalBytes());
                         break;
                     case NProto::STORAGE_MEDIA_SSD_MIRROR3:
-                        UNIT_ASSERT_VALUES_EQUAL(10_GB / 3, cap.GetFree());
-                        UNIT_ASSERT_VALUES_EQUAL(20_GB / 3, cap.GetTotal());
+                        UNIT_ASSERT_VALUES_EQUAL(10_GB / 3, cap.GetFreeBytes());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            20_GB / 3,
+                            cap.GetTotalBytes());
                         break;
                     default:
                         UNIT_ASSERT(false);   // Unhandled kind.
