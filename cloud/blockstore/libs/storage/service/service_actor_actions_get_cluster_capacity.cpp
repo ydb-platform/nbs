@@ -220,10 +220,12 @@ void TGetClusterCapacityActor::HandleGetYDBCapacity(
 
         if (entry.GetPDiskFilter().find("SSD") != TString::npos) {
             freeBytesSSD += entry.GetCurrentAvailableSize();
-            totalBytesSSD += entry.GetCurrentAllocatedSize();
+            totalBytesSSD += entry.GetCurrentAllocatedSize() +
+                             entry.GetCurrentAvailableSize();
         } else if (entry.GetPDiskFilter().find("ROT") != TString::npos) {
             freeBytesHDD += entry.GetCurrentAvailableSize();
-            totalBytesHDD += entry.GetCurrentAllocatedSize();
+            totalBytesHDD += entry.GetCurrentAllocatedSize() +
+                             entry.GetCurrentAvailableSize();
         } else {
             LOG_WARN_S(
                 ctx,
