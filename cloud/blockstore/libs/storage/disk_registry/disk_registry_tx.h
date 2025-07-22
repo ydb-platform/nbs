@@ -784,6 +784,7 @@ struct TTxDiskRegistry
     struct TStartMigration
     {
         const TRequestInfoPtr RequestInfo;
+        ui32 StartedDeviceMigrationsCount = 0;
 
         explicit TStartMigration(
                 TRequestInfoPtr requestInfo)
@@ -792,7 +793,7 @@ struct TTxDiskRegistry
 
         void Clear()
         {
-            // nothing to do
+            StartedDeviceMigrationsCount = 0;
         }
     };
 

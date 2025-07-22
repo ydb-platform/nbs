@@ -6716,11 +6716,17 @@ TVector<TDeviceMigration> TDiskRegistryState::BuildMigrationList() const
         StorageConfig->GetMaxNonReplicatedDeviceMigrationsInProgress();
     const ui32 budgetPercentage =
         StorageConfig->GetMaxNonReplicatedDeviceMigrationPercentageInProgress();
+    const ui32 maxBatchSize =
+        StorageConfig->GetMaxNonReplicatedDeviceMigrationBatchSize();
 
     TVector<TDeviceMigration> result;
     THashMap<TString, ui32> poolName2Budget;
 
     for (const auto& m: Migrations) {
+        if (result.size() >= maxBatchSize) {
+            break;
+        }
+
         auto [agentPtr, devicePtr] = FindDeviceLocation(m.SourceDeviceId);
         if (!agentPtr || !devicePtr) {
             continue;
