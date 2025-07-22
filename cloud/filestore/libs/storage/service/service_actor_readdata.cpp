@@ -553,6 +553,7 @@ void TReadDataActor::HandleReadDataResponse(
 
 void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
 {
+    auto buffer = *Response->Record.MutableBuffer();
     // we apply fresh data ranges to the buffer only after all blobs are
     // read and applied
     for (const auto& freshDataRange: DescribeResponse.GetFreshDataRanges())
@@ -563,7 +564,7 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
         ApplyFreshDataRange(
             ctx,
             freshDataRange,
-            *Response->Record.MutableBuffer(),
+            buffer,
             OriginByteRange,
             BlockSize,
             ReadRequest.GetOffset(),
@@ -577,6 +578,15 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             LogTag.c_str(),
             content.size(),
             offset);
+    }
+
+    if (DescribeResponse.GetFileSize() < OriginByteRange.End()) {
+        if (DescribeResponse.GetFileSize() > OriginByteRange.Offset) {
+            buffer.resize(
+                DescribeResponse.GetFileSize() - OriginByteRange.Offset);
+        } else {
+            buffer.clear();
+        }
     }
 
     NCloud::Reply(ctx, *RequestInfo, std::move(Response));
