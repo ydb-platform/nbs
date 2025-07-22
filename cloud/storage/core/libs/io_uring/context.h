@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 
 #include <library/cpp/threading/future/future.h>
@@ -35,6 +36,8 @@ public:
 
         ui32 MaxKernelWorkersCount = 0;
 
+        bool EnableNvmePassthrough = false;
+
         // Share kernel worker threads with `WqOwner`
         TContext* WqOwner = nullptr;
     };
@@ -68,14 +71,14 @@ public:
 
     void AsyncWriteV(
         int fd,
-        TArrayRef<const TArrayRef<const char>> buffer,
+        TArrayRef<const TArrayRef<const char>> buffers,
         ui64 offset,
         TFileIOCompletion* completion,
         ui32 flags = 0);
 
     void AsyncReadV(
         int fd,
-        TArrayRef<const TArrayRef<char>> buffer,
+        TArrayRef<const TArrayRef<char>> buffers,
         ui64 offset,
         TFileIOCompletion* completion,
         ui32 flags = 0);
@@ -83,6 +86,53 @@ public:
     void AsyncNOP(TFileIOCompletion* completion, ui32 flags = 0);
 
     void PostCompletion(TFileIOCompletion* completion, int res);
+
+    // nvme passthrough
+
+    void AsyncNvmeReadV(
+        int fd,
+        int nsId,
+        ui32 lbaShift,
+        TArrayRef<const TArrayRef<char>> buffers,
+        ui64 offset,
+        TFileIOCompletion* completion,
+        ui32 flags = 0);
+
+    void AsyncNvmeWriteV(
+        int fd,
+        int nsId,
+        ui32 lbaShift,
+        TArrayRef<const TArrayRef<const char>> buffers,
+        ui64 offset,
+        TFileIOCompletion* completion,
+        ui32 flags = 0);
+
+    void AsyncNvmeRead(
+        int fd,
+        int nsId,
+        ui32 lbaShift,
+        TArrayRef<char> buffer,
+        ui64 offset,
+        TFileIOCompletion* completion,
+        ui32 flags = 0);
+
+    void AsyncNvmeWrite(
+        int fd,
+        int nsId,
+        ui32 lbaShift,
+        TArrayRef<const char> buffer,
+        ui64 offset,
+        TFileIOCompletion* completion,
+        ui32 flags = 0);
+
+    void AsyncNvmeWriteZeroes(
+        int fd,
+        int nsId,
+        ui32 lbaShift,
+        ui64 len,
+        ui64 offset,
+        TFileIOCompletion* completion,
+        ui32 flags = 0);
 
 private:
     void SubmitIO(
@@ -108,6 +158,36 @@ private:
     void SubmitStopSignal();
     void ProcessCompletion(io_uring_cqe* cqe);
     void CompletionThreadProc(const TString& threadName);
+
+    void AsyncNvmeIO(
+        ui8 op,
+        ui32 cmd,
+        int fd,
+        ui32 nsId,
+        ui32 lbaShift,
+        const void* addr,
+        ui32 dataLen,
+        ui64 totalLen,
+        ui64 offset,
+        TFileIOCompletion* completion,
+        ui32 flags);
+
+    void SubmitNvmeIO(
+        ui8 op,
+        ui32 cmd,
+        int fd,
+        ui32 nsId,
+        ui32 lbaShift,
+        const void* addr,
+        ui32 dataLen,
+        ui64 totalLen,
+        ui64 offset,
+        TFileIOCompletion* completion,
+        ui32 flags);
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+[[nodiscard]] TResultOrError<bool> IsNvmePassthroughSupported();
 
 }   // namespace NCloud::NIoUring

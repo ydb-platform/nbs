@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/service_local/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -20,6 +21,7 @@ struct TCreateDiskAgentBackendComponentsResult
 };
 
 TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
+    ILoggingServicePtr logging,
     const TDiskAgentConfig& config);
 
 }   // namespace NCloud::NBlockStore::NStorage
