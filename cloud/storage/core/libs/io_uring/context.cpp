@@ -5,8 +5,6 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 
-#include <library/cpp/threading/future/future.h>
-
 #include <util/string/builder.h>
 #include <util/system/error.h>
 #include <util/system/sanitizers.h>
@@ -177,15 +175,16 @@ void TContext::AsyncIO(
     const void* addr,
     ui32 len,
     ui64 offset,
-    TFileIOCompletion* completion)
+    TFileIOCompletion* completion,
+    ui32 flags)
 {
     SubmissionThread->ExecuteSimple(
-        [=, this] { SubmitIO(op, fd, addr, len, offset, completion); });
+        [=, this] { SubmitIO(op, fd, addr, len, offset, completion, flags); });
 }
 
-void TContext::AsyncNOP(TFileIOCompletion* completion)
+void TContext::AsyncNOP(TFileIOCompletion* completion, ui32 flags)
 {
-    SubmissionThread->ExecuteSimple([=, this] { SubmitNOP(completion); });
+    SubmissionThread->ExecuteSimple([=, this] { SubmitNOP(completion, flags); });
 }
 
 void TContext::SubmitIO(
@@ -194,7 +193,8 @@ void TContext::SubmitIO(
     const void* addr,
     ui32 len,
     ui64 offset,
-    TFileIOCompletion* completion)
+    TFileIOCompletion* completion,
+    ui32 flags)
 {
     io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
     if (!sqe) {
@@ -207,6 +207,7 @@ void TContext::SubmitIO(
 
     io_uring_prep_rw(op, sqe, fd, addr, len, offset);
     io_uring_sqe_set_data(sqe, completion);
+    io_uring_sqe_set_flags(sqe, flags);
 
     NSan::Release(completion);
 
@@ -216,7 +217,7 @@ void TContext::SubmitIO(
     }
 }
 
-void TContext::SubmitNOP(TFileIOCompletion* completion)
+void TContext::SubmitNOP(TFileIOCompletion* completion, ui32 flags)
 {
     io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
     if (!sqe) {
@@ -229,6 +230,7 @@ void TContext::SubmitNOP(TFileIOCompletion* completion)
 
     io_uring_prep_nop(sqe);
     io_uring_sqe_set_data(sqe, completion);
+    io_uring_sqe_set_flags(sqe, flags);
 
     NSan::Release(completion);
 
@@ -312,7 +314,8 @@ void TContext::AsyncWrite(
     int fd,
     TArrayRef<const char> buffer,
     ui64 offset,
-    TFileIOCompletion* completion)
+    TFileIOCompletion* completion,
+    ui32 flags)
 {
     AsyncIO(
         IORING_OP_WRITE,
@@ -320,14 +323,16 @@ void TContext::AsyncWrite(
         buffer.data(),
         buffer.size(),
         offset,
-        completion);
+        completion,
+        flags);
 }
 
 void TContext::AsyncRead(
     int fd,
     TArrayRef<char> buffer,
     ui64 offset,
-    TFileIOCompletion* completion)
+    TFileIOCompletion* completion,
+    ui32 flags)
 {
     AsyncIO(
         IORING_OP_READ,
@@ -335,14 +340,16 @@ void TContext::AsyncRead(
         buffer.data(),
         buffer.size(),
         offset,
-        completion);
+        completion,
+        flags);
 }
 
 void TContext::AsyncWriteV(
     int fd,
     TArrayRef<const TArrayRef<const char>> buffers,
     ui64 offset,
-    TFileIOCompletion* completion)
+    TFileIOCompletion* completion,
+    ui32 flags)
 {
     AsyncIO(
         IORING_OP_WRITEV,
@@ -350,14 +357,16 @@ void TContext::AsyncWriteV(
         buffers.data(),
         buffers.size(),
         offset,
-        completion);
+        completion,
+        flags);
 }
 
 void TContext::AsyncReadV(
     int fd,
     TArrayRef<const TArrayRef<char>> buffers,
     ui64 offset,
-    TFileIOCompletion* completion)
+    TFileIOCompletion* completion,
+    ui32 flags)
 {
     AsyncIO(
         IORING_OP_READV,
@@ -365,7 +374,8 @@ void TContext::AsyncReadV(
         buffers.data(),
         buffers.size(),
         offset,
-        completion);
+        completion,
+        flags);
 }
 
 }   // namespace NCloud::NIoUring

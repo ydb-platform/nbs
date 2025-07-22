@@ -55,27 +55,31 @@ public:
         int fd,
         TArrayRef<const char> buffer,
         ui64 offset,
-        TFileIOCompletion* completion);
+        TFileIOCompletion* completion,
+        ui32 flags = 0);
 
     void AsyncRead(
         int fd,
         TArrayRef<char> buffer,
         ui64 offset,
-        TFileIOCompletion* completion);
+        TFileIOCompletion* completion,
+        ui32 flags = 0);
 
     void AsyncWriteV(
         int fd,
         TArrayRef<const TArrayRef<const char>> buffer,
         ui64 offset,
-        TFileIOCompletion* completion);
+        TFileIOCompletion* completion,
+        ui32 flags = 0);
 
     void AsyncReadV(
         int fd,
         TArrayRef<const TArrayRef<char>> buffer,
         ui64 offset,
-        TFileIOCompletion* completion);
+        TFileIOCompletion* completion,
+        ui32 flags = 0);
 
-    void AsyncNOP(TFileIOCompletion* completion);
+    void AsyncNOP(TFileIOCompletion* completion, ui32 flags = 0);
 
 private:
     void SubmitIO(
@@ -84,7 +88,8 @@ private:
         const void* addr,
         ui32 len,
         ui64 offset,
-        TFileIOCompletion* completion);
+        TFileIOCompletion* completion,
+        ui32 flags);
 
     void AsyncIO(
         int op,
@@ -92,9 +97,10 @@ private:
         const void* addr,
         ui32 len,
         ui64 offset,
-        TFileIOCompletion* completion);
+        TFileIOCompletion* completion,
+        ui32 flags);
 
-    void SubmitNOP(TFileIOCompletion* completion);
+    void SubmitNOP(TFileIOCompletion* completion, ui32 flags);
     void SubmitStopSignal();
     void ProcessCompletion(io_uring_cqe* cqe);
     void CompletionThreadProc(const TString& threadName);
