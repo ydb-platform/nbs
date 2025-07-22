@@ -179,14 +179,12 @@ void TNotifyActor::HandleReallocateDiskResponse(
             TabletID,
             diskId.Quote().c_str());
 
-        TVector<NProto::TLaggingDevice> outdatedLaggingDevices;
-        for (auto& laggingDevice: *msg->Record.MutableOutdatedLaggingDevices())
-        {
-            outdatedLaggingDevices.emplace_back(std::move(laggingDevice));
-        }
+        auto* laggingDevices = msg->Record.MutableOutdatedLaggingDevices();
         NotifiedDisks.emplace_back(
             DiskNotifications[cookie],
-            std::move(outdatedLaggingDevices));
+            TVector<NProto::TLaggingDevice>(
+                std::make_move_iterator(laggingDevices->begin()),
+                std::make_move_iterator(laggingDevices->end())));
     }
 
     if (!PendingOperations) {
