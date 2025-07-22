@@ -63,10 +63,12 @@ struct TFixture: public NUnitTest::TBaseFixture
             OpenAlways | RdWr | DirectAligned | Sync);
         FileData.Resize(BlockCount * BlockSize);
 
-        auto factory = CreateIoUringServiceFactory(
-            {.SubmissionQueueEntries = SubmissionQueueSize,
-             .MaxKernelWorkersCount = 1,
-             .ShareKernelWorkers = true});
+        auto factory = CreateIoUringServiceFactory({
+            .SubmissionQueueEntries = SubmissionQueueSize,
+            .MaxKernelWorkersCount = 1,
+            .ShareKernelWorkers = true,
+            .ForceAsyncIO = true,
+        });
 
         Services.reserve(ServicesCount);
         for (ui32 i = 0; i != ServicesCount; ++i) {
