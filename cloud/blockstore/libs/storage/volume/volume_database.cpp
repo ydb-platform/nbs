@@ -723,6 +723,7 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
                 follower.Link.FollowerDiskId),
             NIceDb::TUpdate<TTable::FollowerShardId>(
                 follower.Link.FollowerShardId),
+            NIceDb::TUpdate<TTable::FollowerMediaKind>(follower.MediaKind),
             NIceDb::TUpdate<TTable::State>(static_cast<ui32>(follower.State)),
             NIceDb::TUpdate<TTable::ErrorMessage>(follower.ErrorMessage));
 
@@ -735,16 +736,6 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
         Table<TTable>()
             .Key(follower.Link.LinkUUID)
             .UpdateToNull<TTable::MigratedBytes>();
-    }
-
-    if (follower.MediaKind) {
-        Table<TTable>()
-            .Key(follower.Link.LinkUUID)
-            .Update(NIceDb::TUpdate<TTable::MediaKind>(*follower.MediaKind));
-    } else {
-        Table<TTable>()
-            .Key(follower.Link.LinkUUID)
-            .UpdateToNull<TTable::MediaKind>();
     }
 }
 
@@ -779,10 +770,8 @@ bool TVolumeDatabase::ReadFollowers(TFollowerDisks& followers)
                 TInstant::MicroSeconds(it.GetValue<TTable::CreatedAt>()),
             .State = static_cast<TFollowerDiskInfo::EState>(
                 it.GetValue<TTable::State>()),
-            .MediaKind = it.HaveValue<TTable::MediaKind>()
-                             ? static_cast<NProto::EStorageMediaKind>(
-                                   it.GetValue<TTable::MediaKind>())
-                             : std::optional<NProto::EStorageMediaKind>(),
+            .MediaKind = static_cast<NProto::EStorageMediaKind>(
+                it.GetValue<TTable::FollowerMediaKind>()),
             .MigratedBytes = it.HaveValue<TTable::MigratedBytes>()
                                  ? it.GetValue<TTable::MigratedBytes>()
                                  : std::optional<ui64>(),

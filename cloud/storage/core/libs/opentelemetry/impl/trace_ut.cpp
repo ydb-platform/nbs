@@ -103,7 +103,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
         {
             void Push(TThread::TId, const TTrackLog& tl)
             {
-                auto spans = ConvertToOpenTelemetrySpans(tl);
+                auto spans = ConvertToOpenTelemetrySpans(tl).Spans;
 
                 UNIT_ASSERT(spans.size() == 1);
 
@@ -243,7 +243,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
         {
             void Push(TThread::TId, const TTrackLog& tl)
             {
-                auto spans = ConvertToOpenTelemetrySpans(tl);
+                auto spans = ConvertToOpenTelemetrySpans(tl).Spans;
 
                 UNIT_ASSERT_VALUES_EQUAL(spans.size(), 4);
 

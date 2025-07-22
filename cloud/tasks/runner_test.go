@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
@@ -261,7 +262,7 @@ func TestExecutionContextAddTaskDependency(t *testing.T) {
 		taskStorage,
 		storage.TaskState{
 			ID:           "taskId1",
-			Dependencies: storage.NewStringSet(),
+			Dependencies: common.NewStringSet(),
 		},
 		time.Hour,
 		2,
@@ -269,7 +270,7 @@ func TestExecutionContextAddTaskDependency(t *testing.T) {
 
 	state := storage.TaskState{
 		ID:           "taskId1",
-		Dependencies: storage.NewStringSet("taskId2"),
+		Dependencies: common.NewStringSet("taskId2"),
 	}
 	task.On("Save").Return(state.State, nil)
 	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
@@ -326,7 +327,7 @@ func TestExecutionContextAddAnotherTaskDependency(t *testing.T) {
 		task,
 		taskStorage, storage.TaskState{
 			ID:           "taskId1",
-			Dependencies: storage.NewStringSet("taskId2"),
+			Dependencies: common.NewStringSet("taskId2"),
 		},
 		time.Hour,
 		2,
@@ -334,7 +335,7 @@ func TestExecutionContextAddAnotherTaskDependency(t *testing.T) {
 
 	state := storage.TaskState{
 		ID:           "taskId1",
-		Dependencies: storage.NewStringSet("taskId2", "taskId3"),
+		Dependencies: common.NewStringSet("taskId2", "taskId3"),
 	}
 	task.On("Save").Return(state.State, nil)
 	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)

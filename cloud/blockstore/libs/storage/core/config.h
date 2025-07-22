@@ -450,6 +450,7 @@ public:
     ui32 GetExpectedDiskAgentSize() const;
     ui32 GetMaxNonReplicatedDeviceMigrationsInProgress() const;
     ui32 GetMaxNonReplicatedDeviceMigrationPercentageInProgress() const;
+    ui32 GetMaxNonReplicatedDeviceMigrationBatchSize() const;
 
     bool GetMirroredMigrationStartAllowed() const;
 

@@ -6,6 +6,7 @@
 #include <cloud/storage/core/protos/trace.pb.h>
 
 #include <library/cpp/containers/ring_buffer/ring_buffer.h>
+#include <library/cpp/logger/priority.h>
 #include <library/cpp/lwtrace/log.h>
 
 #include <util/generic/hash.h>
@@ -61,38 +62,55 @@ struct ITraceReader
     virtual void Reset() = 0;
 };
 
-struct ITraceReaderWithRingBuffer
-    : public ITraceReader
+class TTraceReaderWithRingBuffer final: public ITraceReader
 {
     static constexpr size_t DefaultRingBufferSize = 1000;
 
+private:
     TSimpleRingBuffer<TEntry> RingBuffer;
+    ui64 TracksCount = 0;
+    const TString Tag;
 
-    explicit ITraceReaderWithRingBuffer(TString id)
-        : ITraceReader(std::move(id))
-        , RingBuffer(DefaultRingBufferSize)
-    {}
+public:
+    TTraceReaderWithRingBuffer(TString id, TString tag);
 
-    void ForEach(std::function<void(const TEntry&)> fn) override
-    {
-        for (ui64 i = RingBuffer.FirstIndex(); i < RingBuffer.TotalSize(); ++i) {
-            fn(RingBuffer[i]);
-        }
-    }
+    void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override;
+
+    void Reset() override;
+
+    void ForEach(std::function<void(const TEntry&)> fn) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 ITraceReaderPtr CreateTraceLogger(
     TString id,
+    ITraceReaderPtr consumer,
     ILoggingServicePtr logging,
-    TString componentName);
+    TString componentName,
+    TString tag,
+    ELogPriority priority = ELogPriority::TLOG_INFO);
 
 ITraceReaderPtr CreateSlowRequestsFilter(
     TString id,
+    ITraceReaderPtr consumer,
     ILoggingServicePtr logging,
     TString componentName,
     TRequestThresholds requestThresholds);
+
+ITraceReaderPtr SetupTraceReaderWithLog(
+    TString id,
+    ILoggingServicePtr logging,
+    TString componentName,
+    TString tag,
+    ELogPriority priority = ELogPriority::TLOG_INFO);
+
+ITraceReaderPtr SetupTraceReaderForSlowRequests(
+    TString id,
+    ILoggingServicePtr logging,
+    TString componentName,
+    TRequestThresholds requestThresholds,
+    TString tag);
 
 NLWTrace::TQuery ProbabilisticQuery(
     const TVector<std::tuple<TString, TString>>& probes,

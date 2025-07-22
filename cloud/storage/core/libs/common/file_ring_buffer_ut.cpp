@@ -31,6 +31,20 @@ TString Dump(const TVector<TFileRingBuffer::TBrokenFileEntry>& entries)
     return sb;
 }
 
+TString Dump(const TVector<TString>& entries)
+{
+    TStringBuilder sb;
+
+    for (ui32 i = 0; i < entries.size(); ++i) {
+        if (i) {
+            sb << ", ";
+        }
+        sb << entries[i];
+    }
+
+    return sb;
+}
+
 TString PopAll(TFileRingBuffer& rb)
 {
     TStringBuilder sb;
@@ -368,6 +382,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(ri.Size(), rb->Size());
             UNIT_ASSERT_VALUES_EQUAL(ri.Empty(), rb->Empty());
             UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
+            UNIT_ASSERT(!rb->IsCorrupted());
         }
     }
 
@@ -422,6 +437,90 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("01"));
         rb.PopFront();
         UNIT_ASSERT_VALUES_EQUAL("01", rb.Front());
+    }
+
+    struct TStateWithCorruptedEntryLength
+    {
+        const TTempFileHandle FileHandle;
+        const ui32 Len = 32;
+        TFileRingBuffer RingBuffer;
+
+        explicit TStateWithCorruptedEntryLength(int newLength)
+            : RingBuffer(FileHandle.GetName(), Len)
+        {
+            UNIT_ASSERT(RingBuffer.PushBack("aaa"));
+            UNIT_ASSERT(RingBuffer.PushBack("bb"));
+
+            TFileMap m(FileHandle.GetName(), TMemoryMapCommon::oRdWr);
+            m.Map(0, Len + 40); // len + sizeof(THeader)
+            char* data = static_cast<char*>(m.Ptr());
+            UNIT_ASSERT_VALUES_EQUAL(2, data[51]);
+            data[51] = newLength;
+        }
+    };
+
+    Y_UNIT_TEST(ShouldSetIsCorruptedFlagWhenEntryLengthIsAltered)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, rb.IsCorrupted());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSetIsCorruptedFlagInVisitWhenEntryLengthIsAltered)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
+            s.RingBuffer.Visit([] (ui32, TStringBuf) {});
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSetIsCorruptedFlagInValidateWhenEntryLengthIsAltered)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
+            s.RingBuffer.Validate();
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldProhibitPushBackInCorruptedState)
+    {
+        TStateWithCorruptedEntryLength good(2);
+        TFileRingBuffer rb(good.FileHandle.GetName(), good.Len);
+        UNIT_ASSERT(rb.PushBack("c"));
+
+        TStateWithCorruptedEntryLength bad(1);
+        TFileRingBuffer rb2(bad.FileHandle.GetName(), bad.Len);
+        UNIT_ASSERT(!rb2.PushBack("c"));
+    }
+
+    Y_UNIT_TEST(VisitAndPopBackShouldProduceSameResults)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
+
+            TVector<TString> afterVisit;
+            rb.Visit([&] (ui32 checksum, TStringBuf entry)
+            {
+                Y_UNUSED(checksum);
+                afterVisit.push_back(TString(entry));
+            });
+
+            TVector<TString> afterPopBack;
+            while (!rb.Empty())
+            {
+                afterPopBack.push_back(TString(rb.Front()));
+                rb.PopFront();
+            }
+
+            UNIT_ASSERT_EQUAL(Dump(afterVisit), Dump(afterPopBack));
+        }
     }
 }
 

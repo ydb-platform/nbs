@@ -144,7 +144,7 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
             auto error = MakeError(
                 E_CANCELLED,
                 "failed to acquire sglist in WriteBlobActor");
-            ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+            ReplyAndDie(ctx, std::make_unique<TResponse>(std::move(error)));
             return;
         }
     } else {
@@ -237,8 +237,11 @@ void TWriteBlobActor::ReplyError(
         description.c_str(),
         response.Print(false).c_str());
 
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + description);
-    ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+    ReplyAndDie(
+        ctx,
+        std::make_unique<TResponse>(MakeError(
+            E_REJECTED,
+            "TEvBlobStorage::TEvPut failed: " + description)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

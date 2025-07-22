@@ -1690,6 +1690,128 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         auto migrationsAfterSecondRequest = state.BuildMigrationList();
         UNIT_ASSERT_VALUES_EQUAL(1, migrationsAfterSecondRequest.size());
     }
+
+    Y_UNIT_TEST(ShouldLimitSizeOfDeviceMigrationBatch)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const size_t agentWithDiskCount = 2;
+        const size_t agentCount = 2 * agentWithDiskCount;
+        const size_t devicesPerAgent = 128;
+        const size_t devicesPerDisk = 32;
+        const size_t disksPerAgent = devicesPerAgent / devicesPerDisk;
+        const ui32 migrationsBatchSize = 8;
+        const ui32 maxMigrationsInProgress =
+            devicesPerAgent * agentWithDiskCount - devicesPerAgent / 2;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            agentWithDiskCount * devicesPerAgent % migrationsBatchSize);
+
+        //  initialize agents
+
+        TVector<NProto::TAgentConfig> agents;
+        agents.reserve(agentCount);
+
+        for (ui32 i = 0; i != agentCount; ++i) {
+            auto& agent = agents.emplace_back(AgentConfig(i  + 1, {}));
+
+            auto& devices = *agent.MutableDevices();
+            for (ui32 j = 0; j != devicesPerAgent; ++j) {
+                auto device = Device(
+                    Sprintf("/dev/disk/by-partlabel/NBSNVME%02d", j % 32),
+                    Sprintf("uuid-%d-%d", i, j));
+                device.SetSerialNumber("SERIAL_NUMBER_0123456789");
+                devices.Add(std::move(device));
+            }
+        }
+
+        // initialize disks
+
+        TVector<NProto::TDiskConfig> disks;
+        disks.reserve(agentWithDiskCount * disksPerAgent);
+        for (ui32 i = 0; i != agentWithDiskCount; ++i) {
+            const auto& agent = agents[i];
+            for (ui32 j = 0; j != disksPerAgent; ++j) {
+                auto& disk = disks.emplace_back(Disk(Sprintf("disk-%d-%d", i, j), {}));
+                for (ui32 k = 0; k != devicesPerDisk; ++k) {
+                    const ui32 index = j * devicesPerDisk + k;
+                    disk.AddDeviceUUIDs(
+                        agent.GetDevices(index).GetDeviceUUID());
+                }
+            }
+        }
+
+        // initialize the state
+
+        auto config = CreateDefaultStorageConfigProto();
+        config.SetMaxNonReplicatedDeviceMigrationBatchSize(migrationsBatchSize);
+        config.SetMaxNonReplicatedDeviceMigrationsInProgress(
+            maxMigrationsInProgress);
+
+        auto statePtr = TDiskRegistryStateBuilder()
+            .WithKnownAgents(agents)
+            .WithDisks(disks)
+            .WithStorageConfig(config)
+            .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                for (ui32 i = 0; i != agentWithDiskCount; ++i) {
+                    const auto& agent = agents[i];
+                    TVector affectedDisks = ChangeAgentState(
+                        state,
+                        db,
+                        agent,
+                        NProto::AGENT_STATE_WARNING);
+                    Sort(affectedDisks);
+
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        disksPerAgent,
+                        affectedDisks.size());
+                    for (ui32 j = 0; j != disksPerAgent; ++j) {
+                        const ui32 index = i * disksPerAgent + j;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            disks[index].GetDiskId(),
+                            affectedDisks[j]);
+                    }
+                }
+            });
+
+        // start migrations
+
+        ui32 migrationsInProgress = 0;
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                for (;;) {
+                    TVector list = state.BuildMigrationList();
+                    if (list.empty()) {
+                        break;
+                    }
+
+                    UNIT_ASSERT_LE(list.size(), migrationsBatchSize);
+                    migrationsInProgress += list.size();
+                    for (const auto& [diskId, deviceId]: list) {
+                        const auto result = state.StartDeviceMigration(
+                            TInstant::FromValue(100500),
+                            db,
+                            diskId,
+                            deviceId);
+                        UNIT_ASSERT_C(
+                            !HasError(result),
+                            FormatError(result.GetError()));
+                    }
+                }
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(maxMigrationsInProgress, migrationsInProgress);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

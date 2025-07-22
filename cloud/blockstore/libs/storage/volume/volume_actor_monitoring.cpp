@@ -285,12 +285,8 @@ void RenderFollowers(IOutputStream& out, const TFollowerDisks& followers)
                             out << follower.Link.FollowerDiskIdForPrint();
                             if (follower.MediaKind) {
                                 out << "<br>(";
-                                if (follower.MediaKind) {
-                                    out << NProto::EStorageMediaKind_Name(
-                                        *follower.MediaKind);
-                                } else {
-                                    out << "unknown";
-                                }
+                                out << NProto::EStorageMediaKind_Name(
+                                    follower.MediaKind);
                                 out << ")";
                             }
                         }
@@ -1239,7 +1235,7 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
     HTML (out) {
         out << style;
 
-        RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
 
         out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
