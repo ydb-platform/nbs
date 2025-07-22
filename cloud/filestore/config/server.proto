@@ -81,6 +81,9 @@ message TIoUringConfig
 
     // Max. number of kernel workers.
     optional uint32 MaxKernelWorkersCount = 3;
+
+    // Force offloading IO to the kernel thread pool.
+    optional bool ForceAsyncIO = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
