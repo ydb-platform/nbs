@@ -705,6 +705,9 @@ public:
 
     [[nodiscard]] TDuration GetInitialRetryDelayForServiceRequests() const;
     [[nodiscard]] TDuration GetMaxRetryDelayForServiceRequests() const;
+
+    [[nodiscard]] bool GetThrottlingManagerEnabled() const;
+    [[nodiscard]] TDuration GetThrottlingManagerCycleTimeSeconds() const;
 };
 
 ui64 GetAllocationUnit(

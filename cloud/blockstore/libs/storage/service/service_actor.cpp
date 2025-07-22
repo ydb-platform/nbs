@@ -314,6 +314,10 @@ STFUNC(TServiceActor::StateWork)
             TEvService::TEvRunVolumesLivenessCheckResponse,
             HandleRunVolumesLivenessCheckResponse);
 
+        HFunc(
+            TEvServicePrivate::TEvListMountedVolumesRequest,
+            HandleListMountedVolumes);
+
         default:
             if (!HandleRequests(ev)) {
                 HandleUnexpectedEvent(

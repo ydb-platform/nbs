@@ -14,6 +14,7 @@
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 #include <cloud/blockstore/public/api/protos/ping.pb.h>
 #include <cloud/blockstore/public/api/protos/placement.pb.h>
+#include <cloud/blockstore/public/api/protos/throttling.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
@@ -107,6 +108,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(CreateVolumeLink,                   __VA_ARGS__)                       \
     xxx(DestroyVolumeLink,                  __VA_ARGS__)                       \
     xxx(RemoveVolumeClient,                 __VA_ARGS__)                       \
+    xxx(UpdateThrottlingConfig,             __VA_ARGS__)                       \
 // BLOCKSTORE_GRPC_STORAGE_SERVICE
 
 #define BLOCKSTORE_ENDPOINT_SERVICE(xxx, ...)                                  \

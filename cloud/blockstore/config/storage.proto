@@ -1293,4 +1293,8 @@ message TStorageServiceConfig
     // Max retry delay for scheduling next resync and migration
     // ranges (in milliseconds).
     optional uint32 MaxRetryDelayForServiceRequests = 446;
+
+    // Throttling manager
+    optional bool ThrottlingManagerEnabled = 447;
+    optional uint32 ThrottlingManagerCycleTimeSeconds = 448;
 }

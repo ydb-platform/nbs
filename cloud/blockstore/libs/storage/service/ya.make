@@ -71,6 +71,7 @@ SRCS(
     service_actor_forward.cpp
     service_actor_forward_to_disk_registry.cpp
     service_actor_list.cpp
+    service_actor_list_mounted.cpp
     service_actor_monitoring.cpp
     service_actor_monitoring_binding.cpp
     service_actor_monitoring_clients.cpp
@@ -82,6 +83,7 @@ SRCS(
     service_actor_sync_manually_preempted_volumes.cpp
     service_actor_unmount.cpp
     service_actor_update_disk_registry_config.cpp
+    service_actor_update_throttling_config.cpp
     service_actor_volume_binding.cpp
     service_actor_writeblocks.cpp
     service_counters.cpp
