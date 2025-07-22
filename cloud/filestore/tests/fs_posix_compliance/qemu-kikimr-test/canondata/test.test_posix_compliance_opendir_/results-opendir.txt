@@ -1,0 +1,54 @@
+TEST SUITE[opendir, 00.t] 1..13
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+ok 11
+ok 12
+ok 13
+TEST SUITE[opendir, 01.t] 1..14
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+ok 11
+ok 12
+ok 13
+ok 14
+TEST SUITE[opendir, 02.t] 1..6
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+TEST SUITE[opendir, 03.t] 1..4
+ok 1
+ok 2
+ok 3
+ok 4
+TEST SUITE[opendir, 04.t] 1..5
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+TEST SUITE[opendir, 05.t] 1..6
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
