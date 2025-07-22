@@ -31,9 +31,11 @@ struct TIoUringServiceBase
     : public IFileIOService
 {
     TContext Context;
+    const ui32 SqeFlags;
 
-    explicit TIoUringServiceBase(TContext::TParams params)
+    explicit TIoUringServiceBase(TContext::TParams params, ui32 sqeFlags)
         : Context(std::move(params))
+        , SqeFlags(sqeFlags)
     {}
 
     void Start() final
@@ -60,7 +62,7 @@ struct TIoUringService final
         TArrayRef<char> buffer,
         TFileIOCompletion* completion) final
     {
-        Context.AsyncRead(file, buffer, offset, completion);
+        Context.AsyncRead(file, buffer, offset, completion, SqeFlags);
     }
 
     void AsyncReadV(
@@ -69,7 +71,7 @@ struct TIoUringService final
         const TVector<TArrayRef<char>>& buffers,
         TFileIOCompletion* completion) final
     {
-        Context.AsyncReadV(file, buffers, offset, completion);
+        Context.AsyncReadV(file, buffers, offset, completion, SqeFlags);
     }
 
     void AsyncWrite(
@@ -78,7 +80,7 @@ struct TIoUringService final
         TArrayRef<const char> buffer,
         TFileIOCompletion* completion) final
     {
-        Context.AsyncWrite(file, buffer, offset, completion);
+        Context.AsyncWrite(file, buffer, offset, completion, SqeFlags);
     }
 
     void AsyncWriteV(
@@ -87,7 +89,7 @@ struct TIoUringService final
         const TVector<TArrayRef<const char>>& buffers,
         TFileIOCompletion* completion) final
     {
-        Context.AsyncWriteV(file, buffers, offset, completion);
+        Context.AsyncWriteV(file, buffers, offset, completion, SqeFlags);
     }
 };
 
@@ -106,7 +108,7 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffer);
 
-        Context.AsyncNOP(completion);
+        Context.AsyncNOP(completion, SqeFlags);
     }
 
     void AsyncReadV(
@@ -117,7 +119,7 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffers);
 
-        Context.AsyncNOP(completion);
+        Context.AsyncNOP(completion, SqeFlags);
     }
 
     void AsyncWrite(
@@ -128,7 +130,7 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffer);
 
-        Context.AsyncNOP(completion);
+        Context.AsyncNOP(completion, SqeFlags);
     }
 
     void AsyncWriteV(
@@ -139,7 +141,7 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffers);
 
-        Context.AsyncNOP(completion);
+        Context.AsyncNOP(completion, SqeFlags);
     }
 };
 
@@ -174,7 +176,9 @@ public:
             .WqOwner = WqOwner.get(),
         };
 
-        auto service = std::make_shared<TService>(std::move(params));
+        const ui32 sqeFlags = Params.ForceAsyncIO ? IOSQE_ASYNC : 0;
+
+        auto service = std::make_shared<TService>(std::move(params), sqeFlags);
 
         if (Params.ShareKernelWorkers && !WqOwner) {
             WqOwner = std::shared_ptr<TContext>(service, &service->Context);
