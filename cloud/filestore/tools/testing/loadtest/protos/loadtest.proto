@@ -62,7 +62,7 @@ message TReplaySpec
     string FileName = 1;
     string ReplayRoot = 2; // not used in grpc
 
-    // Use profile log messages only with this FileSystemId  
+    // Use profile log messages only with this FileSystemId
     string FileSystemIdFilter = 3;
 
     // Skip read operations: AccessNode ReadData GetNodeAttr
@@ -72,7 +72,7 @@ message TReplaySpec
     bool SkipWrite = 5;
 
     // Factor for sleeps for respect timings from log
-    // Example: 0: disable sleep; 0.5: try to be 2x faster; 1: keep as in log; 2: 2x times slower; 
+    // Example: 0: disable sleep; 0.5: try to be 2x faster; 1: keep as in log; 2: 2x times slower;
     double TimeScale = 7;
 
     enum EWriteFill
@@ -102,7 +102,7 @@ message TReplaySpec
 
     // Ignore too long pauses in log, in microseconds
     uint64 MaxSleepUs = 10;
-    
+
     // Add O_DIRECT flag to open call
     bool OpenAddDirectFlag = 11;
 
@@ -154,6 +154,7 @@ message TLoadTest
 
     // disables destruction of the filestore created via CreateFileStoreRequest
     bool KeepFileStore = 16;
+    string ClientId = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
