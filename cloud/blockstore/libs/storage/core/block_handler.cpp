@@ -169,10 +169,7 @@ public:
         auto& blockMask = *response.MutableUnencryptedBlockMask();
         blockMask.assign(stringBuf);
 
-        const bool allEmpty = AllOf(
-            response.GetBlocks().GetBuffers(),
-            [](const TString& block) { return block.empty(); });
-        response.SetAllZeroes(allEmpty);
+        response.SetAllZeroes(IsAllZeroes(response.GetBlocks()));
     }
 
     TGuardedSgList GetLocalResponse(
