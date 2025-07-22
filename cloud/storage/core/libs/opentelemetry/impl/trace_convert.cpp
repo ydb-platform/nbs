@@ -44,15 +44,15 @@ AnyValue ConvertToOpenTelemetry(
             break;
         case NLWTrace::PT_Symbol:
             value.set_string_value(*param
-                                       .Get<typename NLWTrace::TParamTraits<
-                                           NLWTrace::TSymbol>::TStoreType>()
-                                       .Str);
+                                        .Get<typename NLWTrace::TParamTraits<
+                                            NLWTrace::TSymbol>::TStoreType>()
+                                        .Str);
             break;
         case NLWTrace::PT_Check:
             value.set_int_value(param
-                                   .Get<typename NLWTrace::TParamTraits<
-                                       NLWTrace::TCheck>::TStoreType>()
-                                   .Value);
+                                    .Get<typename NLWTrace::TParamTraits<
+                                        NLWTrace::TCheck>::TStoreType>()
+                                    .Value);
             break;
         default:
             value.set_string_value("unknown type");
@@ -222,75 +222,106 @@ public:
     }
 };
 
-TSpanTree ProcessItemsToSpanTree(
-    const NLWTrace::TTrackLog& tl,
-    ui64 traceId,
-    ui64 currentSpanId,
-    TLogItemsIterationContext iterationContext,
-    TReferenceTimeCycle referenceTimeCycle,
-    bool hasConflicts)
+class TTraceConverter
 {
-    TSpanTree spanTree(traceId, currentSpanId);
+private:
+    const ui64 TraceId;
+    const TReferenceTimeCycle ReferenceTimeCycle;
+    const bool HasConflicts;
 
-    THashMap<ui64, ui64> spanIdToStartTime;
+    ui32 SpanIdPool = 0;
 
-    ui64 startTimeCycles = tl.Items[iterationContext.Idx].TimestampCycles;
-    ui64 endTimeCycles = 0;
+public:
+    TTraceConverter(
+            ui64 traceId,
+            TReferenceTimeCycle referenceTimeCycle,
+            bool hasConflicts)
+        : TraceId(traceId)
+        , ReferenceTimeCycle(referenceTimeCycle)
+        , HasConflicts(hasConflicts)
+    {}
 
-    auto operationName = FindOperationName(tl, iterationContext);
-    spanTree.GetParentSpan().Setname(operationName);
-
-    for (; iterationContext; iterationContext.Next()) {
-        const auto& item = tl.Items[iterationContext.Idx];
-        const auto& name = item.Probe->Event.Name;
-        auto timeCycles = item.TimestampCycles;
-
-        endTimeCycles = Max(endTimeCycles, timeCycles);
-        auto curTimeStampNano =
-            GetTimestampInNanoSeconds(referenceTimeCycle, timeCycles);
-
-        if (TStringBuf(name) == "Fork") {
-            const auto childSpanId = item.Params.Param[0].Get<ui64>();
-            spanIdToStartTime[childSpanId] = curTimeStampNano;
-            continue;
-        }
-
-        if (TStringBuf(name) == "Join") {
-            const auto childSpanId = hasConflicts
-                                         ? RandomNumber<ui32>()
-                                         : item.Params.Param[0].Get<ui64>();
-            const auto itemsCount = item.Params.Param[1].Get<ui64>();
-
-            // recursively process child spans
-            auto subSpans = ProcessItemsToSpanTree(
-                tl,
-                traceId,
-                childSpanId,
-                iterationContext.ConstructSubSpanIterationContext(itemsCount),
-                referenceTimeCycle,
-                hasConflicts);
-
-            if (!hasConflicts) {
-                subSpans.GetParentSpan().set_start_time_unix_nano(
-                    spanIdToStartTime[childSpanId]);
-            }
-            subSpans.GetParentSpan().set_end_time_unix_nano(curTimeStampNano);
-
-            spanTree.AddSpanSubTree(std::move(subSpans));
-            continue;
-        }
-
-        *spanTree.GetParentSpan().Addevents() =
-            ProcessRegularItem(item, referenceTimeCycle);
+    TSpanTree ProcessItemsToSpanTree(const NLWTrace::TTrackLog& tl)
+    {
+        return ProcessItemsToSpanTreeImpl(
+            tl,
+            TakeSpanId(),
+            {0, tl.Items.size()}   // iterationContext
+        );
     }
 
-    spanTree.GetParentSpan().set_start_time_unix_nano(
-        GetTimestampInNanoSeconds(referenceTimeCycle, startTimeCycles));
-    spanTree.GetParentSpan().set_end_time_unix_nano(
-        GetTimestampInNanoSeconds(referenceTimeCycle, endTimeCycles));
+private:
+    TSpanTree ProcessItemsToSpanTreeImpl(
+        const NLWTrace::TTrackLog& tl,
+        ui64 currentSpanId,
+        TLogItemsIterationContext iterationContext)
+    {
+        TSpanTree spanTree(TraceId, currentSpanId);
 
-    return spanTree;
-}
+        THashMap<ui64, ui64> spanIdToStartTime;
+
+        ui64 startTimeCycles = tl.Items[iterationContext.Idx].TimestampCycles;
+        ui64 endTimeCycles = 0;
+
+        auto operationName = FindOperationName(tl, iterationContext);
+        spanTree.GetParentSpan().Setname(operationName);
+
+        for (; iterationContext; iterationContext.Next()) {
+            const auto& item = tl.Items[iterationContext.Idx];
+            const auto& name = item.Probe->Event.Name;
+            auto timeCycles = item.TimestampCycles;
+
+            endTimeCycles = Max(endTimeCycles, timeCycles);
+            auto curTimeStampNano =
+                GetTimestampInNanoSeconds(ReferenceTimeCycle, timeCycles);
+
+            if (TStringBuf(name) == "Fork") {
+                const auto childSpanId = item.Params.Param[0].Get<ui64>();
+                spanIdToStartTime[childSpanId] = curTimeStampNano;
+                continue;
+            }
+
+            if (TStringBuf(name) == "Join") {
+                const auto childSpanId = HasConflicts
+                                             ? TakeSpanId()
+                                             : item.Params.Param[0].Get<ui64>();
+                const auto itemsCount = item.Params.Param[1].Get<ui64>();
+
+                // recursively process child spans
+                auto subSpans = ProcessItemsToSpanTreeImpl(
+                    tl,
+                    childSpanId,
+                    iterationContext.ConstructSubSpanIterationContext(
+                        itemsCount));
+
+                if (!HasConflicts) {
+                    subSpans.GetParentSpan().set_start_time_unix_nano(
+                        spanIdToStartTime[childSpanId]);
+                }
+                subSpans.GetParentSpan().set_end_time_unix_nano(
+                    curTimeStampNano);
+
+                spanTree.AddSpanSubTree(std::move(subSpans));
+                continue;
+            }
+
+            *spanTree.GetParentSpan().Addevents() =
+                ProcessRegularItem(item, ReferenceTimeCycle);
+        }
+
+        spanTree.GetParentSpan().set_start_time_unix_nano(
+            GetTimestampInNanoSeconds(ReferenceTimeCycle, startTimeCycles));
+        spanTree.GetParentSpan().set_end_time_unix_nano(
+            GetTimestampInNanoSeconds(ReferenceTimeCycle, endTimeCycles));
+
+        return spanTree;
+    }
+
+    ui32 TakeSpanId()
+    {
+        return SpanIdPool++;
+    }
+};
 
 TReferenceTimeCycle GetReferenceTimeCycle(const NLWTrace::TTrackLog& tl)
 {
@@ -369,13 +400,13 @@ TTraceInfo ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
     traceInfo.RequestId = FindRequestId(tl, traceItCtx);
     traceInfo.DiskId = FindFirst<TString>(tl, "diskId", traceItCtx);
 
-    traceInfo.Spans = TSpanTree::ExtractSpans(ProcessItemsToSpanTree(
-        tl,
-        RandomNumber<ui64>(),        // traceId
-        0,                           // currentSpanId
-        traceItCtx,                  // iterationContext
-        GetReferenceTimeCycle(tl),   // referenceTimeCycle
-        TConflictDetecter().HasConflict(tl, traceItCtx, 0)));
+    auto converter = TTraceConverter(
+        RandomNumber<ui64>(),   // traceId
+        GetReferenceTimeCycle(tl),
+        TConflictDetecter().HasConflict(tl, traceItCtx, 0));
+
+    traceInfo.Spans =
+        TSpanTree::ExtractSpans(converter.ProcessItemsToSpanTree(tl));
 
     return traceInfo;
 }
