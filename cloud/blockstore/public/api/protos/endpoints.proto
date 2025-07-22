@@ -16,6 +16,8 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/pro
 
 message TStartEndpointRequest
 {
+    reserved 15, 16, 17;
+
     // Optional request headers.
     THeaders Headers = 1;
 
@@ -57,15 +59,6 @@ message TStartEndpointRequest
 
     // Vhost queues count.
     uint32 VhostQueuesCount = 14;
-
-    // Request timeout for a single request attempt (in milliseconds).
-    uint32 RequestTimeout = 15;
-
-    // Total request timeout - for all attempts plus total backoff time (in milliseconds).
-    uint32 RetryTimeout = 16;
-
-    // Backoff time increment for each attempt (in milliseconds).
-    uint32 RetryTimeoutIncrement = 17;
 
     // Unaligned request support can be explicitly disabled.
     bool UnalignedRequestsDisabled = 18;

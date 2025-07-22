@@ -123,7 +123,7 @@ bool CompareRequests(
     const NProto::TStartEndpointRequest& left,
     const NProto::TStartEndpointRequest& right)
 {
-    Y_DEBUG_ABORT_UNLESS(27 == GetFieldCount<NProto::TStartEndpointRequest>());
+    Y_DEBUG_ABORT_UNLESS(24 == GetFieldCount<NProto::TStartEndpointRequest>());
     return left.GetUnixSocketPath() == right.GetUnixSocketPath()
         && left.GetDiskId() == right.GetDiskId()
         && left.GetInstanceId() == right.GetInstanceId()
@@ -137,9 +137,6 @@ bool CompareRequests(
         && CompareRequests(left.GetClientProfile(), right.GetClientProfile())
         && CompareRequests(left.GetClientPerformanceProfile(), right.GetClientPerformanceProfile())
         && left.GetVhostQueuesCount() == right.GetVhostQueuesCount()
-        && left.GetRequestTimeout() == right.GetRequestTimeout()
-        && left.GetRetryTimeout() == right.GetRetryTimeout()
-        && left.GetRetryTimeoutIncrement() == right.GetRetryTimeoutIncrement()
         && left.GetUnalignedRequestsDisabled() == right.GetUnalignedRequestsDisabled()
         && CompareRequests(left.GetEncryptionSpec(), right.GetEncryptionSpec())
         && left.GetSendNbdMinBlockSize() == right.GetSendNbdMinBlockSize()

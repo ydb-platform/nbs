@@ -738,16 +738,6 @@ TClientAppConfigPtr TSessionManager::CreateClientConfig(
     config.SetClientId(request.GetClientId());
     config.SetInstanceId(request.GetInstanceId());
 
-    if (request.GetRequestTimeout()) {
-        config.SetRequestTimeout(request.GetRequestTimeout());
-    }
-    if (request.GetRetryTimeout()) {
-        config.SetRetryTimeout(request.GetRetryTimeout());
-    }
-    if (request.GetRetryTimeoutIncrement()) {
-        config.SetRetryTimeoutIncrement(request.GetRetryTimeoutIncrement());
-    }
-
     return std::make_shared<TClientAppConfig>(std::move(clientAppConfig));
 }
 
