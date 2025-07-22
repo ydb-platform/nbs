@@ -124,7 +124,7 @@ TReadDataActor::TReadDataActor(
     , MediaKind(mediaKind)
     , Response(std::make_unique<TEvService::TEvReadDataResponse>())
 {
-    Response->Record.MutableBuffer()->ReserveAndResize(ReadRequest.GetLength());
+    Response->Record.SetBuffer(TString(ReadRequest.GetLength(), 0));
 }
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
