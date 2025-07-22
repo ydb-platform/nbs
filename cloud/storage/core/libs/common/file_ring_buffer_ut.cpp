@@ -499,6 +499,18 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(!rb2.PushBack("c"));
     }
 
+    Y_UNIT_TEST(ShouldNotFailOnCapacityChange)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 16;
+        TFileRingBuffer rb(f.GetName(), len);
+        TFileRingBuffer rb1(f.GetName(), len + 1);
+        TFileRingBuffer rb2(f.GetName(), len - 1);
+
+        UNIT_ASSERT_EQUAL(f.GetLength(), len + 40);
+        UNIT_ASSERT(rb.PushBack("12345678"));
+    }
+
     Y_UNIT_TEST(VisitAndPopBackShouldProduceSameResults)
     {
         for (int i = 0; i <= 32; i++) {

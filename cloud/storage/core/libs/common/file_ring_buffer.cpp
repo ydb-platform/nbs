@@ -328,15 +328,17 @@ public:
     {
         Y_ABORT_UNLESS(sizeof(TEntryHeader) <= capacity);
 
-        const ui64 realSize = sizeof(THeader) + capacity;
-        if (static_cast<ui64>(Map.Length()) < realSize) {
+        if (static_cast<ui64>(Map.Length()) < sizeof(THeader)) {
+            const ui64 realSize = sizeof(THeader) + capacity;
             Map.ResizeAndRemap(0, realSize);
         } else {
-            Map.Map(0, realSize);
+            Map.Map(0, Map.Length());
         }
 
         if (Header()->Version) {
-            Y_ABORT_UNLESS(Header()->Capacity == capacity);
+            Y_ABORT_UNLESS(
+                sizeof(THeader) + Header()->Capacity <=
+                static_cast<ui64>(Map.Length()));
             Y_ABORT_UNLESS(Header()->Version == VERSION);
         } else {
             Header()->Capacity = capacity;
