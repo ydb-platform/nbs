@@ -15,6 +15,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TDuration DefaultTimeout = TDuration::Minutes(1);
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TError MakeSystemError(int code, TStringBuf message)
 {
     return MakeError(
@@ -28,28 +32,62 @@ bool IsRetriable(int error)
     return error == EINTR || error == EAGAIN || error == EBUSY;
 }
 
-NProto::TError Submit(io_uring* ring)
+template <auto func, typename... Ts>
+int Retry(Ts... args)
 {
+    const TInstant deadLine = DefaultTimeout.ToDeadLine();
+
+    int ret = 0;
     for (;;) {
-        const int ret = io_uring_submit(ring);
-        if (ret >= 0) {
-            return {};
+        ret = func(args...);
+        if (ret >= 0 || !IsRetriable(-ret)) {
+            break;
         }
 
-        if (!IsRetriable(-ret)) {
-            return MakeSystemError(-ret, "unable to submit async IO operation");
+        if (deadLine <= Now()) {
+            break;
         }
+
+        SpinLockPause();
     }
+
+    return ret;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError Submit(io_uring* ring)
+{
+    const int ret = Retry<io_uring_submit>(ring);
+    if (ret < 0) {
+        return MakeSystemError(-ret, "unable to submit async IO operation");
+    }
+
+    return {};
 }
 
 NProto::TError SetMaxWorkers(io_uring* ring, ui32 bound)
 {
-    ui32 workers[2] = {bound, 0};
+    std::array<ui32, 2> workers{bound, 0};
 
-    const int ret = io_uring_register_iowq_max_workers(ring, workers);
+    const int ret =
+        Retry<io_uring_register_iowq_max_workers>(ring, workers.data());
     if (ret < 0) {
-        return MakeSystemError(-ret, "io_uring_register_iowq_max_workers");
+        return MakeSystemError(
+            -ret,
+            "unable to setup max kernel workers count");
     }
+
+    return {};
+}
+
+NProto::TError EnableRing(io_uring* ring)
+{
+    const int ret = Retry<io_uring_enable_rings>(ring);
+    if (ret < 0) {
+        return MakeSystemError(-ret, "unable to enable the ring");
+    }
+
     return {};
 }
 
@@ -77,20 +115,6 @@ NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* wqOwner)
         }
 
         return {};
-    }
-}
-
-NProto::TError EnableRing(io_uring* ring)
-{
-    for (;;) {
-        const int ret = io_uring_enable_rings(ring);
-        if (!ret) {
-            return {};
-        }
-
-        if (!IsRetriable(-ret)) {
-            return MakeSystemError(-ret, "io_uring_enable_rings");
-        }
     }
 }
 
@@ -211,10 +235,12 @@ void TContext::SubmitIO(
 
     NSan::Release(completion);
 
+    // TODO(sharpeye): more resilent error handling for io_uring_submit
     const auto error = Submit(&Ring);
-    if (HasError(error)) {
-        completion->Func(completion, error, 0);
-    }
+    Y_ABORT_IF(
+        HasError(error),
+        "can't submit IO: %s",
+        FormatError(error).c_str());
 }
 
 void TContext::SubmitNOP(TFileIOCompletion* completion, ui32 flags)
@@ -234,10 +260,12 @@ void TContext::SubmitNOP(TFileIOCompletion* completion, ui32 flags)
 
     NSan::Release(completion);
 
+    // TODO(sharpeye): more resilent error handling for io_uring_submit
     const auto error = Submit(&Ring);
-    if (HasError(error)) {
-        completion->Func(completion, error, 0);
-    }
+    Y_ABORT_IF(
+        HasError(error),
+        "can't submit NOP: %s",
+        FormatError(error).c_str());
 }
 
 void TContext::SubmitStopSignal()
