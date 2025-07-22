@@ -1060,6 +1060,10 @@ STFUNC(TVolumeActor::StateWork)
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
+        HFunc(
+            TEvThrottlingManager::TEvNotifyVolume,
+            HandleUpdateVolatileThrottlingConfig);
+
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:

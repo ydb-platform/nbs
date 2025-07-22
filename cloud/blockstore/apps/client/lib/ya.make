@@ -45,6 +45,7 @@ SRCS(
     stat_volume.cpp
     stop_endpoint.cpp
     update_disk_registry_config.cpp
+    update_throttling_config.cpp
     volume_manipulation_params.cpp
     write_blocks.cpp
     zero_blocks.cpp
