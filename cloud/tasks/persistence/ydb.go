@@ -1044,6 +1044,7 @@ func alterTable(
 	if err != nil {
 		return err
 	}
+	
 	if len(alterColumnsOptions) != 0 {
 		err = session.AlterTable(ctx, fullPath, alterColumnsOptions...)
 		if err != nil {
