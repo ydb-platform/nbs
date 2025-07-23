@@ -6,9 +6,9 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -66,7 +66,7 @@ func (t *createBaseDiskTask) Run(
 				baseDiskBlockCount = defaultBaseDiskBlockCount
 			} else {
 				if baseDiskSize%baseDiskBlockSize != 0 {
-					return errors.NewInvalidArgumentError(
+					return common.NewInvalidArgumentError(
 						"baseDiskSize should be divisible by baseDiskBlockSize, baseDiskSize %v, baseDiskBlockSize %v",
 						baseDiskSize,
 						baseDiskBlockSize,

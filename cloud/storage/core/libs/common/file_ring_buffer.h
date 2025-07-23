@@ -36,8 +36,9 @@ public:
     void PopFront();
     ui64 Size() const;
     bool Empty() const;
-    TVector<TBrokenFileEntry> Validate() const;
-    void Visit(const TVisitor& visitor) const;
+    TVector<TBrokenFileEntry> Validate();
+    void Visit(const TVisitor& visitor);
+    bool IsCorrupted() const;
 };
 
 }   // namespace NCloud

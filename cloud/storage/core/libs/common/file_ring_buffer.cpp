@@ -15,7 +15,6 @@ namespace {
 
 constexpr ui32 VERSION = 2;
 constexpr ui64 INVALID_POS = Max<ui64>();
-constexpr TStringBuf INVALID_MARKER = "invalid_entry_marker";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -30,18 +29,167 @@ struct THeader
 
 struct Y_PACKED TEntryHeader
 {
-    ui32 Size = 0;
+    ui32 DataSize = 0;
     ui32 Checksum = 0;
 };
 
-void WriteEntry(IOutputStream& os, TStringBuf data)
+//  Structure contract:
+//
+//  1. Empty buffer:
+//    - ReadPos = WritePos = 0
+//
+//  2. Non-empty buffer:
+//    - ReadPos != WritePos
+//    - ReadPos points to the first byte of the first valid entry
+//    - WritePos points to the first byte right after the last valid entry
+//    - LastEntrySize is the size of the last valid entry
+//
+//  3. Valid entry:
+//    - Size > 0
+//    - The entry takes sizeof(TEntryHeader) + Size contiguous bytes in
+//      the occupied part of the buffer
+//
+//  4. Occupied part of the buffer:
+//     - ReadPos < WritePos: [ReadPos, WritePos)
+//     - ReadPos > WritePos: [ReadPos, Capacity) + [0, WritePos)
+//
+//  5. Slack space entry marker:
+//     - Size = 0
+//     - Instructs to read the next entry at pos = 0
+//     - Can appear only when ReadPos > WritePos in [ReadPos, Capacity) part
+//
+//  6. Implicit slack space marker:
+//     - pos + sizeof(TEntryHeader) > Capacity
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TEntriesData
 {
-    TEntryHeader eh;
-    eh.Size = data.size();
-    eh.Checksum = Crc32c(data.data(), data.size());
-    os.Write(&eh, sizeof(eh));
-    os.Write(data);
-}
+private:
+    char* Begin = nullptr;
+    const char* End = nullptr;
+
+    template <class T = char>
+    T* GetPtr(ui64 pos, ui64 size = sizeof(T)) const
+    {
+        char* begin = Begin + pos;
+        const char* end = begin + size;
+        return Begin <= begin && begin <= end && end <= End
+                   ? reinterpret_cast<T*>(begin)
+                   : nullptr;
+    }
+
+    char* DoGetEntryData(const TEntryHeader* eh) const
+    {
+        Y_ABORT_UNLESS(eh != nullptr);
+        Y_ABORT_UNLESS(eh->DataSize != 0);
+
+        ui64 pos = reinterpret_cast<const char*>(eh) - Begin;
+        return GetPtr(pos + sizeof(eh), eh->DataSize);
+    }
+
+public:
+    TEntriesData() = default;
+
+    TEntriesData(char* begin, const char* end)
+    {
+        Y_ABORT_UNLESS(begin != nullptr);
+        Y_ABORT_UNLESS(end != nullptr);
+        Y_ABORT_UNLESS(begin <= end);
+
+        Begin = begin;
+        End = end;
+    }
+
+    TEntryHeader* GetEntryHeader(ui64 pos)
+    {
+        return GetPtr<TEntryHeader>(pos);
+    }
+
+    const TEntryHeader* GetEntryHeader(ui64 pos) const
+    {
+        return GetPtr<TEntryHeader>(pos);
+    }
+
+    char* GetEntryData(TEntryHeader* eh)
+    {
+        return DoGetEntryData(eh);
+    }
+
+    const char* GetEntryData(const TEntryHeader* eh) const
+    {
+        return DoGetEntryData(eh);
+    }
+
+    void WriteEntry(ui64 pos, TStringBuf data)
+    {
+        auto* eh = GetEntryHeader(pos);
+        Y_ABORT_UNLESS(eh != nullptr);
+
+        eh->DataSize = data.size();
+        eh->Checksum = Crc32c(data.data(), data.size());
+
+        auto* dst = GetEntryData(eh);
+        Y_ABORT_UNLESS(dst != nullptr);
+        memcpy(dst, data.data(), data.size());
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TEntryInfo
+{
+    ui64 ActualPos = 0;
+    const TEntryHeader* Header = nullptr;
+    const char* Data = nullptr;
+
+    bool HasValue() const
+    {
+        return Header != nullptr;
+    }
+
+    bool IsInvalid() const
+    {
+        return ActualPos == INVALID_POS;
+    }
+
+    TStringBuf GetData() const
+    {
+        return HasValue() ? TStringBuf(Data, Header->DataSize) : TStringBuf();
+    }
+
+    ui64 GetNextEntryPos() const
+    {
+        return Header != nullptr && Header->DataSize > 0
+            ? ActualPos + sizeof(TEntryHeader) + Header->DataSize
+            : INVALID_POS;
+    }
+
+    static TEntryInfo Create(
+        ui64 pos,
+        const TEntryHeader* header,
+        const char* data)
+    {
+        Y_ABORT_UNLESS(pos != INVALID_POS);
+        Y_ABORT_UNLESS(header != nullptr);
+        Y_ABORT_UNLESS(header->DataSize > 0);
+        Y_ABORT_UNLESS(data != nullptr);
+
+        return TEntryInfo{.ActualPos = pos, .Header = header, .Data = data};
+    }
+
+    static TEntryInfo CreateEmpty(ui64 pos)
+    {
+        Y_ABORT_UNLESS(pos != INVALID_POS);
+
+        return TEntryInfo{.ActualPos = pos};
+    }
+
+    static TEntryInfo CreateInvalid()
+    {
+        return TEntryInfo{.ActualPos = INVALID_POS};
+    }
+};
 
 }   // namespace
 
@@ -52,9 +200,9 @@ class TFileRingBuffer::TImpl
 private:
     TFileMap Map;
 
-    char* Data = nullptr;
+    TEntriesData Data;
     ui64 Count = 0;
-    const char* End = nullptr;
+    bool Corrupted = false;
 
 private:
     THeader* Header()
@@ -67,41 +215,111 @@ private:
         return reinterpret_cast<THeader*>(Map.Ptr());
     }
 
-    void SkipSlackSpace()
+    TEntryInfo GetEntry(ui64 pos) const
     {
-        if (Header()->ReadPos == Header()->WritePos) {
-            Header()->ReadPos = 0;
-            Header()->WritePos = 0;
-            return;
+        if (pos > Header()->WritePos) {
+            // This is valid only in the case:
+            // ====W]....[R====
+            //             ^- here
+            if (Header()->ReadPos <= Header()->WritePos ||
+                pos < Header()->ReadPos)
+            {
+                return TEntryInfo::CreateInvalid();
+            }
+
+            const auto* eh = Data.GetEntryHeader(pos);
+            if (eh != nullptr && eh->DataSize != 0) {
+                const auto* data = Data.GetEntryData(eh);
+                return data != nullptr
+                    ? TEntryInfo::Create(pos, eh, data)
+                    : TEntryInfo::CreateInvalid();
+            }
+            pos = 0;
         }
 
-        const auto* b = Data + Header()->ReadPos;
-        const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
-        if (eh->Size == 0) {
-            Header()->ReadPos = 0;
+        if (pos == Header()->WritePos) {
+            return TEntryInfo::CreateEmpty(pos);
         }
+
+        Y_ABORT_UNLESS(pos < Header()->WritePos);
+
+        if (pos < Header()->ReadPos &&
+            Header()->ReadPos <= Header()->WritePos)
+        {
+            return TEntryInfo::CreateInvalid();
+        }
+
+        const auto* eh = Data.GetEntryHeader(pos);
+        if (eh == nullptr || eh->DataSize == 0) {
+            return TEntryInfo::CreateInvalid();
+        }
+
+        const auto* data = Data.GetEntryData(eh);
+        if (data == nullptr) {
+            return TEntryInfo::CreateInvalid();
+        }
+
+        auto res = TEntryInfo::Create(pos, eh, data);
+        if (res.GetNextEntryPos() > Header()->WritePos) {
+            return TEntryInfo::CreateInvalid();
+        }
+
+        return res;
     }
 
-    ui64 VisitEntry(const TVisitor& visitor, ui64 pos) const
+    TEntryInfo GetFrontEntry() const
     {
-        const auto* b = Data + pos;
-        if (b + sizeof(TEntryHeader) > End) {
-            // slack space smaller than TEntryHeader
-            return 0;
+        return GetEntry(Header()->ReadPos);
+    }
+
+    TEntryInfo GetNextEntry(const TEntryInfo& e) const
+    {
+        return e.HasValue()
+            ? GetEntry(e.GetNextEntryPos())
+            : TEntryInfo::CreateInvalid();
+    }
+
+    void SetCorrupted()
+    {
+        Corrupted = true;
+    }
+
+    void ValidateDataStructure()
+    {
+        TEntryInfo front = GetFrontEntry();
+        TEntryInfo back = front;
+        TEntryInfo cur = front;
+
+        if (front.IsInvalid() || front.ActualPos != Header()->ReadPos) {
+            SetCorrupted();
         }
 
-        const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
-        if (eh->Size == 0) {
-            return 0;
+        while (cur.HasValue()) {
+            Count++;
+            back = cur;
+            cur = GetNextEntry(cur);
         }
 
-        TStringBuf entry(b + sizeof(TEntryHeader), eh->Size);
-        if (entry.data() + entry.size() > End) {
-            visitor(eh->Checksum, INVALID_MARKER);
-            return INVALID_POS;
+        if (cur.IsInvalid() || cur.ActualPos != Header()->WritePos) {
+            SetCorrupted();
         }
-        visitor(eh->Checksum, {b + sizeof(TEntryHeader), eh->Size});
-        return pos + sizeof(TEntryHeader) + eh->Size;
+
+        if (front.HasValue()) {
+            Y_ABORT_UNLESS(back.HasValue());
+
+            Header()->ReadPos = front.ActualPos;
+            Header()->WritePos = back.GetNextEntryPos();
+
+            auto lastEntrySize = back.GetNextEntryPos() - back.ActualPos;
+            if (Header()->LastEntrySize != lastEntrySize) {
+                SetCorrupted();
+                Header()->LastEntrySize = lastEntrySize;
+            }
+        } else {
+            Header()->ReadPos = 0;
+            Header()->WritePos = 0;
+            Header()->LastEntrySize = 0;
+        }
     }
 
 public:
@@ -110,35 +328,37 @@ public:
     {
         Y_ABORT_UNLESS(sizeof(TEntryHeader) <= capacity);
 
-        const ui64 realSize = sizeof(THeader) + capacity;
-        if (static_cast<ui64>(Map.Length()) < realSize) {
+        if (static_cast<ui64>(Map.Length()) < sizeof(THeader)) {
+            const ui64 realSize = sizeof(THeader) + capacity;
             Map.ResizeAndRemap(0, realSize);
         } else {
-            Map.Map(0, realSize);
+            Map.Map(0, Map.Length());
         }
 
         if (Header()->Version) {
-            Y_ABORT_UNLESS(Header()->Capacity == capacity);
+            Y_ABORT_UNLESS(
+                sizeof(THeader) + Header()->Capacity <=
+                static_cast<ui64>(Map.Length()));
             Y_ABORT_UNLESS(Header()->Version == VERSION);
         } else {
             Header()->Capacity = capacity;
             Header()->Version = VERSION;
         }
 
-        Data = static_cast<char*>(Map.Ptr()) + sizeof(THeader);
-        End = Data + capacity;
+        auto* begin = static_cast<char*>(Map.Ptr()) + sizeof(THeader);
+        Data = TEntriesData(begin, begin + capacity);
 
-        SkipSlackSpace();
-        Visit([this] (ui32 checksum, TStringBuf entry) {
-            Y_UNUSED(checksum);
-            Y_UNUSED(entry);
-            ++Count;
-        });
+        ValidateDataStructure();
     }
 
 public:
     bool PushBack(TStringBuf data)
     {
+        if (IsCorrupted()) {
+            // TODO: should return error code
+            return false;
+        }
+
         if (data.empty()) {
             return false;
         }
@@ -147,7 +367,7 @@ public:
         if (sz > Header()->Capacity) {
             return false;
         }
-        auto* ptr = Data + Header()->WritePos;
+        auto writePos = Header()->WritePos;
 
         if (!Empty()) {
             // checking that we have a contiguous chunk of sz + 1 bytes
@@ -161,9 +381,11 @@ public:
                         // out of space
                         return false;
                     }
-
-                    memset(ptr, 0, Min(sizeof(TEntryHeader), freeSpace));
-                    ptr = Data;
+                    auto* eh = Data.GetEntryHeader(Header()->WritePos);
+                    if (eh != nullptr) {
+                        eh->DataSize = 0;
+                    }
+                    writePos = 0;
                 }
             } else {
                 // we have two occupied regions
@@ -176,10 +398,9 @@ public:
             }
         }
 
-        TMemoryOutput mo(ptr, sz);
-        WriteEntry(mo, data);
+        Data.WriteEntry(writePos, data);
 
-        Header()->WritePos = ptr - Data + sz;
+        Header()->WritePos = writePos + sz;
         Header()->LastEntrySize = sz;
         ++Count;
 
@@ -188,26 +409,15 @@ public:
 
     TStringBuf Front() const
     {
-        if (Empty()) {
-            return {};
-        }
+        auto e = GetFrontEntry();
 
-        const auto* b = Data + Header()->ReadPos;
-        if (b + sizeof(TEntryHeader) > End) {
+        if (e.IsInvalid()) {
             // corruption
             // TODO: report?
             return {};
         }
 
-        const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
-        TStringBuf result{b + sizeof(TEntryHeader), eh->Size};
-        if (result.data() + result.size() > End) {
-            // corruption
-            // TODO: report?
-            return {};
-        }
-
-        return result;
+        return e.GetData();
     }
 
     TStringBuf Back() const
@@ -221,36 +431,36 @@ public:
             // TODO: report?
             return {};
         }
+        auto pos = Header()->WritePos - Header()->LastEntrySize;
+        const auto e = GetEntry(pos);
 
-        const auto* b = Data + Header()->WritePos - Header()->LastEntrySize;
-        if (b + sizeof(TEntryHeader) > End) {
+        if (!e.HasValue() || e.ActualPos != pos ||
+            e.GetNextEntryPos() != Header()->WritePos)
+        {
             // corruption
             // TODO: report?
             return {};
         }
 
-        const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
-        TStringBuf result{b + sizeof(TEntryHeader), eh->Size};
-        if (result.data() + result.size() > End) {
-            // corruption
-            // TODO: report?
-            return {};
-        }
-
-        return result;
+        return e.GetData();
     }
 
     void PopFront()
     {
-        auto data = Front();
-        if (!data) {
+        auto cur = GetFrontEntry();
+        if (!cur.HasValue()) {
             return;
         }
 
-        Header()->ReadPos += sizeof(TEntryHeader) + data.size();
-        --Count;
+        auto next = GetNextEntry(cur);
+        if (next.HasValue()) {
+            Header()->ReadPos = next.ActualPos;
+        } else {
+            Header()->ReadPos = 0;
+            Header()->WritePos = 0;
+        }
 
-        SkipSlackSpace();
+        --Count;
     }
 
     ui64 Size() const
@@ -265,7 +475,7 @@ public:
         return result;
     }
 
-    auto Validate() const
+    auto ValidateEntriesChecksums()
     {
         TVector<TBrokenFileEntry> entries;
 
@@ -282,20 +492,23 @@ public:
         return entries;
     }
 
-    void Visit(const TVisitor& visitor) const
+    void Visit(const TVisitor& visitor)
     {
-        ui64 pos = Header()->ReadPos;
-        while (pos > Header()->WritePos && pos != INVALID_POS) {
-            pos = VisitEntry(visitor, pos);
+        auto e = GetFrontEntry();
+
+        while (e.HasValue()) {
+            visitor(e.Header->Checksum, e.GetData());
+            e = GetNextEntry(e);
         }
 
-        while (pos < Header()->WritePos && pos != INVALID_POS) {
-            pos = VisitEntry(visitor, pos);
-            if (!pos) {
-                // can happen if the buffer is corrupted
-                break;
-            }
+        if (e.IsInvalid()) {
+            SetCorrupted();
         }
+    }
+
+    bool IsCorrupted() const
+    {
+        return Corrupted;
     }
 };
 
@@ -339,14 +552,19 @@ bool TFileRingBuffer::Empty() const
     return Impl->Empty();
 }
 
-TVector<TFileRingBuffer::TBrokenFileEntry> TFileRingBuffer::Validate() const
+TVector<TFileRingBuffer::TBrokenFileEntry> TFileRingBuffer::Validate()
 {
-    return Impl->Validate();
+    return Impl->ValidateEntriesChecksums();
 }
 
-void TFileRingBuffer::Visit(const TVisitor& visitor) const
+void TFileRingBuffer::Visit(const TVisitor& visitor)
 {
-    return Impl->Visit(visitor);
+    Impl->Visit(visitor);
+}
+
+bool TFileRingBuffer::IsCorrupted() const
+{
+    return Impl->IsCorrupted();
 }
 
 }   // namespace NCloud

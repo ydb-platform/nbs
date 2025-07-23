@@ -118,6 +118,14 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"snapshots.DeleteSnapshot":                      func() proto.Message { return &snapshot_protos.DeleteSnapshotTaskState{} },
 }
 
+type FormattableDuration struct {
+	time.Duration
+}
+
+func (d FormattableDuration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.String())
+}
+
 type TaskStateJSON struct {
 	ID                  string               `json:"id"`
 	IdempotencyKey      string               `json:"idempotency_key"`
@@ -147,7 +155,8 @@ type TaskStateJSON struct {
 	CloudID             string               `json:"cloud_id"`
 	FolderID            string               `json:"folder_id"`
 	EstimatedTime       time.Time            `json:"estimated_time"`
-	WaitingDuration     time.Duration        `json:"waiting_duration"`
+	InflightDuration    FormattableDuration  `json:"inflight_duration"`
+	WaitingDuration     FormattableDuration  `json:"waiting_duration"`
 	PanicCount          uint64               `json:"panic_count"`
 }
 
@@ -216,7 +225,8 @@ func TaskStateToJSON(state *storage.TaskState) *TaskStateJSON {
 		LastRunner:          state.LastRunner,
 		ZoneID:              state.ZoneID,
 		EstimatedTime:       state.EstimatedTime,
-		WaitingDuration:     state.WaitingDuration,
+		InflightDuration:    FormattableDuration{state.InflightDuration},
+		WaitingDuration:     FormattableDuration{state.WaitingDuration},
 		PanicCount:          state.PanicCount,
 	}
 }

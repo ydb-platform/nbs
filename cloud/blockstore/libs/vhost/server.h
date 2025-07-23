@@ -5,9 +5,11 @@
 #include <cloud/blockstore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/service/public.h>
+
 #include <cloud/storage/core/libs/common/affinity.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/protos/media.pb.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -27,7 +29,7 @@ struct TStorageOptions
     ui32 VhostQueuesCount = 0;
     bool UnalignedRequestsDisabled = false;
     bool CheckBufferModificationDuringWriting = false;
-    bool IsReliableMediaKind = false;
+    NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
     bool DiscardEnabled = false;
     ui32 MaxZeroBlocksSubRequestSize = 0;
 };

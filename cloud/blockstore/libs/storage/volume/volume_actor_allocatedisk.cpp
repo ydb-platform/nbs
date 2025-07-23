@@ -42,7 +42,7 @@ ui64 GetBlocks(const NKikimrBlockStore::TVolumeConfig& config)
 
 bool ValidateDevices(
     const TActorContext& ctx,
-    const ui64 tabletId,
+    const TString& logTitle,
     const TString& label,
     const TDevices& oldDevs,
     const TDevices& newDevs,
@@ -54,10 +54,12 @@ bool ValidateDevices(
     auto oldDeviceIt = oldDevs.begin();
     while (oldDeviceIt != oldDevs.end()) {
         if (newDeviceIt == newDevs.end()) {
-            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] %s: got less devices than previously existed"
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s: got less devices than previously existed"
                 ", old device count: %lu, new device count: %lu",
-                tabletId,
+                logTitle.c_str(),
                 label.c_str(),
                 oldDevs.size(),
                 newDevs.size());
@@ -69,9 +71,11 @@ bool ValidateDevices(
         if (checkDeviceId &&
                 newDeviceIt->GetDeviceUUID() != oldDeviceIt->GetDeviceUUID())
         {
-            LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] %s: device %u id changed: %s -> %s",
-                tabletId,
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s: device %u id changed: %s -> %s",
+                logTitle.c_str(),
                 label.c_str(),
                 std::distance(newDevs.begin(), newDeviceIt),
                 oldDeviceIt->GetDeviceUUID().Quote().c_str(),
@@ -79,9 +83,11 @@ bool ValidateDevices(
         }
 
         if (newDeviceIt->GetBlocksCount() != oldDeviceIt->GetBlocksCount()) {
-            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] %s: device block count changed: %s: %lu -> %lu",
-                tabletId,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s: device block count changed: %s: %lu -> %lu",
+                logTitle.c_str(),
                 label.c_str(),
                 oldDeviceIt->GetDeviceUUID().Quote().c_str(),
                 oldDeviceIt->GetBlocksCount(),
@@ -91,9 +97,11 @@ bool ValidateDevices(
         }
 
         if (newDeviceIt->GetBlockSize() != oldDeviceIt->GetBlockSize()) {
-            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] %s: device block size changed: %s: %u -> %u",
-                tabletId,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s: device block size changed: %s: %u -> %u",
+                logTitle.c_str(),
                 label.c_str(),
                 oldDeviceIt->GetDeviceUUID().Quote().c_str(),
                 oldDeviceIt->GetBlockSize(),
@@ -260,9 +268,12 @@ void TVolumeActor::HandleAllocateDiskIfNeeded(
 
     if (expectedSize <= actualSize) {
         if (expectedSize < actualSize) {
-            LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] Attempt to decrease disk size, currentSize=%lu, expectedSize=%lu",
-                TabletID(),
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Attempt to decrease disk size, currentSize=%lu, "
+                "expectedSize=%lu",
+                LogTitle.GetWithTime().c_str(),
                 actualSize,
                 expectedSize);
         }
@@ -270,9 +281,11 @@ void TVolumeActor::HandleAllocateDiskIfNeeded(
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Allocating disk, currentSize=%lu, expectedSize=%lu",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Allocating disk, currentSize=%lu, expectedSize=%lu",
+        LogTitle.GetWithTime().c_str(),
         actualSize,
         expectedSize);
 
@@ -333,16 +346,17 @@ void TVolumeActor::HandleAllocateDiskError(
 
     if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED && !localDiskAllocationRetry)
     {
-        ReportDiskAllocationFailure();
+        ReportDiskAllocationFailure(
+            TStringBuilder()
+            << "Disk: " << GetNewestConfig().GetDiskId().Quote()
+            << " allocation failed");
     }
-
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Disk allocation failed with error: %s. DiskId=%s",
-        TabletID(),
-        FormatError(error).c_str(),
-        GetNewestConfig().GetDiskId().Quote().c_str());
+        "%s Disk allocation failed with error: %s.",
+        LogTitle.GetWithTime().c_str(),
+        FormatError(error).c_str());
 
     StorageAllocationResult = std::move(error);
 }
@@ -363,12 +377,12 @@ void TVolumeActor::HandleAllocateDiskResponse(
         HandleAllocateDiskError(ctx, std::move(error));
         return;
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Disk allocation success. DiskId=%s, %s",
-            TabletID(),
-            GetNewestConfig().GetDiskId().Quote().c_str(),
-            DescribeAllocation(msg->Record).c_str()
-        );
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Disk allocation success. %s",
+            LogTitle.GetWithTime().c_str(),
+            DescribeAllocation(msg->Record).c_str());
     }
 
     if (!StateLoadFinished) {
@@ -485,7 +499,7 @@ bool TVolumeActor::CheckAllocationResult(
 
     bool ok = ValidateDevices(
         ctx,
-        TabletID(),
+        LogTitle.GetWithTime(),
         "MainConfig",
         State->GetMeta().GetDevices(),
         devices,
@@ -493,10 +507,12 @@ bool TVolumeActor::CheckAllocationResult(
 
     const auto oldReplicaCount = State->GetMeta().ReplicasSize();
     if (replicas.size() < oldReplicaCount) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Got less replicas than previously existed"
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Got less replicas than previously existed"
             ", old replica count: %lu, new replica count: %lu",
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             State->GetMeta().ReplicasSize(),
             replicas.size());
 
@@ -506,7 +522,7 @@ bool TVolumeActor::CheckAllocationResult(
     for (ui32 i = 0; i < Min(replicas.size(), oldReplicaCount); ++i) {
         ok &= ValidateDevices(
             ctx,
-            TabletID(),
+            LogTitle.GetWithTime(),
             Sprintf("Replica-%u", i),
             State->GetMeta().GetReplicas(i).GetDevices(),
             replicas[i],
@@ -514,17 +530,19 @@ bool TVolumeActor::CheckAllocationResult(
 
         ok &= ValidateDevices(
             ctx,
-            TabletID(),
+            LogTitle.GetWithTime(),
             Sprintf("ReplicaReference-%u", i),
             devices,
             replicas[i],
             false);
 
         if (replicas[i].size() > devices.size()) {
-            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] Replica-%u: got more devices than main config"
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Replica-%u: got more devices than main config"
                 ", main device count: %lu, replica device count: %lu",
-                TabletID(),
+                LogTitle.GetWithTime().c_str(),
                 i,
                 devices.size(),
                 replicas[i].size());
@@ -535,8 +553,8 @@ bool TVolumeActor::CheckAllocationResult(
 
     if (ok && allocatedSize < expectedSize) {
         LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Bad disk allocation result, allocatedSize=%lu, expectedSize=%lu",
-            TabletID(),
+            "%s Bad disk allocation result, allocatedSize=%lu, expectedSize=%lu",
+            LogTitle.GetWithTime().c_str(),
             allocatedSize,
             expectedSize);
 
@@ -544,12 +562,16 @@ bool TVolumeActor::CheckAllocationResult(
     }
 
     if (!ok) {
-        ReportDiskAllocationFailure();
+        ReportDiskAllocationFailure(
+            TStringBuilder() << "Disk " << State->GetDiskId().Quote()
+                             << ": invalid disk allocation response received");
 
         if (State->GetAcceptInvalidDiskAllocationResponse()) {
-            LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] Accepting invalid disk allocation response",
-                TabletID());
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Accepting invalid disk allocation response",
+                LogTitle.GetWithTime().c_str());
         } else {
             ScheduleAllocateDiskIfNeeded(ctx);
             return false;
@@ -605,6 +627,7 @@ void TVolumeActor::ExecuteUpdateDevices(
 
     db.WriteMeta(newMeta);
     State->ResetMeta(std::move(newMeta));
+    State->FillOutdatedDevices();
 }
 
 void TVolumeActor::CompleteUpdateDevices(
@@ -614,9 +637,8 @@ void TVolumeActor::CompleteUpdateDevices(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Devices have been updated. DiskId: %s LiteReallocation: %d",
-        TabletID(),
-        State->GetDiskId().c_str(),
+        "%s Devices have been updated. LiteReallocation: %d",
+        LogTitle.GetWithTime().c_str(),
         args.LiteReallocation);
 
     // Hacky way to avoid race condition with "TTxVolume::TUpdateMigrationState"
@@ -626,8 +648,10 @@ void TVolumeActor::CompleteUpdateDevices(
     }
 
     TPoisonCallback onPartitionDestroy =
-        [requestInfo =
-             args.RequestInfo](const TActorContext& ctx, NProto::TError error)
+        [outdatedDevices = State->GetOutdatedDevices(),
+         requestInfo = args.RequestInfo](
+            const TActorContext& ctx,
+            NProto::TError error) mutable
     {
         if (!requestInfo) {
             return;
@@ -636,7 +660,8 @@ void TVolumeActor::CompleteUpdateDevices(
             ctx,
             *requestInfo,
             std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
-                std::move(error)));
+                std::move(error),
+                std::move(outdatedDevices)));
     };
 
     StopPartitions(ctx, onPartitionDestroy);

@@ -12,8 +12,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -156,7 +156,7 @@ func (m *migrateSnapshotDatabaseTask) GetResponse() proto.Message {
 func (m *migrateSnapshotDatabaseTask) migrateSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	snapshotsToMigrate tasks_storage.StringSet,
+	snapshotsToMigrate tasks_common.StringSet,
 ) error {
 
 	mapping := newSnapshotToTasksMapping()
@@ -196,7 +196,7 @@ func (m *migrateSnapshotDatabaseTask) migrateSnapshots(
 func (m *migrateSnapshotDatabaseTask) updateInflightSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	snapshotsToMigrate tasks_storage.StringSet,
+	snapshotsToMigrate tasks_common.StringSet,
 ) error {
 
 	cfg := m.config

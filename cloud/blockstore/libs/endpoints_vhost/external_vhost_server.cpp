@@ -281,6 +281,8 @@ TChild SpawnChild(
     const TString& binaryPath,
     TVector<TString> args)
 {
+    args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
+
     TPipe stdOut;
     TPipe stdErr;
 
@@ -341,12 +343,12 @@ class TEndpointProcess final
 private:
     const ILoggingServicePtr Logging;
     const TString ClientId;
-
-    TLog Log;
+    const TLog Log;
+    const TChild Process;
 
     TEndpointStats Stats;
 
-    TChild Process;
+    const TString LogPrefix;
 
     std::atomic_bool ShouldStop = false;
 
@@ -356,11 +358,14 @@ public:
             ILoggingServicePtr logging,
             TEndpointStats stats,
             TChild process)
-        : Logging {std::move(logging)}
-        , ClientId {std::move(clientId)}
-        , Log {Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
-        , Stats {std::move(stats)}
-        , Process {std::move(process)}
+        : Logging{std::move(logging)}
+        , ClientId{std::move(clientId)}
+        , Log{Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
+        , Process{std::move(process)}
+        , Stats{std::move(stats)}
+        , LogPrefix(
+              TStringBuilder() << "[" << Process.Pid << "][" << ClientId << "]["
+                               << Stats.DiskId << "] ")
     {}
 
     ~TEndpointProcess() override
@@ -421,27 +426,26 @@ private:
     {
         if (ShouldStop) {
             STORAGE_INFO(
-                "[" << ClientId
-                    << "] Read stats error: " << CurrentExceptionMessage());
+                LogPrefix << "Read stats error: " << CurrentExceptionMessage());
             return false;
         }
 
         if (firstRead) {
             if (i < ReadFirstStatRetryCount) {
                 STORAGE_WARN(
-                    "[" << ClientId << "] Retrying read first stat #" << i + 1
-                        << ". Error: " << CurrentExceptionMessage());
+                    LogPrefix << "Retrying read first stat #" << i + 1
+                              << ". Error: " << CurrentExceptionMessage());
                 return true;
             }
             STORAGE_ERROR(
-                "[" << ClientId << "] Stop retrying read first stat. Error: "
-                    << CurrentExceptionMessage());
+                LogPrefix << "Stop retrying read first stat. Error: "
+                          << CurrentExceptionMessage());
             return false;
         }
 
         STORAGE_ERROR(
-            "[" << ClientId << "] Stop read stat. On #" << i
-                << ". Error: " << CurrentExceptionMessage());
+            LogPrefix << "Stop read stat. On #" << i
+                      << ". Error: " << CurrentExceptionMessage());
         return false;
     }
 
@@ -452,24 +456,24 @@ private:
         NJson::TJsonValue stats;
         NJson::ReadJsonTree(io.ReadLine(), &stats, true);
 
-        STORAGE_DEBUG("[" << ClientId << "] " << stats);
+        STORAGE_DEBUG(LogPrefix << stats);
 
         Stats.Update(stats);
     }
 
     void ReadStdErr(TCont* c)
     {
-        TIntrusivePtr<TEndpointProcess> holder {this};
+        TIntrusivePtr<TEndpointProcess> holder{this};
 
         try {
             ReadStdErrImpl(c);
         } catch (...) {
-            const auto logPriority = ShouldStop
-                ? TLOG_INFO
-                : TLOG_ERR;
+            const auto logPriority = ShouldStop ? TLOG_INFO : TLOG_ERR;
 
-            STORAGE_LOG(logPriority, "[" << ClientId << "] Read stderr error: "
-                << CurrentExceptionMessage());
+            STORAGE_LOG(
+                logPriority,
+                LogPrefix << "Read stderr error: "
+                          << CurrentExceptionMessage());
         }
     }
 
@@ -512,7 +516,7 @@ private:
     {
         NJson::TJsonValue logRec;
         if (!NJson::ReadJsonTree(line, &logRec, false)) {
-            STORAGE_ERROR("[" << ClientId << "] bad json: " << line);
+            STORAGE_ERROR(LogPrefix << "bad json: " << line);
             return;
         }
 
@@ -521,8 +525,7 @@ private:
 
         STORAGE_LOG(
             logPriority,
-            "vhost-server[" << Process.Pid << "] [" << ClientId << "] "
-                            << logRec["message"].GetString());
+            "vhost-server" << LogPrefix << logRec["message"].GetString());
     }
 };
 
@@ -561,6 +564,7 @@ private:
     TLog Log;
 
     TEndpointStats Stats;
+    const TString LogPrefix;
 
     TMutex Mutex;
 
@@ -580,14 +584,17 @@ public:
             TString binaryPath,
             TVector<TString> args,
             TVector<TString> cgroups)
-        : Logging {std::move(logging)}
-        , Executor {std::move(executor)}
-        , ClientId {std::move(clientId)}
-        , BinaryPath {std::move(binaryPath)}
-        , Args {std::move(args)}
-        , Cgroups {std::move(cgroups)}
-        , Log {Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
-        , Stats {std::move(stats)}
+        : Logging{std::move(logging)}
+        , Executor{std::move(executor)}
+        , ClientId{std::move(clientId)}
+        , BinaryPath{std::move(binaryPath)}
+        , Args{std::move(args)}
+        , Cgroups{std::move(cgroups)}
+        , Log{Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
+        , Stats{std::move(stats)}
+        , LogPrefix{
+              TStringBuilder()
+              << "[" << ClientId << "][" << Stats.DiskId << "] "}
     {}
 
     ~TEndpoint() override
@@ -603,8 +610,9 @@ public:
 
         STORAGE_LOG(
             logPriority,
-            "Prefetch binary " << (succ ? "success" : "failed") << ". It took "
-                               << (TInstant::Now() - startAt).ToString());
+            LogPrefix << "Prefetch binary " << (succ ? "success" : "failed")
+                      << ". It took "
+                      << (TInstant::Now() - startAt).ToString());
     }
 
     void Start() override
@@ -637,8 +645,7 @@ private:
         for (;;) {
             error = Process->Wait();
 
-            STORAGE_INFO("[" << ClientId << "] Child stopped: "
-                << FormatError(error));
+            STORAGE_INFO(LogPrefix << "Child stopped: " << FormatError(error));
 
             if (ShouldStop) {
                 break;
@@ -674,8 +681,8 @@ private:
         auto process = SpawnChild(BinaryPath, Args);
 
         STORAGE_INFO(
-            "[" << ClientId
-                << "] Endpoint process has been started, PID:" << process.Pid);
+            LogPrefix << "Endpoint process has been started, PID:"
+                      << process.Pid);
 
         Y_SCOPE_EXIT(&process) {
             if (process.Pid) {
@@ -712,8 +719,8 @@ private:
         } else {
             auto delay = RestartBackoff.GetDelayAndIncrease();
             STORAGE_WARN(
-                "[" << ClientId << "] Will restart external endpoint after "
-                    << delay.ToString());
+                LogPrefix << "Will restart external endpoint after "
+                          << delay.ToString());
             Sleep(delay);
         }
 
@@ -721,14 +728,15 @@ private:
             return nullptr;
         }
 
-        STORAGE_WARN("[" << ClientId << "] Restart external endpoint");
+        STORAGE_WARN(LogPrefix << "Restart external endpoint");
 
         try {
             LastRestartAt = TInstant::Now();
             return StartProcess();
         } catch (...) {
-            STORAGE_ERROR("[" << ClientId << "] Can't restart external endpoint: "
-                << CurrentExceptionMessage());
+            STORAGE_ERROR(
+                LogPrefix << "Can't restart external endpoint: "
+                          << CurrentExceptionMessage());
         }
 
         return nullptr;
@@ -986,7 +994,9 @@ private:
             return true;
 
         } catch (...) {
-            STORAGE_ERROR("Can't run external endpoint: "
+            STORAGE_ERROR(
+                "Can't run external endpoint for disk "
+                << volume.GetDiskId().Quote() << ": "
                 << CurrentExceptionMessage());
         }
 
@@ -1163,10 +1173,11 @@ private:
 
         for (const auto& device: volume.GetDevices()) {
             if (device.GetAgentId() != LocalAgentId) {
-                STORAGE_WARN("Device "
-                    << device.GetDeviceUUID().Quote()
-                    << " with non local agent id: "
-                    << device.GetAgentId().Quote());
+                STORAGE_WARN(
+                    "Device " << device.GetDeviceUUID().Quote()
+                              << " with non local agent id: "
+                              << device.GetAgentId().Quote() << " for disk "
+                              << volume.GetDiskId().Quote());
 
                 return false;
             }

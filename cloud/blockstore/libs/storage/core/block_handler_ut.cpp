@@ -223,6 +223,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         UNIT_ASSERT(Blocks.GetBuffers(5) == TString());
         UNIT_ASSERT(Blocks.GetBuffers(6) == TString(DefaultBlockSize, 'e'));
         UNIT_ASSERT(Blocks.GetBuffers(7) == TString(DefaultBlockSize, 'e'));
+        UNIT_ASSERT(!response.GetAllZeroes());
     }
 
     Y_UNIT_TEST(ShouldZeroMissedBlocksInLocalReadBlocksHandler)
@@ -285,6 +286,54 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             UNIT_ASSERT(resBlocks[5].AsStringBuf() == TString(DefaultBlockSize, char(0)));
             UNIT_ASSERT(resBlocks[6].AsStringBuf() == TString(DefaultBlockSize, 'e'));
             UNIT_ASSERT(resBlocks[7].AsStringBuf() == TString(DefaultBlockSize, 'e'));
+        }
+        UNIT_ASSERT(!response.GetAllZeroes());
+    }
+
+    Y_UNIT_TEST(ShouldSetAllZeroesFlagInReadBlocksResponse)
+    {
+        auto handler = CreateReadBlocksHandler(
+            TBlockRange64::WithLength(0, 8),
+            DefaultBlockSize);
+
+        auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
+        handler->SetBlock(0, zeroBlock, false);
+        handler->SetBlock(1, zeroBlock, true);
+
+        NProto::TReadBlocksResponse response;
+        handler->GetResponse(response);
+        UNIT_ASSERT(response.GetAllZeroes());
+        for (const auto& buffer: response.GetBlocks().GetBuffers()) {
+            UNIT_ASSERT(buffer == TString());
+        }
+
+        auto bitmap = BitMapFromString(response.GetUnencryptedBlockMask());
+        UNIT_ASSERT(!EncryptedBlock(bitmap, 0));
+        UNIT_ASSERT(!EncryptedBlock(bitmap, 1));
+    }
+
+    Y_UNIT_TEST(ShouldSetAllZeroesFlagInReadBlocksLocalResponse)
+    {
+        TVector<TString> blocks;
+        auto sgList = ResizeBlocks(blocks, 8, TString(DefaultBlockSize, 'a'));
+
+        auto handler = CreateReadBlocksHandler(
+            TBlockRange64::WithLength(0, blocks.size()),
+            TGuardedSgList(std::move(sgList)),
+            DefaultBlockSize);
+
+        auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
+        handler->SetBlock(0, zeroBlock, false);
+        handler->SetBlock(1, zeroBlock, true);
+
+        NProto::TReadBlocksLocalResponse response;
+        auto responseSgList = handler->GetLocalResponse(response);
+        UNIT_ASSERT(response.GetAllZeroes());
+        auto guard = responseSgList.Acquire();
+        UNIT_ASSERT(guard);
+        for (const auto& buffer: guard.Get()) {
+            UNIT_ASSERT(
+                buffer.AsStringBuf() == TString(DefaultBlockSize, char(0)));
         }
     }
 
@@ -369,7 +418,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
     Y_UNIT_TEST(ShouldFillUnencryptedBlockMaskInReadBlocksHandler)
     {
-        auto blockContent = GetBlockContent();
+        auto blockContent = GetBlockContent('a');
         TBlockDataRef blockContentRef(blockContent.data(), blockContent.size());
 
         ui64 startIndex = 10;

@@ -207,8 +207,9 @@ until [ $exit_code -eq 0 ] || [ $i -gt 3 ]; do
     echo "$((date)) [$i] config.sh exited (or timed-out) with code $exit_code"
     [ $exit_code -eq 0 ] || find /actions-runner -name *.log -print -exec cat {{}} \; # noqa: W605
 done
-# exit code 0 to skip the error and to boot vm correctly
-./run.sh || exit 0
+# true to skip the error and to boot vm correctly
+./svc.sh install || true
+./svc.sh start || true
 """
 
     cloud_init = {
@@ -646,6 +647,7 @@ async def remove_disk_by_id(sdk: SDK, args: argparse.Namespace, disk_id: int = N
         logger.info("Would delete disk with ID %s", disk_id)
         return
     service = DiskServiceClient(sdk)
+    request = None
     try:
         request = await service.delete(DeleteDiskRequest(id=disk_id))
         await request.wait()
@@ -660,6 +662,7 @@ async def remove_disk_by_id(sdk: SDK, args: argparse.Namespace, disk_id: int = N
 async def remove_vm_by_id(sdk: SDK, instance_id: int = None) -> str:
     instance_name = None
     service = InstanceServiceClient(sdk)
+    request = None
     try:
         instance_name = await service.get(GetInstanceRequest(id=instance_id))
         instance_name = instance_name.metadata.name

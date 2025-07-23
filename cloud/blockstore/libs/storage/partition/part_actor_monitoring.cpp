@@ -417,11 +417,12 @@ void TPartitionActor::HandleHttpInfo(
         "HttpInfo",
         requestInfo->CallContext->RequestId);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] HTTP request: %s",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
-        msg->Query.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s HTTP request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Query.Quote().c_str());
 
     if (State && State->IsLoadStateFinished()) {
         auto methodType = GetHttpMethodType(*msg);
@@ -698,7 +699,12 @@ void TPartitionActor::RejectHttpRequest(
     TRequestInfo& requestInfo,
     TString message)
 {
-    LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION, message);
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
+        message.c_str());
 
     SendHttpResponse(ctx, requestInfo, std::move(message), EAlertLevel::DANGER);
 }

@@ -11,6 +11,8 @@
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -163,6 +165,8 @@ void TBootstrap::InitDbgConfig()
 
     Logging = CreateLoggingService("console", logSettings);
     Log = Logging->CreateLog("BOOT");
+    GrpcLog = Logging->CreateLog("GRPC");
+    GrpcLoggerInit(GrpcLog, Options->EnableGrpcTracing);
 
     if (Options->MonitoringPort) {
         Monitoring = CreateMonitoringService(
@@ -190,8 +194,13 @@ void TBootstrap::InitClientConfig()
     if (Options->SecurePort) {
         clientConfig.SetSecurePort(Options->SecurePort);
     }
+    if (Options->UnixSocketPath) {
+        clientConfig.SetUnixSocketPath(Options->UnixSocketPath);
+    }
 
     ClientConfig = std::make_shared<NClient::TClientConfig>(clientConfig);
+
+    SetGrpcThreadsLimit(ClientConfig->GetGrpcThreadsLimit());
 
     TStringStream ss;
     ClientConfig->Dump(ss);

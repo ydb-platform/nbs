@@ -93,8 +93,9 @@ void TDiskRegistryActor::CompleteAddOutdatedLaggingDevices(
         args.DiskId.c_str(),
         FormatError(args.Error).c_str());
 
-    auto response = std::make_unique<
-        TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>(
+            std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     ReallocateDisks(ctx);

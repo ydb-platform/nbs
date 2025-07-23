@@ -4,6 +4,7 @@ SRCDIR(cloud/storage/core/libs/common)
 
 PEERDIR(
     cloud/storage/core/libs/common
+    library/cpp/testing/gmock_in_unittest
 )
 
 # this test sometimes times out under tsan

@@ -20,7 +20,7 @@
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
-#include <cloud/blockstore/libs/service_local/storage_aio.h>
+#include <cloud/blockstore/libs/service_local/storage_local.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
@@ -466,30 +466,30 @@ bool TBootstrap::InitKikimrService()
             case NProto::DISK_AGENT_BACKEND_AIO: {
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
 
-                auto factory = [events = config.GetMaxAIOContextEvents()] {
-                    return CreateAIOService(events);
-                };
+                auto factory = CreateAIOServiceFactory(
+                    {.MaxEvents = config.GetMaxAIOContextEvents()});
 
                 FileIOServiceProvider =
                     config.GetPathsPerFileIOService()
                         ? CreateFileIOServiceProvider(
                               config.GetPathsPerFileIOService(),
-                              factory)
-                        : CreateSingleFileIOServiceProvider(factory());
+                              std::move(factory))
+                        : CreateSingleFileIOServiceProvider(
+                              factory->CreateFileIOService());
 
-                AioStorageProvider = CreateAioStorageProvider(
+                LocalStorageProvider = CreateLocalStorageProvider(
                     FileIOServiceProvider,
                     NvmeManager,
-                    !config.GetDirectIoFlagDisabled(),
-                    EAioSubmitQueueOpt::Use
-                );
+                    {.DirectIO = !config.GetDirectIoFlagDisabled(),
+                     .UseSubmissionThread =
+                         config.GetUseLocalStorageSubmissionThread()});
 
                 STORAGE_INFO("Aio backend initialized");
                 break;
             }
             case NProto::DISK_AGENT_BACKEND_NULL:
                 NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-                AioStorageProvider = CreateNullStorageProvider();
+                LocalStorageProvider = CreateNullStorageProvider();
                 STORAGE_INFO("Null backend initialized");
                 break;
         }
@@ -540,7 +540,7 @@ bool TBootstrap::InitKikimrService()
     args.AsyncLogger = AsyncLogger;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.AioStorageProvider = AioStorageProvider;
+    args.LocalStorageProvider = LocalStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;
     args.RdmaServer = RdmaServer;
@@ -602,11 +602,11 @@ void TBootstrap::InitLWTrace()
             samplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(TraceLoggerId, query);
-        TraceReaders.push_back(CreateTraceLogger(
+        TraceReaders.push_back(SetupTraceReaderWithLog(
             TraceLoggerId,
             traceLog,
-            "BLOCKSTORE_TRACE"
-        ));
+            "BLOCKSTORE_TRACE",
+            "AllRequests"));
     }
 
     if (auto samplingRate = diagnosticsConfig->GetSlowRequestSamplingRate()) {
@@ -615,11 +615,12 @@ void TBootstrap::InitLWTrace()
             samplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(SlowRequestsFilterId, query);
-        TraceReaders.push_back(CreateSlowRequestsFilter(
+        TraceReaders.push_back(SetupTraceReaderForSlowRequests(
             SlowRequestsFilterId,
             traceLog,
             "BLOCKSTORE_TRACE",
-            diagnosticsConfig->GetRequestThresholds()));
+            diagnosticsConfig->GetRequestThresholds(),
+            "SlowRequests"));
     }
 
     lwManager.RegisterCustomAction(

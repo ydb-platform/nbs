@@ -78,6 +78,10 @@ class NbsLauncher:
         storage_config_patch.AgentRequestTimeout = 5000      # 5 sec
         storage_config_patch.UseShadowDisksForNonreplDiskCheckpoints = True
 
+        # TODO: Actualize blockstore storage config.
+        storage_config_patch.FreshChannelWriteRequestsEnabled = True
+        storage_config_patch.FreshChannelCount = 1
+
         # Needed for tests on blockstore client https://github.com/ydb-platform/nbs/pull/3067
         storage_config_patch.MaxDisksInPlacementGroup = 2
 
@@ -149,6 +153,10 @@ class NbsLauncher:
             compute_config=compute_config,
             kms_config=kms_config,
             features_config_patch=features_config_patch)
+
+    @property
+    def nbs(self):
+        return self.__nbs
 
     def start(self):
         self.__nbs.start()

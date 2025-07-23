@@ -26,6 +26,6 @@ IFileIOServiceProviderPtr CreateSingleFileIOServiceProvider(
 
 IFileIOServiceProviderPtr CreateFileIOServiceProvider(
     ui32 filePathsPerServices,
-    std::function<IFileIOServicePtr()> factory);
+    IFileIOServiceFactoryPtr factory);
 
 }   // namespace NCloud::NBlockStore::NServer

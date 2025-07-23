@@ -104,7 +104,9 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
                              << range << ", diskId: " << DiskId);
     }
 
-    if (Config->GetUseDirectCopyRange()) {
+    if (DirectCopyPolicy == EDirectCopyPolicy::CanUse &&
+        Config->GetUseDirectCopyRange())
+    {
         NCloud::Register<TDirectCopyRangeActor>(
             ctx,
             CreateRequestInfo(
@@ -450,7 +452,9 @@ void TNonreplicatedPartitionMigrationCommonActor::DoRegisterTrafficSource(
 void TNonreplicatedPartitionMigrationCommonActor::OnMigrationNonRetriableError(
     const NActors::TActorContext& ctx)
 {
-    ReportMigrationFailed();
+    ReportMigrationFailed(
+        TStringBuilder() << "Non-retriable migration error occurred; diskId: "
+                         << DiskId);
     MigrationOwner->OnMigrationError(ctx);
     MigrationEnabled = false;
 }

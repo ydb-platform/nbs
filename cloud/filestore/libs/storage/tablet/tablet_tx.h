@@ -82,6 +82,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LoadNodes,                          __VA_ARGS__)                       \
                                                                                \
     xxx(ReadData,                           __VA_ARGS__)                       \
+                                                                               \
+    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 
 #define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
@@ -2375,6 +2377,42 @@ struct TTxIndexTablet
             NextNodeId = 0;
         }
     };
+
+    //
+    // ReadNodeRefs
+    //
+
+   struct TReadNodeRefs: TIndexStateNodeUpdates
+   {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TReadNodeRefsRequest Request;
+        const ui64 NodeId;
+        const TString Cookie;
+        const ui64 Limit;
+        TVector<IIndexTabletDatabase::TNodeRef> Refs;
+        ui64 NextNodeId = 0;
+        TString NextCookie;
+
+        TReadNodeRefs(
+                TRequestInfoPtr requestInfo,
+                const NProtoPrivate::TReadNodeRefsRequest& request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(request)
+            , NodeId(request.GetNodeId())
+            , Cookie(request.GetCookie())
+            , Limit(request.GetLimit())
+            , Refs(Limit)
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
+            Refs.clear();
+            NextNodeId = 0;
+            NextCookie.clear();
+        }
+   };
+
 };
 
 }   // namespace NCloud::NFileStore::NStorage

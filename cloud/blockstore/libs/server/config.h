@@ -123,6 +123,7 @@ public:
     bool DeprecatedGetRdmaClientEnabled() const;
     const NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
     bool GetUseFakeRdmaClient() const;
+    bool GetDisableClientThrottlers() const;
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
     TString GetEndpointStorageDir() const;
     TString GetVhostServerPath() const;
@@ -139,6 +140,7 @@ public:
     NProto::TChecksumFlags GetChecksumFlags() const;
     bool GetVhostDiscardEnabled() const;
     ui32 GetMaxZeroBlocksSubRequestSize() const;
+    NProto::EEncryptZeroPolicy GetEncryptZeroPolicy() const;
     ui64 GetVhostPteFlushByteThreshold() const;
     bool GetAutomaticNbdDeviceManagement() const;
 

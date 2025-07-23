@@ -511,6 +511,26 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     return replicaActorIds;
 }
 
+ui64 TMirrorPartitionActor::RegisterNewReadBlocksRequest(
+    ui64 volumeRequestId,
+    TBlockRange64 blockRange)
+{
+    const auto requestIdentityKey = TakeNextRequestIdentifier();
+    RequestsInProgress.AddReadRequest(
+        requestIdentityKey,
+        blockRange,
+        volumeRequestId);
+
+    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
+        if (request.IsWrite && blockRange.Overlaps(request.BlockRange)) {
+            DirtyReadRequestIds.insert(requestIdentityKey);
+            break;
+        }
+    }
+
+    return requestIdentityKey;
+}
+
 template <typename TMethod>
 void TMirrorPartitionActor::ReadBlocks(
     const typename TMethod::TRequest::TPtr& ev,
@@ -582,6 +602,10 @@ void TMirrorPartitionActor::ReadBlocks(
         return;
     }
 
+    const ui64 requestIdentityKey = RegisterNewReadBlocksRequest(
+        record.GetHeaders().GetVolumeRequestId(),
+        blockRange);
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
@@ -589,12 +613,6 @@ void TMirrorPartitionActor::ReadBlocks(
         DiskId.c_str(),
         DescribeRange(blockRange).c_str(),
         replicaActorIds.size());
-
-    const auto requestIdentityKey = TakeNextRequestIdentifier();
-    RequestsInProgress.AddReadRequest(
-        requestIdentityKey,
-        blockRange,
-        record.GetHeaders().GetVolumeRequestId());
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
@@ -644,12 +662,6 @@ NProto::TError TMirrorPartitionActor::SplitReadBlocks(
         return error;
     }
 
-    const auto requestIdentityKey = TakeNextRequestIdentifier();
-    RequestsInProgress.AddReadRequest(
-        requestIdentityKey,
-        blockRange,
-        record.GetHeaders().GetVolumeRequestId());
-
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
@@ -657,6 +669,10 @@ NProto::TError TMirrorPartitionActor::SplitReadBlocks(
         "with few requests",
         DiskId.c_str(),
         DescribeRange(blockRange).c_str());
+
+    const ui64 requestIdentityKey = RegisterNewReadBlocksRequest(
+        record.GetHeaders().GetVolumeRequestId(),
+        blockRange);
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);

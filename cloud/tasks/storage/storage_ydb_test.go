@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/tasks/common"
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -103,7 +104,7 @@ func TestStorageYDBCreateTask(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	}
 
 	metricsRegistry.GetCounter(
@@ -143,7 +144,7 @@ func TestStorageYDBCreateTaskIgnoresID(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	}
 
 	metricsRegistry.GetCounter(
@@ -183,7 +184,7 @@ func TestStorageYDBCreateTwoTasks(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	}
 
 	metricsRegistry.GetCounter(
@@ -235,7 +236,7 @@ func TestStorageYDBCreateTwoTasksWithDifferentIdempotencyKeys(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	}
 
 	metricsRegistry.GetCounter(
@@ -288,7 +289,7 @@ func TestStorageYDBCreateTwoTasksWithSameIdempotencyKey(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	}
 
 	metricsRegistry.GetCounter(
@@ -335,7 +336,7 @@ func TestStorageYDBFailCreationOfTwoTasksWithSameIdempotencyKeyButDifferentTypes
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	}
 
 	metricsRegistry.GetCounter(
@@ -394,8 +395,9 @@ func TestStorageYDBGetTask(t *testing.T) {
 		GenerationID:    42,
 		Status:          TaskStatusReadyToRun,
 		State:           []byte{1, 2, 3},
-		Dependencies:    NewStringSet(),
+		Dependencies:    common.NewStringSet(),
 		ZoneID:          "zone",
+		InflightDuration: 10 * time.Minute,
 		WaitingDuration: 10 * time.Minute,
 	})
 	require.NoError(t, err)
@@ -411,9 +413,10 @@ func TestStorageYDBGetTask(t *testing.T) {
 	require.EqualValues(t, 42, taskState.GenerationID)
 	require.EqualValues(t, TaskStatusReadyToRun, taskState.Status)
 	require.EqualValues(t, []byte{1, 2, 3}, taskState.State)
-	require.EqualValues(t, NewStringSet(), taskState.Dependencies)
+	require.EqualValues(t, common.NewStringSet(), taskState.Dependencies)
 	require.WithinDuration(t, time.Time(createdAt), time.Time(taskState.ChangedStateAt), time.Microsecond)
 	require.EqualValues(t, "zone", taskState.ZoneID)
+	require.EqualValues(t, 10*time.Minute, taskState.InflightDuration)
 	require.EqualValues(t, 10*time.Minute, taskState.WaitingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
@@ -456,7 +459,7 @@ func TestStorageYDBGetTaskWithDependencies(t *testing.T) {
 		GenerationID:   42,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -470,22 +473,23 @@ func TestStorageYDBGetTaskWithDependencies(t *testing.T) {
 		GenerationID:   42,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey:  getIdempotencyKeyForTest(t),
-		TaskType:        "task1",
-		Description:     "Some task",
-		CreatedAt:       createdAt,
-		CreatedBy:       "some_user",
-		ModifiedAt:      modifiedAt,
-		GenerationID:    42,
-		Status:          TaskStatusReadyToRun,
-		State:           []byte{1, 2, 3},
-		Dependencies:    NewStringSet(depID1, depID2),
-		WaitingDuration: 10 * time.Minute,
+		IdempotencyKey:   getIdempotencyKeyForTest(t),
+		TaskType:         "task1",
+		Description:      "Some task",
+		CreatedAt:        createdAt,
+		CreatedBy:        "some_user",
+		ModifiedAt:       modifiedAt,
+		GenerationID:     42,
+		Status:           TaskStatusReadyToRun,
+		State:            []byte{1, 2, 3},
+		Dependencies:     common.NewStringSet(depID1, depID2),
+    InflightDuration: 10 * time.Minute,
+		WaitingDuration:  10 * time.Minute,
 	})
 	require.NoError(t, err)
 
@@ -500,8 +504,9 @@ func TestStorageYDBGetTaskWithDependencies(t *testing.T) {
 	require.EqualValues(t, 42, taskState.GenerationID)
 	require.EqualValues(t, TaskStatusWaitingToRun, taskState.Status)
 	require.EqualValues(t, []byte{1, 2, 3}, taskState.State)
-	require.EqualValues(t, NewStringSet(depID1, depID2), taskState.Dependencies)
+	require.EqualValues(t, common.NewStringSet(depID1, depID2), taskState.Dependencies)
 	require.WithinDuration(t, time.Time(createdAt), time.Time(taskState.ChangedStateAt), time.Microsecond)
+	require.EqualValues(t, 10*time.Minute, taskState.InflightDuration)
 	require.EqualValues(t, 10*time.Minute, taskState.WaitingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
@@ -559,7 +564,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -573,7 +578,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -587,7 +592,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -601,7 +606,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -615,7 +620,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusFinished,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -629,7 +634,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -643,7 +648,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -657,7 +662,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -671,7 +676,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -685,7 +690,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelled,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -699,7 +704,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -713,7 +718,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -727,7 +732,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -741,7 +746,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -799,7 +804,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -813,7 +818,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -827,7 +832,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -841,7 +846,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -855,7 +860,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusFinished,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -869,7 +874,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -883,7 +888,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -897,7 +902,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -911,7 +916,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -925,7 +930,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelled,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -939,7 +944,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -953,7 +958,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -967,7 +972,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -981,7 +986,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -1035,7 +1040,7 @@ func (f hangingTaskTestFixture) createTask(
 		GenerationID:   10,
 		Status:         taskStatus,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	}
 	if estimatedDuration > 0 {
 		state.EstimatedTime = createdAt.Add(estimatedDuration)
@@ -1240,7 +1245,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1254,7 +1259,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1268,7 +1273,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1282,7 +1287,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1296,7 +1301,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusFinished,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1310,7 +1315,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1324,7 +1329,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1338,7 +1343,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1352,7 +1357,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1366,7 +1371,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelled,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1418,7 +1423,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1432,7 +1437,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1446,7 +1451,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1460,7 +1465,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1474,7 +1479,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusFinished,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1488,7 +1493,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1502,7 +1507,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1516,7 +1521,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1530,7 +1535,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1544,7 +1549,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelled,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1601,7 +1606,7 @@ func TestStorageYDBListFailedTasks(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{0},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1615,7 +1620,7 @@ func TestStorageYDBListFailedTasks(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{0},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	_, err = storage.UpdateTask(ctx, TaskState{
@@ -1645,7 +1650,7 @@ func TestStorageYDBListFailedTasks(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{0},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	_, err = storage.UpdateTask(ctx, TaskState{
@@ -1714,7 +1719,7 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 			GenerationID:   generationID,
 			Status:         TaskStatusFinished,
 			State:          []byte{0},
-			Dependencies:   NewStringSet(),
+			Dependencies:   common.NewStringSet(),
 			EndedAt:        created.Add(time.Duration(durationMinutes) * time.Minute),
 			EstimatedTime:  created.Add(time.Duration(estimated) * time.Minute),
 		}
@@ -1803,7 +1808,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1817,7 +1822,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1831,7 +1836,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1845,7 +1850,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 	})
 	require.NoError(t, err)
@@ -1860,7 +1865,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusFinished,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1874,7 +1879,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1888,7 +1893,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1902,7 +1907,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1916,7 +1921,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1930,7 +1935,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelled,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -1944,7 +1949,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -1958,7 +1963,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -1972,7 +1977,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -1986,7 +1991,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -2044,7 +2049,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2058,7 +2063,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2072,7 +2077,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2086,7 +2091,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2100,7 +2105,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusFinished,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2114,7 +2119,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2128,7 +2133,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2142,7 +2147,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2156,7 +2161,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 	})
 	require.NoError(t, err)
@@ -2171,7 +2176,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelled,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2185,7 +2190,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -2199,7 +2204,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -2213,7 +2218,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -2227,7 +2232,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToCancel),
+		Dependencies:   common.NewStringSet(taskIDFinished, taskIDReadyToCancel),
 	})
 	require.NoError(t, err)
 
@@ -2284,7 +2289,7 @@ func TestStorageYDBListTasksReadyToRunWithWhitelist(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2298,7 +2303,7 @@ func TestStorageYDBListTasksReadyToRunWithWhitelist(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2348,7 +2353,7 @@ func TestStorageYDBListTasksReadyToCancelWithWhitelist(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2362,7 +2367,7 @@ func TestStorageYDBListTasksReadyToCancelWithWhitelist(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -2412,7 +2417,7 @@ func TestStorageYDBListTasksStallingWhileRunningWithWhitelist(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 	})
 	require.NoError(t, err)
@@ -2427,7 +2432,7 @@ func TestStorageYDBListTasksStallingWhileRunningWithWhitelist(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 	})
 	require.NoError(t, err)
@@ -2479,7 +2484,7 @@ func TestStorageYDBListTasksStallingWhileCancellingWithWhitelist(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 	})
 	require.NoError(t, err)
@@ -2494,7 +2499,7 @@ func TestStorageYDBListTasksStallingWhileCancellingWithWhitelist(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 	})
 	require.NoError(t, err)
@@ -2548,7 +2553,7 @@ func TestStorageYDBListTasksReadyToRunInCertainZone(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		ZoneID:         "zone0",
 	})
 	require.NoError(t, err)
@@ -2563,7 +2568,7 @@ func TestStorageYDBListTasksReadyToRunInCertainZone(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		ZoneID:         "zone1",
 	})
 	require.NoError(t, err)
@@ -2612,7 +2617,7 @@ func TestStorageYDBListTasksReadyToCancelInCertainZone(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		ZoneID:         "zone0",
 	})
 	require.NoError(t, err)
@@ -2627,7 +2632,7 @@ func TestStorageYDBListTasksReadyToCancelInCertainZone(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		ZoneID:         "zone1",
 	})
 	require.NoError(t, err)
@@ -2676,7 +2681,7 @@ func TestStorageYDBListTasksStallingWhileRunningInCertainZone(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 		ZoneID:         "zone0",
 	})
@@ -2692,7 +2697,7 @@ func TestStorageYDBListTasksStallingWhileRunningInCertainZone(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 		ZoneID:         "zone1",
 	})
@@ -2747,7 +2752,7 @@ func TestStorageYDBListTasksStallingWhileCancellingInCertainZone(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 		ZoneID:         "zone0",
 	})
@@ -2763,7 +2768,7 @@ func TestStorageYDBListTasksStallingWhileCancellingInCertainZone(t *testing.T) {
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 		ZoneID:         "zone1",
 	})
@@ -2820,7 +2825,7 @@ func TestStorageYDBLockTaskToRun(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastRunner:     "runner_42",
 	})
 	require.NoError(t, err)
@@ -2873,7 +2878,7 @@ func TestStorageYDBLockTaskToRunWrongGeneration(t *testing.T) {
 		GenerationID:   1,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -2919,7 +2924,7 @@ func TestStorageYDBLockTaskToRunWrongState(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -2966,7 +2971,7 @@ func TestStorageYDBLockTaskToCancel(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastRunner:     "runner_42",
 	})
 	require.NoError(t, err)
@@ -3019,7 +3024,7 @@ func TestStorageYDBLockTaskToCancelWrongGeneration(t *testing.T) {
 		GenerationID:   1,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3065,7 +3070,7 @@ func TestStorageYDBLockTaskToCancelWrongState(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3112,7 +3117,7 @@ func TestStorageYDBMarkForCancellation(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastRunner:     "runner_42",
 	})
 	require.NoError(t, err)
@@ -3165,7 +3170,7 @@ func TestStorageYDBMarkForCancellationIfAlreadyCancelling(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3216,7 +3221,7 @@ func TestStorageYDBMarkForCancellationIfAlreadyFinished(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusFinished,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3266,7 +3271,7 @@ func TestStorageYDBMarkForCancellationIfAlreadyCancelled(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusCancelled,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3366,7 +3371,7 @@ func TestStorageYDBUpdateTask(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{0},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -3380,7 +3385,7 @@ func TestStorageYDBUpdateTask(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -3394,7 +3399,7 @@ func TestStorageYDBUpdateTask(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusFinished,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3412,7 +3417,7 @@ func TestStorageYDBUpdateTask(t *testing.T) {
 		ErrorCode:      grpc_codes.InvalidArgument,
 		ErrorMessage:   "invalid argument",
 		State:          []byte{1},
-		Dependencies:   NewStringSet(taskIDDependent1, taskIDDependent2),
+		Dependencies:   common.NewStringSet(taskIDDependent1, taskIDDependent2),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3443,7 +3448,7 @@ func TestStorageYDBUpdateTask(t *testing.T) {
 		ErrorCode:      grpc_codes.InvalidArgument,
 		ErrorMessage:   "invalid argument",
 		State:          []byte{1},
-		Dependencies:   NewStringSet(taskIDDependent1, taskIDDependent2),
+		Dependencies:   common.NewStringSet(taskIDDependent1, taskIDDependent2),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3495,7 +3500,7 @@ func TestStorageYDBUpdateTaskStatus(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{0},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3511,7 +3516,7 @@ func TestStorageYDBUpdateTaskStatus(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{1},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastRunner:     "runner_42",
 	})
 	require.NoError(t, err)
@@ -3539,7 +3544,7 @@ func TestStorageYDBUpdateTaskStatus(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusRunning,
 		State:          []byte{2},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3583,7 +3588,7 @@ func TestStorageYDBUpdateTaskWrongGeneration(t *testing.T) {
 		GenerationID:   2,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3599,7 +3604,7 @@ func TestStorageYDBUpdateTaskWrongGeneration(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusRunning,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.Truef(t, errors.Is(err, errors.NewWrongGenerationError()), "Expected WrongGenerationError got %v", err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3643,7 +3648,7 @@ func TestStorageYDBLockInParallel(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastRunner:     "runner_42",
 	})
 	require.NoError(t, err)
@@ -3708,7 +3713,7 @@ func TestStorageYDBMarkForCancellationInParallel(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastRunner:     "runner_42",
 	})
 	require.NoError(t, err)
@@ -3765,7 +3770,7 @@ func TestStorageYDBLockAlreadyCancellingTask(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
@@ -3817,7 +3822,7 @@ func TestStorageYDBCheckStallingTimeout(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusCancelling,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastHost:       "other_host",
 	})
 	require.NoError(t, err)
@@ -4477,7 +4482,7 @@ func TestStorageYDBClearEndedTasks(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{0},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -4491,7 +4496,7 @@ func TestStorageYDBClearEndedTasks(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	}
 	taskID2, err := storage.CreateTask(ctx, task)
 	require.NoError(t, err)
@@ -4511,7 +4516,7 @@ func TestStorageYDBClearEndedTasks(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	}
 
 	taskID3, err := storage.CreateTask(ctx, task)
@@ -4535,7 +4540,7 @@ func TestStorageYDBClearEndedTasks(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	}
 
 	taskID4, err := storage.CreateTask(ctx, task)
@@ -4598,7 +4603,7 @@ func TestStorageYDBPauseResumeTask(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 		LastRunner:     "runner_42",
 	})
 	require.NoError(t, err)
@@ -4795,7 +4800,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 		GenerationID:   42,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -4809,7 +4814,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 		GenerationID:   42,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 
@@ -4823,7 +4828,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 		GenerationID:    42,
 		Status:          TaskStatusReadyToRun,
 		State:           []byte{1, 2, 3},
-		Dependencies:    NewStringSet(depID1, depID2),
+		Dependencies:    common.NewStringSet(depID1, depID2),
 		WaitingDuration: initialWaitingDuration,
 	})
 	require.NoError(t, err)

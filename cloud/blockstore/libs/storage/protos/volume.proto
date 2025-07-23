@@ -6,12 +6,22 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/libs/storage/p
 
 import "cloud/blockstore/config/storage.proto";
 
+import "cloud/blockstore/libs/storage/protos/disk.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/volume.proto";
 
 import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/media.proto";
 import "cloud/storage/core/protos/trace.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+// Follower volume link update action
+
+enum ELinkAction
+{
+    LINK_ACTION_CREATE = 0;
+    LINK_ACTION_DESTROY = 1;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Volume client info.
@@ -322,6 +332,9 @@ message TReallocateDiskResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
+
+    // Outdated lagging devices of the volume.
+    repeated TLaggingDevice OutdatedLaggingDevices = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -726,6 +739,12 @@ message TLinkLeaderVolumeToFollowerRequest
 
     // Follower volume.
     string FollowerDiskId = 3;
+
+    // Leader volume shard Id.
+    string LeaderShardId = 4;
+
+    // Follower volume shard Id.
+    string FollowerShardId = 5;
 }
 
 message TLinkLeaderVolumeToFollowerResponse
@@ -740,6 +759,40 @@ message TLinkLeaderVolumeToFollowerResponse
     NCloud.NProto.TTraceInfo Trace = 3;
 }
 
+message TUpdateLinkOnFollowerRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Follower volume.
+    string DiskId = 2;
+
+    // Uuid of link.
+    string LinkUUID = 3;
+
+    // Reason of notification.
+    ELinkAction Action = 4;
+
+    // Leader volume.
+    string LeaderDiskId = 5;
+
+    // Leader volume shard.
+    string LeaderShardId = 6;
+
+    // Follower volume shard.
+    string FollowerShardId = 7;
+}
+
+message TUpdateLinkOnFollowerResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // Unlink volume request/response.
 
@@ -753,6 +806,12 @@ message TUnlinkLeaderVolumeFromFollowerRequest
 
     // Follower volume.
     string FollowerDiskId = 3;
+
+    // Leader volume shard Id.
+    string LeaderShardId = 4;
+
+    // Follower volume shard Id.
+    string FollowerShardId = 5;
 }
 
 message TUnlinkLeaderVolumeFromFollowerResponse

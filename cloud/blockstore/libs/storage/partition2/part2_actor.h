@@ -23,6 +23,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 
@@ -91,7 +92,10 @@ class TPartitionActor final
         {}
     };
 
+    static constexpr ui64 BootWakeupEventTag = 1;
+
 private:
+    const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -102,6 +106,8 @@ private:
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
     const ui64 VolumeTabletId;
+
+    TLogTitle LogTitle;
 
     std::unique_ptr<TPartitionState> State;
 
@@ -571,6 +577,10 @@ private:
     void FinalizeGetChangedBlocks(
         const NActors::TActorContext& ctx,
         TEvPartitionPrivate::TOperationCompleted operation);
+
+    void HandleWakeupOnBoot(
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);

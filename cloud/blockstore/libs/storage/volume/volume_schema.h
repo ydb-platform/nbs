@@ -284,7 +284,8 @@ struct TVolumeSchema
         {
         };
 
-        struct ScaleUnitId: public Column<3, NKikimr::NScheme::NTypeIds::String>
+        struct FollowerShardId
+            : public Column<3, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
@@ -297,13 +298,92 @@ struct TVolumeSchema
         {
         };
 
+        struct CreatedAt: public Column<6, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct LeaderDiskId
+            : public Column<7, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct LeaderShardId
+            : public Column<8, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct FollowerMediaKind
+            : public Column<9, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct ErrorMessage
+            : public Column<10, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
         using TKey = TableKey<Uuid>;
         using TColumns = TableColumns<
             Uuid,
             FollowerDiskId,
-            ScaleUnitId,
+            FollowerShardId,
             State,
-            MigratedBytes>;
+            MigratedBytes,
+            CreatedAt,
+            LeaderDiskId,
+            LeaderShardId,
+            FollowerMediaKind,
+            ErrorMessage>;
+    };
+
+    struct LeaderDisks: public TTableSchema<12>
+    {
+        struct Uuid: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct CreatedAt: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+        struct LeaderDiskId
+            : public Column<3, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct LeaderShardId
+            : public Column<4, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct FollowerDiskId
+            : public Column<5, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct FollowerShardId
+            : public Column<6, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct State: public Column<7, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct ErrorMessage
+            : public Column<8, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        using TKey = TableKey<Uuid>;
+        using TColumns = TableColumns<
+            Uuid,
+            CreatedAt,
+            LeaderDiskId,
+            LeaderShardId,
+            FollowerDiskId,
+            FollowerShardId,
+            State,
+            ErrorMessage>;
     };
 
     using TTables = SchemaTables<
@@ -317,8 +397,8 @@ struct TVolumeSchema
         ThrottlerState,
         MetaHistory,
         VolumeParams,
-        FollowerDisks
-    >;
+        FollowerDisks,
+        LeaderDisks>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -112,11 +112,12 @@ struct TEnv
         auto monitoring = CreateMonitoringServiceStub();
         auto logging = CreateLoggingService(LogBackend);
         TVector<ITraceReaderPtr> readers{
-            CreateSlowRequestsFilter(
+            SetupTraceReaderForSlowRequests(
                 "filter",
                 logging,
                 "STORAGE_TRACE",
-                requestThresholds
+                requestThresholds,
+                "SlowRequests"
         )};
         return NCloud::CreateTraceProcessorMon(
             monitoring,

@@ -100,6 +100,17 @@ private:
         ui32 shardNo);
 
     template <typename TMethod>
+    TSessionInfo* GetAndValidateSession(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev);
+
+    template <typename TMethod>
+    void ForwardXAttrRequest(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev,
+        const TSessionInfo*);
+
+    template <typename TMethod>
     void CompleteRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TResponse::TPtr& ev);
@@ -230,6 +241,10 @@ private:
         TString input);
 
     NActors::IActorPtr CreateGetFileSystemTopologyActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateReadNodeRefsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

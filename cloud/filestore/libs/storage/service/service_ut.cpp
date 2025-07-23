@@ -3545,7 +3545,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     0,
                     data);
                 UNIT_ASSERT_VALUES_EQUAL_C(
-                    E_FS_INVAL,
+                    E_FS_NOENT,
                     writeResponse->GetError().GetCode(),
                     writeResponse->GetErrorReason());
 
@@ -3557,7 +3557,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     0,
                     data.size());
                 UNIT_ASSERT_VALUES_EQUAL_C(
-                    E_FS_INVAL,
+                    E_FS_NOENT,
                     readResponse->GetError().GetCode(),
                     readResponse->GetErrorReason());
             }

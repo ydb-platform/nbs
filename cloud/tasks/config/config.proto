@@ -72,4 +72,7 @@ message TasksConfig {
     optional uint64 TasksToListLimit = 34 [default = 10000];
 
     optional string AvailabilityMonitoringSuccessRateReportingPeriod  = 35 [default = "15s"];
+
+    // Overrides MaxRetriableErrorCount.
+    map<string, uint64> MaxRetriableErrorCountByTaskType = 36;
 }

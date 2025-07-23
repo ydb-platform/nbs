@@ -313,6 +313,29 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
         DoShouldCopyFromIOVectorToSgList(5, big, 10, small, false, true);
         DoShouldCopyFromIOVectorToSgList(5, big, 10, small, true, true);
     }
+
+    Y_UNIT_TEST(TestIsAllZeroes)
+    {
+        TString zeroBufferData(8, 0);
+        TString nonZeroBufferData(8, 'a');
+
+        auto zeroBuffer =
+            TBlockDataRef(zeroBufferData.data(), zeroBufferData.size());
+        auto emptyBuffer = TBlockDataRef::CreateZeroBlock(8);
+        auto nonZeroBuffer =
+            TBlockDataRef(nonZeroBufferData.data(), nonZeroBufferData.size());
+
+        UNIT_ASSERT(IsAllZeroes(TSgList{}));
+        UNIT_ASSERT(IsAllZeroes(TSgList{emptyBuffer}));
+        UNIT_ASSERT(IsAllZeroes(TSgList{zeroBuffer}));
+        UNIT_ASSERT(IsAllZeroes(TSgList{emptyBuffer, zeroBuffer}));
+
+        UNIT_ASSERT(!IsAllZeroes(TSgList{nonZeroBuffer}));
+        UNIT_ASSERT(!IsAllZeroes(TSgList{emptyBuffer, nonZeroBuffer}));
+        UNIT_ASSERT(!IsAllZeroes(TSgList{zeroBuffer, nonZeroBuffer}));
+        UNIT_ASSERT(
+            !IsAllZeroes(TSgList{zeroBuffer, emptyBuffer, nonZeroBuffer}));
+    }
 }
 
 }   // namespace NCloud::NBlockStore

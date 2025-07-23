@@ -165,6 +165,7 @@ func (s *TaskState) structValue() persistence.Value {
 		persistence.StructFieldValue("last_runner", persistence.UTF8Value(s.LastRunner)),
 		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.ZoneID)),
 		persistence.StructFieldValue("estimated_time", persistence.TimestampValue(s.EstimatedTime)),
+		persistence.StructFieldValue("inflight_duration", persistence.IntervalValue(s.InflightDuration)),
 		persistence.StructFieldValue("waiting_duration", persistence.IntervalValue(s.WaitingDuration)),
 		persistence.StructFieldValue("dependants", persistence.BytesValue(common.MarshalStrings(s.dependants.List()))),
 		persistence.StructFieldValue("panic_count", persistence.Uint64Value(s.PanicCount)),
@@ -200,6 +201,7 @@ func taskStateStructTypeString() string {
 		last_runner: Utf8,
 		zone_id: Utf8,
 		estimated_time: Timestamp,
+		inflight_duration: Interval,
 		waiting_duration: Interval,
 		dependants: String,
 		panic_count: Uint64>`
@@ -235,6 +237,7 @@ func taskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("cloud_id", persistence.Optional(persistence.TypeUTF8)),  // deprecated
 		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)), // deprecated
 		persistence.WithColumn("estimated_time", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("inflight_duration", persistence.Optional(persistence.TypeInterval)),
 		persistence.WithColumn("waiting_duration", persistence.Optional(persistence.TypeInterval)),
 		persistence.WithColumn("dependants", persistence.Optional(persistence.TypeBytes)),
 		persistence.WithColumn("panic_count", persistence.Optional(persistence.TypeUint64)),
@@ -354,6 +357,7 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 		persistence.OptionalWithDefault("last_runner", &state.LastRunner),
 		persistence.OptionalWithDefault("zone_id", &state.ZoneID),
 		persistence.OptionalWithDefault("estimated_time", &state.EstimatedTime),
+		persistence.OptionalWithDefault("inflight_duration", &state.InflightDuration),
 		persistence.OptionalWithDefault("waiting_duration", &state.WaitingDuration),
 		persistence.OptionalWithDefault("dependants", &dependants),
 		persistence.OptionalWithDefault("panic_count", &state.PanicCount),
@@ -382,14 +386,14 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 		return TaskState{}, errors.NewNonRetriableError(err)
 	}
 
-	state.Dependencies = NewStringSet(depsValues...)
+	state.Dependencies = common.NewStringSet(depsValues...)
 
 	dependantValues, err := common.UnmarshalStrings(dependants)
 	if err != nil {
 		return TaskState{}, errors.NewNonRetriableError(err)
 	}
 
-	state.dependants = NewStringSet(dependantValues...)
+	state.dependants = common.NewStringSet(dependantValues...)
 
 	eventsValues, err := common.UnmarshalInts(events)
 	if err != nil {

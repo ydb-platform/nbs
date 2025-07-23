@@ -111,6 +111,25 @@ struct TTestProvider
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestFactory final
+    : public IFileIOServiceFactory
+{
+private:
+    TTestProvider& Provider;
+
+public:
+    explicit TTestFactory(TTestProvider& provider)
+        : Provider(provider)
+    {}
+
+    IFileIOServicePtr CreateFileIOService() final
+    {
+        return Provider.CreateFileIOService({});
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -153,7 +172,7 @@ Y_UNIT_TEST_SUITE(TFileIOServiceProviderTest)
 
         auto provider = CreateFileIOServiceProvider(
             pathsToServices,
-            [&] { return upstream.CreateFileIOService({}); });
+            std::make_shared<TTestFactory>(upstream));
 
         provider->Start();
 
@@ -208,7 +227,7 @@ Y_UNIT_TEST_SUITE(TFileIOServiceProviderTest)
 
         auto provider = CreateFileIOServiceProvider(
             pathsToServices,
-            [&] { return upstream.CreateFileIOService({}); });
+            std::make_shared<TTestFactory>(upstream));
 
         provider->Start();
 
@@ -262,7 +281,7 @@ Y_UNIT_TEST_SUITE(TFileIOServiceProviderTest)
 
         auto provider = CreateFileIOServiceProvider(
             pathsToServices,
-            [&] { return upstream.CreateFileIOService({}); });
+            std::make_shared<TTestFactory>(upstream));
 
         provider->Start();
 

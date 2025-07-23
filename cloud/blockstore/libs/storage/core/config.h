@@ -450,6 +450,7 @@ public:
     ui32 GetExpectedDiskAgentSize() const;
     ui32 GetMaxNonReplicatedDeviceMigrationsInProgress() const;
     ui32 GetMaxNonReplicatedDeviceMigrationPercentageInProgress() const;
+    ui32 GetMaxNonReplicatedDeviceMigrationBatchSize() const;
 
     bool GetMirroredMigrationStartAllowed() const;
 
@@ -521,6 +522,7 @@ public:
     bool GetHiveProxyFallbackMode() const;
     TString GetPathDescriptionBackupFilePath() const;
     bool GetSSProxyFallbackMode() const;
+    bool GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode() const;
 
     ui32 GetRdmaTargetPort() const;
     bool GetUseNonreplicatedRdmaActor() const;
@@ -692,6 +694,10 @@ public:
 
     [[nodiscard]] ui32 GetMaxCompactionRangesLoadingPerTx() const;
     [[nodiscard]] ui32 GetMaxOutOfOrderCompactionMapChunksInflight() const;
+
+    [[nodiscard]] TDuration GetPartitionBootTimeout() const;
+
+    [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
 };
 
 ui64 GetAllocationUnit(

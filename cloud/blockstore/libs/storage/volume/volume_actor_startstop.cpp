@@ -81,11 +81,13 @@ void TVolumeActor::ScheduleRetryStartPartition(
 
     const auto timeout = deadline - now;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Waiting before retrying start of partition %lu (timeout: %s)",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Waiting before retrying start of partition %lu (timeout: %s)",
+        LogTitle.GetWithTime().c_str(),
         partition.TabletId,
-        ToString(timeout).data());
+        FormatDuration(timeout).c_str());
 
     partition.RetryCookie.Reset(ISchedulerCookie::Make3Way());
     ctx.Schedule(
@@ -150,6 +152,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     const auto& volumeParams = State->GetVolumeParams();
 
     State->SetBlockCountToMigrate(std::nullopt);
+    ReportOutdatedLaggingDevicesToDR(ctx);
 
     auto maxTimedOutDeviceStateDuration =
         volumeParams.GetMaxTimedOutDeviceStateDurationOverride(ctx.Now());
@@ -191,7 +194,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
             State->GetMeta().GetIOMode(),
             State->GetMeta().GetMuteIOErrors(),
             State->GetFilteredFreshDevices(),
-            State->GetLaggingDevices(),
+            State->GetOutdatedDeviceIds(),
             LaggingDevicesAreAllowed(),
             maxTimedOutDeviceStateDuration,
             maxTimedOutDeviceStateDurationOverridden,
@@ -282,7 +285,6 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     State->SetDiskRegistryBasedPartitionActor(
         WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
         nonreplicatedConfig);
-    ReportOutdatedLaggingDevicesToDR(ctx);
 }
 
 TActorsStack TVolumeActor::WrapNonreplActorIfNeeded(
@@ -608,7 +610,7 @@ void TVolumeActor::HandleBootExternalResponse(
             "%s BootExternalRequest for part %lu failed: %s",
             LogTitle.GetWithTime().c_str(),
             partTabletId,
-            FormatError(error).data());
+            FormatError(error).c_str());
 
         part->ExternalBootTimeout = Min(
             part->ExternalBootTimeout + Config->GetExternalBootRequestTimeoutIncrement(),
@@ -632,12 +634,13 @@ void TVolumeActor::HandleBootExternalResponse(
     if (msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition &&
         msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition2) {
         // Partitions use specific tablet factory
-        LOG_ERROR_S(
+        LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            LogTitle.GetWithTime()
-                << " Unexpected part " << partTabletId << " with type "
-                << msg->StorageInfo->TabletType);
+            "%s Unexpected part %lu with type %s",
+            LogTitle.GetWithTime().c_str(),
+            partTabletId,
+            ToString(msg->StorageInfo->TabletType).c_str());
         part->SetFailed(
             TStringBuilder()
                 << "Unexpected tablet type: "
@@ -758,11 +761,15 @@ void TVolumeActor::HandleTabletStatus(
     Y_ABORT_UNLESS(partition, "Missing partition state for %lu", msg->TabletId);
 
     if (partition->Bootstrapper != ev->Sender) {
-        LOG_INFO_S(ctx, TBlockStoreComponents::VOLUME,
-            "[" << TabletID() << "]" <<
-            " Ignored status message " << static_cast<ui32>(msg->Status) <<
-            " from outdated bootstrapper " << ToString(ev->Sender) <<
-            " for partition " << msg->TabletId);
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Ignored status message %lu from outdated bootstrapper %s for "
+            "partition %lu",
+            LogTitle.GetWithTime().c_str(),
+            static_cast<ui32>(msg->Status),
+            ToString(ev->Sender).c_str(),
+            msg->TabletId);
         // CompleteUpdateConfig calls StopPartitions, and then it
         // calls StartPartitions with a completely new state.
         // Ignore any signals from outdated bootstrappers.
@@ -774,9 +781,7 @@ void TVolumeActor::HandleTabletStatus(
 
     switch (msg->Status) {
         case TEvBootstrapper::STARTED: {
-            TActorsStack actors;
-            actors.Push(msg->TabletUser);
-            partition->SetStarted(std::move(actors));
+            partition->SetStarted(TActorsStack(msg->TabletUser));
             NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
                 ctx,
                 msg->TabletUser,

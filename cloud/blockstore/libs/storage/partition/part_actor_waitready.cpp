@@ -13,9 +13,11 @@ void TPartitionActor::HandleWaitReady(
     const TActorContext& ctx)
 {
     if (CurrentState != STATE_WORK) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] WaitReady request delayed until partition is ready",
-            TabletID());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s WaitReady request delayed until partition is ready",
+            LogTitle.GetWithTime().c_str());
 
         auto requestInfo = CreateRequestInfo<TEvPartition::TWaitReadyMethod>(
             ev->Sender,
@@ -26,10 +28,11 @@ void TPartitionActor::HandleWaitReady(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Received WaitReady request",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Received WaitReady request",
+        LogTitle.GetWithTime().c_str());
 
     auto response = std::make_unique<TEvPartition::TEvWaitReadyResponse>();
 

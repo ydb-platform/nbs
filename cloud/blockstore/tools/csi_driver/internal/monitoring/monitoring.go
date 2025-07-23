@@ -9,6 +9,9 @@ import (
 	"github.com/siddontang/go-log/log"
 	"github.com/ydb-platform/nbs/library/go/core/metrics"
 	"github.com/ydb-platform/nbs/library/go/core/metrics/prometheus"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -18,6 +21,24 @@ func requestDurationBuckets() metrics.DurationBuckets {
 		1*time.Millisecond, 10*time.Millisecond, 100*time.Millisecond,
 		1*time.Second, 10*time.Second, 1*time.Minute, 10*time.Minute, 1*time.Hour,
 	)
+}
+
+func isRetriableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	status, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	switch status.Code() {
+	case codes.Aborted, codes.AlreadyExists, codes.Unavailable:
+		return true
+	}
+
+	return false
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,7 +104,11 @@ func (m *Monitoring) ReportRequestCompleted(
 	if err == nil {
 		subregistry.Counter("Success").Inc()
 	} else {
-		subregistry.Counter("Errors").Inc()
+		if isRetriableError(err) {
+			subregistry.Counter("RetriableErrors").Inc()
+		} else {
+			subregistry.Counter("Errors").Inc()
+		}
 	}
 	subregistry.IntGauge("InflightCount").Add(-1)
 }

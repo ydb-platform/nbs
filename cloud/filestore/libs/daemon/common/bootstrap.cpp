@@ -355,7 +355,11 @@ void TBootstrapCommon::InitLWTrace(
             samplingRate,
             Configs->DiagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(TraceLoggerId, query);
-        traceReaders.push_back(CreateTraceLogger(TraceLoggerId, traceLog, "NFS_TRACE"));
+        traceReaders.push_back(SetupTraceReaderWithLog(
+            TraceLoggerId,
+            traceLog,
+            "NFS_TRACE",
+            "AllRequests"));
     }
 
     auto slowRequestSamplingRate =
@@ -367,11 +371,12 @@ void TBootstrapCommon::InitLWTrace(
             Configs->DiagnosticsConfig->GetLWTraceShuttleCount());
 
         lwManager.New(SlowRequestsFilterId, query);
-        traceReaders.push_back(CreateSlowRequestsFilter(
+        traceReaders.push_back(SetupTraceReaderForSlowRequests(
             SlowRequestsFilterId,
             traceLog,
             "NFS_TRACE",
-            Configs->DiagnosticsConfig->GetRequestThresholds()));
+            Configs->DiagnosticsConfig->GetRequestThresholds(),
+            "SlowRequests"));
     }
 
     if (traceReaders.size()) {

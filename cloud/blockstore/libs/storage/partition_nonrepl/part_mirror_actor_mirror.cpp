@@ -30,13 +30,9 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     if (!completeRequest) {
         return;
     }
+
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    auto [volumeRequestId, _, range] = completeRequest.value();
-    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.BlockRange)) {
-            DirtyReadRequestIds.insert(id);
-        }
-    }
+    auto [volumeRequestId, _, __] = completeRequest.value();
 
     if (ResyncActorId) {
         auto completion = std::make_unique<
@@ -93,7 +89,6 @@ void TMirrorPartitionActor::MirrorRequest(
         ev->Cookie,
         msg->CallContext);
 
-
     const auto range = BuildRequestBlockRange(
         *ev->Get(),
         State.GetBlockSize());
@@ -114,7 +109,6 @@ void TMirrorPartitionActor::MirrorRequest(
             *requestInfo,
             std::make_unique<typename TMethod::TResponse>(Status)
         );
-
         return;
     }
 
@@ -132,8 +126,9 @@ void TMirrorPartitionActor::MirrorRequest(
         }
         WriteIntersectsWithScrubbing = true;
     }
+
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.BlockRange)) {
+        if (!request.IsWrite && range.Overlaps(request.BlockRange)) {
             DirtyReadRequestIds.insert(id);
         }
     }
@@ -144,7 +139,9 @@ void TMirrorPartitionActor::MirrorRequest(
         ev->Get()->Record.GetHeaders().GetVolumeRequestId());
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
-        if (CanMakeMultiAgentWrite(range)) {
+        if (SuggestWriteRequestType(ctx, range) ==
+            EWriteRequestType::MultiAgentWrite)
+        {
             NCloud::Register<TMultiAgentWriteActor<TMethod>>(
                 ctx,
                 std::move(requestInfo),

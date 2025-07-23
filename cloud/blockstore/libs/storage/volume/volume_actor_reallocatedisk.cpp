@@ -35,7 +35,10 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        NProto::TError error,
+        TVector<NProto::TLaggingDevice> laggingDevices);
 
 private:
     STFUNC(StateWork);
@@ -77,10 +80,17 @@ void TReallocateActor::Bootstrap(const TActorContext& ctx)
         std::move(request));
 }
 
-void TReallocateActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
+void TReallocateActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error,
+    TVector<NProto::TLaggingDevice> laggingDevices)
 {
     auto response = std::make_unique<TEvVolume::TEvReallocateDiskResponse>(
         std::move(error));
+    for (auto& laggingDevice: laggingDevices) {
+        *response->Record.AddOutdatedLaggingDevices() =
+            std::move(laggingDevice);
+    }
 
     NCloud::Reply(ctx, *Request, std::move(response));
     Die(ctx);
@@ -100,7 +110,7 @@ void TReallocateActor::HandleAllocateDiskResponse(
             FormatError(msg->GetError()).c_str(),
             DiskId.Quote().c_str());
 
-        ReplyAndDie(ctx, msg->GetError());
+        ReplyAndDie(ctx, msg->GetError(), {});
         return;
     }
 
@@ -154,7 +164,7 @@ void TReallocateActor::HandleUpdateDevicesResponse(
 {
     auto* msg = ev->Get();
 
-    ReplyAndDie(ctx, msg->GetError());
+    ReplyAndDie(ctx, msg->GetError(), std::move(msg->LaggingDevices));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -203,9 +213,11 @@ void TVolumeActor::HandleReallocateDisk(
 
     auto request = MakeAllocateDiskRequest();
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] ReallocateDiskRequest: %s",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s ReallocateDiskRequest: %s",
+        LogTitle.GetWithTime().c_str(),
         request.Utf8DebugString().Quote().c_str());
 
     NCloud::Register<TReallocateActor>(

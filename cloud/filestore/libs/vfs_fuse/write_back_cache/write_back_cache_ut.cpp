@@ -193,8 +193,6 @@ struct TBootstrap
         };
 
         Session->WriteDataHandler = [&] (auto, auto request) {
-            SessionWriteDataHandlerCalled++;
-
             const auto handle = request->GetHandle();
             const auto offset = request->GetOffset();
             const auto length = request->GetBuffer().length();
@@ -240,6 +238,8 @@ struct TBootstrap
             if (EraseExpectedUnflushedDataAfterFirstUse) {
                 memset(const_cast<char*>(from.data()), char(0), from.length());
             }
+
+            SessionWriteDataHandlerCalled++;
 
             NProto::TWriteDataResponse response;
             return MakeFuture(response);
