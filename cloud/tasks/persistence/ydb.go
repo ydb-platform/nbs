@@ -39,6 +39,7 @@ const (
 	TypeUint64    = ydb_types.TypeUint64
 	TypeDouble    = ydb_types.TypeDouble
 	TypeTimestamp = ydb_types.TypeTimestamp
+	TypeInterval  = ydb_types.TypeInterval
 	TypeString    = ydb_types.TypeString
 	TypeBytes     = ydb_types.TypeBytes
 	TypeUTF8      = ydb_types.TypeText

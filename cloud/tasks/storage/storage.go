@@ -144,6 +144,7 @@ type TaskState struct {
 	LastRunner          string
 	ZoneID              string
 	EstimatedTime       time.Time
+	InflightDuration    time.Duration
 	PanicCount          uint64
 	Events              []int64
 
