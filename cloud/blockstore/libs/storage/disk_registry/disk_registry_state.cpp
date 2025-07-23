@@ -1358,12 +1358,12 @@ void TDiskRegistryState::TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
         disk,
         diskId,
         deviceId,
-        "",     // no replacement device
+        "",   // no replacement device
         timestamp,
         MakeMirroredDiskDeviceReplacementMessage(
             disk.MasterDiskId,
             std::move(reason)),
-        false);  // manual
+        false);   // manual
 
     if (HasError(error)) {
         ReportMirroredDiskDeviceReplacementFailure(FormatError(error));
@@ -5023,13 +5023,38 @@ void TDiskRegistryState::RemoveOutdatedLaggingDevices(
 }
 
 void TDiskRegistryState::DeleteDiskToReallocate(
+    TInstant now,
     TDiskRegistryDatabase& db,
-    const TString& diskId,
-    ui64 seqNo)
+    TDiskNotificationResult notification)
 {
+    const auto& diskId = notification.DiskNotification.DiskId;
+    const ui64 seqNo = notification.DiskNotification.SeqNo;
+
     NotificationSystem.DeleteDiskToReallocate(db, diskId, seqNo);
     RemoveFinishedMigrations(db, diskId, seqNo);
     RemoveOutdatedLaggingDevices(db, diskId, seqNo);
+
+    if (!notification.OutdatedLaggingDevices.empty()) {
+        TStringBuilder logMessage;
+        logMessage << "Adding outdated lagging devices: [";
+        for (const auto& outdatedDevice: notification.OutdatedLaggingDevices) {
+            logMessage << outdatedDevice.GetDeviceUUID() << ", ";
+        }
+        logMessage << "]; DiskId: " << diskId << ", SeqNo: " << seqNo;
+        STORAGE_INFO(logMessage);
+
+        auto error = AddOutdatedLaggingDevices(
+            now,
+            db,
+            diskId,
+            std::move(notification.OutdatedLaggingDevices));
+        if (HasError(error)) {
+            STORAGE_ERROR(
+                "Failed to add outdated lagging devices: "
+                << FormatError(error));
+            ReportDiskRegistryCouldNotAddOutdatedLaggingDevice(diskId);
+        }
+    }
 }
 
 void TDiskRegistryState::AddUserNotification(
