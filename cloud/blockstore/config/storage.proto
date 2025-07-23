@@ -1279,11 +1279,11 @@ message TStorageServiceConfig
     // are sent.
     optional uint32 ReassignMixedChannelsPercentageThreshold = 442;
 
-    // Initial retry delay for schedule resync next range and
-    // for schedule range migration (in milliseconds).
-    optional uint32 RetryInitialDelayForResyncAndMirrorActors = 443;
+    // Initial retry delay for scheduling next resync and migration
+    // ranges (in milliseconds).
+    optional uint32 InitialRetryDelayForServiceRequests = 443;
 
-    // Max retry delay for schedule resync next range and
-    // for schedule range migration (in milliseconds).
-    optional uint32 RetryMaxDelayForResyncAndMirrorActors = 444;
+    // Max retry delay for scheduling next resync and migration
+    // ranges (in milliseconds).
+    optional uint32 MaxRetryDelayForServiceRequests = 444;
 }
