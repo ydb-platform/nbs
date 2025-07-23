@@ -153,11 +153,15 @@ public:
 
     void GetResponse(NProto::TReadBlocksResponse& response) override
     {
+        bool allZeroes = true;
         for (size_t i = 0; i < BlockMarks.size(); ++i) {
+            auto& block = *Blocks.MutableBuffers(i);
             if (!BlockMarks[i]) {
-                auto& block = *Blocks.MutableBuffers(i);
                 block.clear();
                 SetBitMapValue(UnencryptedBlockMask, i, true);
+            } else {
+                allZeroes =
+                    allZeroes && IsAllZeroes(block.data(), block.size());
             }
         }
 
@@ -169,7 +173,7 @@ public:
         auto& blockMask = *response.MutableUnencryptedBlockMask();
         blockMask.assign(stringBuf);
 
-        response.SetAllZeroes(IsAllZeroes(response.GetBlocks()));
+        response.SetAllZeroes(allZeroes);
     }
 
     TGuardedSgList GetLocalResponse(
@@ -338,15 +342,18 @@ public:
             const auto& sglist = guard.Get();
             Y_ABORT_UNLESS(sglist.size() == BlockMarks.size());
 
+            bool allZeroes = true;
             for (size_t i = 0; i < BlockMarks.size(); ++i) {
                 if (!BlockMarks[i]) {
                     auto* data = const_cast<char*>(sglist[i].Data());
                     memset(data, 0, BlockSize);
                     SetBitMapValue(UnencryptedBlockMask, i, true);
+                } else {
+                    allZeroes = allZeroes && IsAllZeroes(sglist[i]);
                 }
             }
 
-            response.SetAllZeroes(IsAllZeroes(sglist));
+            response.SetAllZeroes(allZeroes);
         }
 
         auto stringBuf = ConvertBitMapToStringBuf(UnencryptedBlockMask);

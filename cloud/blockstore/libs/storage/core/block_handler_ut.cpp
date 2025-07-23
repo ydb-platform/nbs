@@ -306,6 +306,10 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         for (const auto& buffer: response.GetBlocks().GetBuffers()) {
             UNIT_ASSERT(buffer == TString());
         }
+
+        auto bitmap = BitMapFromString(response.GetUnencryptedBlockMask());
+        UNIT_ASSERT(!EncryptedBlock(bitmap, 0));
+        UNIT_ASSERT(!EncryptedBlock(bitmap, 1));
     }
 
     Y_UNIT_TEST(ShouldSetAllZeroesFlagInReadBlocksLocalResponse)
@@ -414,7 +418,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
     Y_UNIT_TEST(ShouldFillUnencryptedBlockMaskInReadBlocksHandler)
     {
-        auto blockContent = GetBlockContent();
+        auto blockContent = GetBlockContent('a');
         TBlockDataRef blockContentRef(blockContent.data(), blockContent.size());
 
         ui64 startIndex = 10;
