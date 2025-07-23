@@ -664,8 +664,6 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////////////////////
-
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
@@ -785,13 +783,18 @@ void DumpImpl(
 template <typename TValue>
 constexpr TAtomicBase ConvertToAtomicBase(const TValue& value)
 {
-    if constexpr (std::is_nothrow_convertible<TValue, TAtomicBase>::value) {
-        return value;
-    }
-    return 0;
+    static_assert(std::is_nothrow_convertible<TValue, TAtomicBase>::value);
+    return value;
+}
+
+template <>
+constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
+{
+    return value.MilliSeconds();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
 #define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value)          \
     (NCloud::HasField(config, #name) ? ConvertValue<type>(config.Get##name())  \
                                      : value)
@@ -1107,22 +1110,30 @@ void AdaptNodeRegistrationParams(
     const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig)
 {
-    if (!storageConfig.GetNodeRegistrationMaxAttempts()) {
+    if (!NCloud::HasField(storageConfig, "NodeRegistrationMaxAttempts") &&
+        NCloud::HasField(serverConfig, "NodeRegistrationMaxAttempts"))
+    {
         storageConfig.SetNodeRegistrationMaxAttempts(
             serverConfig.GetNodeRegistrationMaxAttempts());
     }
 
-    if (!storageConfig.GetNodeRegistrationTimeout()) {
+    if (!NCloud::HasField(storageConfig, "NodeRegistrationTimeout") &&
+        NCloud::HasField(serverConfig, "NodeRegistrationTimeout"))
+    {
         storageConfig.SetNodeRegistrationTimeout(
             serverConfig.GetNodeRegistrationTimeout());
     }
 
-    if (!storageConfig.GetNodeRegistrationErrorTimeout()) {
+    if (!NCloud::HasField(storageConfig, "NodeRegistrationErrorTimeout") &&
+        NCloud::HasField(serverConfig, "NodeRegistrationErrorTimeout"))
+    {
         storageConfig.SetNodeRegistrationErrorTimeout(
             serverConfig.GetNodeRegistrationErrorTimeout());
     }
 
-    if (!storageConfig.GetNodeRegistrationToken()) {
+    if (!NCloud::HasField(storageConfig, "NodeRegistrationToken") &&
+        NCloud::HasField(serverConfig, "NodeRegistrationToken"))
+    {
         storageConfig.SetNodeRegistrationToken(
             serverConfig.GetNodeRegistrationToken());
     }
@@ -1131,7 +1142,9 @@ void AdaptNodeRegistrationParams(
         storageConfig.SetNodeType(overriddenNodeType);
     }
 
-    if (!storageConfig.GetNodeType()) {
+    if (!NCloud::HasField(storageConfig, "NodeType") &&
+        NCloud::HasField(serverConfig, "NodeType"))
+    {
         storageConfig.SetNodeType(serverConfig.GetNodeType());
     }
 }
