@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/vfs_fuse/public.h>
 
@@ -8,9 +7,6 @@
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <library/cpp/threading/future/future.h>
-
-#include <util/generic/intrlist.h>
-#include <util/generic/strbuf.h>
 
 #include <memory>
 
@@ -21,7 +17,6 @@ namespace NCloud::NFileStore::NFuse {
 class TWriteBackCache final
 {
 private:
-    friend class TImpl;
     class TImpl;
 
     std::shared_ptr<TImpl> Impl;
@@ -60,70 +55,10 @@ private:
     // only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
-    enum class EFlushStatus
-    {
-        NotStarted,
-        Started,
-        Finished
-    };
-
-    struct TWriteDataEntry
-        : public TIntrusiveListItem<TWriteDataEntry>
-    {
-        ui64 Handle;
-        ui64 Offset;
-        ui64 Length;
-        // serialized TWriteDataRequest
-        TStringBuf SerializedRequest;
-        TString FileSystemId;
-        NProto::THeaders RequestHeaders;
-
-        TWriteDataEntry(
-                ui64 handle,
-                ui64 offset,
-                ui64 length,
-                TStringBuf serializedRequest,
-                TString fileSystemId,
-                NProto::THeaders requestHeaders)
-            : Handle(handle)
-            , Offset(offset)
-            , Length(length)
-            , SerializedRequest(serializedRequest)
-            , FileSystemId(std::move(fileSystemId))
-            , RequestHeaders(std::move(requestHeaders))
-        {}
-
-        ui64 End() const
-        {
-            return Offset + Length;
-        }
-
-        EFlushStatus FlushStatus = EFlushStatus::NotStarted;
-    };
-
-    struct TWriteDataEntryPart
-    {
-        const TWriteDataEntry* Source = nullptr;
-        ui64 OffsetInSource = 0;
-        ui64 Offset = 0;
-        ui64 Length = 0;
-
-        ui64 End() const
-        {
-            return Offset + Length;
-        }
-
-        bool operator==(const TWriteDataEntryPart& p) const
-        {
-            return std::tie(Source, OffsetInSource, Offset, Length) ==
-                std::tie(p.Source, p.OffsetInSource, p.Offset, p.Length);
-        }
-    };
-
-    static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TVector<TWriteDataEntry*>& entries,
-        ui64 startingFromOffset,
-        ui64 length);
+    enum class EFlushStatus;
+    struct TWriteDataEntry;
+    struct TWriteDataEntryPart;
+    class TDataPartsUtil;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

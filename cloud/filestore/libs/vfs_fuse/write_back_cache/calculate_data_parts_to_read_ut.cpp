@@ -1,4 +1,4 @@
-#include "write_back_cache.h"
+#include "write_back_cache_impl.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -128,7 +128,7 @@ struct TCalculateDataPartsToReadTestBootstrap
         ui64 startingFromOffset,
         ui64 length)
     {
-        return TWriteBackCache::CalculateDataPartsToRead(
+        return TWriteBackCache::TDataPartsUtil::CalculateDataPartsToRead(
             entries,
             startingFromOffset,
             length);
