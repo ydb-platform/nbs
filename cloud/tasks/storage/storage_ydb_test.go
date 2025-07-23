@@ -386,19 +386,19 @@ func TestStorageYDBGetTask(t *testing.T) {
 	modifiedAt := createdAt.Add(time.Hour)
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey:  getIdempotencyKeyForTest(t),
-		TaskType:        "task1",
-		Description:     "Some task",
-		CreatedAt:       createdAt,
-		CreatedBy:       "some_user",
-		ModifiedAt:      modifiedAt,
-		GenerationID:    42,
-		Status:          TaskStatusReadyToRun,
-		State:           []byte{1, 2, 3},
-		Dependencies:    common.NewStringSet(),
-		ZoneID:          "zone",
+		IdempotencyKey:   getIdempotencyKeyForTest(t),
+		TaskType:         "task1",
+		Description:      "Some task",
+		CreatedAt:        createdAt,
+		CreatedBy:        "some_user",
+		ModifiedAt:       modifiedAt,
+		GenerationID:     42,
+		Status:           TaskStatusReadyToRun,
+		State:            []byte{1, 2, 3},
+		Dependencies:     common.NewStringSet(),
+		ZoneID:           "zone",
 		InflightDuration: 10 * time.Minute,
-		WaitingDuration: 10 * time.Minute,
+		WaitingDuration:  10 * time.Minute,
 	})
 	require.NoError(t, err)
 
@@ -488,7 +488,7 @@ func TestStorageYDBGetTaskWithDependencies(t *testing.T) {
 		Status:           TaskStatusReadyToRun,
 		State:            []byte{1, 2, 3},
 		Dependencies:     common.NewStringSet(depID1, depID2),
-    InflightDuration: 10 * time.Minute,
+		InflightDuration: 10 * time.Minute,
 		WaitingDuration:  10 * time.Minute,
 	})
 	require.NoError(t, err)
@@ -3321,7 +3321,7 @@ func TestStorageYDBMarkForCancellationWhileWaitingToRun(t *testing.T) {
 		GenerationID:   0,
 		Status:         TaskStatusWaitingToRun,
 		State:          []byte{},
-		Dependencies:   NewStringSet(),
+		Dependencies:   common.NewStringSet(),
 	})
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
