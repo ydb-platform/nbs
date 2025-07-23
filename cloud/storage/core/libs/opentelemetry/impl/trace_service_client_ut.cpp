@@ -18,6 +18,8 @@ using namespace opentelemetry::proto::collector::trace::v1;
 
 using namespace NThreading;
 
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TraceServiceClientTest)
 {
     Y_UNIT_TEST(ShouldNotCrashWithFailedRequests)
@@ -32,6 +34,10 @@ Y_UNIT_TEST_SUITE(TraceServiceClientTest)
         auto client = CreateTraceServiceClient(logging, clientConfig);
 
         client->Start();
+        Y_DEFER
+        {
+            client->Stop();
+        };
 
         auto testDuration = TDuration::Seconds(10);
         TVector<TFuture<TResultOrError<ExportTraceServiceResponse>>> results;
@@ -45,8 +51,6 @@ Y_UNIT_TEST_SUITE(TraceServiceClientTest)
         for (auto& result: results) {
             UNIT_ASSERT(HasError(result.GetValueSync()));
         }
-
-        client->Stop();
     }
 }
 
