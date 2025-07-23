@@ -1768,6 +1768,99 @@ func (s *storageYDB) sendEvent(
 	return tx.Commit(ctx)
 }
 
+func (s *storageYDB) clearEndedTasksChunk(
+	ctx context.Context,
+	session *persistence.Session,
+	endedBefore time.Time,
+	limit int,
+) (bool, error) {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $ended_before as Timestamp;
+			declare $limit as Uint64;
+
+			select id, ended_at
+			from ended
+			where ended_at < $ended_before
+			limit $limit
+		`, s.tablesPath),
+		persistence.ValueParam("$ended_before", persistence.TimestampValue(endedBefore)),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+	)
+	if err != nil {
+		return false, err
+	}
+	defer res.Close()
+
+	endedIds := make([]persistence.Value, 0, limit)
+	endedStructs := make([]persistence.Value, 0, limit)
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var (
+				taskId  string
+				endedAt time.Time
+			)
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault("id", &taskId),
+				persistence.OptionalWithDefault("ended_at", &endedAt),
+			)
+			if err != nil {
+				return false, err
+			}
+
+			endedIds = append(endedIds, persistence.UTF8Value(taskId))
+			endedStructs = append(endedStructs, persistence.StructValue(
+				persistence.StructFieldValue("ended_at", persistence.TimestampValue(endedAt)),
+				persistence.StructFieldValue("id", persistence.UTF8Value(taskId)),
+			))
+		}
+	}
+
+	if len(endedIds) == 0 {
+		return false, nil
+	}
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $ended_ids as List<Utf8>;
+			declare $ended_structs as List<Struct<ended_at: Timestamp, id: Utf8>>;
+
+			delete from ended
+			on select ended_at, id from as_table($ended_structs);
+
+			delete from task_ids
+			where task_id in $ended_ids;
+
+			delete from tasks
+			where id in $ended_ids;
+		`, s.tablesPath),
+		persistence.ValueParam("$ended_ids", persistence.ListValue(endedIds...)),
+		persistence.ValueParam("$ended_structs", persistence.ListValue(endedStructs...)),
+	)
+	if err != nil {
+		return false, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	logging.Info(ctx, "Cleared %v ended tasks", len(endedIds))
+
+	return true, nil
+}
+
 func (s *storageYDB) clearEndedTasks(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1775,94 +1868,15 @@ func (s *storageYDB) clearEndedTasks(
 	limit int,
 ) error {
 
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $ended_before as Timestamp;
-		declare $limit as Uint64;
-
-		select *
-		from ended
-		where ended_at < $ended_before
-		limit $limit
-	`, s.tablesPath),
-		persistence.ValueParam("$ended_before", persistence.TimestampValue(endedBefore)),
-		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
-	)
-	if err != nil {
-		return err
-	}
-	defer res.Close()
-
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			var (
-				endedAt        time.Time
-				taskID         string
-				idempotencyKey string
-				accountID      string
-			)
-			err = res.ScanNamed(
-				persistence.OptionalWithDefault("ended_at", &endedAt),
-				persistence.OptionalWithDefault("id", &taskID),
-				persistence.OptionalWithDefault("idempotency_key", &idempotencyKey),
-				persistence.OptionalWithDefault("account_id", &accountID),
-			)
-			if err != nil {
-				return err
-			}
-
-			execute := func(deleteFromTaskIds string) error {
-				_, err = session.ExecuteRW(ctx, fmt.Sprintf(`
-					--!syntax_v1
-					pragma TablePathPrefix = "%v";
-					declare $ended_at as Timestamp;
-					declare $task_id as Utf8;
-					declare $idempotency_key as Utf8;
-					declare $account_id as Utf8;
-					declare $finished as Int64;
-					declare $cancelled as Int64;
-
-					delete from tasks
-					where id = $task_id and (status = $finished or status = $cancelled);
-
-					%v
-
-					delete from ended
-					where ended_at = $ended_at and id = $task_id
-				`, s.tablesPath, deleteFromTaskIds),
-					persistence.ValueParam("$ended_at", persistence.TimestampValue(endedAt)),
-					persistence.ValueParam("$task_id", persistence.UTF8Value(taskID)),
-					persistence.ValueParam("$idempotency_key", persistence.UTF8Value(idempotencyKey)),
-					persistence.ValueParam("$account_id", persistence.UTF8Value(accountID)),
-					persistence.ValueParam("$finished", persistence.Int64Value(int64(TaskStatusFinished))),
-					persistence.ValueParam("$cancelled", persistence.Int64Value(int64(TaskStatusCancelled))),
-				)
-				return err
-			}
-
-			if len(idempotencyKey) == 0 {
-				err = execute("")
-			} else {
-				err = execute(`
-					delete from task_ids
-					where idempotency_key = $idempotency_key and account_id = $account_id;
-				`)
-			}
-			if err != nil {
-				return err
-			}
-
-			logging.Info(
-				ctx,
-				"Cleared task with id %v, ended at %v",
-				taskID,
-				endedAt,
-			)
+	for {
+		more, err := s.clearEndedTasksChunk(ctx, session, endedBefore, limit)
+		if err != nil {
+			return err
+		}
+		if !more {
+			return nil
 		}
 	}
-
-	return nil
 }
 
 func (s *storageYDB) forceFinishTask(
