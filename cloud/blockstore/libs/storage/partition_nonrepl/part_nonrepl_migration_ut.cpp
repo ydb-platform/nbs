@@ -1387,6 +1387,81 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
     {
         ShouldCopyRangeWithCorrectVolumeRequestId(true);
     }
+
+    Y_UNIT_TEST(ShouldRetryIfRangeMigrationFail)
+    {
+        TTestBasicRuntime runtime;
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState,
+            true);
+
+        bool isRejected = false;
+        bool seenRetry = false;
+        TBlockRange64 rejectedRange;
+
+        auto filter = [&](TTestActorRuntimeBase& runtime,
+                          TAutoPtr<IEventHandle>& event) -> bool
+        {
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvRangeMigrated)
+            {
+                auto* msg =
+                    event->Get<TEvNonreplPartitionPrivate::TEvRangeMigrated>();
+
+                if (isRejected && msg->Range == rejectedRange) {
+                    seenRetry = true;
+                    return false;
+                }
+
+                if (isRejected) {
+                    return false;
+                }
+
+                isRejected = true;
+                rejectedRange = msg->Range;
+                runtime.Send(
+                    event->Recipient,
+                    event->Sender,
+                    new TEvNonreplPartitionPrivate::TEvRangeMigrated(
+                        MakeError(E_REJECTED),
+                        msg->ExecutionSide,
+                        msg->Range,
+                        msg->ReadStartTs,
+                        msg->ReadDuration,
+                        msg->WriteStartTs,
+                        msg->WriteDuration,
+                        msg->AffectedBlockInfos,
+                        msg->RecommendedBandwidth,
+                        msg->AllZeroes,
+                        msg->ExecCycles));
+
+                return true;
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(filter);
+
+        migrationState->IsMigrationAllowed = true;
+        runtime.AdvanceCurrentTime(TDuration::Seconds(10));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT(isRejected);
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT(seenRetry);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

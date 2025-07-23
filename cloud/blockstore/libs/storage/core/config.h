@@ -703,9 +703,8 @@ public:
 
     [[nodiscard]] bool GetUsePullSchemeForVolumeStatistics() const;
 
-    [[nodiscard]] TDuration
-    GetRetryInitialDelayForResyncAndMirrorActors() const;
-    [[nodiscard]] TDuration GetRetryMaxDelayForResyncAndMirrorActors() const;
+    [[nodiscard]] TDuration GetInitialRetryDelayForServiceRequests() const;
+    [[nodiscard]] TDuration GetMaxRetryDelayForServiceRequests() const;
 };
 
 ui64 GetAllocationUnit(

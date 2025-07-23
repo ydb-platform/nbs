@@ -51,8 +51,8 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , StatActorId(statActorId)
     , State(Config, RWClientId, PartConfig, ReplicaDevices, initialResyncIndex)
     , BackoffProvider(
-          Config->GetRetryInitialDelayForResyncAndMirrorActors(),
-          Config->GetRetryMaxDelayForResyncAndMirrorActors())
+          Config->GetInitialRetryDelayForServiceRequests(),
+          Config->GetMaxRetryDelayForServiceRequests())
 {}
 
 TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor() = default;
