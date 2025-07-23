@@ -232,10 +232,10 @@ public:
             // and apply cache on top of it
             return Session->ReadData(std::move(callContext), request).Apply(
                 [handle = request->GetHandle(),
-                startingFromOffset = request->GetOffset(),
-                length = request->GetLength(),
-                buffer = std::move(buffer),
-                parts = std::move(parts)] (auto future) mutable
+                 startingFromOffset = request->GetOffset(),
+                 length = request->GetLength(),
+                 buffer = std::move(buffer),
+                 parts = std::move(parts)] (auto future) mutable
                 {
                     auto response = future.ExtractValue();
 
