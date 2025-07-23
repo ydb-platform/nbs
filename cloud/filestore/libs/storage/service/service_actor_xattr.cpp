@@ -81,8 +81,8 @@ void TSetHasXAttrsActor::HandleSetHasXAttrsResponse(
     const TActorContext& ctx)
 {
     // We always reply E_REJECTED to the original request.
-    // When index tablet restarts and session is recreated we stop sending this
-    // message
+    // When the index tablet restarts and session is recreated, we stop sending
+    // this message
     auto response =
         std::make_unique<TEvService::TSetNodeXAttrMethod::TResponse>(
             MakeError(E_REJECTED));
@@ -218,7 +218,7 @@ void TStorageServiceActor::ReplyToXAttrRequest(
         TEvService::TGetNodeXAttrMethod::Name,
         msg->CallContext->RequestId);
 
-    // This request is created and deleted immediately in order to increment
+    // This request is created and completed immediately in order to increment
     // a corresponding counter
     TInFlightRequest inflight(
         TRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
@@ -253,7 +253,7 @@ void TStorageServiceActor::HandleGetNodeXAttr(
         return;
     }
 
-    // If there are no extended attributes in the file system we don't
+    // If there are no extended attributes in the filesystem we don't
     // forward corresponding requests to the tablet and reply from the service
     // actor
     if (!session->FileStore.GetFeatures().GetHasXAttrs()) {

@@ -1374,8 +1374,7 @@ struct TTxIndexTablet
     // SetHasXAttrs
     //
 
-    struct TSetHasXAttrs
-        : TSessionAware
+    struct TSetHasXAttrs : TSessionAware
     {
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TSetHasXAttrsRequest Request;

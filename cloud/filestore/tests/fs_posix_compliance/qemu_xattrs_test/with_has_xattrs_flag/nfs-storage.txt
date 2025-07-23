@@ -1,1 +1,1 @@
-HasXAttrsFlagAllowed: 1
+HasXAttrsFlagAllowed: true
