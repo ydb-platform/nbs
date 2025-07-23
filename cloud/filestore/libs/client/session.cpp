@@ -657,15 +657,20 @@ private:
         NProto::TError error;
 
         try {
+            bool shouldExecuteImmediately = false;
             with_lock (SessionLock) {
                 if (SessionState == SessionEstablished) {
-                    // fast path: avoiding copying NProto::TCreateSessionResponse
-                    // (which is returned by EnsureSessionExists() call)
                     state->SessionId = SessionId;
                     state->MountSeqNumber = SessionSeqNo;
-                    ExecuteRequestWithSession(std::move(state));
-                    return;
+                    shouldExecuteImmediately = true;
                 }
+            }
+
+            if (shouldExecuteImmediately) {
+                // fast path: avoiding copying NProto::TCreateSessionResponse
+                // (which is returned by EnsureSessionExists() call)
+                ExecuteRequestWithSession(std::move(state));
+                return;
             }
 
             auto sessionResponse = EnsureSessionExists();
