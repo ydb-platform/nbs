@@ -342,18 +342,18 @@ public:
             const auto& sglist = guard.Get();
             Y_ABORT_UNLESS(sglist.size() == BlockMarks.size());
 
-            bool isAllZeroes = true;
+            bool allZeroes = true;
             for (size_t i = 0; i < BlockMarks.size(); ++i) {
                 if (!BlockMarks[i]) {
                     auto* data = const_cast<char*>(sglist[i].Data());
                     memset(data, 0, BlockSize);
                     SetBitMapValue(UnencryptedBlockMask, i, true);
                 } else {
-                    isAllZeroes = isAllZeroes && IsAllZeroes(sglist[i]);
+                    allZeroes = allZeroes && IsAllZeroes(sglist[i]);
                 }
             }
 
-            response.SetAllZeroes(isAllZeroes);
+            response.SetAllZeroes(allZeroes);
         }
 
         auto stringBuf = ConvertBitMapToStringBuf(UnencryptedBlockMask);
