@@ -306,6 +306,10 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         for (const auto& buffer: response.GetBlocks().GetBuffers()) {
             UNIT_ASSERT(buffer == TString());
         }
+
+        auto bitmap = BitMapFromString(response.GetUnencryptedBlockMask());
+        UNIT_ASSERT(!EncryptedBlock(bitmap, 0));
+        UNIT_ASSERT(!EncryptedBlock(bitmap, 1));
     }
 
     Y_UNIT_TEST(ShouldSetAllZeroesFlagInReadBlocksLocalResponse)
@@ -414,12 +418,15 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
     Y_UNIT_TEST(ShouldFillUnencryptedBlockMaskInReadBlocksHandler)
     {
-        auto blockContent = GetBlockContent();
+        auto blockContent = GetBlockContent('a');
         TBlockDataRef blockContentRef(blockContent.data(), blockContent.size());
+
+        auto zeroBlockContent = GetBlockContent(0);
+        TBlockDataRef zeroBlockContentRef(zeroBlockContent.data(), zeroBlockContent.size());
 
         ui64 startIndex = 10;
         auto handler = CreateReadBlocksHandler(
-            TBlockRange64::WithLength(startIndex, 7),
+            TBlockRange64::WithLength(startIndex, 9),
             DefaultBlockSize);
 
         auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
@@ -431,6 +438,9 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
         handler->GetGuardedSgList({startIndex + 4}, false);
         handler->GetGuardedSgList({startIndex + 5}, true);
+
+        handler->SetBlock(startIndex + 6, zeroBlockContentRef, false);
+        handler->SetBlock(startIndex + 7, zeroBlockContentRef, true);
 
         NProto::TReadBlocksResponse response;
         handler->GetResponse(response);
@@ -446,7 +456,10 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         UNIT_ASSERT(!EncryptedBlock(bitmap, 5));
 
         UNIT_ASSERT(!EncryptedBlock(bitmap, 6));
-        UNIT_ASSERT(bitmap.Get(7) == 0);
+        UNIT_ASSERT(!EncryptedBlock(bitmap, 7));
+
+        UNIT_ASSERT(!EncryptedBlock(bitmap, 8));
+        UNIT_ASSERT(bitmap.Get(9) == 0);
     }
 
     Y_UNIT_TEST(ShouldFillUnencryptedBlockMaskInLocalReadBlocksHandler)
