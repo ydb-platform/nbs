@@ -66,7 +66,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             .SubmissionQueueEntries = SubmissionQueueSize,
             .MaxKernelWorkersCount = 1,
             .ShareKernelWorkers = true,
-            // .ForceAsyncIO = true,
+            .ForceAsyncIO = true,
             .ForceSingleBuffer = true,
         });
 
@@ -96,6 +96,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
 Y_UNIT_TEST_SUITE(TIoUringTest)
 {
+
     Y_UNIT_TEST_F(ShouldReadWrite, TFixture)
     {
         const ui64 requestStartIndex = 20;

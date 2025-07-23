@@ -2,8 +2,8 @@
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/io_uring/context.h>
-#include <cloud/storage/core/libs/io_uring/factory.h>
 
+#include <util/string/builder.h>
 #include <util/system/file.h>
 
 namespace NCloud::NFileStore {
@@ -18,7 +18,7 @@ struct TCompoundCompletion: TFileIOCompletion
 {
     TFileIOCompletion* OriginalCompletion;
 
-    ui32 SubRequestsCount;
+    ui32 PendingSubRequestsCount;
     ui32 TotalTransferredBytes = 0;
     NProto::TError Error;
 
@@ -27,10 +27,8 @@ struct TCompoundCompletion: TFileIOCompletion
             TFileIOCompletion* originalCompletion)
         : TFileIOCompletion{.Func = &TCompoundCompletion::CompletionFunc}
         , OriginalCompletion(originalCompletion)
-        , SubRequestsCount(subRequestsCount)
-    {
-        Y_ABORT_UNLESS(OriginalCompletion);
-    }
+        , PendingSubRequestsCount(subRequestsCount)
+    {}
 
     static void CompletionFunc(
         TFileIOCompletion* obj,
@@ -47,8 +45,8 @@ struct TCompoundCompletion: TFileIOCompletion
 
     bool HandleCompletion(const NProto::TError& error, ui32 bytesTransferred)
     {
-        Y_ABORT_UNLESS(SubRequestsCount > 0);
-        --SubRequestsCount;
+        Y_ABORT_UNLESS(PendingSubRequestsCount > 0);
+        --PendingSubRequestsCount;
 
         TotalTransferredBytes += bytesTransferred;
 
@@ -56,26 +54,28 @@ struct TCompoundCompletion: TFileIOCompletion
             Error = error;
         }
 
-        if (SubRequestsCount == 0) {
+        if (PendingSubRequestsCount == 0) {
             OriginalCompletion->Func(
                 OriginalCompletion,
                 Error,
                 TotalTransferredBytes);
+
+            return true;
         }
 
-        return SubRequestsCount == 0;
+        return false;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIoUringSplitBufService final
+struct TIoUringServiceBase
     : public IFileIOService
 {
     TContext Context;
     const ui32 SqeFlags;
 
-    TIoUringSplitBufService(TContext::TParams params, ui32 sqeFlags)
+    TIoUringServiceBase(TContext::TParams params, ui32 sqeFlags)
         : Context(std::move(params))
         , SqeFlags(sqeFlags)
     {}
@@ -89,6 +89,14 @@ struct TIoUringSplitBufService final
     {
         Context.Stop();
     }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TIoUringSplitBufService final
+    : public TIoUringServiceBase
+{
+    using TIoUringServiceBase::TIoUringServiceBase;
 
     void AsyncRead(
         TFileHandle& file,
@@ -155,6 +163,93 @@ struct TIoUringSplitBufService final
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TIoUringService final
+    : public TIoUringServiceBase
+{
+    using TIoUringServiceBase::TIoUringServiceBase;
+
+    void AsyncRead(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<char> buffer,
+        TFileIOCompletion* completion) final
+    {
+        Context.AsyncRead(file, buffer, offset, completion, SqeFlags);
+    }
+
+    void AsyncWrite(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<const char> buffer,
+        TFileIOCompletion* completion) final
+    {
+        Context.AsyncWrite(file, buffer, offset, completion, SqeFlags);
+    }
+
+     void AsyncReadV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<char>>& buffers,
+        TFileIOCompletion* completion) final
+    {
+        Context.AsyncReadV(file, buffers, offset, completion, SqeFlags);
+    }
+
+    void AsyncWriteV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<const char>>& buffers,
+        TFileIOCompletion* completion) final
+    {
+        Context.AsyncWriteV(file, buffers, offset, completion, SqeFlags);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TService>
+class TIoUringServiceFactory final
+    : public IFileIOServiceFactory
+{
+private:
+    const TIoUringServiceParams Params;
+
+    std::shared_ptr<TContext> WqOwner;
+    ui32 Index = 0;
+
+public:
+    explicit TIoUringServiceFactory(TIoUringServiceParams params)
+        : Params(std::move(params))
+    {}
+
+    IFileIOServicePtr CreateFileIOService() final
+    {
+        const ui32 index = Index++;
+
+        TContext::TParams params{
+            .SubmissionThreadName = TStringBuilder()
+                                    << Params.SubmissionThreadName << index,
+            .CompletionThreadName = TStringBuilder()
+                                    << Params.CompletionThreadName << index,
+            .SubmissionQueueEntries = Params.SubmissionQueueEntries,
+            .MaxKernelWorkersCount = Params.MaxKernelWorkersCount,
+            .WqOwner = WqOwner.get(),
+        };
+
+        const ui32 sqeFlags = Params.ForceAsyncIO ? IOSQE_ASYNC : 0;
+
+        auto service = std::make_shared<TService>(std::move(params), sqeFlags);
+
+        if (Params.ShareKernelWorkers && !WqOwner) {
+            WqOwner = std::shared_ptr<TContext>(service, &service->Context);
+        }
+
+        return service;
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -162,23 +257,13 @@ struct TIoUringSplitBufService final
 IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
     TIoUringServiceParams params)
 {
-    NCloud::TIoUringServiceParams ioUringParams{
-        .SubmissionQueueEntries = params.SubmissionQueueEntries,
-        .MaxKernelWorkersCount = params.MaxKernelWorkersCount,
-        .ForceAsyncIO = params.ForceAsyncIO,
-    };
-
     if (params.ForceSingleBuffer) {
         return std::make_shared<
-            TIoUringServiceFactory<TIoUringSplitBufService>>(
-            std::move(ioUringParams));
+            TIoUringServiceFactory<TIoUringSplitBufService>>(std::move(params));
     }
 
-    return NCloud::CreateIoUringServiceFactory({
-        .SubmissionQueueEntries = params.SubmissionQueueEntries,
-        .MaxKernelWorkersCount = params.MaxKernelWorkersCount,
-        .ForceAsyncIO = params.ForceAsyncIO,
-    });
+    return std::make_shared<TIoUringServiceFactory<TIoUringService>>(
+        std::move(params));
 }
 
 }   // namespace NCloud::NFileStore

@@ -1,24 +1,13 @@
 #include "service.h"
 
 #include "context.h"
-#include "factory.h"
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
-#include <cloud/storage/core/libs/common/task_queue.h>
-#include <cloud/storage/core/libs/common/thread.h>
-#include <cloud/storage/core/libs/common/thread_pool.h>
 
-#include <library/cpp/threading/future/future.h>
-
-#include <util/generic/string.h>
 #include <util/string/builder.h>
-#include <util/system/error.h>
 #include <util/system/file.h>
-#include <util/system/sanitizers.h>
-#include <util/system/thread.h>
 
 #include <liburing.h>
-#include <sys/eventfd.h>
 
 namespace NCloud {
 
@@ -32,11 +21,9 @@ struct TIoUringServiceBase
     : public IFileIOService
 {
     TContext Context;
-    const ui32 SqeFlags;
 
-    explicit TIoUringServiceBase(TContext::TParams params, ui32 sqeFlags)
+    explicit TIoUringServiceBase(TContext::TParams params)
         : Context(std::move(params))
-        , SqeFlags(sqeFlags)
     {}
 
     void Start() final
@@ -63,7 +50,7 @@ struct TIoUringService final
         TArrayRef<char> buffer,
         TFileIOCompletion* completion) final
     {
-        Context.AsyncRead(file, buffer, offset, completion, SqeFlags);
+        Context.AsyncRead(file, buffer, offset, completion);
     }
 
     void AsyncReadV(
@@ -72,7 +59,7 @@ struct TIoUringService final
         const TVector<TArrayRef<char>>& buffers,
         TFileIOCompletion* completion) final
     {
-        Context.AsyncReadV(file, buffers, offset, completion, SqeFlags);
+        Context.AsyncReadV(file, buffers, offset, completion);
     }
 
     void AsyncWrite(
@@ -81,7 +68,7 @@ struct TIoUringService final
         TArrayRef<const char> buffer,
         TFileIOCompletion* completion) final
     {
-        Context.AsyncWrite(file, buffer, offset, completion, SqeFlags);
+        Context.AsyncWrite(file, buffer, offset, completion);
     }
 
     void AsyncWriteV(
@@ -90,7 +77,7 @@ struct TIoUringService final
         const TVector<TArrayRef<const char>>& buffers,
         TFileIOCompletion* completion) final
     {
-        Context.AsyncWriteV(file, buffers, offset, completion, SqeFlags);
+        Context.AsyncWriteV(file, buffers, offset, completion);
     }
 };
 
@@ -109,7 +96,7 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffer);
 
-        Context.AsyncNOP(completion, SqeFlags);
+        Context.AsyncNOP(completion);
     }
 
     void AsyncReadV(
@@ -120,7 +107,7 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffers);
 
-        Context.AsyncNOP(completion, SqeFlags);
+        Context.AsyncNOP(completion);
     }
 
     void AsyncWrite(
@@ -131,7 +118,7 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffer);
 
-        Context.AsyncNOP(completion, SqeFlags);
+        Context.AsyncNOP(completion);
     }
 
     void AsyncWriteV(
@@ -142,7 +129,37 @@ struct TIoUringServiceNull final
     {
         Y_UNUSED(file, offset, buffers);
 
-        Context.AsyncNOP(completion, SqeFlags);
+        Context.AsyncNOP(completion);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TService>
+class TIoUringServiceFactory final: public IFileIOServiceFactory
+{
+private:
+    const TIoUringServiceParams Params;
+    ui32 Index = 0;
+
+public:
+    explicit TIoUringServiceFactory(TIoUringServiceParams params)
+        : Params(std::move(params))
+    {}
+
+    IFileIOServicePtr CreateFileIOService() final
+    {
+        const ui32 index = Index++;
+
+        TContext::TParams params{
+            .SubmissionThreadName = TStringBuilder()
+                                    << Params.SubmissionThreadName << index,
+            .CompletionThreadName = TStringBuilder()
+                                    << Params.CompletionThreadName << index,
+            .SubmissionQueueEntries = Params.SubmissionQueueEntries,
+        };
+
+        return std::make_shared<TService>(std::move(params));
     }
 };
 

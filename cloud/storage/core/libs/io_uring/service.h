@@ -2,6 +2,8 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 
+#include <util/generic/string.h>
+
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -14,10 +16,6 @@ struct TIoUringServiceParams
     TString CompletionThreadName = "IO.CQ";
 
     ui32 SubmissionQueueEntries = DefaultSubmissionQueueEntries;
-
-    ui32 MaxKernelWorkersCount = 0;
-    bool ShareKernelWorkers = false;
-    bool ForceAsyncIO = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
