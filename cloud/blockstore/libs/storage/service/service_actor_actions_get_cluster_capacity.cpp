@@ -48,7 +48,7 @@ private:
     TVector<NPrivateProto::TClusterCapacityInfo> Capacities;
 
     const TStorageConfigPtr Config;
-    TActorId PipeClient;
+    TActorId BSControllerPipeClient;
 
 public:
     explicit TGetClusterCapacityActor(
@@ -58,23 +58,25 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void CreateClient(const TActorContext& ctx);
+    void CreateBSControllerPipeClient(const TActorContext& ctx);
     void ReplyAndDie(
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvExecuteActionResponse> response);
 
     void HandleSuccess(const TActorContext& ctx, const TString& output);
-    void HandleEmptyClusterCapacity(const TActorContext& ctx, const TString& component);
+    void HandleEmptyClusterCapacity(
+        const TActorContext& ctx,
+        const TString& component);
 
 private:
     STFUNC(StateGetDiskRegistryBasedCapacity);
     STFUNC(StateGetYDBBasedCapacity);
 
-    void HandleGetDiskRegistyCapacity(
+    void HandleGetDiskRegistryCapacityResponse(
         const TEvDiskRegistry::TEvGetClusterCapacityResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleGetYDBCapacity(
+    void HandleGetYDBCapacityResponse(
         const NSysView::TEvSysView::TEvGetStorageStatsResponse::TPtr& ev,
         const TActorContext& ctx);
 };
@@ -103,7 +105,8 @@ void TGetClusterCapacityActor::Bootstrap(const TActorContext& ctx)
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-void TGetClusterCapacityActor::CreateClient(const TActorContext& ctx)
+void TGetClusterCapacityActor::CreateBSControllerPipeClient(
+    const TActorContext& ctx)
 {
     NTabletPipe::TClientConfig clientConfig;
     clientConfig.RetryPolicy = {
@@ -111,7 +114,7 @@ void TGetClusterCapacityActor::CreateClient(const TActorContext& ctx)
         .MinRetryTime = Config->GetPipeClientMinRetryTime(),
         .MaxRetryTime = Config->GetPipeClientMaxRetryTime()};
 
-    PipeClient = ctx.Register(NTabletPipe::CreateClient(
+    BSControllerPipeClient = ctx.Register(NTabletPipe::CreateClient(
         ctx.SelfID,
         MakeBSControllerID(0),
         clientConfig));
@@ -121,7 +124,7 @@ void TGetClusterCapacityActor::CreateClient(const TActorContext& ctx)
         TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Tablet client: %lu (remote: %s)",
         MakeBSControllerID(0),
-        ToString(PipeClient).data());
+        ToString(BSControllerPipeClient).data());
 }
 
 void TGetClusterCapacityActor::ReplyAndDie(
@@ -160,7 +163,7 @@ void TGetClusterCapacityActor::HandleEmptyClusterCapacity(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetClusterCapacityActor::HandleGetDiskRegistyCapacity(
+void TGetClusterCapacityActor::HandleGetDiskRegistryCapacityResponse(
     const TEvDiskRegistry::TEvGetClusterCapacityResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -188,16 +191,16 @@ void TGetClusterCapacityActor::HandleGetDiskRegistyCapacity(
 
     Become(&TThis::StateGetYDBBasedCapacity);
 
-    CreateClient(ctx);
+    CreateBSControllerPipeClient(ctx);
 
     auto request =
         std::make_unique<NSysView::TEvSysView::TEvGetStorageStatsRequest>();
-    NTabletPipe::SendData(ctx, PipeClient, request.release());
+    NTabletPipe::SendData(ctx, BSControllerPipeClient, request.release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetClusterCapacityActor::HandleGetYDBCapacity(
+void TGetClusterCapacityActor::HandleGetYDBCapacityResponse(
     const NSysView::TEvSysView::TEvGetStorageStatsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -235,12 +238,14 @@ void TGetClusterCapacityActor::HandleGetYDBCapacity(
     }
 
     auto& ssd_capacity = Capacities.emplace_back();
-    ssd_capacity.SetStorageMediaKind(NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+    ssd_capacity.SetStorageMediaKind(
+        NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
     ssd_capacity.SetFreeBytes(freeBytesSSD);
     ssd_capacity.SetTotalBytes(totalBytesSSD);
 
     auto& hdd_capacity = Capacities.emplace_back();
-    hdd_capacity.SetStorageMediaKind(NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
+    hdd_capacity.SetStorageMediaKind(
+        NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
     hdd_capacity.SetFreeBytes(freeBytesHDD);
     hdd_capacity.SetTotalBytes(totalBytesHDD);
 
@@ -261,7 +266,7 @@ STFUNC(TGetClusterCapacityActor::StateGetDiskRegistryBasedCapacity)
     switch (ev->GetTypeRewrite()) {
         HFunc(
             TEvDiskRegistry::TEvGetClusterCapacityResponse,
-            HandleGetDiskRegistyCapacity);
+            HandleGetDiskRegistryCapacityResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -279,7 +284,7 @@ STFUNC(TGetClusterCapacityActor::StateGetYDBBasedCapacity)
     switch (ev->GetTypeRewrite()) {
         HFunc(
             NSysView::TEvSysView::TEvGetStorageStatsResponse,
-            HandleGetYDBCapacity);
+            HandleGetYDBCapacityResponse);
 
         IgnoreFunc(NKikimr::TEvTabletPipe::TEvClientConnected);
         IgnoreFunc(NKikimr::TEvTabletPipe::TEvClientDestroyed);
