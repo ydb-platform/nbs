@@ -84,8 +84,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetClusterCapacityActor::TGetClusterCapacityActor(
-    TRequestInfoPtr requestInfo,
-    TStorageConfigPtr config)
+        TRequestInfoPtr requestInfo,
+        TStorageConfigPtr config)
     : RequestInfo(std::move(requestInfo))
     , Config(config)
 {}
