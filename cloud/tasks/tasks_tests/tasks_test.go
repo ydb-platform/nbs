@@ -474,7 +474,12 @@ func scheduleWaitingTask(
 	depTaskId string,
 ) (string, error) {
 
-	return scheduler.ScheduleTask(ctx, "waiting", "Waiting task", &wrappers.StringValue{Value: depTaskId})
+	return scheduler.ScheduleTask(
+		ctx,
+		"waiting",
+		"Waiting task",
+		&wrappers.StringValue{Value: depTaskId},
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

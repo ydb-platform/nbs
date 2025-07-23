@@ -1351,7 +1351,7 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 	}
 
 	go func() {
-		// Cancel runner loop after all iterations.
+		// Cancel runner loop after all tasks are finished.
 		// TODO: This is bad.
 		<-time.After(time.Duration(pingsCount-1)*pingPeriod + pingPeriod/2)
 		cancel()
@@ -1359,7 +1359,7 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	// There is no need to additionally ensure order,
-	// since code provided in On().Run() argument is executed in the order On() function were called.
+	// since code provided in On().Run() argument is executed in the order On() functions were called.
 	// https://github.com/stretchr/testify/blob/a53be35c3b0cfcd5189cffcfd75df60ea581104c/mock/mock.go#L531
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
 }
