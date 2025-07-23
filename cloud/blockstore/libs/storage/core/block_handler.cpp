@@ -156,11 +156,12 @@ public:
         bool allZeroes = true;
         for (size_t i = 0; i < BlockMarks.size(); ++i) {
             auto& block = *Blocks.MutableBuffers(i);
-            if (!BlockMarks[i] || IsAllZeroes(block.data(), block.size())) {
+            if (!BlockMarks[i]) {
                 block.clear();
                 SetBitMapValue(UnencryptedBlockMask, i, true);
             } else {
-                allZeroes = false;
+                allZeroes =
+                    allZeroes && IsAllZeroes(block.data(), block.size());
             }
         }
 
