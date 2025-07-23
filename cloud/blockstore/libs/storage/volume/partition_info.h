@@ -21,16 +21,37 @@ namespace NCloud::NBlockStore::NStorage {
 // itself and its wrappers.
 class TActorsStack
 {
-    TDeque<NActors::TActorId> Actors;
+public:
+    enum class EActorPurpose
+    {
+        BlobStoragePartitionTablet,
+        DiskRegistryBasedPartitionActor,
+        FollowerWrapper,
+        ShadowDiskWrapper,
+    };
+
+private:
+    struct TActorInfo
+    {
+        TActorInfo(NActors::TActorId actorId, EActorPurpose purpose)
+            : ActorId(actorId)
+            , ActorPurpose(purpose)
+        {}
+        NActors::TActorId ActorId;
+        EActorPurpose ActorPurpose;
+    };
+
+    TDeque<TActorInfo> Actors;
 
 public:
     TActorsStack() = default;
-    explicit TActorsStack(NActors::TActorId actor);
+    TActorsStack(NActors::TActorId actor, EActorPurpose purpose);
 
-    void Push(NActors::TActorId actorId);
+    void Push(NActors::TActorId actorId, EActorPurpose purpose);
     void Clear();
     [[nodiscard]] bool IsKnown(NActors::TActorId actorId) const;
     [[nodiscard]] NActors::TActorId GetTop() const;
+    [[nodiscard]] NActors::TActorId GetTopWrapper() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

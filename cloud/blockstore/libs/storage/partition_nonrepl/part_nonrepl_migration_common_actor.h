@@ -104,6 +104,18 @@ class TNonreplicatedPartitionMigrationCommonActor
           TNonreplicatedPartitionMigrationCommonActor>
     , IPoisonPillHelperOwner
 {
+public:
+    struct TInitParams
+    {
+        NActors::TActorId MigrationSrcActorId;
+        NActors::TActorId SrcActorId;
+        NActors::TActorId DstActorId;
+        bool TakeOwnershipOverSrcActor = true;
+        bool TakeOwnershipOverDstActor = true;
+        bool SendWritesToSrc = true;
+        std::unique_ptr<TMigrationTimeoutCalculator> TimeoutCalculator;
+    };
+
 private:
     using TBase = NActors::TActorBootstrapped<
         TNonreplicatedPartitionMigrationCommonActor>;
@@ -127,7 +139,7 @@ private:
     NActors::TActorId MigrationSrcActorId;
     NActors::TActorId SrcActorId;
     NActors::TActorId DstActorId;
-    bool ActorOwner = false;
+    bool SendWritesToSrc = true;
     std::unique_ptr<TMigrationTimeoutCalculator> TimeoutCalculator;
 
     TProcessingBlocks ProcessingBlocks;
@@ -222,13 +234,7 @@ public:
     virtual void Bootstrap(const NActors::TActorContext& ctx);
 
     // Called from the inheritor to initialize migration.
-    void InitWork(
-        const NActors::TActorContext& ctx,
-        NActors::TActorId migrationSrcActorId,
-        NActors::TActorId srcActorId,
-        NActors::TActorId dstActorId,
-        bool takeOwnershipOverActors,
-        std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator);
+    void InitWork(const NActors::TActorContext& ctx, TInitParams initParams);
 
     // Called from the inheritor to start migration.
     void StartWork(const NActors::TActorContext& ctx);
