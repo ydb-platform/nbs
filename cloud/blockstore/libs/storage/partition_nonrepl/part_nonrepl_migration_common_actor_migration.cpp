@@ -318,7 +318,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
                 << "Can't defer a range to migrate later. Range: " << msg->Range
                 << ", diskId: " << DiskId);
         }
-        ScheduleRangeMigration(ctx, true);
+        ScheduleRangeMigration(ctx);
         return;
     }
 
@@ -462,7 +462,7 @@ void TNonreplicatedPartitionMigrationCommonActor::OnMigrationNonRetriableError(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
-    const TActorContext& ctx, bool isRetry)
+    const TActorContext& ctx)
 {
     if (!MigrationEnabled || RangeMigrationScheduled || IsIoDepthLimitReached())
     {
@@ -490,15 +490,21 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
         delayBetweenMigrations.ToString().Quote().c_str());
 
     RangeMigrationScheduled = true;
-    if (!isRetry) {
+    if (DeferredMigrations.Empty()) {
         ctx.Schedule(
             delayBetweenMigrations,
             new TEvNonreplPartitionPrivate::TEvMigrateNextRange());
         return;
     }
     ctx.Schedule(
-        BackoffProvider.GetDelayAndIncrease(),
-        new TEvNonreplPartitionPrivate::TEvMigrateNextRange());
+        delayBetweenMigrations + BackoffProvider.GetDelayAndIncrease(),
+        std::make_unique<IEventHandle>(
+            SelfId(),   // recipient
+            SelfId(),   // sender
+            new TEvNonreplPartitionPrivate::TEvMigrateNextRange(),
+            0,   // flags
+            1    // cookie
+            ));
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
@@ -510,6 +516,20 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
     RangeMigrationScheduled = false;
 
     if (!IsMigrationAllowed() || IsIoDepthLimitReached()) {
+        return;
+    }
+
+    if (!DeferredMigrations.Empty() && ev->Cookie == 0) {
+        RangeMigrationScheduled = true;
+        ctx.Schedule(
+            BackoffProvider.GetDelayAndIncrease(),
+            std::make_unique<IEventHandle>(
+                SelfId(),   // recipient
+                SelfId(),   // sender
+                new TEvNonreplPartitionPrivate::TEvMigrateNextRange(),
+                0,   // flags
+                1    // cookie
+                ));
         return;
     }
 

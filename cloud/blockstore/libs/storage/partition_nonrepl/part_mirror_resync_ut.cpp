@@ -1925,6 +1925,66 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             }
         }
     }
+
+    Y_UNIT_TEST(ShouldRetryIfResyncRangeFail)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        TBlockRange64 rejectedRange;
+        bool seenRetry = false;
+        bool isRejected = false;
+
+        auto filter = [&](TTestActorRuntimeBase& runtime,
+                          TAutoPtr<IEventHandle>& event) -> bool
+        {
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvRangeResynced)
+            {
+                auto* msg =
+                    event->Get<TEvNonreplPartitionPrivate::TEvRangeResynced>();
+
+                if (msg->Range == rejectedRange && isRejected) {
+                    seenRetry = true;
+                    return false;
+                }
+
+                if (isRejected) {
+                    return false;
+                }
+
+                rejectedRange = msg->Range;
+                isRejected = true;
+                runtime.Send(
+                    event->Recipient,
+                    event->Sender,
+                    new TEvNonreplPartitionPrivate::TEvRangeResynced(
+                        MakeError(E_REJECTED),
+                        msg->Range,
+                        msg->ChecksumStartTs,
+                        msg->ChecksumDuration,
+                        msg->ReadStartTs,
+                        msg->ReadDuration,
+                        msg->WriteStartTs,
+                        msg->WriteDuration,
+                        msg->ExecCycles,
+                        msg->AffectedBlockInfos,
+                        msg->Status));
+
+                return true;
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(filter);
+
+        env.StartResync(0);
+        env.ResyncController.WaitForResyncedRangeCount(1);
+
+        UNIT_ASSERT(isRejected);
+        UNIT_ASSERT(seenRetry);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

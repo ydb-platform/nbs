@@ -49,21 +49,21 @@ void TMirrorPartitionResyncActor::ContinueResyncIfNeeded(
         State.AddPendingResyncRange(rangeId.first);
     }
 
-    ScheduleResyncNextRange(ctx);
+    ScheduleResyncNextRange(ctx, /*isRetry=*/false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMirrorPartitionResyncActor::ScheduleResyncNextRange(const TActorContext& ctx)
+void TMirrorPartitionResyncActor::ScheduleResyncNextRange(
+    const TActorContext& ctx,
+    bool isRetry)
 {
-    ctx.Schedule(
-        ResyncNextRangeInterval,
-        new TEvNonreplPartitionPrivate::TEvResyncNextRange());
-}
-
-void TMirrorPartitionResyncActor::ScheduleResyncNextRangeWhenRetry(
-    const TActorContext& ctx)
-{
+    if (!isRetry) {
+        ctx.Schedule(
+            ResyncNextRangeInterval,
+            new TEvNonreplPartitionPrivate::TEvResyncNextRange());
+        return;
+    }
     ctx.Schedule(
         BackoffProvider.GetDelayAndIncrease(),
         new TEvNonreplPartitionPrivate::TEvResyncNextRange());
@@ -97,7 +97,7 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
             // Reschedule range
             State.FinishResyncRange(rangeId);
             State.AddPendingResyncRange(rangeId);
-            ScheduleResyncNextRange(ctx);
+            ScheduleResyncNextRange(ctx, /*isRetry=*/false);
             return;
         }
     }
@@ -214,7 +214,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
             // Reschedule range
             State.AddPendingResyncRange(rangeId.first);
-            ScheduleResyncNextRangeWhenRetry(ctx);
+            ScheduleResyncNextRange(ctx, /*isRetry=*/true);
         } else {
             ReportResyncFailed(
                 FormatError(msg->GetError()),

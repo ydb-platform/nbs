@@ -286,9 +286,7 @@ private:
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
 
-    void ScheduleRangeMigration(
-        const NActors::TActorContext& ctx,
-        bool isRetry = false);
+    void ScheduleRangeMigration(const NActors::TActorContext& ctx);
     void StartRangeMigration(const NActors::TActorContext& ctx);
     void MigrateRange(const NActors::TActorContext& ctx, TBlockRange64 range);
 

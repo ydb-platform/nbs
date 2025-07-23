@@ -48,8 +48,8 @@ TNonreplicatedPartitionMigrationCommonActor::
     , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)
     , StatActorId(statActorId)
     , BackoffProvider(
-          Config->GetRetryInitialDelayForResyncAndMirrorActors(),
-          Config->GetRetryMaxDelayForResyncAndMirrorActors())
+          Config->GetInitialRetryDelayForServiceRequests(),
+          Config->GetMaxRetryDelayForServiceRequests())
     , PoisonPillHelper(this)
 {
 }
@@ -84,8 +84,8 @@ TNonreplicatedPartitionMigrationCommonActor::
     , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)
     , StatActorId(statActorId)
     , BackoffProvider(
-          Config->GetRetryInitialDelayForResyncAndMirrorActors(),
-          Config->GetRetryMaxDelayForResyncAndMirrorActors())
+          Config->GetInitialRetryDelayForServiceRequests(),
+          Config->GetMaxRetryDelayForServiceRequests())
     , PoisonPillHelper(this)
 {
 }
