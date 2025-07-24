@@ -287,14 +287,16 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
 
 std::optional<TTxVolume::TSavePartStats> TVolumeActor::UpdatePartCounters(
     const TActorContext& ctx,
-    TUpdatePartCounters& args)
+    TPartCountersData& partCountersData)
 {
     Y_DEBUG_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
 
-    auto requestInfo =
-        CreateRequestInfo(args.Sender, args.Cookie, args.CallContext);
+    auto requestInfo = CreateRequestInfo(
+        partCountersData.Sender,
+        partCountersData.Cookie,
+        partCountersData.CallContext);
 
-    auto tabletId = State->FindPartitionTabletId(args.Sender);
+    auto tabletId = State->FindPartitionTabletId(partCountersData.Sender);
     auto* statInfo =
         tabletId ? State->GetPartitionStatInfoByTabletId(*tabletId) : nullptr;
     if (!statInfo) {
@@ -303,27 +305,27 @@ std::optional<TTxVolume::TSavePartStats> TVolumeActor::UpdatePartCounters(
             TBlockStoreComponents::VOLUME,
             "%s Partition %s for disk counters not found",
             LogTitle.GetWithTime().c_str(),
-            ToString(args.Sender).c_str());
+            ToString(partCountersData.Sender).c_str());
         return std::nullopt;
     }
 
-    UpdateTabletMetrics(ctx, args.TabletMetrics);
+    UpdateTabletMetrics(ctx, partCountersData.TabletMetrics);
 
     if (!statInfo->LastCounters) {
         statInfo->LastCounters = CreatePartitionDiskCounters(
             State->CountersPolicy(),
             DiagnosticsConfig->GetHistogramCounterOptions());
-        statInfo->LastMetrics = std::move(args.BlobLoadMetrics);
+        statInfo->LastMetrics = std::move(partCountersData.BlobLoadMetrics);
     }
 
-    statInfo->LastSystemCpu += args.VolumeSystemCpu;
-    statInfo->LastUserCpu += args.VolumeUserCpu;
+    statInfo->LastSystemCpu += partCountersData.VolumeSystemCpu;
+    statInfo->LastUserCpu += partCountersData.VolumeUserCpu;
 
-    statInfo->LastCounters->Add(*args.DiskCounters);
+    statInfo->LastCounters->Add(*partCountersData.DiskCounters);
 
-    UpdateCachedStats(*args.DiskCounters, statInfo->CachedCounters);
+    UpdateCachedStats(*partCountersData.DiskCounters, statInfo->CachedCounters);
     CopyPartCountersToCachedStats(
-        *args.DiskCounters,
+        *partCountersData.DiskCounters,
         statInfo->CachedCountersProto);
 
     TVolumeDatabase::TPartStats partStats;
@@ -344,7 +346,7 @@ void TVolumeActor::HandlePartCounters(
 
     auto* msg = ev->Get();
 
-    TUpdatePartCounters args(
+    TPartCountersData partCountersData(
         ev->Sender,
         ev->Cookie,
         msg->VolumeSystemCpu,
@@ -354,8 +356,8 @@ void TVolumeActor::HandlePartCounters(
         std::move(msg->TabletMetrics),
         std::move(msg->BlobLoadMetrics));
 
-    if (auto stats = UpdatePartCounters(ctx, args)) {
-        ExecuteTx<TSavePartStats>(ctx, *std::move(stats));
+    if (auto stats = UpdatePartCounters(ctx, partCountersData)) {
+        ExecuteTx<TSavePartStats>(ctx, std::move(*stats));
     }
 }
 
@@ -380,7 +382,7 @@ void TVolumeActor::HandlePartCountersCombined(
     TVector<TTxVolume::TSavePartStats> partStats;
 
     for (auto& partCounters: msg->PartCounters) {
-        TUpdatePartCounters args(
+        TPartCountersData partCountersData(
             partCounters.PartActorId,
             ev->Cookie,
             partCounters.VolumeSystemCpu,
@@ -390,8 +392,8 @@ void TVolumeActor::HandlePartCountersCombined(
             std::move(partCounters.TabletMetrics),
             std::move(partCounters.BlobLoadMetrics));
 
-        if (auto stats = UpdatePartCounters(ctx, args)) {
-            partStats.emplace_back(*std::move(stats));
+        if (auto stats = UpdatePartCounters(ctx, partCountersData)) {
+            partStats.push_back(std::move(*stats));
         }
     }
 

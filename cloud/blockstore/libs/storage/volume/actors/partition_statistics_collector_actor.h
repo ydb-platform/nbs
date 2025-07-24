@@ -6,8 +6,6 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 
-#include <util/generic/hash.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -20,9 +18,11 @@ private:
 
     const TVector<NActors::TActorId> Partitions;
 
-    TVector<TEvPartitionCommonPrivate::GetPartCountersResponse> PartCounters;
+    TEvPartitionCommonPrivate::TPartCountersCombined CombinedCounters;
 
     NProto::TError Error;
+
+    ui32 NumberResponsesWithError = 0;
 
 public:
     TPartitionStatisticsCollectorActor(

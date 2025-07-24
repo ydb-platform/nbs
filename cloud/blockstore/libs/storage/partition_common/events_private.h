@@ -189,12 +189,12 @@ struct TEvPartitionCommonPrivate
     // GetPartCounters
     //
 
-    struct GetPartCountersRequest
+    struct TGetPartCountersRequest
     {
-        GetPartCountersRequest() = default;
+        TGetPartCountersRequest() = default;
     };
 
-    struct GetPartCountersResponse
+    struct TGetPartCountersResponse
     {
         NActors::TActorId PartActorId;
         ui64 VolumeSystemCpu;
@@ -203,9 +203,9 @@ struct TEvPartitionCommonPrivate
         NBlobMetrics::TBlobLoadMetrics BlobLoadMetrics;
         NKikimrTabletBase::TMetrics TabletMetrics;
 
-        GetPartCountersResponse() = default;
+        TGetPartCountersResponse() = default;
 
-        GetPartCountersResponse(
+        TGetPartCountersResponse(
                 NActors::TActorId partActorId,
                 ui64 volumeSystemCpu,
                 ui64 volumeUserCpu,
@@ -223,12 +223,9 @@ struct TEvPartitionCommonPrivate
 
     struct TPartCountersCombined
     {
-        TVector<GetPartCountersResponse> PartCounters;
+        TVector<TGetPartCountersResponse> PartCounters;
 
-        explicit TPartCountersCombined(
-                TVector<GetPartCountersResponse> partCounters)
-            : PartCounters(std::move(partCounters))
-        {}
+        TPartCountersCombined() = default;
     };
 
     //
@@ -264,9 +261,9 @@ struct TEvPartitionCommonPrivate
     using TEvDescribeBlocksCompleted = TResponseEvent<TDescribeBlocksCompleted, EvTDescribeBlocksCompleted>;
     using TEvLongRunningOperation = TRequestEvent<TLongRunningOperation, EvLongRunningOperation>;
     using TEvGetPartCountersRequest =
-        TRequestEvent<GetPartCountersRequest, EvGetPartCountersRequest>;
+        TRequestEvent<TGetPartCountersRequest, EvGetPartCountersRequest>;
     using TEvGetPartCountersResponse =
-        TResponseEvent<GetPartCountersResponse, EvGetPartCountersResponse>;
+        TResponseEvent<TGetPartCountersResponse, EvGetPartCountersResponse>;
     using TEvPartCountersCombined =
         TResponseEvent<TPartCountersCombined, EvPartCountersCombined>;
 };

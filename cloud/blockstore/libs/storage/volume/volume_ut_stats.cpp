@@ -1270,6 +1270,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             [&](TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev)
             {
                 UNIT_ASSERT(ev->Get()->PartCounters.size() == 1);
+                UNIT_ASSERT(!HasError(ev->Get()->Error));
                 updated = true;
             });
 
@@ -1306,6 +1307,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             [&](TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev)
             {
                 UNIT_ASSERT(ev->Get()->PartCounters.size() == 2);
+                UNIT_ASSERT(!HasError(ev->Get()->Error));
                 updated = true;
             });
 
