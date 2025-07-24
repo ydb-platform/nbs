@@ -58,7 +58,7 @@ ui64 TTransactionTimeTracker::THash::operator()(const TKey& key) const
 ////////////////////////////////////////////////////////////////////////////////
 
 TTransactionTimeTracker::TTransactionTimeTracker(
-    std::span<const TString> transactionTypes)
+        std::span<const TString> transactionTypes)
     : TransactionTypes(transactionTypes.begin(), transactionTypes.end())
 {
     for (const auto& transaction: TransactionTypes) {
