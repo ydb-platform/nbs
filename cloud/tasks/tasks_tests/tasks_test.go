@@ -1684,7 +1684,7 @@ func TestListerMetricsCleanup(t *testing.T) {
 	registry.AssertAllExpectations(t)
 }
 
-func createTask(
+func createTaskWithEndedAt(
 	t *testing.T,
 	ctx context.Context,
 	storage tasks_storage.Storage,
@@ -1741,7 +1741,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 
 		actualTaskIds = append(
 			actualTaskIds,
-			createTask(
+			createTaskWithEndedAt(
 				t,
 				ctx,
 				s.storage,
@@ -1749,7 +1749,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 				time.Now(),
 				tasks_storage.TaskStatusFinished,
 			),
-			createTask(
+			createTaskWithEndedAt(
 				t,
 				ctx,
 				s.storage,
@@ -1757,7 +1757,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 				time.Now(),
 				tasks_storage.TaskStatusCancelled,
 			),
-			createTask(
+			createTaskWithEndedAt(
 				t,
 				ctx,
 				s.storage,
@@ -1769,7 +1769,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 
 		expiredTaskIds = append(
 			expiredTaskIds,
-			createTask(
+			createTaskWithEndedAt(
 				t,
 				ctx,
 				s.storage,
@@ -1777,7 +1777,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 				expiredCreatedAt,
 				tasks_storage.TaskStatusFinished,
 			),
-			createTask(
+			createTaskWithEndedAt(
 				t,
 				ctx,
 				s.storage,
