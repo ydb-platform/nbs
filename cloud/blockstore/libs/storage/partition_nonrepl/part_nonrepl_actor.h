@@ -110,7 +110,8 @@ private:
 
     void ReplyAndDie(const NActors::TActorContext& ctx);
 
-    TDiskRegistryBasedPartCounters GetStats(const NActors::TActorContext& ctx);
+    TPartNonreplCountersData ExtractPartCounters(
+        const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);

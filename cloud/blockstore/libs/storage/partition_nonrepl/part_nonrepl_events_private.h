@@ -384,20 +384,20 @@ struct TEvNonreplPartitionPrivate
     //  GetDiskRegistryBasedPartCounters
     //
 
-    struct GetDiskRegistryBasedPartCountersRequest
+    struct TGetDiskRegistryBasedPartCountersRequest
     {
-        GetDiskRegistryBasedPartCountersRequest() = default;
+        TGetDiskRegistryBasedPartCountersRequest() = default;
     };
 
-    struct GetDiskRegistryBasedPartCountersResponse
+    struct TGetDiskRegistryBasedPartCountersResponse
     {
         TPartitionDiskCountersPtr DiskCounters;
-        ui64 NetworkBytes = 0;
+        ui64 NetworkBytes;
         TDuration CpuUsage;
         NActors::TActorId SelfId;
         TString DiskId;
 
-        GetDiskRegistryBasedPartCountersResponse(
+        TGetDiskRegistryBasedPartCountersResponse(
                 TPartitionDiskCountersPtr diskCounters,
                 ui64 networkBytes,
                 TDuration cpuUsage,
@@ -417,12 +417,9 @@ struct TEvNonreplPartitionPrivate
 
     struct TDiskRegistryBasedPartCountersCombined
     {
-        TVector<GetDiskRegistryBasedPartCountersResponse> Counters;
+        TVector<TGetDiskRegistryBasedPartCountersResponse> Counters;
 
-        explicit TDiskRegistryBasedPartCountersCombined(
-            TVector<GetDiskRegistryBasedPartCountersResponse> counters)
-            : Counters(std::move(counters))
-        {}
+        TDiskRegistryBasedPartCountersCombined() = default;
     };
 
     //
@@ -564,11 +561,11 @@ struct TEvNonreplPartitionPrivate
         TRequestEvent<TInconsistentDiskAgent, EvInconsistentDiskAgent>;
 
     using TEvGetDiskRegistryBasedPartCountersRequest = TRequestEvent<
-        GetDiskRegistryBasedPartCountersRequest,
+        TGetDiskRegistryBasedPartCountersRequest,
         EvGetDiskRegistryBasedPartCountersRequest>;
 
     using TEvGetDiskRegistryBasedPartCountersResponse = TResponseEvent<
-        GetDiskRegistryBasedPartCountersResponse,
+        TGetDiskRegistryBasedPartCountersResponse,
         EvGetDiskRegistryBasedPartCountersResponse>;
 
     using TEvDiskRegistryBasedPartCountersCombined = TResponseEvent<

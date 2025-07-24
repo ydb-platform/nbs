@@ -21,14 +21,14 @@ void TNonreplicatedPartitionRdmaActor::UpdateStats(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDiskRegistryBasedPartCounters TNonreplicatedPartitionRdmaActor::GetStats()
+TPartNonreplCountersData TNonreplicatedPartitionRdmaActor::ExtractPartCounters()
 {
     PartCounters->Simple.IORequestsInFlight.Set(
         RequestsInProgress.GetRequestCount());
     PartCounters->Simple.BytesCount.Set(
         PartConfig->GetBlockCount() * PartConfig->GetBlockSize());
 
-    TDiskRegistryBasedPartCounters counters(
+    TPartNonreplCountersData counters(
         NetworkBytes,
         CpuUsage,
         std::move(PartCounters));
@@ -45,12 +45,12 @@ TDiskRegistryBasedPartCounters TNonreplicatedPartitionRdmaActor::GetStats()
 
 void TNonreplicatedPartitionRdmaActor::SendStats(const TActorContext& ctx)
 {
-    auto&& [networkBytes, cpuUsage, partCounters] = GetStats();
+    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
 
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
             MakeIntrusive<TCallContext>(),
-            std::move(partCounters),
+            std::move(diskCounters),
             PartConfig->GetName(),
             networkBytes,
             cpuUsage);
@@ -66,7 +66,7 @@ void TNonreplicatedPartitionRdmaActor::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const TActorContext& ctx)
 {
-    auto&& [networkBytes, cpuUsage, partCounters] = GetStats();
+    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
 
     NCloud::Reply(
         ctx,
@@ -74,7 +74,7 @@ void TNonreplicatedPartitionRdmaActor::
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvGetDiskRegistryBasedPartCountersResponse>(
             MakeError(S_OK),
-            std::move(partCounters),
+            std::move(diskCounters),
             networkBytes,
             cpuUsage,
             SelfId(),

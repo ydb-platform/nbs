@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "config.h"
-#include "update_counters.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
@@ -309,9 +308,10 @@ private:
 
     void UpdateCounters(
         const NActors::TActorContext& ctx,
-        TUpdateCounters& args);
+        const NActors::TActorId& sender,
+        TPartNonreplCountersData& partCountersData);
 
-    TDiskRegistryBasedPartCounters GetStats();
+    TPartNonreplCountersData ExtractPartCounters();
 
 private:
     STFUNC(StateWork);

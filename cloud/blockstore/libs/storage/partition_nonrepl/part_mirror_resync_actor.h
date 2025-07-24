@@ -6,7 +6,6 @@
 #include "part_mirror_resync_state.h"
 #include "part_nonrepl_events_private.h"
 #include "resync_range.h"
-#include "update_counters.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
@@ -140,9 +139,10 @@ private:
 
     void UpdateCounters(
         const NActors::TActorContext& ctx,
-        TUpdateCounters& args);
+        const NActors::TActorId& sender,
+        TPartNonreplCountersData& partCountersData);
 
-    TDiskRegistryBasedPartCounters GetStats();
+    TPartNonreplCountersData ExtractPartCounters();
 
 private:
     STFUNC(StateWork);

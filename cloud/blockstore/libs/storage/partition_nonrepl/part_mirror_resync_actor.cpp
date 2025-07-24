@@ -107,10 +107,6 @@ void TMirrorPartitionResyncActor::KillActors(const TActorContext& ctx)
     for (const auto& replica: Replicas) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, replica.ActorId);
     }
-
-    NCloud::Send<TEvents::TEvPoisonPill>(
-        ctx,
-        DiskRegistryBasedPartitionStatisticsCollectorActorId);
 }
 
 void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)

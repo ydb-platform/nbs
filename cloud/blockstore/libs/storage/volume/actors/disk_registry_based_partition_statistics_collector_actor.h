@@ -19,9 +19,7 @@ private:
 
     const TVector<NActors::TActorId> StatActorIds;
 
-    TVector<
-        TEvNonreplPartitionPrivate::GetDiskRegistryBasedPartCountersResponse>
-        Counters;
+    TEvNonreplPartitionPrivate::TDiskRegistryBasedPartCountersCombined Response;
 
     NProto::TError Error;
 
@@ -40,10 +38,6 @@ private:
 
     void HandleTimeout(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandlePoisonPill(
-        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleGetDiskRegistryBasedPartCountersResponse(

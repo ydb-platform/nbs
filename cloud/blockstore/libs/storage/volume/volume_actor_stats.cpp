@@ -220,23 +220,22 @@ void TVolumeActor::HandleScrubberCounters(
 
 void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
     const TActorContext& ctx,
-    const TString& diskId,
-    TUpdateCounters& args,
-    ui64 cookie,
-    TCallContextPtr callContext)
+    TDataForUpdatingDiskRegistryBasedPartCounters& data)
 {
     Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
 
     if (auto* resourceMetrics = GetResourceMetrics(); resourceMetrics) {
         bool changed = false;
-        if (args.CpuUsage) {
+        if (data.PartCountersData.CpuUsage) {
             resourceMetrics->CPU.Increment(
-                args.CpuUsage.MicroSeconds(),
+                data.PartCountersData.CpuUsage.MicroSeconds(),
                 ctx.Now());
             changed = true;
         }
-        if (args.NetworkBytes) {
-            resourceMetrics->Network.Increment(args.NetworkBytes, ctx.Now());
+        if (data.PartCountersData.NetworkBytes) {
+            resourceMetrics->Network.Increment(
+                data.PartCountersData.NetworkBytes,
+                ctx.Now());
             changed = true;
         }
 
@@ -245,9 +244,10 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
         }
     }
 
-    auto requestInfo = CreateRequestInfo(args.Sender, cookie, callContext);
+    auto requestInfo =
+        CreateRequestInfo(data.Sender, data.Cookie, data.CallContext);
 
-    auto* statInfo = State->GetPartitionStatByDiskId(diskId);
+    auto* statInfo = State->GetPartitionStatByDiskId(data.DiskId);
 
     if (!statInfo) {
         LOG_INFO(
@@ -255,8 +255,8 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
             TBlockStoreComponents::VOLUME,
             "%s Counters from partition %s (%s) do not belong to disk",
             LogTitle.GetWithTime().c_str(),
-            ToString(args.Sender).c_str(),
-            diskId.Quote().c_str());
+            ToString(data.Sender).c_str(),
+            data.DiskId.Quote().c_str());
         return;
     }
 
@@ -266,11 +266,13 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
             DiagnosticsConfig->GetHistogramCounterOptions());
     }
 
-    statInfo->LastCounters->Add(*args.DiskCounters);
+    statInfo->LastCounters->Add(*data.PartCountersData.DiskCounters);
 
-    UpdateCachedStats(*args.DiskCounters, statInfo->CachedCounters);
+    UpdateCachedStats(
+        *data.PartCountersData.DiskCounters,
+        statInfo->CachedCounters);
     CopyPartCountersToCachedStats(
-        *args.DiskCounters,
+        *data.PartCountersData.DiskCounters,
         statInfo->CachedCountersProto);
 
     TVolumeDatabase::TPartStats partStats;
@@ -289,18 +291,19 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
 
     auto* msg = ev->Get();
 
-    TUpdateCounters args(
-        ev->Sender,
+    TPartNonreplCountersData partCountersData(
         msg->NetworkBytes,
         msg->CpuUsage,
         std::move(msg->DiskCounters));
 
-    UpdateDiskRegistryBasedPartCounters(
-        ctx,
-        msg->DiskId,
-        args,
+    TDataForUpdatingDiskRegistryBasedPartCounters data(
+        ev->Sender,
         ev->Cookie,
-        std::move(msg->CallContext));
+        std::move(msg->DiskId),
+        std::move(msg->CallContext),
+        std::move(partCountersData));
+
+    UpdateDiskRegistryBasedPartCounters(ctx, data);
 }
 
 void TVolumeActor::HandleGetDiskRegistryBasedPartCountersResponse(
@@ -318,18 +321,19 @@ void TVolumeActor::HandleGetDiskRegistryBasedPartCountersResponse(
             FormatError(msg->Error).c_str());
     }
 
-    TUpdateCounters args(
-        msg->SelfId,
+    TPartNonreplCountersData partCountersData(
         msg->NetworkBytes,
         msg->CpuUsage,
         std::move(msg->DiskCounters));
 
-    UpdateDiskRegistryBasedPartCounters(
-        ctx,
-        msg->DiskId,
-        args,
+    TDataForUpdatingDiskRegistryBasedPartCounters data(
+        msg->SelfId,
         ev->Cookie,
-        MakeIntrusive<TCallContext>());
+        std::move(msg->DiskId),
+        MakeIntrusive<TCallContext>(),
+        std::move(partCountersData));
+
+    UpdateDiskRegistryBasedPartCounters(ctx, data);
 }
 
 std::optional<TTxVolume::TSavePartStats> TVolumeActor::UpdatePartCounters(

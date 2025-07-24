@@ -6,7 +6,6 @@
 #include "config.h"
 #include "part_mirror_state.h"
 #include "part_nonrepl_events_private.h"
-#include "update_counters.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
@@ -154,10 +153,12 @@ private:
     EWriteRequestType SuggestWriteRequestType(
         const NActors::TActorContext& ctx,
         TBlockRange64 range);
-    TDiskRegistryBasedPartCounters GetStats(const NActors::TActorContext& ctx);
+    TPartNonreplCountersData ExtractPartCounters(
+        const NActors::TActorContext& ctx);
     void UpdateCounters(
         const NActors::TActorContext& ctx,
-        TUpdateCounters& args);
+        const NActors::TActorId& sender,
+        TPartNonreplCountersData& partCountersData);
 
 private:
     STFUNC(StateWork);
