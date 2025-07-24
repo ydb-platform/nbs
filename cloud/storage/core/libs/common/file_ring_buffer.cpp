@@ -29,16 +29,45 @@ struct THeader
 
 struct Y_PACKED TEntryHeader
 {
+private:
     ui32 DataSizeAndFlags = 0;
     ui32 Checksum = 0;
 
-    static constexpr ui32 IncompleteFlag = 0x40000000;
-    static constexpr ui32 SkipFlag = 0x80000000;
-    static constexpr ui32 SizeMask = 0x3fffffff;
+    static constexpr ui32 IncompleteFlag = 1U << 30U;
+    static constexpr ui32 SkipFlag = 1U << 31U;
+    static constexpr ui32 SizeMask = (1U << 30U) - 1;
+
+public:
+    ui32 GetChecksum() const
+    {
+        return Checksum;
+    }
+
+    void SetChecksum(ui32 checksum)
+    {
+        Checksum = checksum;
+    }
 
     ui32 GetDataSize() const
     {
         return DataSizeAndFlags & SizeMask;
+    }
+
+    static ui64 GetMaxDataSize()
+    {
+        return SizeMask;
+    }
+
+    void InitSlackSpace()
+    {
+        DataSizeAndFlags = 0;
+    }
+
+    void InitIncompleteEntry(ui64 size)
+    {
+        auto maskedSize = static_cast<ui32>(size) & SizeMask;
+        Y_ABORT_UNLESS(maskedSize == size);
+        DataSizeAndFlags = maskedSize | IncompleteFlag;
     }
 
     bool HasIncompleteFlag() const
@@ -46,9 +75,19 @@ struct Y_PACKED TEntryHeader
         return (DataSizeAndFlags & IncompleteFlag) != 0;
     }
 
+    void ClearIncompleteFlag()
+    {
+        DataSizeAndFlags &= ~IncompleteFlag;
+    }
+
     bool HasSkipFlag() const
     {
         return (DataSizeAndFlags & SkipFlag) != 0;
+    }
+
+    void SetSkipFlag()
+    {
+        DataSizeAndFlags |= SkipFlag;
     }
 };
 
@@ -164,11 +203,15 @@ struct TEntryInfo
         return HasValue() ? TStringBuf(Data, Header->GetDataSize()) : TStringBuf();
     }
 
+    ui64 GetEntrySize() const
+    {
+        return HasValue() ? sizeof(TEntryHeader) + Header->GetDataSize() : 0;
+    }
+
     ui64 GetNextEntryPos() const
     {
-        return Header != nullptr && Header->GetDataSize() > 0
-            ? ActualPos + sizeof(TEntryHeader) + Header->GetDataSize()
-            : INVALID_POS;
+        auto entrySize = GetEntrySize();
+        return entrySize != 0 ? ActualPos + entrySize : INVALID_POS;
     }
 
     static TEntryInfo Create(
@@ -322,7 +365,7 @@ private:
 
         while (cur.HasValue()) {
             if (cur.Header->HasIncompleteFlag()) {
-                cur.Header->DataSizeAndFlags |= TEntryHeader::SkipFlag;
+                cur.Header->SetSkipFlag();
             } else {
                 Count++;
                 last = cur;
@@ -335,9 +378,7 @@ private:
             SetCorrupted();
         }
 
-        if (back.HasValue() &&
-            back.GetNextEntryPos() - back.ActualPos != Header()->LastEntrySize)
-        {
+        if (back.HasValue() && back.GetEntrySize() != Header()->LastEntrySize) {
             SetCorrupted();
         }
 
@@ -345,7 +386,7 @@ private:
             Y_ABORT_UNLESS(last.HasValue());
             Header()->ReadPos = first.ActualPos;
             Header()->WritePos = last.GetNextEntryPos();
-            Header()->LastEntrySize = last.GetNextEntryPos() - last.ActualPos;
+            Header()->LastEntrySize = last.GetEntrySize();
         } else {
             Header()->ReadPos = 0;
             Header()->WritePos = 0;
@@ -399,7 +440,7 @@ public:
     {
         return Min(
             Header()->Capacity - sizeof(TEntryHeader),
-            static_cast<ui64>(TEntryHeader::SizeMask));
+            TEntryHeader::GetMaxDataSize());
     }
 
     bool AllocateBack(size_t size, char** ptr)
@@ -433,7 +474,7 @@ public:
                     }
                     auto* eh = Data.GetEntryHeader(Header()->WritePos);
                     if (eh != nullptr) {
-                        eh->DataSizeAndFlags = 0;
+                        eh->InitSlackSpace();
                     }
                     writePos = 0;
                 }
@@ -449,11 +490,10 @@ public:
         }
 
         auto* eh = Data.GetEntryHeader(writePos);
-        eh->DataSizeAndFlags =
-            static_cast<ui32>(size) | TEntryHeader::IncompleteFlag;
+        eh->InitIncompleteEntry(size);
 
         *ptr = Data.GetEntryData(eh);
-        Y_ABORT_UNLESS(*ptr != nullptr);
+        Y_ABORT_UNLESS(*ptr);
 
         Header()->WritePos = writePos + sz;
         Header()->LastEntrySize = sz;
@@ -469,8 +509,8 @@ public:
         Y_ABORT_UNLESS(eh != nullptr);
         Y_ABORT_UNLESS(eh->HasIncompleteFlag());
 
-        eh->Checksum = Crc32c(ptr, eh->GetDataSize());
-        eh->DataSizeAndFlags &= ~TEntryHeader::IncompleteFlag;
+        eh->SetChecksum(Crc32c(ptr, eh->GetDataSize()));
+        eh->ClearIncompleteFlag();
     }
 
     TStringBuf Front() const
@@ -567,7 +607,7 @@ public:
         auto e = GetFrontEntry();
 
         while (e.HasValue()) {
-            visitor(e.Header->Checksum, e.GetData());
+            visitor(e.Header->GetChecksum(), e.GetData());
             e = GetNextEntry(e);
         }
 
