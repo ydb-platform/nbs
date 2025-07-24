@@ -15,6 +15,12 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr static ui64 EventScheduledWithRetry = 1;
+
+////////////////////////////////////////////////////////////////////////////////
+
 using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
@@ -502,8 +508,8 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
             SelfId(),   // recipient
             SelfId(),   // sender
             new TEvNonreplPartitionPrivate::TEvMigrateNextRange(),
-            0,   // flags
-            1    // cookie
+            0,                        // flags
+            EventScheduledWithRetry   // cookie
             ));
 }
 
@@ -511,15 +517,13 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
     const TEvNonreplPartitionPrivate::TEvMigrateNextRange::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
     RangeMigrationScheduled = false;
 
     if (!IsMigrationAllowed() || IsIoDepthLimitReached()) {
         return;
     }
 
-    if (!DeferredMigrations.Empty() && ev->Cookie == 0) {
+    if (!DeferredMigrations.Empty() && ev->Cookie != EventScheduledWithRetry) {
         RangeMigrationScheduled = true;
         ctx.Schedule(
             BackoffProvider.GetDelayAndIncrease(),
@@ -527,8 +531,8 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
                 SelfId(),   // recipient
                 SelfId(),   // sender
                 new TEvNonreplPartitionPrivate::TEvMigrateNextRange(),
-                0,   // flags
-                1    // cookie
+                0,                        // flags
+                EventScheduledWithRetry   // cookie
                 ));
         return;
     }
