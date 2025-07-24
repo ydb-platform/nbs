@@ -4,5 +4,5 @@ DEPENDS(
 )
 
 USE_RECIPE(
-    cloud/filestore/tests/recipes/service-local/service-local-recipe --service=local
+    cloud/filestore/tests/recipes/service-local/service-local-recipe --service=local --file-io=${SERVICE_LOCAL_FILE_IO}
 )

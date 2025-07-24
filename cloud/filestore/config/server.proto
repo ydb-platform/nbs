@@ -65,6 +65,29 @@ message TNullServiceConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TAioConfig
+{
+    // Max. count of concurrently processing operations (io_setup).
+    optional uint32 Entries = 1;
+}
+
+message TIoUringConfig
+{
+    // Min. size of the submission queue.
+    optional uint32 Entries = 1;
+
+    // Share asynchronous worker thread backend.
+    optional bool ShareKernelWorkers = 2;
+
+    // Max. number of kernel workers.
+    optional uint32 MaxKernelWorkersCount = 3;
+
+    // Force offloading IO to the kernel thread pool.
+    optional bool ForceAsyncIO = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TLocalServiceConfig
 {
     optional string RootPath = 1;
@@ -126,6 +149,11 @@ message TLocalServiceConfig
 
     // Max entries each ListNodes will return
     optional uint32 MaxResponseEntries = 22;
+
+    oneof FileIOConfig {
+        TAioConfig AioConfig = 23;
+        TIoUringConfig IoUringConfig = 24;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
