@@ -10,7 +10,6 @@ EnableToChangeStatesFromDiskRegistryMonpage: true
 MirroredMigrationStartAllowed: true
 NonReplicatedDiskRecyclingPeriod: 5000
 NonReplicatedDontSuspendDevices: true
-NonReplicatedDontSuspendDevices: true
 NonReplicatedMigrationStartAllowed: true
 
 # DiskRegistry-based
