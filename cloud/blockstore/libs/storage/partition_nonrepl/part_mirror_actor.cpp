@@ -99,10 +99,6 @@ void TMirrorPartitionActor::KillActors(const TActorContext& ctx)
             ctx,
             actorId);
     }
-
-    NCloud::Send<TEvents::TEvPoisonPill>(
-        ctx,
-        DiskRegistryBasedPartitionStatisticsCollectorActorId);
 }
 
 void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)

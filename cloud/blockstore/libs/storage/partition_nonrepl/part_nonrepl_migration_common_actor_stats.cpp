@@ -11,24 +11,25 @@ using namespace NActors;
 
 void TNonreplicatedPartitionMigrationCommonActor::UpdateCounters(
     const TActorContext& ctx,
-    TUpdateCounters& args)
+    const TActorId& sender,
+    TPartNonreplCountersData& partCountersData)
 {
-    if (args.Sender == SrcActorId) {
-        SrcCounters = std::move(args.DiskCounters);
-    } else if (args.Sender == DstActorId) {
-        DstCounters = std::move(args.DiskCounters);
+    if (sender == SrcActorId) {
+        SrcCounters = std::move(partCountersData.DiskCounters);
+    } else if (sender == DstActorId) {
+        DstCounters = std::move(partCountersData.DiskCounters);
     } else {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION,
             "Partition %s for disk %s counters not found",
-            ToString(args.Sender).c_str(),
+            ToString(sender).c_str(),
             DiskId.Quote().c_str());
 
         Y_DEBUG_ABORT_UNLESS(0);
     }
-    NetworkBytes += args.NetworkBytes;
-    CpuUsage += args.CpuUsage;
+    NetworkBytes += partCountersData.NetworkBytes;
+    CpuUsage += partCountersData.CpuUsage;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,19 +40,18 @@ void TNonreplicatedPartitionMigrationCommonActor::HandlePartCounters(
 {
     auto* msg = ev->Get();
 
-    TUpdateCounters args(
-        ev->Sender,
+    TPartNonreplCountersData partCountersData(
         msg->NetworkBytes,
         msg->CpuUsage,
         std::move(msg->DiskCounters));
 
-    UpdateCounters(ctx, args);
+    UpdateCounters(ctx, ev->Sender, partCountersData);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDiskRegistryBasedPartCounters
-TNonreplicatedPartitionMigrationCommonActor::GetStats()
+TPartNonreplCountersData
+TNonreplicatedPartitionMigrationCommonActor::ExtractPartCounters()
 {
     auto stats = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
@@ -81,7 +81,7 @@ TNonreplicatedPartitionMigrationCommonActor::GetStats()
         EPublishingPolicy::DiskRegistryBased,
         DiagnosticsConfig->GetHistogramCounterOptions());
 
-    TDiskRegistryBasedPartCounters counters(NetworkBytes, CpuUsage, std::move(stats));
+    TPartNonreplCountersData counters(NetworkBytes, CpuUsage, std::move(stats));
 
     NetworkBytes = 0;
     CpuUsage = {};
@@ -96,12 +96,12 @@ void TNonreplicatedPartitionMigrationCommonActor::SendStats(
         return;
     }
 
-    auto&& [networkBytes, cpuUsage, stats] = GetStats();
+    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
 
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
             MakeIntrusive<TCallContext>(),
-            std::move(stats),
+            std::move(diskCounters),
             DiskId,
             networkBytes,
             cpuUsage);
@@ -128,7 +128,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
     }
 
     if (statActorIds.empty()) {
-        auto&& [networkBytes, cpuUsage, stats] = GetStats();
+        auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
 
         NCloud::Reply(
             ctx,
@@ -139,7 +139,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
                     E_INVALID_STATE,
                     "Nonreplicated migration actor hasn't src and dst "
                     "actors"),
-                std::move(stats),
+                std::move(diskCounters),
                 networkBytes,
                 cpuUsage,
                 SelfId(),
@@ -155,10 +155,6 @@ void TNonreplicatedPartitionMigrationCommonActor::
             ctx,
             SelfId(),
             std::move(statActorIds));
-
-    PoisonPillHelper.TakeOwnership(
-        ctx,
-        DiskRegistryBasedPartitionStatisticsCollectorActorId);
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::
@@ -170,16 +166,15 @@ void TNonreplicatedPartitionMigrationCommonActor::
     auto* record = ev->Get();
 
     for (auto& counters: record->Counters) {
-        TUpdateCounters args(
-            counters.SelfId,
+        TPartNonreplCountersData partCountersData(
             counters.NetworkBytes,
             counters.CpuUsage,
             std::move(counters.DiskCounters));
 
-        UpdateCounters(ctx, args);
+        UpdateCounters(ctx, counters.SelfId, partCountersData);
     }
 
-    auto&& [networkBytes, cpuUsage, stats] = GetStats();
+    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
 
     NCloud::Send(
         ctx,
@@ -187,15 +182,11 @@ void TNonreplicatedPartitionMigrationCommonActor::
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvGetDiskRegistryBasedPartCountersResponse>(
             record->Error,
-            std::move(stats),
+            std::move(diskCounters),
             networkBytes,
             cpuUsage,
             SelfId(),
             DiskId));
-
-    PoisonPillHelper.ReleaseOwnership(
-        ctx,
-        DiskRegistryBasedPartitionStatisticsCollectorActorId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

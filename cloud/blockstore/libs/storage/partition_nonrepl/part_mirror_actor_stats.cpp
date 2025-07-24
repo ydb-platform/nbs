@@ -12,19 +12,21 @@ using namespace NActors;
 
 void TMirrorPartitionActor::UpdateCounters(
     const TActorContext& ctx,
-    TUpdateCounters& args)
+    const TActorId& sender,
+    TPartNonreplCountersData& partCountersData)
 {
-    const ui32 replicaIndex = State.GetReplicaIndex(args.Sender);
+    const ui32 replicaIndex = State.GetReplicaIndex(sender);
     if (replicaIndex < ReplicaCounters.size()) {
-        ReplicaCounters[replicaIndex] = std::move(args.DiskCounters);
-        NetworkBytes += args.NetworkBytes;
-        CpuUsage += args.CpuUsage;
+        ReplicaCounters[replicaIndex] =
+            std::move(partCountersData.DiskCounters);
+        NetworkBytes += partCountersData.NetworkBytes;
+        CpuUsage += partCountersData.CpuUsage;
     } else {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION,
             "Partition %s for disk %s counters not found",
-            ToString(args.Sender).c_str(),
+            ToString(sender).c_str(),
             State.GetReplicaInfos()[0].Config->GetName().Quote().c_str());
 
         Y_DEBUG_ABORT_UNLESS(0);
@@ -39,18 +41,17 @@ void TMirrorPartitionActor::HandlePartCounters(
 {
     auto* msg = ev->Get();
 
-    TUpdateCounters args(
-        ev->Sender,
+    TPartNonreplCountersData partCountersData(
         msg->NetworkBytes,
         msg->CpuUsage,
         std::move(msg->DiskCounters));
 
-    UpdateCounters(ctx, args);
+    UpdateCounters(ctx, ev->Sender, partCountersData);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDiskRegistryBasedPartCounters TMirrorPartitionActor::GetStats(
+TPartNonreplCountersData TMirrorPartitionActor::ExtractPartCounters(
     const TActorContext& ctx)
 {
     auto stats = CreatePartitionDiskCounters(
@@ -83,7 +84,7 @@ TDiskRegistryBasedPartCounters TMirrorPartitionActor::GetStats(
         100 * GetScrubbingRange().Start / State.GetBlockCount();
     stats->Cumulative.ScrubbingThroughput.Value = ScrubbingThroughput;
 
-    TDiskRegistryBasedPartCounters partCounters(
+    TPartNonreplCountersData partCounters(
         NetworkBytes,
         CpuUsage,
         std::move(stats));
@@ -113,12 +114,12 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
         return;
     }
 
-    auto&& [networkBytes, cpuUsage, stats] = GetStats(ctx);
+    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters(ctx);
 
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
             MakeIntrusive<TCallContext>(),
-            std::move(stats),
+            std::move(diskCounters),
             DiskId,
             networkBytes,
             cpuUsage);
@@ -140,7 +141,8 @@ void TMirrorPartitionActor::HandleGetDiskRegistryBasedPartCountersRequest(
     auto statActorIds = State.GetAllActors();
 
     if (statActorIds.empty()) {
-        auto&& [networkBytes, cpuUsage, stats] = GetStats(ctx);
+        auto&& [networkBytes, cpuUsage, diskCounters] =
+            ExtractPartCounters(ctx);
 
         NCloud::Reply(
             ctx,
@@ -148,7 +150,7 @@ void TMirrorPartitionActor::HandleGetDiskRegistryBasedPartCountersRequest(
             std::make_unique<TEvNonreplPartitionPrivate::
                                  TEvGetDiskRegistryBasedPartCountersResponse>(
                 MakeError(E_INVALID_STATE, "Mirror actor hasn't replicas"),
-                std::move(stats),
+                std::move(diskCounters),
                 networkBytes,
                 cpuUsage,
                 SelfId(),
@@ -173,16 +175,15 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
     auto* record = ev->Get();
 
     for (auto& counters: record->Counters) {
-        TUpdateCounters args(
-            counters.SelfId,
+        TPartNonreplCountersData partCountersData(
             counters.NetworkBytes,
             counters.CpuUsage,
             std::move(counters.DiskCounters));
 
-        UpdateCounters(ctx, args);
+        UpdateCounters(ctx, counters.SelfId, partCountersData);
     }
 
-    auto&& [networkBytes, cpuUsage, stats] = GetStats(ctx);
+    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters(ctx);
 
     NCloud::Send(
         ctx,
@@ -190,7 +191,7 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvGetDiskRegistryBasedPartCountersResponse>(
             record->Error,
-            std::move(stats),
+            std::move(diskCounters),
             networkBytes,
             cpuUsage,
             SelfId(),
