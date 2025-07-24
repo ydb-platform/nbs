@@ -159,6 +159,8 @@ message TLocalServiceConfig
         TIoUringConfig IoUringConfig = 24;
         TNullFileIOConfig NullFileIOConfig = 25;
     }
+
+    optional uint32 MaxBackground = 26;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
