@@ -115,7 +115,6 @@ public:
             block.ReserveAndResize(BlockSize);
             char* head = block.begin();
             sglist.emplace_back(head, BlockSize);
-            NSan::Unpoison(head, BlockSize);
 
             BlockMarks[index] = true;
             SetBitMapValue(UnencryptedBlockMask, index, baseDisk);
@@ -279,9 +278,7 @@ public:
             for (auto blockIndex: blockIndices) {
                 Y_ABORT_UNLESS(ReadRange.Contains(blockIndex));
                 const auto index = blockIndex - ReadRange.Start;
-                TBlockDataRef block = src[index];
-                subset.push_back(block);
-                NSan::Unpoison(block.Data(), block.Size());
+                subset.push_back(src[index]);
 
                 BlockMarks[index] = true;
                 SetBitMapValue(UnencryptedBlockMask, index, baseDisk);

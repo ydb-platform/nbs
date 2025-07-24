@@ -1720,7 +1720,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         const size_t agentWithDiskCount = 2;
         const size_t agentCount = 2 * agentWithDiskCount;
-        const size_t devicesPerAgent = 128;
+        const size_t devicesPerAgent =
+            (NSan::MSanIsOn() || NSan::ASanIsOn()) ? 16 : 128;
         const size_t devicesPerDisk = 32;
         const size_t disksPerAgent = devicesPerAgent / devicesPerDisk;
         const ui32 migrationsBatchSize = 8;
