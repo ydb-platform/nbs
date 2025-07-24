@@ -53,6 +53,8 @@ public:
 
     bool GetGuestKeepCacheAllowed() const;
 
+    ui32 GetMaxBackground() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
