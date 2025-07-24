@@ -1,6 +1,5 @@
 #pragma once
 
-#include "cloud/blockstore/libs/storage/core/tablet.h"
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
@@ -37,9 +36,6 @@ private:
     TInstant ResponseReceived;
 
     bool DeadlineSeen = false;
-
-    // const ui32 GroupId;
-    // ITransactionTracker* TransactionTracker;
 
 public:
     TReadBlobActor(

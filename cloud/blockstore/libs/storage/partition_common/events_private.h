@@ -111,6 +111,7 @@ struct TEvPartitionCommonPrivate
         TDuration RequestTime;
         ui32 GroupId = 0;
         bool DeadlineSeen = false;
+        ui64 RequestId = 0;
 
         TReadBlobCompleted() = default;
 

@@ -87,13 +87,6 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 
     RequestSent = ctx.Now();
 
-    // if (TransactionTracker){
-    //     TransactionTracker->OnStarted(
-    //         RequestInfo->CallContext->RequestId,
-    //         TStringBuilder() << "ReadBlob_Group" << Request->GroupId,
-    //         GetCycleCount());
-    // }
-
     SendToBSProxy(
         ctx,
         Request->Proxy,
@@ -111,6 +104,7 @@ void TReadBlobActor::NotifyCompleted(
     request->BytesCount = Request->BlobOffsets.size() * BlockSize;
     request->RequestTime = ResponseReceived - RequestSent;
     request->GroupId = Request->GroupId;
+    request->RequestId = RequestInfo->CallContext->RequestId;
 
     if (DeadlineSeen) {
         request->DeadlineSeen = true;
@@ -167,12 +161,6 @@ void TReadBlobActor::HandleGetResult(
     const TActorContext& ctx)
 {
     ResponseReceived = ctx.Now();
-
-    // if (TransactionTracker) {
-    //     TransactionTracker->OnFinished(
-    //         RequestInfo->CallContext->RequestId,
-    //         GetCycleCount());
-    // }
 
     auto* msg = ev->Get();
 
