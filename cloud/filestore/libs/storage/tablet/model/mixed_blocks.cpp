@@ -278,14 +278,15 @@ void TMixedBlocks::FindBlocks(
 
     // TODO: limit range scan
     for (const auto& blob: range->Blobs) {
-        auto iter = blob.BlockList.FindBlocks(
+        auto blocks = blob.BlockList.FindBlocks(
             nodeId,
             commitId,
             blockIndex,
             blocksCount);
 
-        while (iter->Next()) {
-            auto& block = iter->Block;
+        for (auto& b: blocks) {
+            auto& block = b.Block;
+            const auto blobOffset = b.BlobOffset;
 
             Y_ABORT_UNLESS(block.NodeId == nodeId);
             Y_ABORT_UNLESS(block.MinCommitId <= commitId);
@@ -293,7 +294,7 @@ void TMixedBlocks::FindBlocks(
             range->DeletionMarkers.Apply(block);
 
             if (commitId < block.MaxCommitId) {
-                visitor.Accept(block, blob.BlobId, iter->BlobOffset);
+                visitor.Accept(block, blob.BlobId, blobOffset);
             }
         }
     }
