@@ -580,10 +580,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(ptr3 == nullptr);
 
         data2.copy(ptr2, data2.size());
-        rb.CompleteAllocation(ptr2);
+        rb.CommitAllocation(ptr2);
 
         data1.copy(ptr1, data1.size());
-        rb.CompleteAllocation(ptr1);
+        rb.CommitAllocation(ptr1);
 
         UNIT_ASSERT_VALUES_EQUAL("vasya", rb.Front());
         rb.PopFront();
@@ -617,10 +617,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->AllocateBack(data5.size(), &ptr5));
 
         data2.copy(ptr2, data2.size());
-        rb->CompleteAllocation(ptr2);
+        rb->CommitAllocation(ptr2);
 
         data4.copy(ptr4, data4.size());
-        rb->CompleteAllocation(ptr4);
+        rb->CommitAllocation(ptr4);
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
         UNIT_ASSERT_EQUAL("tanya", rb->Front());

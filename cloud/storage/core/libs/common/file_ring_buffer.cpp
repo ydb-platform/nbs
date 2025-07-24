@@ -432,7 +432,7 @@ public:
         }
 
         data.copy(ptr, data.size());
-        CompleteAllocation(ptr);
+        CommitAllocation(ptr);
         return true;
     }
 
@@ -502,7 +502,7 @@ public:
         return true;
     }
 
-    void CompleteAllocation(char* ptr)
+    void CommitAllocation(char* ptr)
     {
         auto* eh = Data.GetEntryHeaderFromDataPtr(ptr);
 
@@ -647,9 +647,9 @@ bool TFileRingBuffer::AllocateBack(size_t size, char** ptr)
     return Impl->AllocateBack(size, ptr);
 }
 
-void TFileRingBuffer::CompleteAllocation(char* ptr)
+void TFileRingBuffer::CommitAllocation(char* ptr)
 {
-    Impl->CompleteAllocation(ptr);
+    Impl->CommitAllocation(ptr);
 }
 
 TStringBuf TFileRingBuffer::Front() const
