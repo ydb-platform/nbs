@@ -38,6 +38,7 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
     xxx(DontPopulateNodeCacheWhenListingNodes, bool, false                    )\
     xxx(GuestOnlyPermissionsCheckEnabled,      bool, false                    )\
     xxx(MaxResponseEntries,          ui32,          10000                     )\
+    xxx(MaxBackground,          ui32,          128                     )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \
