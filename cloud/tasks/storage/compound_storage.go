@@ -359,11 +359,11 @@ func (s *compoundStorage) LockTaskToCancel(
 func (s *compoundStorage) MarkForCancellation(
 	ctx context.Context,
 	taskID string,
-	now time.Time,
+	ts time.Time,
 ) (cancelling bool, err error) {
 
 	err = s.invoke(ctx, func(storage Storage) error {
-		cancelling, err = storage.MarkForCancellation(ctx, taskID, now)
+		cancelling, err = storage.MarkForCancellation(ctx, taskID, ts)
 		return err
 	})
 	return cancelling, err

@@ -1276,7 +1276,7 @@ func (s *storageYDB) prepareDependantsToWakeup(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	state *TaskState,
-	now time.Time,
+	ts time.Time,
 ) ([]stateTransition, error) {
 
 	var ids []persistence.Value
@@ -1319,9 +1319,9 @@ func (s *storageYDB) prepareDependantsToWakeup(
 			// Return from "sleeping" state because dependencies are resolved.
 
 			if newState.Status == TaskStatusWaitingToRun || newState.Status == TaskStatusWaitingToCancel {
-				newState.WaitingDuration += now.Sub(newState.ChangedStateAt)
-				newState.ModifiedAt = now
-				newState.ChangedStateAt = now
+				newState.WaitingDuration += ts.Sub(newState.ChangedStateAt)
+				newState.ModifiedAt = ts
+				newState.ChangedStateAt = ts
 				newState.GenerationID++
 
 				if newState.Status == TaskStatusWaitingToRun {
@@ -1347,7 +1347,7 @@ func (s *storageYDB) markForCancellation(
 	ctx context.Context,
 	session *persistence.Session,
 	taskID string,
-	now time.Time,
+	ts time.Time,
 ) (bool, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -1406,12 +1406,12 @@ func (s *storageYDB) markForCancellation(
 
 	// WaitingToCancel is already checked above
 	if state.Status == TaskStatusWaitingToRun {
-		state.WaitingDuration += now.Sub(state.ChangedStateAt)
+		state.WaitingDuration += ts.Sub(state.ChangedStateAt)
 	}
 	state.Status = TaskStatusReadyToCancel
 	state.GenerationID++
-	state.ModifiedAt = now
-	state.ChangedStateAt = now
+	state.ModifiedAt = ts
+	state.ChangedStateAt = ts
 	state.ErrorMessage = "Cancelled by client"
 	state.ErrorCode = grpc_codes.Canceled
 
@@ -1420,7 +1420,7 @@ func (s *storageYDB) markForCancellation(
 		return false, err
 	}
 
-	wakeupTransitions, err := s.prepareDependantsToWakeup(ctx, tx, &state, now)
+	wakeupTransitions, err := s.prepareDependantsToWakeup(ctx, tx, &state, ts)
 	if err != nil {
 		return false, err
 	}
@@ -1580,13 +1580,14 @@ func (s *storageYDB) updateTaskTx(
 
 	state.ChangedStateAt = lastState.ChangedStateAt
 	state.EndedAt = lastState.EndedAt
-	now := state.ModifiedAt
+
+	ts := state.ModifiedAt
 
 	if lastState.Status != state.Status {
-		state.ChangedStateAt = now
+		state.ChangedStateAt = ts
 
 		if IsEnded(state.Status) {
-			state.EndedAt = now
+			state.EndedAt = ts
 		}
 
 		state.GenerationID++
@@ -1621,7 +1622,7 @@ func (s *storageYDB) updateTaskTx(
 	}
 
 	if HasResult(state.Status) {
-		dependants, err := s.prepareDependantsToWakeup(ctx, tx, &state, now)
+		dependants, err := s.prepareDependantsToWakeup(ctx, tx, &state, ts)
 		if err != nil {
 			return TaskState{}, err
 		}
