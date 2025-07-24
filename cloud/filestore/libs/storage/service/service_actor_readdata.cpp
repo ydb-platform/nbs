@@ -124,16 +124,15 @@ TReadDataActor::TReadDataActor(
     , MediaKind(mediaKind)
     , Response(std::make_unique<TEvService::TEvReadDataResponse>())
 {
-    Response->Record.SetBuffer(TString(ReadRequest.GetLength(), 0));
 }
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
-    // BlockBuffer should not be initialized in constructor, because creating
-    // a block buffer leads to memory allocation (and initialization) which is
+    // Buffer should not be initialized in constructor, because creating
+    // a buffer leads to memory allocation (and initialization) which is
     // heavy and we would like to execute that on a separate thread (instead of
     // this actor's parent thread)
-    BlockBuffer = CreateBlockBuffer(AlignedByteRange);
+    Response->Record.SetBuffer(TString(ReadRequest.GetLength(), 0));
 
     DescribeData(ctx);
     Become(&TThis::StateWork);
