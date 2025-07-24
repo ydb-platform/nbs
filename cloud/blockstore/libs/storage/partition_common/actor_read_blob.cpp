@@ -21,9 +21,7 @@ TReadBlobActor::TReadBlobActor(
         bool shouldCalculateChecksums,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold,
-        ui32 groupId,
-        ITransactionTracker* transactionTracker)
+        TDuration longRunningThreshold)
     : TLongRunningOperationCompanion(
           partitionActorId,
           volumeActorId,
@@ -37,8 +35,6 @@ TReadBlobActor::TReadBlobActor(
     , ShouldCalculateChecksums(shouldCalculateChecksums)
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
-    , GroupId(groupId)
-    , TransactionTracker(transactionTracker)
 {}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
@@ -91,12 +87,12 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 
     RequestSent = ctx.Now();
 
-    if (TransactionTracker && GroupId != Max<ui32>()) {
-        TransactionTracker->OnStarted(
-            RequestInfo->CallContext->RequestId,
-            TStringBuilder() << "ReadBlob_Group" << GroupId,
-            GetCycleCount());
-    }
+    // if (TransactionTracker){
+    //     TransactionTracker->OnStarted(
+    //         RequestInfo->CallContext->RequestId,
+    //         TStringBuilder() << "ReadBlob_Group" << Request->GroupId,
+    //         GetCycleCount());
+    // }
 
     SendToBSProxy(
         ctx,
@@ -172,11 +168,11 @@ void TReadBlobActor::HandleGetResult(
 {
     ResponseReceived = ctx.Now();
 
-    if (TransactionTracker) {
-        TransactionTracker->OnFinished(
-            RequestInfo->CallContext->RequestId,
-            GetCycleCount());
-    }
+    // if (TransactionTracker) {
+    //     TransactionTracker->OnFinished(
+    //         RequestInfo->CallContext->RequestId,
+    //         GetCycleCount());
+    // }
 
     auto* msg = ev->Get();
 

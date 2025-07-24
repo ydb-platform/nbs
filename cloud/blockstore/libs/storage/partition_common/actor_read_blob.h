@@ -38,8 +38,8 @@ private:
 
     bool DeadlineSeen = false;
 
-    const ui32 GroupId;
-    ITransactionTracker* TransactionTracker;
+    // const ui32 GroupId;
+    // ITransactionTracker* TransactionTracker;
 
 public:
     TReadBlobActor(
@@ -51,9 +51,7 @@ public:
         bool shouldCalculateChecksums,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold,
-        ui32 groupId,
-        ITransactionTracker* transactionTracker = nullptr);
+        TDuration longRunningThreshold);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

@@ -44,9 +44,9 @@ void TPartitionActor::HandleReadBlob(
 
     const auto& blob = msg->BlobId;
 
-    const ui32 groupId =
-        Info() ? Info()->GroupFor(blob.Channel(), blob.Generation())
-               : Max<ui32>();
+    // const ui32 groupId =
+    //     Info() ? Info()->GroupFor(blob.Channel(), blob.Generation())
+    //            : Max<ui32>();
 
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,
@@ -60,9 +60,7 @@ void TPartitionActor::HandleReadBlob(
             msg.Release()),
         GetDowntimeThreshold(
             *DiagnosticsConfig,
-            PartitionConfig.GetStorageMediaKind()),
-        groupId,
-        &TransactionTimeTracker);
+            PartitionConfig.GetStorageMediaKind()));
 
     if (blob.TabletID() != TabletID()) {
         // Treat this situation as we were reading from base disk.

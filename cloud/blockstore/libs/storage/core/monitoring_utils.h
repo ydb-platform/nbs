@@ -184,9 +184,9 @@ void DumpLatency(
     const TTransactionTimeTracker& transactionTimeTracker,
     size_t columnCount);
 
-void DumpGroupLatency(
-    IOutputStream& out,
-    const TTransactionTimeTracker& timeTracker);
+// void DumpGroupLatency(
+//     IOutputStream& out,
+//     const TTransactionTimeTracker& timeTracker);
 
 TCgiParameters GatherHttpParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
 TCgiParameters GetHttpMethodParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
@@ -207,11 +207,11 @@ void RenderAutoRefreshScript(
     int intervalMs,
     const TString& jsUpdateFunctionName);
 
-void DumpGroupLatencyForOperation(
-    IOutputStream& out,
-    const TString& opName,
-    const TString& opLabel,
-    const TVector<TTransactionTimeTracker::TBucketInfo>& allTransactionBuckets,
-    const TVector<TTransactionTimeTracker::TBucketInfo>& timeBuckets);
+// void DumpGroupLatencyForOperation(
+//     IOutputStream& out,
+//     const TString& opName,
+//     const TString& opLabel,
+//     const TVector<TTransactionTimeTracker::TBucketInfo>& allTransactionBuckets,
+//     const TVector<TTransactionTimeTracker::TBucketInfo>& timeBuckets);
 
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils
