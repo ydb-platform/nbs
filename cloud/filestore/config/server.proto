@@ -65,6 +65,10 @@ message TNullServiceConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TNullFileIOConfig
+{
+}
+
 message TAioConfig
 {
     // Max. count of concurrently processing operations (io_setup).
@@ -83,7 +87,7 @@ message TIoUringConfig
     optional uint32 MaxKernelWorkersCount = 3;
 
     // Force offloading IO to the kernel thread pool.
-    optional bool ForceAsyncIO = 2;
+    optional bool ForceAsyncIO = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -153,6 +157,7 @@ message TLocalServiceConfig
     oneof FileIOConfig {
         TAioConfig AioConfig = 23;
         TIoUringConfig IoUringConfig = 24;
+        TNullFileIOConfig NullFileIOConfig = 25;
     }
 }
 
