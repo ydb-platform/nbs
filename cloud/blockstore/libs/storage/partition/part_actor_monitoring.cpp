@@ -687,61 +687,61 @@ void TPartitionActor::HandleHttpInfo_Default(
                     DumpCheckHeader(out, *Info());
                 }
 
-                // DIV_CLASS_ID("tab-pane", "GroupLatency")
-                // {
-                //     const TString containerId = "group-latency-container";
-                //     const TString toggleId =
-                //         "group-latency-auto-refresh-toggle";
+                DIV_CLASS_ID("tab-pane", "GroupLatency")
+                {
+                    const TString containerId = "group-latency-container";
+                    const TString toggleId =
+                        "group-latency-auto-refresh-toggle";
 
-                //     HTML (out) {
-                //         RenderAutoRefreshToggle(
-                //             out,
-                //             toggleId,
-                //             "Auto update info",
-                //             false);
+                    HTML (out) {
+                        RenderAutoRefreshToggle(
+                            out,
+                            toggleId,
+                            "Auto update info",
+                            false);
 
-                //         DIV_CLASS_ID(" ", containerId)
-                //         {
-                //             out << "<div style='overflow-x: auto; border: 1px solid #ddd;'>";
-                //             DumpGroupLatency(out, TransactionTimeTracker);
-                //             out << "</div>";
-                //         }
-                //     }
+                        DIV_CLASS_ID(" ", containerId)
+                        {
+                            out << "<div style='overflow-x: auto; border: 1px solid #ddd;'>";
+                            DumpGroupLatency(out, GroupOperationTimeTracker);
+                            out << "</div>";
+                        }
+                    }
 
-                //     out << R"(<script>
-                //         function updateGroupLatencyTable(result, container) {
-                //             if (!result || !result.Histograms) {
-                //                 return;
-                //             }
+                    out << R"(<script>
+                        function updateGroupLatencyTable(result, container) {
+                            if (!result || !result.Histograms) {
+                                return;
+                            }
 
-                //             const histograms = result.Histograms;
+                            const histograms = result.Histograms;
 
-                //             for (const transactionKey in histograms) {
-                //                 const values = histograms[transactionKey].Values;
-                //                 if (!values) continue;
+                            for (const transactionKey in histograms) {
+                                const values = histograms[transactionKey].Values;
+                                if (!values) continue;
 
-                //                 for (const timeKey in values) {
-                //                     const count = values[timeKey];
-                //                     const cellId = "stat-cell-" + transactionKey + "-" + timeKey;
-                //                     const element = container.querySelector('#' + cellId);
+                                for (const timeKey in values) {
+                                    const count = values[timeKey];
+                                    const cellId = "stat-cell-" + transactionKey + "-" + timeKey;
+                                    const element = container.querySelector('#' + cellId);
 
-                //                     if (element && element.textContent !== count.toString()) {
-                //                         element.textContent = count;
-                //                     }
-                //                 }
-                //             }
-                //         }
-                //     </script>)";
+                                    if (element && element.textContent !== count.toString()) {
+                                        element.textContent = count;
+                                    }
+                                }
+                            }
+                        }
+                    </script>)";
 
-                //     RenderAutoRefreshScript(
-                //         out,
-                //         containerId,
-                //         toggleId,
-                //         "getGroupLatencies",
-                //         Info()->TabletID,
-                //         1000,
-                //         "updateGroupLatencyTable");
-                // }
+                    RenderAutoRefreshScript(
+                        out,
+                        containerId,
+                        toggleId,
+                        "getGroupLatencies",
+                        Info()->TabletID,
+                        1000,
+                        "updateGroupLatencyTable");
+                }
             }
         }
 

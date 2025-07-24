@@ -3,6 +3,7 @@
 #include "compaction_map.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/storage/core/group_request_tracker.h>
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
@@ -184,9 +185,9 @@ void DumpLatency(
     const TTransactionTimeTracker& transactionTimeTracker,
     size_t columnCount);
 
-// void DumpGroupLatency(
-//     IOutputStream& out,
-//     const TTransactionTimeTracker& timeTracker);
+void DumpGroupLatency(
+    IOutputStream& out,
+    const TGroupOperationTimeTracker& timeTracker);
 
 TCgiParameters GatherHttpParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
 TCgiParameters GetHttpMethodParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
@@ -207,11 +208,11 @@ void RenderAutoRefreshScript(
     int intervalMs,
     const TString& jsUpdateFunctionName);
 
-// void DumpGroupLatencyForOperation(
-//     IOutputStream& out,
-//     const TString& opName,
-//     const TString& opLabel,
-//     const TVector<TTransactionTimeTracker::TBucketInfo>& allTransactionBuckets,
-//     const TVector<TTransactionTimeTracker::TBucketInfo>& timeBuckets);
+void DumpGroupLatencyForOperation(
+    IOutputStream& out,
+    const TString& opName,
+    const TString& opLabel,
+    const TVector<TGroupOperationTimeTracker::TBucketInfo>& allTransactionBuckets,
+    const TVector<TGroupOperationTimeTracker::TBucketInfo>& timeBuckets);
 
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils

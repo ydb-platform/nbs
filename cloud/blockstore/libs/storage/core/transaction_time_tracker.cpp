@@ -58,7 +58,7 @@ ui64 TTransactionTimeTracker::THash::operator()(const TKey& key) const
 ////////////////////////////////////////////////////////////////////////////////
 
 TTransactionTimeTracker::TTransactionTimeTracker(
-        std::span<const TString> transactionTypes)
+    std::span<const TString> transactionTypes)
     : TransactionTypes(transactionTypes.begin(), transactionTypes.end())
 {
     for (const auto& transaction: TransactionTypes) {
@@ -195,16 +195,5 @@ TTransactionTimeTracker::GetTimeBuckets() const
         .Tooltip = ""});
     return result;
 }
-
-// void TTransactionTimeTracker::Init(std::span<const TString> transactionTypes)
-// {
-//     TransactionTypes.assign(transactionTypes.begin(), transactionTypes.end());
-//     Histograms.clear();
-//     for (const auto& transaction: TransactionTypes) {
-//         auto key =
-//             TKey{.TransactionName = transaction, .Status = EStatus::Inflight};
-//         Histograms[key];
-//     }
-// }
 
 }   // namespace NCloud::NBlockStore::NStorage

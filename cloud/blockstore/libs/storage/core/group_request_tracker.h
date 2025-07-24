@@ -12,75 +12,74 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGroupOperationTimeTracker: public ITransactionTracker
+class TGroupOperationTimeTracker : public ITransactionTracker
 {
 public:
-    enum class EOperationType : ui8
+    enum class EStatus
     {
-        Read,
-        Write,
+        Inflight,
+        Finished,
+    };
+
+    struct TBucketInfo
+    {
+        TString TransactionName;
+        TString Key;
+        TString Description;
+        TString Tooltip;
     };
 
 private:
-    struct TOperationKey
+    struct TTimeHistogram: public THistogram<TRequestUsTimeBuckets>
     {
-        EOperationType Operation;
-        ui64 GroupId;
-
-        bool operator==(const TOperationKey& rhs) const noexcept
-        {
-            return Operation == rhs.Operation && GroupId == rhs.GroupId;
-        }
+        TTimeHistogram()
+            : THistogram<TRequestUsTimeBuckets>(
+                  EHistogramCounterOption::ReportSingleCounter)
+        {}
     };
 
-    struct TOperationKeyHash
+    struct TKey
     {
-        size_t operator()(const TOperationKey& key) const noexcept
-        {
-            size_t res = static_cast<size_t>(key.Operation);
-            res ^= (size_t)key.GroupId + 0x9e3779b9 + (res << 6) + (res >> 2);
-            return res;
-        }
+        TString TransactionName;
+        EStatus Status = EStatus::Inflight;
+
+        [[nodiscard]] TString GetHtmlPrefix() const;
+
+        bool operator==(const TKey& rhs) const = default;
     };
 
-    struct TTimeHistogram
+    struct THash
     {
-        static constexpr size_t BUCKETS_COUNT =
-            TRequestUsTimeBuckets::BUCKETS_COUNT;
-        ui64 Buckets[BUCKETS_COUNT] = {};
-
-        void Increment(ui64 micros);
-
-        size_t GetBucketIndex(ui64 micros) const;
+        ui64 operator()(const TKey& key) const;
     };
 
-    struct TInflightOperation
+    struct TTransactionInflight
     {
         ui64 StartTime = 0;
-        TOperationKey Key;
+        TString TransactionName;
     };
 
-private:
-    THashMap<ui64, TInflightOperation> Inflight;   // txID -> inflight info
-    THashMap<TOperationKey, TTimeHistogram, TOperationKeyHash> Histograms;
+    TVector<TString> TransactionTypes;
+
+    THashMap<ui64, TTransactionInflight> Inflight;
+    THashMap<TKey, TTimeHistogram, THash> Histograms;
 
 public:
     explicit TGroupOperationTimeTracker() = default;
 
+    [[nodiscard]] TVector<TBucketInfo> GetTransactionBuckets() const;
+    [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
+
+    // Implements ITransactionTracker
     void OnStarted(
         ui64 transactionId,
         TString transactionName,
         ui64 startTime) override;
+
     void OnFinished(ui64 transactionId, ui64 finishTime) override;
 
-    TString GetStatJson(ui64 nowCycles) const;
+    [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
 
-    void GetAllOperationKeys(TVector<TOperationKey>& keys) const;
-    ui64 GetHistogramCount(const TOperationKey& key, const TString& timeBucket) const;
-
-private:
-    static TMaybe<TOperationKey> ParseTransactionName(const TString& name);
-    static TString OperationTypeToString(EOperationType op);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
