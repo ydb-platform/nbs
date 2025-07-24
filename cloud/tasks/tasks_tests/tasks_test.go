@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/common"
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
@@ -25,6 +26,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	grpc_status "google.golang.org/grpc/status"
 )
@@ -1680,6 +1682,122 @@ func TestListerMetricsCleanup(t *testing.T) {
 	waitForValue(t, hangingTasksChannel, 0)
 
 	registry.AssertAllExpectations(t)
+}
+
+func createTask(
+	t *testing.T,
+	ctx context.Context,
+	storage tasks_storage.Storage,
+	key string,
+	createdAt time.Time,
+	status storage.TaskStatus,
+) string {
+
+	taskId, err := storage.CreateTask(ctx, tasks_storage.TaskState{
+		IdempotencyKey: key,
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         status,
+		State:          []byte{},
+		Dependencies:   common.NewStringSet(),
+		EndedAt:        createdAt,
+	})
+	require.NoError(t, err)
+
+	return taskId
+}
+
+func TestClearEndedTasksBulk(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 2)
+
+	err := s.startRunners(ctx)
+	require.NoError(t, err)
+
+	expirationTimeout, err := time.ParseDuration(*s.config.EndedTaskExpirationTimeout)
+	require.NoError(t, err)
+
+	clearScheduleInterval, err := time.ParseDuration(*s.config.ClearEndedTasksTaskScheduleInterval)
+	require.NoError(t, err)
+
+	iterationsCount := 50
+
+	actualTaskIds := make([]string, 0)
+	expiredTaskIds := make([]string, 0)
+
+	for i := 0; i < iterationsCount; i++ {
+		expiredCreatedAt := time.Now().Add(-2 * expirationTimeout)
+
+		actualTaskIds = append(
+			actualTaskIds,
+			createTask(
+				t,
+				ctx,
+				s.storage,
+				fmt.Sprintf("%v_actual_finished_%v", t.Name(), i),
+				time.Now(),
+				tasks_storage.TaskStatusFinished,
+			),
+			createTask(
+				t,
+				ctx,
+				s.storage,
+				fmt.Sprintf("%v_actual_cancelled_%v", t.Name(), i),
+				time.Now(),
+				tasks_storage.TaskStatusCancelled,
+			),
+			createTask(
+				t,
+				ctx,
+				s.storage,
+				fmt.Sprintf("%v_running_%v", t.Name(), i),
+				expiredCreatedAt,
+				tasks_storage.TaskStatusRunning,
+			),
+		)
+
+		expiredTaskIds = append(
+			expiredTaskIds,
+			createTask(
+				t,
+				ctx,
+				s.storage,
+				fmt.Sprintf("%v_expired_finished_%v", t.Name(), i),
+				expiredCreatedAt,
+				tasks_storage.TaskStatusFinished,
+			),
+			createTask(
+				t,
+				ctx,
+				s.storage,
+				fmt.Sprintf("%v_expired_cancelled_%v", t.Name(), i),
+				expiredCreatedAt,
+				tasks_storage.TaskStatusCancelled,
+			),
+		)
+	}
+
+	// Wait for ClearEndedTasks to run
+	<-time.After(2 * clearScheduleInterval)
+
+	for _, taskId := range expiredTaskIds {
+		_, err := s.storage.GetTask(ctx, taskId)
+		require.ErrorIs(t, err, errors.NewNotFoundErrorWithTaskID(taskId))
+	}
+
+	for _, taskId := range actualTaskIds {
+		_, err := s.storage.GetTask(ctx, taskId)
+		require.NoError(t, err)
+	}
 }
 
 func TestTaskInflightDuration(t *testing.T) {
