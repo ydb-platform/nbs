@@ -7,6 +7,7 @@ PEERDIR(
 )
 
 SRCS(
+    config_ut.cpp
     index_ut.cpp
     service_ut.cpp
 )
