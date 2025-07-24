@@ -9,19 +9,19 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDiskRegistryBasedPartCounters
+struct TPartNonreplCountersData
 {
     ui64 NetworkBytes;
     TDuration CpuUsage;
-    TPartitionDiskCountersPtr Stats;
+    TPartitionDiskCountersPtr DiskCounters;
 
-    TDiskRegistryBasedPartCounters(
+    TPartNonreplCountersData(
             ui64 networkBytes,
             TDuration cpuUsage,
-            TPartitionDiskCountersPtr stats)
+            TPartitionDiskCountersPtr diskCounters)
         : NetworkBytes(networkBytes)
         , CpuUsage(cpuUsage)
-        , Stats(std::move(stats))
+        , DiskCounters(std::move(diskCounters))
     {}
 };
 
