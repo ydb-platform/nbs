@@ -248,7 +248,8 @@ private:
         }
     }
 
-    TPartitionStatisticsCounters GetStats(const NActors::TActorContext& ctx);
+    TPartitionStatisticsCounters ExtractPartCounters(
+        const NActors::TActorContext& ctx);
 
     void SendStatsToService(const NActors::TActorContext& ctx);
 

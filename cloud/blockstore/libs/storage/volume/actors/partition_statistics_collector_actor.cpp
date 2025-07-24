@@ -16,7 +16,6 @@ TPartitionStatisticsCollectorActor::TPartitionStatisticsCollectorActor(
         TVector<TActorId> partitions)
     : Owner(owner)
     , Partitions(std::move(partitions))
-    , Error(MakeError(S_OK))
 {}
 
 void TPartitionStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
@@ -40,7 +39,7 @@ void TPartitionStatisticsCollectorActor::SendStatToVolume(
         Owner,
         std::make_unique<TEvPartitionCommonPrivate::TEvPartCountersCombined>(
             std::move(Error),
-            std::move(PartCounters)));
+            std::move(CombinedCounters)));
 
     Die(ctx);
 }
@@ -56,7 +55,7 @@ void TPartitionStatisticsCollectorActor::HandleTimeout(
         Owner,
         std::make_unique<TEvPartitionCommonPrivate::TEvPartCountersCombined>(
             MakeError(E_TIMEOUT, "Failed to update partition statistics"),
-            std::move(PartCounters)));
+            std::move(CombinedCounters)));
 
     Die(ctx);
 }
@@ -77,17 +76,14 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
 
     if (HasError(record->Error)) {
         Error = record->Error;
+        ++NumberResponsesWithError;
     } else {
-        PartCounters.emplace_back(
-            record->PartActorId,
-            record->VolumeSystemCpu,
-            record->VolumeUserCpu,
-            std::move(record->DiskCounters),
-            std::move(record->BlobLoadMetrics),
-            std::move(record->TabletMetrics));
+        CombinedCounters.PartCounters.push_back(std::move(*record));
     }
 
-    if (Partitions.size() == PartCounters.size()) {
+    if (Partitions.size() ==
+        CombinedCounters.PartCounters.size() + NumberResponsesWithError)
+    {
         SendStatToVolume(ctx);
     }
 }

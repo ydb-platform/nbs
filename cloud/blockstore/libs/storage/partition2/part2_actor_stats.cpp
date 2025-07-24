@@ -49,7 +49,8 @@ void TPartitionActor::UpdateActorStats(const TActorContext& ctx)
     }
 }
 
-TPartitionStatisticsCounters TPartitionActor::GetStats(const TActorContext& ctx)
+TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
+    const TActorContext& ctx)
 {
     PartCounters->Simple.MixedBytesCount.Set(
         State->GetMixedBlockCount() * State->GetBlockSize());
@@ -144,7 +145,7 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
     }
 
     auto&& [diffSysCpuConsumption, userCpuConsumption, partCounters, offsetLoadMetrics, metrics] =
-        GetStats(ctx);
+        ExtractPartCounters(ctx);
 
     auto request = std::make_unique<TEvStatsService::TEvVolumePartCounters>(
         MakeIntrusive<TCallContext>(),
@@ -176,7 +177,7 @@ void TPartitionActor::HandleGetPartCountersRequest(
     }
 
     auto&& [diffSysCpuConsumption, userCpuConsumption, partCounters, offsetLoadMetrics, metrics] =
-        GetStats(ctx);
+        ExtractPartCounters(ctx);
 
     auto response =
         std::make_unique<TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(

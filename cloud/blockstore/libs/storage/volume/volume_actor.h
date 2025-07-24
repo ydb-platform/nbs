@@ -380,7 +380,7 @@ private:
 
     TVector<ui64> GCCompletedPartitions;
 
-    struct TUpdatePartCounters
+    struct TPartCountersData
     {
         NActors::TActorId Sender;
         ui64 Cookie;
@@ -391,7 +391,7 @@ private:
         NKikimrTabletBase::TMetrics TabletMetrics;
         NBlobMetrics::TBlobLoadMetrics BlobLoadMetrics;
 
-        TUpdatePartCounters(
+        TPartCountersData(
                 NActors::TActorId sender,
                 ui64 cookie,
                 ui64 volumeSystemCpu,
@@ -745,7 +745,7 @@ private:
 
     std::optional<TTxVolume::TSavePartStats> UpdatePartCounters(
         const NActors::TActorContext& ctx,
-        TUpdatePartCounters& args);
+        TPartCountersData& partCountersData);
 
     void HandlePartCounters(
         const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
