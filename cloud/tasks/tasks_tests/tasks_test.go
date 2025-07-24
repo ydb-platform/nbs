@@ -1723,10 +1723,12 @@ func TestClearEndedTasksBulk(t *testing.T) {
 	err := s.startRunners(ctx)
 	require.NoError(t, err)
 
-	expirationTimeout, err := time.ParseDuration(*s.config.EndedTaskExpirationTimeout)
+	expirationTimeout, err := time.ParseDuration(
+		*s.config.EndedTaskExpirationTimeout)
 	require.NoError(t, err)
 
-	clearScheduleInterval, err := time.ParseDuration(*s.config.ClearEndedTasksTaskScheduleInterval)
+	clearScheduleInterval, err := time.ParseDuration(
+		*s.config.ClearEndedTasksTaskScheduleInterval)
 	require.NoError(t, err)
 
 	iterationsCount := 50
