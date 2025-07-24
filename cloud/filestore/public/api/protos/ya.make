@@ -14,6 +14,7 @@ SRCS(
     headers.proto
     locks.proto
     node.proto
+    noderefs.proto
     ping.proto
     session.proto
 )

@@ -62,7 +62,7 @@ void TIndexTabletActor::CompleteTx_ReadNodeRefs(
         LogTag.c_str(),
         args.NextNodeId,
         args.NextCookie.c_str());
-    auto response = std::make_unique<TEvIndexTablet::TEvReadNodeRefsResponse>();
+    auto response = std::make_unique<TEvService::TEvReadNodeRefsResponse>();
     response->Record.SetNextNodeId(args.NextNodeId);
     response->Record.SetNextCookie(args.NextCookie);
     response->Record.MutableNodeRefs()->Reserve(args.Refs.size());
@@ -81,7 +81,7 @@ void TIndexTabletActor::CompleteTx_ReadNodeRefs(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::HandleReadNodeRefs(
-    const TEvIndexTablet::TEvReadNodeRefsRequest::TPtr& ev,
+    const TEvService::TEvReadNodeRefsRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -89,7 +89,7 @@ void TIndexTabletActor::HandleReadNodeRefs(
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TReadNodeRefsMethod>(*requestInfo);
+    AddTransaction<TEvService::TReadNodeRefsMethod>(*requestInfo);
 
     ExecuteTx<TReadNodeRefs>(
         ctx,
