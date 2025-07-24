@@ -1276,7 +1276,7 @@ func (s *storageYDB) prepareDependantsToWakeup(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	state *TaskState,
-	ts time.Time,
+	at time.Time,
 ) ([]stateTransition, error) {
 
 	var ids []persistence.Value
@@ -1319,9 +1319,9 @@ func (s *storageYDB) prepareDependantsToWakeup(
 			// Return from "sleeping" state because dependencies are resolved.
 
 			if newState.Status == TaskStatusWaitingToRun || newState.Status == TaskStatusWaitingToCancel {
-				newState.WaitingDuration += ts.Sub(newState.ChangedStateAt)
-				newState.ModifiedAt = ts
-				newState.ChangedStateAt = ts
+				newState.WaitingDuration += at.Sub(newState.ChangedStateAt)
+				newState.ModifiedAt = at
+				newState.ChangedStateAt = at
 				newState.GenerationID++
 
 				if newState.Status == TaskStatusWaitingToRun {
@@ -1347,7 +1347,7 @@ func (s *storageYDB) markForCancellation(
 	ctx context.Context,
 	session *persistence.Session,
 	taskID string,
-	ts time.Time,
+	at time.Time,
 ) (bool, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -1404,14 +1404,14 @@ func (s *storageYDB) markForCancellation(
 
 	lastState := state.DeepCopy()
 
-	// WaitingToCancel is already checked above
+	// WaitingToCancel is already handled above
 	if state.Status == TaskStatusWaitingToRun {
-		state.WaitingDuration += ts.Sub(state.ChangedStateAt)
+		state.WaitingDuration += at.Sub(state.ChangedStateAt)
 	}
 	state.Status = TaskStatusReadyToCancel
 	state.GenerationID++
-	state.ModifiedAt = ts
-	state.ChangedStateAt = ts
+	state.ModifiedAt = at
+	state.ChangedStateAt = at
 	state.ErrorMessage = "Cancelled by client"
 	state.ErrorCode = grpc_codes.Canceled
 
@@ -1420,7 +1420,7 @@ func (s *storageYDB) markForCancellation(
 		return false, err
 	}
 
-	wakeupTransitions, err := s.prepareDependantsToWakeup(ctx, tx, &state, ts)
+	wakeupTransitions, err := s.prepareDependantsToWakeup(ctx, tx, &state, at)
 	if err != nil {
 		return false, err
 	}
