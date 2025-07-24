@@ -1276,6 +1276,7 @@ func (s *storageYDB) prepareDependantsToWakeup(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	state *TaskState,
+	now time.Time,
 ) ([]stateTransition, error) {
 
 	var ids []persistence.Value
@@ -1318,19 +1319,16 @@ func (s *storageYDB) prepareDependantsToWakeup(
 			// Return from "sleeping" state because dependencies are resolved.
 
 			if newState.Status == TaskStatusWaitingToRun || newState.Status == TaskStatusWaitingToCancel {
-				now := time.Now()
 				newState.WaitingDuration += now.Sub(newState.ChangedStateAt)
 				newState.ModifiedAt = now
 				newState.ChangedStateAt = now
 				newState.GenerationID++
-			}
 
-			switch newState.Status {
-			case TaskStatusWaitingToRun:
-				newState.Status = TaskStatusReadyToRun
-
-			case TaskStatusWaitingToCancel:
-				newState.Status = TaskStatusReadyToCancel
+				if newState.Status == TaskStatusWaitingToRun {
+					newState.Status = TaskStatusReadyToRun
+				} else {
+					newState.Status = TaskStatusReadyToCancel
+				}
 			}
 		}
 
@@ -1406,6 +1404,7 @@ func (s *storageYDB) markForCancellation(
 
 	lastState := state.DeepCopy()
 
+	// WaitingToCancel is already checked above
 	if state.Status == TaskStatusWaitingToRun {
 		state.WaitingDuration += now.Sub(state.ChangedStateAt)
 	}
@@ -1421,7 +1420,7 @@ func (s *storageYDB) markForCancellation(
 		return false, err
 	}
 
-	wakeupTransitions, err := s.prepareDependantsToWakeup(ctx, tx, &state)
+	wakeupTransitions, err := s.prepareDependantsToWakeup(ctx, tx, &state, now)
 	if err != nil {
 		return false, err
 	}
@@ -1581,12 +1580,13 @@ func (s *storageYDB) updateTaskTx(
 
 	state.ChangedStateAt = lastState.ChangedStateAt
 	state.EndedAt = lastState.EndedAt
+	now := state.ModifiedAt
 
 	if lastState.Status != state.Status {
-		state.ChangedStateAt = state.ModifiedAt
+		state.ChangedStateAt = now
 
 		if IsEnded(state.Status) {
-			state.EndedAt = state.ModifiedAt
+			state.EndedAt = now
 		}
 
 		state.GenerationID++
@@ -1621,7 +1621,7 @@ func (s *storageYDB) updateTaskTx(
 	}
 
 	if HasResult(state.Status) {
-		dependants, err := s.prepareDependantsToWakeup(ctx, tx, &state)
+		dependants, err := s.prepareDependantsToWakeup(ctx, tx, &state, now)
 		if err != nil {
 			return TaskState{}, err
 		}
@@ -1937,13 +1937,13 @@ func (s *storageYDB) forceFinishTask(
 	state.EndedAt = now
 
 	transitions := []stateTransition{
-		stateTransition{
+		{
 			lastState: &lastState,
 			newState:  state,
 		},
 	}
 
-	wakeupTransitions, err := s.prepareDependantsToWakeup(ctx, tx, &state)
+	wakeupTransitions, err := s.prepareDependantsToWakeup(ctx, tx, &state, now)
 	if err != nil {
 		return err
 	}

@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -4869,7 +4868,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 	require.Equal(t, task.Status, TaskStatusReadyToRun)
 
 	// Make sure that WaitingDuration is almost correct
-	diff := (initialWaitingDuration + taskDuration) - task.WaitingDuration
-	threshold := 5 * time.Second
-	require.Less(t, math.Abs(float64(diff)), float64(threshold))
+	expectedDuration := initialWaitingDuration + taskDuration
+	threshold := 2 * time.Second
+	require.InDelta(t, expectedDuration, task.WaitingDuration, float64(threshold))
 }
