@@ -26,7 +26,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
-	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	grpc_status "google.golang.org/grpc/status"
 )
@@ -1690,7 +1689,7 @@ func createTaskWithEndTime(
 	storage tasks_storage.Storage,
 	key string,
 	at time.Time,
-	status storage.TaskStatus,
+	status tasks_storage.TaskStatus,
 ) string {
 
 	taskId, err := storage.CreateTask(ctx, tasks_storage.TaskState{
@@ -1741,7 +1740,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 
 		actualTaskIds = append(
 			actualTaskIds,
-			createTaskWithEndedAt(
+			createTaskWithEndTime(
 				t,
 				ctx,
 				s.storage,
@@ -1749,7 +1748,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 				time.Now(),
 				tasks_storage.TaskStatusFinished,
 			),
-			createTaskWithEndedAt(
+			createTaskWithEndTime(
 				t,
 				ctx,
 				s.storage,
@@ -1757,7 +1756,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 				time.Now(),
 				tasks_storage.TaskStatusCancelled,
 			),
-			createTaskWithEndedAt(
+			createTaskWithEndTime(
 				t,
 				ctx,
 				s.storage,
@@ -1769,7 +1768,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 
 		expiredTaskIds = append(
 			expiredTaskIds,
-			createTaskWithEndedAt(
+			createTaskWithEndTime(
 				t,
 				ctx,
 				s.storage,
@@ -1777,7 +1776,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 				expiredTime,
 				tasks_storage.TaskStatusFinished,
 			),
-			createTaskWithEndedAt(
+			createTaskWithEndTime(
 				t,
 				ctx,
 				s.storage,
