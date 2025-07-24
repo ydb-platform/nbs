@@ -259,13 +259,14 @@ struct TBootstrap
     {
         STORAGE_INFO("Recreating cache");
 
-        Cache = TWriteBackCache(
+        Cache = TWriteBackCache();
+        UNIT_ASSERT(!HasError(Cache.Init(
             Session,
             Scheduler,
             Timer,
             TempFileHandle.GetName(),
             CacheCapacityBytes,
-            CacheAutomaticFlushPeriod);
+            CacheAutomaticFlushPeriod)));
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(

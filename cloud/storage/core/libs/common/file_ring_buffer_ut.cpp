@@ -4,6 +4,7 @@
 
 #include <util/generic/deque.h>
 #include <util/generic/size_literals.h>
+#include <util/folder/tempdir.h>
 #include <util/random/random.h>
 #include <util/system/filemap.h>
 #include <util/system/tempfile.h>
@@ -244,7 +245,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 64;
-        TFileRingBuffer rb(f.GetName(), len);
+        TFileRingBuffer rb;
+        UNIT_ASSERT(!HasError(rb.Init(f.GetName(), len)));
 
         DoTestShouldPushPop(rb);
     }
@@ -261,9 +263,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 64;
-        auto rb = std::make_unique<TFileRingBuffer>(
-            f.GetName(),
-            len);
+        auto rb = std::make_unique<TFileRingBuffer>();
+        UNIT_ASSERT(!HasError(rb->Init(f.GetName(), len)));
 
         UNIT_ASSERT(rb->PushBack("vasya"));
         UNIT_ASSERT(rb->PushBack("petya"));
@@ -274,9 +275,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->PushBack("vasya3"));
         UNIT_ASSERT(rb->PushBack("xxx"));
 
-        rb = std::make_unique<TFileRingBuffer>(
-            f.GetName(),
-            len);
+        rb = std::make_unique<TFileRingBuffer>();
+        UNIT_ASSERT(!HasError(rb->Init(f.GetName(), len)));
 
         UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
         UNIT_ASSERT_VALUES_EQUAL(4, rb->Size());
@@ -288,7 +288,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 128;
-        TFileRingBuffer rb(f.GetName(), len);
+        TFileRingBuffer rb;
+        UNIT_ASSERT(!HasError(rb.Init(f.GetName(), len)));
 
         UNIT_ASSERT(rb.PushBack("vasya"));
         UNIT_ASSERT(rb.PushBack("petya"));
@@ -310,7 +311,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 64;
-        TFileRingBuffer rb(f.GetName(), len);
+        TFileRingBuffer rb;
+        UNIT_ASSERT(!HasError(rb.Init(f.GetName(), len)));
 
         const ui32 entryHeaderSize = 8;
         const ui32 entryLen = 29;
@@ -344,9 +346,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TReferenceImplementation ri(len);
 
         auto restore = [&] () {
-            rb = std::make_unique<TFileRingBuffer>(
-                f.GetName(),
-                len);
+            rb = std::make_unique<TFileRingBuffer>();
+            UNIT_ASSERT(!HasError(rb->Init(f.GetName(), len)));
         };
 
         restore();
@@ -400,7 +401,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 64;
-        TFileRingBuffer rb(f.GetName(), len);
+        TFileRingBuffer rb;
+        UNIT_ASSERT(!HasError(rb.Init(f.GetName(), len)));
 
         const ui32 entryHeaderSize = 8;
         const ui32 entryLen = 32;
@@ -424,7 +426,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 32;
-        TFileRingBuffer rb(f.GetName(), len);
+        TFileRingBuffer rb;
+        UNIT_ASSERT(!HasError(rb.Init(f.GetName(), len)));
 
         TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
         m.Map(0, len + 40); // len + sizeof(THeader)
@@ -446,8 +449,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileRingBuffer RingBuffer;
 
         explicit TStateWithCorruptedEntryLength(int newLength)
-            : RingBuffer(FileHandle.GetName(), Len)
         {
+            UNIT_ASSERT(!HasError(RingBuffer.Init(FileHandle.GetName(), Len)));
+
             UNIT_ASSERT(RingBuffer.PushBack("aaa"));
             UNIT_ASSERT(RingBuffer.PushBack("bb"));
 
@@ -463,7 +467,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         for (int i = 0; i <= 32; i++) {
             TStateWithCorruptedEntryLength s(i);
-            TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
+            TFileRingBuffer rb;
+            UNIT_ASSERT(!HasError(rb.Init(s.FileHandle.GetName(), s.Len)));
             UNIT_ASSERT_VALUES_EQUAL(i != 2, rb.IsCorrupted());
         }
     }
@@ -491,11 +496,13 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     Y_UNIT_TEST(ShouldProhibitPushBackInCorruptedState)
     {
         TStateWithCorruptedEntryLength good(2);
-        TFileRingBuffer rb(good.FileHandle.GetName(), good.Len);
+        TFileRingBuffer rb;
+        UNIT_ASSERT(!HasError(rb.Init(good.FileHandle.GetName(), good.Len)));
         UNIT_ASSERT(rb.PushBack("c"));
 
         TStateWithCorruptedEntryLength bad(1);
-        TFileRingBuffer rb2(bad.FileHandle.GetName(), bad.Len);
+        TFileRingBuffer rb2;
+        UNIT_ASSERT(!HasError(rb2.Init(bad.FileHandle.GetName(), bad.Len)));
         UNIT_ASSERT(!rb2.PushBack("c"));
     }
 
@@ -515,7 +522,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         for (int i = 0; i <= 32; i++) {
             TStateWithCorruptedEntryLength s(i);
-            TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
+            TFileRingBuffer rb;
+            UNIT_ASSERT(!HasError(rb.Init(s.FileHandle.GetName(), s.Len)));
 
             TVector<TString> afterVisit;
             rb.Visit([&] (ui32 checksum, TStringBuf entry)
@@ -533,6 +541,13 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
             UNIT_ASSERT_EQUAL(Dump(afterVisit), Dump(afterPopBack));
         }
+    }
+
+    Y_UNIT_TEST(ShouldReturnAnErrorWhenImpossibleToAccessFile)
+    {
+        TTempDir tempDir;
+        TFileRingBuffer rb;
+        UNIT_ASSERT(HasError(rb.Init(tempDir.Name(), 1000)));
     }
 }
 
