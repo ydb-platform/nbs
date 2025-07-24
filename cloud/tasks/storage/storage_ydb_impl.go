@@ -1775,22 +1775,30 @@ func (s *storageYDB) clearEndedTasksChunk(
 	limit int,
 ) (bool, error) {
 
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return false, err
-	}
-	defer tx.Rollback(ctx)
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
+	res, err := session.ExecuteRW(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
 			declare $ended_before as Timestamp;
 			declare $limit as Uint64;
+			
+			$ended_tasks = (
+				select ended_at, id
+				from ended
+				where ended_at < $ended_before
+				limit $limit
+			);
+			$ended_ids = (select id from $ended_tasks);
 
-			select id, ended_at
-			from ended
-			where ended_at < $ended_before
-			limit $limit
+			delete from ended
+			on select ended_at, id from $ended_tasks;
+
+			delete from task_ids
+			where task_id in $ended_ids;
+
+			delete from tasks
+			where id in $ended_ids;
+
+			select count(*) as deleted_count from $ended_tasks;
 		`, s.tablesPath),
 		persistence.ValueParam("$ended_before", persistence.TimestampValue(endedBefore)),
 		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
@@ -1800,65 +1808,19 @@ func (s *storageYDB) clearEndedTasksChunk(
 	}
 	defer res.Close()
 
-	endedIds := make([]persistence.Value, 0, limit)
-	endedStructs := make([]persistence.Value, 0, limit)
-
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			var (
-				taskId  string
-				endedAt time.Time
-			)
-			err = res.ScanNamed(
-				persistence.OptionalWithDefault("id", &taskId),
-				persistence.OptionalWithDefault("ended_at", &endedAt),
-			)
-			if err != nil {
-				return false, err
-			}
-
-			endedIds = append(endedIds, persistence.UTF8Value(taskId))
-			endedStructs = append(endedStructs, persistence.StructValue(
-				persistence.StructFieldValue("ended_at", persistence.TimestampValue(endedAt)),
-				persistence.StructFieldValue("id", persistence.UTF8Value(taskId)),
-			))
+	var deletedCount uint64
+	if res.NextResultSet(ctx) && res.NextRow() {
+		err = res.ScanNamed(
+			persistence.OptionalWithDefault("deleted_count", &deletedCount),
+		)
+		if err != nil {
+			return false, err
 		}
 	}
 
-	if len(endedIds) == 0 {
-		return false, nil
-	}
+	logging.Info(ctx, "Cleared %v ended tasks", deletedCount)
 
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-			--!syntax_v1
-			pragma TablePathPrefix = "%v";
-			declare $ended_ids as List<Utf8>;
-			declare $ended_structs as List<Struct<ended_at: Timestamp, id: Utf8>>;
-
-			delete from ended
-			on select ended_at, id from as_table($ended_structs);
-
-			delete from task_ids
-			where task_id in $ended_ids;
-
-			delete from tasks
-			where id in $ended_ids;
-		`, s.tablesPath),
-		persistence.ValueParam("$ended_ids", persistence.ListValue(endedIds...)),
-		persistence.ValueParam("$ended_structs", persistence.ListValue(endedStructs...)),
-	)
-	if err != nil {
-		return false, err
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	logging.Info(ctx, "Cleared %v ended tasks", len(endedIds))
-
-	return true, nil
+	return deletedCount > 0, nil
 }
 
 func (s *storageYDB) clearEndedTasks(
