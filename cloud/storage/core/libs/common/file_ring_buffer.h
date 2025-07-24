@@ -31,6 +31,9 @@ public:
 
 public:
     bool PushBack(TStringBuf data);
+    ui64 MaxAllocationSize() const;
+    bool AllocateBack(size_t size, char** ptr);
+    void CommitAllocation(char* ptr);
     TStringBuf Front() const;
     TStringBuf Back() const;
     void PopFront();
