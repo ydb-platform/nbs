@@ -11,6 +11,8 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 inline TIndexTabletActor::EHasXAttrs EHasXAttrsFromBool(bool value)
 {
     return value ? TIndexTabletActor::EHasXAttrs::True
@@ -70,7 +72,7 @@ void TIndexTabletActor::CompleteTx_SetHasXAttrs(
             " a new value",
             LogTag.c_str());
 
-        TIndexTabletActor::Suicide(ctx);
+        Suicide(ctx);
     }
 }
 

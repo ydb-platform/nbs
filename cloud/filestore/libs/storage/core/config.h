@@ -331,7 +331,7 @@ public:
     bool GetParentlessFilesOnly() const;
     bool GetAllowHandlelessIO() const;
 
-    bool GetHasXAttrsFlagAllowed() const;
+    bool GetLazyXAttrsEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

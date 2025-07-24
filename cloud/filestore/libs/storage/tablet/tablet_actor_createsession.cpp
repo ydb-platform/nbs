@@ -64,10 +64,10 @@ void FillFeatures(
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
 
-    // HasXAttrs is false only if 'HasXAttrsFlagAllowed' == true and we know for sure that
+    // HasXAttrs is false only if LazyXAttrsEnabled == true and we know for sure that
     // there are no XAttrs in the filesystem
     const bool hasXAttrs =
-        !config.GetHasXAttrsFlagAllowed() ||
+        !config.GetLazyXAttrsEnabled() ||
         fileSystemStats.GetHasXAttrs() !=
             static_cast<ui64>(TIndexTabletActor::EHasXAttrs::False);
     features->SetHasXAttrs(hasXAttrs);

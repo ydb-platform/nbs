@@ -20,7 +20,7 @@ class TSetHasXAttrsActor final
     : public TActorBootstrapped<TSetHasXAttrsActor>
 {
 private:
-    const bool Value;
+    const bool HasXAttrsValue;
     const TString& FileSystemId;
     // Original request
     const TRequestInfoPtr RequestInfo;
@@ -29,8 +29,7 @@ public:
     TSetHasXAttrsActor(
         bool value,
         const TString& fileSystemId,
-        TRequestInfoPtr originalRequestInfo
-    );
+        TRequestInfoPtr originalRequestInfo);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -45,10 +44,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSetHasXAttrsActor::TSetHasXAttrsActor(
-        bool value,
+        bool hasXAttrsValue,
         const TString& fileSystemId,
         TRequestInfoPtr RequestInfo)
-    : Value(value)
+    : HasXAttrsValue(hasXAttrsValue)
     , FileSystemId(fileSystemId)
     , RequestInfo(RequestInfo)
 {}
@@ -66,7 +65,7 @@ void TSetHasXAttrsActor::Bootstrap(const TActorContext& ctx)
         std::make_unique<TEvIndexTablet::TEvSetHasXAttrsRequest>();
     auto& record = requestToTablet->Record;
     record.SetFileSystemId(FileSystemId);
-    record.SetValue(Value);
+    record.SetValue(HasXAttrsValue);
 
     NCloud::Send(
         ctx,
@@ -88,7 +87,7 @@ void TSetHasXAttrsActor::HandleSetHasXAttrsResponse(
             MakeError(E_REJECTED));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
-    IActor::Die(ctx);
+    Die(ctx);
 }
 
 STFUNC(TSetHasXAttrsActor::StateWork)
@@ -267,7 +266,6 @@ void TStorageServiceActor::HandleGetNodeXAttr(
             ev,
             std::move(response),
             session);
-
         return;
     }
 
@@ -300,6 +298,7 @@ void TStorageServiceActor::HandleListNodeXAttr(
 
         return;
     }
+
     ForwardXAttrRequest<TEvService::TListNodeXAttrMethod>(ctx, ev, session);
 }
 

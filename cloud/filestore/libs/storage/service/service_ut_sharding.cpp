@@ -733,7 +733,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldForwardRequestsToShard)
     {
-        config.SetHasXAttrsFlagAllowed(false);
+        config.SetLazyXAttrsEnabled(false);
         config.SetMultiTabletForwardingEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -942,8 +942,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldSetHasXAttrsFlagOnFirstSetNodeXAttr)
     {
-        for (bool hasXAttrsFlagAllowed: {false, true}) {
-            config.SetHasXAttrsFlagAllowed(hasXAttrsFlagAllowed);
+        for (bool lazyXAttrsEnabled: {false, true}) {
+            config.SetLazyXAttrsEnabled(lazyXAttrsEnabled);
             config.SetMultiTabletForwardingEnabled(true);
 
             TShardedFileSystemConfig fsConfig;
@@ -969,9 +969,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             THeaders headers;
             auto session =
                 service.InitSession(headers, fsConfig.FsId, "client");
-            if (hasXAttrsFlagAllowed) {
+            if (lazyXAttrsEnabled) {
                 // There should be no XAttrs at the begining if
-                // hasXAttrsFlagAllowed is true
+                // lazyXAttrsEnabled is true
                 UNIT_ASSERT(!session->Record.GetFileStore()
                                  .GetFeatures()
                                  .GetHasXAttrs());
@@ -1018,8 +1018,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT(listXAttrResponse.GetNames().empty());
             UNIT_ASSERT_VALUES_EQUAL(1, getCount("ListNodeXAttr"));
 
-            if (hasXAttrsFlagAllowed) {
-                // If hasXAttrsFlagAllowed is true the first attempt should fail
+            if (lazyXAttrsEnabled) {
+                // If lazyXAttrsEnabled is true the first attempt should fail
                 // and cause the main tablet to restart
                 service.AssertSetNodeXAttrFailed(
                     headers,

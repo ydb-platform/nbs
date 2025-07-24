@@ -1,1 +1,1 @@
-HasXAttrsFlagAllowed: true
+LazyXAttrsEnabled: true

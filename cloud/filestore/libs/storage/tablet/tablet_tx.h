@@ -1388,6 +1388,7 @@ struct TTxIndexTablet
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
+
         void Clear()
         {
             IsToBeChanged = false;

@@ -1510,7 +1510,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldChangeHasXAttrsAllowedFlag)
     {
         // This test create a file system with a default config and then changes
-        // HasXAttrsFlagAllowed to true. In spite the change and the fact that
+        // LazyXAttrsEnabled to true. In spite the change and the fact that
         // there are no XAttrs in the file system, TFileStoreFeatures::HasXAttrs
         // should be true.
 
@@ -1527,30 +1527,30 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto session = service.InitSession(headers, fsId, clientId);
 
         CheckStorageConfigValues(
-            {"HasXAttrsFlagAllowed"},
-            {{"HasXAttrsFlagAllowed", "Default"}},
+            {"LazyXAttrsEnabled"},
+            {{"LazyXAttrsEnabled", "Default"}},
             service);
 
         UNIT_ASSERT(
             session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
 
         NProto::TStorageConfig newConfig;
-        newConfig.SetHasXAttrsFlagAllowed(true);
+        newConfig.SetLazyXAttrsEnabled(true);
         const auto response =
             ExecuteChangeStorageConfig(std::move(newConfig), service);
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            response.GetStorageConfig().GetHasXAttrsFlagAllowed());
+            response.GetStorageConfig().GetLazyXAttrsEnabled());
 
         WaitForTabletStart(service);
         session = service.InitSession(headers, fsId, clientId);
 
         CheckStorageConfigValues(
-            {"HasXAttrsFlagAllowed"},
-            {{"HasXAttrsFlagAllowed", "true"}},
+            {"LazyXAttrsEnabled"},
+            {{"LazyXAttrsEnabled", "true"}},
             service);
 
-        // If a filestore is created with HasXAttrsFlagAllowed == false
+        // If a filestore is created with LazyXAttrsEnabled == false
         // TFileStoreFeatures::HasXAttrs should always be true
         UNIT_ASSERT(
             session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
