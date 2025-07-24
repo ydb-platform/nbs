@@ -58,14 +58,10 @@ void TMirrorPartitionResyncActor::ScheduleResyncNextRange(
     const TActorContext& ctx,
     bool isRetry)
 {
-    if (!isRetry) {
-        ctx.Schedule(
-            ResyncNextRangeInterval,
-            new TEvNonreplPartitionPrivate::TEvResyncNextRange());
-        return;
-    }
     ctx.Schedule(
-        BackoffProvider.GetDelayAndIncrease(),
+        isRetry
+            ? ResyncNextRangeInterval + BackoffProvider.GetDelayAndIncrease()
+            : ResyncNextRangeInterval,
         new TEvNonreplPartitionPrivate::TEvResyncNextRange());
 }
 
