@@ -493,7 +493,7 @@ public:
         eh->InitIncompleteEntry(size);
 
         *ptr = Data.GetEntryData(eh);
-        Y_ABORT_UNLESS(*ptr);
+        Y_ABORT_UNLESS(*ptr != nullptr);
 
         Header()->WritePos = writePos + sz;
         Header()->LastEntrySize = sz;
