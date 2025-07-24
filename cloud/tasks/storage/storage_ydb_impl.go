@@ -1581,13 +1581,13 @@ func (s *storageYDB) updateTaskTx(
 	state.ChangedStateAt = lastState.ChangedStateAt
 	state.EndedAt = lastState.EndedAt
 
-	ts := state.ModifiedAt
+	now := state.ModifiedAt
 
 	if lastState.Status != state.Status {
-		state.ChangedStateAt = ts
+		state.ChangedStateAt = now
 
 		if IsEnded(state.Status) {
-			state.EndedAt = ts
+			state.EndedAt = now
 		}
 
 		state.GenerationID++
@@ -1622,7 +1622,7 @@ func (s *storageYDB) updateTaskTx(
 	}
 
 	if HasResult(state.Status) {
-		dependants, err := s.prepareDependantsToWakeup(ctx, tx, &state, ts)
+		dependants, err := s.prepareDependantsToWakeup(ctx, tx, &state, now)
 		if err != nil {
 			return TaskState{}, err
 		}
