@@ -4,7 +4,6 @@
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
 
 using namespace NActors;
 
@@ -18,7 +17,6 @@ TDiskRegistryBasedPartitionStatisticsCollectorActor::
         TVector<TActorId> statActorIds)
     : Owner(owner)
     , StatActorIds(std::move(statActorIds))
-    , Error(MakeError(S_OK))
 {}
 
 void TDiskRegistryBasedPartitionStatisticsCollectorActor::Bootstrap(
@@ -46,7 +44,7 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::SendStatistics(
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvDiskRegistryBasedPartCountersCombined>(
             std::move(Error),
-            std::move(Counters)));
+            std::move(Response)));
 
     Die(ctx);
 }
@@ -67,16 +65,8 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::HandleTimeout(
             MakeError(
                 E_TIMEOUT,
                 "Failed to update disk registry based partition counters."),
-            std::move(Counters)));
+            std::move(Response)));
 
-    Die(ctx);
-}
-
-void TDiskRegistryBasedPartitionStatisticsCollectorActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
     Die(ctx);
 }
 
@@ -88,18 +78,13 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::
 {
     auto* record = ev->Get();
 
-    Counters.emplace_back(
-        std::move(record->DiskCounters),
-        record->NetworkBytes,
-        record->CpuUsage,
-        record->SelfId,
-        record->DiskId);
-
     if (HasError(record->Error)) {
         Error = record->Error;
     }
 
-    if (Counters.size() == StatActorIds.size()) {
+    Response.Counters.push_back(std::move(*record));
+
+    if (Response.Counters.size() == StatActorIds.size()) {
         SendStatistics(ctx);
     }
 }
@@ -110,7 +95,6 @@ STFUNC(TDiskRegistryBasedPartitionStatisticsCollectorActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleTimeout);
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(
             TEvNonreplPartitionPrivate::
                 TEvGetDiskRegistryBasedPartCountersResponse,

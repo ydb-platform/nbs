@@ -21,6 +21,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/disk_registry_based_part_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
@@ -31,7 +32,6 @@
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
-#include <cloud/blockstore/libs/storage/partition_nonrepl/update_counters.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
@@ -382,6 +382,28 @@ private:
 
     TVector<ui64> GCCompletedPartitions;
 
+    struct TDataForUpdatingDiskRegistryBasedPartCounters
+    {
+        const NActors::TActorId Sender;
+        const ui64 Cookie;
+        const TString DiskId;
+        TCallContextPtr CallContext;
+        TPartNonreplCountersData PartCountersData;
+
+        TDataForUpdatingDiskRegistryBasedPartCounters(
+                const NActors::TActorId& sender,
+                ui64 cookie,
+                TString diskId,
+                TCallContextPtr callContext,
+                TPartNonreplCountersData partCountersData)
+            : Sender(sender)
+            , Cookie(cookie)
+            , DiskId(std::move(diskId))
+            , CallContext(std::move(callContext))
+            , PartCountersData(std::move(partCountersData))
+        {}
+    };
+
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -618,10 +640,7 @@ private:
 
     void UpdateDiskRegistryBasedPartCounters(
         const NActors::TActorContext& ctx,
-        const TString& diskId,
-        TUpdateCounters& args,
-        ui64 cookie,
-        TCallContextPtr callContext);
+        TDataForUpdatingDiskRegistryBasedPartCounters& data);
 
 private:
     STFUNC(StateBoot);
