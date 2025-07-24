@@ -189,6 +189,20 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
 {
     return std::visit(
         TOverloaded{
+            [&](const TNullFileIOConfig& null)
+            {
+                Y_UNUSED(null);
+
+                TVector<IFileIOServicePtr> fileIOs;
+                fileIOs.reserve(Max<ui32>(1, config.GetNumThreads()));
+                for (ui32 i = 0; i != config.GetNumThreads(); ++i) {
+                    fileIOs.push_back(CreateConcurrentFileIOService(
+                        TStringBuilder() << "IO" << (i + 1),
+                        CreateFileIOServiceStub()));
+                }
+
+                return CreateRoundRobinFileIOService(std::move(fileIOs));
+            },
             [&](const TAioConfig& aio)
             {
                 return CreateThreadedAIOService(

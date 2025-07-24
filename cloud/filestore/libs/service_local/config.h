@@ -13,6 +13,19 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TNullFileIOConfig
+{
+private:
+    NProto::TNullFileIOConfig Proto;
+
+public:
+    explicit TNullFileIOConfig(NProto::TNullFileIOConfig proto = {})
+        : Proto(std::move(proto))
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TAioConfig
 {
 private:
@@ -46,7 +59,8 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TFileIOConfig = std::variant<TAioConfig, TIoUringConfig>;
+using TFileIOConfig =
+    std::variant<TNullFileIOConfig, TAioConfig, TIoUringConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

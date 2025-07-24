@@ -40,6 +40,9 @@ namespace {
     xxx(MaxResponseEntries,          ui32,          10000                     )\
 // FILESTORE_SERVICE_CONFIG
 
+#define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \
+// FILESTORE_SERVICE_NULL_FILE_IO_CONFIG
+
 #define FILESTORE_SERVICE_AIO_CONFIG(xxx)                                      \
     xxx(Entries,                     ui32,          1024                      )\
 // FILESTORE_SERVICE_AIO_CONFIG
@@ -58,6 +61,12 @@ namespace {
 FILESTORE_SERVICE_CONFIG(FILESTORE_SERVICE_DECLARE_CONFIG)
 
 #undef FILESTORE_SERVICE_DECLARE_CONFIG
+
+#define FILESTORE_SERVICE_DECLARE_NULL_FILE_IO_CONFIG(name, type, value)       \
+    Y_DECLARE_UNUSED static const type DefaultNullFileIO##name = value;        \
+// FILESTORE_SERVICE_DECLARE_NULL_FILE_IO_CONFIG
+
+FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(FILESTORE_SERVICE_DECLARE_NULL_FILE_IO_CONFIG)
 
 #define FILESTORE_SERVICE_DECLARE_AIO_CONFIG(name, type, value)                \
     Y_DECLARE_UNUSED static const type DefaultAio##name = value;               \
@@ -122,6 +131,8 @@ TFileIOConfig TLocalFileStoreConfig::GetFileIOConfig() const
             return TAioConfig{ProtoConfig.GetAioConfig()};
         case EFileIOConfigCase::kIoUringConfig:
             return TIoUringConfig{ProtoConfig.GetIoUringConfig()};
+        case EFileIOConfigCase::kNullFileIOConfig:
+            return TNullFileIOConfig{ProtoConfig.GetNullFileIOConfig()};
         default:
             return TAioConfig{};
     }
@@ -177,6 +188,22 @@ void TLocalFileStoreConfig::DumpHtml(IOutputStream& out) const
 
 #undef FILESTORE_CONFIG_DUMP
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define FILESTORE_CONFIG_NULL_FILE_IO_GETTER(name, type, ...)                  \
+type TNullFileIOConfig::Get##name() const                                      \
+{                                                                              \
+    const auto value = Proto.Get##name();                                      \
+    return !IsEmpty(value)                                                     \
+        ? ConvertValue<type>(value)                                            \
+        : DefaultNullFileIO##name;                                             \
+}                                                                              \
+// FILESTORE_CONFIG_AIO_GETTER
+
+FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(FILESTORE_CONFIG_NULL_FILE_IO_GETTER)
+
+#undef FILESTORE_CONFIG_NULL_FILE_IO_GETTER
 
 ////////////////////////////////////////////////////////////////////////////////
 
