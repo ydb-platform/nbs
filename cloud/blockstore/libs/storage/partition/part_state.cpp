@@ -407,7 +407,7 @@ TVector<ui32> TPartitionState::GetChannelsToReassign() const
         !mixedChannels.empty())
     {
         const auto threshold =
-            ReassignChannelsPercentageThreshold * MixedChannels.size();
+            ReassignMixedChannelsPercentageThreshold * MixedChannels.size();
         if (mixedChannels.size() * 100 >= threshold) {
             return mixedChannels;
         }
