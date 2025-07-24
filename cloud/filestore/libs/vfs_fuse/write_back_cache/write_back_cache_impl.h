@@ -2,9 +2,15 @@
 
 #include "write_back_cache.h"
 
+#include <cloud/filestore/libs/service/filestore.h>
+
 #include <util/generic/intrlist.h>
+#include <util/generic/strbuf.h>
+#include <util/generic/string.h>
 
 namespace NCloud::NFileStore::NFuse {
+
+////////////////////////////////////////////////////////////////////////////////
 
 enum class TWriteBackCache::EFlushStatus
 {
@@ -72,7 +78,7 @@ struct TWriteBackCache::TWriteDataEntryPart
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBackCache::TDataPartsUtil
+class TWriteBackCache::TUtil
 {
 public:
     static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(

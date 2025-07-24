@@ -58,7 +58,7 @@ private:
     enum class EFlushStatus;
     struct TWriteDataEntry;
     struct TWriteDataEntryPart;
-    class TDataPartsUtil;
+    class TUtil;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

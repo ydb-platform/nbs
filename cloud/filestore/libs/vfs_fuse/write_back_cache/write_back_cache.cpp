@@ -148,7 +148,7 @@ public:
             return {};
         }
 
-        return TDataPartsUtil::CalculateDataPartsToRead(
+        return TUtil::CalculateDataPartsToRead(
             entriesIter->second,
             startingFromOffset,
             length);

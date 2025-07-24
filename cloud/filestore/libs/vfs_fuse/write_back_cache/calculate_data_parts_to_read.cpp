@@ -9,7 +9,7 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 // static
-auto TWriteBackCache::TDataPartsUtil::CalculateDataPartsToRead(
+auto TWriteBackCache::TUtil::CalculateDataPartsToRead(
     const TVector<TWriteDataEntry*>& entries,
     ui64 startingFromOffset,
     ui64 length) -> TVector<TWriteDataEntryPart>

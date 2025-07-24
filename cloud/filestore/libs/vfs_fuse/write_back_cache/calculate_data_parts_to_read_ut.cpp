@@ -128,7 +128,7 @@ struct TCalculateDataPartsToReadTestBootstrap
         ui64 startingFromOffset,
         ui64 length)
     {
-        return TWriteBackCache::TDataPartsUtil::CalculateDataPartsToRead(
+        return TWriteBackCache::TUtil::CalculateDataPartsToRead(
             entries,
             startingFromOffset,
             length);
