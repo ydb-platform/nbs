@@ -1,6 +1,10 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/disk_registry)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
+IF (SANITIZER_TYPE OR WITH_VALGRIND)
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+ELSE()
+    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
+ENDIF()
 
 SRCS(
     disk_registry_ut_migration.cpp
