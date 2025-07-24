@@ -229,7 +229,7 @@ private:
     const TReferenceTimeCycle ReferenceTimeCycle;
     const bool HasConflicts;
 
-    ui32 SpanIdPool = 0;
+    ui32 NextSpanId = 0;
 
 public:
     TTraceConverter(
@@ -319,7 +319,7 @@ private:
 
     ui32 TakeSpanId()
     {
-        return SpanIdPool++;
+        return NextSpanId++;
     }
 };
 
