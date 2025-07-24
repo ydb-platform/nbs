@@ -427,12 +427,17 @@ int virtio_session_loop(struct fuse_session* se)
         }
 
         struct vhd_request req;
+        /* int count = 0; */
         while (vhd_dequeue_request(dev->rq, &req)) {
             res = process_request(se, req.io);
             if (res < 0) {
                 VHD_LOG_WARN("request processing failure %d", -res);
             }
+            /* count++; */
+            /* usleep(10000); */
         }
+        /* if (count) */
+        /*     VHD_LOG_WARN("processed %d events", count); */
     }
 
     se->exited = 1;

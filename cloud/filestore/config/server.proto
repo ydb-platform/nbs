@@ -153,6 +153,8 @@ message TLocalServiceConfig
         TAioConfig AioConfig = 23;
         TIoUringConfig IoUringConfig = 24;
     }
+
+    optional uint32 MaxBackground = 25;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

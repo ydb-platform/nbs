@@ -94,6 +94,8 @@ public:
     ui32 GetMaxResponseEntries() const;
 
     TFileIOConfig GetFileIOConfig() const;
+
+    ui32 GetMaxBackground() const;
 };
 
 }   // namespace NCloud::NFileStore

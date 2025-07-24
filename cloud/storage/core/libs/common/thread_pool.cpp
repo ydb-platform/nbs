@@ -55,7 +55,7 @@ class TThreadPool final
     };
 
 private:
-    static constexpr auto SPIN_TIMEOUT = TDuration::MicroSeconds(100);
+    static constexpr auto SPIN_TIMEOUT = TDuration::Seconds(5);
     static constexpr auto SLEEP_TIMEOUT = TDuration::Seconds(1);
 
     static constexpr auto LOCK_TAG = Max<ui32>();
@@ -78,7 +78,7 @@ public:
             size_t numWorkers,
             TString memoryTagScope)
         : NumWorkers(numWorkers)
-        , MaxSpinning(Max<ui32>(1, numWorkers / 4))
+        , MaxSpinning(Max<ui32>(1, numWorkers))
         , SpinCycles(DurationToCyclesSafe(SPIN_TIMEOUT))
         , MemoryTagScope(std::move(memoryTagScope))
         , Workers(numWorkers)
@@ -138,9 +138,9 @@ private:
                 continue;
             }
 
-            if (ReleaseWorker()) {
-                Wait(worker);
-            }
+            // if (ReleaseWorker()) {
+            //     Wait(worker);
+            // }
         }
     }
 
