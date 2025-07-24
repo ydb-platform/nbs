@@ -1835,6 +1835,7 @@ func (s *storageYDB) clearEndedTasks(
 		if err != nil {
 			return err
 		}
+
 		if !more {
 			return nil
 		}

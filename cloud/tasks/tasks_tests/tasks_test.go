@@ -1684,12 +1684,12 @@ func TestListerMetricsCleanup(t *testing.T) {
 	registry.AssertAllExpectations(t)
 }
 
-func createTaskWithEndedAt(
+func createTaskWithEndTime(
 	t *testing.T,
 	ctx context.Context,
 	storage tasks_storage.Storage,
 	key string,
-	createdAt time.Time,
+	at time.Time,
 	status storage.TaskStatus,
 ) string {
 
@@ -1697,14 +1697,14 @@ func createTaskWithEndedAt(
 		IdempotencyKey: key,
 		TaskType:       "task1",
 		Description:    "Some task",
-		CreatedAt:      createdAt,
+		CreatedAt:      at,
 		CreatedBy:      "some_user",
-		ModifiedAt:     createdAt,
+		ModifiedAt:     at,
 		GenerationID:   0,
 		Status:         status,
 		State:          []byte{},
 		Dependencies:   common.NewStringSet(),
-		EndedAt:        createdAt,
+		EndedAt:        at,
 	})
 	require.NoError(t, err)
 
@@ -1737,7 +1737,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 	expiredTaskIds := make([]string, 0)
 
 	for i := 0; i < iterationsCount; i++ {
-		expiredCreatedAt := time.Now().Add(-2 * expirationTimeout)
+		expiredTime := time.Now().Add(-2 * expirationTimeout)
 
 		actualTaskIds = append(
 			actualTaskIds,
@@ -1762,7 +1762,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 				ctx,
 				s.storage,
 				fmt.Sprintf("%v_running_%v", t.Name(), i),
-				expiredCreatedAt,
+				expiredTime,
 				tasks_storage.TaskStatusRunning,
 			),
 		)
@@ -1774,7 +1774,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 				ctx,
 				s.storage,
 				fmt.Sprintf("%v_expired_finished_%v", t.Name(), i),
-				expiredCreatedAt,
+				expiredTime,
 				tasks_storage.TaskStatusFinished,
 			),
 			createTaskWithEndedAt(
@@ -1782,7 +1782,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 				ctx,
 				s.storage,
 				fmt.Sprintf("%v_expired_cancelled_%v", t.Name(), i),
-				expiredCreatedAt,
+				expiredTime,
 				tasks_storage.TaskStatusCancelled,
 			),
 		)
