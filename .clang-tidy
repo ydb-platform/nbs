@@ -30,6 +30,10 @@ CheckOptions:
     value: true
   - key: bugprone-too-small-loop-variable.MagnitudeBitsUpperLimit
     value: 64
+  - key: readability-implicit-bool-conversion.AllowIntegerConditions
+    value: true
+  - key: readability-implicit-bool-conversion.AllowPointerConditions
+    value: true
 
   # class
   - key: readability-identifier-naming.ClassCase
