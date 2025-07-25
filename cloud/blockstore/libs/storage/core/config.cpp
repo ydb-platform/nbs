@@ -885,11 +885,12 @@ void TStorageConfig::Register(TControlBoard& controlBoard){
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
-        return BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                             \
+        static const type configValue = BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(    \
             Impl->StorageServiceConfig,                                        \
             name,                                                              \
             type,                                                              \
             Default##name);                                                    \
+        return configValue;                                                    \
     }
 
 BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
@@ -899,7 +900,7 @@ BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
-        const type configValue = BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(           \
+        static const type configValue = BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(    \
             Impl->StorageServiceConfig,                                        \
             name,                                                              \
             type,                                                              \
