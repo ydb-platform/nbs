@@ -23,7 +23,7 @@ message TasksConfig {
     optional uint64 StalkingRunnersCount = 12 [default = 200];
     optional string StorageFolder = 13 [default = "tasks"];
     optional string EndedTaskExpirationTimeout = 14 [default = "96h"];
-    optional string ClearEndedTasksTaskScheduleInterval = 15 [default = "1m"];
+    optional string ClearEndedTasksTaskScheduleInterval = 15 [default = "1h"];
     optional uint64 ClearEndedTasksLimit = 16 [default = 10000];
     optional string LegacyStorageFolder = 17;
     optional uint64 MaxRetriableErrorCount = 18 [default = 100];
