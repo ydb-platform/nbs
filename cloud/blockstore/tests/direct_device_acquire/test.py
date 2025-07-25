@@ -474,3 +474,54 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
     )
 
     assert not Path(another_socket.name).exists()
+
+
+def test_should_stop_not_restored_endpoint_when_volume_was_deleted(nbs_with_dr,
+                                                                   nbs,
+                                                                   agent_ids,
+                                                                   disk_agent_configurators):
+
+    client = CreateTestClient(f"localhost:{nbs.port}")
+
+    test_disk_id = "vol0"
+
+    agent_id = agent_ids[0]
+    configurator = disk_agent_configurators[0]
+    agent = start_disk_agent(configurator, name=agent_id)
+    agent.wait_for_registration()
+    r = client.add_host(agent_id)
+    assert len(r.ActionResults) == 1
+    assert r.ActionResults[0].Result.Code == 0
+
+    client.create_volume(
+        disk_id=test_disk_id,
+        block_size=4096,
+        blocks_count=DEVICE_SIZE//4096,
+        storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
+        cloud_id="test")
+
+    socket = tempfile.NamedTemporaryFile()
+    client.start_endpoint(
+        unix_socket_path=socket.name,
+        disk_id=test_disk_id,
+        ipc_type=IPC_VHOST,
+        access_mode=VOLUME_ACCESS_READ_WRITE,
+        client_id=f"{socket.name}-id",
+        seq_number=0
+    )
+
+    nbs.kill()
+    nbs.start()
+
+    client.destroy_volume(
+        disk_id=test_disk_id,
+        sync=True
+    )
+
+    client.stop_endpoint(
+        unix_socket_path=socket.name,
+        client_id=f"{socket.name}-id",
+        disk_id=test_disk_id,
+    )
+
+    assert not Path(socket.name).exists()
