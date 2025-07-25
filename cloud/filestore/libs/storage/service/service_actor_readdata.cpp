@@ -462,11 +462,9 @@ void TReadDataActor::HandleReadBlobResponse(
             response.Buffer.size());
         TABLET_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
-        const auto commonRange = OriginByteRange.Intersect(
-            TByteRange{
-                blobRange.GetOffset(),
-                blobRange.GetLength(),
-                BlockSize});
+        const auto blobByteRange =
+            TByteRange{blobRange.GetOffset(), blobRange.GetLength(), BlockSize};
+        const auto commonRange = OriginByteRange.Intersect(blobByteRange);
         if (commonRange.Length != 0) {
             const auto relOffset = commonRange.Offset - OriginByteRange.Offset;
             char* targetData =
@@ -474,8 +472,15 @@ void TReadDataActor::HandleReadBlobResponse(
                 relOffset;
 
             auto dataIter = response.Buffer.begin();
-            dataIter += commonRange.Offset - blobRange.GetOffset();
+            dataIter += commonRange.Offset - blobByteRange.Offset;
             dataIter.ExtractPlainDataAndAdvance(targetData, commonRange.Length);
+        } else {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "common range is empty: origin range: %s, blob range: %s",
+                OriginByteRange.Describe().c_str(),
+                blobByteRange.Describe().c_str());
         }
     }
 
