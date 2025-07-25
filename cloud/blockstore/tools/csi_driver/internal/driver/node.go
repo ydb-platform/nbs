@@ -330,8 +330,6 @@ func (s *nodeService) NodeStageVolume(
 
 				if err != nil {
 					ignoreError(os.Remove(stageRecordPath))
-					return nil, s.statusErrorf(codes.Internal,
-						"Failed to stage volume: %v", err)
 				}
 			}
 		} else {
@@ -616,7 +614,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		s.resolveEndpoint(ctx, startEndpointRequest))
 
 	if err != nil {
-		return fmt.Errorf("failed to start NBS endpoint: %w", err)
+		return err
 	}
 
 	if err := s.createDummyImgFile(endpointDir); err != nil {
@@ -711,7 +709,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		s.resolveEndpoint(ctx, startEndpointRequest))
 
 	if err != nil {
-		return fmt.Errorf("failed to start NBS endpoint: %w", err)
+		return err
 	}
 
 	return s.createDummyImgFile(endpointDir)
@@ -835,7 +833,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	diskId := req.VolumeId
 	resp, err := s.startNbsEndpointForNBD(ctx, "", diskId, req.VolumeContext)
 	if err != nil {
-		return fmt.Errorf("failed to start NBS endpoint: %w", err)
+		return err
 	}
 
 	err = nil
@@ -908,7 +906,7 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	diskId := req.VolumeId
 	resp, err := s.startNbsEndpointForNBD(ctx, "", diskId, req.VolumeContext)
 	if err != nil {
-		return fmt.Errorf("failed to start NBS endpoint: %w", err)
+		return err
 	}
 
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
@@ -1058,7 +1056,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 			})
 		}
 
-		return fmt.Errorf("failed to start NFS endpoint: %w", err)
+		return err
 	}
 
 	if err := s.createDummyImgFile(endpointDir); err != nil {
@@ -1094,8 +1092,7 @@ func (s *nodeService) nodeStageFileStoreStartEndpoint(
 			})
 		}
 
-		return fmt.Errorf("failed to start NFS endpoint: %w", err)
-	}
+		return err
 	return nil
 }
 
@@ -1240,7 +1237,7 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 			})
 		}
 
-		return fmt.Errorf("failed to start nfs local endpoint: %w", err)
+		return err
 	}
 
 	return nil
