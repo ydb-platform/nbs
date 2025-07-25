@@ -1782,21 +1782,19 @@ func (s *storageYDB) clearEndedTasksChunk(
 			declare $limit as Uint64;
 			
 			$ended_tasks = (
-				select ended_at, id
-				from ended
+				select * from ended
 				where ended_at < $ended_before
 				limit $limit
 			);
-			$ended_ids = (select id from $ended_tasks);
 
 			delete from ended
 			on select ended_at, id from $ended_tasks;
 
 			delete from task_ids
-			where task_id in $ended_ids;
+			on select idempotency_key, account_id from $ended_tasks;
 
 			delete from tasks
-			where id in $ended_ids;
+			on select id from $ended_tasks;
 
 			select count(*) as deleted_count from $ended_tasks;
 		`, s.tablesPath),
