@@ -336,6 +336,120 @@ Y_UNIT_TEST_SUITE(TraceConverter)
         } reader;
         mngr.ReadDepot("Query1", reader);
     }
+
+    Y_UNIT_TEST(ShouldConvertTraceWithInvalidSpanIds)
+    {
+        TManager mngr(*Singleton<TProbeRegistry>(), true);
+        TQuery q;
+        bool parsed = NProtoBuf::TextFormat::ParseFromString(
+            R"END(
+            Blocks {
+                ProbeDesc {
+                    Name: "NoParam"
+                    Provider: "LWTRACE_UT_PROVIDER"
+                }
+                Action {
+                    RunLogShuttleAction { }
+                }
+            }
+        )END",
+            &q);
+
+        UNIT_ASSERT(parsed);
+        mngr.New("Query1", q);
+
+        {
+            TOrbit a, b, c, d;
+
+            // Graph:
+            //         c
+            //        / \
+            //     b-f-b-j-b
+            //    /         \
+            // a-f-a-f-a-j-a-j-a
+            //        \ /
+            //         d
+            //
+            // Merged track:
+            //   a-f(b)-a-f(d)-a-j(d,1)-d-a-j(b,6)-b-f(c)-b-j(c,1)-c-b-a
+
+            LWTRACK(NoParam, a);
+            a.Fork(b);
+            LWTRACK(IntParam, a, 1);
+            a.Fork(d);
+            LWTRACK(IntParam, a, 2);
+
+            LWTRACK(IntParam, b, 3);
+            b.Fork(c);
+            LWTRACK(IntParam, b, 4);
+
+            LWTRACK(IntParam, c, 5);
+            b.Join(c);
+            LWTRACK(IntParam, b, 6);
+
+            LWTRACK(IntParam, d, 7);
+            a.Join(d);
+            LWTRACK(IntParam, a, 8);
+
+            a.Join(b);
+            LWTRACK(IntParam, a, 9);
+        }
+
+        struct
+        {
+            void Push(TThread::TId, const TTrackLog& tl)
+            {
+                // Simulate that spanids for fork joins were corrupted
+                auto& tlCorrupted = const_cast<TTrackLog&>(tl);
+                for (auto& item: tlCorrupted.Items) {
+                    const auto* name = item.Probe->Event.Name;
+                    if (TStringBuf(name) == "Fork" ||
+                        TStringBuf(name) == "Join")
+                    {
+                        auto& param = item.Params.Param[0];
+                        memset(param.Data, 0, LWTRACE_MAX_PARAM_SIZE);
+                    }
+                }
+
+                auto spans = ConvertToOpenTelemetrySpans(tl).Spans;
+
+                UNIT_ASSERT_VALUES_EQUAL(4, spans.size());
+
+                // No spans with same spanId.
+                THashSet<TString> spanIds;
+                for (const auto& span: spans) {
+                    auto [_, inserted] = spanIds.insert(span.span_id());
+                    UNIT_ASSERT(inserted);
+                }
+
+                auto getTime = [](const auto& spans, int i, int j)
+                {
+                    return spans[i].events(j).time_unix_nano();
+                };
+
+                // Right order between events and end of spans is saved.
+                TVector eventTimes{
+                    getTime(spans, 0, 0),
+                    getTime(spans, 0, 1),
+                    getTime(spans, 0, 2),
+                    getTime(spans, 2, 0),
+                    getTime(spans, 2, 1),
+                    getTime(spans, 3, 0),
+                    spans[3].end_time_unix_nano(),
+                    getTime(spans, 2, 2),
+                    getTime(spans, 1, 0),
+                    spans[1].end_time_unix_nano(),
+                    getTime(spans, 0, 3),
+                    spans[2].end_time_unix_nano(),
+                    getTime(spans, 0, 4)};
+
+                for (size_t i = 0; i < eventTimes.size() - 1; ++i) {
+                    UNIT_ASSERT(eventTimes[i] <= eventTimes[i + 1]);
+                }
+            }
+        } reader;
+        mngr.ReadDepot("Query1", reader);
+    }
 }
 
 }   // namespace NCloud
