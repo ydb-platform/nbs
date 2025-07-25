@@ -711,7 +711,9 @@ void TPartitionActor::HandleHttpInfo_Default(
                     function parseKey(key) {
                         const parts = key.split('_');
                         if (parts.length < 4) {
+                        {
                             return null;
+                        }
                         }
                         return {
                             op: parts[0],
@@ -721,102 +723,223 @@ void TPartitionActor::HandleHttpInfo_Default(
                         };
                     }
 
+                    function formatLatencyLabel(label) {
+                        if (label === "Total") {
+                        {
+                            return "Total";
+                        }
+                        }
+                        if (label === "Inf") {
+                        {
+                            return "Inf";
+                        }
+                        }
+                        const us = parseFloat(label);
+                        if (isNaN(us)) {
+                        {
+                            return label;
+                        }
+                        }
+
+                        if (us < 1000) {
+                        {
+                            return us.toLocaleString() + " us";
+                        }
+                        } else if (us < 1000000) {
+                        {
+                            return (us / 1000).toLocaleString() + " ms";
+                        }
+                        } else {
+                        {
+                            return (us / 1000000).toLocaleString() + " s";
+                        }
+                        }
+                    }
+
                     function buildLatencyTables(stat, container) {
-                        const filtered = { Read: {}, Write: {} };
+                        const finished = { Read: {}, Write: {} };
+                        const inflight = { Read: {}, Write: {} };
 
                         for (const key in stat) {
+                        {
                             const info = parseKey(key);
                             if (!info) {
+                            {
                                 continue;
                             }
-                            if (info.status !== 'finished') {
+                            }
+                            if (!(info.op in finished)) {
+                            {
                                 continue;
                             }
-                            if (!(info.op in filtered)) {
-                                continue;
                             }
 
-                            filtered[info.op][info.groupId] = filtered[info.op][info.groupId] || {};
-                            filtered[info.op][info.groupId][info.latencyBucket] = stat[key];
+                            const target = (info.status === "finished") ? finished :
+                                        (info.status === "inflight") ? inflight : null;
+                            if (!target) {
+                            {
+                                continue;
+                            }
+                            }
+
+                            if (!target[info.op][info.groupId]) {
+                            {
+                                target[info.op][info.groupId] = {};
+                            }
+                            }
+                            target[info.op][info.groupId][info.latencyBucket] = stat[key];
                         }
-                        const hasWrite = Object.keys(filtered.Write).length > 0;
-                        const hasRead = Object.keys(filtered.Read).length > 0;
+                        }
 
-                        if (!hasWrite && !hasRead) {
+                        const hasData = Object.values(finished).some(op =>
+                        {
+                            return Object.values(op).some(statusObj =>
+                            {
+                                return Object.keys(statusObj).length > 0;
+                            });
+                        });
+                        if (!hasData) {
+                        {
                             container.innerHTML = "<p style='text-align:center; color:#666; margin:10px;'>No records yet...</p>";
                             return;
                         }
+                        }
 
-                        container.innerHTML = '';
-                        Object.keys(filtered).forEach(op => {
-                            const groups = Object.keys(filtered[op]);
+                        container.innerHTML = "";
+
+                        ["Read", "Write"].forEach(op => {
+                        {
+                            const groups = Object.keys(finished[op]);
                             if (groups.length === 0) {
+                            {
                                 return;
+                            }
                             }
 
                             const latencyBucketsSet = new Set();
                             groups.forEach(g => {
-                                Object.keys(filtered[op][g]).forEach(bucket => latencyBucketsSet.add(bucket));
+                            {
+                                if (finished[op][g]) {
+                                {
+                                    Object.keys(finished[op][g]).forEach(bucket => latencyBucketsSet.add(bucket));
+                                }
+                                }
+                                if (inflight[op][g]) {
+                                {
+                                    Object.keys(inflight[op][g]).forEach(bucket => latencyBucketsSet.add(bucket));
+                                }
+                                }
+                            }
                             });
+
                             const latencyBuckets = Array.from(latencyBucketsSet).sort((a,b) => {
+                            {
                                 if (a === "Total") {
+                                {
                                     return 1;
                                 }
+                                }
                                 if (b === "Total") {
+                                {
                                     return -1;
                                 }
-                                return a.localeCompare(b, undefined, {numeric:true});
+                                }
+                                if (a === "Inf") {
+                                {
+                                    return 1;
+                                }
+                                }
+                                if (b === "Inf") {
+                                {
+                                    return -1;
+                                }
+                                }
+                                return parseFloat(a) - parseFloat(b);
+                            }
                             });
 
-                            const title = document.createElement('h3');
-                            title.textContent = op + ' Latency by Group';
+                            const title = document.createElement("h3");
+                            title.textContent = op + " Latency by Group";
                             container.appendChild(title);
 
-                            const table = document.createElement('table');
-                            table.style.borderCollapse = 'collapse';
-                            table.style.marginBottom = '20px';
+                            const table = document.createElement("table");
+                            table.style.borderCollapse = "collapse";
+                            table.style.marginBottom = "20px";
 
                             const thead = table.createTHead();
                             const trHead = thead.insertRow();
-                            const th = document.createElement('th');
-                            th.textContent = 'Group ID';
-                            th.style.border = '1px solid #ccc';
-                            th.style.padding = '5px';
+                            let th = document.createElement("th");
+                            th.textContent = "Group ID";
+                            th.style.border = "1px solid #ccc";
+                            th.style.padding = "5px";
                             trHead.appendChild(th);
 
                             latencyBuckets.forEach(bucket => {
-                                const th = document.createElement('th');
-                                th.textContent = bucket;
-                                th.style.border = '1px solid #ccc';
-                                th.style.padding = '5px';
+                            {
+                                const th = document.createElement("th");
+                                th.textContent = formatLatencyLabel(bucket);
+                                th.style.border = "1px solid #ccc";
+                                th.style.padding = "5px";
                                 trHead.appendChild(th);
+                            }
                             });
 
                             const tbody = table.createTBody();
                             groups.forEach(groupId => {
+                            {
                                 const tr = tbody.insertRow();
+
                                 let td = tr.insertCell();
                                 td.textContent = groupId;
-                                td.style.border = '1px solid #ccc';
-                                td.style.padding = '5px';
-                                td.style.fontWeight = 'bold';
+                                td.style.border = "1px solid #ccc";
+                                td.style.padding = "5px";
+                                td.style.fontWeight = "bold";
 
                                 latencyBuckets.forEach(bucket => {
+                                {
                                     const td = tr.insertCell();
-                                    td.textContent = filtered[op][groupId][bucket] || '0';
-                                    td.style.border = '1px solid #ccc';
-                                    td.style.padding = '5px';
-                                    td.style.textAlign = 'right';
+
+                                    const finVal = finished[op][groupId] && finished[op][groupId][bucket] ? finished[op][groupId][bucket] : "0";
+                                    const inflightVal = inflight[op][groupId] && inflight[op][groupId][bucket] ? inflight[op][groupId][bucket] : "0";
+
+                                    td.style.border = "1px solid #ccc";
+                                    td.style.padding = "5px";
+                                    td.style.textAlign = "right";
+                                    td.style.whiteSpace = "nowrap";
+
+                                    td.textContent = "";
+
+                                    const spanFinished = document.createElement("span");
+                                    spanFinished.textContent = finVal;
+
+                                    td.appendChild(spanFinished);
+
+                                    if (inflightVal && inflightVal !== "0") {
+                                    {
+                                        const spanPlus = document.createElement("span");
+                                        spanPlus.textContent = " ";
+                                        td.appendChild(spanPlus);
+
+                                        const spanInflight = document.createElement("span");
+                                        spanInflight.textContent = inflightVal;
+                                        td.appendChild(spanInflight);
+                                    }
+                                    }
+                                }
                                 });
+                            }
                             });
 
                             container.appendChild(table);
+                        }
                         });
                     }
 
                     function updateGroupLatencyTable(result, container) {
                         if (!result || !result.stat) {
+                        {
                             return;
+                        }
                         }
                         buildLatencyTables(result.stat, container);
                     }
