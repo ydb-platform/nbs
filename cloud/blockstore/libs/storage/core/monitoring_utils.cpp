@@ -130,6 +130,7 @@ void DumpLatencyForTransactions(
     const TTransactionTimeTracker& transactionTimeTracker)
 {
     const auto buckets = transactionTimeTracker.GetTransactionBuckets();
+
     HTML (out) {
         TABLE_CLASS ("table-latency") {
             for (size_t i = 0; i < buckets.size(); i += columnCount) {
@@ -1431,100 +1432,6 @@ void RenderAutoRefreshScript(
     });
 })();
 </script>)";
-}
-
-void DumpGroupLatency(
-    IOutputStream& out,
-    const TGroupOperationTimeTracker& timeTracker)
-{
-    const auto transactionBuckets = timeTracker.GetTransactionBuckets();
-    const auto timeBuckets = timeTracker.GetTimeBuckets();
-
-    if (transactionBuckets.empty()) {
-        out << "<div>No group I/O operations to display.</div>";
-        return;
-    }
-
-    DumpGroupLatencyForOperation(
-        out,
-        "WriteBlob_Group",
-        "Write",
-        transactionBuckets,
-        timeBuckets);
-
-    out << "<br/>";
-
-    DumpGroupLatencyForOperation(
-        out,
-        "ReadBlob_Group",
-        "Read",
-        transactionBuckets,
-        timeBuckets);
-}
-
-void DumpGroupLatencyForOperation(
-    IOutputStream& out,
-    const TString& opName,
-    const TString& opLabel,
-    const TVector<TGroupOperationTimeTracker::TBucketInfo>& allTransactionBuckets,
-    const TVector<TGroupOperationTimeTracker::TBucketInfo>& timeBuckets)
-{
-    TVector<TGroupOperationTimeTracker::TBucketInfo> filteredBuckets;
-    for (const auto& bucket: allTransactionBuckets) {
-        if (bucket.TransactionName.StartsWith(opName)) {
-            filteredBuckets.push_back(bucket);
-        }
-    }
-
-    if (filteredBuckets.empty()) {
-        return;
-    }
-
-    HTML (out) {
-        TAG (TH4) {
-            out << opLabel << " Latency by Group";
-        }
-
-        TABLE_SORTABLE_CLASS("table table-bordered table-condensed")
-        {
-            TABLEHEAD () {
-                TABLER () {
-                    TABLEH () {
-                        out << "Group ID";
-                    }
-                    for (const auto& bucket: timeBuckets) {
-                        TABLEH () {
-                            out << "<span title='" << bucket.Tooltip << "'>"
-                                << bucket.Description << "</span>";
-                        }
-                    }
-                }
-            }
-
-            TABLEBODY()
-            {
-                for (const auto& transaction: filteredBuckets) {
-                    const TString groupId =
-                        transaction.TransactionName.substr(opName.length());
-
-                    TABLER () {
-                        TABLED () {
-                            out << groupId;
-                        }
-
-                        for (const auto& timeBucket: timeBuckets) {
-                            const TString cellId = TStringBuilder()
-                                                   << "stat-cell-"
-                                                   << transaction.Key << "-"
-                                                   << timeBucket.Key;
-
-                            out << "<td id='" << cellId << "'>0</td>";
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 }   // namespace NMonitoringUtils

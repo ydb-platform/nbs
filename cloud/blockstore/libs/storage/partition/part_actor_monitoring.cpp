@@ -698,40 +698,130 @@ void TPartitionActor::HandleHttpInfo_Default(
                             out,
                             toggleId,
                             "Auto update info",
-                            false);
+                            true);
 
-                        DIV_CLASS_ID(" ", containerId)
-                        {
-                            out << "<div style='overflow-x: auto; border: 1px solid #ddd;'>";
-                            DumpGroupLatency(out, GroupOperationTimeTracker);
-                            out << "</div>";
+                        out << "<div id='" << containerId
+                            << "' style='overflow-x: auto; border: 1px solid "
+                               "#ddd;'>"
+                            << "<p style='text-align:center; color: #666; "
+                               "margin: 10px;'>No records yet...</p>"
+                            << "</div>";
+                    }
+                    out << R"(<script>
+                    function parseKey(key) {
+                        const parts = key.split('_');
+                        if (parts.length < 4) {
+                            return null;
                         }
+                        return {
+                            op: parts[0],
+                            groupId: parts[1],
+                            status: parts[2],
+                            latencyBucket: parts.slice(3).join('_')
+                        };
                     }
 
-                    out << R"(<script>
-                        function updateGroupLatencyTable(result, container) {
-                            if (!result || !result.Histograms) {
+                    function buildLatencyTables(stat, container) {
+                        const filtered = { Read: {}, Write: {} };
+
+                        for (const key in stat) {
+                            const info = parseKey(key);
+                            if (!info) {
+                                continue;
+                            }
+                            if (info.status !== 'finished') {
+                                continue;
+                            }
+                            if (!(info.op in filtered)) {
+                                continue;
+                            }
+
+                            filtered[info.op][info.groupId] = filtered[info.op][info.groupId] || {};
+                            filtered[info.op][info.groupId][info.latencyBucket] = stat[key];
+                        }
+                        const hasWrite = Object.keys(filtered.Write).length > 0;
+                        const hasRead = Object.keys(filtered.Read).length > 0;
+
+                        if (!hasWrite && !hasRead) {
+                            container.innerHTML = "<p style='text-align:center; color:#666; margin:10px;'>No records yet...</p>";
+                            return;
+                        }
+
+                        container.innerHTML = '';
+                        Object.keys(filtered).forEach(op => {
+                            const groups = Object.keys(filtered[op]);
+                            if (groups.length === 0) {
                                 return;
                             }
 
-                            const histograms = result.Histograms;
-
-                            for (const transactionKey in histograms) {
-                                const values = histograms[transactionKey].Values;
-                                if (!values) continue;
-
-                                for (const timeKey in values) {
-                                    const count = values[timeKey];
-                                    const cellId = "stat-cell-" + transactionKey + "-" + timeKey;
-                                    const element = container.querySelector('#' + cellId);
-
-                                    if (element && element.textContent !== count.toString()) {
-                                        element.textContent = count;
-                                    }
+                            const latencyBucketsSet = new Set();
+                            groups.forEach(g => {
+                                Object.keys(filtered[op][g]).forEach(bucket => latencyBucketsSet.add(bucket));
+                            });
+                            const latencyBuckets = Array.from(latencyBucketsSet).sort((a,b) => {
+                                if (a === "Total") {
+                                    return 1;
                                 }
-                            }
+                                if (b === "Total") {
+                                    return -1;
+                                }
+                                return a.localeCompare(b, undefined, {numeric:true});
+                            });
+
+                            const title = document.createElement('h3');
+                            title.textContent = op + ' Latency by Group';
+                            container.appendChild(title);
+
+                            const table = document.createElement('table');
+                            table.style.borderCollapse = 'collapse';
+                            table.style.marginBottom = '20px';
+
+                            const thead = table.createTHead();
+                            const trHead = thead.insertRow();
+                            const th = document.createElement('th');
+                            th.textContent = 'Group ID';
+                            th.style.border = '1px solid #ccc';
+                            th.style.padding = '5px';
+                            trHead.appendChild(th);
+
+                            latencyBuckets.forEach(bucket => {
+                                const th = document.createElement('th');
+                                th.textContent = bucket;
+                                th.style.border = '1px solid #ccc';
+                                th.style.padding = '5px';
+                                trHead.appendChild(th);
+                            });
+
+                            const tbody = table.createTBody();
+                            groups.forEach(groupId => {
+                                const tr = tbody.insertRow();
+                                let td = tr.insertCell();
+                                td.textContent = groupId;
+                                td.style.border = '1px solid #ccc';
+                                td.style.padding = '5px';
+                                td.style.fontWeight = 'bold';
+
+                                latencyBuckets.forEach(bucket => {
+                                    const td = tr.insertCell();
+                                    td.textContent = filtered[op][groupId][bucket] || '0';
+                                    td.style.border = '1px solid #ccc';
+                                    td.style.padding = '5px';
+                                    td.style.textAlign = 'right';
+                                });
+                            });
+
+                            container.appendChild(table);
+                        });
+                    }
+
+                    function updateGroupLatencyTable(result, container) {
+                        if (!result || !result.stat) {
+                            return;
                         }
-                    </script>)";
+                        buildLatencyTables(result.stat, container);
+                    }
+                    </script>
+                    )";
 
                     RenderAutoRefreshScript(
                         out,

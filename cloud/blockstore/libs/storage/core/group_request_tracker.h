@@ -12,7 +12,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGroupOperationTimeTracker : public ITransactionTracker
+class TGroupOperationTimeTracker: public ITransactionTracker
 {
 public:
     enum class EStatus
@@ -67,9 +67,6 @@ private:
 public:
     explicit TGroupOperationTimeTracker() = default;
 
-    [[nodiscard]] TVector<TBucketInfo> GetTransactionBuckets() const;
-    [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
-
     // Implements ITransactionTracker
     void OnStarted(
         ui64 transactionId,
@@ -79,7 +76,6 @@ public:
     void OnFinished(ui64 transactionId, ui64 finishTime) override;
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
-
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

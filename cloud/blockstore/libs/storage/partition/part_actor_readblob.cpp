@@ -42,8 +42,8 @@ void TPartitionActor::HandleReadBlob(
         "ReadBlob",
         requestInfo->CallContext->RequestId);
 
-    ui32 channel = msg->BlobId.Channel();
     const auto& blob = msg->BlobId;
+    ui32 channel = blob.Channel();
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
 
     GroupOperationTimeTracker.OnStarted(

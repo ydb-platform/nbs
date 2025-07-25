@@ -64,7 +64,7 @@ void TGroupOperationTimeTracker::OnStarted(
 {
     auto key =
         TKey{.TransactionName = transactionName, .Status = EStatus::Inflight};
-    if(!Histograms.contains(key)){
+    if (!Histograms.contains(key)) {
         Histograms[key];
     }
     Inflight.emplace(
@@ -145,49 +145,6 @@ TString TGroupOperationTimeTracker::GetStatJson(ui64 nowCycles) const
     TStringStream out;
     NJson::WriteJson(&out, &json);
     return out.Str();
-}
-
-TVector<TGroupOperationTimeTracker::TBucketInfo>
-TGroupOperationTimeTracker::GetTransactionBuckets() const
-{
-    TVector<TBucketInfo> result;
-
-    for (const auto& transaction: TransactionTypes) {
-        TBucketInfo bucket{
-            .TransactionName = transaction,
-            .Key = transaction,
-            .Description = transaction,
-            .Tooltip = ""};
-        result.push_back(std::move(bucket));
-    }
-    return result;
-}
-
-TVector<TGroupOperationTimeTracker::TBucketInfo>
-TGroupOperationTimeTracker::GetTimeBuckets() const
-{
-    TVector<TBucketInfo> result;
-    TDuration last;
-    for (const auto& time: TRequestUsTimeBuckets::MakeNames()) {
-        const auto us = TryFromString<ui64>(time);
-
-        TBucketInfo bucket{
-            .TransactionName = {},
-            .Key = time,
-            .Description =
-                us ? FormatDuration(TDuration::MicroSeconds(*us)) : time,
-            .Tooltip =
-                "[" + FormatDuration(last) + ".." + bucket.Description + "]"};
-
-        last = TDuration::MicroSeconds(us.GetOrElse(0));
-        result.push_back(std::move(bucket));
-    }
-    result.push_back(TBucketInfo{
-        .TransactionName = {},
-        .Key = "Total",
-        .Description = "Total",
-        .Tooltip = ""});
-    return result;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
