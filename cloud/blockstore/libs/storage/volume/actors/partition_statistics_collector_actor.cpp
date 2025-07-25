@@ -39,7 +39,7 @@ void TPartitionStatisticsCollectorActor::SendStatToVolume(
         Owner,
         std::make_unique<TEvPartitionCommonPrivate::TEvPartCountersCombined>(
             std::move(Error),
-            std::move(CombinedCounters)));
+            std::move(Response)));
 
     Die(ctx);
 }
@@ -55,7 +55,7 @@ void TPartitionStatisticsCollectorActor::HandleTimeout(
         Owner,
         std::make_unique<TEvPartitionCommonPrivate::TEvPartCountersCombined>(
             MakeError(E_TIMEOUT, "Failed to update partition statistics"),
-            std::move(CombinedCounters)));
+            std::move(Response)));
 
     Die(ctx);
 }
@@ -78,11 +78,11 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
         Error = record->Error;
         ++NumberResponsesWithError;
     } else {
-        CombinedCounters.PartCounters.push_back(std::move(*record));
+        Response.PartCounters.push_back(std::move(*record));
     }
 
     if (Partitions.size() ==
-        CombinedCounters.PartCounters.size() + NumberResponsesWithError)
+        Response.PartCounters.size() + NumberResponsesWithError)
     {
         SendStatToVolume(ctx);
     }
