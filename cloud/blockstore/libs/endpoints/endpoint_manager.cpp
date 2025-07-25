@@ -1141,8 +1141,12 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
     auto removeClientFuture =
         Service->RemoveVolumeClient(ctx, std::move(removeClientRequest));
     const auto& removeClientResponse = Executor->WaitFor(removeClientFuture);
+    const auto& error = removeClientResponse.GetError();
 
-    if (HasError(removeClientResponse)) {
+    if (HasError(error) &&
+        error.GetCode() !=
+            MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
+    {
         return TErrorResponse(removeClientResponse.GetError());
     }
 
