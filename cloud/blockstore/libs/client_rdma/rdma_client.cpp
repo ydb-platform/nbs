@@ -69,6 +69,20 @@ struct IRequestHandler: public NRdma::TNullContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TResponse>
+void ProcessPostponeTime(
+    const TCallContextPtr& callContext,
+    TResponse& localResponse)
+{
+    callContext->AddTime(
+        EProcessingStage::Postponed,
+        TDuration::MicroSeconds(localResponse.GetThrottlerDelay()));
+    localResponse.SetThrottlerDelay(0);
+    callContext->SetPossiblePostponeDuration(TDuration::Zero());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TReadBlocksHandler final
     : public IRequestHandler
 {
@@ -164,6 +178,8 @@ public:
                 GetCycleCount());
             responseMsg.ClearTrace();
         }
+
+        ProcessPostponeTime(CallContext, localResponse);
 
         Response.SetValue(std::move(localResponse));
     }
@@ -295,6 +311,8 @@ public:
             responseMsg.ClearTrace();
         }
 
+        ProcessPostponeTime(CallContext, responseMsg);
+
         Response.SetValue(std::move(responseMsg));
     }
 
@@ -391,6 +409,8 @@ public:
             SendTime,
             GetCycleCount());
         responseMsg.ClearTrace();
+
+        ProcessPostponeTime(CallContext, responseMsg);
 
         Response.SetValue(std::move(responseMsg));
     }
