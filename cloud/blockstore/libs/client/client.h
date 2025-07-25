@@ -19,7 +19,17 @@ struct IClient
 {
     virtual IBlockStorePtr CreateEndpoint() = 0;
 
+    virtual IBlockStorePtr CreateEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure) = 0;
+
     virtual IBlockStorePtr CreateDataEndpoint() = 0;
+
+    virtual IBlockStorePtr CreateDataEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure) = 0;
 
     virtual IBlockStorePtr CreateDataEndpoint(
         const TString& socketPath) = 0;

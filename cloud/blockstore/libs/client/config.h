@@ -84,6 +84,8 @@ public:
     TString GetScsiInitiatorIqn() const;
     TString GetRdmaDeviceAddress() const;
     ui32 GetRdmaDevicePort() const;
+    bool GetNoClientId() const;
+    bool GetIsServerSideClient() const;
 
     bool GetLocalNonreplDisableDurableClient() const;
     TRequestThresholds GetRequestThresholds() const;
