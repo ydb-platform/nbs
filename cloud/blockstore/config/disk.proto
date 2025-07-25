@@ -27,6 +27,7 @@ enum EDiskAgentBackendType
     DISK_AGENT_BACKEND_SPDK = 0;
     DISK_AGENT_BACKEND_AIO = 1;
     DISK_AGENT_BACKEND_NULL = 2;
+    DISK_AGENT_BACKEND_IO_URING = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

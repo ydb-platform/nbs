@@ -103,6 +103,8 @@ private:
     void InitHTTPServer();
 
     void InitRdmaServer(NRdma::TRdmaConfig& config);
+
+    bool InitBackend();
 };
 
 }   // namespace NCloud::NBlockStore::NServer

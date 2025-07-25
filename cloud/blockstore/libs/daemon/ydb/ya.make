@@ -39,6 +39,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/iam/iface
+    cloud/storage/core/libs/io_uring
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/version
 
