@@ -18,7 +18,7 @@ private:
 
     const TVector<NActors::TActorId> Partitions;
 
-    TEvPartitionCommonPrivate::TPartCountersCombined CombinedCounters;
+    TEvPartitionCommonPrivate::TPartCountersCombined Response;
 
     NProto::TError Error;
 
