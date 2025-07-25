@@ -1,4 +1,4 @@
-#include "write_back_cache.h"
+#include "write_back_cache_impl.h"
 
 #include "session_sequencer.h"
 
@@ -15,7 +15,6 @@
 #include <util/generic/vector.h>
 #include <util/system/mutex.h>
 
-#include <algorithm>
 #include <atomic>
 
 namespace NCloud::NFileStore::NFuse {
@@ -149,7 +148,7 @@ public:
             return {};
         }
 
-        return TWriteBackCache::CalculateDataPartsToRead(
+        return TUtil::CalculateDataPartsToRead(
             entriesIter->second,
             startingFromOffset,
             length);

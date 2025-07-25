@@ -1,4 +1,4 @@
-#include "write_back_cache.h"
+#include "write_back_cache_impl.h"
 
 #include <util/generic/vector.h>
 
@@ -9,7 +9,7 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 // static
-auto TWriteBackCache::CalculateDataPartsToRead(
+auto TWriteBackCache::TUtil::CalculateDataPartsToRead(
     const TVector<TWriteDataEntry*>& entries,
     ui64 startingFromOffset,
     ui64 length) -> TVector<TWriteDataEntryPart>
