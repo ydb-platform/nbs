@@ -109,13 +109,18 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 << ", LastGeneration: " << deviceState->VolumeGeneration);
         }
 
+        const bool isAcquireFromNewGeneration =
+            deviceState->DiskId == diskId &&
+            deviceState->VolumeGeneration < volumeGeneration;
+
         if (IsReadWriteMode(accessMode)
                 && deviceState->WriterSession.Id
                 && deviceState->WriterSession.Id != clientId
                 && deviceState->WriterSession.MountSeqNumber >= mountSeqNumber
                 && deviceState->WriterSession.LastActivityTs
                     + ReleaseInactiveSessionsTimeout
-                    > now)
+                    > now
+                && !isAcquireFromNewGeneration)
         {
             return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
                 << "Error acquiring device " << uuid.Quote()

@@ -851,6 +851,49 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         UNIT_ASSERT_EQUAL(client.GetReaderSessions("uuid1").size(), 0);
         UNIT_ASSERT_EQUAL(client.GetReaderSessions("uuid2").size(), 0);
     }
+
+    Y_UNIT_TEST_F(TestNewGenerationReleaseDevicesFromOldGenerations, TFixture)
+    {
+        auto client = CreateClient({
+            .Devices = {"uuid1", "uuid2"}
+        });
+
+        auto error = AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid2"})
+                .SetClientId("client")
+                .SetDiskId("vol0")
+                .SetVolumeGeneration(1));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+        error = AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid2"})
+                .SetClientId("client-2")
+                .SetDiskId("vol0")
+                .SetVolumeGeneration(1));
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
+
+        error = AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid2"})
+                .SetClientId("client-2")
+                .SetDiskId("vol0")
+                .SetVolumeGeneration(2));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+        error = AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid2"})
+                .SetClientId("client")
+                .SetDiskId("vol0")
+                .SetVolumeGeneration(1));
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
