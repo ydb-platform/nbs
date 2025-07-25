@@ -282,19 +282,24 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         }
     }
 
+    auto actorStack = TActorsStack{
+        nonreplicatedActorId,
+        TActorsStack::EActorPurpose::DiskRegistryBasedPartitionActor};
+    actorStack = WrapWithShadowDiskActorIfNeeded(
+        ctx,
+        std::move(actorStack),
+        nonreplicatedConfig);
+
     State->SetDiskRegistryBasedPartitionActor(
-        WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
+        std::move(actorStack),
         nonreplicatedConfig);
 }
 
-TActorsStack TVolumeActor::WrapNonreplActorIfNeeded(
+TActorsStack TVolumeActor::WrapWithShadowDiskActorIfNeeded(
     const TActorContext& ctx,
-    NActors::TActorId nonreplicatedActorId,
+    TActorsStack actors,
     std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig)
 {
-    TActorsStack result;
-    result.Push(nonreplicatedActorId);
-
     for (const auto& [checkpointId, checkpointInfo]:
          State->GetCheckpointStore().GetActiveCheckpoints())
     {
@@ -304,7 +309,7 @@ TActorsStack TVolumeActor::WrapNonreplActorIfNeeded(
             continue;
         }
 
-        nonreplicatedActorId = NCloud::Register<TShadowDiskActor>(
+        auto actorId = NCloud::Register<TShadowDiskActor>(
             ctx,
             Config,
             DiagnosticsConfig,
@@ -316,14 +321,14 @@ TActorsStack TVolumeActor::WrapNonreplActorIfNeeded(
             Executor()->Generation(),
             srcConfig,
             SelfId(),
-            nonreplicatedActorId,
+            actors.GetTop(),
             checkpointInfo);
 
-        result.Push(nonreplicatedActorId);
+        actors.Push(actorId, TActorsStack::EActorPurpose::ShadowDiskWrapper);
         State->GetCheckpointStore().ShadowActorCreated(checkpointId);
         DoRegisterVolume(ctx, checkpointInfo.ShadowDiskId);
     }
-    return result;
+    return actors;
 }
 
 void TVolumeActor::RestartPartition(
@@ -469,6 +474,10 @@ void TVolumeActor::StopPartitions(
                 part.Bootstrapper);
             // Should clear bootstrapper before partitions start
             part.Bootstrapper = {};
+        }
+
+        if (const auto& wrapperActorId = part.RelatedActors.GetTopWrapper()) {
+            NCloud::Send<TEvents::TEvPoisonPill>(ctx, wrapperActorId);
         }
     }
 }
@@ -781,7 +790,9 @@ void TVolumeActor::HandleTabletStatus(
 
     switch (msg->Status) {
         case TEvBootstrapper::STARTED: {
-            partition->SetStarted(TActorsStack(msg->TabletUser));
+            partition->SetStarted(TActorsStack(
+                msg->TabletUser,
+                TActorsStack::EActorPurpose::BlobStoragePartitionTablet));
             NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
                 ctx,
                 msg->TabletUser,

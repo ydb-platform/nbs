@@ -1104,9 +1104,9 @@ private:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    TActorsStack WrapNonreplActorIfNeeded(
+    TActorsStack WrapWithShadowDiskActorIfNeeded(
         const NActors::TActorContext& ctx,
-        NActors::TActorId nonreplicatedActorId,
+        TActorsStack actors,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
 
     void HandleCreateLinkFinished(

@@ -856,14 +856,18 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         State = EActorState::Preparing;
         InitWork(
             ctx,
-            SrcActorId,
-            SrcActorId,
-            DstActorId,
-            true,   // takeOwnershipOverActors
-            std::make_unique<TMigrationTimeoutCalculator>(
-                GetConfig()->GetMaxShadowDiskFillBandwidth(),
-                GetConfig()->GetExpectedDiskAgentSize(),
-                DstConfig));
+            TInitParams{
+                .MigrationSrcActorId = SrcActorId,
+                .SrcActorId = SrcActorId,
+                .DstActorId = DstActorId,
+                .TakeOwnershipOverSrcActor = true,
+                .TakeOwnershipOverDstActor = true,
+                .SendWritesToSrc = true,
+                .TimeoutCalculator =
+                    std::make_unique<TMigrationTimeoutCalculator>(
+                        GetConfig()->GetMaxShadowDiskFillBandwidth(),
+                        GetConfig()->GetExpectedDiskAgentSize(),
+                        DstConfig)});
         StartWork(ctx);
 
         // Persist state.

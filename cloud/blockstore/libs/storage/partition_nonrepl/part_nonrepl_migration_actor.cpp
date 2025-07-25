@@ -54,14 +54,18 @@ void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     auto srcActorId = CreateSrcActor(ctx);
     InitWork(
         ctx,
-        MigrationSrcActorId ? MigrationSrcActorId : srcActorId,
-        srcActorId,
-        CreateDstActor(ctx),
-        true,   // takeOwnershipOverActors
-        std::make_unique<TMigrationTimeoutCalculator>(
-            GetConfig()->GetMaxMigrationBandwidth(),
-            GetConfig()->GetExpectedDiskAgentSize(),
-            SrcConfig));
+        TInitParams{
+            .MigrationSrcActorId =
+                MigrationSrcActorId ? MigrationSrcActorId : srcActorId,
+            .SrcActorId = srcActorId,
+            .DstActorId = CreateDstActor(ctx),
+            .TakeOwnershipOverSrcActor = true,
+            .TakeOwnershipOverDstActor = true,
+            .SendWritesToSrc = true,
+            .TimeoutCalculator = std::make_unique<TMigrationTimeoutCalculator>(
+                GetConfig()->GetMaxMigrationBandwidth(),
+                GetConfig()->GetExpectedDiskAgentSize(),
+                SrcConfig)});
 
     PrepareForMigration(ctx);
 }
