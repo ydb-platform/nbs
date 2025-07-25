@@ -30,8 +30,16 @@ import (
 )
 
 const (
-	defaultStartEndpointRetryTimeout = 10 * time.Second
+	defaultStartEndpointRequestTimeout = 10 * time.Second
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func getDefaultStartEndpointRequestHeaders() *nbs.THeaders {
+	return &nbs.THeaders{
+		RequestTimeout: uint32(defaultStartEndpointRequestTimeout.Milliseconds()),
+	}
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -91,7 +99,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		mounter,
 		[]string{},
 		true, // enable discard
-		defaultStartEndpointRetryTimeout,
+		defaultStartEndpointRequestTimeout,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -133,6 +141,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		}
 		nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+			Headers:          getDefaultStartEndpointRequestHeaders(),
 			UnixSocketPath:   nbsSocketPath,
 			DiskId:           diskId,
 			InstanceId:       podId,
@@ -140,7 +149,6 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 			DeviceName:       deviceName,
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
 			VhostQueuesCount: vhostQueuesCount,
-			// TODO: fix me: RetryTimeout:     uint32(defaultStartEndpointRetryTimeout.Milliseconds()),
 			VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
@@ -379,7 +387,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		mounter,
 		[]string{},
 		false, // enableDiscard is false for staged tests
-		defaultStartEndpointRetryTimeout,
+		defaultStartEndpointRequestTimeout,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -413,6 +421,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		}
 		nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+			Headers:          getDefaultStartEndpointRequestHeaders(),
 			UnixSocketPath:   nbsSocketPath,
 			DiskId:           diskId,
 			InstanceId:       instanceId,
@@ -420,7 +429,6 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 			DeviceName:       deviceName,
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
 			VhostQueuesCount: vhostQueuesCount,
-			// TODO: fix me: RetryTimeout:     uint32(defaultStartEndpointRetryTimeout.Milliseconds()),
 			VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
@@ -755,7 +763,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		mounter,
 		[]string{"grpid"},
 		true,
-		defaultStartEndpointRetryTimeout,
+		defaultStartEndpointRequestTimeout,
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -774,6 +782,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+		Headers:          getDefaultStartEndpointRequestHeaders(),
 		UnixSocketPath:   socketPath,
 		DiskId:           diskId,
 		InstanceId:       nodeId,
@@ -781,7 +790,6 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		DeviceName:       diskId,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
-		// TODO: fix me: RetryTimeout:     uint32(defaultStartEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -918,7 +926,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		mounter,
 		[]string{},
 		false,
-		defaultStartEndpointRetryTimeout,
+		defaultStartEndpointRequestTimeout,
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -947,6 +955,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+		Headers:          getDefaultStartEndpointRequestHeaders(),
 		UnixSocketPath:   socketPath,
 		DiskId:           diskId,
 		InstanceId:       nodeId,
@@ -954,7 +963,6 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		DeviceName:       diskId,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
-		// TODO: fix me: RetryTimeout:     uint32(defaultStartEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -1075,7 +1083,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		mounter,
 		[]string{},
 		false,
-		defaultStartEndpointRetryTimeout,
+		defaultStartEndpointRequestTimeout,
 	)
 
 	ctx := context.Background()
@@ -1147,7 +1155,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		mounter,
 		[]string{},
 		false,
-		defaultStartEndpointRetryTimeout,
+		defaultStartEndpointRequestTimeout,
 	)
 
 	ctx := context.Background()
@@ -1210,7 +1218,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		mounter,
 		[]string{},
 		false,
-		defaultStartEndpointRetryTimeout,
+		defaultStartEndpointRequestTimeout,
 	)
 
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
@@ -1321,7 +1329,7 @@ func TestExternaFs(t *testing.T) {
 		mounter,
 		[]string{},
 		false,
-		defaultStartEndpointRetryTimeout,
+		defaultStartEndpointRequestTimeout,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
@@ -1469,7 +1477,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		mounter,
 		[]string{},
 		false,
-		defaultStartEndpointRetryTimeout,
+		defaultStartEndpointRequestTimeout,
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -1483,6 +1491,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(
 		&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+		Headers:          getDefaultStartEndpointRequestHeaders(),
 		UnixSocketPath:   socketPath,
 		DiskId:           diskId,
 		InstanceId:       nodeId,
@@ -1490,7 +1499,6 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		DeviceName:       diskId,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
-		// TODO: fix me: RetryTimeout:     uint32(defaultStartEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,

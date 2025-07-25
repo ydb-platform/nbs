@@ -195,8 +195,8 @@ type nodeService struct {
 	volumeOps               *sync.Map
 	mountOptions            []string
 
-	useDiscardForYDBBasedDisks bool
-	startEndpointRetryTimeout  time.Duration
+	useDiscardForYDBBasedDisks  bool
+	startEndpointRequestTimeout time.Duration
 }
 
 func newNodeService(
@@ -214,25 +214,25 @@ func newNodeService(
 	mounter mounter.Interface,
 	mountOptions []string,
 	useDiscardForYDBBasedDisks bool,
-	startEndpointRetryTimeout time.Duration) csi.NodeServer {
+	startEndpointRequestTimeout time.Duration) csi.NodeServer {
 
 	return &nodeService{
-		nodeId:                     nodeId,
-		clientId:                   clientId,
-		vmMode:                     vmMode,
-		socketsDir:                 socketsDir,
-		nbsClient:                  nbsClient,
-		nfsClient:                  nfsClient,
-		nfsLocalClient:             nfsLocalClient,
-		nfsLocalFilestoreClient:    nfsLocalFilestoreClient,
-		mounter:                    mounter,
-		targetFsPathRegexp:         regexp.MustCompile(targetFsPathPattern),
-		targetBlkPathRegexp:        regexp.MustCompile(targetBlkPathPattern),
-		externalFsOverrides:        externalFsOverrides,
-		volumeOps:                  new(sync.Map),
-		mountOptions:               mountOptions,
-		useDiscardForYDBBasedDisks: useDiscardForYDBBasedDisks,
-		startEndpointRetryTimeout:  startEndpointRetryTimeout,
+		nodeId:                      nodeId,
+		clientId:                    clientId,
+		vmMode:                      vmMode,
+		socketsDir:                  socketsDir,
+		nbsClient:                   nbsClient,
+		nfsClient:                   nfsClient,
+		nfsLocalClient:              nfsLocalClient,
+		nfsLocalFilestoreClient:     nfsLocalFilestoreClient,
+		mounter:                     mounter,
+		targetFsPathRegexp:          regexp.MustCompile(targetFsPathPattern),
+		targetBlkPathRegexp:         regexp.MustCompile(targetBlkPathPattern),
+		externalFsOverrides:         externalFsOverrides,
+		volumeOps:                   new(sync.Map),
+		mountOptions:                mountOptions,
+		useDiscardForYDBBasedDisks:  useDiscardForYDBBasedDisks,
+		startEndpointRequestTimeout: startEndpointRequestTimeout,
 	}
 }
 
@@ -593,7 +593,11 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
+	headers := &nbsapi.THeaders{
+		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
+	}
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
+		Headers:          headers,
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       podId,
@@ -601,7 +605,6 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
-		// TODO: fix me: RetryTimeout:     uint32(s.startEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -688,7 +691,11 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
+	headers := &nbsapi.THeaders{
+		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
+	}
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
+		Headers:          headers,
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       instanceId,
@@ -696,7 +703,6 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
-		// TODO: fix me: RetryTimeout:     uint32(s.startEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
@@ -960,7 +966,11 @@ func (s *nodeService) startNbsEndpointForNBD(
 
 	unixSocketPath := filepath.Join(endpointDir, nbsSocketName)
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
+	headers := &nbsapi.THeaders{
+		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
+	}
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
+		Headers:          headers,
 		UnixSocketPath:   unixSocketPath,
 		DiskId:           diskId,
 		InstanceId:       nbsInstanceId,
@@ -968,7 +978,6 @@ func (s *nodeService) startNbsEndpointForNBD(
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
-		// TODO: fix me: RetryTimeout:     uint32(s.startEndpointRetryTimeout.Milliseconds()),
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
