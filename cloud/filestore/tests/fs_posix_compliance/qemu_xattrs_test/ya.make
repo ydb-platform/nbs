@@ -3,6 +3,6 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
-    with_has_xattrs_flag
-    without_has_xattrs_flag
+    with_lazy_xattrs_flag
+    without_lazy_xattrs_flag
 )

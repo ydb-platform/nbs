@@ -13,7 +13,7 @@ PEERDIR(
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/fs_posix_compliance/qemu_xattrs_test/with_has_xattrs_flag/nfs-storage.txt
+    cloud/filestore/tests/fs_posix_compliance/qemu_xattrs_test/with_lazy_xattrs_flag/nfs-storage.txt
 )
 
 SET(QEMU_VIRTIO fs)

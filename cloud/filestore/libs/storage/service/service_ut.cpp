@@ -1507,9 +1507,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service);
     }
 
-    Y_UNIT_TEST(ShouldChangeHasXAttrsAllowedFlag)
+    Y_UNIT_TEST(ShouldChangeLazyXAttrsEnabledFlag)
     {
-        // This test create a file system with a default config and then changes
+        // This test creates a filesystem with a default config and then changes
         // LazyXAttrsEnabled to true. In spite the change and the fact that
         // there are no XAttrs in the file system, TFileStoreFeatures::HasXAttrs
         // should be true.
