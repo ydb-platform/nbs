@@ -232,6 +232,7 @@ struct TTestEnv
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
+        storageConfig.SetInitialRetryDelayForServiceRequests(10);
         storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(
             enableVolumeRequestId);
         storageConfig.SetRejectLateRequestsAtDiskAgentEnabled(
@@ -1960,16 +1961,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                     event->Sender,
                     new TEvNonreplPartitionPrivate::TEvRangeResynced(
                         MakeError(E_REJECTED),
-                        msg->Range,
-                        msg->ChecksumStartTs,
-                        msg->ChecksumDuration,
-                        msg->ReadStartTs,
-                        msg->ReadDuration,
-                        msg->WriteStartTs,
-                        msg->WriteDuration,
-                        msg->ExecCycles,
-                        msg->AffectedBlockInfos,
-                        msg->Status));
+                        *msg));
 
                 return true;
             }
