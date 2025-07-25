@@ -126,9 +126,8 @@ private:
     void SendStats(const NActors::TActorContext& ctx);
 
     void ContinueResyncIfNeeded(const NActors::TActorContext& ctx);
-    void ScheduleResyncNextRange(
-        const NActors::TActorContext& ctx,
-        bool isRetry);
+    void ScheduleResyncNextRange(const NActors::TActorContext& ctx);
+    void ScheduleRetryResyncNextRange(const NActors::TActorContext& ctx);
     void ResyncNextRange(const NActors::TActorContext& ctx);
 
     bool IsAnybodyAlive() const;
