@@ -1278,4 +1278,7 @@ message TStorageServiceConfig
     // Min percentage of reassignable mixed channels after which reassign requests
     // are sent.
     optional uint32 ReassignMixedChannelsPercentageThreshold = 442;
+
+    // If true, describes will be done using SchemeCache instead of TxProxy.
+    optional bool UseSchemeCache = 443;
 }
