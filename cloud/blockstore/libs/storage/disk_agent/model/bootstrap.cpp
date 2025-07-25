@@ -23,8 +23,14 @@ IFileIOServiceFactoryPtr CreateAIOServiceFactory(const TDiskAgentConfig& config)
 IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
     const TDiskAgentConfig& config)
 {
-    return NCloud::CreateIoUringServiceFactory(
-        {.SubmissionQueueEntries = config.GetMaxAIOContextEvents()});
+    TIoUringServiceParams params{
+        .SubmissionQueueEntries = config.GetMaxAIOContextEvents()};
+
+    if (config.GetBackend() == NProto::DISK_AGENT_BACKEND_IO_URING_NULL) {
+        return NCloud::CreateIoUringServiceNullFactory(std::move(params));
+    }
+
+    return NCloud::CreateIoUringServiceFactory(std::move(params));
 }
 
 NServer::IFileIOServiceProviderPtr CreateFileIOServiceProvider(

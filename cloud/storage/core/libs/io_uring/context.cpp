@@ -231,6 +231,7 @@ void TContext::SubmitMsg(TFileIOCompletion* completion, int res)
         std::bit_cast<ui64>(completion),
         0);   // flags
     io_uring_sqe_set_flags(sqe, IOSQE_CQE_SKIP_SUCCESS);
+    io_uring_sqe_set_data(sqe, completion);
 
     NSan::Release(completion);
 
