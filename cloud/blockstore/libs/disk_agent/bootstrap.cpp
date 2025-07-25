@@ -393,6 +393,8 @@ bool TBootstrap::InitBackend()
                 NvmeManager,
                 {
                     .DirectIO = !config.GetDirectIoFlagDisabled(),
+                    // Each io_uring service already has its own submission
+                    // thread, so we don't need one here
                     .UseSubmissionThread = false,
                 });
             break;
