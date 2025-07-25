@@ -253,6 +253,7 @@ struct TTxVolume
         bool WriterChanged = false;
         NProto::TError Error;
         bool ForceTabletRestart = false;
+        bool InMigration = false;
 
         TAddClient(
                 TRequestInfoPtr requestInfo,
@@ -271,6 +272,7 @@ struct TTxVolume
             WriterChanged = false;
             Error.Clear();
             ForceTabletRestart = false;
+            InMigration = false;
         }
     };
 
