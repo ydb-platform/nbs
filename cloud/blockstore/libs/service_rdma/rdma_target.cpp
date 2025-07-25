@@ -80,6 +80,15 @@ struct TRequestDetails
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TResponse>
+void FillResponse(const TCallContextPtr& callContext, TResponse& response)
+{
+    response.SetThrottlerDelay(
+        callContext->Time(EProcessingStage::Postponed).MicroSeconds());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Thread-safe. After Init() public method HandleRequest() can be called
 // from any thread.
 class TRequestHandler final
@@ -212,9 +221,7 @@ private:
 
         req->Sglist = guardedSgList;
 
-        auto future = Service->ReadBlocksLocal(
-            std::move(callContext),
-            std::move(req));
+        auto future = Service->ReadBlocksLocal(callContext, std::move(req));
 
         future.Subscribe(
             [=,
@@ -225,6 +232,7 @@ private:
              endpoint = Endpoint](auto future) mutable
             {
                 auto response = ExtractResponse(future);
+                FillResponse(callContext, response);
 
                 taskQueue->ExecuteSimple(
                     [=,
@@ -299,12 +307,11 @@ private:
         req->BlockSize = request.GetBlockSize();
         req->BlocksCount = requestData.length() / req->BlockSize;
 
-        auto future = Service->WriteBlocksLocal(
-            std::move(callContext),
-            std::move(req));
+        auto future = Service->WriteBlocksLocal(callContext, std::move(req));
 
         future.Subscribe([=, taskQueue = TaskQueue, endpoint = Endpoint] (auto future) {
             auto response = ExtractResponse(future);
+            FillResponse(callContext, response);
 
             taskQueue->ExecuteSimple([= , response = std::move(response)] () mutable {
                 if (response.ByteSizeLong() > MaxRealProtoSize) {
@@ -351,32 +358,37 @@ private:
 
         auto req = std::make_shared<NProto::TZeroBlocksRequest>(std::move(request));
 
-        auto future = Service->ZeroBlocks(
-            std::move(callContext),
-            std::move(req));
+        auto future = Service->ZeroBlocks(callContext, std::move(req));
 
-        future.Subscribe([out = out, context = std::move(context), endpoint = Endpoint] (auto future) {
-            auto response = ExtractResponse(future);
+        future.Subscribe(
+            [out = out,
+             context = std::move(context),
+             endpoint = Endpoint,
+             callContext](auto future)
+            {
+                auto response = ExtractResponse(future);
+                FillResponse(callContext, response);
 
-            if (response.ByteSizeLong() > MaxRealProtoSize) {
-                // TODO: consider variable length proto size
-                // or switch from lwtrace to open telemetry like
-                // solution to avoid sending traces between nodes
-                response.MutableTrace()->Clear();
-            }
+                if (response.ByteSizeLong() > MaxRealProtoSize) {
+                    // TODO: consider variable length proto size
+                    // or switch from lwtrace to open telemetry like
+                    // solution to avoid sending traces between nodes
+                    response.MutableTrace()->Clear();
+                }
 
-            ui32 flags = 0;
-            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-            size_t responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                out,
-                TBlockStoreServerProtocol::EvZeroBlocksResponse,
-                flags,   // flags
-                response);
+                ui32 flags = 0;
+                SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                size_t responseBytes =
+                    NRdma::TProtoMessageSerializer::Serialize(
+                        out,
+                        TBlockStoreServerProtocol::EvZeroBlocksResponse,
+                        flags,   // flags
+                        response);
 
-            if (auto ep = endpoint.lock()) {
-                ep->SendResponse(context, responseBytes);
-            }
-        });
+                if (auto ep = endpoint.lock()) {
+                    ep->SendResponse(context, responseBytes);
+                }
+            });
 
         return {};
     }
