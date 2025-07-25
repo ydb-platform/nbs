@@ -488,6 +488,7 @@ public:
     bool GetDiskRegistryCleanupConfigOnRemoveHost() const;
     TDuration GetReassignRequestRetryTimeout() const;
     ui32 GetReassignChannelsPercentageThreshold() const;
+    ui32 GetReassignMixedChannelsPercentageThreshold() const;
 
     TString GetCommonSSDPoolKind() const;
     ui64 GetMaxSSDGroupWriteBandwidth() const;

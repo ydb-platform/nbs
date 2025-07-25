@@ -476,6 +476,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(ReassignRequestRetryTimeout,               TDuration, Seconds(5)      )\
     xxx(ReassignChannelsPercentageThreshold,       ui32,      10              )\
+    xxx(ReassignMixedChannelsPercentageThreshold,  ui32,      100             )\
                                                                                \
     xxx(MixedIndexCacheV1Enabled,                  bool,      false           )\
     xxx(MixedIndexCacheV1SizeSSD,                  ui32,      32 * 1024       )\
