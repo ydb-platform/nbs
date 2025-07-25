@@ -1244,14 +1244,17 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         out << "</div>";
 
         out << R"(<script>
-            function updateRequestsData(result, container) {
-                const data = { ...result.stat, ...result.percentiles };
-                for (let key in data) {
-                    const element = container.querySelector('#' + key);
+            function applyRequestsValues(stat) {
+                for (let key in stat) {
+                    const element = document.getElementById(key);
                     if (element) {
-                        element.textContent = data[key];
+                        element.textContent = stat[key];
                     }
                 }
+            }
+            function updateRequestsData(result, container) {
+                applyRequestsValues(result.stat);
+                applyRequestsValues(result.percentiles);
             }
         </script>)";
 
