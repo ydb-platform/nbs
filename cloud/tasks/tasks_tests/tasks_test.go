@@ -1757,11 +1757,13 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	require.NoError(t, err)
 
 	inflightDuration := waitingState.InflightDuration
-	inflightThreshold := 500 * time.Millisecond
+	waitingDuration := waitingState.WaitingDuration
+	durationThreshold := 500 * time.Millisecond
 
 	totalDuration := waitingState.EndedAt.Sub(waitingState.CreatedAt)
 	totalThreshold := 2 * time.Second
 
-	require.InDelta(t, 5*time.Second, inflightDuration, float64(inflightThreshold))
+	require.InDelta(t, 5*time.Second, inflightDuration, float64(durationThreshold))
+	require.InDelta(t, 10*time.Second, waitingDuration, float64(durationThreshold))
 	require.InDelta(t, 15*time.Second, totalDuration, float64(totalThreshold))
 }
