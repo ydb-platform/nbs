@@ -241,7 +241,7 @@ Y_UNIT_TEST_SUITE(TIoUringNullTest)
 
         for (auto& future: futures) {
             const ui32 len = future.GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL(0, len);
+            UNIT_ASSERT_VALUES_EQUAL(length, len);
         }
     }
 }

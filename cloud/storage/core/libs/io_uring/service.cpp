@@ -106,9 +106,9 @@ struct TIoUringServiceNull final
         TArrayRef<char> buffer,
         TFileIOCompletion* completion) final
     {
-        Y_UNUSED(file, offset, buffer);
+        Y_UNUSED(file, offset);
 
-        Context.AsyncNOP(completion, SqeFlags);
+        Context.PostCompletion(completion, buffer.size());
     }
 
     void AsyncReadV(
@@ -117,9 +117,14 @@ struct TIoUringServiceNull final
         const TVector<TArrayRef<char>>& buffers,
         TFileIOCompletion* completion) final
     {
-        Y_UNUSED(file, offset, buffers);
+        Y_UNUSED(file, offset);
 
-        Context.AsyncNOP(completion, SqeFlags);
+        ui32 len = 0;
+        for (const auto& buf: buffers) {
+            len += static_cast<ui32>(buf.size());
+        }
+
+        Context.PostCompletion(completion, len);
     }
 
     void AsyncWrite(
@@ -128,9 +133,9 @@ struct TIoUringServiceNull final
         TArrayRef<const char> buffer,
         TFileIOCompletion* completion) final
     {
-        Y_UNUSED(file, offset, buffer);
+        Y_UNUSED(file, offset);
 
-        Context.AsyncNOP(completion, SqeFlags);
+        Context.PostCompletion(completion, buffer.size());
     }
 
     void AsyncWriteV(
@@ -139,9 +144,14 @@ struct TIoUringServiceNull final
         const TVector<TArrayRef<const char>>& buffers,
         TFileIOCompletion* completion) final
     {
-        Y_UNUSED(file, offset, buffers);
+        Y_UNUSED(file, offset);
 
-        Context.AsyncNOP(completion, SqeFlags);
+        ui32 len = 0;
+        for (const auto& buf: buffers) {
+            len += static_cast<ui32>(buf.size());
+        }
+
+        Context.PostCompletion(completion, len);
     }
 };
 

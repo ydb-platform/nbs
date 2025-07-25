@@ -82,6 +82,8 @@ public:
 
     void AsyncNOP(TFileIOCompletion* completion, ui32 flags = 0);
 
+    void PostCompletion(TFileIOCompletion* completion, int res);
+
 private:
     void SubmitIO(
         int op,
@@ -102,6 +104,7 @@ private:
         ui32 flags);
 
     void SubmitNOP(TFileIOCompletion* completion, ui32 flags);
+    void SubmitMsg(TFileIOCompletion* completion, int res);
     void SubmitStopSignal();
     void ProcessCompletion(io_uring_cqe* cqe);
     void CompletionThreadProc(const TString& threadName);
