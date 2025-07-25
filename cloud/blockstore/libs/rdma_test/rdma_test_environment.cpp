@@ -71,7 +71,8 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
     DeviceClient = std::make_shared<TDeviceClient>(
         TDuration::MilliSeconds(100),
         uuids,
-        Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
+        Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+        false);   // allowToKickOutOldClients
 
     DeviceClient->AcquireDevices(
         uuids,
