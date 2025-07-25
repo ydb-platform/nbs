@@ -524,6 +524,32 @@ public:
         return request;
     }
 
+    std::unique_ptr<TEvService::TEvRemoveNodeXAttrRequest> CreateRemoveNodeXAttrRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId,
+        const TString& attrName)
+    {
+        auto request = std::make_unique<TEvService::TEvRemoveNodeXAttrRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetName(attrName);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvListNodeXAttrRequest> CreateListNodeXAttrRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId)
+    {
+        auto request = std::make_unique<TEvService::TEvListNodeXAttrRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        return request;
+    }
+
     std::unique_ptr<TEvService::TEvStatFileStoreRequest> CreateStatFileStoreRequest(
         const THeaders& headers,
         const TString& fileSystemId)

@@ -277,6 +277,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ParentlessFilesOnly,               bool,       false                  )\
     xxx(AllowHandlelessIO,                 bool,       false                  )\
+                                                                               \
+    xxx(LazyXAttrsEnabled,                 bool,       false                  )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

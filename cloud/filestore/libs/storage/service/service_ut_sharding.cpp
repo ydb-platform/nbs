@@ -733,6 +733,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldForwardRequestsToShard)
     {
+        config.SetLazyXAttrsEnabled(false);
         config.SetMultiTabletForwardingEnabled(true);
 
         TShardedFileSystemConfig fsConfig;
@@ -937,6 +938,168 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             E_FS_NOENT,
             setNodeXAttrResponseEvent->GetStatus(),
             setNodeXAttrResponseEvent->GetErrorReason());
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldSetHasXAttrsFlagOnFirstSetNodeXAttr)
+    {
+        for (bool lazyXAttrsEnabled: {false, true}) {
+            config.SetLazyXAttrsEnabled(lazyXAttrsEnabled);
+            config.SetMultiTabletForwardingEnabled(true);
+
+            TShardedFileSystemConfig fsConfig;
+            CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+            auto counters =
+                env.GetCounters()->FindSubgroup("component", "service");
+
+            auto getCount = [&counters](const char* name)
+            {
+                return counters->FindSubgroup("request", name)
+                    ->GetCounter("Count")
+                    ->GetAtomic();
+            };
+            auto getErrorCount = [&counters](const char* name)
+            {
+                return counters->FindSubgroup("request", name)
+                    ->GetCounter("Errors")
+                    ->GetAtomic();
+            };
+
+            // Create initial session
+            THeaders headers;
+            auto session =
+                service.InitSession(headers, fsConfig.FsId, "client");
+            if (lazyXAttrsEnabled) {
+                // There should be no XAttrs at the begining if
+                // lazyXAttrsEnabled is true
+                UNIT_ASSERT(!session->Record.GetFileStore()
+                                 .GetFeatures()
+                                 .GetHasXAttrs());
+            } else {
+                // Otherwise it's always true
+                UNIT_ASSERT(session->Record.GetFileStore()
+                                .GetFeatures()
+                                .GetHasXAttrs());
+            }
+
+            // Create two files: 'file1', 'file2'
+            const auto createNodeResponse1 =
+                service
+                    .CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(RootNodeId, "file1"))
+                    ->Record;
+            const auto nodeId1 = createNodeResponse1.GetNode().GetId();
+
+            const auto createNodeResponse2 =
+                service
+                    .CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(RootNodeId, "file2"))
+                    ->Record;
+            const auto nodeId2 = createNodeResponse2.GetNode().GetId();
+
+            // Check that GetNodeXAttr returns error 'E_FS_NOXATTR' in case
+            // 'HasXAttrs' is false
+            auto getXAttrResponse = service
+                                        .AssertGetNodeXAttrFailed(
+                                            headers,
+                                            fsConfig.FsId,
+                                            nodeId1,
+                                            "user.some_attr")
+                                        ->Record;
+            UNIT_ASSERT_VALUES_EQUAL(
+                ui32(NProto::E_FS_NOXATTR),
+                STATUS_FROM_CODE(getXAttrResponse.GetError().GetCode()));
+            UNIT_ASSERT_VALUES_EQUAL(1, getErrorCount("GetNodeXAttr"));
+
+            auto listXAttrResponse =
+                service.ListNodeXAttr(headers, fsConfig.FsId, nodeId1)->Record;
+            UNIT_ASSERT(listXAttrResponse.GetNames().empty());
+            UNIT_ASSERT_VALUES_EQUAL(1, getCount("ListNodeXAttr"));
+
+            if (lazyXAttrsEnabled) {
+                // If lazyXAttrsEnabled is true the first attempt should fail
+                // and cause the main tablet to restart
+                service.AssertSetNodeXAttrFailed(
+                    headers,
+                    fsConfig.FsId,
+                    nodeId1,
+                    "user.some_attr1",
+                    "some_value1");
+
+                WaitForTabletStart(service);
+                session = service.InitSession(headers, fsConfig.FsId, "client");
+                // After the first XAttr is set the flag HasXAttrs should be
+                // true
+                UNIT_ASSERT(session->Record.GetFileStore()
+                                .GetFeatures()
+                                .GetHasXAttrs());
+            }
+
+            service.SetNodeXAttr(
+                headers,
+                fsConfig.FsId,
+                nodeId1,
+                "user.some_attr1",
+                "some_value1");
+
+            UNIT_ASSERT_VALUES_EQUAL(1, getCount("SetNodeXAttr"));
+
+            // Check that XAttr was seccessfully set
+            auto getXAttrResponse1 = service
+                                         .GetNodeXAttr(
+                                             headers,
+                                             fsConfig.FsId,
+                                             nodeId1,
+                                             "user.some_attr1")
+                                         ->Record;
+            UNIT_ASSERT_VALUES_EQUAL(
+                "some_value1",
+                getXAttrResponse1.GetValue());
+
+            // The same check for 'file2'.
+            // As this time the index tablet should not restart, we don't need
+            // to create a new session
+            service.SetNodeXAttr(
+                headers,
+                fsConfig.FsId,
+                nodeId2,
+                "user.some_attr2",
+                "some_value2");
+            UNIT_ASSERT_VALUES_EQUAL(2, getCount("SetNodeXAttr"));
+
+            auto getXAttrResponse2 = service
+                                         .GetNodeXAttr(
+                                             headers,
+                                             fsConfig.FsId,
+                                             nodeId2,
+                                             "user.some_attr2")
+                                         ->Record;
+            UNIT_ASSERT_VALUES_EQUAL(
+                "some_value2",
+                getXAttrResponse2.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, getCount("GetNodeXAttr"));
+
+            service.RemoveNodeXAttr(
+                headers,
+                fsConfig.FsId,
+                nodeId1,
+                "user.some_attr1");
+            UNIT_ASSERT_VALUES_EQUAL(1, getCount("RemoveNodeXAttr"));
+
+            listXAttrResponse =
+                service.ListNodeXAttr(headers, fsConfig.FsId, nodeId2)->Record;
+            const auto& names = listXAttrResponse.GetNames();
+            UNIT_ASSERT_VALUES_EQUAL(1, names.size());
+            UNIT_ASSERT_VALUES_EQUAL("user.some_attr2", names[0]);
+
+            listXAttrResponse =
+                service.ListNodeXAttr(headers, fsConfig.FsId, nodeId1)->Record;
+            UNIT_ASSERT(names.empty());
+
+            UNIT_ASSERT_VALUES_EQUAL(3, getCount("ListNodeXAttr"));
+        }
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldCreateDirectoryStructureInLeader)
