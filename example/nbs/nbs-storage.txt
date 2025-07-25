@@ -48,6 +48,7 @@ LinkedDiskFillBandwidth {
 }
 
 # SchemeShard proxy
+UseSchemeCache: true
 PathDescriptionBackupFilePath: "backups/nbs-path-description-backup.txt"
 #SSProxyFallbackMode: true
 
