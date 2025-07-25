@@ -699,6 +699,9 @@ public:
     [[nodiscard]] TDuration GetPartitionBootTimeout() const;
 
     [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
+
+    [[nodiscard]] TDuration GetInitialRetryDelayForServiceRequests() const;
+    [[nodiscard]] TDuration GetMaxRetryDelayForServiceRequests() const;
 };
 
 ui64 GetAllocationUnit(
