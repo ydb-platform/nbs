@@ -528,8 +528,7 @@ private:
             SessionState = SessionDestroying;
 
             STORAGE_INFO(LogTag(SessionId, SessionSeqNo) << " destroying session");
-            state->SessionId = SessionId;
-            state->MountSeqNumber = SessionSeqNo;
+            FillRequestFromSessionState(*state);
 
             DestroySessionResponse = state->Response;
         }
@@ -651,12 +650,35 @@ private:
         state->Response.SetValue(TErrorResponse(sessionRes.GetError()));
     }
 
+    // should be protected by |SessionLock|
+    template <typename T>
+    void FillRequestFromSessionState(TRequestState<T>& state)
+    {
+        state.SessionId = SessionId;
+        state.MountSeqNumber = SessionSeqNo;
+    }
+
     template <typename T>
     void ExecuteRequest(TRequestStatePtr<T> state)
     {
         NProto::TError error;
 
         try {
+            bool shouldExecuteImmediately = false;
+            with_lock (SessionLock) {
+                if (SessionState == SessionEstablished) {
+                    FillRequestFromSessionState(*state);
+                    shouldExecuteImmediately = true;
+                }
+            }
+
+            if (shouldExecuteImmediately) {
+                // fast path: avoiding copying NProto::TCreateSessionResponse
+                // (which is returned by EnsureSessionExists() call)
+                ExecuteRequestWithSession(std::move(state));
+                return;
+            }
+
             auto sessionResponse = EnsureSessionExists();
             if (sessionResponse.HasValue()) {
                 HandleRequestAfterSessionCreate<T>(
