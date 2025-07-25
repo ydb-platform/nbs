@@ -211,6 +211,38 @@ void TContext::AsyncNOP(TFileIOCompletion* completion, ui32 flags)
     SubmissionThread->ExecuteSimple([=, this] { SubmitNOP(completion, flags); });
 }
 
+void TContext::PostCompletion(TFileIOCompletion* completion, int res)
+{
+    SubmissionThread->ExecuteSimple([=, this] { SubmitMsg(completion, res); });
+}
+
+void TContext::SubmitMsg(TFileIOCompletion* completion, int res)
+{
+    io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
+    if (!sqe) {
+        completion->Func(completion, MakeError(E_REJECTED, "Overloaded"), 0);
+        return;
+    }
+
+    io_uring_prep_msg_ring(
+        sqe,
+        Ring.ring_fd,
+        res,
+        std::bit_cast<ui64>(completion),
+        0);   // flags
+    io_uring_sqe_set_flags(sqe, IOSQE_CQE_SKIP_SUCCESS);
+    io_uring_sqe_set_data(sqe, completion);
+
+    NSan::Release(completion);
+
+    // TODO(sharpeye): more resilent error handling for io_uring_submit
+    const auto error = Submit(&Ring);
+    Y_ABORT_IF(
+        HasError(error),
+        "can't submit IO: %s",
+        FormatError(error).c_str());
+}
+
 void TContext::SubmitIO(
     int op,
     int fd,
@@ -222,10 +254,7 @@ void TContext::SubmitIO(
 {
     io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
     if (!sqe) {
-        completion->Func(
-            completion,
-            MakeError(E_REJECTED, "Overloaded"),
-            0);
+        completion->Func(completion, MakeError(E_REJECTED, "Overloaded"), 0);
         return;
     }
 
@@ -247,10 +276,7 @@ void TContext::SubmitNOP(TFileIOCompletion* completion, ui32 flags)
 {
     io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
     if (!sqe) {
-        completion->Func(
-            completion,
-            MakeError(E_REJECTED, "Overloaded"),
-            0);
+        completion->Func(completion, MakeError(E_REJECTED, "Overloaded"), 0);
         return;
     }
 

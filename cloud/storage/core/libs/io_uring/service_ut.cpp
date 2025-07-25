@@ -231,17 +231,25 @@ Y_UNIT_TEST_SUITE(TIoUringNullTest)
         TVector<TFuture<ui32>> futures;
         TArrayRef<char> buffer{nullptr, length};
 
-        for (ui32 i = 0; i != requests; ++i) {
-            futures.push_back(IoUring->AsyncRead(file, 0, buffer));
-            futures.push_back(IoUring->AsyncReadV(file, 0, {{buffer}}));
+        try {
+            for (ui32 i = 0; i != requests; ++i) {
+                futures.push_back(IoUring->AsyncRead(file, 0, buffer));
+                futures.push_back(IoUring->AsyncReadV(file, 0, {{buffer}}));
 
-            futures.push_back(IoUring->AsyncWrite(file, 0, buffer));
-            futures.push_back(IoUring->AsyncWriteV(file, 0, {{buffer}}));
-        }
+                futures.push_back(IoUring->AsyncWrite(file, 0, buffer));
+                futures.push_back(IoUring->AsyncWriteV(file, 0, {{buffer}}));
+            }
 
-        for (auto& future: futures) {
-            const ui32 len = future.GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL(0, len);
+            for (auto& future: futures) {
+                const ui32 len = future.GetValueSync();
+                UNIT_ASSERT_VALUES_EQUAL(length, len);
+            }
+        } catch (const TServiceError& e) {
+            // EINVAL is expected if the linux kernel is older than 6.0
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                MAKE_SYSTEM_ERROR(EINVAL),
+                e.GetCode(),
+                e.GetMessage());
         }
     }
 }

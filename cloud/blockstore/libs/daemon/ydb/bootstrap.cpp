@@ -415,6 +415,7 @@ void TBootstrapYdb::InitDiskAgentBackend()
             LocalStorageProvider = CreateNullStorageProvider();
             break;
         case NProto::DISK_AGENT_BACKEND_IO_URING:
+        case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
             NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
             FileIOServiceProvider = CreateFileIOServiceProvider(
                 config,
