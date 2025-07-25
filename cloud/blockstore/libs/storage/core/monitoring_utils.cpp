@@ -4,6 +4,7 @@
 #include "probes.h"
 
 #include <cloud/blockstore/libs/diagnostics/hostname.h>
+#include <cloud/blockstore/libs/storage/core/group_request_tracker.h>
 
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
@@ -332,7 +333,8 @@ void BuildPartitionTabs(IOutputStream& out)
         << "<li><a href='#Tables' data-toggle='tab'>Tables</a>" << "</li>"
         << "<li><a href='#Channels' data-toggle='tab'>Channels</a>" << "</li>"
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a>" << "</li>"
-        << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>" << "</ul>";
+        << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>"
+        << "<li><a href='#GroupLatency' data-toggle='tab'>GroupLatency</a>" << "</li>" << "</ul>";
 }
 
 void GeneratePartitionTabsJs(IOutputStream& out)
