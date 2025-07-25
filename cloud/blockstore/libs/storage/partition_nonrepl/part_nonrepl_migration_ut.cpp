@@ -163,6 +163,7 @@ struct TTestEnv
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
         storageConfig.SetMaxMigrationBandwidth(500);
+        storageConfig.SetInitialRetryDelayForServiceRequests(10);
         storageConfig.SetUseDirectCopyRange(useDirectCopy);
         storageConfig.SetMigrationIndexCachingInterval(1024);
         storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(enableVolumeRequestId);
@@ -1432,16 +1433,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
                     event->Sender,
                     new TEvNonreplPartitionPrivate::TEvRangeMigrated(
                         MakeError(E_REJECTED),
-                        msg->ExecutionSide,
-                        msg->Range,
-                        msg->ReadStartTs,
-                        msg->ReadDuration,
-                        msg->WriteStartTs,
-                        msg->WriteDuration,
-                        msg->AffectedBlockInfos,
-                        msg->RecommendedBandwidth,
-                        msg->AllZeroes,
-                        msg->ExecCycles));
+                        *msg));
 
                 return true;
             }
