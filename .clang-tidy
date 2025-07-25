@@ -22,10 +22,15 @@ Checks: >
   -performance-enum-size,
   -readability-avoid-const-params-in-decls,
   -readability-identifier-length,
-  -readability-implicit-bool-conversion,
   -readability-uppercase-literal-suffix,
 
 CheckOptions:
+  # conversions checks
+  - key: bugprone-narrowing-conversions.PedanticMode
+    value: true
+  - key: bugprone-too-small-loop-variable.MagnitudeBitsUpperLimit
+    value: 64
+
   # class
   - key: readability-identifier-naming.ClassCase
     value: CamelCase
