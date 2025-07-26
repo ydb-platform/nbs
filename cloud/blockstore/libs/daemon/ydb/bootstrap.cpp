@@ -392,45 +392,16 @@ void TBootstrapYdb::InitDiskAgentBackend()
         return;
     }
 
-    switch (config.GetBackend()) {
-        case NProto::DISK_AGENT_BACKEND_SPDK:
-            Y_ABORT_UNLESS(Spdk, "SPDK backend should be already initialized");
-            break;
-        case NProto::DISK_AGENT_BACKEND_AIO:
-            NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-            FileIOServiceProvider = CreateFileIOServiceProvider(
-                config,
-                CreateAIOServiceFactory(config));
-            LocalStorageProvider = CreateLocalStorageProvider(
-                FileIOServiceProvider,
-                NvmeManager,
-                {
-                    .DirectIO = !config.GetDirectIoFlagDisabled(),
-                    .UseSubmissionThread =
-                        config.GetUseLocalStorageSubmissionThread(),
-                });
-            break;
-        case NProto::DISK_AGENT_BACKEND_NULL:
-            NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-            LocalStorageProvider = CreateNullStorageProvider();
-            break;
-        case NProto::DISK_AGENT_BACKEND_IO_URING:
-        case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
-            NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-            FileIOServiceProvider = CreateFileIOServiceProvider(
-                config,
-                CreateIoUringServiceFactory(config));
-            LocalStorageProvider = CreateLocalStorageProvider(
-                FileIOServiceProvider,
-                NvmeManager,
-                {
-                    .DirectIO = !config.GetDirectIoFlagDisabled(),
-                    // Each io_uring service already has its own submission
-                    // thread, so we don't need one here
-                    .UseSubmissionThread = false,
-                });
-            break;
+    if (config.GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK) {
+        Y_ABORT_UNLESS(Spdk, "SPDK backend should be already initialized");
     }
+
+    Y_ABORT_IF(NvmeManager);
+    Y_ABORT_IF(FileIOServiceProvider);
+    Y_ABORT_IF(LocalStorageProvider);
+
+    std::tie(NvmeManager, FileIOServiceProvider, LocalStorageProvider) =
+        CreateDiskAgentBackendComponents(config);
 
     STORAGE_INFO(
         "Disk Agent backend ("
