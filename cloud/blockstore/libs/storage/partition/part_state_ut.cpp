@@ -117,7 +117,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 DefaultFreeSpaceConfig(),
                 Max(),  // maxIORequestsInFlight
                 0,  // reassignChannelsPercentageThreshold
-                100,  // reassignMixedChannelsPercentageThreshold
                 0,  // lastCommitId
                 channelCount + 4,  // channelCount
                 0,  // mixedIndexCacheSize
@@ -228,7 +227,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             6,  // channelCount
             0,  // mixedIndexCacheSize
@@ -288,7 +286,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             10, // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             100,// channelCount
             0,  // mixedIndexCacheSize
@@ -370,7 +367,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 DefaultFreeSpaceConfig(),
                 Max(),  // maxIORequestsInFlight
                 0,  // reassignChannelsPercentageThreshold
-                100,  // reassignMixedChannelsPercentageThreshold
                 0,  // lastCommitId
                 channelCount + 4,  // channelCount
                 0,  // mixedIndexCacheSize
@@ -444,7 +440,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 DefaultFreeSpaceConfig(),
                 Max(),  // maxIORequestsInFlight
                 0,  // reassignChannelsPercentageThreshold
-                100,  // reassignMixedChannelsPercentageThreshold
                 0,  // lastCommitId
                 MaxDataChannelCount,  // channelCount
                 0,  // mixedIndexCacheSize
@@ -491,7 +486,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             config.ExplicitChannelProfilesSize(),
             0,  // mixedIndexCacheSize
@@ -545,7 +539,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 DefaultFreeSpaceConfig(),
                 Max(),  // maxIORequestsInFlight
                 0,  // reassignChannelsPercentageThreshold
-                100,  // reassignMixedChannelsPercentageThreshold
                 0,  // lastCommitId
                 6,  // channelCount
                 0,  // mixedIndexCacheSize
@@ -683,7 +676,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             config.ExplicitChannelProfilesSize(),
             0,  // mixedIndexCacheSize
@@ -744,7 +736,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -811,7 +802,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -839,7 +829,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             Max(),  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -871,7 +860,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -952,7 +940,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -997,7 +984,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             1,  // channelCount
             0,  // mixedIndexCacheSize
@@ -1038,7 +1024,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             1,  // mixedIndexCacheSize
@@ -1169,7 +1154,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             1,  // mixedIndexCacheSize
@@ -1202,7 +1186,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             1,  // channelCount
             0,  // mixedIndexCacheSize
@@ -1284,7 +1267,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             0,  // lastCommitId
             5,  // channelCount
             0,  // mixedIndexCacheSize
@@ -1349,14 +1331,14 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             DefaultFreeSpaceConfig(),
             Max(),  // maxIORequestsInFlight
             100, // reassignChannelsPercentageThreshold
-            reassignMixedChannelsPercentageThreshold,
             0,  // lastCommitId
             mixedChannelCount + mergedChannelCount + DataChannelStart + 1, // channelCount
             0,  // mixedIndexCacheSize
             10000,  // allocationUnit
             100,  // maxBlobsPerUnit
             10,  // maxBlobsPerRange,
-            1  // compactionRangeCountPerRun
+            1,  // compactionRangeCountPerRun
+            reassignMixedChannelsPercentageThreshold
         );
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
@@ -1389,6 +1371,158 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     EChannelPermission::SystemWritesAllowed);
             state.UpdatePermissions(
                 DataChannelStart + mergedChannelCount + 5,
+                EChannelPermission::UserWritesAllowed |
+                    EChannelPermission::SystemWritesAllowed);
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+        }
+    }
+
+    Y_UNIT_TEST(TestReassignedSystemChannelsImmediately)
+    {
+        const ui32 mixedChannelCount = 10;
+        const ui32 mergedChannelCount = 10;
+
+        NProto::TPartitionMeta meta;
+
+        auto& config = *meta.MutableConfig();
+        config.SetBlockSize(DefaultBlockSize);
+        config.SetBlocksCount(DefaultBlockCount);
+
+        auto* cps = config.MutableExplicitChannelProfiles();
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
+        for (ui32 i = 0; i < mergedChannelCount; ++i) {
+            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+        }
+        for (ui32 i = 0; i < mixedChannelCount; ++i) {
+            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
+        }
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
+
+        TPartitionState state(
+            meta,
+            0,  // generation
+            BuildDefaultCompactionPolicy(5),
+            0,  // compactionScoreHistorySize
+            0,  // cleanupScoreHistorySize
+            DefaultBPConfig(),
+            DefaultFreeSpaceConfig(),
+            Max(),  // maxIORequestsInFlight
+            100, // reassignChannelsPercentageThreshold
+            0,  // lastCommitId
+            mixedChannelCount + mergedChannelCount + DataChannelStart + 1, // channelCount
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            100,  // maxBlobsPerUnit
+            10,  // maxBlobsPerRange,
+            1,  // compactionRangeCountPerRun
+            100,
+            true
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+
+        {
+            state.UpdatePermissions(
+                1, // Log
+                EChannelPermission::SystemWritesAllowed);
+
+            const auto channelsToReassign = state.GetChannelsToReassign();
+            UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                channelsToReassign[0]);
+        }
+
+        {
+            state.UpdatePermissions(
+                1,
+                EChannelPermission::UserWritesAllowed |
+                    EChannelPermission::SystemWritesAllowed);
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+        }
+    }
+
+    Y_UNIT_TEST(TestReassignedFreshChannelsPercentageThreshold)
+    {
+        const ui32 mixedChannelCount = 10;
+        const ui32 mergedChannelCount = 10;
+        const ui32 freshChannelCount = 10;
+        const ui32 reassignFreshChannelsPercentageThreshold = 20;
+
+        NProto::TPartitionMeta meta;
+
+        auto& config = *meta.MutableConfig();
+        config.SetBlockSize(DefaultBlockSize);
+        config.SetBlocksCount(DefaultBlockCount);
+
+        auto* cps = config.MutableExplicitChannelProfiles();
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
+        for (ui32 i = 0; i < mergedChannelCount; ++i) {
+            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+        }
+        for (ui32 i = 0; i < mixedChannelCount; ++i) {
+            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
+        }
+        for (ui32 i = 0; i < freshChannelCount; ++i) {
+            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
+        }
+
+        TPartitionState state(
+            meta,
+            0,  // generation
+            BuildDefaultCompactionPolicy(5),
+            0,  // compactionScoreHistorySize
+            0,  // cleanupScoreHistorySize
+            DefaultBPConfig(),
+            DefaultFreeSpaceConfig(),
+            Max(),  // maxIORequestsInFlight
+            100, // reassignChannelsPercentageThreshold
+            0,  // lastCommitId
+            mixedChannelCount + mergedChannelCount + DataChannelStart + freshChannelCount, // channelCount
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            100,  // maxBlobsPerUnit
+            10,  // maxBlobsPerRange,
+            1,  // compactionRangeCountPerRun
+            100,
+            false,
+            reassignFreshChannelsPercentageThreshold
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+
+        {
+            state.UpdatePermissions(
+                DataChannelStart + mergedChannelCount + mixedChannelCount,
+                EChannelPermission::SystemWritesAllowed);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+
+            state.UpdatePermissions(
+                DataChannelStart + mergedChannelCount + mixedChannelCount + 5,
+                EChannelPermission::SystemWritesAllowed);
+
+            const auto channelsToReassign = state.GetChannelsToReassign();
+            UNIT_ASSERT_VALUES_EQUAL(2, channelsToReassign.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DataChannelStart + mergedChannelCount + mixedChannelCount,
+                channelsToReassign[0]);
+            UNIT_ASSERT_VALUES_EQUAL(
+                DataChannelStart + mergedChannelCount + mixedChannelCount + 5,
+                channelsToReassign[1]);
+        }
+
+        {
+            state.UpdatePermissions(
+                DataChannelStart + mergedChannelCount + mixedChannelCount,
+                EChannelPermission::UserWritesAllowed |
+                    EChannelPermission::SystemWritesAllowed);
+            state.UpdatePermissions(
+                DataChannelStart + mergedChannelCount + mixedChannelCount + 5,
                 EChannelPermission::UserWritesAllowed |
                     EChannelPermission::SystemWritesAllowed);
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
