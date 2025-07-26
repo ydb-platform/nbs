@@ -398,7 +398,7 @@ func TestStorageYDBGetTask(t *testing.T) {
 		ZoneID:           "zone",
 		InflightDuration: 10 * time.Minute,
 		WaitingDuration:  10 * time.Minute,
-    StallingDuration: 10 * time.Minute,
+		StallingDuration: 10 * time.Minute,
 	})
 	require.NoError(t, err)
 
@@ -4894,7 +4894,9 @@ func testStallingDurationAccumulatesOnStalkerRun(t *testing.T, taskStatus TaskSt
 		TaskStallingTimeout: &taskStallingTimeout,
 	}, metricsRegistry)
 	require.NoError(t, err)
-	createdAt := time.Now().Truncate(time.Microsecond) // YDB truncates time up to 1 microsecond
+
+	// YDB truncates time up to 1 microsecond
+	createdAt := time.Now().Truncate(time.Microsecond)
 	taskDuration := time.Minute
 	stallingDuration := 42 * time.Second
 	locksCount := 5
@@ -4914,7 +4916,7 @@ func testStallingDurationAccumulatesOnStalkerRun(t *testing.T, taskStatus TaskSt
 		GenerationID:     0,
 		Status:           taskStatus,
 		State:            []byte{},
-		Dependencies:     NewStringSet(),
+		Dependencies:     common.NewStringSet(),
 		LastRunner:       "runner_42",
 		StallingDuration: stallingDuration,
 	})

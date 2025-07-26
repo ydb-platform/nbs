@@ -227,7 +227,7 @@ func TaskStateToJSON(state *storage.TaskState) *TaskStateJSON {
 		ZoneID:              state.ZoneID,
 		EstimatedTime:       state.EstimatedTime,
 		InflightDuration:    FormattableDuration{state.InflightDuration},
-    StallingDuration:    FormattableDuration{state.StallingDuration},
+		StallingDuration:    FormattableDuration{state.StallingDuration},
 		WaitingDuration:     FormattableDuration{state.WaitingDuration},
 		PanicCount:          state.PanicCount,
 	}

@@ -162,24 +162,24 @@ func (s *StorageMock) ListSlowTasks(
 func (s *StorageMock) LockTaskToRun(
 	ctx context.Context,
 	taskInfo tasks_storage.TaskInfo,
-	now time.Time,
+	at time.Time,
 	hostname string,
 	runner string,
 ) (tasks_storage.TaskState, error) {
 
-	args := s.Called(ctx, taskInfo, now, hostname, runner)
+	args := s.Called(ctx, taskInfo, at, hostname, runner)
 	return args.Get(0).(tasks_storage.TaskState), args.Error(1)
 }
 
 func (s *StorageMock) LockTaskToCancel(
 	ctx context.Context,
 	taskInfo tasks_storage.TaskInfo,
-	now time.Time,
+	at time.Time,
 	hostname string,
 	runner string,
 ) (tasks_storage.TaskState, error) {
 
-	args := s.Called(ctx, taskInfo, now, hostname, runner)
+	args := s.Called(ctx, taskInfo, at, hostname, runner)
 	return args.Get(0).(tasks_storage.TaskState), args.Error(1)
 }
 

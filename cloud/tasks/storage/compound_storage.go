@@ -317,7 +317,7 @@ func (s *compoundStorage) ListSlowTasks(
 func (s *compoundStorage) LockTaskToRun(
 	ctx context.Context,
 	taskInfo TaskInfo,
-	now time.Time,
+	at time.Time,
 	hostname string,
 	runner string,
 ) (state TaskState, err error) {
@@ -326,7 +326,7 @@ func (s *compoundStorage) LockTaskToRun(
 		state, err = storage.LockTaskToRun(
 			ctx,
 			taskInfo,
-			now,
+			at,
 			hostname,
 			runner,
 		)

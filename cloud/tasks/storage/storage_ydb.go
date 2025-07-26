@@ -332,7 +332,7 @@ func (s *storageYDB) ListSlowTasks(
 func (s *storageYDB) LockTaskToRun(
 	ctx context.Context,
 	taskInfo TaskInfo,
-	now time.Time,
+	at time.Time,
 	hostname string,
 	runner string,
 ) (TaskState, error) {
@@ -347,7 +347,7 @@ func (s *storageYDB) LockTaskToRun(
 				ctx,
 				session,
 				taskInfo,
-				now,
+				at,
 				func(status TaskStatus) bool {
 					return status == TaskStatusReadyToRun || status == TaskStatusRunning
 				},
@@ -364,7 +364,7 @@ func (s *storageYDB) LockTaskToRun(
 func (s *storageYDB) LockTaskToCancel(
 	ctx context.Context,
 	taskInfo TaskInfo,
-	now time.Time,
+	at time.Time,
 	hostname string,
 	runner string,
 ) (TaskState, error) {
@@ -379,7 +379,7 @@ func (s *storageYDB) LockTaskToCancel(
 				ctx,
 				session,
 				taskInfo,
-				now,
+				at,
 				func(status TaskStatus) bool {
 					return status == TaskStatusReadyToCancel || status == TaskStatusCancelling
 				},
@@ -396,7 +396,7 @@ func (s *storageYDB) LockTaskToCancel(
 func (s *storageYDB) MarkForCancellation(
 	ctx context.Context,
 	taskID string,
-	now time.Time,
+	at time.Time,
 ) (bool, error) {
 
 	var cancelling bool
@@ -405,7 +405,7 @@ func (s *storageYDB) MarkForCancellation(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			cancelling, err = s.markForCancellation(ctx, session, taskID, now)
+			cancelling, err = s.markForCancellation(ctx, session, taskID, at)
 			return err
 		},
 	)

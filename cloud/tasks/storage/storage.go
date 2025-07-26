@@ -277,7 +277,7 @@ type Storage interface {
 	LockTaskToRun(
 		ctx context.Context,
 		taskInfo TaskInfo,
-		now time.Time,
+		at time.Time,
 		hostname string,
 		runner string,
 	) (TaskState, error)
@@ -286,7 +286,7 @@ type Storage interface {
 	LockTaskToCancel(
 		ctx context.Context,
 		taskInfo TaskInfo,
-		now time.Time,
+		at time.Time,
 		hostname string,
 		runner string,
 	) (TaskState, error)
