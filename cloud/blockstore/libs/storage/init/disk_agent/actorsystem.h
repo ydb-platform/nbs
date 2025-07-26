@@ -40,7 +40,7 @@ struct TDiskAgentActorSystemArgs
     NSpdk::ISpdkEnvPtr Spdk;
     ICachingAllocatorPtr Allocator;
     IFileIOServicePtr FileIOService;
-    IStorageProviderPtr AioStorageProvider;
+    IStorageProviderPtr LocalStorageProvider;
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     NRdma::IServerPtr RdmaServer;

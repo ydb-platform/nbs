@@ -4,13 +4,18 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TActorsStack::Push(NActors::TActorId actorId)
+TActorsStack::TActorsStack(NActors::TActorId actor, EActorPurpose purpose)
+{
+    Push(actor, purpose);
+}
+
+void TActorsStack::Push(NActors::TActorId actorId, EActorPurpose purpose)
 {
     if (!actorId || IsKnown(actorId)) {
         return;
     }
 
-    Actors.push_front(actorId);
+    Actors.push_front(TActorInfo(actorId, purpose));
 }
 
 void TActorsStack::Clear()
@@ -22,12 +27,26 @@ bool TActorsStack::IsKnown(NActors::TActorId actorId) const
 {
     return AnyOf(
         Actors,
-        [actorId](const NActors::TActorId& actor) { return actor == actorId; });
+        [actorId](const TActorInfo& actorInfo)
+        { return actorInfo.ActorId == actorId; });
 }
 
 NActors::TActorId TActorsStack::GetTop() const
 {
-    return Actors.empty() ? NActors::TActorId() : Actors.front();
+    return Actors.empty() ? NActors::TActorId() : Actors.front().ActorId;
+}
+
+NActors::TActorId TActorsStack::GetTopWrapper() const
+{
+    TVector<NActors::TActorId> result;
+    for (const auto& actorInfo: Actors) {
+        if (actorInfo.ActorPurpose == EActorPurpose::ShadowDiskWrapper ||
+            actorInfo.ActorPurpose == EActorPurpose::FollowerWrapper)
+        {
+            return actorInfo.ActorId;
+        }
+    }
+    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -34,6 +34,8 @@ message TFileStoreFeatures
     bool DirectoryCreationInShardsEnabled = 19;
     bool GuestKeepCacheAllowed = 20;
     bool ParentlessFilesOnly = 21;
+    bool AllowHandlelessIO = 22;
+    bool HasXAttrs = 23;
 }
 
 message TFileStore

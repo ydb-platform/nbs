@@ -572,9 +572,9 @@ public:
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);
 
     void DeleteDiskToReallocate(
+        TInstant now,
         TDiskRegistryDatabase& db,
-        const TString& diskId,
-        ui64 seqNo);
+        TDiskNotificationResult notification);
 
     const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
 
@@ -812,6 +812,10 @@ public:
     {
         return AutomaticallyReplacedDeviceIds.contains(deviceId);
     }
+
+    void AddAutomaticallyReplacedDevice(
+        TDiskRegistryDatabase& db,
+        const TAutomaticallyReplacedDeviceInfo& deviceInfo);
 
     ui32 DeleteAutomaticallyReplacedDevices(
         TDiskRegistryDatabase& db,

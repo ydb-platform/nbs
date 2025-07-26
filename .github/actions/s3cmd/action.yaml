@@ -37,16 +37,23 @@ runs:
       if: inputs.install == 'true'
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends s3cmd
+        which s3cmd || true
+        which s3cmd || {
+          [ ! -f updated ] && sudo apt-get -o Dpkg::Lock::Timeout=600 update
+          touch updated
+          sudo apt-get -o Dpkg::Lock::Timeout=600 install -y --no-install-recommends s3cmd
+        }
         s3cmd --version
-        which aws
+        which aws || true
         which aws || {
+          [ ! -f updated ] && sudo apt-get -o Dpkg::Lock::Timeout=600 update
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           unzip awscliv2.zip
           sudo ./aws/install
           aws --version
         }
+        aws --version
+
     - name: configure s3cmd and awscli
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
@@ -140,5 +147,10 @@ runs:
     - name: test s3cmd
       shell: bash
       run: sudo -E -H -u $USER s3cmd ls
+      env:
+        USER: ${{ inputs.user || 'github'}}
+    - name: test awscli
+      shell: bash
+      run: sudo -E -H -u $USER aws s3 ls
       env:
         USER: ${{ inputs.user || 'github'}}

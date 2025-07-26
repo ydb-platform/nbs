@@ -18,6 +18,26 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsBrokenDevice(const TAioDevice& device)
+{
+    return !device.File.IsOpen();
+}
+
+void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
+{
+    ++queueStats.SubFailed;
+    auto* bio = vhd_get_bdev_io(io);
+    const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
+
+    auto& requestStat = queueStats.Requests[bio->type];
+    requestStat.Errors += 1;
+    requestStat.Bytes += bytes;
+
+    vhd_complete_bio(io, VHD_BDEV_IOERR);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <bool DoDecrypt>
 [[nodiscard]] NProto::TError DoCryptoOperation(
     IEncryptor& encryptor,
@@ -99,6 +119,11 @@ void PrepareCompoundIO(
 
     const ui32 deviceCount = std::distance(it, end);
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
+
+    if (std::any_of(it, end, IsBrokenDevice)) {
+        DiscardRequest(io, queueStats);
+        return;
+    }
 
     STORAGE_DEBUG(
         "%s compound request, %u parts, %u buffers: start sector %lu, start "
@@ -282,13 +307,19 @@ void PrepareIO(
 
     STORAGE_DEBUG(
         "%s request, %u buffers: start sector %lu, start block %lu, block "
-        "count %lu, block size %u",
+        "count %lu, block size %u, device broken %d",
         bio->type == VHD_BDEV_READ ? "Read" : "Write",
         bio->sglist.nbuffers,
         bio->first_sector,
         logicalOffset / device.BlockSize,
         totalBytes / device.BlockSize,
-        device.BlockSize);
+        device.BlockSize,
+        !device.File.IsOpen());
+
+    if (IsBrokenDevice(device)) {
+        DiscardRequest(io, queueStats);
+        return;
+    }
 
     auto buffers =
         std::span<vhd_buffer>{bio->sglist.buffers, bio->sglist.nbuffers};

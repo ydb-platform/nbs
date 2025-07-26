@@ -1,4 +1,5 @@
 #include "volume_actor.h"
+#include <cloud/storage/core/libs/common/format.h>
 
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
@@ -253,10 +254,10 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Counters from partition %s (%s) do not belong to disk %s",
+            "%s Counters from partition %s (%s) do not belong to disk",
+            LogTitle.GetWithTime().c_str(),
             ToString(ev->Sender).c_str(),
-            msg->DiskId.Quote().c_str(),
-            State->GetDiskId().Quote().c_str());
+            msg->DiskId.Quote().c_str());
         return;
     }
 
@@ -303,9 +304,9 @@ void TVolumeActor::HandlePartCounters(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Partition %s for disk %s counters not found",
-            ToString(ev->Sender).c_str(),
-            State->GetDiskId().Quote().c_str());
+            "%s Partition %s for disk counters not found",
+            LogTitle.GetWithTime().c_str(),
+            ToString(ev->Sender).c_str());
         return;
     }
 
@@ -373,9 +374,11 @@ void TVolumeActor::CompleteSavePartStats(
     const TActorContext& ctx,
     TTxVolume::TSavePartStats& args)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Part %lu stats saved",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Part %lu stats saved",
+        LogTitle.GetWithTime().c_str(),
         args.PartStats.TabletId);
 
     NCloud::Send(
@@ -540,7 +543,7 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     );
 
     simple.HasLaggingDevices.Set(State->HasLaggingAgents());
-    simple.LaggingDevicesCount.Set(State->GetLaggingDevices().size());
+    simple.LaggingDevicesCount.Set(State->GetLaggingDeviceIds().size());
     {
         const auto& laggingInfos = State->GetLaggingAgentsMigrationInfo();
         ui64 cleanBlockCount = 0;
@@ -612,30 +615,27 @@ void TVolumeActor::HandleLongRunningBlobOperation(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] For volume %s detected %s (actor %s, group %u) %s running "
+            "%s For volume detected %s (actor %s, group %u) %s running "
             "for %s",
-            TabletID(),
-            State->GetDiskId().Quote().c_str(),
+            LogTitle.GetWithTime().c_str(),
             ToString(msg.Operation).c_str(),
             ev->Sender.ToString().c_str(),
             msg.GroupId,
             msg.FirstNotify ? "long" : "still",
-            msg.Duration.ToString().c_str());
+            FormatDuration(msg.Duration).c_str());
     } else {
         LongRunningActors.Erase(ev->Sender);
 
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] For volume %s %s %s (actor %s, group %u) detected after %s, "
-            "%s",
-            TabletID(),
-            State->GetDiskId().Quote().c_str(),
+            "%s For volume %s %s (actor %s, group %u) detected after %s, %s",
+            LogTitle.GetWithTime().c_str(),
             ToString(msg.Reason).c_str(),
             ToString(msg.Operation).c_str(),
             ev->Sender.ToString().c_str(),
             msg.GroupId,
-            msg.Duration.ToString().c_str(),
+            FormatDuration(msg.Duration).c_str(),
             FormatError(msg.Error).c_str());
     }
 }

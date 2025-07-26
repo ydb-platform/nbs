@@ -237,7 +237,16 @@ struct TEvVolumePrivate
     };
 
     struct TUpdateDevicesResponse
-    {};
+    {
+        TVector<NProto::TLaggingDevice> LaggingDevices;
+
+        TUpdateDevicesResponse() = default;
+
+        explicit TUpdateDevicesResponse(
+            TVector<NProto::TLaggingDevice> laggingDevices)
+            : LaggingDevices(std::move(laggingDevices))
+        {}
+    };
 
     //
     // PartStatsSaved
@@ -405,44 +414,61 @@ struct TEvVolumePrivate
     };
 
     //
+    //  LinkOnFollowerCreated/LinkOnFollowerDestroyed
+    //
+
+    struct TLinkOnFollowerCreated
+    {
+        TLeaderFollowerLink Link;
+
+        explicit TLinkOnFollowerCreated(TLeaderFollowerLink link)
+            : Link(std::move(link))
+        {}
+    };
+
+    struct TLinkOnFollowerDestroyed
+    {
+        TLeaderFollowerLink Link;
+
+        explicit TLinkOnFollowerDestroyed(TLeaderFollowerLink link)
+            : Link(std::move(link))
+        {}
+    };
+
+    //
+    //  CreateLinkFinished
+    //
+
+    struct TCreateLinkFinished
+    {
+        TLeaderFollowerLink Link;
+
+        explicit TCreateLinkFinished(TLeaderFollowerLink link)
+            : Link(std::move(link))
+        {}
+    };
+
+    //
     //  UpdateFollowerStateRequest
     //
 
     struct TUpdateFollowerStateRequest
     {
-        enum class EReason
-        {
-            FillProgressUpdate,
-            FillCompleted,
-            FillError,
-        };
+        TFollowerDiskInfo Follower;
 
-        TString FollowerUuid;
-        EReason Reason = EReason::FillError;
-        std::optional<ui64> MigratedBytes;
-
-        TUpdateFollowerStateRequest(
-                TString followerUuid,
-                EReason reason,
-                std::optional<ui64> migratedBytes)
-            : FollowerUuid(std::move(followerUuid))
-            , Reason(reason)
-            , MigratedBytes(migratedBytes)
+        explicit TUpdateFollowerStateRequest(TFollowerDiskInfo follower)
+            : Follower(std::move(follower))
         {}
     };
 
     struct TUpdateFollowerStateResponse
     {
-        TFollowerDiskInfo::EState NewState = TFollowerDiskInfo::EState::None;
-        std::optional<ui64> MigratedBytes;
+        TFollowerDiskInfo Follower;
 
         TUpdateFollowerStateResponse() = default;
 
-        TUpdateFollowerStateResponse(
-                TFollowerDiskInfo::EState newState,
-                std::optional<ui64> migratedBytes)
-            : NewState(newState)
-            , MigratedBytes(migratedBytes)
+        explicit TUpdateFollowerStateResponse(TFollowerDiskInfo follower)
+            : Follower(std::move(follower))
         {}
     };
 
@@ -473,6 +499,9 @@ struct TEvVolumePrivate
         EvReportOutdatedLaggingDevicesToDR,
         EvUpdateLaggingAgentMigrationState,
         EvLaggingAgentMigrationFinished,
+        EvLinkOnFollowerCreated,
+        EvLinkOnFollowerDestroyed,
+        EvCreateLinkFinished,
 
         EvEnd
     };
@@ -556,6 +585,15 @@ struct TEvVolumePrivate
 
     using TEvDevicesReleaseFinished =
         TResponseEvent<TDevicesReleaseFinished, EvDevicesReleaseFinished>;
+
+    using TEvLinkOnFollowerCreated =
+        TResponseEvent<TLinkOnFollowerCreated, EvLinkOnFollowerCreated>;
+
+    using TEvLinkOnFollowerDestroyed =
+        TResponseEvent<TLinkOnFollowerDestroyed, EvLinkOnFollowerDestroyed>;
+
+    using TEvCreateLinkFinished =
+        TResponseEvent<TCreateLinkFinished, EvCreateLinkFinished>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

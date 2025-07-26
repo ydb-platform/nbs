@@ -45,9 +45,11 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
                 GCCompletedPartitions.push_back(args.PartitionTabletId);
                 return;
             }
-            LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-                "[%lu] Stopping partitions after gc finished",
-                TabletID());
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Stopping partitions after gc finished",
+                LogTitle.GetWithTime().c_str());
 
             StopPartitions(ctx, {});
             State->Reset();
@@ -73,9 +75,12 @@ void TVolumeActor::HandleGarbageCollectorCompleted(
     const TActorContext& ctx)
 {
     const auto partitionTabletId = ev->Get()->TabletId;
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Received GarbageCollectorCompleted report from partition %lu",
-        TabletID(), partitionTabletId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Received GarbageCollectorCompleted report from partition %lu",
+        LogTitle.GetWithTime().c_str(),
+        partitionTabletId);
 
     if (State->GetShouldStartPartitionsForGc(ctx.Now())) {
         auto requestInfo = CreateRequestInfo(

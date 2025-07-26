@@ -673,10 +673,11 @@ void TPartitionActor::HandleFlush(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Start flush @%lu (blocks: %lu)",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start flush @%lu (blocks: %lu)",
+        LogTitle.GetWithTime().c_str(),
         commitId,
         blocksCount);
 
@@ -819,10 +820,11 @@ void TPartitionActor::HandleFlushCompleted(
     auto* msg = ev->Get();
 
     ui64 commitId = msg->CommitId;
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Complete flush @%lu",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete flush @%lu",
+        LogTitle.GetWithTime().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);
@@ -832,14 +834,17 @@ void TPartitionActor::HandleFlushCompleted(
     State->GetCommitQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
-    for (const auto& i: msg->FlushedCommitIdsFromChannel) {
-        State->GetTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
+    if (!HasError(msg->Error)) {
+        for (const auto& i: msg->FlushedCommitIdsFromChannel) {
+            State->GetTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
+        }
+
+        State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
+        State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
     }
 
-    State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
-    State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
-
     State->GetFlushedCommitIdsInProgress().clear();
+
     State->GetFlushState().SetStatus(EOperationStatus::Idle);
 
     Actors.Erase(ev->Sender);

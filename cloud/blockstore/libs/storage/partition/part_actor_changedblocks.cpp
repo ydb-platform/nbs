@@ -422,13 +422,14 @@ void TPartitionActor::HandleGetChangedBlocks(
         }
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Start diffing blocks between @%lu and @%lu (range: %s)",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start diffing blocks between @%lu and @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
         lowCommitId,
         highCommitId,
-        DescribeRange(readRange).data());
+        DescribeRange(readRange).c_str());
 
     AddTransaction<TEvService::TGetChangedBlocksMethod>(*requestInfo);
 
@@ -509,13 +510,15 @@ void TPartitionActor::CompleteGetChangedBlocks(
 
     RemoveTransaction(*args.RequestInfo);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu][d:%s] Complete diff blocks between @%lu and @%lu (range: %s)",
-        TabletID(),
-        PartitionConfig.GetDiskId().c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete GetChangedBlocks transaction between ",
+        "@%lu and @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
         args.LowCommitId,
         args.HighCommitId,
-        DescribeRange(args.ReadRange).data());
+        DescribeRange(args.ReadRange).c_str());
 
     if (args.Interrupted) {
         LWTRACK(

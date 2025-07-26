@@ -61,6 +61,7 @@ private:
     const TString DiskId;
     const ui64 DeletionCommitId;
     const ui32 MaxBlocksInBlob;
+    TChildLogTitle LogTitle;
 
     struct TRangeInfo
     {
@@ -80,13 +81,15 @@ public:
             ui64 tabletId,
             TString diskId,
             ui64 deletionCommitId,
-            ui32 maxBlocksInBlob)
+            ui32 maxBlocksInBlob,
+            TChildLogTitle logTitle)
         : State(state)
         , Args(args)
         , TabletId(tabletId)
         , DiskId(std::move(diskId))
         , DeletionCommitId(deletionCommitId)
         , MaxBlocksInBlob(maxBlocksInBlob)
+        , LogTitle(std::move(logTitle))
     {}
 
     void Execute(const TActorContext& ctx, TPartitionDatabase& db)
@@ -173,15 +176,16 @@ private:
         Y_DEBUG_ABORT_UNLESS(blob.BlobId.CommitId() == Args.CommitId);
         Y_DEBUG_ABORT_UNLESS(!HasDuplicates(blob.Blocks));
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             IsDeletionMarker(blob.BlobId)
-                ? "[%lu][d:%s] Add MixedBlob (zero blocks) @%lu (blob: %s, range: %s)"
-                : "[%lu][d:%s] Add MixedBlob @%lu (blob: %s, range: %s)",
-            TabletId,
-            DiskId.c_str(),
+                ? "%s Add MixedBlob (zero blocks) @%lu (blob: %s, range: %s)"
+                : "%s Add MixedBlob @%lu (blob: %s, range: %s)",
+            LogTitle.GetWithTime().c_str(),
             Args.CommitId,
-            ToString(MakeBlobId(TabletId, blob.BlobId)).data(),
-            DescribeRange(blob.Blocks).data());
+            ToString(MakeBlobId(TabletId, blob.BlobId)).c_str(),
+            DescribeRange(blob.Blocks).c_str());
 
         // write blob meta
         NProto::TBlobMeta blobMeta;
@@ -234,15 +238,16 @@ private:
     {
         Y_DEBUG_ABORT_UNLESS(blob.BlobId.CommitId() == Args.CommitId);
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             IsDeletionMarker(blob.BlobId)
-                ? "[%lu][d:%s] Add MergedBlob (zero blocks) @%lu (blob: %s, range: %s)"
-                : "[%lu][d:%s] Add MergedBlob @%lu (blob: %s, range: %s)",
-            TabletId,
-            DiskId.c_str(),
+                ? "%s Add MergedBlob (zero blocks) @%lu (blob: %s, range: %s)"
+                : "%s Add MergedBlob @%lu (blob: %s, range: %s)",
+            LogTitle.GetWithTime().c_str(),
             Args.CommitId,
-            ToString(MakeBlobId(TabletId, blob.BlobId)).data(),
-            DescribeRange(blob.BlockRange).data());
+            ToString(MakeBlobId(TabletId, blob.BlobId)).c_str(),
+            DescribeRange(blob.BlockRange).c_str());
 
         const auto skipped = blob.SkipMask.Count();
         Y_ABORT_UNLESS(skipped < blob.BlockRange.Size());
@@ -301,15 +306,16 @@ private:
         // duplicates are allowed
         Y_DEBUG_ABORT_UNLESS(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             IsDeletionMarker(blob.BlobId)
-                ? "[%lu][d:%s] Add FreshBlob (zero blocks) @%lu (blob: %s, range: %s)"
-                : "[%lu][d:%s] Add FreshBlob @%lu (blob: %s, range: %s)",
-            TabletId,
-            DiskId.c_str(),
+                ? "%s Add FreshBlob (zero blocks) @%lu (blob: %s, range: %s)"
+                : "%s Add FreshBlob @%lu (blob: %s, range: %s)",
+            LogTitle.GetWithTime().c_str(),
             Args.CommitId,
-            ToString(MakeBlobId(TabletId, blob.BlobId)).data(),
-            DescribeFreshRange(blob.Blocks).data());
+            ToString(MakeBlobId(TabletId, blob.BlobId)).c_str(),
+            DescribeFreshRange(blob.Blocks).c_str());
 
         // write blob meta
         NProto::TBlobMeta blobMeta;
@@ -727,7 +733,8 @@ void TPartitionActor::ExecuteAddBlobs(
         TabletID(),
         PartitionConfig.GetDiskId(),
         args.DeletionCommitId,
-        State->GetMaxBlocksInBlob()
+        State->GetMaxBlocksInBlob(),
+        LogTitle.GetChild(GetCycleCount())
     );
     executor.Execute(ctx, db);
 }

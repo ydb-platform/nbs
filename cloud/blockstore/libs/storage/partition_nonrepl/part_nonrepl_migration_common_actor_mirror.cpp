@@ -101,7 +101,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
     }
 
     if (TargetMigrationIsLagging) {
-        STORAGE_VERIFY(ActorOwner, TWellKnownEntityTypes::DISK, DiskId);
+        STORAGE_VERIFY(SendWritesToSrc, TWellKnownEntityTypes::DISK, DiskId);
 
         // TMirrorRequestActor is used here just as a simple request actor.
         NCloud::Register<TMirrorRequestActor<TMethod>>(
@@ -116,7 +116,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         NCloud::Register<TMigrationRequestActor<TMethod>>(
             ctx,
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-            ActorOwner ? SrcActorId : TActorId{},
+            SendWritesToSrc ? SrcActorId : TActorId{},
             DstActorId,
             std::move(msg->Record),
             DiskId,

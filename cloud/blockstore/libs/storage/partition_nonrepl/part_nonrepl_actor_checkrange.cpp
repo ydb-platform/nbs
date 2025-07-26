@@ -137,8 +137,8 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
         Config->GetCheckRangeMaxRangeSize());
 
     if (HasError(error)) {
-        auto response =
-            std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
+        auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(
+            std::move(error));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }

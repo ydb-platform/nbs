@@ -684,15 +684,16 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     }
     client = clientOrError.GetResult();
 
-    auto throttler = ThrottlerProvider->GetThrottler(
-        clientConfig->GetClientConfig(),
-        request.GetClientProfile(),
-        request.GetClientPerformanceProfile());
+    if (!Options.DisableClientThrottler) {
+        auto throttler = ThrottlerProvider->GetThrottler(
+            clientConfig->GetClientConfig(),
+            request.GetClientProfile(),
+            request.GetClientPerformanceProfile());
 
-    if (throttler) {
-        client = CreateThrottlingClient(
-            std::move(client),
-            std::move(throttler));
+        if (throttler) {
+            client =
+                CreateThrottlingClient(std::move(client), std::move(throttler));
+        }
     }
 
     if (Options.StrictContractValidation &&
@@ -736,16 +737,6 @@ TClientAppConfigPtr TSessionManager::CreateClientConfig(
     config = Options.DefaultClientConfig;
     config.SetClientId(request.GetClientId());
     config.SetInstanceId(request.GetInstanceId());
-
-    if (request.GetRequestTimeout()) {
-        config.SetRequestTimeout(request.GetRequestTimeout());
-    }
-    if (request.GetRetryTimeout()) {
-        config.SetRetryTimeout(request.GetRetryTimeout());
-    }
-    if (request.GetRetryTimeoutIncrement()) {
-        config.SetRetryTimeoutIncrement(request.GetRetryTimeoutIncrement());
-    }
 
     return std::make_shared<TClientAppConfig>(std::move(clientAppConfig));
 }

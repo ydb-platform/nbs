@@ -254,7 +254,9 @@ private:
     // The number of blocks that need to be migrated to complete the migration.
     std::optional<ui64> BlockCountToMigrate;
 
+    TCreateFollowerRequests CreateFollowerRequests;
     TFollowerDisks FollowerDisks;
+    TLeaderDisks LeaderDisks;
 
     struct TLaggingAgentMigrationInfo
     {
@@ -263,6 +265,8 @@ private:
     };
     THashMap<TString, TLaggingAgentMigrationInfo>
         CurrentlyMigratingLaggingAgents;
+    // Devices that were lagging and can't be restored.
+    TVector<NProto::TLaggingDevice> OutdatedDevices;
 
     TScrubbingInfo ScrubbingInfo;
 
@@ -278,6 +282,7 @@ public:
         TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
         TFollowerDisks followerDisks,
+        TLeaderDisks leaderDisks,
         bool startPartitionsNeeded);
 
     const NProto::TVolumeMeta& GetMeta() const
@@ -343,7 +348,15 @@ public:
         const TString& agentId);
     [[nodiscard]] bool HasLaggingAgents() const;
     [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
-    [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
+    [[nodiscard]] THashSet<TString> GetLaggingDeviceIds() const;
+
+    // Once the partition is restarted, the lagging devices can not be restored.
+    // So they must become outdated.
+    void FillOutdatedDevices();
+    [[nodiscard]] THashSet<TString> GetOutdatedDeviceIds() const;
+    [[nodiscard]] const TVector<NProto::TLaggingDevice>&
+    GetOutdatedDevices() const;
+
     void UpdateLaggingAgentMigrationState(
         const TString& agentId,
         ui64 cleanBlocks,
@@ -782,16 +795,21 @@ public:
     // Followers
     //
 
+    TCreateFollowerRequestInfo& AccessCreateFollowerRequestInfo(
+        const TLeaderFollowerLink& link);
+    void DeleteCreateFollowerRequestInfo(const TLeaderFollowerLink& link);
+
+    std::optional<TFollowerDiskInfo> FindFollower(
+        const TLeaderFollowerLink& link) const;
     void AddOrUpdateFollower(TFollowerDiskInfo follower);
-    void RemoveFollower(const TString& linkUUID);
-    std::optional<TFollowerDiskInfo> FindFollowerByUuid(
-        const TString& linkUUID) const;
-    std::optional<TFollowerDiskInfo> FindFollowerByDiskId(
-        const TString& diskId) const;
-    const TFollowerDisks& GetAllFollowers() const
-    {
-        return FollowerDisks;
-    }
+    void RemoveFollower(const TLeaderFollowerLink& link);
+    const TFollowerDisks& GetAllFollowers() const;
+
+    std::optional<TLeaderDiskInfo> FindLeader(
+        const TLeaderFollowerLink& link) const;
+    void AddOrUpdateLeader(TLeaderDiskInfo leader);
+    void RemoveLeader(const TLeaderFollowerLink& link);
+    const TLeaderDisks& GetAllLeaders() const;
 
     //
     // Scrubbing

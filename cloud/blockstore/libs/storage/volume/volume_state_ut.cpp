@@ -95,6 +95,7 @@ TVolumeState CreateVolumeState(
         {},   // mountHistory
         std::move(checkpointRequests),
         {},     // followers
+        {},     // leaders
         false   // startPartitionsNeeded
     );
 }
@@ -116,6 +117,7 @@ TVolumeState CreateVolumeState(
         TCachedVolumeMountHistory{VolumeHistoryCacheSize, {}},
         std::move(checkpointRequests),
         {},     // followers
+        {},     // leaders
         false   // startPartitionsNeeded
     );
 }
@@ -139,6 +141,7 @@ TVolumeState CreateVolumeState(
             std::move(history)},
         {},     // checkpointRequests
         {},     // followers
+        {},     // leaders
         false   // startPartitionsNeeded
     };
 }
@@ -1329,7 +1332,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             client.GetVolumeClientInfo().GetDisconnectTimestamp());
     }
 
-    Y_UNIT_TEST(ShouldActivateLocalDataPathAndRejectOtherPaths)
+    Y_UNIT_TEST(ShouldKeepLocalDataPathActive)
     {
         auto volumeState = CreateVolumeState();
         auto clientId = CreateGuidAsString();
@@ -1380,26 +1383,106 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             serverActor1,
             TVolumeClientState::EPipeState::ACTIVE);
 
+        // Activate local data path
         result = client.CheckLocalRequest(serverActor1.NodeId(), true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
+        // Remote data path can't deactivate local data path
+        result = client.CheckPipeRequest(serverActor2, true, "", "");
+        UNIT_ASSERT_VALUES_EQUAL_C(E_REJECTED, result.GetCode(), result);
+
+        // Local data path still active
+        result = client.CheckLocalRequest(serverActor1.NodeId(), true, "", "");
+        UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
+
+        // Remove local data path
+        res = volumeState.RemoveClient(clientId, serverActor1);
+        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error);
+
+        // Remote data path activated
         result = client.CheckPipeRequest(serverActor2, true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
-        result = client.CheckLocalRequest(serverActor1.NodeId(), true, "", "");
-        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, result.GetCode());
-
-        CheckPipeState(
-            client,
-            serverActor1,
-            TVolumeClientState::EPipeState::DEACTIVATED);
+        CheckServicePipeRemoved(volumeState, clientId, serverActor1);
         CheckPipeState(
             client,
             serverActor2,
             TVolumeClientState::EPipeState::ACTIVE);
     }
 
-    Y_UNIT_TEST(ShouldActivateRemoteDataPathAndRejectOtherPaths)
+    Y_UNIT_TEST(ShouldActivateRemoteDataPathAndRejectOtherRemotePaths)
+    {
+        auto volumeState = CreateVolumeState();
+        auto clientId = CreateGuidAsString();
+        auto serverActor1 = CreateActor(1);
+        auto serverActor2 = CreateActor(2);
+
+        auto info1 = CreateVolumeClientInfo(
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE);
+
+        auto info2 = CreateVolumeClientInfo(
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE);
+
+        auto res = volumeState.AddClient(info1, serverActor1);
+        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error);
+
+        res = volumeState.AddClient(info2, serverActor2);
+        UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error);
+
+        auto& clients = volumeState.AccessClients();
+        UNIT_ASSERT_VALUES_EQUAL(1, clients.size());
+
+        auto& client = clients[clientId];
+        UNIT_ASSERT_VALUES_EQUAL(2, client.GetPipes().size());
+
+        CheckServicePipe(
+            volumeState,
+            serverActor1,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            TVolumeClientState::EPipeState::WAIT_START);
+
+        CheckServicePipe(
+            volumeState,
+            serverActor2,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            TVolumeClientState::EPipeState::WAIT_START);
+
+        auto result = client.CheckPipeRequest(serverActor2, true, "", "");
+        UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
+
+        CheckPipeState(
+            client,
+            serverActor2,
+            TVolumeClientState::EPipeState::ACTIVE);
+
+        result = client.CheckPipeRequest(serverActor2, true, "", "");
+        UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
+
+        result = client.CheckPipeRequest(serverActor1, true, "", "");
+        UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
+
+        result = client.CheckPipeRequest(serverActor2, true, "", "");
+
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, result.GetCode());
+
+        CheckPipeState(
+            client,
+            serverActor2,
+            TVolumeClientState::EPipeState::DEACTIVATED);
+
+        CheckPipeState(
+            client,
+            serverActor1,
+            TVolumeClientState::EPipeState::ACTIVE);
+    }
+
+    Y_UNIT_TEST(ShouldActivateLocalDataPathAndRejectOtherRemotePaths)
     {
         auto volumeState = CreateVolumeState();
         auto clientId = CreateGuidAsString();
@@ -1442,6 +1525,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             NProto::VOLUME_MOUNT_REMOTE,
             TVolumeClientState::EPipeState::WAIT_START);
 
+        // Activate remote pipe
         auto result = client.CheckPipeRequest(serverActor2, true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
@@ -1453,12 +1537,13 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         result = client.CheckPipeRequest(serverActor2, true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
+        // Activate local pipe
         result = client.CheckLocalRequest(serverActor1.NodeId(), true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
+        // Remote pipe deactivated
         result = client.CheckPipeRequest(serverActor2, true, "", "");
-
-        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, result.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL_C(E_BS_INVALID_SESSION, result.GetCode(), FormatError(result));
 
         CheckPipeState(
             client,
@@ -1910,6 +1995,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 {},     // mountHistory
                 {},     // checkpointRequests
                 {},     // followers
+                {},     // leaders
                 false   // startPartitionsNeeded
             };
         };
@@ -1984,22 +2070,36 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
     {
         auto volumeState = CreateVolumeState();
 
-        volumeState.AddOrUpdateFollower(
-            TFollowerDiskInfo{.LinkUUID = "x", .FollowerDiskId = "vol1"});
+        // Add link uuid1 for volO -> vol1
+        volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
+            .Link =
+                TLeaderFollowerLink{
+                    .LinkUUID = "uuid1",
+                    .LeaderDiskId = "vol0",
+                    .LeaderShardId = "su0",
+                    .FollowerDiskId = "vol1",
+                    .FollowerShardId = "su1"},
+            .State = TFollowerDiskInfo::EState::None,
+            .MediaKind = NProto::STORAGE_MEDIA_SSD});
 
         const auto& followers = volumeState.GetAllFollowers();
         UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
-        UNIT_ASSERT_VALUES_EQUAL("x", followers[0].LinkUUID);
-        UNIT_ASSERT_VALUES_EQUAL("vol1", followers[0].FollowerDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("uuid1", followers[0].Link.LinkUUID);
+        UNIT_ASSERT_VALUES_EQUAL("vol1", followers[0].Link.FollowerDiskId);
         UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::None, followers[0].State);
-        UNIT_ASSERT_EQUAL(
-            std::nullopt,
-            followers[0].MigratedBytes);
+        UNIT_ASSERT_EQUAL(std::nullopt, followers[0].MigratedBytes);
 
+        // Update link uuid1
         volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
-            .LinkUUID = "x",
-            .FollowerDiskId = "vol1",
+            .Link =
+                TLeaderFollowerLink{
+                    .LinkUUID = "uuid1",
+                    .LeaderDiskId = "vol0",
+                    .LeaderShardId = "su0",
+                    .FollowerDiskId = "vol1",
+                    .FollowerShardId = "su1"},
             .State = TFollowerDiskInfo::EState::Preparing,
+            .MediaKind = NProto::STORAGE_MEDIA_SSD,
             .MigratedBytes = 100});
         UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
         UNIT_ASSERT_EQUAL(
@@ -2007,19 +2107,33 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             followers[0].State);
         UNIT_ASSERT_VALUES_EQUAL(100, *followers[0].MigratedBytes);
 
+        // Add link uuid2 volO -> vol2
         volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
-            .LinkUUID = "y",
-            .FollowerDiskId = "vol2"});
+            .Link =
+                TLeaderFollowerLink{
+                    .LinkUUID = "uuid2",
+                    .LeaderDiskId = "vol0",
+                    .LeaderShardId = "su0",
+                    .FollowerDiskId = "vol2",
+                    .FollowerShardId = "su1"},
+            .State = TFollowerDiskInfo::EState::None,
+            .MediaKind = NProto::STORAGE_MEDIA_SSD});
         UNIT_ASSERT_VALUES_EQUAL(2, followers.size());
-        UNIT_ASSERT_VALUES_EQUAL("y", followers[1].LinkUUID);
-        UNIT_ASSERT_VALUES_EQUAL("vol2", followers[1].FollowerDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("uuid2", followers[1].Link.LinkUUID);
+        UNIT_ASSERT_VALUES_EQUAL("vol2", followers[1].Link.FollowerDiskId);
 
-        volumeState.RemoveFollower("x");
+        // Remove link uuid1 by linkUUID
+        volumeState.RemoveFollower(TLeaderFollowerLink{.LinkUUID = "uuid1"});
         UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
-        UNIT_ASSERT_VALUES_EQUAL("y", followers[0].LinkUUID);
-        UNIT_ASSERT_VALUES_EQUAL("vol2", followers[0].FollowerDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("uuid2", followers[0].Link.LinkUUID);
 
-        volumeState.RemoveFollower("y");
+        // Remove link uuid2 by leader and follower diskID
+        volumeState.RemoveFollower(TLeaderFollowerLink{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol0",
+            .LeaderShardId = "su0",
+            .FollowerDiskId = "vol2",
+            .FollowerShardId = "su1"});
         UNIT_ASSERT_VALUES_EQUAL(0, followers.size());
     }
 

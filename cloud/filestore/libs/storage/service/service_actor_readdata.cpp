@@ -119,7 +119,6 @@ TReadDataActor::TReadDataActor(
         ReadRequest.GetLength(),
         BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
-    , BlockBuffer(CreateBlockBuffer(AlignedByteRange))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
@@ -128,6 +127,12 @@ TReadDataActor::TReadDataActor(
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
+    // BlockBuffer should not be initialized in constructor, because creating
+    // a block buffer leads to memory allocation (and initialization) which is
+    // heavy and we would like to execute that on a separate thread (instead of
+    // this actor's parent thread)
+    BlockBuffer = CreateBlockBuffer(AlignedByteRange);
+
     DescribeData(ctx);
     Become(&TThis::StateWork);
 }
@@ -657,6 +662,14 @@ void TStorageServiceActor::HandleReadData(
     }
     const NProto::TFileStore& filestore = session->FileStore;
 
+    // In handleless IO mode, if the handle is not set, we use the nodeId to
+    // infer the shard number
+    ui32 shardNo = ExtractShardNo(
+        filestore.GetFeatures().GetAllowHandlelessIO() &&
+                msg->Record.GetHandle() == InvalidHandle
+            ? msg->Record.GetNodeId()
+            : msg->Record.GetHandle());
+
     auto [fsId, error] = SelectShard(
         ctx,
         sessionId,
@@ -665,7 +678,7 @@ void TStorageServiceActor::HandleReadData(
         TEvService::TReadDataMethod::Name,
         msg->CallContext->RequestId,
         filestore,
-        ExtractShardNo(msg->Record.GetHandle()));
+        shardNo);
 
     if (HasError(error)) {
         auto response = std::make_unique<TEvService::TEvReadDataResponse>(

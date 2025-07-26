@@ -408,7 +408,8 @@ void TDiskRegistryActor::ReplyToPendingDeallocations(
         NCloud::Reply(
             ctx,
             *requestInfo,
-            std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>(error));
+            std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>(
+                std::move(error)));
     }
     requestInfos.clear();
 }

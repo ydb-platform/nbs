@@ -164,6 +164,226 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             config->GetSchemeShardDir());
     }
 
+    Y_UNIT_TEST(ShouldOverrideConfigsViaImmediateControlBoard2)
+    {
+        // Check for simple overrides.
+        {
+            NProto::TStorageServiceConfig overriddenProto = []
+            {
+                NProto::TStorageServiceConfig proto;
+                proto.SetMaxMigrationBandwidth(400);
+                proto.SetDefaultTabletVersion(1);
+                return proto;
+            }();
+            const auto overriddenConfig = std::make_shared<TStorageConfig>(
+                std::move(overriddenProto),
+                std::make_shared<NFeatures::TFeaturesConfig>());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                400,
+                overriddenConfig->GetMaxMigrationBandwidth());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                overriddenConfig->GetMaxMigrationIoDepth());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                overriddenConfig->GetDefaultTabletVersion());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDuration::Minutes(1),
+                overriddenConfig
+                    ->GetNonReplicatedAgentDisconnectRecoveryInterval());
+            UNIT_ASSERT_EQUAL(
+                NCloud::NProto::AUTHORIZATION_IGNORE,
+                overriddenConfig->GetAuthorizationMode());
+
+            NKikimr::TControlBoard controlBoard;
+            overriddenConfig->Register(controlBoard);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                400,
+                overriddenConfig->GetMaxMigrationBandwidth());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                overriddenConfig->GetDefaultTabletVersion());
+
+            TAtomic prevValue{};
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_MaxMigrationBandwidth",
+                600,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                600,
+                overriddenConfig->GetMaxMigrationBandwidth());
+
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_MaxMigrationBandwidth",
+                0,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                overriddenConfig->GetMaxMigrationBandwidth());
+
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_DefaultTabletVersion",
+                0,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                overriddenConfig->GetDefaultTabletVersion());
+
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_AuthorizationMode",
+                2,
+                prevValue));
+            UNIT_ASSERT_EQUAL(
+                NCloud::NProto::AUTHORIZATION_REQUIRE,
+                overriddenConfig->GetAuthorizationMode());
+        }
+
+        // Check with zeroed field in the proto config.
+        {
+            NProto::TStorageServiceConfig overriddenProto = []
+            {
+                NProto::TStorageServiceConfig proto;
+                proto.SetMaxMigrationBandwidth(0);
+                proto.SetAuthorizationMode(
+                    NCloud::NProto::AUTHORIZATION_ACCEPT);
+                return proto;
+            }();
+            const auto overriddenConfig = std::make_shared<TStorageConfig>(
+                std::move(overriddenProto),
+                std::make_shared<NFeatures::TFeaturesConfig>());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                overriddenConfig->GetMaxMigrationBandwidth());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                overriddenConfig->GetDefaultTabletVersion());
+            UNIT_ASSERT_EQUAL(
+                NCloud::NProto::AUTHORIZATION_ACCEPT,
+                overriddenConfig->GetAuthorizationMode());
+
+            NKikimr::TControlBoard controlBoard;
+            overriddenConfig->Register(controlBoard);
+
+            TAtomic prevValue{};
+
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_MaxMigrationBandwidth",
+                100,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                100,
+                overriddenConfig->GetMaxMigrationBandwidth());
+
+            UNIT_ASSERT(controlBoard.SetValue(
+                "BlockStore_MaxMigrationBandwidth",
+                0,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                overriddenConfig->GetMaxMigrationBandwidth());
+
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_DefaultTabletVersion",
+                1,
+                prevValue));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                overriddenConfig->GetDefaultTabletVersion());
+
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_AuthorizationMode",
+                2,
+                prevValue));
+            UNIT_ASSERT_EQUAL(
+                NCloud::NProto::AUTHORIZATION_REQUIRE,
+                overriddenConfig->GetAuthorizationMode());
+        }
+
+        // Check for RO overrides.
+        {
+            NProto::TStorageServiceConfig overriddenProto = []
+            {
+                NProto::TStorageServiceConfig proto;
+                proto.SetSchemeShardDir("foo");
+                proto.SetServiceVersionInfo("bar");
+                return proto;
+            }();
+            const auto overriddenConfig = std::make_shared<TStorageConfig>(
+                std::move(overriddenProto),
+                std::make_shared<NFeatures::TFeaturesConfig>());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "foo",
+                overriddenConfig->GetSchemeShardDir());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "bar",
+                overriddenConfig->GetServiceVersionInfo());
+            UNIT_ASSERT_VALUES_EQUAL("", overriddenConfig->GetFolderId());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAdaptNodeRegistrationParams)
+    {
+        NProto::TServerConfig serverConfig;
+        serverConfig.SetNodeRegistrationMaxAttempts(10);
+        serverConfig.SetNodeRegistrationErrorTimeout(20);
+
+        NProto::TStorageServiceConfig storageConfigProto = []
+        {
+            NProto::TStorageServiceConfig proto;
+            proto.SetNodeRegistrationMaxAttempts(30);
+            proto.SetNodeRegistrationTimeout(40);
+            return proto;
+        }();
+
+        AdaptNodeRegistrationParams("foobar", serverConfig, storageConfigProto);
+
+        const auto storageConfig = std::make_shared<TStorageConfig>(
+            std::move(storageConfigProto),
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            storageConfig->GetNodeRegistrationMaxAttempts());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(20),
+            storageConfig->GetNodeRegistrationErrorTimeout());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(40),
+            storageConfig->GetNodeRegistrationTimeout());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "root@builtin",
+            storageConfig->GetNodeRegistrationToken());
+        UNIT_ASSERT_VALUES_EQUAL("foobar", storageConfig->GetNodeType());
+    }
+
+    Y_UNIT_TEST(ShouldAdaptNodeRegistrationParamsWhileZeroOverridden)
+    {
+        NProto::TServerConfig serverConfig;
+        serverConfig.SetNodeRegistrationMaxAttempts(10);
+
+        NProto::TStorageServiceConfig storageConfigProto = []
+        {
+            NProto::TStorageServiceConfig proto;
+            proto.SetNodeRegistrationMaxAttempts(0);
+            return proto;
+        }();
+
+        AdaptNodeRegistrationParams("", serverConfig, storageConfigProto);
+
+        const auto storageConfig = std::make_shared<TStorageConfig>(
+            std::move(storageConfigProto),
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            storageConfig->GetNodeRegistrationMaxAttempts());
+        UNIT_ASSERT_VALUES_EQUAL("", storageConfig->GetNodeType());
+    }
+
     Y_UNIT_TEST(ShouldCalcLinkedDisksBandwidthWithoutConfig)
     {
         using EStorageMediaKind = NCloud::NProto::EStorageMediaKind;

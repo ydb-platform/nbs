@@ -78,8 +78,6 @@ def start(argv):
         else:
             time.sleep(min((deadline - now).seconds, 1))
 
-    logfile.close()
-
 
 def stop(argv):
     if not os.path.exists(PID_FILE_NAME):

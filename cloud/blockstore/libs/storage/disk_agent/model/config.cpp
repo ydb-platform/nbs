@@ -9,7 +9,11 @@
 #include <util/string/builder.h>
 #include <util/system/fs.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -23,11 +27,11 @@ namespace {
     xxx(PageSize,                   ui32,               4_MB                  )\
     xxx(MaxPageCount,               ui32,               256                   )\
     xxx(PageDropSize,               ui32,               512_KB                )\
-    xxx(RegisterRetryTimeout,       TDuration,          TDuration::Seconds(1) )\
-    xxx(SecureEraseTimeout,         TDuration,          TDuration::Minutes(1) )\
-    xxx(DeviceIOTimeout,            TDuration,          TDuration::Minutes(1) )\
+    xxx(RegisterRetryTimeout,       TDuration,          1s                    )\
+    xxx(SecureEraseTimeout,         TDuration,          1min                  )\
+    xxx(DeviceIOTimeout,            TDuration,          1min                  )\
     xxx(DeviceIOTimeoutsDisabled,   bool,               false                 )\
-    xxx(ShutdownTimeout,            TDuration,          TDuration::Seconds(5) )\
+    xxx(ShutdownTimeout,            TDuration,          5s                    )\
     xxx(Backend,                                                               \
         NProto::EDiskAgentBackendType,                                         \
         NProto::DISK_AGENT_BACKEND_SPDK                                       )\
@@ -36,7 +40,7 @@ namespace {
         NProto::DEVICE_ERASE_METHOD_ZERO_FILL                                 )\
                                                                                \
     xxx(AcquireRequired,                    bool,       false                 )\
-    xxx(ReleaseInactiveSessionsTimeout,     TDuration,  TDuration::Seconds(10))\
+    xxx(ReleaseInactiveSessionsTimeout,     TDuration,  10s                   )\
     xxx(DirectIoFlagDisabled,               bool,       false                 )\
     xxx(DeviceLockingEnabled,               bool,       false                 )\
     xxx(DeviceHealthCheckDisabled,          bool,       false                 )\
@@ -48,11 +52,12 @@ namespace {
     xxx(DisableNodeBrokerRegistrationOnDevicelessAgent, bool,          false  )\
     xxx(MaxAIOContextEvents,                ui32,       1024                  )\
     xxx(PathsPerFileIOService,              ui32,       0                     )\
-    xxx(DisableBrokenDevices,               bool,       0                     )\
+    xxx(DisableBrokenDevices,               bool,       false                 )\
                                                                                \
-    xxx(IOParserActorAllocateStorageEnabled, bool,       0                    )\
+    xxx(IOParserActorAllocateStorageEnabled, bool,      false                 )\
                                                                                \
     xxx(MaxParallelSecureErasesAllowed,     ui32,       1                     )\
+    xxx(UseLocalStorageSubmissionThread,    bool,       true                  )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
@@ -77,46 +82,27 @@ TDuration ConvertValue<TDuration, ui32>(ui32 value)
     return TDuration::MilliSeconds(value);
 }
 
-IOutputStream& operator <<(
-    IOutputStream& out,
-    NProto::EDiskAgentBackendType pt)
+IOutputStream& operator<<(IOutputStream& out, NProto::EDiskAgentBackendType pt)
 {
-    switch (pt) {
-        case NProto::DISK_AGENT_BACKEND_SPDK:
-            return out << "DISK_AGENT_BACKEND_SPDK";
-        case NProto::DISK_AGENT_BACKEND_AIO:
-            return out << "DISK_AGENT_BACKEND_AIO";
-        case NProto:: DISK_AGENT_BACKEND_NULL:
-            return out << "DISK_AGENT_BACKEND_NULL";
+    const TString& s = NProto::EDiskAgentBackendType_Name(pt);
+    if (s.empty()) {
+        return out << "(Unknown EDiskAgentBackendType value "
+                   << static_cast<int>(pt) << ")";
     }
 
-    return out
-        << "(Unknown EDiskAgentBackendType value "
-        << static_cast<int>(pt)
-        << ")";
+    return out << s;
 }
 
-IOutputStream& operator <<(
-    IOutputStream& out,
-    NProto::EDeviceEraseMethod pt)
+IOutputStream& operator<<(IOutputStream& out, NProto::EDeviceEraseMethod pt)
 {
-    switch (pt) {
-        case NProto::DEVICE_ERASE_METHOD_ZERO_FILL:
-            return out << "DEVICE_ERASE_METHOD_ZERO_FILL";
-        case NProto::DEVICE_ERASE_METHOD_USER_DATA_ERASE:
-            return out << "DEVICE_ERASE_METHOD_USER_DATA_ERASE";
-        case NProto::DEVICE_ERASE_METHOD_CRYPTO_ERASE:
-            return out << "DEVICE_ERASE_METHOD_CRYPTO_ERASE";
-        case NProto::DEVICE_ERASE_METHOD_NONE:
-            return out << "DEVICE_ERASE_METHOD_NONE";
-        case NProto::DEVICE_ERASE_METHOD_DEALLOCATE:
-            return out << "DEVICE_ERASE_METHOD_DEALLOCATE";
+    const TString& s = NProto::EDeviceEraseMethod_Name(pt);
+
+    if (s.empty()) {
+        return out << "(Unknown EDeviceEraseMethod value "
+                   << static_cast<int>(pt) << ")";
     }
 
-    return out
-        << "(Unknown EDeviceEraseMethod value "
-        << static_cast<int>(pt)
-        << ")";
+    return out << s;
 }
 
 }   // namespace

@@ -95,7 +95,7 @@ struct TBootstrap
             ISchedulerPtr scheduler = CreateScheduler(),
             const NProto::TFileStoreFeatures& featuresConfig = {},
             ui32 handleOpsQueueSize = 1000,
-            ui32 writeBackCacheAutomaticFlushPeriodMs = 0)
+            ui32 writeBackCacheAutomaticFlushPeriodMs = 1000)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}

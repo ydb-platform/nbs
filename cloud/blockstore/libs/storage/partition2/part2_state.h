@@ -200,6 +200,7 @@ public:
         TIndexCachingConfig indexCachingConfig,
         ui32 maxIORequestsInFlight = Max(),
         ui32 reassignChannelsPercentageThreshold = 0,
+        ui32 reassignMixedChannelsPercentageThreshold = 100,
         ui32 lastStep = 0);
 
 private:
@@ -290,6 +291,7 @@ public:
 private:
     const ui32 MaxIORequestsInFlight;
     const ui32 ReassignChannelsPercentageThreshold;
+    const ui32 ReassignMixedChannelsPercentageThreshold;
 
     TVector<TChannelState> Channels;
     TVector<ui32> FreshChannels;
@@ -1005,7 +1007,7 @@ private:
     TOperationState CollectGarbageState;
 
     TGarbageQueue GarbageQueue;
-    ui32 LastCollectCounter = 0;
+    ui32 LastCollectPerGenerationCounter = 0;
     TDuration CollectTimeout;
     bool StartupGcExecuted = false;
 
@@ -1053,9 +1055,9 @@ public:
         Meta.SetLastCollectCommitId(commitId);
     }
 
-    ui32 NextCollectCounter()
+    ui32 NextCollectPerGenerationCounter()
     {
-        return ++LastCollectCounter;
+        return ++LastCollectPerGenerationCounter;
     }
 
     void InitGarbage(

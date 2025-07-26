@@ -62,18 +62,27 @@ bool TIndexTabletActor::PrepareTx_AddData(
         return true;
     }
 
-    auto* handle = FindHandle(args.Handle);
-    if (!handle || handle->Session != session) {
-        args.Error = ErrorInvalidHandle(args.Handle);
-        return true;
-    }
+    if (Config->GetAllowHandlelessIO()) {
+        if (args.ExplicitNodeId == InvalidNodeId) {
+            args.Error = ErrorInvalidTarget(args.ExplicitNodeId);
+            return true;
+        }
+        args.NodeId = args.ExplicitNodeId;
+    } else {
+        auto* handle = FindHandle(args.Handle);
+        if (!handle || handle->Session != session) {
+            args.Error = ErrorInvalidHandle(args.Handle);
+            return true;
+        }
 
-    if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
-        args.Error = ErrorInvalidHandle(args.Handle);
-        return true;
-    }
+        if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_WRITE))
+        {
+            args.Error = ErrorInvalidHandle(args.Handle);
+            return true;
+        }
 
-    args.NodeId = handle->GetNodeId();
+        args.NodeId = handle->GetNodeId();
+    }
     ui64 commitId = GetCurrentCommitId();
 
     for (auto& part: args.UnalignedDataParts) {
@@ -97,7 +106,11 @@ bool TIndexTabletActor::PrepareTx_AddData(
 
     // TODO: access check
     // TODO: replace VERIFY with a check + critical event
-    TABLET_VERIFY(args.Node);
+    TABLET_VERIFY(args.Node || Config->GetAllowHandlelessIO());
+    if (!args.Node) {
+        args.Error = ErrorInvalidTarget(args.NodeId);
+        return true;
+    }
     if (!HasSpaceLeft(args.Node->Attrs, args.ByteRange.End())) {
         args.Error = ErrorNoSpaceLeft();
         return true;
@@ -241,7 +254,11 @@ void TIndexTabletActor::HandleGenerateBlobIds(
 
     auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)
     {
-        return ValidateWriteRequest(ctx, request, range);
+        return ValidateWriteRequest(
+            ctx,
+            request,
+            range,
+            !Config->GetAllowHandlelessIO());
     };
 
     const bool accepted = AcceptRequest<TEvIndexTablet::TGenerateBlobIdsMethod>(
@@ -358,7 +375,11 @@ void TIndexTabletActor::HandleAddData(
 
     auto validator = [&](const NProtoPrivate::TAddDataRequest& request)
     {
-        return ValidateWriteRequest(ctx, request, range);
+        return ValidateWriteRequest(
+            ctx,
+            request,
+            range,
+            !Config->GetAllowHandlelessIO());
     };
 
     if (!AcceptRequest<TEvIndexTablet::TAddDataMethod>(ev, ctx, validator)) {

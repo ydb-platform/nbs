@@ -25,7 +25,7 @@ QEMU_FIRMWARE_REL=/usr/share/qemu
       tar -xzf $QEMU_BIN_TAR -C $QEMU_BIN_DIR
 
 : ${QMP_PORT:=4444}
-: ${DISK_IMAGE:=$QEMU_DIR/image/rootfs.img}
+: ${DISK_IMAGE:=$QEMU_DIR/image-noble/rootfs.img}
 : ${VHOST_SOCKET_PATH:=/tmp/vhost.sock}
 
 : ${MEM_SIZE:=4G}

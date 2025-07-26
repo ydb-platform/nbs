@@ -24,6 +24,7 @@
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
 
@@ -83,6 +84,7 @@ TConfigInitializerCommonPtr TBootstrapServer::InitConfigs(int argc, char** argv)
 void TBootstrapServer::InitComponents()
 {
     InitConfigs();
+    SetGrpcThreadsLimit(Configs->ServerConfig->GetGrpcThreadsLimit());
 
     switch (Configs->Options->Service) {
         case NDaemon::EServiceKind::Kikimr:

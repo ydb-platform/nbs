@@ -123,11 +123,12 @@ void TPartitionActor::HandleReadBlobCompleted(
     State->CompleteIORequest(channel);
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu][d:%s] ReadBlob error happened: %s",
-            TabletID(),
-            PartitionConfig.GetDiskId().c_str(),
-            FormatError(msg->GetError()).data());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s ReadBlob error happened: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
 
         if (blobTabletId != TabletID()) {
             // Treat this situation as we were reading from base disk.
@@ -137,11 +138,11 @@ void TPartitionActor::HandleReadBlobCompleted(
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Failed to read blob from base disk, blob tablet: %lu error: %s",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
+                "%s Failed to read blob from base disk, blob tablet: %lu "
+                "error: %s",
+                LogTitle.GetWithTime().c_str(),
                 blobTabletId,
-                FormatError(msg->GetError()).data());
+                FormatError(msg->GetError()).c_str());
         }
 
         if (msg->DeadlineSeen) {
@@ -151,15 +152,12 @@ void TPartitionActor::HandleReadBlobCompleted(
         if (State->IncrementReadBlobErrorCount()
                 >= Config->GetMaxReadBlobErrorsBeforeSuicide())
         {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu][d:%s] Stop tablet because of too many ReadBlob errors (actor %s, group %u): %s",
-                TabletID(),
-                PartitionConfig.GetDiskId().c_str(),
-                ev->Sender.ToString().c_str(),
-                msg->GroupId,
-                FormatError(msg->GetError()).data());
-
-            ReportTabletBSFailure();
+            ReportTabletBSFailure(
+                TStringBuilder()
+                << LogTitle.GetWithTime()
+                << "Stop tablet because of too many ReadBlob errors (actor "
+                << ev->Sender.ToString() << " group " << groupId
+                << "): " << FormatError(msg->GetError()));
             Suicide(ctx);
             return;
         }

@@ -97,7 +97,9 @@ void CreateMirror3Disk(TTestExecutor& executor, TDiskRegistryState& state)
         });
 }
 
-void DeleteDisksToNotify(TTestExecutor& executor, TDiskRegistryState& state)
+void DeleteDisksToNotify(
+    TTestExecutor& executor,
+    TDiskRegistryState& state)
 {
     executor.WriteTx(
         [&](TDiskRegistryDatabase db) mutable
@@ -105,7 +107,13 @@ void DeleteDisksToNotify(TTestExecutor& executor, TDiskRegistryState& state)
             // copying needed to avoid use-after-free upon deletion
             const auto disks = state.GetDisksToReallocate();
             for (const auto& x: disks) {
-                state.DeleteDiskToReallocate(db, x.first, x.second);
+                state.DeleteDiskToReallocate(
+                    Now(),
+                    db,
+                    TDiskNotificationResult{
+                        TDiskNotification{x.first, x.second},
+                        {},
+                    });
             }
         });
 }
@@ -463,6 +471,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(0, replicaInfo.FinishedMigrations.size());
         }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Lagging source migration was aborted; diskId=disk-1/0",
+            state.FindDevice("uuid-1")->GetStateMessage());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Lagging source migration was aborted; diskId=disk-1/0",
+            state.FindDevice("uuid-2")->GetStateMessage());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            state.GetAutomaticallyReplacedDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            CountIf(
+                state.GetAutomaticallyReplacedDevices(),
+                [&](const auto& deviceInfo)
+                {
+                    return deviceInfo.DeviceId == "uuid-1" ||
+                           deviceInfo.DeviceId == "uuid-2";
+                }));
     }
 
     Y_UNIT_TEST(ShouldAddOutdatedLaggingDevices_MigrationSourceButHasNotStarted)

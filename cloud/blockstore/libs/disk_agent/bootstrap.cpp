@@ -20,12 +20,13 @@
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
-#include <cloud/blockstore/libs/service_local/storage_aio.h>
+#include <cloud/blockstore/libs/service_local/storage_local.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
@@ -48,6 +49,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/features/features_config.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -348,6 +350,65 @@ void TBootstrap::InitRdmaServer(NRdma::TRdmaConfig& config)
     }
 }
 
+bool TBootstrap::InitBackend()
+{
+    const auto& config = *Configs->DiskAgentConfig;
+    if (!config.GetEnabled()) {
+        return false;
+    }
+
+    switch (config.GetBackend()) {
+        case NProto::DISK_AGENT_BACKEND_SPDK: {
+            auto spdkParts =
+                ServerModuleFactories->SpdkFactory(Configs->SpdkEnvConfig);
+            Spdk = std::move(spdkParts.Env);
+            SpdkLogInitializer = std::move(spdkParts.LogInitializer);
+            break;
+        }
+        case NProto::DISK_AGENT_BACKEND_AIO:
+            NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
+            FileIOServiceProvider = CreateFileIOServiceProvider(
+                config,
+                CreateAIOServiceFactory(config));
+            LocalStorageProvider = CreateLocalStorageProvider(
+                FileIOServiceProvider,
+                NvmeManager,
+                {
+                    .DirectIO = !config.GetDirectIoFlagDisabled(),
+                    .UseSubmissionThread =
+                        config.GetUseLocalStorageSubmissionThread(),
+                });
+            break;
+        case NProto::DISK_AGENT_BACKEND_NULL:
+            NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
+            LocalStorageProvider = CreateNullStorageProvider();
+            break;
+        case NProto::DISK_AGENT_BACKEND_IO_URING:
+        case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
+            NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
+            FileIOServiceProvider = CreateFileIOServiceProvider(
+                config,
+                CreateIoUringServiceFactory(config));
+            LocalStorageProvider = CreateLocalStorageProvider(
+                FileIOServiceProvider,
+                NvmeManager,
+                {
+                    .DirectIO = !config.GetDirectIoFlagDisabled(),
+                    // Each io_uring service already has its own submission
+                    // thread, so we don't need one here
+                    .UseSubmissionThread = false,
+                });
+            break;
+    }
+
+    STORAGE_INFO(
+        "Disk Agent backend ("
+        << NProto::EDiskAgentBackendType_Name(config.GetBackend())
+        << ") initialized");
+
+    return true;
+}
+
 bool TBootstrap::InitKikimrService()
 {
     Configs->Log = Log;
@@ -451,52 +512,8 @@ bool TBootstrap::InitKikimrService()
         STORAGE_INFO("AsyncLogger initialized");
     }
 
-    if (auto& config = *Configs->DiskAgentConfig; config.GetEnabled()) {
-        switch (config.GetBackend()) {
-            case NProto::DISK_AGENT_BACKEND_SPDK: {
-                auto spdkParts =
-                    ServerModuleFactories->SpdkFactory(Configs->SpdkEnvConfig);
-                Spdk = std::move(spdkParts.Env);
-                SpdkLogInitializer = std::move(spdkParts.LogInitializer);
-
-                STORAGE_INFO("Spdk backend initialized");
-                break;
-            }
-
-            case NProto::DISK_AGENT_BACKEND_AIO: {
-                NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-
-                auto factory = [events = config.GetMaxAIOContextEvents()] {
-                    return CreateAIOService(events);
-                };
-
-                FileIOServiceProvider =
-                    config.GetPathsPerFileIOService()
-                        ? CreateFileIOServiceProvider(
-                              config.GetPathsPerFileIOService(),
-                              factory)
-                        : CreateSingleFileIOServiceProvider(factory());
-
-                AioStorageProvider = CreateAioStorageProvider(
-                    FileIOServiceProvider,
-                    NvmeManager,
-                    !config.GetDirectIoFlagDisabled(),
-                    EAioSubmitQueueOpt::Use
-                );
-
-                STORAGE_INFO("Aio backend initialized");
-                break;
-            }
-            case NProto::DISK_AGENT_BACKEND_NULL:
-                NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-                AioStorageProvider = CreateNullStorageProvider();
-                STORAGE_INFO("Null backend initialized");
-                break;
-        }
-
-        if (Configs->RdmaConfig) {
-            InitRdmaServer(*Configs->RdmaConfig);
-        }
+    if (InitBackend() && Configs->RdmaConfig) {
+        InitRdmaServer(*Configs->RdmaConfig);
     }
 
     Allocator = CreateCachingAllocator(
@@ -540,7 +557,7 @@ bool TBootstrap::InitKikimrService()
     args.AsyncLogger = AsyncLogger;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.AioStorageProvider = AioStorageProvider;
+    args.LocalStorageProvider = LocalStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;
     args.RdmaServer = RdmaServer;
@@ -602,11 +619,11 @@ void TBootstrap::InitLWTrace()
             samplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(TraceLoggerId, query);
-        TraceReaders.push_back(CreateTraceLogger(
+        TraceReaders.push_back(SetupTraceReaderWithLog(
             TraceLoggerId,
             traceLog,
-            "BLOCKSTORE_TRACE"
-        ));
+            "BLOCKSTORE_TRACE",
+            "AllRequests"));
     }
 
     if (auto samplingRate = diagnosticsConfig->GetSlowRequestSamplingRate()) {
@@ -615,11 +632,12 @@ void TBootstrap::InitLWTrace()
             samplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(SlowRequestsFilterId, query);
-        TraceReaders.push_back(CreateSlowRequestsFilter(
+        TraceReaders.push_back(SetupTraceReaderForSlowRequests(
             SlowRequestsFilterId,
             traceLog,
             "BLOCKSTORE_TRACE",
-            diagnosticsConfig->GetRequestThresholds()));
+            diagnosticsConfig->GetRequestThresholds(),
+            "SlowRequests"));
     }
 
     lwManager.RegisterCustomAction(

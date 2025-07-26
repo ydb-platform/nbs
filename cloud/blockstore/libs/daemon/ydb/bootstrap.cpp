@@ -37,11 +37,12 @@
 #include <cloud/blockstore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/blockstore/libs/service_kikimr/service_kikimr.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
-#include <cloud/blockstore/libs/service_local/storage_aio.h>
+#include <cloud/blockstore/libs/service_local/storage_local.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/init/server/actorsystem.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
@@ -57,6 +58,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
@@ -302,6 +304,11 @@ IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get();
 IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
 IStartable* TBootstrapYdb::GetRootKmsClient()      { return RootKmsClient.get(); }
 
+ITraceServiceClientPtr TBootstrapYdb::GetTraceServiceClient()
+{
+    return TraceServiceClient;
+}
+
 void TBootstrapYdb::InitConfigs()
 {
     Configs->InitKikimrConfig();
@@ -378,6 +385,59 @@ void TBootstrapYdb::InitRdmaServer()
         std::move(rdmaConfig));
 }
 
+void TBootstrapYdb::InitDiskAgentBackend()
+{
+    const auto& config = *Configs->DiskAgentConfig;
+    if (!config.GetEnabled()) {
+        return;
+    }
+
+    switch (config.GetBackend()) {
+        case NProto::DISK_AGENT_BACKEND_SPDK:
+            Y_ABORT_UNLESS(Spdk, "SPDK backend should be already initialized");
+            break;
+        case NProto::DISK_AGENT_BACKEND_AIO:
+            NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
+            FileIOServiceProvider = CreateFileIOServiceProvider(
+                config,
+                CreateAIOServiceFactory(config));
+            LocalStorageProvider = CreateLocalStorageProvider(
+                FileIOServiceProvider,
+                NvmeManager,
+                {
+                    .DirectIO = !config.GetDirectIoFlagDisabled(),
+                    .UseSubmissionThread =
+                        config.GetUseLocalStorageSubmissionThread(),
+                });
+            break;
+        case NProto::DISK_AGENT_BACKEND_NULL:
+            NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
+            LocalStorageProvider = CreateNullStorageProvider();
+            break;
+        case NProto::DISK_AGENT_BACKEND_IO_URING:
+        case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
+            NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
+            FileIOServiceProvider = CreateFileIOServiceProvider(
+                config,
+                CreateIoUringServiceFactory(config));
+            LocalStorageProvider = CreateLocalStorageProvider(
+                FileIOServiceProvider,
+                NvmeManager,
+                {
+                    .DirectIO = !config.GetDirectIoFlagDisabled(),
+                    // Each io_uring service already has its own submission
+                    // thread, so we don't need one here
+                    .UseSubmissionThread = false,
+                });
+            break;
+    }
+
+    STORAGE_INFO(
+        "Disk Agent backend ("
+        << NProto::EDiskAgentBackendType_Name(config.GetBackend())
+        << ") initialized");
+}
+
 void TBootstrapYdb::InitKikimrService()
 {
     InitConfigs();
@@ -404,16 +464,6 @@ void TBootstrapYdb::InitKikimrService()
         .NodeType = Configs->StorageConfig->GetNodeType(),
     };
 
-    bool loadCmsConfigs = Configs->Options->LoadCmsConfigs;
-    bool emergencyMode =
-        Configs->StorageConfig->GetHiveProxyFallbackMode() ||
-        Configs->StorageConfig->GetSSProxyFallbackMode();
-
-    if (loadCmsConfigs && emergencyMode) {
-        STORAGE_INFO("Disable loading configs from CMS in emergency mode");
-        loadCmsConfigs = false;
-    }
-
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
         .Domain = Configs->Options->Domain,
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
@@ -423,11 +473,17 @@ void TBootstrapYdb::InitKikimrService()
         .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl
             || Configs->StorageConfig->GetNodeRegistrationUseSsl(),
         .InterconnectPort = Configs->Options->InterconnectPort,
-        .LoadCmsConfigs = loadCmsConfigs,
+        .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
         .Settings = std::move(settings)
     };
 
-    if (emergencyMode) {
+    const bool emergencyMode =
+        Configs->StorageConfig->GetHiveProxyFallbackMode() ||
+        Configs->StorageConfig->GetSSProxyFallbackMode();
+    if (emergencyMode &&
+        Configs->StorageConfig
+            ->GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode())
+    {
         registerOpts.SchemeShardDir = "";
     }
 
@@ -634,44 +690,7 @@ void TBootstrapYdb::InitKikimrService()
 
     InitSpdk();
 
-    if (const auto& config = *Configs->DiskAgentConfig;
-        config.GetEnabled() &&
-        config.GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&
-        !AioStorageProvider)
-    {
-        NvmeManager = CreateNvmeManager(
-            Configs->DiskAgentConfig->GetSecureEraseTimeout());
-
-        auto factory = [events = config.GetMaxAIOContextEvents()] {
-            return CreateAIOService(events);
-        };
-
-        FileIOServiceProvider =
-            config.GetPathsPerFileIOService()
-                ? CreateFileIOServiceProvider(
-                      config.GetPathsPerFileIOService(),
-                      factory)
-                : CreateSingleFileIOServiceProvider(factory());
-
-        AioStorageProvider = CreateAioStorageProvider(
-            FileIOServiceProvider,
-            NvmeManager,
-            !config.GetDirectIoFlagDisabled(),
-            EAioSubmitQueueOpt::DontUse);
-
-        STORAGE_INFO("AioStorageProvider initialized");
-    }
-
-    if (Configs->DiskAgentConfig->GetEnabled() &&
-        Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_NULL &&
-        !AioStorageProvider)
-    {
-        NvmeManager = CreateNvmeManager(
-            Configs->DiskAgentConfig->GetSecureEraseTimeout());
-        AioStorageProvider = CreateNullStorageProvider();
-
-        STORAGE_INFO("AioStorageProvider (null) initialized");
-    }
+    InitDiskAgentBackend();
 
     Allocator = CreateCachingAllocator(
         Spdk ? Spdk->GetAllocator() : TDefaultAllocator::Instance(),
@@ -734,7 +753,7 @@ void TBootstrapYdb::InitKikimrService()
     args.DiscoveryService = DiscoveryService;
     args.Spdk = Spdk;
     args.Allocator = Allocator;
-    args.AioStorageProvider = AioStorageProvider;
+    args.LocalStorageProvider = LocalStorageProvider;
     args.ProfileLog = ProfileLog;
     args.BlockDigestGenerator = BlockDigestGenerator;
     args.TraceSerializer = TraceSerializer;
@@ -788,12 +807,20 @@ void TBootstrapYdb::InitKikimrService()
         *isSpareNode = 1;
     }
 
+    TraceServiceClient = ServerModuleFactories->TraceServiceClientFactory(
+        Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+            .GetClientConfig(),
+        logging);
+
+    STORAGE_INFO("Trace service client initialized");
+
     auto& probes = NLwTraceMonPage::ProbeRegistry();
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_STORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
-    InitLWTrace();
+    InitLWTrace(Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+                    .GetServiceName());
 
     STORAGE_INFO("LWTrace initialized");
 

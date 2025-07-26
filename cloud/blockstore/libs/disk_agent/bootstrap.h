@@ -70,7 +70,7 @@ private:
     NSpdk::ISpdkEnvPtr Spdk;
     std::function<void(TLog& log)> SpdkLogInitializer;
     ICachingAllocatorPtr Allocator;
-    IStorageProviderPtr AioStorageProvider;
+    IStorageProviderPtr LocalStorageProvider;
     NNvme::INvmeManagerPtr NvmeManager;
     NRdma::IServerPtr RdmaServer;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
@@ -103,6 +103,8 @@ private:
     void InitHTTPServer();
 
     void InitRdmaServer(NRdma::TRdmaConfig& config);
+
+    bool InitBackend();
 };
 
 }   // namespace NCloud::NBlockStore::NServer

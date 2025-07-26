@@ -9,8 +9,8 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	filesystem_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
@@ -153,14 +153,14 @@ func (s *privateService) ConfigurePool(
 
 	// NBS-1375.
 	if !s.nbsFactory.HasClient(req.ZoneId) {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"unknown zone id: %v",
 			req.ZoneId,
 		)
 	}
 
 	if req.Capacity < 0 || req.Capacity > math.MaxUint32 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"invalid capacity: %v",
 			req.Capacity,
 		)
@@ -314,13 +314,13 @@ func (s *privateService) FinishExternalFilesystemCreation(
 ) (*empty.Empty, error) {
 
 	if len(req.FilesystemId) == 0 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"filesystem ID is empty",
 		)
 	}
 
 	if len(req.ExternalStorageClusterName) == 0 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"external storage cluster name is empty",
 		)
 	}
@@ -391,7 +391,7 @@ func (s *privateService) FinishExternalFilesystemDeletion(
 ) (*empty.Empty, error) {
 
 	if len(req.FilesystemId) == 0 {
-		return nil, errors.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"filesystem ID is empty",
 		)
 	}

@@ -1,25 +1,38 @@
 SchemeShardDir: "/Root/NBS"
 AuthorizationMode: AUTHORIZATION_IGNORE
-AllocationUnitNonReplicatedSSD: 1
-NonReplicatedDiskRecyclingPeriod: 5000
-NonReplicatedMigrationStartAllowed: true
+
+# DiskRegistry
 AllocationUnitMirror2SSD: 1
 AllocationUnitMirror3SSD: 1
-MirroredMigrationStartAllowed: true
-NonReplicatedDontSuspendDevices: true
-UseShadowDisksForNonreplDiskCheckpoints: true
-MaxShadowDiskFillIoDepth: 4
-OptimizeVoidBuffersTransferForReadsEnabled: true
-MaxShadowDiskFillBandwidth: 1000
-MaxMigrationIoDepth: 1
-MaxMigrationBandwidth: 1000
-AssignIdToWriteAndZeroRequestsEnabled: true
-RejectLateRequestsAtDiskAgentEnabled: true
-UseDirectCopyRange: true
-EnableToChangeStatesFromDiskRegistryMonpage: true
+AllocationUnitNonReplicatedSSD: 1
 EnableToChangeErrorStatesFromDiskRegistryMonpage: true
+EnableToChangeStatesFromDiskRegistryMonpage: true
+MirroredMigrationStartAllowed: true
+NonReplicatedDiskRecyclingPeriod: 5000
+NonReplicatedDontSuspendDevices: true
+NonReplicatedMigrationStartAllowed: true
+
+# DiskRegistry-based
+AssignIdToWriteAndZeroRequestsEnabled: true
+DataScrubbingEnabled: true
 LaggingDevicesForMirror2DisksEnabled: true
 LaggingDevicesForMirror3DisksEnabled: true
+MaxMigrationBandwidth: 1000
+MaxMigrationIoDepth: 1
+MaxShadowDiskFillBandwidth: 1000
+MaxShadowDiskFillIoDepth: 4
+MultiAgentWriteEnabled: true
+OptimizeVoidBuffersTransferForReadsEnabled: true
+RejectLateRequestsAtDiskAgentEnabled: true
+ResyncRangeAfterScrubbing: true
+ScrubbingChecksumMismatchTimeout: 1000
+ScrubbingResyncPolicy: RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK
+UseDirectCopyRange: true
+UseNonreplicatedRdmaActor: true
+UseRdma: true
+UseShadowDisksForNonreplDiskCheckpoints: true
+
+# CopyVolume
 LinkedDiskFillBandwidth {
   ReadBandwidth: 200
   WriteBandwidth: 200
@@ -33,10 +46,10 @@ LinkedDiskFillBandwidth {
   ReadIoDepth: 4
   WriteIoDepth: 4
 }
-DataScrubbingEnabled: true
-ResyncRangeAfterScrubbing: true
-ScrubbingChecksumMismatchTimeout: 1000
-ScrubbingResyncPolicy: RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK
-MultiAgentWriteEnabled: true
-UseRdma: true
-UseNonreplicatedRdmaActor: true
+
+# SchemeShard proxy
+PathDescriptionBackupFilePath: "backups/nbs-path-description-backup.txt"
+#SSProxyFallbackMode: true
+
+# Hive proxy
+TabletBootInfoBackupFilePath: "backups/nbs-tablet-boot-info-backup.txt"

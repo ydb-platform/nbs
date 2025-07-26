@@ -1,7 +1,7 @@
 #include "bootstrap.h"
 
-#include "options.h"
 #include "config_initializer.h"
+#include "options.h"
 
 #include <cloud/filestore/libs/client/client.h>
 #include <cloud/filestore/libs/client/config.h>
@@ -10,8 +10,8 @@
 #include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
-#include <cloud/filestore/libs/endpoint/listener.h>
 #include <cloud/filestore/libs/endpoint/endpoint_manager.h>
+#include <cloud/filestore/libs/endpoint/listener.h>
 #include <cloud/filestore/libs/endpoint/service_auth.h>
 #include <cloud/filestore/libs/endpoint_vhost/config.h>
 #include <cloud/filestore/libs/endpoint_vhost/listener.h>
@@ -33,6 +33,7 @@
 #include <cloud/filestore/libs/vhost/server.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
+#include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -45,6 +46,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
 
@@ -55,6 +57,7 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/generic/map.h>
+#include <util/generic/overloaded.h>
 #include <util/stream/file.h>
 #include <util/system/fs.h>
 #include <util/system/sysstat.h>
@@ -180,6 +183,55 @@ private:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
+{
+    return std::visit(
+        TOverloaded{
+            [&](const TNullFileIOConfig& null)
+            {
+                Y_UNUSED(null);
+
+                TVector<IFileIOServicePtr> fileIOs;
+                fileIOs.reserve(Max<ui32>(1, config.GetNumThreads()));
+                for (ui32 i = 0; i != config.GetNumThreads(); ++i) {
+                    fileIOs.push_back(CreateConcurrentFileIOService(
+                        TStringBuilder() << "IO" << (i + 1),
+                        CreateFileIOServiceStub()));
+                }
+
+                return CreateRoundRobinFileIOService(std::move(fileIOs));
+            },
+            [&](const TAioConfig& aio)
+            {
+                return CreateThreadedAIOService(
+                    config.GetNumThreads(),
+                    {
+                        .MaxEvents = aio.GetEntries(),
+                    });
+            },
+            [&](const TIoUringConfig& ring)
+            {
+                IFileIOServiceFactoryPtr factory = CreateIoUringServiceFactory({
+                    .SubmissionQueueEntries = ring.GetEntries(),
+                    .MaxKernelWorkersCount = ring.GetMaxKernelWorkersCount(),
+                    .ShareKernelWorkers = ring.GetShareKernelWorkers(),
+                    .ForceAsyncIO = ring.GetForceAsyncIO(),
+                });
+
+                if (config.GetNumThreads() <= 1) {
+                    return factory->CreateFileIOService();
+                }
+
+                return CreateRoundRobinFileIOService(
+                    config.GetNumThreads(),
+                    *factory);
+            },
+        },
+        config.GetFileIOConfig());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -195,8 +247,7 @@ TBootstrapVhost::TBootstrapVhost(
     , VhostModuleFactories(std::move(vhostFactories))
 {}
 
-TBootstrapVhost::~TBootstrapVhost()
-{}
+TBootstrapVhost::~TBootstrapVhost() = default;
 
 TConfigInitializerCommonPtr TBootstrapVhost::InitConfigs(int argc, char** argv)
 {
@@ -292,7 +343,7 @@ void TBootstrapVhost::InitEndpoints()
         auto serviceConfig = std::make_shared<TLocalFileStoreConfig>(
             *localServiceConfig);
         ThreadPool = CreateThreadPool("svc", serviceConfig->GetNumThreads());
-        FileIOService = CreateThreadedAIOService(serviceConfig->GetNumThreads());
+        FileIOService = CreateFileIOService(*serviceConfig);
         LocalService = CreateLocalFileStore(
             std::move(serviceConfig),
             Timer,

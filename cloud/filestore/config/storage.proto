@@ -620,4 +620,9 @@ message TStorageConfig
     // - UnlinkNode will be possible to perform using only the file's NodeId
     //   and it will not require the parent directory's NodeId.
     optional bool ParentlessFilesOnly = 434;
+
+    // If set to true, the filestore will allow handleless read requests.
+    // Meaning that one will not need to open a file handle to read or write
+    // data.
+    optional bool AllowHandlelessIO = 435;
 }

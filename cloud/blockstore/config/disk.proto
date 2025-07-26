@@ -27,6 +27,8 @@ enum EDiskAgentBackendType
     DISK_AGENT_BACKEND_SPDK = 0;
     DISK_AGENT_BACKEND_AIO = 1;
     DISK_AGENT_BACKEND_NULL = 2;
+    DISK_AGENT_BACKEND_IO_URING = 3;
+    DISK_AGENT_BACKEND_IO_URING_NULL = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -302,6 +304,9 @@ message TDiskAgentConfig
     // Max secure erase can be run in parallel.
     // For devices with the same name, only one secure erase is run at a time.
     optional uint32 MaxParallelSecureErasesAllowed = 40;
+
+    // Use a separate thread to submit requests to all FileIOServices.
+    optional bool UseLocalStorageSubmissionThread = 41;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

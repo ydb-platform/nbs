@@ -106,6 +106,7 @@ TPartitionState::TPartitionState(
         const TFreeSpaceConfig& freeSpaceConfig,
         ui32 maxIORequestsInFlight,
         ui32 reassignChannelsPercentageThreshold,
+        ui32 reassignMixedChannelsPercentageThreshold,
         ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
@@ -122,6 +123,7 @@ TPartitionState::TPartitionState(
     , ChannelCount(channelCount)
     , MaxIORequestsInFlight(maxIORequestsInFlight)
     , ReassignChannelsPercentageThreshold(reassignChannelsPercentageThreshold)
+    , ReassignMixedChannelsPercentageThreshold(reassignMixedChannelsPercentageThreshold)
     , LastCommitId(lastCommitId)
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
@@ -333,7 +335,7 @@ bool TPartitionState::IsWriteAllowed(EChannelPermissions permissions) const
 {
     bool allSystemChannelsWritable = true;
     bool anyDataChannelWritable = false;
-    bool anyFreshChannelWritable = false;
+    bool anyFreshChannelWritable = FreshChannelCount == 0;
 
     for (ui32 ch = 0; ch < ChannelCount; ++ch) {
         switch (GetChannelDataKind(ch)) {
@@ -367,13 +369,8 @@ bool TPartitionState::IsWriteAllowed(EChannelPermissions permissions) const
         }
     }
 
-    if (FreshChannelCount) {
-        return allSystemChannelsWritable
-            && anyDataChannelWritable
-            && anyFreshChannelWritable;
-    }
-
-    return allSystemChannelsWritable && anyDataChannelWritable;
+    return allSystemChannelsWritable && anyDataChannelWritable &&
+           anyFreshChannelWritable;
 }
 
 void TPartitionState::RegisterReassignRequestFromBlobStorage(ui32 channel)
@@ -383,27 +380,40 @@ void TPartitionState::RegisterReassignRequestFromBlobStorage(ui32 channel)
 
 TVector<ui32> TPartitionState::GetChannelsToReassign() const
 {
-    const auto permissions = EChannelPermission::UserWritesAllowed
-        | EChannelPermission::SystemWritesAllowed;
+    const auto permissions = EChannelPermission::UserWritesAllowed |
+                             EChannelPermission::SystemWritesAllowed;
 
     TVector<ui32> channels;
+    TVector<ui32> mixedChannels;
 
     for (ui32 ch = 0; ch < ChannelCount; ++ch) {
         const auto* channelState = GetChannel(ch);
-        if (channelState && channelState->ReassignRequestedByBlobStorage
-                || !CheckPermissions(ch, permissions))
+        if (channelState && channelState->ReassignRequestedByBlobStorage ||
+            !CheckPermissions(ch, permissions))
         {
             channels.push_back(ch);
+            if (GetChannelDataKind(ch) == EChannelDataKind::Mixed) {
+                mixedChannels.push_back(ch);
+            }
         }
     }
 
-    const auto threshold =
-        (ReassignChannelsPercentageThreshold / 100.) * ChannelCount;
-    if (IsWriteAllowed(permissions) && channels.size() < threshold) {
-        return {};
+    const auto threshold = ReassignChannelsPercentageThreshold * ChannelCount;
+    if (!IsWriteAllowed(permissions) || channels.size() * 100 >= threshold) {
+        return channels;
     }
 
-    return channels;
+    if (ReassignMixedChannelsPercentageThreshold < 100 &&
+        !mixedChannels.empty())
+    {
+        const auto threshold =
+            ReassignMixedChannelsPercentageThreshold * MixedChannels.size();
+        if (mixedChannels.size() * 100 >= threshold) {
+            return mixedChannels;
+        }
+    }
+
+    return {};
 }
 
 TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const

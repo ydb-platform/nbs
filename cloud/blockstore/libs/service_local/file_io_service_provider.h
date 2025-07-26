@@ -7,8 +7,6 @@
 
 #include <util/generic/strbuf.h>
 
-#include <functional>
-
 namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,6 +24,6 @@ IFileIOServiceProviderPtr CreateSingleFileIOServiceProvider(
 
 IFileIOServiceProviderPtr CreateFileIOServiceProvider(
     ui32 filePathsPerServices,
-    std::function<IFileIOServicePtr()> factory);
+    IFileIOServiceFactoryPtr factory);
 
 }   // namespace NCloud::NBlockStore::NServer

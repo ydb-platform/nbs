@@ -3,14 +3,21 @@ package main
 import (
 	"flag"
 	"log"
+	"time"
 
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/driver"
+)
+
+const (
+	defaultGrpcRequestTimeout          = 30 * time.Second
+	defaultStartEndpointRequestTimeout = 20 * time.Second
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 func main() {
-	cfg := driver.Config{}
+	cfg := driver.Config{GrpcRequestTimeout: defaultGrpcRequestTimeout,
+		StartEndpointRequestTimeout: defaultStartEndpointRequestTimeout}
 
 	flag.StringVar(&cfg.DriverName, "name", "nbs.csi.driver", "Driver name")
 	flag.StringVar(&cfg.VendorVersion, "version", "devel", "Vendor version")

@@ -2,10 +2,11 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/containers/ring_buffer/ring_buffer.h>
 #include <library/cpp/json/writer/json.h>
 #include <library/cpp/lwtrace/log.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+
+#include <utility>
 
 namespace NCloud {
 
@@ -81,39 +82,28 @@ TString SerializeTraceToString(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTraceReaderWithRingBuffer
-    : public ITraceReader
-{
-    TSimpleRingBuffer<TEntry> RingBuffer;
-
-    explicit TTraceReaderWithRingBuffer(TString id)
-        : ITraceReader(std::move(id))
-        , RingBuffer(1000)
-    {}
-
-    void ForEach(std::function<void(const TEntry&)> fn) override
-    {
-        for (ui64 i = RingBuffer.FirstIndex(); i < RingBuffer.TotalSize(); ++i) {
-            fn(RingBuffer[i]);
-        }
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TTraceLogger final
-    : public TTraceReaderWithRingBuffer
+class TTraceLogger final: public ITraceReader
 {
 private:
+    const ITraceReaderPtr Consumer;
+    const TString Tag;
+    const ELogPriority Priority;
+
     TLog Log;
     ui64 TracksCount = 0;
 
 public:
     TTraceLogger(
             TString id,
+            ITraceReaderPtr consumer,
+            TString tag,
             ILoggingServicePtr logging,
-            const TString& componentName)
-        : TTraceReaderWithRingBuffer(std::move(id))
+            const TString& componentName,
+            ELogPriority priority)
+        : ITraceReader(std::move(id))
+        , Consumer(std::move(consumer))
+        , Tag(std::move(tag))
+        , Priority(priority)
     {
         Log = logging->CreateLog(componentName);
     }
@@ -128,27 +118,31 @@ public:
 
         ui64 minSeenTimestamp = tl.Items[0].TimestampCycles;
 
-        Log.Write(
-            ELogPriority::TLOG_INFO,
-            SerializeTraceToString(tl, minSeenTimestamp, "AllRequests"));
-
-        RingBuffer.PushBack(
-            {TInstant::Now(), minSeenTimestamp, tl, "AllRequests"});
+        Log.Write(Priority, SerializeTraceToString(tl, minSeenTimestamp, Tag));
+        Consumer->Push(tid, tl);
     }
 
     void Reset() override
     {
         TracksCount = 0;
+        Consumer->Reset();
+    }
+
+    void ForEach(std::function<void(const TEntry&)> fn) override
+    {
+        Consumer->ForEach(fn);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSlowRequestsFilter final
-    : public TTraceReaderWithRingBuffer
+    : public ITraceReader
 {
 private:
     TLog Log;
+
+    ITraceReaderPtr Consumer;
 
     TRequestThresholds RequestThresholds;
 
@@ -159,10 +153,12 @@ private:
 public:
     TSlowRequestsFilter(
             TString id,
+            ITraceReaderPtr consumer,
             ILoggingServicePtr logging,
             const TString& componentName,
             TRequestThresholds requestThresholds)
-        : TTraceReaderWithRingBuffer(std::move(id))
+        : ITraceReader(std::move(id))
+        , Consumer(std::move(consumer))
         , RequestThresholds(std::move(requestThresholds))
     {
         Log = logging->CreateLog(componentName);
@@ -222,12 +218,7 @@ public:
         }
 
         if (trackLength >= srt && ++TracksCount <= DumpTracksLimit) {
-            Log.Write(
-                ELogPriority::TLOG_WARNING,
-                SerializeTraceToString(tl, minSeenTimestamp, "SlowRequests"));
-
-            RingBuffer.PushBack(
-                {TInstant::Now(), minSeenTimestamp, tl, "SlowRequests"});
+            Consumer->Push(tid, tl);
         }
     }
 
@@ -240,7 +231,12 @@ public:
             p.second = 0;
         }
         Log.Write(ELogPriority::TLOG_DEBUG, out);
-        TracksCount = 0;
+        Consumer->Reset();
+    }
+
+    void ForEach(std::function<void(const TEntry&)> fn) override
+    {
+        Consumer->ForEach(std::move(fn));
     }
 };
 
@@ -248,25 +244,110 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TTraceReaderWithRingBuffer::TTraceReaderWithRingBuffer(TString id, TString tag)
+    : ITraceReader(std::move(id))
+    , RingBuffer(DefaultRingBufferSize)
+    , Tag(std::move(tag))
+{}
+
+void TTraceReaderWithRingBuffer::Push(
+    TThread::TId tid,
+    const NLWTrace::TTrackLog& tl)
+{
+    Y_UNUSED(tid);
+
+    if (tl.Items.empty() || ++TracksCount > DumpTracksLimit) {
+        return;
+    }
+
+    ui64 minSeenTimestamp = tl.Items[0].TimestampCycles;
+
+    RingBuffer.PushBack(
+        {.Ts = TInstant::Now(),
+         .Date = minSeenTimestamp,
+         .TrackLog = tl,
+         .Tag = Tag});
+}
+
+void TTraceReaderWithRingBuffer::Reset()
+{
+    TracksCount = 0;
+}
+
+void TTraceReaderWithRingBuffer::ForEach(std::function<void(const TEntry&)> fn)
+{
+    for (ui64 i = RingBuffer.FirstIndex(); i < RingBuffer.TotalSize(); ++i) {
+        fn(RingBuffer[i]);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 ITraceReaderPtr CreateTraceLogger(
     TString id,
+    ITraceReaderPtr consumer,
     ILoggingServicePtr logging,
-    TString componentName)
+    TString componentName,
+    TString tag,
+    ELogPriority priority)
 {
     return std::make_shared<TTraceLogger>(
         std::move(id),
+        std::move(consumer),
+        std::move(tag),
         std::move(logging),
-        std::move(componentName));
+        std::move(componentName),
+        priority);
 }
 
 ITraceReaderPtr CreateSlowRequestsFilter(
     TString id,
+    ITraceReaderPtr consumer,
     ILoggingServicePtr logging,
     TString componentName,
     TRequestThresholds requestThresholds)
 {
     return std::make_shared<TSlowRequestsFilter>(
         std::move(id),
+        std::move(consumer),
+        std::move(logging),
+        std::move(componentName),
+        std::move(requestThresholds));
+}
+
+ITraceReaderPtr SetupTraceReaderWithLog(
+    TString id,
+    ILoggingServicePtr logging,
+    TString componentName,
+    TString tag,
+    ELogPriority priority)
+{
+    auto traceStorage = std::make_shared<TTraceReaderWithRingBuffer>(id, tag);
+    return CreateTraceLogger(
+        std::move(id),
+        std::move(traceStorage),
+        std::move(logging),
+        std::move(componentName),
+        std::move(tag),
+        priority);
+}
+
+ITraceReaderPtr SetupTraceReaderForSlowRequests(
+    TString id,
+    ILoggingServicePtr logging,
+    TString componentName,
+    TRequestThresholds requestThresholds,
+    TString tag)
+{
+    auto readerWithLog = SetupTraceReaderWithLog(
+        id,
+        logging,
+        componentName,
+        std::move(tag),
+        TLOG_WARNING);
+    return CreateSlowRequestsFilter(
+        std::move(id),
+        std::move(readerWithLog),
         std::move(logging),
         std::move(componentName),
         std::move(requestThresholds));

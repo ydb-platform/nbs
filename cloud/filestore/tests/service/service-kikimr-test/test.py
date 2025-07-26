@@ -2,8 +2,9 @@ import os
 import logging
 
 from cloud.filestore.public.sdk.python.client import Client, CreateClient
+from cloud.filestore.public.sdk.python.client.error import ClientError
 import cloud.storage.core.protos.media_pb2 as media
-
+import cloud.filestore.public.sdk.python.protos as protos
 
 BLOCK_SIZE = 4096
 BLOCKS_COUNT = 1000
@@ -190,3 +191,100 @@ def test_create_unlink_node():
         assert set(list_nodes_result.Names) == set(
             [b"file%d" % i for i in range(files_count // 2, files_count)]
         )
+
+
+def test_read_write_data():
+    logger = logging.getLogger("test")
+    port = os.getenv("NFS_SERVER_PORT")
+
+    with CreateClient(str("localhost:%s" % port), log=logger) as nfs_client:
+        nfs_client.create_filestore(
+            "fs",
+            "project",
+            "folder",
+            "cloud",
+            BLOCK_SIZE,
+            BLOCKS_COUNT,
+        )
+
+        session_id = nfs_client.create_session("fs").Session.SessionId.encode(
+            "utf-8"
+        )
+
+        node = nfs_client.create_node(
+            "fs",
+            session_id,
+            Client.File(0o644),
+            ROOT_NODE_ID,
+            "file1",
+        ).Node
+
+        handle = nfs_client.create_handle(
+            "fs",
+            session_id,
+            node.Id,
+            flags=Client.CreateHandleFlags(
+                [
+                    protos.TCreateHandleRequest.EFlags.E_READ,
+                    protos.TCreateHandleRequest.EFlags.E_WRITE,
+                ]
+            ),
+        ).Handle
+
+        logger.info("Created handle: %s", handle)
+
+        data = b"Hello, world!"
+        nfs_client.write_data(
+            "fs",
+            session_id,
+            handle,
+            0,  # offset
+            data,
+        )
+
+        logger.info("Wrote data: %s", data)
+
+        read_data = nfs_client.read_data(
+            "fs",
+            session_id,
+            handle,
+            0,  # offset
+            len(data),
+        ).Buffer
+
+        assert read_data == data, f"Expected {data}, got {read_data}"
+
+        read_only_handle = nfs_client.create_handle(
+            "fs",
+            session_id,
+            node.Id,
+            flags=Client.CreateHandleFlags(
+                [protos.TCreateHandleRequest.EFlags.E_READ]
+            ),
+        ).Handle
+
+        # Reading data with read-only handle should succeed
+        read_only_data = nfs_client.read_data(
+            "fs",
+            session_id,
+            read_only_handle,
+            0,  # offset
+            len(data),
+        ).Buffer
+        assert read_only_data == data, f"Expected {data}, got {read_only_data}"
+
+        # Writing data with read-only handle should raise an error
+        try:
+            nfs_client.write_data(
+                "fs",
+                session_id,
+                read_only_handle,
+                0,  # offset
+                b"New data",
+            )
+        except ClientError as e:
+            logger.info("Expected error on write with read-only handle: %s", e)
+        else:
+            raise AssertionError(
+                "Write with read-only handle did not raise an error"
+            )

@@ -7,7 +7,60 @@
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
+#include <variant>
+
 namespace NCloud::NFileStore {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TNullFileIOConfig
+{
+private:
+    NProto::TNullFileIOConfig Proto;
+
+public:
+    explicit TNullFileIOConfig(NProto::TNullFileIOConfig proto = {})
+        : Proto(std::move(proto))
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TAioConfig
+{
+private:
+    NProto::TAioConfig Proto;
+
+public:
+    explicit TAioConfig(NProto::TAioConfig proto = {})
+        : Proto(std::move(proto))
+    {}
+
+    [[nodiscard]] ui32 GetEntries() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TIoUringConfig
+{
+private:
+    NProto::TIoUringConfig Proto;
+
+public:
+    explicit TIoUringConfig(NProto::TIoUringConfig proto = {})
+        : Proto(std::move(proto))
+    {}
+
+    [[nodiscard]] ui32 GetEntries() const;
+    [[nodiscard]] bool GetShareKernelWorkers() const;
+    [[nodiscard]] ui32 GetMaxKernelWorkersCount() const;
+    [[nodiscard]] bool GetForceAsyncIO() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TFileIOConfig =
+    std::variant<TNullFileIOConfig, TAioConfig, TIoUringConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -17,8 +70,8 @@ private:
     NProto::TLocalServiceConfig ProtoConfig;
 
 public:
-    TLocalFileStoreConfig(const NProto::TLocalServiceConfig& protoConfig = {})
-        : ProtoConfig(protoConfig)
+    TLocalFileStoreConfig(NProto::TLocalServiceConfig protoConfig = {})
+        : ProtoConfig(std::move(protoConfig))
     {}
 
     TString GetRootPath() const;
@@ -53,6 +106,8 @@ public:
     bool GetGuestOnlyPermissionsCheckEnabled() const;
 
     ui32 GetMaxResponseEntries() const;
+
+    TFileIOConfig GetFileIOConfig() const;
 };
 
 }   // namespace NCloud::NFileStore

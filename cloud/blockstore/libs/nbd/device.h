@@ -29,6 +29,8 @@ struct IDevice
 
     virtual NThreading::TFuture<NProto::TError> Resize(
         ui64 deviceSizeInBytes) = 0;
+
+    virtual TString GetPath() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -42,7 +44,13 @@ struct IDeviceFactory
     // establishment
     virtual IDevicePtr Create(
         const TNetworkAddress& connectAddress,
-        TString deviceName,
+        TString devicePath,
+        ui64 blockCount,
+        ui32 blockSize) = 0;
+
+    virtual IDevicePtr CreateFree(
+        const TNetworkAddress& connectAddress,
+        TString devicePrefix,
         ui64 blockCount,
         ui32 blockSize) = 0;
 };
@@ -52,7 +60,13 @@ struct IDeviceFactory
 IDevicePtr CreateDevice(
     ILoggingServicePtr logging,
     const TNetworkAddress& connectAddress,
-    TString deviceName,
+    TString devicePath,
+    TDuration timeout);
+
+IDevicePtr CreateFreeDevice(
+    ILoggingServicePtr logging,
+    const TNetworkAddress& connectAddress,
+    TString devicePrefix,
     TDuration timeout);
 
 IDevicePtr CreateDeviceStub();

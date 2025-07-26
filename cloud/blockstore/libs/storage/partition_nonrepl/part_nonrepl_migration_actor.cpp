@@ -40,7 +40,8 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
           std::move(rwClientId),
           statActorId,
           config->GetMaxMigrationIoDepth(),
-          srcConfig->GetParentActorId())
+          srcConfig->GetParentActorId(),
+          EDirectCopyPolicy::CanUse)
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
@@ -53,14 +54,18 @@ void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     auto srcActorId = CreateSrcActor(ctx);
     InitWork(
         ctx,
-        MigrationSrcActorId ? MigrationSrcActorId : srcActorId,
-        srcActorId,
-        CreateDstActor(ctx),
-        true,   // takeOwnershipOverActors
-        std::make_unique<TMigrationTimeoutCalculator>(
-            GetConfig()->GetMaxMigrationBandwidth(),
-            GetConfig()->GetExpectedDiskAgentSize(),
-            SrcConfig));
+        TInitParams{
+            .MigrationSrcActorId =
+                MigrationSrcActorId ? MigrationSrcActorId : srcActorId,
+            .SrcActorId = srcActorId,
+            .DstActorId = CreateDstActor(ctx),
+            .TakeOwnershipOverSrcActor = true,
+            .TakeOwnershipOverDstActor = true,
+            .SendWritesToSrc = true,
+            .TimeoutCalculator = std::make_unique<TMigrationTimeoutCalculator>(
+                GetConfig()->GetMaxMigrationBandwidth(),
+                GetConfig()->GetExpectedDiskAgentSize(),
+                SrcConfig)});
 
     PrepareForMigration(ctx);
 }
@@ -224,18 +229,13 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             const auto& target = migration->GetTargetDevice();
 
             if (device.GetBlocksCount() != target.GetBlocksCount()) {
-                LOG_ERROR(
-                    ctx,
-                    TBlockStoreComponents::PARTITION,
-                    "[%s] source (%s) block count (%lu)"
-                    " != target (%s) block count (%lu)",
-                    SrcConfig->GetName().c_str(),
-                    device.GetDeviceUUID().c_str(),
-                    device.GetBlocksCount(),
-                    target.GetDeviceUUID().c_str(),
-                    target.GetBlocksCount());
-
-                ReportBadMigrationConfig();
+                ReportBadMigrationConfig(
+                    TStringBuilder()
+                    << "[" << SrcConfig->GetName() << "] "
+                    << "source (" << device.GetDeviceUUID() << ") block count ("
+                    << device.GetBlocksCount() << ") "
+                    << "!= target (" << target.GetDeviceUUID()
+                    << ") block count (" << target.GetBlocksCount() << ")");
                 return {};
             }
 
@@ -288,7 +288,9 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
             FormatError(error).c_str());
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-            ReportMigrationFailed();
+            ReportMigrationFailed(
+                TStringBuilder() << "Finish migration failed, diskId: "
+                                 << SrcConfig->GetName().Quote());
             return;
         }
     }

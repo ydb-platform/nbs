@@ -183,6 +183,11 @@ void SetProcessMark(const TString& diskId)
     TThread::SetCurrentThreadName(id.c_str());
 }
 
+bool IsParentProcessAlive(__pid_t parentPid)
+{
+    return kill(parentPid, 0) == 0;
+}
+
 }   // namespace
 
 } // namespace NCloud::NBlockStore::NVHostServer
@@ -197,6 +202,9 @@ int main(int argc, char** argv)
 
     try {
         options.Parse(argc, argv);
+        if (!options.BlockstoreServicePid) {
+            options.BlockstoreServicePid = getppid();
+        }
     } catch (...) {
         Cerr << CurrentExceptionMessage() << Endl;
         return 1;
@@ -236,7 +244,12 @@ int main(int argc, char** argv)
 
     TInstant deathTimerStartedAt;
     // Wait for signal to stop the server (Ctrl+C) or dump statistics.
-    for (bool running = true, parentExit = false; running;) {
+    const bool isParentAlive = IsParentProcessAlive(options.BlockstoreServicePid);
+    if (!isParentAlive) {
+        STORAGE_INFO("Parent process exit immediately.");
+        deathTimerStartedAt = TInstant::Now();
+    }
+    for (bool running = true, parentExit = !isParentAlive; running;) {
         int sig = 0;
         if (parentExit) {
             TDuration delayAfterParentExit = deathTimerStartedAt +

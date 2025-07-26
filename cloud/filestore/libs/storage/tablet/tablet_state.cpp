@@ -102,7 +102,7 @@ void TIndexTabletState::LoadState(
     // https://github.com/ydb-platform/nbs/issues/1714
     // because of possible race in vdisks we should not start with 0
     LastStep = 1;
-    LastCollectCounter = 0;
+    LastCollectPerGenerationCounter = 0;
 
     TruncateBlocksThreshold = config.GetMaxBlocksPerTruncateTx();
     SessionHistoryEntryCount = config.GetSessionHistoryEntryCount();
@@ -231,14 +231,14 @@ TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
     };
 }
 
-bool TIndexTabletState::CalculateExpectedShardCount() const
+ui64 TIndexTabletState::CalculateExpectedShardCount() const
 {
     if (FileSystem.GetShardNo()) {
         // sharding is flat
         return 0;
     }
 
-    const auto currentShardCount = FileSystem.ShardFileSystemIdsSize();
+    const ui64 currentShardCount = FileSystem.ShardFileSystemIdsSize();
     ui64 autoShardCount = 0;
     if (FileSystem.GetAutomaticShardCreationEnabled()
             && FileSystem.GetShardAllocationUnit())
