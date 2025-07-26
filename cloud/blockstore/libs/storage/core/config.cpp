@@ -82,6 +82,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define BLOCKSTORE_STORAGE_CONFIG_REPEATED_RO(xxx)                             \
+    xxx(KnownSpareNodes, TVector<TString>, {})                                 \
+    xxx(DestructionAllowedOnlyForDisksWithIdPrefixes, TVector<TString>, {})    \
+    xxx(LinkedDiskFillBandwidth,                                               \
+        TVector<NProto::TLinkedDiskFillBandwidth>,                             \
+        {})                                                                    \
+// BLOCKSTORE_STORAGE_CONFIG_REPEATED_RO
+
 #define BLOCKSTORE_STORAGE_CONFIG_RO(xxx)                                      \
     xxx(SchemeShardDir,                TString,   "/Root"                     )\
     xxx(DisableLocalService,           bool,      false                       )\
@@ -134,7 +142,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(BlobCompressionCodec,           TString,     "lz4"                    )\
                                                                                \
-    xxx(KnownSpareNodes,                TVector<TString>,   {}                )\
     xxx(SpareNodeProbability,           ui32,               0                 )\
                                                                                \
     xxx(TenantHiveTabletId,             ui64,               0                 )\
@@ -143,8 +150,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CachedDiskAgentConfigPath,                  TString,    ""            )\
     xxx(CachedDiskAgentSessionsPath,                TString,    ""            )\
     xxx(ServiceSelfPingInterval,                    TDuration,  MSeconds(10)  )\
-                                                                               \
-    xxx(DestructionAllowedOnlyForDisksWithIdPrefixes, TVector<TString>, {}    )\
                                                                                \
     xxx(NodeRegistrationToken,                TString,     "root@builtin"     )\
     xxx(NodeRegistrationMaxAttempts,          ui32,        10                 )\
@@ -158,9 +163,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         NCloud::NProto::TConfigDispatcherSettings,                             \
         {}                                                                    )\
     xxx(YdbViewerServiceEnabled,              bool,                  false    )\
-    xxx(LinkedDiskFillBandwidth,                                               \
-        TVector<NProto::TLinkedDiskFillBandwidth>,                             \
-        {}                                                                    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -619,6 +621,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
     BLOCKSTORE_STORAGE_CONFIG_RO(xxx)                                          \
+    BLOCKSTORE_STORAGE_CONFIG_REPEATED_RO(xxx)                                 \
     BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                          \
 // BLOCKSTORE_STORAGE_CONFIG
 
@@ -796,12 +799,6 @@ constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value)          \
-    (NCloud::HasField(config, #name) ? ConvertValue<type>(config.Get##name())  \
-                                     : value)
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TStorageConfig::TImpl
 {
     NProto::TStorageServiceConfig StorageServiceConfig;
@@ -809,11 +806,10 @@ struct TStorageConfig::TImpl
 
 #define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
     TControlWrapper Control##name{                                             \
-        ConvertToAtomicBase<type>(BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(          \
-            StorageServiceConfig,                                              \
-            name,                                                              \
-            type,                                                              \
-            value)),                                                           \
+        ConvertToAtomicBase<type>(                                             \
+            (StorageServiceConfig.Has##name()                                  \
+                 ? ConvertValue<type>(StorageServiceConfig.Get##name())        \
+                 : value)),                                                    \
         0,                                                                     \
         Max()};                                                                \
     // BLOCKSTORE_CONFIG_CONTROL
@@ -840,11 +836,13 @@ struct TStorageConfig::TImpl
 
         // Overriding fields with values from ICB
 #define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
-        if (const ui64 value = Control##name) {                                \
-            using T = decltype(StorageServiceConfig.Get##name());              \
-            proto.Set##name(static_cast<T>(value));                            \
-        }                                                                      \
-// BLOCKSTORE_CONFIG_COPY
+    if (const ui64 value = Control##name;                                      \
+        ConvertValue<type>(value) != ConvertValue<type>(proto.Get##name()))    \
+    {                                                                          \
+        using T = decltype(StorageServiceConfig.Get##name());                  \
+        proto.Set##name(static_cast<T>(value));                                \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_COPY
 
         BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_COPY)
 
@@ -885,12 +883,11 @@ void TStorageConfig::Register(TControlBoard& controlBoard){
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
-        return BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                             \
-            Impl->StorageServiceConfig,                                        \
-            name,                                                              \
-            type,                                                              \
-            Default##name);                                                    \
-    }
+        return Impl->StorageServiceConfig.Has##name()                          \
+                   ? ConvertValue<type>(                                       \
+                         Impl->StorageServiceConfig.Get##name())               \
+                   : Default##name;                                            \
+    }                                                                          \
 
 BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 
@@ -899,11 +896,24 @@ BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
-        const type configValue = BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(           \
-            Impl->StorageServiceConfig,                                        \
-            name,                                                              \
-            type,                                                              \
-            Default##name);                                                    \
+        return Impl->StorageServiceConfig.name##Size() > 0                     \
+                   ? ConvertValue<type>(                                       \
+                         Impl->StorageServiceConfig.Get##name())               \
+                   : Default##name;                                            \
+    }                                                                          \
+
+BLOCKSTORE_STORAGE_CONFIG_REPEATED_RO(BLOCKSTORE_CONFIG_GETTER)
+
+#undef BLOCKSTORE_CONFIG_GETTER
+
+#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
+    type TStorageConfig::Get##name() const                                     \
+    {                                                                          \
+        const bool hasConfigOverride = Impl->StorageServiceConfig.Has##name(); \
+        const type configValue =                                               \
+            hasConfigOverride                                                  \
+                ? ConvertValue<type>(Impl->StorageServiceConfig.Get##name())   \
+                : Default##name;                                               \
         const ui64 rawControlValue = Impl->Control##name;                      \
         const type controlValue = ConvertValue<type>(rawControlValue);         \
         if (controlValue != configValue) {                                     \
@@ -1111,29 +1121,29 @@ void AdaptNodeRegistrationParams(
     const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig)
 {
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationMaxAttempts") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationMaxAttempts"))
+    if (!storageConfig.HasNodeRegistrationMaxAttempts() &&
+        serverConfig.HasNodeRegistrationMaxAttempts())
     {
         storageConfig.SetNodeRegistrationMaxAttempts(
             serverConfig.GetNodeRegistrationMaxAttempts());
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationTimeout") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationTimeout"))
+    if (!storageConfig.HasNodeRegistrationTimeout() &&
+        serverConfig.HasNodeRegistrationTimeout())
     {
         storageConfig.SetNodeRegistrationTimeout(
             serverConfig.GetNodeRegistrationTimeout());
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationErrorTimeout") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationErrorTimeout"))
+    if (!storageConfig.HasNodeRegistrationErrorTimeout() &&
+        serverConfig.HasNodeRegistrationErrorTimeout())
     {
         storageConfig.SetNodeRegistrationErrorTimeout(
             serverConfig.GetNodeRegistrationErrorTimeout());
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationToken") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationToken"))
+    if (!storageConfig.HasNodeRegistrationToken() &&
+        serverConfig.HasNodeRegistrationToken())
     {
         storageConfig.SetNodeRegistrationToken(
             serverConfig.GetNodeRegistrationToken());
@@ -1143,9 +1153,7 @@ void AdaptNodeRegistrationParams(
         storageConfig.SetNodeType(overriddenNodeType);
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeType") &&
-        NCloud::HasField(serverConfig, "NodeType"))
-    {
+    if (!storageConfig.HasNodeType() && serverConfig.HasNodeType()) {
         storageConfig.SetNodeType(serverConfig.GetNodeType());
     }
 }
