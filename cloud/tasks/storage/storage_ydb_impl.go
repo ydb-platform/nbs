@@ -1200,13 +1200,18 @@ func (s *storageYDB) lockTaskToExecute(
 
 	state.Status = newStatus
 	state.GenerationID++
-	state.ModifiedAt = at
 	state.LastHost = hostname
 	state.LastRunner = runner
 	state.ChangedStateAt = lastState.ChangedStateAt
 	if lastState.Status != state.Status {
 		state.ChangedStateAt = at
+	} else {
+		// This task was in running/cancelling state
+		// and was picked up by the stalking runner
+		state.StallingDuration += at.Sub(state.ModifiedAt)
 	}
+
+	state.ModifiedAt = at
 
 	transition := stateTransition{
 		lastState: &lastState,
