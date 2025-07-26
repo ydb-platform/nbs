@@ -183,7 +183,10 @@ void TPartitionActor::CompleteLoadState(
         indexCachingConfig,
         GetMaxIORequestsInFlight(*Config, PartitionConfig),
         Config->GetReassignChannelsPercentageThreshold(),
-        Config->GetReassignMixedChannelsPercentageThreshold()
+        0,
+        Config->GetReassignMixedChannelsPercentageThreshold(),
+        Config->GetReassignSystemChannelsImmediately(),
+        Config->GetReassignFreshChannelsPercentageThreshold()
     );
 
     LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
