@@ -24,7 +24,7 @@ message TasksConfig {
     optional string StorageFolder = 13 [default = "tasks"];
     optional string EndedTaskExpirationTimeout = 14 [default = "96h"];
     optional string ClearEndedTasksTaskScheduleInterval = 15 [default = "1h"];
-    optional uint64 ClearEndedTasksLimit = 16 [default = 10000];
+    optional uint64 ClearEndedTasksLimit = 16 [default = 5000];
     optional string LegacyStorageFolder = 17;
     optional uint64 MaxRetriableErrorCount = 18 [default = 100];
     optional uint64 MaxPanicCount = 19 [default = 10];
