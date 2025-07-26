@@ -106,7 +106,9 @@ TPartitionState::TPartitionState(
         const TFreeSpaceConfig& freeSpaceConfig,
         ui32 maxIORequestsInFlight,
         ui32 reassignChannelsPercentageThreshold,
+        ui32 reassignFreshChannelsPercentageThreshold,
         ui32 reassignMixedChannelsPercentageThreshold,
+        bool reassignSystemChannelsImmediately,
         ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
@@ -123,7 +125,9 @@ TPartitionState::TPartitionState(
     , ChannelCount(channelCount)
     , MaxIORequestsInFlight(maxIORequestsInFlight)
     , ReassignChannelsPercentageThreshold(reassignChannelsPercentageThreshold)
+    , ReassignFreshChannelsPercentageThreshold(reassignFreshChannelsPercentageThreshold)
     , ReassignMixedChannelsPercentageThreshold(reassignMixedChannelsPercentageThreshold)
+    , ReassignSystemChannelsImmediately(reassignSystemChannelsImmediately)
     , LastCommitId(lastCommitId)
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
@@ -383,16 +387,41 @@ TVector<ui32> TPartitionState::GetChannelsToReassign() const
                              EChannelPermission::SystemWritesAllowed;
 
     TVector<ui32> channels;
+    TVector<ui32> freshChannels;
     TVector<ui32> mixedChannels;
+    TVector<ui32> systemChannels;
 
     for (ui32 ch = 0; ch < ChannelCount; ++ch) {
         const auto* channelState = GetChannel(ch);
-        if (channelState && channelState->ReassignRequestedByBlobStorage ||
+        if ((channelState && channelState->ReassignRequestedByBlobStorage) ||
             !CheckPermissions(ch, permissions))
         {
             channels.push_back(ch);
-            if (GetChannelDataKind(ch) == EChannelDataKind::Mixed) {
-                mixedChannels.push_back(ch);
+            switch (GetChannelDataKind(ch)) {
+                case EChannelDataKind::Log:
+                case EChannelDataKind::Index:
+                case EChannelDataKind::System: {
+                    systemChannels.push_back(ch);
+                    break;
+                }
+
+                case EChannelDataKind::Mixed: {
+                    mixedChannels.push_back(ch);
+                    break;
+                }
+
+                case EChannelDataKind::Fresh: {
+                    freshChannels.push_back(ch);
+                    break;
+                }
+
+                case EChannelDataKind::Merged: {
+                    break;
+                }
+
+                default: {
+                    Y_DEBUG_ABORT_UNLESS(0);
+                }
             }
         }
     }
@@ -402,17 +431,41 @@ TVector<ui32> TPartitionState::GetChannelsToReassign() const
         return channels;
     }
 
+    channels.clear();
     if (ReassignMixedChannelsPercentageThreshold < 100 &&
         !mixedChannels.empty())
     {
         const auto threshold =
             ReassignMixedChannelsPercentageThreshold * MixedChannels.size();
         if (mixedChannels.size() * 100 >= threshold) {
-            return mixedChannels;
+            channels.insert(
+                channels.end(),
+                mixedChannels.begin(),
+                mixedChannels.end());
         }
     }
 
-    return {};
+    if (ReassignSystemChannelsImmediately && !systemChannels.empty()) {
+        channels.insert(
+            channels.end(),
+            systemChannels.begin(),
+            systemChannels.end());
+    }
+
+    if (ReassignFreshChannelsPercentageThreshold < 100 &&
+        !freshChannels.empty())
+    {
+        const auto threshold =
+            ReassignFreshChannelsPercentageThreshold * FreshChannels.size();
+        if (freshChannels.size() * 100 >= threshold) {
+            channels.insert(
+                channels.end(),
+                freshChannels.begin(),
+                freshChannels.end());
+        }
+    }
+
+    return channels;
 }
 
 TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
