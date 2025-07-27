@@ -534,6 +534,9 @@ void TFileSystem::WriteBuf(
         return;
     }
 
+    ReplyWrite(*callContext, {}, req, fuse_buf_size(bufv));
+    return;
+
     if (Config->GetZeroCopyEnabled()) {
         WriteBufLocal(callContext, req, ino, bufv, offset, fi);
         return;
