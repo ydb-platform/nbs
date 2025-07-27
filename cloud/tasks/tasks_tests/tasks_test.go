@@ -1727,7 +1727,11 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 2)
+	// runnersCount must be at least the count of tasks + 1 (for CollectListerMetrics).
+	// Otherwise, a race condition can occur where longTask is picked up
+	// before waitingTask. This results in a WaitingDuration of zero,
+	// which causes the test to fail.
+	s := createServices(t, ctx, db, 3 /* runnersCount */)
 
 	err := registerLongTask(s.registry)
 	require.NoError(t, err)
