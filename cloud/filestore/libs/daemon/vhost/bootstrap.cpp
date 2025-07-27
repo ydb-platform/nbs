@@ -408,6 +408,13 @@ void TBootstrapVhost::InitEndpoints()
             .AutomaticFlushPeriod =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheAutomaticFlushPeriod()
+        },
+        TDirectoryHandlesStorageConfig{
+            .PathPrefix = Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
+            .TableSize =
+                Configs->VhostServiceConfig->GetDirectoryHandlesTableSize(),
+            .InitialDataSize =
+                Configs->VhostServiceConfig->GetDirectoryHandlesInitialDataSize()
         }
     );
 
