@@ -17,6 +17,7 @@ type getFileStoreInfoHandlerFunc func(ctx context.Context, req *protos.TGetFileS
 type createCheckpointHandlerFunc func(ctx context.Context, req *protos.TCreateCheckpointRequest) (*protos.TCreateCheckpointResponse, error)
 type destroyCheckpointHandlerFunc func(ctx context.Context, req *protos.TDestroyCheckpointRequest) (*protos.TDestroyCheckpointResponse, error)
 type describeFileStoreModelHandlerFunc func(ctx context.Context, req *protos.TDescribeFileStoreModelRequest) (*protos.TDescribeFileStoreModelResponse, error)
+type readNodeRefsHandlerFunc func(ctx context.Context, req *protos.TReadNodeRefsRequest) (*protos.TReadNodeRefsResponse, error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,6 +32,7 @@ type testClient struct {
 	CreateCheckpointHandler       createCheckpointHandlerFunc
 	DestroyCheckpointHandler      destroyCheckpointHandlerFunc
 	DescribeFileStoreModelHandler describeFileStoreModelHandlerFunc
+	ReadNodeRefsHandler           readNodeRefsHandlerFunc
 }
 
 func (client *testClient) Close() error {
@@ -147,4 +149,16 @@ func (client *testClient) DescribeFileStoreModel(
 	}
 
 	return &protos.TDescribeFileStoreModelResponse{}, nil
+}
+
+func (client *testClient) ReadNodeRefs(
+	ctx context.Context,
+	req *protos.TReadNodeRefsRequest,
+) (*protos.TReadNodeRefsResponse, error) {
+
+	if client.ReadNodeRefsHandler != nil {
+		return client.ReadNodeRefsHandler(ctx, req)
+	}
+
+	return &protos.TReadNodeRefsResponse{}, nil
 }

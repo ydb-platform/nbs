@@ -74,6 +74,7 @@ namespace NCloud::NFileStore {
     xxx(PingSession,                        __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
     FILESTORE_DATA_METHODS_LOCAL_SYNC(xxx,  __VA_ARGS__)                       \
+    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
 // FILESTORE_SERVICE_LOCAL_SYNC
 
 #define FILESTORE_SERVICE_LOCAL_ASYNC(xxx, ...)                                \
