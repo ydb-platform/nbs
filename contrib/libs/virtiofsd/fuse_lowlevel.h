@@ -1873,7 +1873,7 @@ int fuse_session_mount(struct fuse_session *se);
  * @param se the session
  * @return 0, -errno, or a signal value
  */
-int fuse_session_loop(struct fuse_session *se, int queue_index);
+int fuse_session_loop(struct fuse_session *se);
 
 /**
  * Flag a session as terminated.
