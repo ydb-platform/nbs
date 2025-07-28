@@ -340,15 +340,6 @@ void TFileSystem::Read(
         return;
     }
 
-    // shortcut read immideatly
-    ReplyBuf(
-        *callContext,
-        {},
-        req,
-        nullptr,
-        size);
-    return;
-
     if (Config->GetZeroCopyEnabled()) {
         ReadLocal(callContext, req, ino, size, offset, fi);
         return;
