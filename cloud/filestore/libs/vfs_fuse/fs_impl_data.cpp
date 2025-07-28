@@ -241,6 +241,8 @@ void TFileSystem::Release(
     ReleaseImpl(std::move(callContext), req, ino, handle);
 }
 
+alignas(4096) static char the_buffer[8 << 20];
+
 void TFileSystem::ReadLocal(
     TCallContextPtr callContext,
     fuse_req_t req,
@@ -280,9 +282,9 @@ void TFileSystem::ReadLocal(
             break;
         }
         auto dataSize = std::min(remainingSize, iov[index].iov_len);
-        request->Buffers.emplace_back(
-            static_cast<char*>(iov[index].iov_base),
-            dataSize);
+        // request->Buffers.emplace_back(
+        //     static_cast<char*>(iov[index].iov_base),
+        //     dataSize);
         remainingSize -= dataSize;
     }
 
@@ -298,6 +300,7 @@ void TFileSystem::ReadLocal(
         return;
     }
 
+    request->Buffers.emplace_back(the_buffer, request->GetLength());
     Session->ReadDataLocal(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
