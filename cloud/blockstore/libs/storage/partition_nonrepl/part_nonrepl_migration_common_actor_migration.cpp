@@ -15,16 +15,6 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-constexpr ui64 EventScheduledWithRetry = 1;
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
 using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
@@ -500,21 +490,12 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
         delayBetweenMigrations.ToString().Quote().c_str());
 
     RangeMigrationScheduled = true;
-    if (DeferredMigrations.Empty()) {
-        ctx.Schedule(
-            delayBetweenMigrations,
-            new TEvNonreplPartitionPrivate::TEvMigrateNextRange());
-        return;
-    }
     ctx.Schedule(
-        delayBetweenMigrations + BackoffProvider.GetDelayAndIncrease(),
-        std::make_unique<IEventHandle>(
-            SelfId(),   // recipient
-            SelfId(),   // sender
-            new TEvNonreplPartitionPrivate::TEvMigrateNextRange(),
-            0,                        // flags
-            EventScheduledWithRetry   // cookie
-            ));
+        DeferredMigrations.Empty()
+            ? delayBetweenMigrations
+            : delayBetweenMigrations + BackoffProvider.GetDelayAndIncrease(),
+        new TEvNonreplPartitionPrivate::TEvMigrateNextRange(
+            /*isRetry*/ !DeferredMigrations.Empty()));
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
@@ -527,17 +508,12 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
         return;
     }
 
-    if (!DeferredMigrations.Empty() && ev->Cookie != EventScheduledWithRetry) {
+    if (!DeferredMigrations.Empty() && !ev->Get()->IsRetry) {
         RangeMigrationScheduled = true;
         ctx.Schedule(
             BackoffProvider.GetDelayAndIncrease(),
-            std::make_unique<IEventHandle>(
-                SelfId(),   // recipient
-                SelfId(),   // sender
-                new TEvNonreplPartitionPrivate::TEvMigrateNextRange(),
-                0,                        // flags
-                EventScheduledWithRetry   // cookie
-                ));
+            new TEvNonreplPartitionPrivate::TEvMigrateNextRange(
+                /*isRetry*/ true));
         return;
     }
 
