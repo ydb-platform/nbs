@@ -486,6 +486,7 @@ private:
                     ui32 calculatedCRC = Crc32c(DataPtr + oldOffset, dataSize);
                     if (calculatedCRC != DescriptorsPtr[i].CRC32) {
                         DescriptorsPtr[i].State = ERecordState::Free;
+                        FreeRecordIndexes.push_back(i);
                         continue;
                     }
                 }
