@@ -4,6 +4,7 @@ SRCS(
     config.cpp
     https.cpp
     notify.cpp
+    json_generator.cpp
 )
 
 PEERDIR(

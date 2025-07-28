@@ -1,6 +1,7 @@
 #include "notify.h"
 
 #include "config.h"
+#include "json_generator.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
@@ -82,7 +83,8 @@ auto CreateNotifyService(int version)
 {
     return CreateService(
         version == V2 ? MakeConfigV2() : MakeConfig(),
-        std::make_shared<TIamTokenClientForTests>());
+        std::make_shared<TIamTokenClientForTests>(),
+        std::make_unique<TJsonGenerator>());
 }
 
 void ShouldNotifyDiskErrorImpl(int version)

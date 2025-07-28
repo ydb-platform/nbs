@@ -58,9 +58,19 @@ struct IService
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IJsonGenerator
+{
+    virtual ~IJsonGenerator() = default;
+
+    virtual NJson::TJsonMap Generate(const TNotification& data) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IServicePtr CreateService(
     TNotifyConfigPtr config,
-    NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr);
+    NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr,
+    IJsonGeneratorPtr jsonGenerator);
 
 IServicePtr CreateNullService(ILoggingServicePtr logging);
 

@@ -72,6 +72,12 @@ struct TServerModuleFactories
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         NRdma::TClientConfigPtr config)> RdmaClientFactory;
+
+    std::function<NNotify::IServicePtr(
+        NNotify::TNotifyConfigPtr config,
+        NIamClient::IIamTokenClientPtr iamTokenClient,
+        ILoggingServicePtr logging)>
+        NotifyServiceFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
