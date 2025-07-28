@@ -1093,6 +1093,8 @@ func (s *nodeService) nodeStageFileStoreStartEndpoint(
 		}
 
 		return err
+	}
+
 	return nil
 }
 
