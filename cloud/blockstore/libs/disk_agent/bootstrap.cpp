@@ -671,6 +671,7 @@ void TBootstrap::Start()
 
     START_COMPONENT(AsyncLogger);
     START_COMPONENT(Logging);
+    START_COMPONENT(StatsFetcher);
     START_COMPONENT(Monitoring);
     START_COMPONENT(ProfileLog);
     START_COMPONENT(TraceProcessor);
@@ -724,6 +725,7 @@ void TBootstrap::Stop()
     STOP_COMPONENT(TraceProcessor);
     STOP_COMPONENT(ProfileLog);
     STOP_COMPONENT(Monitoring);
+    STOP_COMPONENT(StatsFetcher);
     STOP_COMPONENT(Logging);
     STOP_COMPONENT(AsyncLogger);
 
