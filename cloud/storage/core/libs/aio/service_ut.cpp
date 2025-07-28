@@ -167,6 +167,25 @@ Y_UNIT_TEST_SUITE(TAioTest)
         service1.reset();
         promise2.GetFuture().GetValueSync();
     }
+
+    Y_UNIT_TEST(ShouldArrayRefHaveSameLayoutAsIovec)
+    {
+        const ui64 testAddress = 0xA1F2F3E4D5C6B7A8;
+        const ui64 testSize = 0xDEADBEEFF00DAABB;
+        char* testPtr = std::bit_cast<char*>(testAddress);
+
+        TArrayRef<char> buffer{testPtr, testSize};
+
+        UNIT_ASSERT_EQUAL(testPtr, buffer.data());
+        UNIT_ASSERT_EQUAL(testSize, buffer.size());
+
+        iovec iovec {
+            .iov_base = buffer.data(),
+            .iov_len = buffer.size()
+        };
+
+        UNIT_ASSERT(std::memcmp(&iovec, &buffer, sizeof(iovec)) == 0);
+    }
 }
 
 }   // namespace NCloud
