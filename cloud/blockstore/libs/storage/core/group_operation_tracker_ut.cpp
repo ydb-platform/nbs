@@ -1,4 +1,4 @@
-#include "group_request_tracker.h"
+#include "group_operation_tracker.h"
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/writer/json_value.h>
@@ -31,11 +31,21 @@ Y_UNIT_TEST_SUITE(TGroupRequestTrackerTest)
     {
         TGroupOperationTimeTracker timeTracker;
 
-        timeTracker.OnStarted(1, "Read_1", 0);
-
-        timeTracker.OnStarted(2, "Write_2", 1000 * GetCyclesPerMillisecond());
-
-        timeTracker.OnStarted(3, "Write_2", 2000 * GetCyclesPerMillisecond());
+        timeTracker.OnStarted(
+            1,
+            1,
+            TGroupOperationTimeTracker::EGroupOperationType::Read,
+            0);
+        timeTracker.OnStarted(
+            2,
+            2,
+            TGroupOperationTimeTracker::EGroupOperationType::Write,
+            1000 * GetCyclesPerMillisecond());
+        timeTracker.OnStarted(
+            3,
+            2,
+            TGroupOperationTimeTracker::EGroupOperationType::Write,
+            2000 * GetCyclesPerMillisecond());
 
         timeTracker.OnFinished(1, 3000 * GetCyclesPerMillisecond());
         timeTracker.OnFinished(2, 3000 * GetCyclesPerMillisecond());

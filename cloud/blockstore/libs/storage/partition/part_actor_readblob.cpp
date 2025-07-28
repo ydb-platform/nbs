@@ -48,7 +48,8 @@ void TPartitionActor::HandleReadBlob(
 
     GroupOperationTimeTracker.OnStarted(
         requestInfo->CallContext->RequestId,
-        TStringBuilder() << "Read_" << groupId,
+        groupId,
+        TGroupOperationTimeTracker::EGroupOperationType::Read,
         GetCycleCount());
 
     auto readBlobActor = std::make_unique<TReadBlobActor>(

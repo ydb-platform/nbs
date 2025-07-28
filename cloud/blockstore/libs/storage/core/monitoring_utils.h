@@ -3,6 +3,7 @@
 #include "compaction_map.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/storage/core/group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
@@ -202,5 +203,7 @@ void RenderAutoRefreshScript(
     ui64 tabletId,
     int intervalMs,
     const TString& jsUpdateFunctionName);
+
+void DumpGroupLatencyTab(IOutputStream& out, ui64 tabletId);
 
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils

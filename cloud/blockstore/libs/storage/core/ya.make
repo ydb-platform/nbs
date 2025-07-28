@@ -12,6 +12,7 @@ SRCS(
     disk_counters.cpp
     disk_validation.cpp
     forward_helpers.cpp
+    group_operation_tracker.cpp
     manually_preempted_volumes.cpp
     metrics.cpp
     monitoring_utils.cpp
@@ -32,7 +33,6 @@ SRCS(
     volume_model.cpp
     write_buffer_request.cpp
     transaction_time_tracker.cpp
-    group_request_tracker.cpp
 )
 
 PEERDIR(

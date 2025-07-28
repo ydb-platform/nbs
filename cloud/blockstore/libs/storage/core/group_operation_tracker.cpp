@@ -1,4 +1,4 @@
-#include "group_request_tracker.h"
+#include "group_operation_tracker.h"
 
 #include <cloud/storage/core/libs/common/format.h>
 
@@ -59,9 +59,23 @@ ui64 TGroupOperationTimeTracker::THash::operator()(const TKey& key) const
 
 void TGroupOperationTimeTracker::OnStarted(
     ui64 transactionId,
-    TString transactionName,
+    ui32 groupId,
+    EGroupOperationType operationType,
     ui64 startTime)
 {
+    TStringBuilder transactionName;
+
+    switch (operationType) {
+        case EGroupOperationType::Read: {
+            transactionName << "Read_";
+            break;
+        }
+        case EGroupOperationType::Write: {
+            transactionName << "Write_";
+            break;
+        }
+    }
+    transactionName << groupId;
     auto key =
         TKey{.TransactionName = transactionName, .Status = EStatus::Inflight};
     if (!Histograms.contains(key)) {

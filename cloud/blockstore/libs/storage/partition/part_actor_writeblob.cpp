@@ -393,7 +393,8 @@ void TPartitionActor::HandleWriteBlob(
 
     GroupOperationTimeTracker.OnStarted(
         requestInfo->CallContext->RequestId,
-        TStringBuilder() << "Write_" << groupId,
+        groupId,
+        TGroupOperationTimeTracker::EGroupOperationType::Write,
         GetCycleCount());
 
     State->EnqueueIORequest(
