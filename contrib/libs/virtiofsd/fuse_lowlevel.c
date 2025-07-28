@@ -2117,14 +2117,14 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
     outarg.congestion_threshold = se->conn.congestion_threshold;
     outarg.time_gran = se->conn.time_gran;
 
-    fuse_log(FUSE_LOG_DEBUG, "   INIT: %u.%u\n", outarg.major, outarg.minor);
-    fuse_log(FUSE_LOG_DEBUG, "   flags=0x%08x\n", outarg.flags);
-    fuse_log(FUSE_LOG_DEBUG, "   max_readahead=0x%08x\n", outarg.max_readahead);
-    fuse_log(FUSE_LOG_DEBUG, "   max_write=0x%08x\n", outarg.max_write);
-    fuse_log(FUSE_LOG_DEBUG, "   max_background=%i\n", outarg.max_background);
-    fuse_log(FUSE_LOG_DEBUG, "   congestion_threshold=%i\n",
+    fuse_log(FUSE_LOG_INFO, "   INIT: %u.%u\n", outarg.major, outarg.minor);
+    fuse_log(FUSE_LOG_INFO, "   flags=0x%08x\n", outarg.flags);
+    fuse_log(FUSE_LOG_INFO, "   max_readahead=0x%08x\n", outarg.max_readahead);
+    fuse_log(FUSE_LOG_INFO, "   max_write=0x%08x\n", outarg.max_write);
+    fuse_log(FUSE_LOG_INFO, "   max_background=%i\n", outarg.max_background);
+    fuse_log(FUSE_LOG_INFO, "   congestion_threshold=%i\n",
              outarg.congestion_threshold);
-    fuse_log(FUSE_LOG_DEBUG, "   time_gran=%u\n", outarg.time_gran);
+    fuse_log(FUSE_LOG_INFO, "   time_gran=%u\n", outarg.time_gran);
 
     send_reply_ok(req, &outarg, outargsize);
 }
