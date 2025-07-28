@@ -9,6 +9,7 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/util/interval_set.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <memory>
@@ -58,6 +59,8 @@ private:
     std::optional<TInFlightRequest> InFlightRequest;
     const NCloud::NProto::EStorageMediaKind MediaKind;
     std::unique_ptr<TEvService::TEvReadDataResponse> Response;
+
+    NKikimr::TIntervalVec<ui64> ZeroIntervals;
 
 public:
     TReadDataActor(
@@ -123,6 +126,7 @@ TReadDataActor::TReadDataActor(
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
     , Response(std::make_unique<TEvService::TEvReadDataResponse>())
+    , ZeroIntervals(0, ReadRequest.GetLength())
 {
 }
 
@@ -132,7 +136,7 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     // a buffer leads to memory allocation (and initialization) which is
     // heavy and we would like to execute that on a separate thread (instead of
     // this actor's parent thread)
-    Response->Record.SetBuffer(TString(ReadRequest.GetLength(), 0));
+    Response->Record.MutableBuffer()->ReserveAndResize(ReadRequest.GetLength());
 
     DescribeData(ctx);
     Become(&TThis::StateWork);
@@ -207,7 +211,8 @@ void ApplyFreshDataRange(
     ui32 blockSize,
     ui64 offset,
     ui64 length,
-    const NProtoPrivate::TDescribeDataResponse& describeResponse)
+    const NProtoPrivate::TDescribeDataResponse& describeResponse,
+    NKikimr::TIntervalVec<ui64>& zeroIntervals)
 {
     if (sourceFreshData.GetContent().empty()) {
         return;
@@ -246,6 +251,7 @@ void ApplyFreshDataRange(
         sourceFreshData.GetContent().data() +
             (commonRange.Offset - sourceByteRange.Offset),
         commonRange.Length);
+    zeroIntervals.Subtract(relOffset, relOffset + commonRange.Length);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -474,6 +480,7 @@ void TReadDataActor::HandleReadBlobResponse(
             auto dataIter = response.Buffer.begin();
             dataIter += commonRange.Offset - blobByteRange.Offset;
             dataIter.ExtractPlainDataAndAdvance(targetData, commonRange.Length);
+            ZeroIntervals.Subtract(relOffset, relOffset + commonRange.Length);
         } else {
             LOG_WARN(
                 ctx,
@@ -573,7 +580,8 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             BlockSize,
             ReadRequest.GetOffset(),
             ReadRequest.GetLength(),
-            DescribeResponse);
+            DescribeResponse,
+            ZeroIntervals);
 
         LOG_DEBUG(
             ctx,
@@ -582,6 +590,14 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             LogTag.c_str(),
             content.size(),
             offset);
+    }
+
+    char* targetData = const_cast<char*>(buffer.data());
+    for (const auto& zeroInterval: ZeroIntervals.EndForBegin) {
+        memset(
+            targetData + zeroInterval.first,
+            0,
+            zeroInterval.second - zeroInterval.first);
     }
 
     if (DescribeResponse.GetFileSize() < OriginByteRange.End()) {
