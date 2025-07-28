@@ -30,6 +30,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LastLockId,             __VA_ARGS__)                                   \
     xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
     xxx(LastXAttr,              __VA_ARGS__)                                   \
+    xxx(HasXAttrs,              __VA_ARGS__)                                   \
                                                                                \
     xxx(UsedNodesCount,         __VA_ARGS__)                                   \
     xxx(UsedSessionsCount,      __VA_ARGS__)                                   \

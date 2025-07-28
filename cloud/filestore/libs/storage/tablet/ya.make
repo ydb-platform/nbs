@@ -63,6 +63,7 @@ SRCS(
     tablet_actor_resetsession.cpp
     tablet_actor_resolvepath.cpp
     tablet_actor_restart_tablet.cpp
+    tablet_actor_set_has_xattrs.cpp
     tablet_actor_setnodeattr.cpp
     tablet_actor_setnodexattr.cpp
     tablet_actor_subscribesession.cpp

@@ -62,6 +62,8 @@ struct TIndexTabletSchema
         struct LargeDeletionMarkersCount
             : Column<25, NKikimr::NScheme::NTypeIds::Uint64> {};
 
+        struct HasXAttrs            : Column<26, NKikimr::NScheme::NTypeIds::Uint64> {};
+
         using TKey = TableKey<Id>;
 
         using TColumns = TableColumns<
@@ -89,7 +91,8 @@ struct TIndexTabletSchema
             AttrsUsedBytesCount,
             StorageConfig,
             DeletedFreshBytesCount,
-            LargeDeletionMarkersCount
+            LargeDeletionMarkersCount,
+            HasXAttrs
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;

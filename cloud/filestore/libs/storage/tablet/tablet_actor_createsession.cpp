@@ -18,6 +18,7 @@ namespace {
 
 void FillFeatures(
     const NProto::TFileSystem& fileSystem,
+    const NProto::TFileSystemStats& fileSystemStats,
     const TStorageConfig& config,
     NProto::TFileStore& fileStore)
 {
@@ -63,9 +64,13 @@ void FillFeatures(
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
 
-    // as for now it's alway true
-    // later it will be set 'true' when the first XAttr appears in the file system
-    features->SetHasXAttrs(true);
+    // HasXAttrs is false only if LazyXAttrsEnabled == true and we know for sure that
+    // there are no XAttrs in the filesystem
+    const bool hasXAttrs =
+        !config.GetLazyXAttrsEnabled() ||
+        fileSystemStats.GetHasXAttrs() !=
+            static_cast<ui64>(TIndexTabletActor::EHasXAttrs::False);
+    features->SetHasXAttrs(hasXAttrs);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -365,7 +370,14 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     response->Record.SetSessionState(session->GetSessionState());
     auto& fileStore = *response->Record.MutableFileStore();
     Convert(GetFileSystem(), fileStore);
-    FillFeatures(GetFileSystem(), *Config, fileStore);
+    FillFeatures(GetFileSystem(), GetFileSystemStats(), *Config, fileStore);
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s New session TFileStoreFeatures '%s'",
+        LogTag.c_str(),
+        fileStore.GetFeatures().ShortDebugString().c_str());
 
     TVector<TString> shardIds;
     // there's no point in returning shard list unless it's main filesystem
