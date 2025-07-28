@@ -95,7 +95,7 @@ func getConfigMap(serviceName string) configurator.ConfigMap {
 	switch serviceName {
 	case "nbs":
 		return getNbsConfigMap()
-	case "disk_agent":
+	case "disk_agent", "nbs_disk_agent":
 		return getNbsConfigMap()
 	case "nfs":
 		return getNfsConfigMap()
