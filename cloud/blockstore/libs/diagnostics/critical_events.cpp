@@ -1,12 +1,28 @@
 #include "critical_events.h"
 
 #include "public.h"
+#include "util/string/builder.h"
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 namespace NCloud::NBlockStore {
+
+static TString FormatKeyValueList(
+    const TVector<std::pair<TString, TString>>& items)
+{
+    TStringBuilder sb;
+    bool first = true;
+    for (const auto& [key, value]: items) {
+        if (!first) {
+            sb << "; ";
+        }
+        sb << key << "=" << value;
+        first = false;
+    }
+    return sb;
+}
 
 using namespace NMonitoring;
 
@@ -33,6 +49,21 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
             message,                                                           \
+            false);                                                            \
+    }                                                                          \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TString, TString>>& keyValues)                 \
+    {                                                                          \
+        TString msg = message;                                                 \
+        const TString suffix = FormatKeyValueList(keyValues);                  \
+        if (!msg.empty() && !suffix.empty()) {                                 \
+            msg += "; ";                                                       \
+        }                                                                      \
+        msg += suffix;                                                         \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            msg,                                                               \
             false);                                                            \
     }                                                                          \
                                                                                \

@@ -119,6 +119,9 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 #define BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                        \
     TString Report##name(const TString& message = "");                         \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TString, TString>>& keyValues);                \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE
 
