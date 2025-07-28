@@ -273,20 +273,20 @@ private:
         ui64 MountSeqNumber;
         TClientRequestPtr ClientRequest;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
-        bool RetryIfTimeoutOrUndelevery = false;
+        bool RetryIfTimeoutOrUndelivery = false;
 
         TAcquireReleaseDiskRequest(
                 TString clientId,
                 NProto::EVolumeAccessMode accessMode,
                 ui64 mountSeqNumber,
                 TClientRequestPtr clientRequest,
-                bool retryIfTimeoutOrUndelevery)
+                bool retryIfTimeoutOrUndelivery)
             : IsAcquire(true)
             , ClientId(std::move(clientId))
             , AccessMode(accessMode)
             , MountSeqNumber(mountSeqNumber)
             , ClientRequest(std::move(clientRequest))
-            , RetryIfTimeoutOrUndelevery(retryIfTimeoutOrUndelevery)
+            , RetryIfTimeoutOrUndelivery(retryIfTimeoutOrUndelivery)
         {
         }
 
@@ -804,7 +804,7 @@ private:
 
     void AcquireDiskIfNeeded(
         const NActors::TActorContext& ctx,
-        bool retryIfUndelevery);
+        bool retryIfUndelivery);
 
     void ReleaseReplacedDevices(
         const NActors::TActorContext& ctx,

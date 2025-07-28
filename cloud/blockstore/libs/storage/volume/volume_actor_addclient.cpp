@@ -85,7 +85,7 @@ void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx
 
 void TVolumeActor::AcquireDiskIfNeeded(
     const TActorContext& ctx,
-    bool retryIfUndelevery)
+    bool retryIfUndelivery)
 {
     if (!State->GetClients()) {
         return;
@@ -104,7 +104,7 @@ void TVolumeActor::AcquireDiskIfNeeded(
             }
         }
 
-        if (skip && !retryIfUndelevery) {
+        if (skip && !retryIfUndelivery) {
             continue;
         }
 
@@ -113,7 +113,7 @@ void TVolumeActor::AcquireDiskIfNeeded(
             x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
             x.second.GetVolumeClientInfo().GetMountSeqNumber(),
             nullptr,
-            retryIfUndelevery);
+            retryIfUndelivery);
 
         LOG_DEBUG(
             ctx,
@@ -187,7 +187,7 @@ void TVolumeActor::HandleRetryAcquireDisk(
 {
     Y_UNUSED(ev);
     if (AcquireReleaseDiskRequests.empty() ||
-        !AcquireReleaseDiskRequests.front().RetryIfTimeoutOrUndelevery)
+        !AcquireReleaseDiskRequests.front().RetryIfTimeoutOrUndelivery)
     {
         LOG_WARN(
             ctx,
@@ -242,7 +242,7 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
-        if (request.RetryIfTimeoutOrUndelevery &&
+        if (request.RetryIfTimeoutOrUndelivery &&
             (error.GetCode() == E_REJECTED || error.GetCode() == E_TIMEOUT) &&
             Config->GetRetryAcquireReleaseDiskTimeout())
         {
