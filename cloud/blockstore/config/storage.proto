@@ -1281,4 +1281,7 @@ message TStorageServiceConfig
 
     // If true, describes will be done using SchemeCache instead of TxProxy.
     optional bool UseSchemeCache = 443;
+
+    // Timeout to retry acquire request (in milliseconds).
+    optional uint32 RetryAcquireReleaseDiskTimeout = 444;
 }
