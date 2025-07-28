@@ -349,6 +349,72 @@ Y_UNIT_TEST_SUITE(TPersistentDynamicTableTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldMakeCorrectCompaction)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        TVector<TTestData> testData = {
+            {100, "persistent_first", {10, 20, 30}},
+            {200, "persistent_second", {40, 50, 60, 70}},
+            {300, "persistent_third", {80, 90, 100, 110, 120}}};
+
+        ui64 index1 = 0;
+        ui64 index2 = 0;
+
+        {
+            TPersistentDynamicTable<TTestHeader> table(tablePath, 32);
+            table.HeaderData()->Val = 123;
+
+            TString serialized = testData[0].Serialize();
+            ui64 index1 = table.AllocRecord(serialized.size());
+            UNIT_ASSERT(table.WriteRecordData(
+                index1,
+                serialized.data(),
+                serialized.size()));
+            table.CommitRecord(index1);
+
+            serialized = testData[1].Serialize();
+            ui64 index2 = table.AllocRecord(serialized.size());
+            UNIT_ASSERT(table.WriteRecordData(
+                index2,
+                serialized.data(),
+                serialized.size()));
+            table.CommitRecord(index2);
+
+            table.DeleteRecord(index1);
+
+            serialized = testData[2].Serialize();
+            ui64 index3 = table.AllocRecord(serialized.size());
+            UNIT_ASSERT(table.WriteRecordData(
+                index3,
+                serialized.data(),
+                serialized.size()));
+            table.CommitRecord(index3);
+
+            UNIT_ASSERT_VALUES_EQUAL(index3, index1);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, table.CountRecords());
+        }
+
+        {
+            TPersistentDynamicTable<TTestHeader> table(tablePath, 32);
+            UNIT_ASSERT_VALUES_EQUAL(123, table.HeaderData()->Val);
+            UNIT_ASSERT_VALUES_EQUAL(2, table.CountRecords());
+
+            TStringBuf record = table.GetRecord(index1);
+
+            TTestData recovered =
+                TTestData::Deserialize(record.data(), record.size());
+
+            UNIT_ASSERT(recovered == testData[2]);
+
+            record = table.GetRecord(index2);
+            recovered = TTestData::Deserialize(record.data(), record.size());
+            UNIT_ASSERT(recovered == testData[1]);
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleDataAreaExpansion)
     {
         TTempDir tempDir;
