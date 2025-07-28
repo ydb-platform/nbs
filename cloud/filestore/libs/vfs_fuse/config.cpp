@@ -42,7 +42,6 @@ namespace {
     xxx(ServerWriteBackCacheEnabled,  bool,     false                         )\
                                                                                \
     xxx(GuestKeepCacheAllowed,        bool,     false                         )\
-    xxx(MaxBackground,              ui32,       128                          )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

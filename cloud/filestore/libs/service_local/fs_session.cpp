@@ -41,8 +41,6 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetExtendedAttributesDisabled(Config->GetExtendedAttributesDisabled());
         features->SetServerWriteBackCacheEnabled(
             Config->GetServerWriteBackCacheEnabled());
-        features->SetMaxBackground(
-            Config->GetMaxBackground());
         return response;
     };
 
