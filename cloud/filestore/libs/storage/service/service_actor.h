@@ -255,6 +255,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateSetHasXAttrsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
 private:
     void RenderSessions(IOutputStream& out);
     void RenderLocalFileStores(IOutputStream& out);
