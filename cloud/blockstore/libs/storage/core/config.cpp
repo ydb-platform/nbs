@@ -796,9 +796,55 @@ constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename T>
+struct TIsRepeated: std::false_type
+{
+};
+
+template <typename T>
+struct TIsRepeated<const google::protobuf::RepeatedPtrField<T>&>: std::true_type
+{
+};
+
+template <typename T>
+constexpr bool IsRepeatedField = TIsRepeated<T>::value;
+
+template <typename Tag>
+struct TTrait;
+
+// Define a trait for each config item that helps to check if the item is set in
+// the proto. For repeated fields, we check the size and for other fields, we
+// just check the presence with HasXxx method.
+#define CONFIG_ITEMS_TRAITS(name, ...)                                         \
+    struct TConfig##name##Tag;                                                 \
+                                                                               \
+    template <>                                                                \
+    struct TTrait<TConfig##name##Tag>                                          \
+    {                                                                          \
+        template <typename T>                                                  \
+            requires(                                                          \
+                !IsRepeatedField<decltype(std::declval<T>().Get##name())>)     \
+        static bool IsSet(const T& proto)                                      \
+        {                                                                      \
+            return proto.Has##name();                                          \
+        }                                                                      \
+                                                                               \
+        template <typename T>                                                  \
+            requires(IsRepeatedField<decltype(std::declval<T>().Get##name())>) \
+        static bool IsSet(const T& proto)                                      \
+        {                                                                      \
+            return proto.name##Size() > 0;                                     \
+        }                                                                      \
+    };
+
+BLOCKSTORE_STORAGE_CONFIG(CONFIG_ITEMS_TRAITS);
+
+#undef CONFIG_ITEMS_TRAITS
+
 #define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value)          \
-    (NCloud::HasField(config, #name) ? ConvertValue<type>(config.Get##name())  \
-                                     : value)
+    (TTrait<TConfig##name##Tag>::IsSet(config)                                 \
+         ? ConvertValue<type>(config.Get##name())                              \
+         : value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1111,29 +1157,29 @@ void AdaptNodeRegistrationParams(
     const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig)
 {
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationMaxAttempts") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationMaxAttempts"))
+    if (!storageConfig.HasNodeRegistrationMaxAttempts() &&
+        serverConfig.HasNodeRegistrationMaxAttempts())
     {
         storageConfig.SetNodeRegistrationMaxAttempts(
             serverConfig.GetNodeRegistrationMaxAttempts());
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationTimeout") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationTimeout"))
+    if (!storageConfig.HasNodeRegistrationTimeout() &&
+        serverConfig.HasNodeRegistrationTimeout())
     {
         storageConfig.SetNodeRegistrationTimeout(
             serverConfig.GetNodeRegistrationTimeout());
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationErrorTimeout") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationErrorTimeout"))
+    if (!storageConfig.HasNodeRegistrationErrorTimeout() &&
+        serverConfig.HasNodeRegistrationErrorTimeout())
     {
         storageConfig.SetNodeRegistrationErrorTimeout(
             serverConfig.GetNodeRegistrationErrorTimeout());
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationToken") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationToken"))
+    if (!storageConfig.HasNodeRegistrationToken() &&
+        serverConfig.HasNodeRegistrationToken())
     {
         storageConfig.SetNodeRegistrationToken(
             serverConfig.GetNodeRegistrationToken());
@@ -1143,9 +1189,7 @@ void AdaptNodeRegistrationParams(
         storageConfig.SetNodeType(overriddenNodeType);
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeType") &&
-        NCloud::HasField(serverConfig, "NodeType"))
-    {
+    if (!storageConfig.HasNodeType() && serverConfig.HasNodeType()) {
         storageConfig.SetNodeType(serverConfig.GetNodeType());
     }
 }
