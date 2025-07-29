@@ -2254,14 +2254,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(
             response.GetFileStore().GetNodesCount(),
             stfs.f_files);
-        UNIT_ASSERT_VALUES_EQUAL(
-            response.GetFileStore().GetBlocksCount() -
-                response.GetStats().GetUsedBlocksCount(),
-            stfs.f_bfree);
-        UNIT_ASSERT_VALUES_EQUAL(
-            response.GetFileStore().GetNodesCount() -
-                response.GetStats().GetUsedNodesCount(),
-            stfs.f_ffree);
+        // skip checking free blocks/nodes since they constantly change on current fs and it could be tricky
+        // to measure during quiescent state
     }
 };
 
