@@ -1128,7 +1128,6 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
     std::shared_ptr<NProto::TStopEndpointRequest> request)
 {
     Y_ABORT_UNLESS(request->GetDiskId() && request->GetHeaders().GetClientId());
-    const auto& socketPath = request->GetUnixSocketPath();
 
     auto removeClientRequest =
         std::make_shared<NProto::TRemoveVolumeClientRequest>();
@@ -1148,11 +1147,6 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
         return TErrorResponse(removeClientResponse.GetError());
     }
 
-    // The vhost server deletes socket files when an endpoint starts or stops.
-    // We don't have a vhost server here, so we need to delete the socket file
-    // manually. Compute assumes we should do this.
-    TFsPath(socketPath).DeleteIfExists();
-
     return {};
 }
 
@@ -1164,13 +1158,20 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it == Endpoints.end()) {
+        // The vhost server deletes socket files when an endpoint starts or
+        // stops.
+        // We don't have a vhost server here, so we need to delete the socket
+        // file manually. Compute assumes we should do this.
+        TFsPath(socketPath).DeleteIfExists();
+
         if (request->GetDiskId() && request->GetHeaders().GetClientId()) {
             return StopEndpointFallback(ctx, request);
         }
 
-        return TErrorResponse(S_FALSE, TStringBuilder()
-            << "endpoint " << socketPath.Quote()
-            << " hasn't been started yet");
+        return TErrorResponse(
+            S_FALSE,
+            TStringBuilder() << "endpoint " << socketPath.Quote()
+                             << " hasn't been started yet");
     }
 
     auto endpoint = std::move(it->second);
